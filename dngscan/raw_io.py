@@ -632,8 +632,10 @@ def wb_window_transport_matrix_rec2020(bundle: RawBundle) -> Any | None:
         wb_mode = str(getattr(bundle, "wb_mode", "camera") or "camera")
         if wb_mode == "daylight":
             return None
-        decode_wb = list(bundle.decode_wb or bundle.camera_wb or [])
-        daylight_wb = list(bundle.daylight_wb or [])
+        decode_wb = list(
+            getattr(bundle, "decode_wb", None) or getattr(bundle, "camera_wb", None) or []
+        )
+        daylight_wb = list(getattr(bundle, "daylight_wb", None) or [])
         if len(decode_wb) < 3 or len(daylight_wb) < 3:
             return None
         d_c0, d_ct, _ = resolve_hot_wb_c0(bundle, kelvin_mode_cct("daylight"))
@@ -654,7 +656,7 @@ def wb_window_transport_matrix_rec2020(bundle: RawBundle) -> Any | None:
         if np.allclose(matrix, np.eye(3), atol=1e-6):
             return None
         return matrix
-    except (ValueError, np.linalg.LinAlgError):
+    except (ValueError, AttributeError, TypeError, np.linalg.LinAlgError):
         return None
 
 

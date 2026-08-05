@@ -253,7 +253,10 @@ def window_transport(bundle: Any) -> tuple | None:
         m9 = tuple(float(v) for v in np.asarray(matrix, dtype=np.float64).reshape(-1))
         return ("matrix", m9, tag)
     return wb_adaptation_ratios(
-        bundle.wb_mode, bundle.applied_wb or bundle.camera_wb, bundle.daylight_wb, tag
+        getattr(bundle, "wb_mode", "camera"),
+        getattr(bundle, "applied_wb", None) or getattr(bundle, "camera_wb", None),
+        getattr(bundle, "daylight_wb", None),
+        tag,
     )
 
 
