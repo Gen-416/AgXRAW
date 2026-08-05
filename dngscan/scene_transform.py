@@ -237,6 +237,60 @@ def wb_adaptation_ratios(
     return (r_r, r_b)
 
 
+def window_transport(bundle: Any) -> tuple | None:
+    """The transport the prefeed windows must follow for this bundle's pixels.
+
+    Preferred form carries the full hot-WB window matrix (see
+    raw_io.wb_window_transport_matrix_rec2020) plus the decoder tag; when the
+    calibration matrices are unavailable the diagonal von Kries ratios remain
+    as the declared approximation fallback.
+    """
+    from . import raw_io
+
+    tag = window_transport_tag(bundle)
+    matrix = raw_io.wb_window_transport_matrix_rec2020(bundle)
+    if matrix is not None:
+        m9 = tuple(float(v) for v in np.asarray(matrix, dtype=np.float64).reshape(-1))
+        return ("matrix", m9, tag)
+    return wb_adaptation_ratios(
+        getattr(bundle, "wb_mode", "camera"),
+        getattr(bundle, "applied_wb", None) or getattr(bundle, "camera_wb", None),
+        getattr(bundle, "daylight_wb", None),
+        tag,
+    )
+
+
+def _projective_window_transport(
+    mu: Any, cov: Any, m9: tuple[float, ...]
+) -> tuple[Any, Any]:
+    """Move a chroma window (mu, cov) through the full 3x3 balance transform.
+
+    Chroma lives at v = [r/g, 1, b/g]; the pixels move by v' = M v, so the
+    window center is the projective image mu' = (v'_R/v'_G, v'_B/v'_G) and the
+    covariance follows the Jacobian of that map at mu: cov' = J cov J^T. The
+    old two-ratio shortcut is exact only for a channel-diagonal M; the hot-WB
+    matrix mixes channels.
+    """
+    m = np.asarray(m9, dtype=np.float64).reshape(3, 3)
+    x, z = float(mu[0]), float(mu[1])
+    v = np.array([x, 1.0, z], dtype=np.float64)
+    vp = m @ v
+    g = vp[1]
+    if not np.isfinite(g) or abs(g) <= 1e-9:
+        return mu, cov
+    mu_p = np.array([vp[0] / g, vp[2] / g], dtype=np.float64)
+    j = np.empty((2, 2), dtype=np.float64)
+    j[0, 0] = (m[0, 0] * g - vp[0] * m[1, 0]) / (g * g)
+    j[0, 1] = (m[0, 2] * g - vp[0] * m[1, 2]) / (g * g)
+    j[1, 0] = (m[2, 0] * g - vp[2] * m[1, 0]) / (g * g)
+    j[1, 1] = (m[2, 2] * g - vp[2] * m[1, 2]) / (g * g)
+    cov_p = j @ np.asarray(cov, dtype=np.float64) @ j.T
+    return (
+        mu_p.astype(np.float32),
+        cov_p.astype(np.float32),
+    )
+
+
 def _apply_matrix(rgb: Any, matrix: Any) -> Any:
     out = np.empty_like(rgb, dtype=np.float32)
     out[:, 0] = matrix[0, 0] * rgb[:, 0] + matrix[0, 1] * rgb[:, 1] + matrix[0, 2] * rgb[:, 2]
@@ -250,12 +304,27 @@ def _compiled_gaussian_parameters(
     mu_rg_bg: tuple[float, float],
     cov_rg_bg: tuple[tuple[float, float], tuple[float, float]],
     scale: float,
-    wb_adapt: tuple[float, float] | None,
+    wb_adapt: tuple | None,
 ) -> tuple[Any, Any]:
-    """Compile immutable Gaussian constants with the reference operation order."""
+    """Compile immutable Gaussian constants with the reference operation order.
+
+    ``wb_adapt`` is either the legacy diagonal ratio pair, or the full-matrix
+    form ("matrix", m9, dec_ratios_or_None): projective center transport plus a
+    Jacobian covariance push, with the measured decoder chroma ratios applied
+    afterwards as their own approximation layer.
+    """
     mu = np.asarray(mu_rg_bg, dtype=np.float32)
     cov = np.asarray(cov_rg_bg, dtype=np.float32) * np.float32(max(scale, EPS) ** 2)
-    if wb_adapt is not None:
+    if wb_adapt is not None and len(wb_adapt) == 3 and wb_adapt[0] == "matrix":
+        mu, cov = _projective_window_transport(mu, cov, wb_adapt[1])
+        dec = wb_adapt[2]
+        if dec is not None:
+            scale_vec = np.asarray(dec, dtype=np.float32)
+            mu = mu * scale_vec
+            cov = cov * np.outer(scale_vec, scale_vec).astype(np.float32)
+        mu = mu.astype(np.float32)
+        cov = cov.astype(np.float32)
+    elif wb_adapt is not None:
         scale_vec = np.asarray(wb_adapt, dtype=np.float32)
         mu = mu * scale_vec
         cov = cov * np.outer(scale_vec, scale_vec).astype(np.float32)
@@ -288,11 +357,12 @@ def _gaussian_weight(
     scale: float,
     wb_adapt: tuple[float, float] | None,
 ) -> Any:
-    transport = (
-        None
-        if wb_adapt is None
-        else (float(wb_adapt[0]), float(wb_adapt[1]))
-    )
+    if wb_adapt is None:
+        transport = None
+    elif len(wb_adapt) == 3 and wb_adapt[0] == "matrix":
+        transport = wb_adapt
+    else:
+        transport = (float(wb_adapt[0]), float(wb_adapt[1]))
     mu, inv_cov = _compiled_gaussian_parameters(
         mu_rg_bg, cov_rg_bg, float(scale), transport
     )
@@ -304,8 +374,12 @@ def _gaussian_weight(
 
 def _compose_transport(
     wb_adapt: tuple | None, region_name: str
-) -> tuple[float, float] | None:
+) -> tuple | None:
     """Combine the WB window transport with the measured decoder transport."""
+    if wb_adapt is not None and len(wb_adapt) == 3 and wb_adapt[0] == "matrix":
+        decoder = str(wb_adapt[2]) if wb_adapt[2] else None
+        dec = decoder_window_ratios(decoder, region_name) if decoder else None
+        return ("matrix", wb_adapt[1], dec)
     decoder = None
     base = wb_adapt
     if wb_adapt is not None and len(wb_adapt) == 3:

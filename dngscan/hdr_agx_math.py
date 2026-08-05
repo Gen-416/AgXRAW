@@ -49,8 +49,10 @@ from .constants import (
 from .models import HdrShoulderSegment
 
 # A single cubic Hermite with a zero end tangent is monotone iff its normalized start
-# tangent is within this bound. Exact, not a tuned threshold: it is the alpha axis of the
-# Fritsch-Carlson monotonicity region evaluated at beta = 0.
+# tangent is within this bound (exact for beta = 0: the derivative's interior minimum
+# reaches zero at (alpha-3)^2 = 0). The same value doubles as the radius of the
+# Fritsch-Carlson disc used as _segment_is_monotone's fast pass; interior chain
+# segments with beta > 0 fall through to the exact derivative check instead.
 MAX_SINGLE_SEGMENT_ALPHA = 3.0
 
 # Subdivision ceiling for monotone Hermite chains (authoritative low-headroom shoulders
@@ -234,13 +236,35 @@ def adaptive_monotone_segments(
 
 
 def _segment_is_monotone(seg: HdrShoulderSegment) -> bool:
-    """Fritsch-Carlson sufficiency: non-negative tangents inside a radius-3 disc."""
+    """Exact cubic-Hermite monotonicity via the derivative quadratic.
+
+    The Fritsch-Carlson radius-3 disc is kept as a fast sufficient pass, but it
+    is not necessary: interior chain segments carry harmonic-mean end tangents
+    (beta > 0), and the disc rejects segments the curve itself proves monotone
+    — even the classic [0,3]x[0,3] box lies partly outside it. Measured on the
+    uniform-knot chain, the disc admits only global alpha <= 5.5025 while the
+    derivative admits ~7.7493; production policies in that gap were silently
+    zeroing rendered headroom or degrading the reference candidate to native.
+    Outside the disc, minimize q(t) = 3(a+b-2)t^2 + 2(3-2a-b)t + a on [0,1]
+    exactly: q(0) = alpha and q(1) = beta are already non-negative, so only an
+    interior vertex of an upward parabola can go negative.
+    """
     alpha, beta = seg.alpha, seg.beta
     if not (math.isfinite(alpha) and math.isfinite(beta)):
         return False
     if alpha < 0.0 or beta < 0.0:
         return False
-    return alpha * alpha + beta * beta <= MAX_SINGLE_SEGMENT_ALPHA ** 2 + 1e-12
+    if alpha * alpha + beta * beta <= MAX_SINGLE_SEGMENT_ALPHA ** 2 + 1e-12:
+        return True
+    a = 3.0 * (alpha + beta - 2.0)
+    b = 2.0 * (3.0 - 2.0 * alpha - beta)
+    if a <= 0.0:
+        # Concave or linear derivative: the minimum sits at an endpoint.
+        return True
+    vertex = -b / (2.0 * a)
+    if vertex <= 0.0 or vertex >= 1.0:
+        return True
+    return alpha - b * b / (4.0 * a) >= -1e-9
 
 
 def compile_hdr_shoulder_from_anchor(

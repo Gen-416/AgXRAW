@@ -228,9 +228,11 @@ class NativeHdrFormationParityTests(unittest.TestCase):
         )
         self.assertGreater(float(np.abs(with_masks - without).max()), 1e-4)
 
-    def test_zero_separation_aliases_reference(self) -> None:
+    def test_zero_separation_parity_on_the_reference_chroma_path(self) -> None:
+        """C++ and NumPy agree on the corrected rho==0 semantics (see
+        HdrReferenceDispatchSemanticsTests for the semantics themselves)."""
         setup = _formation_setup(channel_separation=0.0)
-        self.assertIs(setup[5][0], setup[5][1])  # aliased tables
+        self.assertIsNot(setup[5][0], setup[5][1])  # both candidates compiled
         rgb = _sample_pixels()
         masks = _sample_masks(rgb.shape)
         for m in (None, masks):
@@ -325,6 +327,117 @@ class NativeHdrDispatchTests(unittest.TestCase):
             with boom:
                 with self.assertRaises(fast_backend.NativeKernelError):
                     _chunk()
+
+
+class HdrReferenceDispatchSemanticsTests(unittest.TestCase):
+    """rho==0 is the conservative end, not a native identity — NumPy path.
+
+    The retired predicate aliased the curve tables at zero permission, so a
+    zero-rho render (including analysis=None) silently received the most open
+    native chroma; the earlier parity test enshrined that by asserting the
+    alias. The dispatch must compile both candidates and equal the explicit
+    common path: reference-white chromaticity carried at native luminance.
+    """
+
+    def test_zero_separation_takes_the_reference_chroma_path(self) -> None:
+        setup = _formation_setup(channel_separation=0.0)
+        hdr_plan = setup[0]
+        self.assertTrue(hdr_agx._hdr_reference_needed(hdr_plan))
+        self.assertIsNot(setup[5][0], setup[5][1])
+
+        rgb = _sample_pixels(count=20_000, with_edges=False)
+
+        def run(tables):
+            return hdr_agx._form_hdr_chunk(
+                rgb,
+                setup[0],
+                setup[1],
+                setup[2],
+                setup[3],
+                setup[4],
+                tables,
+                None,
+                setup[6],
+                "p3",
+                native_plan=None,
+            )
+
+        native_only = run((setup[5][0], setup[5][0]))
+        with_reference = run(setup[5])
+        # The zero-rho output must differ from the native-chroma path...
+        self.assertGreater(float(np.abs(with_reference - native_only).max()), 1e-4)
+
+        # ...and equal the explicit common path built from the same candidates:
+        # reference-white chromaticity, re-anchored to the native branch's final
+        # Y after the (non-Y-preserving) hue restore and punch tail.
+        from dngscan.hdr_color import blend_native_hdr_paths, output_luma_weights
+
+        inset, pre_hue = agx_engine.prepare_formation(rgb, setup[1], setup[2])
+        channel_gain = agx_engine.film_channel_gain(inset, setup[1], setup[4])
+        native_formation = setup[5][0].apply(inset)
+        common = blend_native_hdr_paths(
+            setup[5][1].apply(inset), native_formation, 0.0, setup[4]
+        )
+
+        def tail(formation):
+            mapped = agx_engine.finish_formation(
+                formation, pre_hue, setup[1], setup[3], channel_gain=channel_gain
+            )
+            mapped = hdr_agx.punch_engine.apply_punch_rec2020(
+                mapped, float(getattr(setup[1], "punch_strength", 0.0))
+            )
+            out = hdr_agx.rec2020_to_output(mapped, "p3")
+            return np.nan_to_num(out, nan=0.0, posinf=1e6, neginf=-1e6)
+
+        final_native = tail(native_formation)
+        final_common = tail(common)
+        w_out = output_luma_weights("p3")
+        y_native = final_native @ w_out
+        y_common = final_common @ w_out
+        scale = y_native / np.maximum(y_common, np.float32(1e-9))
+        valid = (y_native > 1e-9) & (y_common > 1e-9)
+        expected = np.where(
+            valid[..., None], final_common * scale[..., None], final_native
+        ).astype(np.float32)
+        expected = hdr_agx.fit_hdr_color_volume(expected, setup[6], "p3")
+        np.testing.assert_allclose(with_reference, expected, atol=2e-5, rtol=0.0)
+
+    def test_native_y_authority_survives_the_full_formation(self) -> None:
+        """The Y contract holds through hue restore and punch, not only at blend.
+
+        Before the final re-anchor, the default hue_restore=0.6 drifted the
+        blended path off the native branch's Y by p95 0.186 EV (max 0.341;
+        hue_restore=1 reached 0.604) on wide-DR samples. The native branch is
+        the sole Y authority end-to-end; float32 noise is the only residual.
+        """
+        from dngscan.hdr_color import output_luma_weights
+
+        for hue_restore in (0.6, 1.0):
+            setup = _formation_setup(hue_restore=hue_restore)
+            rgb = _sample_pixels(count=50_000, with_edges=False)
+            blended = hdr_agx._form_hdr_chunk(
+                rgb, setup[0], setup[1], setup[2], setup[3], setup[4],
+                setup[5], None, setup[6], "p3", native_plan=None,
+            )
+            native_only = hdr_agx._form_hdr_chunk(
+                rgb, setup[0], setup[1], setup[2], setup[3], setup[4],
+                (setup[5][0], setup[5][0]), None, setup[6], "p3",
+                native_plan=None,
+            )
+            w = output_luma_weights("p3")
+            y_out = blended @ w
+            y_nat = native_only @ w
+            valid = (y_out > 1e-6) & (y_nat > 1e-6)
+            err_ev = np.abs(np.log2(y_out[valid] / y_nat[valid]))
+            self.assertLess(float(err_ev.max()), 1e-5, hue_restore)
+
+    def test_reference_skipped_only_on_true_identities(self) -> None:
+        # Unit peak: reference curve IS the native curve — skip is an identity.
+        hdr_plan = _formation_setup(channel_separation=0.0)[0]
+        unit_peak = dataclasses.replace(
+            hdr_plan, tone=dataclasses.replace(hdr_plan.tone, peak_linear=1.0)
+        )
+        self.assertFalse(hdr_agx._hdr_reference_needed(unit_peak))
 
 
 if __name__ == "__main__":

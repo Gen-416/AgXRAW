@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import unittest
 
+import numpy as np
+
+from dngscan import scene_transform
+
 import dngscan as dg
 
 
@@ -71,6 +75,70 @@ class SceneTransformTests(unittest.TestCase):
         original = dg.np.asarray([[mu[0], 1.0, mu[1]]], dtype=dg.np.float32)
         w_orig = float(_region_weight(original, region, ratios)[0])
         self.assertLess(w_orig, w_adapt)
+
+
+class FullMatrixWindowTransportTests(unittest.TestCase):
+    """The windows must follow the full hot-WB matrix, not a diagonal shortcut.
+
+    The pixels receive Ctarget Gtarget (C0 G0)^-1 — a 3x3 with channel mixing.
+    Measured on _SDI0150 + Portra 400 before this fix, the von Kries two-ratio
+    transport left the foliage window at 6.9e-16 and neutral at 1.8e-35 where
+    the true transformed center should weigh 1.
+    """
+
+    # A deliberately channel-mixing balance transform (row-normalized-ish).
+    _M9 = (0.74, 0.02, 0.07, 0.0, 0.99, -0.02, -0.05, 0.10, 1.35)
+
+    @staticmethod
+    def _true_center(mu, m9):
+        m = np.asarray(m9, dtype=np.float64).reshape(3, 3)
+        v = m @ np.array([mu[0], 1.0, mu[1]], dtype=np.float64)
+        return np.array([v[0] / v[1], v[2] / v[1]], dtype=np.float32)
+
+    def test_center_weighs_one_at_the_projected_location(self) -> None:
+        mu = (0.62, 0.85)
+        cov = ((0.004, 0.0), (0.0, 0.006))
+        center = self._true_center(mu, self._M9)[None, :]
+        weight = scene_transform._gaussian_weight(
+            center, mu, cov, 1.0, ("matrix", self._M9, None)
+        )
+        self.assertGreater(float(weight[0]), 0.999999)
+
+    def test_diagonal_shortcut_is_not_equivalent_under_mixing(self) -> None:
+        mu = (0.62, 0.85)
+        cov = ((0.004, 0.0), (0.0, 0.006))
+        center = self._true_center(mu, self._M9)[None, :]
+        # The best diagonal approximation of the same transform.
+        m = np.asarray(self._M9, dtype=np.float64).reshape(3, 3)
+        ratios = (float(m[0, 0] / m[1, 1]), float(m[2, 2] / m[1, 1]))
+        weight = scene_transform._gaussian_weight(center, mu, cov, 1.0, ratios)
+        self.assertLess(float(weight[0]), 0.5)
+
+    def test_covariance_follows_the_jacobian(self) -> None:
+        mu = (0.62, 0.85)
+        cov = ((0.004, 0.001), (0.001, 0.006))
+        m = np.asarray(self._M9, dtype=np.float64).reshape(3, 3)
+        # A one-sigma point pushed through the exact projective map should keep
+        # its Mahalanobis distance (weight exp(-0.5)) under the transported window.
+        vals, vecs = np.linalg.eigh(np.asarray(cov, dtype=np.float64))
+        sigma_pt = np.asarray(mu, dtype=np.float64) + vecs[:, 1] * np.sqrt(vals[1])
+        v = m @ np.array([sigma_pt[0], 1.0, sigma_pt[1]])
+        pushed = np.array([[v[0] / v[1], v[2] / v[1]]], dtype=np.float32)
+        weight = scene_transform._gaussian_weight(
+            pushed, mu, cov, 1.0, ("matrix", self._M9, None)
+        )
+        self.assertAlmostEqual(float(weight[0]), float(np.exp(-0.5)), delta=0.02)
+
+    def test_decoder_ratios_still_apply_after_the_matrix(self) -> None:
+        mu = (0.62, 0.85)
+        cov = ((0.004, 0.0), (0.0, 0.006))
+        center = self._true_center(mu, self._M9)[None, :]
+        dec = (0.9, 1.1)
+        moved = center * np.asarray(dec, dtype=np.float32)[None, :]
+        weight = scene_transform._gaussian_weight(
+            moved, mu, cov, 1.0, ("matrix", self._M9, dec)
+        )
+        self.assertGreater(float(weight[0]), 0.999999)
 
 
 if __name__ == "__main__":

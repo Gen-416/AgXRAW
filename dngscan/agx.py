@@ -299,9 +299,10 @@ def _build_curve_params(
     # faded (sub-display-white) top instead of pure white. The upstream UI is SDR-bound,
     # but the curve itself is display-linear and can represent an extended-white target.
     # Keep the useful lower guard while deliberately avoiding an SDR upper clamp: silently
-    # turning an HDR request such as 8.0 into 1.0 makes the parameter contract false. The
-    # independent HDR compiler now uses this extended endpoint directly, after proving the
-    # resulting shoulder will not enter the accelerating fallback below.
+    # turning an extended request such as 8.0 into 1.0 makes the parameter contract false.
+    # The v2 HDR compiler no longer consumes this endpoint directly — it pins the body at
+    # target white 1.0 and compiles its own shoulder above the knee (hdr_agx_math) — but
+    # the parameter stays honest for any caller that does request an extended target.
     target_white_linear = float(target_white_linear)
     if not math.isfinite(target_white_linear):
         raise ValueError("target_white_linear must be finite")

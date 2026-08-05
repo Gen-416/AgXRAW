@@ -12,6 +12,8 @@ from dngscan.constants import (
     SCENE_MIDGRAY,
 )
 from dngscan.hdr_agx_math import (
+    _segment_is_monotone,
+    adaptive_monotone_segments,
     MAX_SINGLE_SEGMENT_ALPHA,
     achieved_headroom_ev,
     body_anchor_at_ev,
@@ -393,6 +395,57 @@ class AchievedHeadroomTests(unittest.TestCase):
 
     def test_reports_the_reached_peak(self) -> None:
         self.assertAlmostEqual(achieved_headroom_ev([[1.0, 4.0]]), 2.0, places=12)
+
+
+class ExactMonotonicityCriterionTests(unittest.TestCase):
+    """The disc is a fast pass, not the law (review finding: over-conservative).
+
+    The Fritsch-Carlson radius-3 disc rejected interior chain segments the
+    derivative itself proves monotone. Measured consequences before the exact
+    check: a reproducible production policy (contrast 4.5, 8 EV reliable tail,
+    sparse emitters, 0.44 EV display margin -> global alpha 5.5053) was demoted
+    to rendered_headroom=0, and 1,400 of 11,842 valid policy-domain
+    reference-white candidates silently degraded to native.
+    """
+
+    def _numeric_min_derivative(self, alpha: float, beta: float) -> float:
+        import numpy as np
+
+        t = np.linspace(0.0, 1.0, 4001)
+        q = 3.0 * (alpha + beta - 2.0) * t**2 + 2.0 * (3.0 - 2.0 * alpha - beta) * t + alpha
+        return float(q.min())
+
+    def test_production_alpha_5p5_compiles_without_headroom_loss(self) -> None:
+        segments = adaptive_monotone_segments(0.0, 1.0, 0.0, 1.0, 5.5053)
+        self.assertTrue(segments)
+        self.assertLessEqual(len(segments), 3)
+
+    def test_exact_bound_accepts_to_7p749_and_rejects_beyond(self) -> None:
+        self.assertTrue(adaptive_monotone_segments(0.0, 1.0, 0.0, 1.0, 7.749274))
+        self.assertFalse(adaptive_monotone_segments(0.0, 1.0, 0.0, 1.0, 7.80))
+
+    def test_chain_derivative_never_negative_at_the_new_acceptances(self) -> None:
+        for alpha in (5.5053, 6.60064, 7.70):
+            segments = adaptive_monotone_segments(0.0, 1.0, 0.0, 1.0, alpha)
+            self.assertTrue(segments, alpha)
+            for seg in segments:
+                self.assertGreaterEqual(
+                    self._numeric_min_derivative(seg.alpha, seg.beta), -1e-7, alpha
+                )
+
+    def test_predicate_matches_numeric_truth_on_a_grid(self) -> None:
+        import numpy as np
+
+        rng = np.random.default_rng(20260805)
+        for _ in range(5000):
+            alpha = float(rng.uniform(0.0, 12.0))
+            beta = float(rng.uniform(0.0, 6.0))
+            seg = HdrShoulderSegment(0.0, 1.0, 0.0, 1.0, alpha, beta)
+            self.assertEqual(
+                _segment_is_monotone(seg),
+                self._numeric_min_derivative(alpha, beta) >= -1e-7,
+                (alpha, beta),
+            )
 
 
 if __name__ == "__main__":

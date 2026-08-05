@@ -110,8 +110,10 @@ def apply_hdr_curve_pair(
     """Native extended curve plus optional reference-white chroma candidate.
 
     The body below K is evaluated once. When ``need_reference`` is false the reference
-    alias is the native array (no second Hermite). This is an exact identity when rho is
-    zero: blend would return native anyway.
+    alias is the native array (no second Hermite). Callers may only pass false when the
+    reference curve is identically the native curve (unit peak or no shoulder); rho==0
+    is NOT such an identity — the blend returns reference chromaticity at native
+    luminance there, so a zero-permission render still needs the second curve.
     """
     rgb = np.asarray(scene_rgb, dtype=np.float32)
     ev = np.log2(np.maximum(rgb, _EPS) / np.float32(SCENE_MIDGRAY))

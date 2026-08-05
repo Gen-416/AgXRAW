@@ -32,6 +32,7 @@ from .color import encode_display_linear, fit_to_output_gamut, rec2020_to_output
 from .drt import curve_params_from_plan
 from .hdr_curve import HdrCurveTable, compile_hdr_curve_table_pair
 from .hdr_color import (
+    output_luma_weights,
     blend_native_hdr_paths,
     fit_hdr_color_volume,
     formation_luma_weights,
@@ -76,15 +77,18 @@ def _pack_peak(hdr_plan: HdrAgxPlan) -> float:
 
 
 def _hdr_reference_needed(hdr_plan: HdrAgxPlan) -> bool:
-    """Whether the reference-white chroma candidate can contribute at all.
+    """Whether the reference-white chroma candidate must be compiled.
 
-    Algebraic identity: blend with rho==0 returns the native path, so the reference
-    candidate (and its second curve) is pure waste when global permission is zero.
+    rho blends toward native: at rho==1 the blend returns the native path, and at
+    rho==0 it returns the reference-white chromaticity carried at native luminance
+    — the conservative end of the dial, NOT the native path. A previous version
+    treated rho==0 as a skip-identity, which inverted the design exactly where it
+    matters most (zero permission — including analysis=None — silently received
+    the most open native chroma). The only true identities are a unit peak or no
+    rendered headroom, where the reference curve IS the native curve.
     """
-    global_rho = float(hdr_plan.color.channel_separation) * float(hdr_plan.color.snr_gate)
     return (
-        global_rho > 0.0
-        and float(hdr_plan.tone.rendered_headroom_ev) > 0.0
+        float(hdr_plan.tone.rendered_headroom_ev) > 0.0
         and abs(float(hdr_plan.tone.peak_linear) - 1.0) > 1e-12
     )
 
@@ -172,27 +176,46 @@ def _form_hdr_chunk(
     channel_gain = agx_engine.film_channel_gain(inset, hdr_tone_plan, formation_y)
     native_table, reference_table = curve_tables
     native_formation = native_table.apply(inset)
+
+    def formation_tail(formation: Any) -> Any:
+        mapped_rec = agx_engine.finish_formation(
+            formation, pre_hue, hdr_tone_plan, outset_matrix, channel_gain=channel_gain
+        )
+        mapped_rec = punch_engine.apply_punch_rec2020(
+            mapped_rec, float(getattr(hdr_tone_plan, "punch_strength", 0.0))
+        )
+        output_linear = rec2020_to_output(mapped_rec, output_gamut)
+        return np.nan_to_num(output_linear, nan=0.0, posinf=1e6, neginf=-1e6)
+
     if reference_table is not native_table:
         global_rho = float(hdr_plan.color.channel_separation) * float(
             hdr_plan.color.snr_gate
         )
         rho = raw_gated_channel_separation(global_rho, clip_masks_chunk)
-        formation = blend_native_hdr_paths(
+        blended = blend_native_hdr_paths(
             reference_table.apply(inset),
             native_formation,
             rho,
             formation_y,
         )
+        # The blend equalizes Y at the formation point, but hue restore, the
+        # channel gain and punch are not Y-preserving, so the two chroma paths
+        # drift apart again downstream (measured p95 0.186 EV at the default
+        # hue_restore=0.6 before this normalization). The native branch is the
+        # sole Y authority end-to-end: run both candidates through the same
+        # tail and re-anchor the blend to the native branch's final Y.
+        final_native = formation_tail(native_formation)
+        final_blend = formation_tail(blended)
+        w_out = output_luma_weights(output_gamut)
+        y_native = np.tensordot(final_native, w_out, axes=([-1], [0]))
+        y_blend = np.tensordot(final_blend, w_out, axes=([-1], [0]))
+        scale = y_native / np.maximum(y_blend, np.float32(1e-9))
+        valid = (y_native > 1e-9) & (y_blend > 1e-9)
+        output_linear = np.where(
+            valid[..., None], final_blend * scale[..., None], final_native
+        ).astype(np.float32, copy=False)
     else:
-        formation = native_formation
-    mapped_rec = agx_engine.finish_formation(
-        formation, pre_hue, hdr_tone_plan, outset_matrix, channel_gain=channel_gain
-    )
-    mapped_rec = punch_engine.apply_punch_rec2020(
-        mapped_rec, float(getattr(hdr_tone_plan, "punch_strength", 0.0))
-    )
-    output_linear = rec2020_to_output(mapped_rec, output_gamut)
-    output_linear = np.nan_to_num(output_linear, nan=0.0, posinf=1e6, neginf=-1e6)
+        output_linear = formation_tail(native_formation)
     return fit_hdr_color_volume(output_linear, peak, output_gamut).astype(
         np.float32, copy=False
     )
@@ -247,10 +270,7 @@ def scene_render_to_hdr_display_linear(
         formation_y, curve_tables, peak, output_gamut,
     )
 
-    wb_adapt = scene_transform_engine.wb_adaptation_ratios(
-        bundle.wb_mode, bundle.applied_wb or bundle.camera_wb, bundle.daylight_wb,
-        scene_transform_engine.window_transport_tag(bundle)
-    )
+    wb_adapt = scene_transform_engine.window_transport(bundle)
 
     def render_hdr_chunk(start: int, end: int) -> None:
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
@@ -373,10 +393,7 @@ def render_ultrahdr_agx_pair(
         if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
-    wb_adapt = scene_transform_engine.wb_adaptation_ratios(
-        bundle.wb_mode, bundle.applied_wb or bundle.camera_wb, bundle.daylight_wb,
-        scene_transform_engine.window_transport_tag(bundle)
-    )
+    wb_adapt = scene_transform_engine.window_transport(bundle)
     # Ultrahdr forces look/filter off. HDR copies retreat from the scene plan, so one
     # shared intent strength matches what each branch would have applied alone.
     shared_retreat = (

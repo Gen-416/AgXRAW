@@ -261,9 +261,9 @@ class ToneCompressionPlan:
     # Curve endpoint in display-linear units (darktable target_white): <1 fades an SDR
     # white, 1 is reference white, and >1 requests extended white.
     target_white_linear: float = 1.0
-    # Internal AgX curve encoding. SDR keeps darktable's historical 2.2. The independent
-    # HDR compiler may raise it so an extended white endpoint can be reached by a genuinely
-    # decelerating sigmoid shoulder instead of the accelerating fallback branch.
+    # Internal AgX curve encoding. SDR keeps darktable's historical 2.2, and so does
+    # the v2 HDR compiler: it pins this gamma and reaches extended white through its
+    # own shoulder solve above the knee (hdr_agx_math), never by raising the encoding.
     curve_gamma: float = 2.2
     # AgX primaries preset (base/punchy/muted/smooth); pinned darktable uses base.
     agx_primaries: str = "base"

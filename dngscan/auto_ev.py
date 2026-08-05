@@ -140,10 +140,7 @@ def render_sample_linear_output(
             adjustments=adjustments,
         ) if analysis is not None else None
     )
-    wb_adapt = scene_transform_engine.wb_adaptation_ratios(
-        ev_bundle.wb_mode, ev_bundle.applied_wb or ev_bundle.camera_wb, ev_bundle.daylight_wb,
-        scene_transform_engine.window_transport_tag(ev_bundle)
-    )
+    wb_adapt = scene_transform_engine.window_transport(ev_bundle)
     rec = scene_transform_engine.apply_scene_transform_rec2020(
         rec, scene_transform, scene_transform_strength, wb_adapt
     )

@@ -165,18 +165,6 @@ Rgb process_pixel(const Rgb& input, const float* mask, const NativeHdrPlan& plan
   }
 
   const Rgb native = apply_table(plan.native_table, inset);
-  Rgb formation = native;
-  if (plan.has_reference) {
-    const Rgb reference = apply_table(plan.reference_table, inset);
-    float rho[3];
-    gated_rho(plan, mask, rho);
-    formation = blend_native_paths(reference, native, rho, plan.formation_luma);
-  }
-
-  if (restore_hue) {
-    formation = mix_hue(formation, pre_hue, plan.hue_restore);
-  }
-  Rgb mapped = mat3(plan.outset, formation);
 
   const PunchMatrices punch{
       plan.rec2020_to_xyz,
@@ -186,16 +174,48 @@ Rgb process_pixel(const Rgb& input, const float* mask, const NativeHdrPlan& plan
       plan.oklab_m1_inv,
       plan.oklab_m2_inv,
   };
-  mapped = apply_punch_rec2020_pixel(mapped, plan.punch_strength, punch);
-
-  // rec2020_to_output as two chained float32 multiplies, then np.nan_to_num.
-  const Rgb xyz = mat3(plan.rec2020_to_xyz, mapped);
-  Rgb output_linear = mat3(plan.xyz_to_output, xyz);
-  output_linear = {
-      nan_to_num(output_linear.r, 0.0f, 1e6f, -1e6f),
-      nan_to_num(output_linear.g, 0.0f, 1e6f, -1e6f),
-      nan_to_num(output_linear.b, 0.0f, 1e6f, -1e6f),
+  // finish_formation + punch + rec2020_to_output + nan_to_num, mirroring the
+  // NumPy formation_tail closure.
+  const auto formation_tail = [&](Rgb formation) -> Rgb {
+    if (restore_hue) {
+      formation = mix_hue(formation, pre_hue, plan.hue_restore);
+    }
+    Rgb mapped = mat3(plan.outset, formation);
+    mapped = apply_punch_rec2020_pixel(mapped, plan.punch_strength, punch);
+    const Rgb xyz = mat3(plan.rec2020_to_xyz, mapped);
+    Rgb output_linear = mat3(plan.xyz_to_output, xyz);
+    return {
+        nan_to_num(output_linear.r, 0.0f, 1e6f, -1e6f),
+        nan_to_num(output_linear.g, 0.0f, 1e6f, -1e6f),
+        nan_to_num(output_linear.b, 0.0f, 1e6f, -1e6f),
+    };
   };
+
+  Rgb output_linear;
+  if (plan.has_reference) {
+    const Rgb reference = apply_table(plan.reference_table, inset);
+    float rho[3];
+    gated_rho(plan, mask, rho);
+    const Rgb blended =
+        blend_native_paths(reference, native, rho, plan.formation_luma);
+    // The blend equalizes Y at the formation point, but hue restore and punch
+    // are not Y-preserving. The native branch is the sole Y authority
+    // end-to-end: run both candidates through the same tail and re-anchor the
+    // blend to the native branch's final Y (see the NumPy body).
+    const Rgb final_native = formation_tail(native);
+    const Rgb final_blend = formation_tail(blended);
+    const float y_native = dot3(plan.output_luma, final_native);
+    const float y_blend = dot3(plan.output_luma, final_blend);
+    if (y_native > 1e-9f && y_blend > 1e-9f) {
+      const float scale = y_native / std::max(y_blend, 1e-9f);
+      output_linear = {final_blend.r * scale, final_blend.g * scale,
+                       final_blend.b * scale};
+    } else {
+      output_linear = final_native;
+    }
+  } else {
+    output_linear = formation_tail(native);
+  }
   return fit_hdr_pixel(output_linear, plan.peak, plan.output_luma);
 }
 
