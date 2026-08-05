@@ -68,7 +68,7 @@ Fujifilm Velvia 100（反转片）、Vision3 250D 影院放映外观（引用原
 
 ## 快速开始
 
-需要 Python 3.10 或更新版本。项目已把验证过的 rawpy/LibRaw 源码版本锁为直接依赖，
+需要 Python 3.11 或更新版本（CI 实测覆盖的下限）。项目已把验证过的 rawpy/LibRaw 源码版本锁为直接依赖，
 首次安装会进行本机构建，因此还需要 Git 和 C/C++ 编译工具（macOS 使用 Xcode Command
 Line Tools，Linux 使用系统标准构建工具链）。
 
