@@ -179,11 +179,6 @@ def _load_curves(name: str) -> tuple[np.ndarray, np.ndarray]:
 #     scalar target remains the CIE Y of the displayed print (the convention
 #     the runtime consumes).
 
-_XYZ_TO_SRGB = np.array([
-    [3.2406, -1.5372, -0.4986],
-    [-0.9689, 1.8758, 0.0415],
-    [0.0557, -0.2040, 1.0570],
-])
 
 
 def _spd_tools():
@@ -191,6 +186,17 @@ def _spd_tools():
     from calibrate_skin_matrix import blackbody_spd, cie_1931_cmf, illuminant_spd
 
     return blackbody_spd, cie_1931_cmf, illuminant_spd
+
+
+def _spectral_base():
+    sys.path.insert(0, str(PROJECT_ROOT / "tools"))
+    import spectral_base
+
+    return spectral_base
+
+
+# Rec.2020 luminance weights (BT.2020 Y row) — the calibration basis luma.
+_LUMA_2020 = np.array([0.2627, 0.6780, 0.0593], dtype=np.float64)
 
 
 def _load_spectral(name: str) -> dict[str, np.ndarray]:
@@ -234,24 +240,34 @@ def _viewing_xyz(wl: np.ndarray, viewing: str):
     cmf = cie_1931_cmf(wl)
     # No silent stand-in: an unknown viewing illuminant is a data error, not a
     # 5000K shrug (review finding: fits depended on the environment's luck).
-    spd = illuminant_spd(viewing)
+    spd = illuminant_spd(viewing, wl)
     result = (np.asarray(cmf, dtype=np.float64), np.asarray(spd, dtype=np.float64))
     _VIEWING_CACHE[key] = result
     return result
 
 
-def _display_rgb(reflect: np.ndarray, white: np.ndarray, wl: np.ndarray,
-                 viewing: str) -> np.ndarray:
-    """Relative-colorimetric linear sRGB of spectra vs the medium white. [n,3]"""
-    cmf, spd = _viewing_xyz(wl, viewing)
-    weight = spd[:, None] * cmf                     # [81,3]
-    xyz = reflect @ weight                          # [n,3]
-    xyz_w = white @ weight                          # [3]
-    xyz = xyz / max(float(xyz_w[1]), 1e-12)         # white Y -> 1
-    rgb = xyz @ _XYZ_TO_SRGB.T
-    # Von Kries in display primaries: the medium's own white renders neutral.
-    rgb_w = (xyz_w / max(float(xyz_w[1]), 1e-12)) @ _XYZ_TO_SRGB.T
-    return rgb / np.maximum(rgb_w[None, :], 1e-9)
+def _display_rec2020(reflect: np.ndarray, white: np.ndarray, wl: np.ndarray,
+                     viewing: str, flare: float, surround_exp: float) -> np.ndarray:
+    """Medium spectra -> scene-linear Rec.2020(D65) via the declared translation.
+
+    Colorimetry runs on the intersection of the medium grid with the CMF support
+    (trapezoidal), relative to the medium white; then flare in XYZ, the
+    luminance-only surround term, Bradford CAT medium-white -> D65 and the
+    Rec.2020 matrix — so printer lights never eat the D50->D65 difference. [n,3]
+    """
+    sb = _spectral_base()
+    view_wl = sb.intersect_grid(wl)
+    keep = np.isin(wl, view_wl)
+    cmf, spd = _viewing_xyz(view_wl, viewing)
+    weight = spd[:, None] * cmf                              # [m,3]
+    xyz = sb.trapezoid(
+        reflect[:, keep, None] * weight[None, :, :], view_wl, axis=1
+    )
+    xyz_w = sb.trapezoid(white[keep, None] * weight, view_wl, axis=0)
+    y_w = max(float(xyz_w[1]), 1e-12)
+    return sb.viewing_translation_rec2020(
+        xyz / y_w, xyz_w / y_w, flare, surround_exp
+    )
 
 
 def _stack_reflectance(spec: dict, amounts: np.ndarray) -> np.ndarray:
@@ -260,23 +276,14 @@ def _stack_reflectance(spec: dict, amounts: np.ndarray) -> np.ndarray:
     return np.power(10.0, -dens)
 
 
-def _working_grid() -> np.ndarray:
-    """The colorimetry helpers' native 400-700/10nm grid; all media resample to it.
-
-    Dye spectra and sensitivities are smooth at this resolution, and using the
-    helpers' own grid keeps CMF/illuminant alignment exact instead of fighting it."""
-    _spd_tools()
-    import calibrate_skin_matrix as csm
-
-    return np.asarray(csm.WL, dtype=np.float64)
-
-
 def _regrid(spec: dict, wl: np.ndarray) -> dict:
     """Resample a medium's spectral fields onto another wavelength grid.
 
     Profiles ship on different grids (film 380-780/5nm, papers coarser); the print
-    integral needs one grid. Linear interpolation, out-of-range clamped to the edge
-    values (sensitivities there are already ~0)."""
+    integral needs one grid. Linear interpolation. Out-of-range semantics per the
+    spectral-base declaration: dye and base densities HOLD their edge value (a dye
+    stack does not clear at the table boundary), while sensitivities fill ZERO
+    (no measured response is no response)."""
     if spec["wl"].shape == wl.shape and np.allclose(spec["wl"], wl):
         return spec
     out = dict(spec)
@@ -287,12 +294,15 @@ def _regrid(spec: dict, wl: np.ndarray) -> dict:
     out["base"] = np.interp(wl, spec["wl"], spec["base"])
     if spec["sens"] is not None:
         out["sens"] = np.stack(
-            [np.interp(wl, spec["wl"], spec["sens"][:, k]) for k in range(3)], axis=1
+            [
+                np.interp(wl, spec["wl"], spec["sens"][:, k], left=0.0, right=0.0)
+                for k in range(3)
+            ],
+            axis=1,
         )
     return out
 
 
-_LUMA_709 = np.array([0.2126, 0.7152, 0.0722], dtype=np.float64)
 
 # Veiling glare of the reference viewing condition. The delivery contract already
 # reads prints "as an sRGB-condition viewer would"; IEC 61966-2-1 specifies that
@@ -306,87 +316,55 @@ _LUMA_709 = np.array([0.2126, 0.7152, 0.0722], dtype=np.float64)
 VIEWING_FLARE = 0.01
 
 
-def _view_transform(x: np.ndarray, flare: float, exp: float) -> np.ndarray:
-    """Viewing flare then surround exponent — the medium-to-delivery translation."""
-    flared = (np.maximum(x, 0.0) + flare) / (1.0 + flare)
-    return np.power(np.maximum(flared, 1e-7), exp)
-
-
-def _finish_target(ev: np.ndarray, rgb_linear: np.ndarray, floor_rgb: np.ndarray,
-                   label: str, exp: float, flare: float,
-                   return_norm: bool = False,
-                   ):
-    """Shared tail: viewing flare -> surround exponent -> per-channel mid balance.
-
-    The per-channel balance at mid-scale is the declared neutrality contract of the
-    curve layer (anti-hidden-WB: the preset must not smuggle a cast through the
-    anchor); any residual mid cast of the medium is normalized out here and the
-    channel_ratio field carries only the exposure-DEPENDENT differential.
-
-    return_norm=True additionally returns the solved normalization {e0, gain} so a
-    derived construction (the colour-head field) can re-finish PERTURBED chain states
-    under the base target's exact anchor instead of re-normalizing the perturbation
-    away.
-    """
-    def view(x: np.ndarray) -> np.ndarray:
-        return _view_transform(x, flare, exp)
-
-    rgb_view = view(rgb_linear)
-    floor_view = view(floor_rgb)
-    # Exposure anchor: "correct exposure" places the scene's 18% object where the
-    # viewed medium reads 0.18 — solved as a global exposure shift, exactly what a
-    # light meter does. The profiles' own logE=0 is a normalization convention, not
-    # scene mid-gray (their spectral mid-scale reference sits at +0.16..+0.40 logE);
-    # anchoring by gain at logE=0 parked slide mid-gray on the shoulder and warped
-    # every translated reversal fit. Print paths already anchor Y through the
-    # printer-light solve, so their shift comes out ~0.
-    y_view = rgb_view @ _LUMA_709
-    order = np.argsort(y_view)
-    e0 = float(np.interp(0.18, y_view[order], ev[order]))
-    if not np.isfinite(e0):
-        raise RuntimeError(f"{label}: no exposure reaches mid-gray")
-    ev = ev - e0
-    mid = np.array([float(np.interp(0.0, ev, rgb_view[:, c])) for c in range(3)])
-    if np.any(mid <= 1e-6):
-        raise RuntimeError(f"{label}: degenerate mid-scale {mid}")
-    gain = 0.18 / mid
-    channels = np.maximum(rgb_view * gain[None, :], 1e-7)
-    floor = float(np.maximum(floor_view * gain, 1e-7) @ _LUMA_709)
-    t_neutral = channels @ _LUMA_709
-    t0 = float(np.interp(0.0, ev, t_neutral))
-    if abs(t0 - 0.18) > 5e-4:
-        raise RuntimeError(f"{label}: mid-gray anchor drifted: T(0)={t0:.5f}")
-    if return_norm:
-        return ev, channels, t_neutral, floor, {"e0": e0, "gain": gain}
-    return ev, channels, t_neutral, floor
-
-
 def _build_reversal_target(
     stock: dict,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Slide film, spectrally: the developed dye stack viewed as its own display.
 
-    Reversal film is designed for dark-surround projection; the surround term
-    translates the report to the delivery condition once (see SURROUND_GAMMA).
-    Transmittance is computed from the per-dye amounts through the dye spectra and
-    base, viewed against the clear base as white — full relative colorimetry rather
-    than per-Status-channel shortcuts."""
-    neg = _regrid(_load_spectral(stock["negative"]), _working_grid())
+    Reversal has NO printing stage, so there are no printer lights to solve; its
+    exposure anchor and mid-neutrality are their own declared normalization: a
+    global exposure shift places viewed Y=0.18 at scene EV 0 (light-meter
+    semantics) and per-channel mid gains pin exact neutrality (anti-hidden-WB:
+    the exposure-DEPENDENT differential is what the neutral field carries).
+    Colorimetry runs on the slide's native grid through the full viewing
+    translation (dark surround, zero declared flare, CAT to D65, Rec.2020)."""
+    neg = _load_spectral(stock["negative"])
     exp = surround_exponent("dark")
     reflect = _stack_reflectance(neg, neg["amounts"])
     # White is the medium's own brightest state (Dmin INCLUDING residual dye), not
     # the bare base: slides never clear completely, and normalizing against the
     # bare base capped relative luminance at ~0.46 instead of ~1.
     white = _stack_reflectance(neg, np.nanmin(neg["amounts"], axis=0)[None, :])[0]
-    rgb = _display_rgb(reflect, white, neg["wl"], neg["viewing"])
+    rgb = _display_rec2020(reflect, white, neg["wl"], neg["viewing"], 0.0, exp)
     deep = _stack_reflectance(neg, np.nanmax(neg["amounts"], axis=0)[None, :])
-    floor_rgb = _display_rgb(deep, white, neg["wl"], neg["viewing"])[0]
+    floor_rgb = _display_rec2020(deep, white, neg["wl"], neg["viewing"], 0.0, exp)[0]
     ev = neg["le"] / LOG10_2
-    # Dark-surround media read in a darkened room: the IEC 1% veiling figure
-    # describes bright/average viewing environments, and the dark-surround
-    # appearance constant already carries that tradition's room assumptions.
-    # Projection media therefore take zero declared flare.
-    return _finish_target(ev, rgb, floor_rgb, stock["negative"], exp, 0.0)
+    y = rgb @ _LUMA_2020
+    order = np.argsort(y)
+    e0 = float(np.interp(0.18, y[order], ev[order]))
+    if not np.isfinite(e0):
+        raise RuntimeError(f"{stock['negative']}: no exposure reaches mid-gray")
+    ev = ev - e0
+    mid = np.array([float(np.interp(0.0, ev, rgb[:, c])) for c in range(3)])
+    if np.any(mid <= 1e-6):
+        raise RuntimeError(f"{stock['negative']}: degenerate mid-scale {mid}")
+    gain = 0.18 / mid
+    channels = np.maximum(rgb * gain[None, :], 1e-7)
+    floor = float(np.maximum(floor_rgb * gain, 1e-7) @ _LUMA_2020)
+    return ev, channels, channels @ _LUMA_2020, floor
+
+
+def _finish_print(chain) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Print-chain finishing is verification, not correction: the q-solve already
+    guarantees a neutral 0.18 at EV 0 in the final viewing domain, so there is no
+    anchor shift and no per-channel gain left to apply."""
+    channels = np.maximum(chain.develop(chain.q), 1e-7)
+    t_neutral = channels @ _LUMA_2020
+    t0 = float(np.interp(0.0, chain.ev, t_neutral))
+    if abs(t0 - 0.18) > 5e-4:
+        raise RuntimeError(f"{chain.label}: mid-gray anchor drifted: T(0)={t0:.5f}")
+    floor = float(np.maximum(chain.floor_rgb, 1e-7) @ _LUMA_2020)
+    return chain.ev, channels, t_neutral, floor
 
 
 def _solved_print_chain(stock: dict, surround_override: str | None = None) -> SimpleNamespace:
@@ -396,8 +374,10 @@ def _solved_print_chain(stock: dict, surround_override: str | None = None) -> Si
     as one namespace so derived constructions (the colour-head field) can re-develop
     the SAME chain with perturbed printer lights instead of duplicating the model.
     """
-    wl = _working_grid()
-    neg = _regrid(_load_spectral(stock["negative"]), wl)
+    neg = _load_spectral(stock["negative"])
+    # The printing integral runs on the negative's NATIVE grid (380-780/5nm);
+    # the paper resamples onto it under the declared out-of-range semantics.
+    wl = neg["wl"]
     paper = _regrid(_load_spectral(stock["print"]), wl)
     if paper["sens"] is None:
         raise RuntimeError(f"{stock['print']}: print profile has no log_sensitivity")
@@ -408,63 +388,88 @@ def _solved_print_chain(stock: dict, surround_override: str | None = None) -> Si
         exp = 1.0
     else:
         exp = surround_exponent(PRINT_SURROUND.get(stock["print"], "average"))
-
-    blackbody_spd, _cmf, _ill = _spd_tools()
-    enlarger = blackbody_spd(neg["wl"], 3200.0)
-    # Paper-channel exposure through the negative's true spectral transmittance.
-    t_neg = _stack_reflectance(neg, neg["amounts"])                # [n,81]
-    weight = paper["sens"] * enlarger[:, None]                     # [81,3]
-    log_ep = np.log10(np.maximum(t_neg @ weight, 1e-12))           # [n,3]
-
-    white_amounts = np.nanmin(paper["amounts"], axis=0)[None, :]
-    white = _stack_reflectance(paper, white_amounts)[0]
-    dmax_amounts = np.nanmax(paper["amounts"], axis=0)[None, :]
-    ev = neg["le"] / LOG10_2
-
-    def develop(k: np.ndarray) -> np.ndarray:
-        dye = np.stack([
-            np.interp(log_ep[:, c] + k[c], paper["le"], paper["amounts"][:, c])
-            for c in range(3)
-        ], axis=1)
-        reflect = _stack_reflectance(paper, dye)
-        return _display_rgb(reflect, white, paper["wl"], paper["viewing"])
-
-    # Printer lights: three per-channel exposure trims solved so the scene's
-    # mid-gray prints to a neutral 18% — the digital twin of the darkroom's
-    # colour head. Initialized so each channel's mid negative lands mid-paper.
-    k0 = np.array([
-        float(np.interp(
-            0.5 * (paper["amounts"][:, c].min() + paper["amounts"][:, c].max()),
-            paper["amounts"][:, c], paper["le"],
-        )) - float(np.interp(0.0, ev, log_ep[:, c]))
-        for c in range(3)
-    ])
-
-    def objective(k: np.ndarray) -> float:
-        rgb0 = develop(k)
-        mid = np.array([float(np.interp(0.0, ev, rgb0[:, c])) for c in range(3)])
-        return float(np.sum(np.log(np.maximum(mid, 1e-6) / 0.18) ** 2))
-
-    k = nelder_mead(objective, k0, np.array([0.15, 0.15, 0.15]), iters=400)
-    dye_deep = np.minimum(
-        dmax_amounts,
-        np.stack([
-            np.interp(log_ep[:, c].max() + k[c], paper["le"], paper["amounts"][:, c])
-            for c in range(3)
-        ])[None, :],
-    )
-    floor_rgb = _display_rgb(
-        _stack_reflectance(paper, dye_deep), white, paper["wl"], paper["viewing"]
-    )[0]
     surround_kind = PRINT_SURROUND.get(stock["print"], "average")
     flare = (
         VIEWING_FLARE
         if surround_override != "native" and surround_kind == "average"
         else 0.0
     )
+
+    sb = _spectral_base()
+    enlarger = sb.th_kg3_spd(wl)
+    # Paper-channel printing exposure through the negative's true spectral
+    # transmittance: E_c(e) = trapz L_THKG3(l) T_neg(l,e) S_paper_c(l) dl.
+    t_neg = _stack_reflectance(neg, neg["amounts"])                # [n,81]
+    weight = paper["sens"] * enlarger[:, None]                     # [81,3]
+    log_ep = np.log10(
+        np.maximum(sb.trapezoid(t_neg[:, :, None] * weight[None, :, :], wl, axis=1), 1e-12)
+    )                                                              # [n,3]
+
+    white_amounts = np.nanmin(paper["amounts"], axis=0)[None, :]
+    white = _stack_reflectance(paper, white_amounts)[0]
+    dmax_amounts = np.nanmax(paper["amounts"], axis=0)[None, :]
+    ev = neg["le"] / LOG10_2
+
+    def develop(q: np.ndarray) -> np.ndarray:
+        """Viewed Rec.2020 of the print developed at effective exposures q."""
+        dye = np.stack([
+            np.interp(log_ep[:, c] + q[c], paper["le"], paper["amounts"][:, c])
+            for c in range(3)
+        ], axis=1)
+        reflect = _stack_reflectance(paper, dye)
+        return _display_rec2020(reflect, white, wl, paper["viewing"], flare, exp)
+
+    def mid_rgb(q: np.ndarray) -> np.ndarray:
+        rgb0 = develop(q)
+        return np.array([float(np.interp(0.0, ev, rgb0[:, c])) for c in range(3)])
+
+    # Effective exposures q_c = k_c + t solved directly: the model only ever sees
+    # the sum, so solving three lights PLUS a time has an exact null space. Newton
+    # on F(q) = log(mid(q)/0.18); the Jacobian is well conditioned (measured worst
+    # ~2.14 across the negative chains).
+    q = np.array([
+        float(np.interp(
+            0.5 * (paper["amounts"][:, c].min() + paper["amounts"][:, c].max()),
+            paper["amounts"][:, c], paper["le"],
+        )) - float(np.interp(0.0, ev, log_ep[:, c]))
+        for c in range(3)
+    ])
+    for _ in range(30):
+        f = np.log(np.maximum(mid_rgb(q), 1e-9) / 0.18)
+        if float(np.max(np.abs(f))) < 1e-11:
+            break
+        jac = np.empty((3, 3), dtype=np.float64)
+        h = 1e-5
+        for c in range(3):
+            dq = q.copy()
+            dq[c] += h
+            jac[:, c] = (np.log(np.maximum(mid_rgb(dq), 1e-9) / 0.18) - f) / h
+        q = q - np.linalg.solve(jac, f)
+    residual = float(np.max(np.abs(np.log(np.maximum(mid_rgb(q), 1e-9) / 0.18))))
+    if residual > 1e-8:
+        raise RuntimeError(
+            f"{stock['negative']}+{stock['print']}: printer solve residual {residual:.2e}"
+        )
+    # Recorded decomposition (reporting convention, not solver variables):
+    # exposure time t = mean(q), printer lights k = q - t with sum(k) = 0.
+    t_time = float(np.mean(q))
+    k = q - t_time
+
+    dye_deep = np.minimum(
+        dmax_amounts,
+        np.stack([
+            np.interp(log_ep[:, c].max() + q[c], paper["le"], paper["amounts"][:, c])
+            for c in range(3)
+        ])[None, :],
+    )
+    floor_rgb = _display_rec2020(
+        _stack_reflectance(paper, dye_deep), white, wl, paper["viewing"], flare, exp
+    )[0]
     return SimpleNamespace(
         develop=develop,
+        q=q,
         k=k,
+        t=t_time,
         ev=ev,
         exp=exp,
         flare=flare,
@@ -488,9 +493,7 @@ def build_endtoend_target(
     """
     if stock.get("positive"):
         return _build_reversal_target(stock)
-    chain = _solved_print_chain(stock, surround_override)
-    return _finish_target(chain.ev, chain.develop(chain.k), chain.floor_rgb,
-                          chain.label, chain.exp, chain.flare)
+    return _finish_print(_solved_print_chain(stock, surround_override))
 
 
 # --- Enlarger colour head (Y/M subtractive filtration) ------------------------
@@ -540,33 +543,25 @@ def build_color_head_field(stock: dict, theatrical: bool = False) -> dict | None
     if stock.get("positive"):
         return None
     chain = _solved_print_chain(stock, "native" if theatrical else None)
-    ev, channels_base, t_neutral, _floor, norm = _finish_target(
-        chain.ev, chain.develop(chain.k), chain.floor_rgb,
-        chain.label, chain.exp, chain.flare, return_norm=True,
-    )
-    gain = np.asarray(norm["gain"], dtype=np.float64)
+    ev, channels_base, t_neutral, _floor = _finish_print(chain)
 
-    def finished(k_vec: np.ndarray) -> np.ndarray:
-        """Perturbed chain finished under the base anchor (no re-normalization)."""
-        v = _view_transform(chain.develop(k_vec), chain.flare, chain.exp)
-        return np.maximum(v * gain[None, :], 1e-7)
-
-    def retimed(k_vec: np.ndarray) -> np.ndarray:
-        """Solve the print exposure time restoring viewed mid luminance to 0.18.
-
-        A global shift t on all three printer lights IS exposure time in log10
-        units; mid luminance is strictly decreasing in t (more exposure -> denser
-        print), so bisection converges unconditionally.
-        """
+    def retimed(q_vec: np.ndarray) -> np.ndarray:
+        """Re-time the filtered print: one COMMON exposure shift restoring viewed
+        mid luminance to 0.18 (darkroom test-strip convention: filtration decides
+        colour, time is re-decided once). The viewing translation is already part
+        of develop(); nothing is re-normalized, so the dialled cast survives.
+        Mid luminance is strictly decreasing in the shift; bisection converges
+        unconditionally."""
         lo, hi = -2.5, 2.5
         for _ in range(60):
             mid = 0.5 * (lo + hi)
-            y0 = float(np.interp(0.0, ev, finished(k_vec + mid) @ _LUMA_709))
+            rgb0 = chain.develop(q_vec + mid)
+            y0 = float(np.interp(0.0, ev, rgb0 @ _LUMA_2020))
             if y0 > 0.18:
                 lo = mid
             else:
                 hi = mid
-        return finished(k_vec + 0.5 * (lo + hi))
+        return np.maximum(chain.develop(q_vec + 0.5 * (lo + hi)), 1e-7)
 
     # Same visible-domain rule as the channel_ratio field: below ~1e-3 the display
     # channels sit on numerical clamps and a ratio is artifact, not filtration.
@@ -586,9 +581,9 @@ def build_color_head_field(stock: dict, theatrical: bool = False) -> dict | None
     for name, layer in COLOR_HEAD_FILTER_LAYER.items():
         per_cc = []
         for cc in COLOR_HEAD_CC_GRID:
-            k_f = chain.k.copy()
-            k_f[layer] -= cc / 100.0
-            ratio = np.clip(retimed(k_f)[visible] / base_vis, 0.05, 20.0)
+            q_f = chain.q.copy()
+            q_f[layer] -= cc / 100.0
+            ratio = np.clip(retimed(q_f)[visible] / base_vis, 0.05, 20.0)
             if cc == 30.0:
                 mid_gain_30cc[name] = [
                     round(float(np.interp(0.0, ev_vis, ratio[:, c])), 5)

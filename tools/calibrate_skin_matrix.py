@@ -135,22 +135,35 @@ def colorimetry_provenance(standard_data: str = "auto") -> dict:
     }
 
 
-def illuminant_spd(name: str, standard_data: str = "auto", csv_path: Path | None = None) -> np.ndarray:
+def _uniform_shape(colour, wavelengths_nm: np.ndarray):
+    wl = np.asarray(wavelengths_nm, dtype=np.float64)
+    steps = np.diff(wl)
+    if wl.size < 2 or not np.allclose(steps, steps[0]):
+        raise ValueError("colorimetry grids must be uniform")
+    return colour.SpectralShape(float(wl[0]), float(wl[-1]), float(steps[0]))
+
+
+def illuminant_spd(
+    name: str,
+    wavelengths_nm: np.ndarray | None = None,
+    standard_data: str = "auto",
+    csv_path: Path | None = None,
+) -> np.ndarray:
+    grid = WL if wavelengths_nm is None else np.asarray(wavelengths_nm, dtype=np.float64)
     if csv_path is not None:
         return load_spd_csv(csv_path)
     key = name.upper()
     if standard_data != "approximate":
         colour = _require_colour_science()
-        shape = colour.SpectralShape(400, 700, 10)
-        sd = colour.SDS_ILLUMINANTS[key].copy().align(shape)
+        sd = colour.SDS_ILLUMINANTS[key].copy().align(_uniform_shape(colour, grid))
         values = np.asarray(sd.values, dtype=np.float64)
         return values / max(float(np.max(values)), 1e-12)
     if key == "A":
-        return blackbody_spd(WL, 2856.0)
+        return blackbody_spd(grid, 2856.0)
     if key == "D65":
-        return blackbody_spd(WL, 6504.0)
+        return blackbody_spd(grid, 6504.0)
     if key == "D55":
-        return blackbody_spd(WL, 5500.0)
+        return blackbody_spd(grid, 5500.0)
     raise ValueError(f"unknown illuminant: {name}")
 
 
@@ -159,7 +172,7 @@ def cie_1931_cmf(wavelengths_nm: np.ndarray, standard_data: str = "auto", csv_pa
         return load_curve_csv(csv_path)
     if standard_data != "approximate":
         colour = _require_colour_science()
-        shape = colour.SpectralShape(400, 700, 10)
+        shape = _uniform_shape(colour, np.asarray(wavelengths_nm, dtype=np.float64))
         cmfs = colour.MSDS_CMFS["CIE 1931 2 Degree Standard Observer"].copy().align(shape)
         return np.asarray(cmfs.values, dtype=np.float64)
     return cie_1931_cmf_approx(wavelengths_nm)
