@@ -131,7 +131,16 @@ class TestGainCurves(unittest.TestCase):
         self.assertGreater(m200, mids[-1] * 0.995)
 
     def test_separable_combination(self):
-        """Y and M compose multiplicatively (the declared approximation)."""
+        """Y and M compose multiplicatively (the declared approximation).
+
+        HONEST LIMIT (review finding): this asserts the implementation's own
+        definition, not physical truth — the joint spectral re-time refutes
+        separability at ~0.35 stop RMS on Portra 30Y+30M (0.44 on Superia).
+        The real acceptance test is a joint Y x M solve as oracle; it arrives
+        with the two-dimensional colour-head field (spectral rebuild stage 3).
+        Until then this test only pins that the runtime matches the published
+        approximation it claims to implement.
+        """
         ev, g_y = color_head_gain_curves("portra400", 30.0, 0.0)
         _, g_m = color_head_gain_curves("portra400", 0.0, 30.0)
         _, g_ym = color_head_gain_curves("portra400", 30.0, 30.0)

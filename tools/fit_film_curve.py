@@ -22,7 +22,11 @@ _load_spectral for provenance and validation):
 The printer lights k are solved so the print is neutral at mid; the exposure anchor
 is then a GLOBAL shift solved so viewed Y = 0.18 (light-meter semantics — the
 profiles' logE=0 is a normalization convention, not scene mid-gray), followed by
-per-channel micro-gains that pin exact neutrality. Scene EV = logE / log10(2).
+per-channel gains that pin exact neutrality. These finishing moves are NOT small
+for every chain — the 2383 theatrical chain measures about -0.82 EV of anchor
+shift and R x1.09-1.10 / B x0.95-1.00 of rebalance — so this is a declared
+numeric normalization spec ("the final mid gray must be neutral 0.18"), not a
+claim that the viewing translation is surround-only. Scene EV = logE / log10(2).
 
 Offline tool: writes dngscan/film_curve_presets.json entries and a comparison plot.
 No scipy; a compact Nelder-Mead is included.
@@ -228,10 +232,9 @@ def _viewing_xyz(wl: np.ndarray, viewing: str):
 
     csm.WL = wl  # the helpers evaluate on their module grid; align it
     cmf = cie_1931_cmf(wl)
-    try:
-        spd = illuminant_spd(viewing)
-    except Exception:
-        spd = blackbody_spd(wl, 5000.0)
+    # No silent stand-in: an unknown viewing illuminant is a data error, not a
+    # 5000K shrug (review finding: fits depended on the environment's luck).
+    spd = illuminant_spd(viewing)
     result = (np.asarray(cmf, dtype=np.float64), np.asarray(spd, dtype=np.float64))
     _VIEWING_CACHE[key] = result
     return result
@@ -868,8 +871,15 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             ),
             "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
             "model": _model_note(stock, theatrical=theatrical),
+            "colorimetry": _colorimetry_note(),
         },
     }
+
+
+def _colorimetry_note() -> dict:
+    import calibrate_skin_matrix as csm
+
+    return csm.colorimetry_provenance()
 
 
 def plot(presets: dict, out_path: Path) -> None:

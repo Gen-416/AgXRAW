@@ -20,6 +20,11 @@
 按 CC BY-SA 4.0 处理，出处写入各预设 `source` 字段。反转片无相纸环节（自身即正像），
 拟合残差系统性偏大并如实记录在 `fit.rms_stop`（AgX 曲线族对正片陡 S 的表达边界）。
 
+`filters/schott_KG3.csv`：Schott KG3 热吸收滤镜透过率（同一上游 commit 的
+`src/spektrafilm/data/filters/heat_absorbing/schott/KG3.csv` 原样副本），为
+印相光源移植预置——上游 TH-KG3 = 3400K 黑体 × KG3（`model/illuminants.py`），
+当前拟合器仍用纯 3200K 黑体代替,属已知偏差,待光谱底座重建时替换。
+
 引入日期：2026-07-29。上游 commit：`3bb2c2d2801ff68b92019cf1dbcbb133d60832bc`
 （2026-08-05 复核：本目录 28 个 JSON 与该 commit 的
 `src/spektrafilm/data/profiles/` 逐字节一致）。逐文件 SHA-256 见同目录
