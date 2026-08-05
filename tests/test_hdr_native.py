@@ -367,8 +367,10 @@ class HdrReferenceDispatchSemanticsTests(unittest.TestCase):
         # The zero-rho output must differ from the native-chroma path...
         self.assertGreater(float(np.abs(with_reference - native_only).max()), 1e-4)
 
-        # ...and equal the explicit common path built from the same candidates.
-        from dngscan.hdr_color import blend_native_hdr_paths
+        # ...and equal the explicit common path built from the same candidates:
+        # reference-white chromaticity, re-anchored to the native branch's final
+        # Y after the (non-Y-preserving) hue restore and punch tail.
+        from dngscan.hdr_color import blend_native_hdr_paths, output_luma_weights
 
         inset, pre_hue = agx_engine.prepare_formation(rgb, setup[1], setup[2])
         channel_gain = agx_engine.film_channel_gain(inset, setup[1], setup[4])
@@ -376,16 +378,58 @@ class HdrReferenceDispatchSemanticsTests(unittest.TestCase):
         common = blend_native_hdr_paths(
             setup[5][1].apply(inset), native_formation, 0.0, setup[4]
         )
-        mapped = agx_engine.finish_formation(
-            common, pre_hue, setup[1], setup[3], channel_gain=channel_gain
-        )
-        mapped = hdr_agx.punch_engine.apply_punch_rec2020(
-            mapped, float(getattr(setup[1], "punch_strength", 0.0))
-        )
-        expected = hdr_agx.rec2020_to_output(mapped, "p3")
-        expected = np.nan_to_num(expected, nan=0.0, posinf=1e6, neginf=-1e6)
+
+        def tail(formation):
+            mapped = agx_engine.finish_formation(
+                formation, pre_hue, setup[1], setup[3], channel_gain=channel_gain
+            )
+            mapped = hdr_agx.punch_engine.apply_punch_rec2020(
+                mapped, float(getattr(setup[1], "punch_strength", 0.0))
+            )
+            out = hdr_agx.rec2020_to_output(mapped, "p3")
+            return np.nan_to_num(out, nan=0.0, posinf=1e6, neginf=-1e6)
+
+        final_native = tail(native_formation)
+        final_common = tail(common)
+        w_out = output_luma_weights("p3")
+        y_native = final_native @ w_out
+        y_common = final_common @ w_out
+        scale = y_native / np.maximum(y_common, np.float32(1e-9))
+        valid = (y_native > 1e-9) & (y_common > 1e-9)
+        expected = np.where(
+            valid[..., None], final_common * scale[..., None], final_native
+        ).astype(np.float32)
         expected = hdr_agx.fit_hdr_color_volume(expected, setup[6], "p3")
         np.testing.assert_allclose(with_reference, expected, atol=2e-5, rtol=0.0)
+
+    def test_native_y_authority_survives_the_full_formation(self) -> None:
+        """The Y contract holds through hue restore and punch, not only at blend.
+
+        Before the final re-anchor, the default hue_restore=0.6 drifted the
+        blended path off the native branch's Y by p95 0.186 EV (max 0.341;
+        hue_restore=1 reached 0.604) on wide-DR samples. The native branch is
+        the sole Y authority end-to-end; float32 noise is the only residual.
+        """
+        from dngscan.hdr_color import output_luma_weights
+
+        for hue_restore in (0.6, 1.0):
+            setup = _formation_setup(hue_restore=hue_restore)
+            rgb = _sample_pixels(count=50_000, with_edges=False)
+            blended = hdr_agx._form_hdr_chunk(
+                rgb, setup[0], setup[1], setup[2], setup[3], setup[4],
+                setup[5], None, setup[6], "p3", native_plan=None,
+            )
+            native_only = hdr_agx._form_hdr_chunk(
+                rgb, setup[0], setup[1], setup[2], setup[3], setup[4],
+                (setup[5][0], setup[5][0]), None, setup[6], "p3",
+                native_plan=None,
+            )
+            w = output_luma_weights("p3")
+            y_out = blended @ w
+            y_nat = native_only @ w
+            valid = (y_out > 1e-6) & (y_nat > 1e-6)
+            err_ev = np.abs(np.log2(y_out[valid] / y_nat[valid]))
+            self.assertLess(float(err_ev.max()), 1e-5, hue_restore)
 
     def test_reference_skipped_only_on_true_identities(self) -> None:
         # Unit peak: reference curve IS the native curve — skip is an identity.
