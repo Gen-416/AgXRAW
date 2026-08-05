@@ -396,6 +396,60 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class SceneDecoderRuntimeBindingTest(unittest.TestCase):
+    """Core Image pixels are only valid for the OS build that decoded them."""
+
+    def test_coreimage_identity_binds_the_system_decoder_build(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".dng") as source:
+            path = Path(source.name)
+            with patch(
+                "dngscan.coreimage_decode.decoder_runtime_id", return_value="macOS 26.0"
+            ):
+                key_a, digest_a = _cache_identity(
+                    path, "reconstruct", "camera", "coreimage", "9", "auto"
+                )
+                libraw_a = _cache_identity(path, "clip", "camera", "libraw", "auto", "auto")
+            with patch(
+                "dngscan.coreimage_decode.decoder_runtime_id", return_value="macOS 26.1"
+            ):
+                key_b, digest_b = _cache_identity(
+                    path, "reconstruct", "camera", "coreimage", "9", "auto"
+                )
+                libraw_b = _cache_identity(path, "clip", "camera", "libraw", "auto", "auto")
+        self.assertNotEqual(key_a, key_b)
+        self.assertNotEqual(digest_a, digest_b)
+        # A LibRaw decode does not depend on the Apple decoder build.
+        self.assertEqual(libraw_a, libraw_b)
+
+    def test_read_rejects_an_entry_from_a_foreign_decoder_build(self) -> None:
+        import json as _json
+        from dngscan.gui.preview_cache import PREVIEW_CACHE_VERSION
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            raw = tmp_path / "shot.dng"
+            raw.write_bytes(b"II*\x00 fake raw payload")
+            entry = tmp_path / "entry.npz"
+            metadata = {
+                "version": PREVIEW_CACHE_VERSION,
+                "has_guidance": False,
+                "bundle": {"scene_decoder_runtime": "macOS 26.0"},
+            }
+            with open(entry, "wb") as handle:
+                np.savez(handle, metadata=np.asarray(_json.dumps(metadata)))
+            # Foreign build: rejected before any payload is touched; the file survives.
+            self.assertIsNone(
+                _read_disk_entry(entry, raw, False, expected_runtime="macOS 26.1")
+            )
+            self.assertTrue(entry.exists())
+            # Matching build: the runtime gate passes and the (deliberately truncated)
+            # payload is then discarded by the integrity path, which unlinks the file.
+            self.assertIsNone(
+                _read_disk_entry(entry, raw, False, expected_runtime="macOS 26.0")
+            )
+            self.assertFalse(entry.exists())
+
+
 class ExportAnalysisReuseTest(unittest.TestCase):
     """run_export must reuse the persisted full-res Analysis only on exact identity."""
 

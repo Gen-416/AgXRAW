@@ -1163,7 +1163,8 @@ def _cached_full_analysis(
     """The preview session's persisted full-resolution Analysis, or None.
 
     The cache digest binds the file signature (path, mtime, size), the LibRaw
-    runtime, the decode parameters and the cache schema version — recomputing
+    runtime, the decode parameters, the system Core Image decoder build (when
+    that decoder owns the pixels) and the cache schema version — recomputing
     it here at export time means a stale or foreign entry can never match. The
     stored analysis was computed with diagnostics off and the default (full)
     gamut set, a superset of any single-gamut export request, by the same
