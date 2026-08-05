@@ -797,8 +797,8 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
     # IS the declared out-of-domain semantics.
     visible = target > 1e-3
     ratio = channels[visible] / target[visible, None]
-    # Deep saturated shadows of some media (Kodachrome above all) leave the sRGB
-    # gamut: a display channel there is clamped, and its ratio is a gamut fact,
+    # Deep saturated shadows of some media (Kodachrome above all) leave the
+    # working gamut: a display channel there is clamped, and its ratio is a gamut fact,
     # not a dye differential. The stored field carries the same [0.25, 4] rail the
     # runtime applies (agx.channel_ratio_gain), so data and application agree on
     # where measurement ends and the rail begins.
@@ -839,9 +839,20 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             "ev": [round(float(v), 5) for v in ev[idx]],
             "display_linear": [round(float(v), 7) for v in target[idx]],
         },
-        "channel_ratio_curve": {
+        # v2 neutral field, Rec.2020 basis (stage C of the spectral rebuild).
+        # neutral_rgb is the MEASUREMENT (the neutral scale's exposure-dependent
+        # colour); neutral_gain = neutral_rgb / target_y is what a runtime that
+        # wants to reproduce that colour multiplies by. Storing both keeps the
+        # measurement from being mistaken for a multiplier.
+        "neutral_curve": {
+            "basis": "rec2020",
             "ev": [round(float(v), 5) for v in ratio_ev[ridx]],
-            "ratio_rgb": [
+            "target_y": [round(float(target[visible][i]), 7) for i in ridx],
+            "neutral_rgb_rec2020": [
+                [round(float(channels[visible][i, c]), 7) for c in range(3)]
+                for i in ridx
+            ],
+            "neutral_gain_rec2020": [
                 [round(float(ratio[i, c]), 5) for c in range(3)] for i in ridx
             ],
         },
@@ -867,6 +878,7 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
             "model": _model_note(stock, theatrical=theatrical),
             "colorimetry": _colorimetry_note(),
+            "printing_illuminant": _printing_illuminant_note(),
         },
     }
 
@@ -875,6 +887,10 @@ def _colorimetry_note() -> dict:
     import calibrate_skin_matrix as csm
 
     return csm.colorimetry_provenance()
+
+
+def _printing_illuminant_note() -> dict:
+    return _spectral_base().th_kg3_provenance()
 
 
 def plot(presets: dict, out_path: Path) -> None:
@@ -970,7 +986,7 @@ def main() -> int:
             print(f"{tkey}: rms {tpreset['fit']['rms_stop']:.4f} stop, "
                   f"max {tpreset['fit']['max_stop']:.4f} stop")
     PRESET_PATH.write_text(
-        json.dumps({"version": 1, "presets": presets}, indent=1, ensure_ascii=False)
+        json.dumps({"version": 2, "presets": presets}, indent=1, ensure_ascii=False)
         + "\n",
         encoding="utf-8",
     )

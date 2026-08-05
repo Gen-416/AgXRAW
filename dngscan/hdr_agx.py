@@ -181,6 +181,13 @@ def _form_hdr_chunk(
         mapped_rec = agx_engine.finish_formation(
             formation, pre_hue, hdr_tone_plan, outset_matrix, channel_gain=channel_gain
         )
+        # Observe-mode film colour joins here — post-outset Rec.2020, scene
+        # luminance axis — mirroring the SDR order (outset -> film colour ->
+        # punch). Native kernels exclude active colour heads, so this stays a
+        # Python-only operator until it earns a C++ port.
+        mapped_rec = agx_engine.apply_film_color_rec2020(
+            mapped_rec, intent_rec, hdr_tone_plan
+        )
         mapped_rec = punch_engine.apply_punch_rec2020(
             mapped_rec, float(getattr(hdr_tone_plan, "punch_strength", 0.0))
         )

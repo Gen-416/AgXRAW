@@ -155,7 +155,16 @@ def illuminant_spd(
     key = name.upper()
     if standard_data != "approximate":
         colour = _require_colour_science()
-        sd = colour.SDS_ILLUMINANTS[key].copy().align(_uniform_shape(colour, grid))
+        shape = _uniform_shape(colour, grid)
+        if key in colour.SDS_ILLUMINANTS:
+            sd = colour.SDS_ILLUMINANTS[key].copy().align(shape)
+        elif key == "K75P":
+            # Cine print viewing: the Kinoton 75P xenon projector lives in
+            # colour's light-source set, not the illuminant set — the same
+            # source upstream spektrafilm uses for its 'cine' condition.
+            sd = colour.SDS_LIGHT_SOURCES["Kinoton 75P"].copy().align(shape)
+        else:
+            raise ValueError(f"unknown illuminant: {name}")
         values = np.asarray(sd.values, dtype=np.float64)
         return values / max(float(np.max(values)), 1e-12)
     if key == "A":

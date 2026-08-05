@@ -114,7 +114,9 @@ class TestGainCurves(unittest.TestCase):
 
     def test_retimed_mid_luminance_is_preserved(self):
         """The darkroom re-timing: filtration changes colour, not mid luminance."""
-        luma = np.array([0.2126, 0.7152, 0.0722])
+        # v2 fields are Rec.2020-basis; mid-luminance preservation is judged in
+        # the calibration basis, not BT.709.
+        luma = np.array([0.2627, 0.6780, 0.0593])
         for y, m in ((30.0, 0.0), (0.0, 60.0), (120.0, 0.0)):
             mid = np.array(self._mid("portra400", y, m))
             self.assertLess(abs(float(mid @ luma) - 1.0), 0.02, (y, m))

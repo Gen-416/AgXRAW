@@ -387,7 +387,13 @@ class AutoEvReferencePlanTests(unittest.TestCase):
         )
         self.assertEqual(kw["film_curve"], "portra400")
         self.assertEqual(plan.tone.curve_preset, "portra400")
-        self.assertAlmostEqual(plan.tone.target_black_linear, 0.014949, places=6)
+        from dngscan.film_curve import FILM_CURVE_PRESETS
+
+        self.assertAlmostEqual(
+            plan.tone.target_black_linear,
+            float(FILM_CURVE_PRESETS["portra400"]["params"]["target_black_linear"]),
+            places=6,
+        )
         # The reference bundle the plan compiles from must see the declared glass.
         self.assertEqual(args[0].lens_filter, "85b")
 
