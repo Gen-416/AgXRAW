@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import dataclasses
 import io
 import json
 import math
@@ -1164,6 +1165,22 @@ def export_suffix_parts(
     return "_".join(parts)
 
 
+def export_plan_fingerprint(**params: object) -> str:
+    """A stable short fingerprint of every render-affecting export parameter.
+
+    The readable suffix names the headline choices, but it cannot carry all of
+    them (film stock, lens filter, WB, EV, manual tone adjustments…) without
+    becoming unusable — and any omission lets two different renders share a
+    path and silently overwrite each other. The fingerprint closes that gap:
+    identical parameters keep an identical name (re-exporting the same recipe
+    intentionally replaces the file), any differing parameter changes it.
+    """
+    canonical = "\0".join(f"{key}={params[key]!r}" for key in sorted(params))
+    import hashlib
+
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:6]
+
+
 def _cached_full_analysis(
     inp: Path,
     highlight: str,
@@ -1381,8 +1398,34 @@ def run_export(params: dict) -> dict:
         film_mode=film_mode,
         film_crossover=film_crossover,
     )
+    fingerprint = export_plan_fingerprint(
+        wb=wb,
+        ev=float(ev),
+        highlight=highlight,
+        decoder=decoder,
+        coreimage_version=coreimage_version,
+        demosaic=demosaic,
+        gamut=gamut,
+        output_format=output_format,
+        grade=grade_id,
+        grade_strength=float(grade_strength),
+        scene_transform=scene_transform,
+        scene_transform_strength=float(scene_transform_strength),
+        punch_scale=float(punch_scale),
+        tone_core=tone_core,
+        lum_norm=lum_norm,
+        agx_primaries=agx_primaries,
+        endpoint_mode=endpoint_mode,
+        lens_filter=lens_filter,
+        film_curve=film_curve,
+        film_mode=film_mode,
+        film_crossover=film_crossover,
+        color_head_y=float(color_head_y),
+        color_head_m=float(color_head_m),
+        adjustments=dataclasses.astuple(adjustments),
+    )
     out_ext = ".heic" if output_format == "ultrahdr-heic" else ".jpg"
-    out_path = outdir / f"{inp.stem}_{suffix}{out_ext}"
+    out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
     with RENDER_LOCK:
         # Intent exposure already applied via with_intent_exposure above; do not
         # mutate a shared bundle in place under the lock.
