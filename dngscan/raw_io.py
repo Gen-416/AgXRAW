@@ -614,6 +614,50 @@ def apply_hot_wb_rec2020(scene_rec2020: Any, matrix: Any) -> Any:
     return out.reshape(source.shape[0], source.shape[1], 3)
 
 
+def wb_window_transport_matrix_rec2020(bundle: RawBundle) -> Any | None:
+    """Full Rec.2020 transport moving daylight-calibrated chroma windows into the
+    bundle's applied balance frame; None means identity or "fall back to ratios".
+
+    The pixels receive the complete hot-WB matrix Ctarget Gtarget (C0 G0)^-1 — a
+    3x3 with channel mixing — so the prefeed windows must move by the same map,
+    not by a two-channel von Kries approximation (measured on _SDI0150 + Portra
+    400, the diagonal transport left material windows at weights near 1e-16 where
+    the true center should weigh 1). The window transport is the current frame's
+    matrix composed with the inverse of the daylight (calibration) frame's:
+    M = T(decode->applied) . T(decode->daylight)^-1.
+    """
+    from .wb import kelvin_mode_cct
+
+    try:
+        wb_mode = str(getattr(bundle, "wb_mode", "camera") or "camera")
+        if wb_mode == "daylight":
+            return None
+        decode_wb = list(bundle.decode_wb or bundle.camera_wb or [])
+        daylight_wb = list(bundle.daylight_wb or [])
+        if len(decode_wb) < 3 or len(daylight_wb) < 3:
+            return None
+        d_c0, d_ct, _ = resolve_hot_wb_c0(bundle, kelvin_mode_cct("daylight"))
+        t_daylight = np.asarray(
+            hot_wb_matrix_rec2020(d_c0, decode_wb, daylight_wb, d_ct), dtype=np.float64
+        )
+        applied_wb = list(getattr(bundle, "applied_wb", None) or [])
+        if wb_mode == "camera" or len(applied_wb) < 3 or applied_wb == decode_wb:
+            t_current = np.eye(3, dtype=np.float64)
+        else:
+            c0, ct, _ = resolve_hot_wb_c0(bundle, kelvin_mode_cct(wb_mode))
+            t_current = np.asarray(
+                hot_wb_matrix_rec2020(c0, decode_wb, applied_wb, ct), dtype=np.float64
+            )
+        matrix = t_current @ np.linalg.inv(t_daylight)
+        if not np.all(np.isfinite(matrix)):
+            return None
+        if np.allclose(matrix, np.eye(3), atol=1e-6):
+            return None
+        return matrix
+    except (ValueError, np.linalg.LinAlgError):
+        return None
+
+
 def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
     """Derive one user balance without re-reading or re-demosaicing the RAW.
 

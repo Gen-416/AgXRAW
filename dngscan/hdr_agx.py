@@ -250,10 +250,7 @@ def scene_render_to_hdr_display_linear(
         formation_y, curve_tables, peak, output_gamut,
     )
 
-    wb_adapt = scene_transform_engine.wb_adaptation_ratios(
-        bundle.wb_mode, bundle.applied_wb or bundle.camera_wb, bundle.daylight_wb,
-        scene_transform_engine.window_transport_tag(bundle)
-    )
+    wb_adapt = scene_transform_engine.window_transport(bundle)
 
     def render_hdr_chunk(start: int, end: int) -> None:
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
@@ -376,10 +373,7 @@ def render_ultrahdr_agx_pair(
         if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
-    wb_adapt = scene_transform_engine.wb_adaptation_ratios(
-        bundle.wb_mode, bundle.applied_wb or bundle.camera_wb, bundle.daylight_wb,
-        scene_transform_engine.window_transport_tag(bundle)
-    )
+    wb_adapt = scene_transform_engine.window_transport(bundle)
     # Ultrahdr forces look/filter off. HDR copies retreat from the scene plan, so one
     # shared intent strength matches what each branch would have applied alone.
     shared_retreat = (

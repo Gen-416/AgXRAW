@@ -336,10 +336,7 @@ def scene_render_to_display_linear(
         if str(getattr(tone_plan, "tone_core", "agx")) == "gated":
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w))
 
-    wb_adapt = scene_transform_engine.wb_adaptation_ratios(
-        bundle.wb_mode, bundle.applied_wb or bundle.camera_wb, bundle.daylight_wb,
-        scene_transform_engine.window_transport_tag(bundle)
-    )
+    wb_adapt = scene_transform_engine.window_transport(bundle)
     for start in range(0, flat_scene.shape[0], chunk):
         end = min(start + chunk, flat_scene.shape[0])
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
@@ -552,10 +549,7 @@ def render_output_u8(
         if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
-    wb_adapt = scene_transform_engine.wb_adaptation_ratios(
-        bundle.wb_mode, bundle.applied_wb or bundle.camera_wb, bundle.daylight_wb,
-        scene_transform_engine.window_transport_tag(bundle)
-    )
+    wb_adapt = scene_transform_engine.window_transport(bundle)
     def render_post_tone_chunk(start: int, end: int) -> Any:
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
         rec = scene_transform_engine.apply_scene_transform_rec2020(
