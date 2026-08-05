@@ -198,6 +198,67 @@ def test_compute_auto_ev_caps_upward_boost():
     assert safe.call_args.kwargs["tone_plan"] is plan
 
 
+def test_compute_auto_ev_reference_plan_carries_the_full_film_declaration():
+    """The reference plan must be the plan the real render will compile.
+
+    A reference that omits the film mode, crossover switch or enlarger color head
+    judges brightness and the highlight cap against a different curve; measured on a
+    daylight fixture, that reads +0.469 EV where the true full-film + color-head plan
+    reads +1.008 EV.
+    """
+    analysis = _minimal_analysis(-2.0)
+    bundle = _minimal_bundle()
+    plan = SimpleNamespace(scene=SimpleNamespace(body_ev_p50=-2.0))
+    with patch(
+        "dngscan.auto_ev.build_render_plan", return_value=plan
+    ) as build, patch("dngscan.auto_ev.max_safe_ev", return_value=0.5) as safe:
+        compute_auto_ev(
+            bundle,
+            analysis,
+            "p3",
+            film_curve="velvia100",
+            film_mode="full",
+            film_crossover="datasheet",
+            color_head_y=10.0,
+            color_head_m=5.0,
+        )
+    build_kwargs = build.call_args.kwargs
+    assert build_kwargs["film_curve"] == "velvia100"
+    assert build_kwargs["film_mode"] == "full"
+    assert build_kwargs["film_crossover"] == "datasheet"
+    assert build_kwargs["color_head_y"] == 10.0
+    assert build_kwargs["color_head_m"] == 5.0
+    safe_kwargs = safe.call_args.kwargs
+    assert safe_kwargs["tone_plan"] is plan
+    assert safe_kwargs["film_mode"] == "full"
+    assert safe_kwargs["film_crossover"] == "datasheet"
+    assert safe_kwargs["color_head_y"] == 10.0
+    assert safe_kwargs["color_head_m"] == 5.0
+
+
+def test_resolve_export_ev_forwards_the_full_film_declaration():
+    analysis = _minimal_analysis(-2.0)
+    bundle = _minimal_bundle()
+    with patch("dngscan.auto_ev.compute_auto_ev") as compute:
+        compute.return_value = SimpleNamespace(ev=0.25)
+        resolve_export_ev(
+            "auto",
+            bundle,
+            analysis,
+            "p3",
+            film_curve="portra400",
+            film_mode="full",
+            film_crossover="datasheet",
+            color_head_y=30.0,
+            color_head_m=10.0,
+        )
+    kwargs = compute.call_args.kwargs
+    assert kwargs["film_mode"] == "full"
+    assert kwargs["film_crossover"] == "datasheet"
+    assert kwargs["color_head_y"] == 30.0
+    assert kwargs["color_head_m"] == 10.0
+
+
 class AutoEvTest(unittest.TestCase):
     test_parse_ev_auto_token = staticmethod(test_parse_ev_auto_token)
     test_median_align_ev_agx = staticmethod(test_median_align_ev_agx)
@@ -207,6 +268,12 @@ class AutoEvTest(unittest.TestCase):
     test_render_sample_output_does_not_mutate_bundle_gain = staticmethod(test_render_sample_output_does_not_mutate_bundle_gain)
     test_compute_auto_ev_boost_only_high_key = staticmethod(test_compute_auto_ev_boost_only_high_key)
     test_compute_auto_ev_caps_upward_boost = staticmethod(test_compute_auto_ev_caps_upward_boost)
+    test_compute_auto_ev_reference_plan_carries_the_full_film_declaration = staticmethod(
+        test_compute_auto_ev_reference_plan_carries_the_full_film_declaration
+    )
+    test_resolve_export_ev_forwards_the_full_film_declaration = staticmethod(
+        test_resolve_export_ev_forwards_the_full_film_declaration
+    )
 
 
 if __name__ == "__main__":

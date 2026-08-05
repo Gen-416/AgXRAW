@@ -635,6 +635,15 @@ def main(argv: list[str]) -> int:
         )
 
         ev_input = parse_ev_value(args.ev)
+        cli_adjustments = RenderAdjustments(
+            midtone_brightness=args.midtone_brightness,
+            midtone_contrast=args.midtone_contrast,
+            shadow_transition=args.shadow_transition,
+            highlight_transition=args.highlight_transition,
+            highlight_fade=args.highlight_fade,
+            toe_end_offset=args.toe_end_offset,
+            shoulder_white_offset=args.shoulder_white_offset,
+        )
         auto_ev_result: AutoEvResult | None = None
         jpeg_output_gamut = "p3" if is_hdr_output_format(args.output_format) else args.output_gamut
         if is_ev_auto(ev_input):
@@ -656,9 +665,15 @@ def main(argv: list[str]) -> int:
                 args.lum_norm,
                 args.agx_primaries,
                 # The declared lens filter already rides the bundle (set above); the
-                # curve-shaping choices must reach the reference plan explicitly.
+                # curve-shaping choices — manual tone adjustments and the full film
+                # declaration included — must reach the reference plan explicitly.
+                adjustments=cli_adjustments,
                 endpoint_mode=args.endpoint_mode,
                 film_curve=args.film_curve,
+                film_mode=args.film_mode,
+                film_crossover=args.film_crossover,
+                color_head_y=args.color_head_y,
+                color_head_m=args.color_head_m,
             )
         else:
             resolved_ev = float(ev_input)
@@ -697,18 +712,7 @@ def main(argv: list[str]) -> int:
             else None
         )
         if render_plan is not None:
-            render_plan = apply_render_adjustments(
-                render_plan,
-                RenderAdjustments(
-                    midtone_brightness=args.midtone_brightness,
-                    midtone_contrast=args.midtone_contrast,
-                    shadow_transition=args.shadow_transition,
-                    highlight_transition=args.highlight_transition,
-                    highlight_fade=args.highlight_fade,
-                    toe_end_offset=args.toe_end_offset,
-                    shoulder_white_offset=args.shoulder_white_offset,
-                ),
-            )
+            render_plan = apply_render_adjustments(render_plan, cli_adjustments)
         if jpeg_path is not None:
             export_result = export_jpeg(
                 path=args.path,

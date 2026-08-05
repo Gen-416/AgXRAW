@@ -266,6 +266,10 @@ def estimate_ev_headroom(
     adjustments: dg.RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
     film_curve: str = "none",
+    film_mode: str = "observe",
+    film_crossover: str = "off",
+    color_head_y: float = 0.0,
+    color_head_m: float = 0.0,
     lens_filter: str | None = None,
 ) -> dict[str, float | str]:
     if analysis is None:
@@ -289,6 +293,10 @@ def estimate_ev_headroom(
         adjustments=adjustments,
         endpoint_mode=endpoint_mode,
         film_curve=film_curve,
+        film_mode=film_mode,
+        film_crossover=film_crossover,
+        color_head_y=color_head_y,
+        color_head_m=color_head_m,
         lens_filter=lens_filter,
     )
     return {
@@ -921,6 +929,10 @@ def run_preview(params: dict) -> dict:
                 adjustments=adjustments,
                 endpoint_mode=endpoint_mode,
                 film_curve=film_curve,
+                film_mode=film_mode,
+                film_crossover=film_crossover,
+                color_head_y=color_head_y,
+                color_head_m=color_head_m,
                 lens_filter=lens_filter,
             )
             if not is_current():
@@ -1322,6 +1334,10 @@ def run_export(params: dict) -> dict:
             adjustments=adjustments,
             endpoint_mode=endpoint_mode,
             film_curve=film_curve,
+            film_mode=film_mode,
+            film_crossover=film_crossover,
+            color_head_y=color_head_y,
+            color_head_m=color_head_m,
             lens_filter=lens_filter,
         )
         ev = auto_ev_result.ev
@@ -1433,6 +1449,10 @@ def run_export(params: dict) -> dict:
                 adjustments=adjustments,
                 endpoint_mode=endpoint_mode,
                 film_curve=film_curve,
+                film_mode=film_mode,
+                film_crossover=film_crossover,
+                color_head_y=color_head_y,
+                color_head_m=color_head_m,
                 lens_filter=lens_filter,
             )
         )

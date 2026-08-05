@@ -218,13 +218,18 @@ def max_safe_ev(
     tone_plan: RenderPlan | None = None,
     endpoint_mode: str = "adaptive",
     film_curve: str = "none",
+    film_mode: str = "observe",
+    film_crossover: str = "off",
+    color_head_y: float = 0.0,
+    color_head_m: float = 0.0,
     lens_filter: str | None = None,
 ) -> float:
     """Largest EV (>= from_ev) whose preview-scale output stays below highlight thresholds.
 
     The probe must consult the same compiled curve the real render will use, so the
-    caller's endpoint mode, film curve and declared lens filter all participate; a
-    None lens_filter keeps whatever the bundle already declares.
+    caller's endpoint mode and full film declaration (curve, mode, crossover, color
+    head) and declared lens filter all participate; a None lens_filter keeps whatever
+    the bundle already declares.
     """
     if np is None:
         return float(from_ev)
@@ -250,6 +255,10 @@ def max_safe_ev(
             agx_primaries=agx_primaries,
             adjustments=adjustments,
             film_curve=film_curve,
+            film_mode=film_mode,
+            film_crossover=film_crossover,
+            color_head_y=color_head_y,
+            color_head_m=color_head_m,
             endpoint_mode=endpoint_mode,
         )
 
@@ -353,6 +362,10 @@ def compute_auto_ev(
     adjustments: RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
     film_curve: str = "none",
+    film_mode: str = "observe",
+    film_crossover: str = "off",
+    color_head_y: float = 0.0,
+    color_head_m: float = 0.0,
     lens_filter: str | None = None,
 ) -> AutoEvResult:
     """Reference the reliable decoded scene body to 18% gray without changing EV 0.
@@ -362,10 +375,12 @@ def compute_auto_ev(
     decoder-independent without introducing a hidden fixed correction. Highlight safety
     limits upward boost only; high-key scenes are never darkened toward gray.
 
-    The internal reference plan compiles with the caller's endpoint mode, film curve
-    and declared lens filter, so the brightness reference and the highlight-safety cap
-    are judged against the curve the real render will actually use; a None lens_filter
-    keeps whatever the bundle already declares.
+    The internal reference plan compiles with the caller's endpoint mode, the full
+    film declaration (curve preset, observe/full mode, crossover switch, enlarger
+    color head) and declared lens filter, so the brightness reference and the
+    highlight-safety cap are judged against the plan the real render will actually
+    compile — not a simplified stand-in; a None lens_filter keeps whatever the
+    bundle already declares.
     """
     from .grade import RENDER_MODE
 
@@ -388,6 +403,10 @@ def compute_auto_ev(
         agx_primaries=agx_primaries,
         adjustments=adjustments,
         film_curve=film_curve,
+        film_mode=film_mode,
+        film_crossover=film_crossover,
+        color_head_y=color_head_y,
+        color_head_m=color_head_m,
         endpoint_mode=endpoint_mode,
     )
     target = scene_body_align_ev(reference_plan)
@@ -410,6 +429,10 @@ def compute_auto_ev(
         tone_plan=reference_plan,
         endpoint_mode=endpoint_mode,
         film_curve=film_curve,
+        film_mode=film_mode,
+        film_crossover=film_crossover,
+        color_head_y=color_head_y,
+        color_head_m=color_head_m,
     )
     boost_target = max(target, baseline_ev)
     ev = min(boost_target, cap)
@@ -442,6 +465,10 @@ def resolve_export_ev(
     adjustments: RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
     film_curve: str = "none",
+    film_mode: str = "observe",
+    film_crossover: str = "off",
+    color_head_y: float = 0.0,
+    color_head_m: float = 0.0,
     lens_filter: str | None = None,
 ) -> tuple[float, AutoEvResult | None]:
     if not is_ev_auto(ev):
@@ -464,6 +491,10 @@ def resolve_export_ev(
         adjustments,
         endpoint_mode=endpoint_mode,
         film_curve=film_curve,
+        film_mode=film_mode,
+        film_crossover=film_crossover,
+        color_head_y=color_head_y,
+        color_head_m=color_head_m,
         lens_filter=lens_filter,
     )
     return result.ev, result
