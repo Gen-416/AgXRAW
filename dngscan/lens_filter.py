@@ -60,7 +60,10 @@ LENS_FILTER_CHOICES = ("none",) + tuple(LENS_FILTERS)
 # the right delta represents the filter. The pair is taken symmetrically about the
 # working white's mired value (m0 +- delta/2): the diagonal is then measured where the
 # rendered cast actually lands, and equal-and-opposite filters (85B/80A) invert each
-# other exactly by construction instead of leaving locus-curvature residue.
+# other exactly in chromaticity by construction, with no locus-curvature residue. One
+# global exposure scalar remains — each matrix Y-normalizes its own neutral, not the
+# other's cast — measured M80A . M85B = 0.95649 I (-0.064 EV); the round-trip is
+# chromatically exact, not radiometrically free.
 _WORKING_WHITE_CCT = 6504.0
 
 _BRADFORD = np.array(
