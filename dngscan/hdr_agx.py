@@ -76,15 +76,18 @@ def _pack_peak(hdr_plan: HdrAgxPlan) -> float:
 
 
 def _hdr_reference_needed(hdr_plan: HdrAgxPlan) -> bool:
-    """Whether the reference-white chroma candidate can contribute at all.
+    """Whether the reference-white chroma candidate must be compiled.
 
-    Algebraic identity: blend with rho==0 returns the native path, so the reference
-    candidate (and its second curve) is pure waste when global permission is zero.
+    rho blends toward native: at rho==1 the blend returns the native path, and at
+    rho==0 it returns the reference-white chromaticity carried at native luminance
+    — the conservative end of the dial, NOT the native path. A previous version
+    treated rho==0 as a skip-identity, which inverted the design exactly where it
+    matters most (zero permission — including analysis=None — silently received
+    the most open native chroma). The only true identities are a unit peak or no
+    rendered headroom, where the reference curve IS the native curve.
     """
-    global_rho = float(hdr_plan.color.channel_separation) * float(hdr_plan.color.snr_gate)
     return (
-        global_rho > 0.0
-        and float(hdr_plan.tone.rendered_headroom_ev) > 0.0
+        float(hdr_plan.tone.rendered_headroom_ev) > 0.0
         and abs(float(hdr_plan.tone.peak_linear) - 1.0) > 1e-12
     )
 
