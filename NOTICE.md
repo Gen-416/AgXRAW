@@ -33,9 +33,14 @@ Volpato's spektrafilm project:
 - https://github.com/andreavolpato/agx-emulsion
 
 spektrafilm's code is GPL-3.0-or-later; its profile data is licensed separately
-under **CC BY-SA 4.0** (license text included alongside the files). dngscan's film
-curve presets and prefeed targets derived from these profiles are treated as direct
-derivatives under the same CC BY-SA 4.0 terms, with provenance recorded in
+under **CC BY-SA 4.0**. The full license text ships in two places: alongside the
+vendored profiles (`dngscan_assets/spectral/spektrafilm/SPEKTRAFILM_LICENSE.txt`)
+and inside the installed package (`dngscan/SPEKTRAFILM_LICENSE.txt`), so wheels
+carrying the derived preset JSONs carry the license too. The vendored copy is
+pinned to upstream commit `3bb2c2d2801ff68b92019cf1dbcbb133d60832bc` with a
+per-file SHA-256 manifest (`MANIFEST.sha256`). dngscan's film curve presets and
+prefeed targets derived from these profiles are treated as direct derivatives
+under the same CC BY-SA 4.0 terms, with provenance recorded in
 `dngscan_assets/spectral/spektrafilm/README.md` and in each preset's `source` field.
 The upstream data was processed from manufacturer datasheets and scientific papers;
 original measurements remain the property of their respective manufacturers.
