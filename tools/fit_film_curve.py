@@ -478,6 +478,31 @@ def _solved_print_chain(stock: dict, surround_override: str | None = None) -> Si
     )
 
 
+def print_density_curves(stock: dict, surround_override: str | None = None):
+    """(scene EV, per-channel print dye amounts[N,3]) of the solved chain.
+
+    The density-domain view for external cross-checks: dye amounts in the paper
+    profile's own density_curves units, straight off the solved effective
+    exposures — before any colorimetry, CAT or display translation, which an
+    external per-channel density oracle (DiVERE) has no claim over.
+    """
+    chain = _solved_print_chain(stock, surround_override)
+    neg = _load_spectral(stock["negative"])
+    paper = _regrid(_load_spectral(stock["print"]), neg["wl"])
+    sb = _spectral_base()
+    enlarger = sb.th_kg3_spd(neg["wl"])
+    t_neg = _stack_reflectance(neg, neg["amounts"])
+    weight = paper["sens"] * enlarger[:, None]
+    log_ep = np.log10(
+        np.maximum(sb.trapezoid(t_neg[:, :, None] * weight[None, :, :], neg["wl"], axis=1), 1e-12)
+    )
+    amounts = np.stack([
+        np.interp(log_ep[:, c] + chain.q[c], paper["le"], paper["amounts"][:, c])
+        for c in range(3)
+    ], axis=1)
+    return chain.ev, amounts
+
+
 def build_endtoend_target(
     stock: dict, surround_override: str | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:

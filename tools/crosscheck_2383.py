@@ -45,6 +45,7 @@ from tools.fit_film_curve import (  # noqa: E402
     PROFILE_DIR,
     STOCKS,
     build_endtoend_target,
+    print_density_curves,
     _load_curves,
 )
 
@@ -162,12 +163,15 @@ def divere_print_channels(curve_json: Path, ev: np.ndarray, d_neg: np.ndarray,
             d_out = (1.0 - y) * DIVERE_LOG_RANGE
             return np.power(10.0, -(d_out - d_min_out))
 
+        anchor = float(np.interp(0.0, ev, ours[:, c]))
+
         def solve_trim(scale: float) -> float:
-            # Exposure trim: mid-scale (EV 0) must print to 18%, same as chain A.
+            # Exposure trim (printer light): anchor DiVERE's mid-scale to chain
+            # A's own EV-0 value in the SAME domain the comparison runs in.
             trims = np.linspace(-3.0, 4.0, 701)
             mid = np.array([np.interp(0.0, ev, channel_T(t, scale)) for t in trims])
             order = np.argsort(mid)
-            return float(np.interp(0.18, mid[order], trims[order]))
+            return float(np.interp(anchor, mid[order], trims[order]))
 
         # Two declared per-channel freedoms, both native to DiVERE's own workflow:
         # exposure trim (printer light — their dmax/W/S keys) and density-contrast
@@ -205,13 +209,26 @@ def main() -> int:
     if stock.get("positive") or stock.get("print") not in ("kodak_2383", "kodak_2393"):
         raise SystemExit(f"{args.stock} is not a 2383/2393-printed cine stock")
 
-    # Chain A: our composition, quoted verbatim (the LUT quotes the print too).
-    ev_a, channels_a, _luma, _floor = build_endtoend_target(
-        stock, surround_override="native"
-    )
-    mask = (ev_a >= EV_LO) & (ev_a <= EV_HI)
-    ev = ev_a[mask]
-    ours = channels_a[mask]
+    if args.input == "divere":
+        # Density-domain oracle: DiVERE's curve is per-channel print density —
+        # it has no colorimetric claim, so the comparison must run BEFORE our
+        # viewing translation (whose CAT/basis legitimately mixes channels).
+        # Chain A supplies per-channel print transmittance 10^-(D - Dmin) from
+        # the solved dye amounts, the exact convention the curve decodes to.
+        ev_a, amounts = print_density_curves(stock, surround_override="native")
+        t_print = np.power(10.0, -(amounts - np.nanmin(amounts, axis=0)[None, :]))
+        mask = (ev_a >= EV_LO) & (ev_a <= EV_HI)
+        ev = ev_a[mask]
+        ours = t_print[mask]
+        print("comparison domain: per-channel print density (pre-colorimetry)")
+    else:
+        # Cube LUTs bake a display rendering; those stay a display comparison.
+        ev_a, channels_a, _luma, _floor = build_endtoend_target(
+            stock, surround_override="native"
+        )
+        mask = (ev_a >= EV_LO) & (ev_a <= EV_HI)
+        ev = ev_a[mask]
+        ours = channels_a[mask]
 
     # Chain B: negative density -> declared input encoding -> LUT -> display linear.
     le_n, d_neg = _load_curves(stock["negative"])
