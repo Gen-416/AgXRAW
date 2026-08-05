@@ -1,0 +1,179 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Tests for GUI export naming."""
+
+from __future__ import annotations
+
+import io
+import tempfile
+import unittest
+from pathlib import Path
+
+from dngscan._deps import np
+from dngscan.gui.page import render_page
+from dngscan.gui.server import store_upload
+from dngscan.gui.service import downsample_mean
+from dngscan.gui.service import export_suffix_parts
+
+
+class ExportSuffixTests(unittest.TestCase):
+    def test_proxy_downsample_reaches_requested_long_edge(self) -> None:
+        source = np.zeros((303, 202, 3), dtype=np.uint16)
+        proxy = downsample_mean(source, 128)
+        self.assertEqual(proxy.shape, (128, 85, 3))
+
+    def test_public_gui_is_concise_and_has_no_vendor_luts(self) -> None:
+        html = render_page("/tmp").decode("utf-8")
+        self.assertNotIn("更新预览", html)
+        self.assertIn('<button class="go" id="go">导出</button>', html)
+        self.assertNotIn(">导出 JPEG</button>", html)
+        self.assertIn("前馈校正", html)
+        self.assertIn("中间调亮度", html)
+        self.assertIn("中间调对比", html)
+        self.assertIn("暗部过渡", html)
+        self.assertIn("高光过渡", html)
+        self.assertIn("高光褪白", html)
+        self.assertIn("中频纯度", html)
+        self.assertIn("HDR gain-map · JPEG", html)
+        self.assertIn("HDR gain-map · HEIC", html)
+        self.assertIn("只恢复漫反射白以上的真实亮度档数", html)
+        self.assertIn("/raw9-support", html)
+        self.assertIn("此文件不支持 RAW 9", html)
+        self.assertIn('type="file" id="filePicker"', html)
+        self.assertIn('accept=".3fr,.arw,.cr2,.cr3,.dcr,.dng', html)
+        self.assertIn('fetch("/upload?name="', html)
+        self.assertNotIn("文件只传给本机", html)
+        self.assertNotIn("filePickerHint", html)
+        self.assertNotIn('id="browseBtn"', html)
+        self.assertNotIn('id="browser"', html)
+        self.assertNotIn('optgroup label="本地 LUT"', html)
+        # Vendor display LUTs must never leak into the public GUI. Named film
+        # observation presets ("Kodak Portra 400", "Fujifilm Superia X-TRA 400") are
+        # NOT vendor LUTs — they are dngscan's own calibrated declarations fitted from
+        # published datasheet data — so the guard targets LUT product names, not the
+        # manufacturers whose stocks the film feature legitimately names.
+        for vendor_lut in ("ARRI Classic", "ARRI Reveal", "RED IPP2", "LC-709", "2383", ".cube"):
+            self.assertNotIn(vendor_lut, html)
+        self.assertIn("Kodak Portra 400", html)
+        self.assertIn("Fujifilm Superia X-TRA 400", html)
+
+    def test_default_agx_only(self) -> None:
+        self.assertEqual(export_suffix_parts("clip", "srgb", "sdr"), "agx")
+
+    def test_nondefault_primaries_path_is_named(self) -> None:
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", agx_primaries="smooth"),
+            "agx_smooth",
+        )
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", tone_core="gated", agx_primaries="base"),
+            "gated",
+        )
+
+    def test_includes_grade(self) -> None:
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", "look:optic_warm_cyan", 1.0),
+            "agx_look_optic_warm_cyan",
+        )
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", "filter:kodak_2383_d65", 1.0),
+            "agx_filter_kodak_2383_d65",
+        )
+
+    def test_includes_grade_strength_when_not_one(self) -> None:
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", "look:optic_warm_cyan", 0.8),
+            "agx_look_optic_warm_cyan_gs0.8",
+        )
+
+    def test_includes_scene_transform(self) -> None:
+        self.assertEqual(
+            export_suffix_parts("clip", "p3", "sdr", "none", 1.0, "arri_skin_d55", 0.75),
+            "agx_p3_arri_skin_d55_st0.75",
+        )
+
+    def test_neutral_export_suffix(self) -> None:
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", tone_core="neutral"),
+            "neutral",
+        )
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", tone_core="lum"),
+            "lum",
+        )
+        self.assertEqual(
+            export_suffix_parts("clip", "srgb", "sdr", tone_core="lum", lum_norm="power"),
+            "lum_power",
+        )
+
+
+class BrowserUploadTests(unittest.TestCase):
+    def test_store_upload_keeps_only_safe_filename_and_exact_bytes(self) -> None:
+        payload = b"example raw bytes"
+        with tempfile.TemporaryDirectory() as temp:
+            saved = store_upload(
+                "../../folder/My Photo.DNG",
+                io.BytesIO(payload),
+                len(payload),
+                Path(temp),
+            )
+            self.assertEqual(saved.name, "My_Photo.dng")
+            self.assertEqual(saved.read_bytes(), payload)
+            self.assertEqual(saved.parent.parent, Path(temp))
+
+    def test_store_upload_rejects_non_raw_extension(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaisesRegex(ValueError, "不支持的 RAW"):
+                store_upload("photo.jpg", io.BytesIO(b"jpeg"), 4, Path(temp))
+
+    def test_store_upload_rejects_incomplete_body(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaisesRegex(ValueError, "传输未完成"):
+                store_upload("photo.dng", io.BytesIO(b"short"), 10, Path(temp))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class MetricsSamplingTests(unittest.TestCase):
+    """D10: the post-export display metrics run on a declared ~800k stride sample."""
+
+    def test_small_frames_stay_exact_and_report_their_count(self) -> None:
+        import numpy as np
+        from dngscan.gui.service import METRICS_SAMPLE_TARGET, output_luminance_metrics_u8
+
+        img = np.full((64, 64, 3), 128, dtype=np.uint8)
+        metrics = output_luminance_metrics_u8(img, "srgb", 0.0)
+        self.assertEqual(metrics["metrics_sample_px"], 64 * 64)
+        self.assertLess(64 * 64, METRICS_SAMPLE_TARGET)
+
+    def test_large_frames_sample_within_the_declared_precision(self) -> None:
+        import numpy as np
+        from dngscan.gui.service import METRICS_SAMPLE_TARGET, output_luminance_metrics_u8
+
+        rng = np.random.default_rng(11)
+        # 3.2M px with realistic structure: smooth ramp + noise + a bright patch.
+        h, w = 1600, 2000
+        ramp = np.linspace(20, 200, w, dtype=np.float32)[None, :, None]
+        img = np.clip(
+            ramp + rng.normal(0, 12, size=(h, w, 3)), 0, 255
+        ).astype(np.uint8)
+        img[:64, :64] = 254
+        sampled = output_luminance_metrics_u8(img, "srgb", 0.0)
+        self.assertLessEqual(sampled["metrics_sample_px"], 2 * METRICS_SAMPLE_TARGET)
+        self.assertLess(sampled["metrics_sample_px"], h * w)
+        # Full-frame reference computed inline by defeating the stride via a
+        # reshape into a single already-small-enough axis is not possible, so
+        # compare against numpy directly on the exact same definition.
+        flat = img.reshape(-1, 3).astype(np.float32) / np.float32(255.0)
+        from dngscan.color import srgb_decode
+        import dngscan as dg
+
+        linear = srgb_decode(flat)
+        matrix = dg.RGB_TO_XYZ[dg.output_gamut_space("srgb")]
+        y = np.clip(linear @ np.asarray(matrix[1], dtype=np.float32), 0.0, 1.0)
+        self.assertLess(abs(sampled["median_luma_pct"] - float(np.median(y)) * 100.0), 0.05)
+        self.assertLess(abs(sampled["mean_luma_pct"] - float(np.mean(y)) * 100.0), 0.05)
+        self.assertLess(
+            abs(sampled["luma_p999_pct"] - float(np.percentile(y, 99.9)) * 100.0), 0.25
+        )

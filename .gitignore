@@ -1,0 +1,52 @@
+# Local ACES reference checkouts (not distributed)
+_ref/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Bundled open-source/reference assets are explicitly unignored below. Keep local
+# LUT experiments and vendor downloads out of Git.
+*.spi3d
+dngscan_assets/*
+!dngscan_assets/README.md
+!dngscan_assets/darktable_agx.c
+!dngscan_assets/darktable_agx.cl
+!dngscan_assets/spectral/
+!dngscan_assets/spectral/README.md
+!dngscan_assets/spectral/*.csv
+
+# Raw inputs and generated outputs
+*.dng
+*.DNG
+*.arw
+*.ARW
+*.cr2
+*.cr3
+*.nef
+*.nrw
+*.raf
+*.rw2
+*.orf
+*_scan.png
+*_neutral*.jpg
+*_smart*.jpg
+*_agx*.jpg
+*_tony*.jpg
+# Curated, privacy-checked comparison sheets used by the public documentation.
+!docs/assets/hdr-comparisons/*.jpg
+test_output/compare_results.json
+
+# Editor / OS / tooling
+.claude/
+.DS_Store
+*.swp
+*.swo
+
+# Native extension build artifacts
+build/
+*.so
+*.pyd

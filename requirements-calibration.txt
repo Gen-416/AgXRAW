@@ -1,0 +1,3 @@
+# Optional dependencies for tools/calibrate_skin_matrix.py.
+# Runtime export and the GUI do not need these.
+colour-science>=0.4.4

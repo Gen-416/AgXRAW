@@ -1,0 +1,148 @@
+{
+ "version": 1,
+ "coreimage": {
+  "default": {
+   "global_ratio_rg_bg": [
+    1.03815,
+    0.85361
+   ],
+   "per_class": {
+    "cool_balance": {
+     "ratio_rg_bg": [
+      0.96893,
+      0.84623
+     ],
+     "effective_support": 5635.8,
+     "basis": "class-weighted"
+    },
+    "cyan": {
+     "ratio_rg_bg": [
+      0.93986,
+      0.83443
+     ],
+     "effective_support": 50.8,
+     "basis": "class-weighted"
+    },
+    "foliage": {
+     "ratio_rg_bg": [
+      0.97742,
+      0.85247
+     ],
+     "effective_support": 3677.5,
+     "basis": "class-weighted"
+    },
+    "magenta": {
+     "ratio_rg_bg": [
+      1.22794,
+      1.09276
+     ],
+     "effective_support": 117.8,
+     "basis": "class-weighted"
+    },
+    "neutral": {
+     "ratio_rg_bg": [
+      1.03815,
+      0.85361
+     ],
+     "effective_support": 18.6,
+     "basis": "global-fallback"
+    },
+    "skin": {
+     "ratio_rg_bg": [
+      1.09003,
+      0.66487
+     ],
+     "effective_support": 1138.1,
+     "basis": "class-weighted"
+    }
+   },
+   "source": {
+    "method": "dual-decode block-paired chroma transport, 5500K declared WB, grid 64x96, central crop 0.6, weighted median per window class",
+    "corpus": [
+     "_SDI0133.DNG",
+     "_SDI0150.DNG",
+     "_SDI0165.DNG",
+     "_SDI0199.DNG",
+     "_SDI0200.DNG",
+     "_SDI0206.DNG",
+     "_SDI0222.DNG",
+     "_SDI0237.DNG",
+     "_SDI0238.DNG"
+    ]
+   }
+  },
+  "Apple iPhone 16 Pro": {
+   "global_ratio_rg_bg": [
+    0.96782,
+    0.90603
+   ],
+   "per_class": {
+    "cool_balance": {
+     "ratio_rg_bg": [
+      0.95939,
+      0.93647
+     ],
+     "effective_support": 6001.8,
+     "basis": "class-weighted"
+    },
+    "cyan": {
+     "ratio_rg_bg": [
+      0.95555,
+      0.94416
+     ],
+     "effective_support": 87.4,
+     "basis": "class-weighted"
+    },
+    "foliage": {
+     "ratio_rg_bg": [
+      0.95885,
+      0.93831
+     ],
+     "effective_support": 3123.2,
+     "basis": "class-weighted"
+    },
+    "magenta": {
+     "ratio_rg_bg": [
+      0.96782,
+      0.90603
+     ],
+     "effective_support": 0.9,
+     "basis": "global-fallback"
+    },
+    "neutral": {
+     "ratio_rg_bg": [
+      0.95866,
+      0.93727
+     ],
+     "effective_support": 252.8,
+     "basis": "class-weighted"
+    },
+    "skin": {
+     "ratio_rg_bg": [
+      0.9738,
+      0.89557
+     ],
+     "effective_support": 3254.9,
+     "basis": "class-weighted"
+    }
+   },
+   "source": {
+    "method": "dual-decode block-paired chroma transport, 5500K declared WB, grid 64x96, central crop 0.6, weighted median per window class",
+    "corpus": [
+     "Original RAW 26-05-10 173311434.dng",
+     "Original RAW 26-05-11 193721820.dng",
+     "Original RAW 26-05-11 193727279.dng",
+     "Original RAW 26-05-11 193738485.dng",
+     "Original RAW 26-05-12 210128342.dng",
+     "Original RAW 26-06-17 222639798.dng",
+     "Original RAW 26-06-26 131513584.dng",
+     "Original RAW 26-06-28 133947250.dng",
+     "Original RAW 26-07-05 115326540.dng",
+     "Original RAW 26-07-11 202403093.dng",
+     "Original RAW 26-07-12 182506394.dng",
+     "Original RAW 26-07-24 194203657.dng"
+    ]
+   }
+  }
+ }
+}
