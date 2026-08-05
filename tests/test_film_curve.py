@@ -135,27 +135,31 @@ class ResidualGateTests(unittest.TestCase):
 class ChannelRatioFieldTests(unittest.TestCase):
     """Exposure-dependent colour phase 1: the per-channel ratio field's invariants.
 
-    r_c(EV) = T_c / T_neutral along the balanced neutral ramp is the stock's measured
-    layer-saturation differential. Its contract: unity at the EV0 anchor (per-channel
-    balance guarantees it), bounded everywhere (a broken balance or surround term
-    would blow the range), and present for every preset so the phase-2 runtime
-    (out_c = C(EV_c) * r_c(EV_c) / r_c(EV_Y)) can rely on it.
+    The v2 neutral curve stores the measurement (neutral_rgb_rec2020) beside the
+    scalar tone target (target_y) and their quotient (neutral_gain_rec2020), all
+    in the Rec.2020 basis of the rebuilt viewing translation. Contract: gain is
+    unity at the EV0 anchor (the q-solve guarantees a neutral 0.18 there),
+    bounded everywhere, present for every preset, and the quotient stored IS the
+    quotient of the stored measurement (no drift between the three arrays).
     """
 
     def test_every_preset_carries_a_ratio_field(self) -> None:
         for name, preset in FILM_CURVE_PRESETS.items():
             with self.subTest(preset=name):
-                rc = preset.get("channel_ratio_curve")
-                self.assertIsNotNone(rc, f"{name} missing channel_ratio_curve")
-                self.assertEqual(len(rc["ev"]), len(rc["ratio_rgb"]))
+                rc = preset.get("neutral_curve")
+                self.assertIsNotNone(rc, f"{name} missing neutral_curve")
+                self.assertEqual(rc.get("basis"), "rec2020")
+                self.assertEqual(len(rc["ev"]), len(rc["neutral_gain_rec2020"]))
+                self.assertEqual(len(rc["ev"]), len(rc["neutral_rgb_rec2020"]))
+                self.assertEqual(len(rc["ev"]), len(rc["target_y"]))
                 self.assertGreaterEqual(len(rc["ev"]), 64)
 
     def test_ratio_is_unity_at_the_ev0_anchor(self) -> None:
         for name, preset in FILM_CURVE_PRESETS.items():
             with self.subTest(preset=name):
-                rc = preset["channel_ratio_curve"]
+                rc = preset["neutral_curve"]
                 ev = np.array(rc["ev"], dtype=np.float64)
-                r = np.array(rc["ratio_rgb"], dtype=np.float64)
+                r = np.array(rc["neutral_gain_rec2020"], dtype=np.float64)
                 for c in range(3):
                     r0 = float(np.interp(0.0, ev, r[:, c]))
                     self.assertLess(abs(r0 - 1.0), 6e-3)
@@ -163,9 +167,19 @@ class ChannelRatioFieldTests(unittest.TestCase):
     def test_ratio_field_is_bounded(self) -> None:
         for name, preset in FILM_CURVE_PRESETS.items():
             with self.subTest(preset=name):
-                r = np.array(preset["channel_ratio_curve"]["ratio_rgb"])
+                rc = preset["neutral_curve"]
+                r = np.array(rc["neutral_gain_rec2020"])
                 self.assertGreater(float(r.min()), 0.2)
                 self.assertLess(float(r.max()), 5.0)
+                # The stored gain is the stored measurement over the stored
+                # target — the rail-clipped rows excepted (they are declared
+                # rail, not measurement).
+                rgb = np.array(rc["neutral_rgb_rec2020"], dtype=np.float64)
+                y = np.array(rc["target_y"], dtype=np.float64)
+                quotient = rgb / np.maximum(y[:, None], 1e-9)
+                on_rail = (r <= 0.2500001) | (r >= 3.9999)
+                agree = np.abs(quotient - r) < 5e-3
+                self.assertTrue(bool(np.all(agree | on_rail)), name)
 
 
 class StylePairingTests(unittest.TestCase):

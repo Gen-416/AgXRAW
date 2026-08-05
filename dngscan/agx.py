@@ -949,6 +949,12 @@ def film_channel_gain(inset: Any, plan: Any, luma_weights: Any) -> Any | None:
     they compose multiplicatively here. Either half returns None when inactive;
     both inactive keeps the whole render on the None fast path.
     """
+    if str(getattr(plan, "film_mode", "observe")) != "full":
+        # Observe-mode film colour no longer rides the formation channels: the
+        # v2 fields are Rec.2020-basis measurements, applied post-outset by
+        # apply_film_color_rec2020 on the scene luminance axis. Only the legacy
+        # film-takeover core still composes both halves here, in its own basis.
+        return None
     ratio = channel_ratio_gain(inset, plan, luma_weights)
     head = color_head_gain(inset, plan)
     if ratio is None:
@@ -970,6 +976,48 @@ def formation_luma_row(outset_matrix: Any) -> Any:
         outset_matrix, dtype=np.float64
     )
     return (weights / np.sum(weights)).astype(np.float32)
+
+
+REC2020_LUMA_WEIGHTS = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+
+
+def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> Any:
+    """Observe-mode film colour, applied where it was calibrated (stage C).
+
+    The v2 colour-head field is a Rec.2020-basis measurement along the neutral
+    exposure axis, so it multiplies post-outset Rec.2020 pixels — a diagonal
+    gain does not commute with the outset or any output matrix, which is exactly
+    how the v1 sRGB-basis numbers went wrong. The lookup exposure is the SINGLE
+    luminance axis EV_Y = log2(Y_scene/0.18) taken from the scene-linear input
+    BEFORE tone mapping: a display value has been through the shoulder and no
+    longer corresponds to the calibration exposure, and the field was only ever
+    measured along the neutral axis — one exposure, one gain triple, honestly a
+    neutral-axis generalization rather than three imagined emulsion exposures.
+
+    The legacy film-takeover core (film_mode="full") owns its own colour and is
+    excluded here; so are renders with both dials at zero (byte-exact fast path).
+    """
+    if str(getattr(plan, "film_mode", "observe")) == "full":
+        return mapped_rec
+    y_cc = float(getattr(plan, "color_head_y", 0.0))
+    m_cc = float(getattr(plan, "color_head_m", 0.0))
+    if y_cc <= 0.0 and m_cc <= 0.0:
+        return mapped_rec
+    from .film_curve import color_head_gain_curves
+
+    curves = color_head_gain_curves(
+        str(getattr(plan, "curve_preset", "") or ""), y_cc, m_cc
+    )
+    if curves is None:
+        return mapped_rec
+    ev_grid, gains = curves
+    scene = np.maximum(np.asarray(scene_rec2020, dtype=np.float32), 0.0)
+    ev_y = np.log2(np.maximum((scene @ REC2020_LUMA_WEIGHTS) / np.float32(0.18), EPS))
+    gain = np.stack(
+        [np.interp(ev_y, ev_grid, gains[:, c]).astype(np.float32) for c in range(3)],
+        axis=-1,
+    )
+    return (mapped_rec * gain).astype(np.float32, copy=False)
 
 
 def finish_formation(
@@ -1009,7 +1057,8 @@ def apply_core(rgb_rec2020: Any, plan: Any, inset_matrix: Any, outset_matrix: An
     inset, pre_hue = prepare_formation(rgb_rec2020, plan, inset_matrix)
     gain = film_channel_gain(inset, plan, formation_luma_row(outset_matrix))
     linear = apply_formation_curve(inset, plan)
-    return finish_formation(linear, pre_hue, plan, outset_matrix, channel_gain=gain)
+    mapped = finish_formation(linear, pre_hue, plan, outset_matrix, channel_gain=gain)
+    return apply_film_color_rec2020(mapped, rgb_rec2020, plan)
 
 
 def apply_core_parallel(
@@ -1035,6 +1084,7 @@ def apply_core_parallel(
     pre_hue = (
         pre_hue_future.result()[:, 0] if pre_hue_future is not None else None
     )
-    return finish_formation(
+    mapped = finish_formation(
         linear, pre_hue, plan, outset_matrix, channel_gain=gain
     )
+    return apply_film_color_rec2020(mapped, rgb_rec2020, plan)

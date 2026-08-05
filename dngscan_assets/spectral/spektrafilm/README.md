@@ -29,3 +29,12 @@
 （2026-08-05 复核：本目录 28 个 JSON 与该 commit 的
 `src/spektrafilm/data/profiles/` 逐字节一致）。逐文件 SHA-256 见同目录
 `MANIFEST.sha256`；重新同步时更新 commit、清单与本行。
+
+## 发行边界（2026-08-05 立案）
+
+wheel 只打包 `dngscan/`；本目录（及整个 `dngscan_assets/`）不进 wheel。当前
+运行时已有两处对 `dngscan_assets` 的路径依赖（`display_filter` 的 vendor LUT、
+`look.py` 的 look_fields）——源码运行正常、安装后的 wheel 缺文件，属先存缺口。
+决策：光谱重建第三阶段的联合色头 npz（~1.3MiB/卷）与第四阶段的 full LUT 一律
+放入 `dngscan/data/`（随 wheel 发行），同时把上述两处先存依赖迁入包内或声明为
+可选数据件——打包重构随第三阶段实施，避免中间态反复。

@@ -23,10 +23,26 @@ from ._deps import np
 FILM_CURVE_PRESETS_JSON = Path(__file__).with_name("film_curve_presets.json")
 
 
+_SCHEMA_ERROR: str | None = None
+
+
 def _load() -> dict[str, dict[str, Any]]:
+    global _SCHEMA_ERROR
     try:
         raw = json.loads(FILM_CURVE_PRESETS_JSON.read_text(encoding="utf-8"))
     except (OSError, ValueError):
+        return {}
+    version = int(raw.get("version", 0) or 0)
+    if version != 2:
+        # v1 presets were calibrated in linear sRGB and consumed as diagonal
+        # gains in other bases — the exact coordinate error the spectral rebuild
+        # removes. The refusal is LAZY: importing dngscan (including the fit
+        # tool that regenerates this very file) must not die on stale data;
+        # any actual film request does, loudly.
+        _SCHEMA_ERROR = (
+            f"film_curve_presets.json schema v{version} is not supported; "
+            "regenerate with tools/fit_film_curve.py (schema v2, Rec.2020 basis)"
+        )
         return {}
     presets = raw.get("presets", {})
     return presets if isinstance(presets, dict) else {}
@@ -44,6 +60,8 @@ def film_curve_label(name: str) -> str:
 
 
 def validate_film_curve(name: str) -> str:
+    if name != "none" and _SCHEMA_ERROR:
+        raise RuntimeError(_SCHEMA_ERROR)
     if name == "none" or name in FILM_CURVE_PRESETS:
         return name
     raise ValueError(
@@ -103,9 +121,10 @@ _RATIO_FIELD_CACHE: dict[str, tuple[Any, Any] | None] = {}
 def channel_ratio_field(name: str) -> tuple[Any, Any] | None:
     """Measured per-channel ratio field r_c(EV) of a preset; None when absent.
 
-    r_c(EV) = T_c(EV) / T_neutral(EV) along the stock's balanced neutral ramp — the
-    layer-saturation differential solved by tools/fit_film_curve.py from the same
-    channels, balance and surround term as the tone target. Returns
+    r_c(EV) = neutral_gain_rec2020 = neutral_rgb_rec2020(EV) / target_Y(EV) along
+    the stock's balanced neutral ramp — the exposure-dependent neutral colour
+    solved by tools/fit_film_curve.py in the same Rec.2020 basis and viewing
+    translation as the tone target (schema v2). Returns
     (ev_grid, ratios[N, 3]) as read-only float32 arrays for np.interp consumption;
     the grid is ascending and covers the fit domain, and interpolation clamps at the
     ends by construction (deep white ratios approach 1, deep shadow ratios approach
@@ -115,11 +134,11 @@ def channel_ratio_field(name: str) -> tuple[Any, Any] | None:
     if key in _RATIO_FIELD_CACHE:
         return _RATIO_FIELD_CACHE[key]
     preset = FILM_CURVE_PRESETS.get(key)
-    raw = preset.get("channel_ratio_curve") if isinstance(preset, dict) else None
+    raw = preset.get("neutral_curve") if isinstance(preset, dict) else None
     field: tuple[Any, Any] | None = None
-    if isinstance(raw, dict) and raw.get("ev") and raw.get("ratio_rgb"):
+    if isinstance(raw, dict) and raw.get("ev") and raw.get("neutral_gain_rec2020"):
         ev = np.asarray(raw["ev"], dtype=np.float32)
-        ratios = np.asarray(raw["ratio_rgb"], dtype=np.float32)
+        ratios = np.asarray(raw["neutral_gain_rec2020"], dtype=np.float32)
         if ev.ndim == 1 and ratios.shape == (ev.size, 3) and ev.size >= 2:
             # De-duplicate the stored grid (the fitter's index subsample can repeat
             # rows); np.interp requires strictly usable ascending x.
