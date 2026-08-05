@@ -105,21 +105,46 @@ def blackbody_spd(wavelengths_nm: np.ndarray, temp_k: float) -> np.ndarray:
     return spd / np.max(spd)
 
 
+def _require_colour_science():
+    """Calibration-grade colorimetry is not optional (review finding: presets
+    silently depended on whether colour-science happened to be installed —
+    parameters moved by up to 0.43 between environments). The analytic
+    approximations remain reachable only by explicit request."""
+    try:
+        import colour  # type: ignore[import-not-found]
+
+        return colour
+    except ImportError as exc:
+        raise RuntimeError(
+            "colour-science is required for calibration-grade fitting; install it "
+            "with `pip install 'dngscan[calibration]'` or pass "
+            "standard_data='approximate' to explicitly accept the analytic "
+            "CMF/blackbody approximations (the choice is stamped into the output)."
+        ) from exc
+
+
+def colorimetry_provenance(standard_data: str = "auto") -> dict:
+    """What produced the colorimetric numbers — stamped into fit outputs."""
+    if standard_data == "approximate":
+        return {"backend": "approximate", "detail": "analytic CMF + blackbody SPDs"}
+    colour = _require_colour_science()
+    return {
+        "backend": "colour-science",
+        "version": str(getattr(colour, "__version__", "unknown")),
+        "cmf": "CIE 1931 2 Degree Standard Observer",
+    }
+
+
 def illuminant_spd(name: str, standard_data: str = "auto", csv_path: Path | None = None) -> np.ndarray:
     if csv_path is not None:
         return load_spd_csv(csv_path)
     key = name.upper()
-    if standard_data in {"auto", "colour"}:
-        try:
-            import colour  # type: ignore[import-not-found]
-
-            shape = colour.SpectralShape(400, 700, 10)
-            sd = colour.SDS_ILLUMINANTS[key].copy().align(shape)
-            values = np.asarray(sd.values, dtype=np.float64)
-            return values / max(float(np.max(values)), 1e-12)
-        except Exception:
-            if standard_data == "colour":
-                raise
+    if standard_data != "approximate":
+        colour = _require_colour_science()
+        shape = colour.SpectralShape(400, 700, 10)
+        sd = colour.SDS_ILLUMINANTS[key].copy().align(shape)
+        values = np.asarray(sd.values, dtype=np.float64)
+        return values / max(float(np.max(values)), 1e-12)
     if key == "A":
         return blackbody_spd(WL, 2856.0)
     if key == "D65":
@@ -132,16 +157,11 @@ def illuminant_spd(name: str, standard_data: str = "auto", csv_path: Path | None
 def cie_1931_cmf(wavelengths_nm: np.ndarray, standard_data: str = "auto", csv_path: Path | None = None) -> np.ndarray:
     if csv_path is not None:
         return load_curve_csv(csv_path)
-    if standard_data in {"auto", "colour"}:
-        try:
-            import colour  # type: ignore[import-not-found]
-
-            shape = colour.SpectralShape(400, 700, 10)
-            cmfs = colour.MSDS_CMFS["CIE 1931 2 Degree Standard Observer"].copy().align(shape)
-            return np.asarray(cmfs.values, dtype=np.float64)
-        except Exception:
-            if standard_data == "colour":
-                raise
+    if standard_data != "approximate":
+        colour = _require_colour_science()
+        shape = colour.SpectralShape(400, 700, 10)
+        cmfs = colour.MSDS_CMFS["CIE 1931 2 Degree Standard Observer"].copy().align(shape)
+        return np.asarray(cmfs.values, dtype=np.float64)
     return cie_1931_cmf_approx(wavelengths_nm)
 
 
