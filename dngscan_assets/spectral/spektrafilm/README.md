@@ -20,4 +20,7 @@
 按 CC BY-SA 4.0 处理，出处写入各预设 `source` 字段。反转片无相纸环节（自身即正像），
 拟合残差系统性偏大并如实记录在 `fit.rms_stop`（AgX 曲线族对正片陡 S 的表达边界）。
 
-引入日期：2026-07-29。上游 commit 以克隆时 main 为准；重新同步时更新本行。
+引入日期：2026-07-29。上游 commit：`3bb2c2d2801ff68b92019cf1dbcbb133d60832bc`
+（2026-08-05 复核：本目录 28 个 JSON 与该 commit 的
+`src/spektrafilm/data/profiles/` 逐字节一致）。逐文件 SHA-256 见同目录
+`MANIFEST.sha256`；重新同步时更新 commit、清单与本行。

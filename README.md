@@ -46,10 +46,14 @@ If the RAW contains no reliable highlight information, AgXRAW does not invent HD
 
 One RAW, four observation positions: the AgX baseline (no film), Kodak Portra 400
 (negative + paper), Fujifilm Velvia 100 (reversal), and Vision3 250D in its theatrical
-quotation. Every preset is constructed declaratively from datasheet data — the WB
-Kelvin, the layer separation, the development curve, the layer-saturation differential
-— with no hand-tuned sliders and no baked LUT. All twenty stocks and five theatrical
-variants are described in the [architecture notes](docs/ARCHITECTURE.md).
+quotation. Each stock's calibrated base — the WB Kelvin, the layer separation, the
+development curve, the layer-saturation differential — is constructed declaratively
+from datasheet data, with no baked LUT. The default look of a stock then adds two
+declarations that are explicitly editorial, not measured: a separation-strength
+pairing and an AgX primaries pairing, chosen by stock reputation. Both are visible
+in the UI, freely adjustable, and never override a value you set yourself — the
+measured base and the editorial pairing stay distinguishable. All twenty stocks and
+five theatrical variants are described in the [architecture notes](docs/ARCHITECTURE.md).
 
 ## Features
 
@@ -71,7 +75,7 @@ variants are described in the [architecture notes](docs/ARCHITECTURE.md).
 
 ## Quick start
 
-Python 3.10 or newer is required. The validated rawpy/LibRaw dependency is built
+Python 3.11 or newer is required (the CI-tested floor). The validated rawpy/LibRaw dependency is built
 from its pinned source revision on first install, so Git and a native compiler
 are also required (Xcode Command Line Tools on macOS, or the standard build
 toolchain on Linux).

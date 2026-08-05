@@ -42,9 +42,12 @@ AgXRAW 也不会凭空增加 HDR 余量。
 ![AgX 基线、Portra 400、Velvia 100 与 Vision3 250D 影院外观对比](docs/assets/film-observation-showcase.jpg)
 
 同一张 RAW 的四种观察位置：AgX 基线（无胶片）、Kodak Portra 400（负片+相纸）、
-Fujifilm Velvia 100（反转片）、Vision3 250D 影院放映外观（引用原文变体）。每个
-预设都由数据手册数据声明式构成——白平衡色温、感色层分离、显影曲线、层饱和差异
-——没有手调滑杆，也没有烘焙的 LUT。二十款胶卷与五款影院变体见
+Fujifilm Velvia 100（反转片）、Vision3 250D 影院放映外观（引用原文变体）。每款
+胶卷的**校准基底**——白平衡色温、感色层分离、显影曲线、层饱和差异——由数据手册
+数据声明式构成，没有烘焙的 LUT。在此之上，每款的默认观感另加两项**明确标注为
+编辑取向（非测量）**的声明：按胶卷口碑配对的分离强度倍率与 AgX 原色几何。两者
+都在界面可见、随时可改，且永远不会覆盖你亲手设置的值——测量基底与编辑配对
+始终可区分。二十款胶卷与五款影院变体见
 [架构文档](docs/ARCHITECTURE.zh-CN.md)。
 
 ## 功能
@@ -65,7 +68,7 @@ Fujifilm Velvia 100（反转片）、Vision3 250D 影院放映外观（引用原
 
 ## 快速开始
 
-需要 Python 3.10 或更新版本。项目已把验证过的 rawpy/LibRaw 源码版本锁为直接依赖，
+需要 Python 3.11 或更新版本（CI 实测覆盖的下限）。项目已把验证过的 rawpy/LibRaw 源码版本锁为直接依赖，
 首次安装会进行本机构建，因此还需要 Git 和 C/C++ 编译工具（macOS 使用 Xcode Command
 Line Tools，Linux 使用系统标准构建工具链）。
 

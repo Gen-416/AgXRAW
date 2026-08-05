@@ -23,7 +23,7 @@ from .constants import PROXY_LONG_EDGE
 # v11: RAW guidance gained the compiled permission map. Older entries can still
 # recompute it, but forcing one rebuild keeps the preview hot path and its exactness
 # contract independent of which cache version happened to be on disk.
-PREVIEW_CACHE_VERSION = 11
+PREVIEW_CACHE_VERSION = 12
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -214,6 +214,20 @@ def _evidence_cache_identity(path: Path) -> tuple[str, int, int, str]:
     )
 
 
+def _scene_decoder_runtime_id(decoder: str) -> str:
+    """The actual system decoder behind the requested one, or "" when LibRaw owns it.
+
+    Apple revises the Core Image RAW models by OS build, so cached Core Image pixels
+    are only valid for the build that decoded them; the LibRaw runtime already rides
+    the evidence identity.
+    """
+    if str(decoder) != "coreimage":
+        return ""
+    from dngscan.coreimage_decode import decoder_runtime_id
+
+    return str(decoder_runtime_id())
+
+
 def _cache_identity(
     path: Path,
     highlight: str,
@@ -221,7 +235,7 @@ def _cache_identity(
     decoder: str = "libraw",
     coreimage_version: str = "auto",
     demosaic: str = "auto",
-) -> tuple[tuple[str, int, int, str, str, str, str, str], str]:
+) -> tuple[tuple[str, int, int, str, str, str, str, str, str], str]:
     evidence_key = _evidence_cache_identity(path)
     key = (
         *evidence_key,
@@ -229,6 +243,7 @@ def _cache_identity(
         str(decoder),
         str(coreimage_version),
         str(demosaic),
+        _scene_decoder_runtime_id(decoder),
     )
     encoded = "\0".join(
         (
@@ -468,7 +483,12 @@ def build_proxy_entry(
     return PreviewEntry(bundle=bundle, analysis=analysis)
 
 
-def _read_disk_entry(cache_path: Path, source_path: Path, require_guidance: bool) -> PreviewEntry | None:
+def _read_disk_entry(
+    cache_path: Path,
+    source_path: Path,
+    require_guidance: bool,
+    expected_runtime: str | None = None,
+) -> PreviewEntry | None:
     np = dg.np
     try:
         with np.load(cache_path, allow_pickle=False) as payload:
@@ -477,6 +497,10 @@ def _read_disk_entry(cache_path: Path, source_path: Path, require_guidance: bool
                 return None
             if require_guidance and not bool(metadata.get("has_guidance", False)):
                 return None
+            if expected_runtime:
+                stored = str(metadata.get("bundle", {}).get("scene_decoder_runtime") or "")
+                if stored != expected_runtime:
+                    return None
             scene = np.asarray(payload["scene"]).copy()
             masks = np.asarray(payload["masks"]).copy() if bool(metadata.get("has_masks", False)) else None
             guidance = None
@@ -576,7 +600,7 @@ class PreviewCache:
 
     def __init__(self) -> None:
         self.entries: OrderedDict[
-            tuple[str, int, int, str, str, str, str, str], PreviewEntry
+            tuple[str, int, int, str, str, str, str, str, str], PreviewEntry
         ] = OrderedDict()
         self.lock = threading.Lock()
         self.build_lock = threading.Lock()
@@ -629,7 +653,12 @@ class PreviewCache:
                 )
 
             cache_path = _cache_dir() / f"{digest}.npz"
-            cached = _read_disk_entry(cache_path, path, require_guidance)
+            cached = _read_disk_entry(
+                cache_path,
+                path,
+                require_guidance,
+                expected_runtime=_scene_decoder_runtime_id(decoder) or None,
+            )
             if cached is None:
                 # The cold entry is always the one fixed as-shot DecodeContext.  WB no
                 # longer participates in the disk/memory identity or decoder call.

@@ -12,7 +12,7 @@ from dngscan._deps import np
 from dngscan.gui.page import render_page
 from dngscan.gui.server import store_upload
 from dngscan.gui.service import downsample_mean
-from dngscan.gui.service import export_suffix_parts
+from dngscan.gui.service import export_plan_fingerprint, export_suffix_parts
 
 
 class ExportSuffixTests(unittest.TestCase):
@@ -58,6 +58,28 @@ class ExportSuffixTests(unittest.TestCase):
 
     def test_default_agx_only(self) -> None:
         self.assertEqual(export_suffix_parts("clip", "srgb", "sdr"), "agx")
+
+    def test_plan_fingerprint_separates_renders_the_suffix_cannot(self) -> None:
+        base = dict(
+            wb="camera", ev=0.0, highlight="clip", gamut="p3", output_format="sdr",
+            film_curve="portra400", film_mode="observe", lens_filter="none",
+            adjustments=(0.0,) * 7,
+        )
+        same = export_plan_fingerprint(**base)
+        self.assertEqual(same, export_plan_fingerprint(**base))
+        self.assertEqual(len(same), 6)
+        for key, value in (
+            ("film_curve", "velvia100"),   # 不同曲线预设的 observe 输出
+            ("wb", "5500k"),
+            ("ev", 0.7),
+            ("lens_filter", "85b"),
+            ("adjustments", (0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+        ):
+            changed = dict(base); changed[key] = value
+            self.assertNotEqual(
+                same, export_plan_fingerprint(**changed),
+                f"fingerprint must change with {key}",
+            )
 
     def test_nondefault_primaries_path_is_named(self) -> None:
         self.assertEqual(
