@@ -373,7 +373,7 @@ class HdrReferenceDispatchSemanticsTests(unittest.TestCase):
         from dngscan.hdr_color import blend_native_hdr_paths, output_luma_weights
 
         inset, pre_hue = agx_engine.prepare_formation(rgb, setup[1], setup[2])
-        channel_gain = agx_engine.film_channel_gain(inset, setup[1], setup[4])
+        channel_gain = None
         native_formation = setup[5][0].apply(inset)
         common = blend_native_hdr_paths(
             setup[5][1].apply(inset), native_formation, 0.0, setup[4]

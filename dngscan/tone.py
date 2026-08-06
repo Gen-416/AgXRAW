@@ -758,7 +758,7 @@ def build_render_plan(
         mode_value = film_mode if film_mode in ("observe", "full") else "observe"
         # Crossover is a declaration on the ratio field: it rides the plan only
         # alongside an active preset, defaults to "off" (byte-identical status quo)
-        # and is inert outside full mode (agx.channel_ratio_gain's mode gate).
+        # and is inert outside full mode (the film-takeover LUT's variant switch).
         # It must be stamped here, with the preset itself — not inside the
         # colour-head block below, which only runs for nonzero CC values (the
         # #20/#21 merge briefly moved it there, which silently killed
