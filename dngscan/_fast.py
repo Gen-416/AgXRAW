@@ -68,9 +68,6 @@ def available() -> bool:
     return _load_extension() is not None
 
 
-def backend_name() -> str:
-    return "cpp" if available() else "numpy"
-
 
 def supports_agx(plan: ToneCompressionPlan) -> bool:
     if str(getattr(plan, "tone_core", "agx")) != "agx":

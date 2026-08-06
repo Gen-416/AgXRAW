@@ -113,8 +113,9 @@ if __name__ == "__main__":
 class PeriodicInterpPortabilityTests(unittest.TestCase):
     def test_nan_hue_is_nan_out_without_platform_defined_indexing(self) -> None:
         # float->int of NaN is platform-defined (INT32_MIN on x86_64 Linux, an
-        # out-of-bounds index); the interp must route NaN explicitly. CI on
-        # ubuntu is the true gate; this pins the contract on every platform.
+        # out-of-bounds index); the interp must route NaN explicitly. The
+        # ubuntu CI leg used to be the gate; since the platform converged on
+        # macOS this test is the only one pinning the contract.
         from dngscan.look import _periodic_interp
 
         hue = np.array([np.nan, np.inf, -np.inf, 45.0], dtype=np.float32)

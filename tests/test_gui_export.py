@@ -11,7 +11,7 @@ from pathlib import Path
 from dngscan._deps import np
 from dngscan.gui.page import render_page
 from dngscan.gui.server import store_upload
-from dngscan.gui.service import downsample_mean
+from dngscan.gui.preview_cache import downsample_mean
 from dngscan.gui.service import export_plan_fingerprint, export_suffix_parts
 
 

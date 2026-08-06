@@ -264,7 +264,8 @@ def _neg_amounts_at(neg: dict, log_e: np.ndarray, e_offset: float = 0.0) -> np.n
 
 
 def chain_eval(stock: dict, chain: _Chain, a: np.ndarray, rgb: np.ndarray) -> np.ndarray:
-    """The full offline chain for arbitrary post-prefeed Rec.2020 samples."""
+    """The full offline chain for arbitrary PLAIN scene Rec.2020 samples
+    (prefeed bypassed in full mode; the observer inverse owns separation)."""
     log_e = _layer_log_exposure(rgb, a)
     offset = chain.e0 if chain.reversal else 0.0
     amounts = _neg_amounts_at(chain.neg, log_e, offset)

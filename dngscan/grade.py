@@ -67,15 +67,6 @@ def grade_choices() -> tuple[str, ...]:
     return ("none",) + looks + filters
 
 
-def is_filter_grade(name: str) -> bool:
-    kind, _ = parse_grade_id(name)
-    return kind == "filter"
-
-
-def is_look_grade(name: str) -> bool:
-    kind, _ = parse_grade_id(name)
-    return kind == "look"
-
 
 def resolve_grade(name: str, strength: float) -> tuple[str, float, str, float]:
     """Map a grade id to (look, look_strength, filter, filter_strength)."""

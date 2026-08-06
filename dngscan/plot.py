@@ -96,37 +96,6 @@ def clipped_rgb_map(bundle: RawBundle, analysis: Analysis) -> Any:
     return np.dstack(channels).astype(np.float32)
 
 
-def raw_histogram(vals: Any, xmax: int) -> tuple[Any, Any]:
-    if xmax <= 262_144:
-        clipped = vals[(vals >= 0) & (vals <= xmax)]
-        counts = np.bincount(clipped.astype(np.int64), minlength=xmax + 1)
-        x = np.arange(xmax + 1)
-        return x, counts
-    counts, edges = np.histogram(vals, bins=4096, range=(0, xmax))
-    x = (edges[:-1] + edges[1:]) * 0.5
-    return x, counts
-
-
-def smooth_counts(counts: Any, window: int = 9) -> Any:
-    if window <= 1 or counts.size < 3:
-        return counts.astype(np.float64, copy=False)
-    window = min(window, int(counts.size))
-    if window % 2 == 0:
-        window -= 1
-    if window <= 1:
-        return counts.astype(np.float64, copy=False)
-    kernel = np.ones(window, dtype=np.float64) / float(window)
-    return np.convolve(counts.astype(np.float64, copy=False), kernel, mode="same")
-
-
-def raw_histogram_trend(vals: Any, xmax: int, bins: int = 1024) -> tuple[Any, Any]:
-    bins = max(64, min(int(bins), max(int(xmax), 64)))
-    counts, edges = np.histogram(vals, bins=bins, range=(0, xmax))
-    centers = (edges[:-1] + edges[1:]) * 0.5
-    pct = smooth_counts(counts, window=11) / max(int(vals.size), 1) * 100.0
-    return centers, pct
-
-
 def gaussian_kernel1d(sigma: float = 1.2, radius: int | None = None) -> Any:
     if radius is None:
         radius = max(1, int(math.ceil(sigma * 3.0)))
@@ -241,73 +210,6 @@ def threshold_stop_for_channel_ids(
         ratio = max((threshold - black) / denom, 2.0 ** floor)
         stops.append(math.log2(ratio))
     return float(min(stops)) if stops else 0.0
-
-
-def plot_raw_stop_multiples(fig: Any, ax_slot: Any, bundle: RawBundle, analysis: Analysis) -> None:
-    groups = rgb_channel_groups(analysis.channel_ids, analysis.labels)
-    if not groups:
-        ax_slot.set_axis_off()
-        ax_slot.text(0.5, 0.5, "No RGB channels", ha="center", va="center", transform=ax_slot.transAxes)
-        return
-
-    raw_spec = ax_slot.get_subplotspec()
-    fig.delaxes(ax_slot)
-    raw_gs = raw_spec.subgridspec(len(groups), 1, hspace=0.08)
-    raw_axes = [fig.add_subplot(raw_gs[i, 0]) for i in range(len(groups))]
-
-    x_min = EV_REPORT_FLOOR
-    x_max = 0.25
-    color_by_group = {"R": "#d62728", "G": "#2ca02c", "B": "#1f77b4"}
-
-    for index, (group_name, ids) in enumerate(groups):
-        ax = raw_axes[index]
-        stops = stops_for_channel_ids(bundle, ids, analysis.channel_fullwell, x_min)
-        x, density = normalized_stop_density(stops, x_min, x_max)
-        median_stop = float(np.median(stops)) if stops.size else float("nan")
-        clip_pct = clip_pct_for_channel_ids(bundle, ids, analysis.channel_thresholds)
-        thr_stop = threshold_stop_for_channel_ids(
-            bundle, ids, analysis.channel_thresholds, analysis.channel_fullwell, x_min
-        )
-        color = color_by_group.get(group_name, "#555555")
-
-        ax.axvspan(thr_stop, x_max, color="#d62728", alpha=0.10)
-        ax.plot(x, density, color=color, lw=1.9)
-        ax.fill_between(x, 0, density, color=color, alpha=0.10)
-        if not math.isnan(median_stop):
-            ax.axvline(median_stop, color=color, ls="--", lw=1.0)
-        ax.axvline(thr_stop, color="#d62728", ls=":", lw=1.0)
-        ax.set_ylim(0, 105)
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylabel(group_name, rotation=0, ha="right", va="center", labelpad=18, fontsize=10)
-        ax.grid(True, axis="x", alpha=0.18)
-        ax.grid(True, axis="y", alpha=0.12)
-        ax.text(
-            0.98,
-            0.75,
-            f"clip {format_pct(clip_pct)}%\nmed {median_stop:.2f} EV",
-            ha="right",
-            va="top",
-            transform=ax.transAxes,
-            fontsize=8,
-            family="monospace",
-            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "edgecolor": "#cccccc", "alpha": 0.82},
-        )
-        if index < len(groups) - 1:
-            ax.tick_params(axis="x", labelbottom=False)
-        else:
-            ax.set_xlabel("Stops from clipping: log2((raw - black) / (fullwell - black))")
-        if index == 0:
-            ax.set_title("Raw Channel Distributions")
-    raw_axes[0].text(
-        0.01,
-        0.88,
-        "density peak=100, smoothed for display only",
-        transform=raw_axes[0].transAxes,
-        fontsize=7.5,
-        color="#555555",
-        ha="left",
-        va="top",
-    )
 
 
 def plot_snr_panel(ax: Any, analysis: Analysis) -> None:
@@ -484,12 +386,6 @@ def plot_rgb_ev_panel(ax: Any, bundle: RawBundle, analysis: Analysis, ev: Any) -
         fontsize=7.5,
         color="#555555",
     )
-
-
-def line_style_for_label(label: str) -> str:
-    if label.endswith("2"):
-        return "--"
-    return "-"
 
 
 def plot_dashboard(

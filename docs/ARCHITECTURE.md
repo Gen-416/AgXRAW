@@ -206,7 +206,7 @@ the completed SDR pixels as its tone-map input.
 flowchart TB
     SCENE["Stored scene-linear Rec.2020 frame"]
     SCALE["Interpret scene units<br/>stored / scene_scale x fixed anchor x 2^EV"]
-    PREFEED["Optional scene-linear prefeed<br/>camera-response correction or film spectral separation (20 stocks)<br/>adapted to the declared WB; lens filters apply before it"]
+    PREFEED["Optional scene-linear prefeed<br/>camera-response correction or film spectral separation (20 stocks)<br/>adapted to the declared WB; lens filters apply before it<br/>(bypassed entirely in film full mode)"]
     PLAN["RenderPlan<br/>+ Analysis as separate evidence"]
     MASKS["Per-pixel CFA masks and guidance<br/>LibRaw geometry only"]
     LOOKPOLICY["Optional local-look plan overrides<br/>AgX hue restore and target black/white"]
@@ -912,24 +912,27 @@ flowchart LR
   transport all carry over.
 - **Development curve + viewing translation** (layer 2): the end-to-end target is a
   **spectral contact print** — the negative dye stack's transmittance spectrum, times
-  the paper's own spectral sensitivity under a 3200K enlarger (the TH-KG3
-  convention), developed through the paper's per-dye curves, then read as relative
+  the paper's own spectral sensitivity under the TH-KG3 enlarger (3400 K
+  blackbody through a Schott KG3 heat filter), developed through the paper's per-dye curves, then read as relative
   colorimetry under the declared viewing illuminant — solved by least squares into a
   named AgX coordinate. Whole-roll consistency (scene adaptation off while active);
   the EV0 -> 0.18 anchor holds through a global exposure solve (light-meter
-  semantics); the medium's floor enters through `target_black_linear`. The
-  translation is **viewing-condition complete**: viewing flare routed by medium
-  (reflection prints 1.0% per IEC 61966-2-1; dark-surround projection 0), and
-  dark-surround media (slides, the Vision3 -> 2383 projection chain) converted to
+  semantics); the medium's floor enters through `target_black_linear`. Calibration
+  carries **zero viewing flare** for every medium (schema v4, medium-native: the
+  display room's named flare constants are reserved for a future view-simulation
+  layer and never enter film curves); dark-surround media (slides, the
+  Vision3 -> 2383 projection chain) are converted to
   the average-surround delivery through the classic surround constants (dark 1.5 /
   dim 1.2 / average 1.0; Bartleson-Breneman, Fairchild 2013). The raw "2383 print on
   a monitor" appearance is the `*_theatrical` quotation variant — the contract
   separates **translation** from **quotation**; quotations occupy neither the
   stock's name nor its viewing translation.
 - **Exposure-dependent colour**: in observe mode, the joint Y x M colour-head
-  field for negatives (stage 3 — both filter densities perturb the print
+  field for negatives (both filter densities perturb the print
   exposures together and the print is re-timed once; published as diagonal
-  Bradford-LMS gains, exact identity at 0CC). In full mode, the offline-baked
+  Bradford-LMS gains on a shared adaptive EV grid, exact identity at 0CC,
+  shipped as schema-4 npz whose bytes are SHA-256-pinned inside the preset
+  JSON). In full mode, the offline-baked
   spectral-chain 65-cubed LUT (stage 4 — constrained observer inverse, per-layer
   characteristic curves, TH-KG3 print chain or direct slide viewing, with the
   observer's metamer residual stamped per stock). The colour dimension still has
@@ -1032,10 +1035,17 @@ layer can be overridden individually — **nothing is baked**. Every preset reco
 `source`, `fit.rms_stop` and `fit.pinned` (bound-pinned parameters = declared
 out-of-domain extrapolation); profile data is spektrafilm's under CC BY-SA 4.0
 (provenance chain in NOTICE.md and `dngscan_assets/spectral/spektrafilm/README.md`).
-Current fit levels (post spectral print): all 25 presets at rms <= 0.061 —
-negatives 0.012-0.033, reversals 0.028-0.053, theatrical quotations 0.026-0.061;
-out-of-domain black-end pins are gone entirely (the flare floor gives the toe a
-real landing, so black_ev is data-determined).
+Current fit levels (medium-native v4, zero calibration flare): all 25 presets at
+rms <= 0.061 — negatives 0.014-0.044, reversals 0.022-0.053, theatrical
+quotations 0.027-0.061. Removing the baked viewing flare returned every reversal
+to an unpinned interior solution (Velvia's white ceiling relaxed from the +8.5
+bound to +7.59); the few remaining pins (gold200/Vision3 white_ev@8.5, Verita
+toe_power@3.5) are recorded honestly in `fit.pinned` — the C1 family's declared
+expressive boundary for hard-shouldered media, not a data defect. The v4 preset
+schema also publishes both floors (`medium_floor_linear` through the declared
+surround translation, `medium_floor_native_linear` at the medium's raw Dmax) and
+names the policy: `black_policy` medium-native (exponent 1: papers, theatrical)
+vs medium-translated (dark-surround media).
 
 ### External validation
 

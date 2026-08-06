@@ -19,14 +19,6 @@ from .constants import (
 from .models import RawBundle
 from .evidence import EvidenceAcquisitionError, acquire_raw_evidence
 
-def decode_color_desc(desc: Any) -> str:
-    if isinstance(desc, bytes):
-        text = desc.decode("ascii", errors="replace")
-    else:
-        text = str(desc)
-    return text.replace("\x00", "").strip()
-
-
 def rawpy_highlight_mode(name: str) -> Any:
     modes = getattr(rawpy, "HighlightMode", object)
     mapping = {
@@ -45,29 +37,6 @@ def highlight_mode_cn(name: str) -> str:
         "blend": "高光混合",
         "reconstruct": "高光重建",
     }.get(name, name)
-
-
-def wb_postprocess_kwargs(
-    wb_mode: str,
-    daylight_wb: list[float] | None,
-    kelvin_wb: list[float] | None = None,
-) -> dict[str, Any]:
-    """Film-style fixed balances or the as-shot camera balance (default).
-
-    'daylight' uses libraw's calibrated daylight multipliers; the fixed-Kelvin modes
-    take pre-solved multipliers from dngscan.wb (declared references, computed through
-    the file's own colour calibration). One dict so every render agrees."""
-    if wb_mode == "daylight" and daylight_wb is not None and any(v > 0 for v in daylight_wb[:3]):
-        return {"use_camera_wb": False, "user_wb": [float(v) for v in daylight_wb[:4]]}
-    if kelvin_mode_cct(wb_mode) is not None:
-        if kelvin_wb is None or not any(v > 0 for v in kelvin_wb[:3]):
-            raise ValueError(f"kelvin wb mode {wb_mode} requires solved multipliers")
-        return {"use_camera_wb": False, "user_wb": [float(v) for v in kelvin_wb[:4]]}
-    if wb_mode not in WB_CHOICES:
-        raise ValueError(f"unknown wb mode: {wb_mode}")
-    return {"use_camera_wb": True}
-
-
 
 
 def _fixed_asshot_wb_kwargs(camera_wb: Any) -> dict[str, Any]:
@@ -756,32 +725,6 @@ def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
     )
 
 
-def render_to_xyz(
-    raw: Any,
-    highlight_mode_name: str = "clip",
-    demosaic: Any = None,
-    half_size: bool = False,
-    wb_kwargs: dict[str, Any] | None = None,
-) -> Any:
-    if not hasattr(rawpy.ColorSpace, "XYZ"):
-        raise RuntimeError("rawpy.ColorSpace.XYZ is not available; cannot make device-independent EV/gamut metrics")
-    # Render-dependent analysis (luminance, EV, gamut risk) uses the SAME demosaic and
-    # highlight mode as the export buffer, so the stats match the image you actually get.
-    # user_flip=0 keeps it unrotated and aligned with the raw-domain CFA maps.
-    return raw.postprocess(
-        output_color=rawpy.ColorSpace.XYZ,
-        gamma=(1, 1),
-        half_size=half_size,
-        demosaic_algorithm=(None if half_size else demosaic),
-        no_auto_bright=True,
-        adjust_maximum_thr=0.0,
-        highlight_mode=rawpy_highlight_mode(highlight_mode_name),
-        output_bps=16,
-        user_flip=0,
-        **(wb_kwargs or {"use_camera_wb": True}),
-    )
-
-
 def resolve_demosaic_algorithm(raw: Any, requested: str) -> Any:
     """Pick a DemosaicAlgorithm for the full-res export, or None (libraw default).
 
@@ -832,19 +775,6 @@ def render_to_scene_rec2020(
         output_bps=16,
         user_flip=None,
         **(wb_kwargs or {"use_camera_wb": True}),
-    )
-
-
-def render_to_srgb8(raw: Any, highlight_mode_name: str = "clip") -> Any:
-    return raw.postprocess(
-        output_color=rawpy.ColorSpace.sRGB,
-        gamma=(2.222, 4.5),
-        no_auto_bright=True,
-        adjust_maximum_thr=0.0,
-        use_camera_wb=True,
-        highlight_mode=rawpy_highlight_mode(highlight_mode_name),
-        output_bps=8,
-        user_flip=None,
     )
 
 

@@ -37,8 +37,9 @@ def _load() -> dict[str, dict[str, Any]]:
         # v1 presets were calibrated in linear sRGB; v2 presets baked the
         # display room's viewing flare (IEC 1% for papers, 0.5% projection for
         # slides) into the medium's fitted black — a viewing-environment
-        # property masquerading as film character. Schema v3 is medium-native:
-        # black is the medium's own Dmax and calibration flare is zero by
+        # property masquerading as film character. Schema v4 is medium-native:
+        # black is the medium's own Dmax (through the declared surround
+        # translation where one applies) and calibration flare is zero by
         # contract. The refusal is LAZY: importing dngscan (including the fit
         # tool that regenerates this very file) must not die on stale data;
         # any actual film request does, loudly.
@@ -52,7 +53,7 @@ def _load() -> dict[str, dict[str, Any]]:
     if not isinstance(presets, dict):
         return {}
     for name, preset in presets.items():
-        # Hard v3 contract per preset — a mixed or hand-edited file fails
+        # Hard v4 contract per preset — a mixed or hand-edited file fails
         # closed instead of silently mixing black policies.
         try:
             policy = str(preset.get("black_policy"))
@@ -92,13 +93,6 @@ def _load() -> dict[str, dict[str, Any]]:
 
 FILM_CURVE_PRESETS: dict[str, dict[str, Any]] = _load()
 FILM_CURVE_CHOICES = ("none",) + tuple(FILM_CURVE_PRESETS)
-
-
-def film_curve_label(name: str) -> str:
-    if name == "none":
-        return "无"
-    preset = FILM_CURVE_PRESETS.get(name)
-    return str(preset.get("label", name)) if preset else name
 
 
 def validate_film_curve(name: str) -> str:

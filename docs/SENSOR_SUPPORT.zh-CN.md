@@ -58,7 +58,7 @@ A7S III、X100VI、**Zf**（初判"缺 Zf"是 `strings` 默认 4 字符下限吃
 
 项目构建已验证：`rawpy.__version__ = 0.27.0+libraw.e419de08`，并公开记录完整
 LibRaw 来源提交；`rawpy.libraw_version = (0, 22, 0)`（master 线），soname 26，
-A7 V 入表；**全套 454 项测试在 NumPy/原生两条路径零漂移通过**——master 对既有机型
+A7 V 入表；**当时的全套 454 项测试在 NumPy/原生两条路径零漂移通过**（2026-08-01 快照数字，测试规模随后续批次持续增长）——master 对既有机型
 （fp/iPhone 样张）的解码逐字节兼容，SDR 冻结与金标均未失效。
 
 两层的分工从此明确：**LibRaw 升级**解决"LibRaw 内部色彩转换缺矩阵"（回退表

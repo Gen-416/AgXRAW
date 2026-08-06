@@ -131,8 +131,9 @@ python -m dngscan photo.dng --jpeg photo_portra.jpg --film portra400
 
 ### 可选的 C++ 加速
 
-NumPy 是参考实现，不编译原生扩展也可以正常使用。可选的 pybind11 C++ 内核只加速 AgX
-中计算量最大的几个步骤；RAW 分析、渲染方案和出错时的回退处理仍由 Python 负责。
+NumPy 是参考实现，不编译原生扩展也可以正常使用。可选的 pybind11 C++ 内核加速 AgX
+核心与共享的 SDR 输出终段（16 轮 Oklab gamut fit、transfer、dither、量化）；
+RAW 分析、渲染方案和出错时的回退处理仍由 Python 负责。
 
 ```bash
 pip install pybind11 cmake

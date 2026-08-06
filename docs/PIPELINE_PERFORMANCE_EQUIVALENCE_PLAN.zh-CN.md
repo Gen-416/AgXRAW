@@ -69,7 +69,10 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
 
 transfer、dither/quantize 和 gamut-fit 可以融合到同一 native 调用，但 kernel 内仍要保留上述语义阶段。最终 RGB 必须 `memcmp` 相同；“最大 1 code value”不再是发布标准。
 
-#### 6. Metal/CUDA 只作为通过 exact gate 的执行后端
+#### 6. Metal（及未来任何 GPU 后端）只作为通过 exact gate 的执行后端
+
+> 注：本节的 CUDA 表述写于跨平台设想期；项目现已声明 macOS-only，CUDA 无实现
+> 计划。门禁条款对未来任何平台后端一体适用。
 
 场景、mask、噪声和 plan 在设备常驻，每帧只上传参数并回读 RGB8。Metal/CUDA 禁用 fast-math、收缩 FMA 和不确定 reduction，显式复现 float32 舍入、NaN/Inf、分支、16 轮二分和量化顺序。若平台的 `pow/cbrt` 无法与参考位级一致，使用经穷举验证的 LUT/软件实现，或保留该阶段在 CPU；不能降低门禁。
 
@@ -111,6 +114,6 @@ Mac/Metal、CUDA 和 CPU 各自独立 feature flag、ABI 和回退。ANE/NPU 只
 5. RenderPlan 单次 transformed sample；
 6. exact native analysis 与 exact scene-transform；
 7. 修正矩阵舍入和双平面 dither 后启用 exact output fast path；
-8. Metal，然后 CUDA；均以冻结后的项目 hot-WB oracle 为准。
+8. Metal（CUDA 已随 macOS-only 声明搁置）；以冻结后的项目 hot-WB oracle 为准。
 
 每一项必须是可独立关闭、可独立回退的提交。合入条件同时满足：严格等价门禁全绿、目标平台有真实 profile 收益、峰值内存和取消语义达标；三者缺一不可。

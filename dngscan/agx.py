@@ -128,7 +128,6 @@ AGX_PRIMARIES_PRESETS: dict[str, PrimariesGeometry] = {
     "muted": _MUTED_GEOMETRY,
     "smooth": _SMOOTH_GEOMETRY,
 }
-AGX_PRIMARIES_CHOICES = tuple(AGX_PRIMARIES_PRESETS.keys())
 # Human-readable aliases (CLI/GUI accept these; they resolve to canonical preset keys).
 AGX_PRIMARIES_ALIASES = {
     "agx_blender_strong": "base",
@@ -645,30 +644,6 @@ _AGX_OPPONENT_LUMA = np.asarray(
 )
 
 
-def _compress_into_gamut_reference(rgb: Any) -> Any:
-    """Allocation-heavy oracle retained for bit-exact hot-path tests."""
-    coeff = _AGX_OPPONENT_LUMA
-    with np.errstate(invalid="ignore", over="ignore", divide="ignore"):
-        input_y = coeff[0] * rgb[:, 0] + coeff[1] * rgb[:, 1] + coeff[2] * rgb[:, 2]
-        max_rgb = np.max(rgb, axis=1)
-        opponent = max_rgb[:, None] - rgb
-        opponent_y = coeff[0] * opponent[:, 0] + coeff[1] * opponent[:, 1] + coeff[2] * opponent[:, 2]
-        max_opponent = np.max(opponent, axis=1)
-        y_compensate_negative = max_opponent - opponent_y + input_y
-        offset = np.maximum(-np.min(rgb, axis=1), 0.0)
-        rgb_offset = rgb + offset[:, None]
-        max_offset = np.max(rgb_offset, axis=1)
-        opponent_offset = max_offset[:, None] - rgb_offset
-        max_inverse = np.max(opponent_offset, axis=1)
-        y_inverse = coeff[0] * opponent_offset[:, 0] + coeff[1] * opponent_offset[:, 1] + coeff[2] * opponent_offset[:, 2]
-        y_new = coeff[0] * rgb_offset[:, 0] + coeff[1] * rgb_offset[:, 1] + coeff[2] * rgb_offset[:, 2]
-        y_new = max_inverse - y_inverse + y_new
-        ratio = np.ones_like(y_new)
-        mask = (y_new > y_compensate_negative) & (y_new > EPS)
-        ratio[mask] = y_compensate_negative[mask] / y_new[mask]
-        return rgb_offset * ratio[:, None]
-
-
 def _rgb_to_hsv(rgb: Any) -> Any:
     r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
     maxc = np.max(rgb, axis=1)
@@ -694,27 +669,6 @@ def _rgb_to_hsv(rgb: Any) -> Any:
     return out
 
 
-def _rgb_to_hsv_reference(rgb: Any) -> Any:
-    """Fancy-indexing oracle retained for bit-exact hot-path tests."""
-    r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
-    maxc = np.max(rgb, axis=1)
-    minc = np.min(rgb, axis=1)
-    delta = maxc - minc
-    h = np.zeros_like(maxc)
-    mask = delta > EPS
-    rmask = mask & (maxc == r)
-    gmask = mask & (maxc == g) & ~rmask
-    bmask = mask & ~rmask & ~gmask
-    h[rmask] = ((g[rmask] - b[rmask]) / delta[rmask]) % 6.0
-    h[gmask] = (b[gmask] - r[gmask]) / delta[gmask] + 2.0
-    h[bmask] = (r[bmask] - g[bmask]) / delta[bmask] + 4.0
-    h = (h / 6.0) % 1.0
-    s = np.zeros_like(maxc)
-    positive = maxc > EPS
-    s[positive] = delta[positive] / maxc[positive]
-    return np.stack([h, s, maxc], axis=1)
-
-
 def _hsv_to_rgb(hsv: Any) -> Any:
     h = (hsv[:, 0] % 1.0) * 6.0
     s = np.clip(hsv[:, 1], 0.0, None)
@@ -731,26 +685,6 @@ def _hsv_to_rgb(hsv: Any) -> Any:
             np.copyto(out[:, 0], cr, where=m)
             np.copyto(out[:, 1], cg, where=m)
             np.copyto(out[:, 2], cb, where=m)
-    return out
-
-
-def _hsv_to_rgb_reference(hsv: Any) -> Any:
-    """Fancy-indexing oracle retained for bit-exact hot-path tests."""
-    h = (hsv[:, 0] % 1.0) * 6.0
-    s = np.clip(hsv[:, 1], 0.0, None)
-    v = hsv[:, 2]
-    i = np.floor(h).astype(np.int32) % 6
-    f = h - np.floor(h)
-    p = v * (1.0 - s)
-    q = v * (1.0 - s * f)
-    t = v * (1.0 - s * (1.0 - f))
-    out = np.empty((hsv.shape[0], 3), dtype=np.float32)
-    for idx, (cr, cg, cb) in enumerate([(v, t, p), (q, v, p), (p, v, t), (p, q, v), (t, p, v), (v, p, q)]):
-        m = i == idx
-        if np.any(m):
-            out[m, 0] = cr[m]
-            out[m, 1] = cg[m]
-            out[m, 2] = cb[m]
     return out
 
 
@@ -857,7 +791,8 @@ LMS_TO_REC2020 = np.asarray(
 def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> Any:
     """Observe-mode film colour, applied where it was calibrated (stage C).
 
-    The colour-head field (schema 3, stage-3 joint solve) is diagonal in
+    The colour-head field (schema 4 npz, content-pinned; the joint Y x M
+    solve) is diagonal in
     Bradford LMS along the neutral exposure axis; it applies to post-outset
     Rec.2020 pixels through the fixed LMS sandwich — a diagonal gain does not
     commute with the outset or any output matrix, which is exactly how the v1

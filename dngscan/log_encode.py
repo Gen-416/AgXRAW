@@ -2,7 +2,6 @@
 """Camera / print log encoders for display LUT filters (not ARRI look measurement)."""
 from __future__ import annotations
 
-from typing import Any
 
 from ._deps import np
 
@@ -14,7 +13,6 @@ _RWG_TO_XYZ = np.array(
     ],
     dtype=np.float64,
 )
-RWG_TO_XYZ = _RWG_TO_XYZ
 XYZ_TO_RWG = np.linalg.inv(_RWG_TO_XYZ)
 
 # Sony S-Gamut3.Cine to XYZ (D65), Sony technical summary "S-Gamut3/S-Gamut3.Cine".
@@ -26,7 +24,6 @@ _SGAMUT3CINE_TO_XYZ = np.array(
     ],
     dtype=np.float64,
 )
-SGAMUT3CINE_TO_XYZ = _SGAMUT3CINE_TO_XYZ
 XYZ_TO_SGAMUT3CINE = np.linalg.inv(_SGAMUT3CINE_TO_XYZ)
 
 # Sony S-Log3 (official spec): 18% scene -> 420/1023 = 0.4105, linear toe below 0.01125.

@@ -23,7 +23,7 @@ from .color import (
     rec2020_to_output, rgb_to_oklab, smoothstep,
 )
 from .models import Analysis, ColorGeometryPlan, RawBundle, RenderPlan, ToneCompressionPlan
-from .tone import build_render_plan, scene_intent_rec2020, scene_rec2020_to_float
+from .tone import build_render_plan, scene_intent_rec2020
 
 # Streamed-export chunking. The dither RNG consumes noise in quantize-group order, so
 # render chunks must tile each quantize group exactly (quantize % render == 0) for the
@@ -229,10 +229,6 @@ def _apply_output_color_ops(
             float(color_plan.display_highlight_chroma_end),
         )
     return piece
-
-
-def agx_compress_into_gamut(rgb: Any) -> Any:
-    return agx_engine.compress_into_gamut(rgb)
 
 
 def plan_with_look_overrides(

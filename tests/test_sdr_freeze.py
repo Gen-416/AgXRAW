@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import platform
 import unittest
 from pathlib import Path
 
@@ -20,13 +19,6 @@ from tests.golden_support import all_scenes
 ROOT = Path(__file__).resolve().parents[1]
 FREEZE_DIR = ROOT / "tests" / "sdr_freeze"
 MANIFEST_PATH = FREEZE_DIR / "MANIFEST.json"
-
-# The fixtures were authored on the macOS delivery platform. NumPy's Linux libm path
-# rounds one OETF+dither boundary in this case to the adjacent code value on both CPython
-# 3.11 and 3.12. Keep the exception pinned to that measured byte instead of weakening the
-# freeze matrix globally or regenerating platform-specific renditions.
-LINUX_ONE_LSB_CASE = "daylight_wide_dr__libraw__agx__smooth__p3__evp1p00"
-
 
 def _load_manifest() -> dict:
     if not MANIFEST_PATH.is_file():
@@ -87,18 +79,14 @@ class SdrFreezeGateTest(unittest.TestCase):
                 if not np.array_equal(u8, exp_u8):
                     diff = np.abs(u8.astype(np.int16) - exp_u8.astype(np.int16))
                     changed = int(np.count_nonzero(diff))
-                    known_linux_rounding = (
-                        platform.system() == "Linux"
-                        and case.stem == LINUX_ONE_LSB_CASE
-                        and int(diff.max()) <= 1
-                        and changed <= 1
+                    # The freeze is unconditional: the fixtures were authored on
+                    # macOS and macOS is the only supported platform (a retired
+                    # ubuntu CI leg once needed a one-LSB libm exemption here).
+                    self.fail(
+                        f"{case.stem}: P3 SDR u8 drifted "
+                        f"(max_delta={int(diff.max())}, "
+                        f"changed={changed}/{diff.size})"
                     )
-                    if not known_linux_rounding:
-                        self.fail(
-                            f"{case.stem}: P3 SDR u8 drifted "
-                            f"(max_delta={int(diff.max())}, "
-                            f"changed={changed}/{diff.size})"
-                        )
                 # float16 storage; allow a few ULPs of half round-trip.
                 if not np.allclose(
                     linear, exp_linear, rtol=0.0, atol=float(np.finfo(np.float16).eps) * 4
@@ -127,10 +115,11 @@ class SdrFreezeGateTest(unittest.TestCase):
         self.assertAlmostEqual(g1 / g0, 2.0, places=12)
 
     def test_coreimage_boundary_documented_in_freeze_matrix(self) -> None:
-        """RAW9 stays a separate pipeline; Phase-0 freeze matrix is LibRaw-only by design.
+        """RAW9 stays a separate pipeline; the freeze matrix is LibRaw-only by design.
 
-        Live RAW9 pixel freeze is deferred until a macOS CI job commits a decoder-native
-        fixture. Import must remain safe on Linux.
+        RAW9's own regression coverage lives in tests/test_coreimage_decode.py
+        (production-parity alignment against the LibRaw reference) rather than
+        in this byte-freeze matrix, whose fixtures must stay decoder-portable.
         """
         from dngscan import coreimage_decode
 
