@@ -72,7 +72,7 @@ requirement by selecting Apple RAW.
    look here before touching anything (next section explains each number);
 3. **Adjust exposure and tone** — if needed;
 4. **Choose the output** — ordinary JPEG or HDR, for sharing or for archiving
-   (section 5);
+   (section 9);
 5. **Update the preview to confirm, then export.**
 
 ---
@@ -102,7 +102,7 @@ median −3 EV → this is a night scene, don't force the exposure up.
 
 ---
 
-## 3.5 White balance: As Shot vs fixed Kelvin
+## 4. White balance: As Shot vs fixed Kelvin
 
 Besides "As Shot", the white balance selector offers a set of **fixed color
 temperatures**. These are not for balancing by eye — eyeballing neutrality on a screen
@@ -123,7 +123,7 @@ no eye in the loop.
 Fixed Kelvin works on both decoders. A visible color cast after choosing one is
 **expected behavior** — it is precisely how film sees the world, not a malfunction.
 
-## 3.7 Film observation positions (20 stocks + 5 theatrical variants)
+## 5. Film observation positions (20 stocks + 5 theatrical variants)
 
 Up front: **this is not a one-tap filter**. It decomposes "how a roll of film saw
 the world" into independent, declared layers. The payoff is that every layer can
@@ -172,12 +172,18 @@ the reason this film simulation stays stable.
   — *looking* right on your display outranks being numerically raw;
 - **Two modes** (CLI `--film-mode`): the default **observe** is everything above —
   use it day to day. **full** is experimental: the film development model takes
-  over per-channel colour entirely (stronger character, but the colour
-  reconstruction has no measured ground truth and can drift unnaturally); SDR
-  only. Within full mode, the experimental `--film-crossover datasheet` switch
-  (GUI: "层间漂移") releases the fitted inter-layer drift onto the neutral axis
-  (mid-grey stays strictly white-balanced; e.g. Velvia's cool shadows); off by
-  default;
+  over wholesale — scene colour passes through a constrained observer inverse
+  into three emulsion exposures, through each layer's characteristic curve, the
+  dye spectra and the print/slide viewing chain, baked offline into a 65-cubed
+  LUT. Under the honest spectral chain it nearly converges with observe on most
+  photos (the two independent paths corroborate each other); SDR only, AgX
+  compression core only, no enlarger colour head. Within full mode the declared
+  `--film-crossover` switch (GUI: "层间漂移") picks how the neutral axis is
+  served: off (default) is the digitally neutralized variant (grays within two
+  stops of neutral stay strictly neutral), datasheet serves the chain verbatim —
+  shadows tint per each stock's datasheet (cine negatives green-teal, Kodachrome
+  amber, Velvia mildly cool), mid-grey anchored by the printer-light solve, tone
+  untouched;
 - No grain, no vignette — it changes *how the camera saw the world*;
 - **HDR keeps working** (observe mode): a film body plus genuinely measured
   highlight headroom — a combination no other film tool offers.
@@ -187,7 +193,7 @@ glass simulated from Kodak's published parameters (85B daylight-to-tungsten, 80A
 reverse, and others), for recreating historical workflows like "tungsten film + 85B in
 daylight". There is no strength slider — glass has no half-installed state.
 
-## 4. The other EVs in the interface
+## 6. The other EVs in the interface
 
 - **Exposure EV** (the slider): brightens/darkens everything, +1 = one stop up. 0 keeps
   the brightness relationships from capture.
@@ -199,7 +205,7 @@ daylight". There is no strength slider — glass has no half-installed state.
   decided by the earned headroom, whichever is smaller. The default +3.0 (roughly an
   800-nit screen) rarely needs changing.
 
-## 4.5 Tone card: endpoint mode and toe/shoulder offsets
+## 7. Tone card: endpoint mode and toe/shoulder offsets
 
 - **Endpoint mode**: where the curve's black/white endpoints come from.
   **Scene-adaptive** (default) follows this frame's luminance percentiles — right for
@@ -224,7 +230,7 @@ daylight". There is no strength slider — glass has no half-installed state.
 
 ---
 
-## 5. The compression cores, and which to pick
+## 8. The compression cores, and which to pick
 
 RAW records a far wider brightness range than any screen can show; the "compression
 core" is how the former is fitted into the latter. It decides the overall look —
@@ -241,7 +247,7 @@ The last two are comparison/diagnostic tools, not finishing tools.
 
 ---
 
-## 6. Output: formats and delivery profiles
+## 9. Output: formats and delivery profiles
 
 **Formats**:
 - **SDR JPEG** — an ordinary photo, viewable everywhere;
@@ -272,7 +278,7 @@ verification; files that fail it are never kept.
 
 ---
 
-## 7. FAQ
+## 10. FAQ
 
 **HDR export fails with "the reliable highlight tail supports no HDR headroom"?**
 The photo has no genuinely measured highlight content (its earned headroom is 0). This

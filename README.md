@@ -47,13 +47,30 @@ If the RAW contains no reliable highlight information, AgXRAW does not invent HD
 One RAW, four observation positions: the AgX baseline (no film), Kodak Portra 400
 (negative + paper), Fujifilm Velvia 100 (reversal), and Vision3 250D in its theatrical
 quotation. Each stock's calibrated base — the WB Kelvin, the layer separation, the
-development curve, the layer-saturation differential — is constructed declaratively
-from datasheet data, with no baked LUT. The default look of a stock then adds two
+development curve, the viewing translation — is constructed declaratively from the
+datasheets' spectral data, with no baked LUT. The default look of a stock then adds two
 declarations that are explicitly editorial, not measured: a separation-strength
 pairing and an AgX primaries pairing, chosen by stock reputation. Both are visible
 in the UI, freely adjustable, and never override a value you set yourself — the
 measured base and the editorial pairing stay distinguishable. All twenty stocks and
-five theatrical variants are described in the [architecture notes](docs/ARCHITECTURE.md).
+five theatrical variants are listed in the [film tutorial](docs/FILM_TUTORIAL.zh-CN.md)
+(Chinese); the technical base lives in the [architecture notes](docs/ARCHITECTURE.md).
+
+## The spectral print chain in one frame
+
+| Digital neutralized (default) | Datasheet inter-layer crossover |
+|---|---|
+| ![off](docs/assets/film-tutorial/crop_crossover_verita_off.jpg) | ![datasheet](docs/assets/film-tutorial/crop_crossover_verita_datasheet.jpg) |
+
+The experimental film-takeover mode (full) is no longer a per-channel-curve
+heuristic: scene colour passes through a constrained observer inverse into
+three emulsion exposures, through each layer's characteristic curve, the dye
+spectra and the TH-KG3 print chain, baked offline into a 65-cubed LUT. Above is
+something it renders that no grading filter can: the Verita 200D print chain's
+measured inter-layer crossover — the carved door and stone steps in shadow turn
+green-teal while the sunlit wall and pebbles sit still, at zero median luminance
+difference. Left is the default digitally neutralized variant (grays stay
+strictly neutral); right is the datasheet served verbatim.
 
 ## Features
 
