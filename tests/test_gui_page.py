@@ -377,3 +377,51 @@ class RealtimeHistogramPageTests(unittest.TestCase):
         renderer = renderer[: renderer.index("\n}")]
         self.assertIn("earnedEv!=null", renderer)
         self.assertIn("HDR 已挣余量", renderer)
+
+
+class FilmModePlacementTests(unittest.TestCase):
+    """Batch-6 P1 regression: colorHeadBlock's unclosed divs swallowed
+    filmModeRow into the hidden colour-head region, so hiding the head (a
+    reversal preset) also hid the develop-split selector, and switching to
+    full left stale non-zero filtration to be rejected server-side."""
+
+    def test_film_mode_row_is_not_nested_inside_the_colour_head_block(self) -> None:
+        from html.parser import HTMLParser
+
+        class Depths(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.depth = 0
+                self.found: dict[str, int] = {}
+
+            def handle_starttag(self, tag, attrs):
+                if tag != "div":
+                    return
+                ids = dict(attrs).get("id")
+                if ids in ("colorHeadBlock", "filmModeRow"):
+                    self.found[ids] = self.depth
+                self.depth += 1
+
+            def handle_endtag(self, tag):
+                if tag == "div":
+                    self.depth -= 1
+
+        parser = Depths()
+        parser.parse_error = None
+        parser.feed(PAGE)
+        self.assertIn("colorHeadBlock", parser.found)
+        self.assertIn("filmModeRow", parser.found)
+        # Siblings: identical depth, and the document's divs are balanced.
+        self.assertEqual(
+            parser.found["colorHeadBlock"], parser.found["filmModeRow"]
+        )
+        self.assertEqual(parser.depth, 0)
+
+    def test_full_mode_hides_and_resets_the_colour_head(self) -> None:
+        head_ui = PAGE[PAGE.index("function updateColorHeadUi(") :]
+        head_ui = head_ui[: head_ui.index("\n}")]
+        self.assertIn('$("#filmMode").value!=="full"', head_ui)
+        self.assertIn('$("#colorHeadY").value=0', head_ui)
+        listener = '$("#filmMode").addEventListener'
+        line = PAGE[PAGE.index(listener) : PAGE.index("\n", PAGE.index(listener))]
+        self.assertIn("updateColorHeadUi()", line)

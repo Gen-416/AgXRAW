@@ -562,10 +562,39 @@ JOINT_HEAD_CC_STEP = 5.0
 JOINT_HEAD_CC_MAX = 200.0
 
 
+def _adaptive_ev_knots(
+    full: np.ndarray, target_stop: float, max_knots: int
+) -> np.ndarray:
+    """Shared EV knot selection for the joint field. full: [Y, M, EV, 3].
+
+    Starts from the endpoints and greedily inserts the full-resolution sample
+    with the worst |log2| error of linear-in-gain interpolation over ALL
+    detents and channels, until that worst error is below target_stop (or the
+    knot budget runs out — the caller's audit then reports the shortfall).
+    """
+    n_ev = full.shape[2]
+    log_full = np.log2(np.maximum(full, 1e-9))
+    knots = [0, n_ev - 1]
+    while len(knots) < min(max_knots, n_ev):
+        ks = np.asarray(sorted(knots))
+        pos = np.arange(n_ev)
+        seg = np.clip(np.searchsorted(ks, pos, side="right") - 1, 0, ks.size - 2)
+        k0, k1 = ks[seg], ks[seg + 1]
+        w = ((pos - k0) / np.maximum(k1 - k0, 1)).astype(np.float32)
+        approx = full[:, :, k0, :] * (1.0 - w)[None, None, :, None] \
+            + full[:, :, k1, :] * w[None, None, :, None]
+        err = np.abs(np.log2(np.maximum(approx, 1e-9)) - log_full)
+        j = int(np.argmax(err.max(axis=(0, 1, 3))))
+        if float(err.max()) < target_stop or j in knots:
+            break
+        knots.append(j)
+    return np.asarray(sorted(knots))
+
+
 def build_joint_color_head_field(
     stock: dict,
     theatrical: bool = False,
-    ev_points: int = 128,
+    ev_points: int = 192,
 ):
     """Stage-3 joint Y x M colour-head field, or None for reversal stocks.
 
@@ -611,23 +640,33 @@ def build_joint_color_head_field(
 
     visible = t_neutral > 1e-3
     ev_vis = ev[visible]
-    idx = np.linspace(0, ev_vis.size - 1, min(ev_points, ev_vis.size)).round().astype(int)
-    ev_grid = ev_vis[idx]
-    base_lms = to_lms(channels_base[visible][idx])
+    base_lms_vis = to_lms(channels_base[visible])
 
+    # The detent solves are the expensive part (41 x 41 re-timings); the gain
+    # curves along EV come out of each solve at the chain's full resolution
+    # for free. Keep them all and pick the SHARED stored knots adaptively:
+    # greedily insert the exposure sample whose linear-in-gain interpolation
+    # is worst (in stops) across every Y x M x channel, until the whole field
+    # is below the audit target — a hard guarantee at full chain resolution,
+    # where a fixed 128-point axis measured up to 0.024 stop on random draws
+    # and passed or failed by luck of the draw. ev_points caps the knot count.
     cc_grid = np.arange(0.0, JOINT_HEAD_CC_MAX + 0.1, JOINT_HEAD_CC_STEP)
     n_cc = cc_grid.size
-    gains = np.empty((n_cc, n_cc, ev_grid.size, 3), dtype=np.float32)
+    full = np.empty((n_cc, n_cc, ev_vis.size, 3), dtype=np.float32)
     for yi, y_cc in enumerate(cc_grid):
         for mi, m_cc in enumerate(cc_grid):
             if y_cc == 0.0 and m_cc == 0.0:
-                gains[yi, mi] = 1.0  # exact identity by construction
+                full[yi, mi] = 1.0  # exact identity by construction
                 continue
             q_f = chain.q.copy()
             q_f[COLOR_HEAD_FILTER_LAYER["y"]] -= y_cc / 100.0
             q_f[COLOR_HEAD_FILTER_LAYER["m"]] -= m_cc / 100.0
-            filtered = retimed(q_f)[visible][idx]
-            gains[yi, mi] = (to_lms(filtered) / base_lms).astype(np.float32)
+            filtered = retimed(q_f)[visible]
+            full[yi, mi] = (to_lms(filtered) / base_lms_vis).astype(np.float32)
+
+    knots = _adaptive_ev_knots(full, target_stop=0.015, max_knots=ev_points)
+    ev_grid = ev_vis[knots]
+    gains = np.ascontiguousarray(full[:, :, knots, :])
 
     # Oracle fixtures: random detents solved at the CHAIN's full EV resolution
     # (off-grid relative to the stored axis), so the runtime test measures the

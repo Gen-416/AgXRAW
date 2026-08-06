@@ -85,8 +85,10 @@ def observer_matrix(stock: dict) -> np.ndarray:
     columns by the CIE observer through the pipeline's daylight balance
     (von Kries D55 white -> Rec.2020 D65 via Bradford). Rows are scaled so the
     perfect reflector's exposure is exactly A @ [1,1,1] — the neutral anchor
-    the LUT's exposure normalization relies on. Negative entries are clipped
-    and the row rescaled (declared projection; measured residual reported).
+    the LUT's exposure normalization relies on. Rows are true 3-variable
+    active-set NNLS followed by the white anchor; the 5-fold CV refits with
+    the IDENTICAL procedure (NNLS + anchor) so observer_cv_p99_stop measures
+    the deployed algorithm, not an unanchored cousin of it.
     """
     import calibrate_skin_matrix as csm
 
@@ -104,17 +106,29 @@ def observer_matrix(stock: dict) -> np.ndarray:
     xyz = xyz / max(float(white_xyz[1]), 1e-12)
     m = sb.XYZ_TO_REC2020 @ sb.bradford_cat(white_xyz / max(float(white_xyz[1]), 1e-12))
     rgb = xyz @ m.T  # [S, 3]，白板 -> [1,1,1]
-    a_rows = []
-    for layer in range(3):
-        a_rows.append(_nnls_3(rgb, exposures[:, layer]))
-    a = np.stack(a_rows, axis=0)
-    # Anchor: the perfect reflector's exposure must be exactly A @ [1,1,1].
-    for layer in range(3):
-        a[layer] *= exposures[0, layer] / max(float(a[layer] @ rgb[0]), 1e-12)
+
+    def _fit_observer(rgb_fit: np.ndarray, exp_fit: np.ndarray) -> np.ndarray:
+        """The production procedure, whole: per-layer NNLS + white anchor.
+
+        rgb_fit/exp_fit must carry the white board at row 0 — it is both an
+        NNLS training row and the anchor target.
+        """
+        a_fit = np.stack(
+            [_nnls_3(rgb_fit, exp_fit[:, layer]) for layer in range(3)], axis=0
+        )
+        for layer in range(3):
+            a_fit[layer] *= exp_fit[0, layer] / max(
+                float(a_fit[layer] @ rgb_fit[0]), 1e-12
+            )
+        return a_fit
+
+    a = _fit_observer(rgb, exposures)
     pred = rgb @ a.T
     resid = np.abs(np.log10(np.maximum(pred[1:], 1e-9) / np.maximum(exposures[1:], 1e-9)))
     # Leave-out cross validation on a deterministic 5-fold split: the fit must
-    # not owe its residual to memorizing the training set.
+    # not owe its residual to memorizing the training set. Each fold runs the
+    # SAME NNLS + white-anchor procedure as the deployed matrix (the white
+    # board stays in every fold — it is the anchor, not a held-out sample).
     n = rgb.shape[0] - 1
     cv = []
     for fold in range(5):
@@ -122,7 +136,7 @@ def observer_matrix(stock: dict) -> np.ndarray:
         mask[fold::5] = False
         keep = np.concatenate(([True], mask))
         hold = np.concatenate(([False], ~mask))
-        a_cv = np.stack([_nnls_3(rgb[keep], exposures[keep][:, l]) for l in range(3)])
+        a_cv = _fit_observer(rgb[keep], exposures[keep])
         p_cv = rgb[hold] @ a_cv.T
         cv.append(np.abs(np.log10(
             np.maximum(p_cv, 1e-9) / np.maximum(exposures[hold], 1e-9)
@@ -292,14 +306,26 @@ def bake(stock_key: str, theatrical: bool = False) -> dict:
     #      (~0.03 stop). The original review refuted runtime division of the
     #      quantized LUT by the UNBOUNDED high-precision cast; the root sin
     #      there was the unbounded divisor, which is what the clip removes.
-    # Bounding rule: the cast is the ramp's luma-normalized chroma vector;
-    # each channel's correction is clipped to [0.25, 4] (strict neutrality is
-    # only demanded where the medium's gray sits within two stops of neutral
-    # per channel; deeper tint — Kodachrome's floor above all — stays as
-    # medium character), then the clipped vector is luma-renormalized so the
-    # division never moves the neutral axis' TONE off the chain's tone.
-    cast_b = np.clip(cast, 0.25, 4.0)
-    cast_b *= ((cast / cast_b) @ _LUMA_2020)[:, None]
+    # Bounding rule, in the CORRECTION-MULTIPLIER domain. The first cut —
+    # clip the cast per channel then luma-renormalize — was measured to break
+    # its own bound: the renormalizing scalar pushed channels back outside
+    # (Ektachrome shipped a 0.081 divisor = +3.6 EV of gain). The honest
+    # construction: let h* = 1/cast be the full neutralizing multiplier and
+    # walk the straight line h(t) = 1 + t*(h* - 1) from identity toward full
+    # correction, taking the largest t in [0,1] with every channel's h_i
+    # inside [0.25, 4]. Because luma(cast) = 1 and luma(cast * h*) = 1, EVERY
+    # point on that line preserves the neutral axis' luminance exactly — tone
+    # never moves for any t — and the shipped divisor 1/h is truly bounded to
+    # [0.25, 4] per channel. Where the medium's cast is inside the bound the
+    # correction is complete (t = 1: strict neutrality); where a channel is
+    # near-singular (Kodachrome's zero-green floor), t collapses toward 0 and
+    # the floor is kept as medium character rather than half-chased.
+    h_star = 1.0 / np.maximum(cast, 1e-9)
+    t_hi = np.where(h_star > 4.0, 3.0 / np.maximum(h_star - 1.0, 1e-9), 1.0)
+    t_lo = np.where(h_star < 0.25, 0.75 / np.maximum(1.0 - h_star, 1e-9), 1.0)
+    t_ev = np.clip(np.min(np.minimum(t_hi, t_lo), axis=1), 0.0, 1.0)
+    h = 1.0 + t_ev[:, None] * (h_star - 1.0)
+    cast_b = 1.0 / np.clip(h, 0.25, 4.0)  # clip is a no-op by construction
     # The shipped curve is sampled on the LUT'S OWN 65-node axis and the
     # runtime interpolates it LINEARLY: on the neutral axis tetrahedral
     # interpolation degenerates to 1-D linear interpolation along the
