@@ -6,7 +6,7 @@
 参数实际渲染，所有数字都来自对这些渲染的直接测量；效果在屏幕上看不出来的
 组合，本文如实写明，不放装样子的对比图。
 
-七张样张，覆盖胶片区全部控件：
+八张样张，覆盖胶片区全部控件：
 
 | 样张 | 相机 | 它演示什么 |
 |---|---|---|
@@ -14,6 +14,7 @@
 | 二 · 大逆光钢桥 | 富士 X100VI，ISO 250 | 白平衡固定色温 |
 | 三 · 户外 coser 合照 | SIGMA fp，ISO 100 | 两处"效果如实很小"的诚实案例（固定色温、肤色分离） |
 | 四 · 香港街景 | SIGMA fp，ISO 200 | AgX 原色几何四联、胶片色偏（Kodachrome 琥珀阴影） |
+| 九 · 园林庭院 | SIGMA fp，ISO 12800 | 胶片色偏（电影负片绿青阴影）——雕花木门是现成的深阴影教具 |
 | 五 · 猫吧黑猫 | SIGMA fp，ISO 3200 | 钨丝灯白平衡、Portra 曲线预设——黑猫是现成的暗部教具 |
 | 六 · live house 红光舞台 | SIGMA fp，ISO 25600 | AgX 原色几何的极端饱和案例 |
 | 七 · 清汤面碗 | SIGMA fp，ISO 12800 | 放大机色头 Y/M——青花白瓷是现成的中性参照物 |
@@ -262,29 +263,43 @@ Velvia 的阴影温和偏冷，电影负片系偏绿青。这个开关决定实�
 - **datasheet**：光谱链原样——中灰由印相求解锚定中性，暗部和亮部按链
   自身的层间数据偏移。偏移幅度尚无外部数据校验。
 
-香港街景 + Kodachrome 64 full，off 对 datasheet：
+不同的卷，方向和幅度都不同——两对样张，各配偏移性格最合适的卷。
+
+**电影负片的绿青阴影**，园林庭院 + Verita 200D full（印相链 crossover，
+本文各卷里幅度最大的一族），off 对 datasheet：
 
 | off · 中性灰保持中性 | datasheet · 按实测偏移 |
 |---|---|
-| ![](assets/film-tutorial/crossover_off.jpg) | ![](assets/film-tutorial/crossover_datasheet.jpg) |
+| ![](assets/film-tutorial/crossover_verita_off.jpg) | ![](assets/film-tutorial/crossover_verita_datasheet.jpg) |
 
-阴影裁切（路灯杆右侧：树影路面与背光挡土墙）：
+阴影裁切（雕花木门、石阶与卵石地）：
 
 | off | datasheet |
 |---|---|
-| ![](assets/film-tutorial/crop_crossover_off.jpg) | ![](assets/film-tutorial/crop_crossover_datasheet.jpg) |
+| ![](assets/film-tutorial/crop_crossover_verita_off.jpg) | ![](assets/film-tutorial/crop_crossover_verita_datasheet.jpg) |
 
-动了会发生什么（实测）：约一半像素有变化，全部住在阴影里——暗部三成
-像素的均值向暖移约 7 个码值（红 +2、蓝 −5），亮部七成均值变化为零，全图
-亮度差中位数为 0——这个开关只动色，不动明暗；只动阴影，不动日照。观察
-要点：树影里的沥青和背光的挡土墙从中性灰转出琥珀色暖意，日照路面、大巴
-和天空纹丝不动。灰色沥青是现成的中性参照物——这正是这张样张被选中的
-原因。
+实测：约七成八的像素有变化——暗部三成像素的均值移约 8 个码值（红 −6.5、
+绿 +1.6），亮部均值只动 1 个码值，全图亮度差中位数为 0。观察要点：雕花
+木门和石阶平台从中性黑转出绿青，白墙和受光的卵石地纹丝不动——门里门外
+正好是"阴影动、亮部不动"的现成分区。
+
+**Kodachrome 的琥珀阴影**，香港街景 + Kodachrome 64 full——这卷的偏移
+幅度本来就温和（数据手册如此），放在这里当"方向不同"的对照：
+
+| off | datasheet |
+|---|---|
+| ![](assets/film-tutorial/crop_crossover_k64_off.jpg) | ![](assets/film-tutorial/crop_crossover_k64_datasheet.jpg) |
+
+实测：约一半像素变化，暗部均值向暖移约 7 个码值（红 +2、蓝 −5），亮部
+均值变化为零。观察要点：树影里的沥青和背光挡土墙转出琥珀暖意，日照路面、
+大巴和天空不动。（全图对比见
+[off](assets/film-tutorial/crossover_k64_off.jpg) /
+[datasheet](assets/film-tutorial/crossover_k64_datasheet.jpg)。）
 
 两个如实写明的边界：层间偏移住在阴影里，**内容集中在中灰上方的明快照片
-几乎看不到这个开关**；Velvia 等卷的偏移比 Kodachrome 更温和（数据手册
-如此），它是声明开关，不是风格开关。另外它只在 full 模式有意义：observe
-模式下开不开完全一致。
+几乎看不到这个开关**；各卷幅度差异很大——电影负片系最明显，Kodachrome
+温和，Velvia 更温和到接近不可见。它是声明开关，不是风格开关。另外它只在
+full 模式有意义：observe 模式下开不开完全一致。
 
 ---
 
@@ -390,4 +405,4 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 `_SDI0016.DNG`（SIGMA fp）、live house 红光舞台 `_SDI0175.DNG`（SIGMA fp）、品红后台 `_SDI0173.DNG`（SIGMA fp）、
 清汤面碗 `_SDI0127.DNG`（SIGMA fp）、
 香港街景
-`_SDI0165.DNG`（SIGMA fp）。
+`_SDI0165.DNG`（SIGMA fp）、园林庭院 `_SDI0115.DNG`（SIGMA fp）。
