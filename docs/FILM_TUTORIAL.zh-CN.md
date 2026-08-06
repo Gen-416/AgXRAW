@@ -487,6 +487,38 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 
 ---
 
+## 九 · 调整的潜力：同一张照片的六种读法
+
+同一张香港山道、同一卷 Velvia 100，六个版本——没有哪个是"正确答案"，
+每个都是一种成立的读法。胶片给底子，每一层调整都是声明的、可组合的、
+可复现的（每张下方即完整参数）。
+
+| AgX 基线 · 无胶片 | Velvia 100 · 默认组合 |
+|---|---|
+| ![](assets/film-tutorial/hk_look_baseline.jpg) | ![](assets/film-tutorial/hk_look_default.jpg) |
+| （默认参数） | `--film velvia100` |
+
+中性参照系 → 忠实于测量的 Velvia 底子。
+
+| 加密度 · 分离上驱 | 压硬 · 收黑加对比 |
+|---|---|
+| ![](assets/film-tutorial/hk_look_dense.jpg) | ![](assets/film-tutorial/hk_look_hard.jpg) |
+| `--film velvia100 --scene-transform-strength 2.2 --ev -0.3` | 左列参数 + `--toe-end-offset -1 --midtone-contrast 0.3` |
+
+分离与密度往"浓"里推 → 再收黑加对比，暗端立起来。
+
+| 光谱链接管 · full+datasheet | 叠加 look · 暖青 grade |
+|---|---|
+| ![](assets/film-tutorial/hk_look_fullchain.jpg) | ![](assets/film-tutorial/hk_look_graded.jpg) |
+| `--film velvia100 --film-mode full --film-crossover datasheet --ev -0.3` | `--film velvia100 --grade look:optic_warm_cyan --grade-strength 0.5 --scene-transform-strength 2.0 --ev -0.2` |
+
+晴空转向深紫蓝、暗部按实测漂移（无 oracle 声明照旧，仅 SDR）→ 胶片层上
+再叠独立的 look 层。
+
+从"忠实的测量"到"最大的距离"是一条连续的路，停在哪站由你决定。
+
+---
+
 ## 快速表：动了会发生什么
 
 | 控件 | 动了会发生什么 |
