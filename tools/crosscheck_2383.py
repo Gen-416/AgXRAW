@@ -47,6 +47,7 @@ from tools.fit_film_curve import (  # noqa: E402
     build_endtoend_target,
     print_density_curves,
     _load_curves,
+    _load_spectral as _load_spectral_for,
 )
 
 EV_LO, EV_HI = -6.0, 5.5
@@ -130,6 +131,48 @@ def decode_display(rgb: np.ndarray, gamma: str) -> np.ndarray:
 
 DIVERE_LOG_RANGE = float(np.log10(65536.0))  # DiVERE math_ops._LOG65536
 
+DENSITOMETER_DIR = PROJECT_ROOT / "dngscan_assets" / "spectral" / "densitometer"
+
+# DiVERE config/matrices/Cineon_States_M_to_Print_Density.json — the standard
+# Cineon-era Status M -> printing-density matrix its pipeline enables by default.
+CINEON_STATUS_M_TO_PRINT = np.array([
+    [1.0197, 0.0317, 0.0091],
+    [-0.0052, 0.8933, 0.0521],
+    [0.0131, -0.0011, 0.9712],
+])
+
+
+def status_responsivities(kind: str, wl: np.ndarray) -> np.ndarray:
+    """ISO 5-3 Status A/M linear responsivities on a grid (zero out of range).
+
+    Digitized from Giorgianni/Madden/Kriss, Digital Color Management (2009),
+    p.335 — see dngscan_assets/spectral/densitometer/README.md.
+    """
+    out = np.zeros((wl.size, 3))
+    for c, ch in enumerate("rgb"):
+        rows = np.loadtxt(
+            DENSITOMETER_DIR / f"{kind}_responsivity_{ch}.csv", delimiter=","
+        )
+        out[:, c] = np.interp(wl, rows[:, 0], rows[:, 1], left=0.0, right=0.0)
+    return out
+
+
+def project_status_density(spec: dict, amounts: np.ndarray, kind: str) -> np.ndarray:
+    """Dye-amount rows -> Status A/M densitometer readings. [n,3] density.
+
+    THE round-five lesson: per-dye amounts are not densitometer readings —
+    comparing them against a Status-based curve manufactured the historical
+    "G deep-shadow divergence" and "B density scale" findings. Projecting both
+    chains into the same Status metric dissolved both (see ARCHITECTURE).
+    """
+    wl = spec["wl"]
+    R = status_responsivities(kind, wl)
+    T = np.power(10.0, -(amounts @ spec["dye"].T + spec["base"][None, :]))
+    integrate = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
+    num = integrate(R[None, :, :] * T[:, :, None], wl, axis=1)
+    den = integrate(R, wl, axis=0)
+    return -np.log10(np.maximum(num / den[None, :], 1e-12))
+
 
 def divere_print_channels(curve_json: Path, ev: np.ndarray, d_neg: np.ndarray,
                           le_n: np.ndarray, ours: np.ndarray) -> np.ndarray:
@@ -201,7 +244,8 @@ def main() -> int:
     ap.add_argument("--lut", type=Path, required=True,
                     help=".cube 3D LUT, or a DiVERE curve .json with --input divere")
     ap.add_argument("--stock", default="vision3250d", choices=sorted(STOCKS))
-    ap.add_argument("--input", default="cineon", choices=("cineon", "logc3", "divere"))
+    ap.add_argument("--input", default="cineon",
+                    choices=("cineon", "logc3", "divere", "divere-status"))
     ap.add_argument("--display-gamma", default="2.4")
     args = ap.parse_args()
 
@@ -209,7 +253,24 @@ def main() -> int:
     if stock.get("positive") or stock.get("print") not in ("kodak_2383", "kodak_2393"):
         raise SystemExit(f"{args.stock} is not a 2383/2393-printed cine stock")
 
-    if args.input == "divere":
+    if args.input == "divere-status":
+        # Round five: BOTH chains projected into ISO 5-3 densitometry before
+        # comparison. Chain A = Status A reading of the developed print stack;
+        # chain B input = Status M reading of the negative through DiVERE's
+        # default Cineon Status M -> printing density matrix. Per-channel
+        # freedoms: exposure trim only (printer lights); the density-contrast
+        # scale stays reported by divere_print_channels for diagnosis, and a
+        # fitted scale far from 1 now reads as the difference between the
+        # Cineon-era standard matrix and this stock pairing's true spectral
+        # relationship, not as a defect of either chain.
+        ev_a, amounts = print_density_curves(stock, surround_override="native")
+        mask = (ev_a >= EV_LO) & (ev_a <= EV_HI)
+        ev = ev_a[mask]
+        paper = _load_spectral_for(stock["print"])
+        d_print = project_status_density(paper, amounts[mask], "status_A")
+        ours = np.power(10.0, -(d_print - d_print.min(axis=0)[None, :]))
+        print("comparison domain: Status A print density (ISO 5-3 projection)")
+    elif args.input == "divere":
         # Density-domain oracle: DiVERE's curve is per-channel print density —
         # it has no colorimetric claim, so the comparison must run BEFORE our
         # viewing translation (whose CAT/basis legitimately mixes channels).
@@ -232,7 +293,12 @@ def main() -> int:
 
     # Chain B: negative density -> declared input encoding -> LUT -> display linear.
     le_n, d_neg = _load_curves(stock["negative"])
-    if args.input == "divere":
+    if args.input == "divere-status":
+        neg_spec = _load_spectral_for(stock["negative"])
+        d_status_m = project_status_density(neg_spec, neg_spec["amounts"], "status_M")
+        d_neg_status = d_status_m @ CINEON_STATUS_M_TO_PRINT.T
+        theirs = divere_print_channels(args.lut, ev, d_neg_status, neg_spec["le"], ours)
+    elif args.input == "divere":
         theirs = divere_print_channels(args.lut, ev, d_neg, le_n, ours)
     else:
         dens = np.stack(
