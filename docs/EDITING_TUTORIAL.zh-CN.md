@@ -194,20 +194,30 @@ EV +0.7 把灯、墙、手办**全部**抬起——主体亮了，灯的光晕�
 
 先看效果本身。主体特写——中间调 +0.8 把手办的白衣、粉发和酒罐都托亮了
 一截（主体区亮度实测 0.36→0.40；EV 是 0.36→0.54，抬得更狠，且连墙
-带灯一起）：
+带灯一起）；第四张组合版的主体亮度落在两者之间偏上，白衣和粉发接近纯
+EV 的通透，但看下一组灯区特写——它的代价小得多：
 
-| 默认 | EV +0.7 | 中间调 +0.8 |
-|---|---|---|
-| ![](assets/editing-tutorial/lamp_figure_default.jpg) | ![](assets/editing-tutorial/lamp_figure_ev07.jpg) | ![](assets/editing-tutorial/lamp_figure_mid08.jpg) |
+| 默认 | EV +0.7 |
+|---|---|
+| ![](assets/editing-tutorial/lamp_figure_default.jpg) | ![](assets/editing-tutorial/lamp_figure_ev07.jpg) |
+
+| 中间调 +0.8 | 组合 · EV +0.3 + 中间调 +0.5 |
+|---|---|
+| ![](assets/editing-tutorial/lamp_figure_mid08.jpg) | ![](assets/editing-tutorial/lamp_figure_combo.jpg) |
 
 再看它没动的地方。中间调最容易被看错，灯区特写把三种错觉逐一排除：
 
-| 默认 | EV +0.7 | 中间调 +0.8 |
-|---|---|---|
-| ![](assets/editing-tutorial/lamp_zoom_default.jpg) | ![](assets/editing-tutorial/lamp_zoom_ev07.jpg) | ![](assets/editing-tutorial/lamp_zoom_mid08.jpg) |
+| 默认 | EV +0.7 |
+|---|---|
+| ![](assets/editing-tutorial/lamp_zoom_default.jpg) | ![](assets/editing-tutorial/lamp_zoom_ev07.jpg) |
+
+| 中间调 +0.8 | 组合 · EV +0.3 + 中间调 +0.5 |
+|---|---|
+| ![](assets/editing-tutorial/lamp_zoom_mid08.jpg) | ![](assets/editing-tutorial/lamp_zoom_combo.jpg) |
 
 - **它不是小号的 EV。**EV 的灯区亮度实测 0.82→0.93，光晕明显外扩；中间调
-  的灯区 0.82→0.84，光晕轮廓和默认几乎重合。
+  的灯区 0.82→0.84，光晕轮廓和默认几乎重合；组合版落在 0.82→0.87——主体
+  拿到了接近纯 EV 的提升，灯区却只付出一半的外扩。
 - **高光没有被削减。**中间调的灯区不比默认暗一分——它只是留在原位没动。
 - **也不是"高光没打开"。**灯盘在 RAW 里真实过曝（肩部一节说过，约 4% 的
   像素溢出），三张里它都已经顶在白点上；中间调改变的只是中灰以下怎么
