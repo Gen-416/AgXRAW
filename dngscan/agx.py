@@ -831,104 +831,6 @@ def apply_formation_curve(inset: Any, plan: Any) -> Any:
     return linear.astype(np.float32, copy=False)
 
 
-def channel_ratio_gain(inset: Any, plan: Any, luma_weights: Any) -> Any | None:
-    """Exposure-dependent colour: the film's measured layer-saturation differential.
-
-    gain_c = r_c(EV_c) / r_c(EV_anchor), with r_c the preset's channel_ratio_curve
-    (film_curve.channel_ratio_field), EV_c the channel's own formation exposure and
-    the anchor selected by plan.film_crossover:
-
-    - "off" (default): EV_anchor = EV_Y, the pixel's formation-luminance exposure.
-      On the neutral axis EV_c == EV_Y so the gain is 1 by construction (exact in
-      real arithmetic; within ~1e-7 in float32 from the luminance dot product's
-      rounding) — the anti-hidden-WB contract does not rest on a tuned window.
-      Off axis, the channels sit at different points of their layer curves and the
-      measured differential emerges, growing with chroma without any hand-tuned
-      window. This normalization also cancels the fitted NEUTRAL-AXIS zone tints
-      (crossover) by construction — the deliberate safety rail.
-    - "datasheet": EV_anchor = 0 (mid-grey), a per-channel scalar. Mid-grey keeps
-      strict WB fidelity (r_c(0)/r_c(0) = 1: the core of the anti-hidden-WB
-      contract survives), while the rest of the neutral axis drifts per the fitted
-      inter-layer data — the photographic crossover the fitter measured (e.g.
-      Velvia's cool shadows: B/R ≈ 1.48 at EV−2). Off-axis behaviour keeps the
-      same construction, only the anchor moves.
-
-    np.interp clamps at the grid ends, which is the declared
-    semantics beyond the fit domain (HDR shoulder region included: deep-white ratios
-    approach 1, so extended highlights fade to neutral instead of contaminating the
-    gain map). The [0.25, 4] rail is a safety clamp above the worst measured ratio
-    quotient (~3.7, Velvia deep shadows), not a shaping control; both anchors use it.
-
-    Returns None when the plan carries no ratio field (non-film renders pay nothing)
-    or when film_mode is not "full": in the default "observe" mode the film declares
-    what the observer saw and AgX owns development colour — the ratio field is the
-    film-takeover development's per-channel transfer, applied only by the film core
-    (film_develop.apply_film_core). This gate is the two-mode contract in one line.
-    This function is the single implementation of the gain for every consumer —
-    the SDR film-takeover core (film_develop.apply_film_core, the live full-mode
-    path), the AgX formation body (apply_core/apply_core_parallel, whose call is
-    a no-op in full SDR because dispatch routes to the film core first) and the
-    HDR chunk formation (hdr_agx, currently unreachable in full mode: the CLI
-    refuses full+ultrahdr) — so the crossover anchor cannot diverge between them.
-    """
-    if str(getattr(plan, "film_mode", "observe")) != "full":
-        return None
-    from .film_curve import channel_ratio_field
-
-    field = channel_ratio_field(str(getattr(plan, "curve_preset", "") or ""))
-    if field is None:
-        return None
-    ev_grid, ratios = field
-    crossover = str(getattr(plan, "film_crossover", "off")) == "datasheet"
-    safe = np.maximum(inset.astype(np.float32, copy=False), 0.0)
-    ev_c = np.log2(np.maximum(safe / 0.18, EPS))
-    gain = np.empty_like(ev_c, dtype=np.float32)
-    if crossover:
-        for c in range(3):
-            r_c = np.interp(ev_c[:, c], ev_grid, ratios[:, c])
-            r_mid = float(np.interp(0.0, ev_grid, ratios[:, c]))
-            gain[:, c] = r_c / max(r_mid, EPS)
-        return np.clip(gain, 0.25, 4.0, out=gain)
-    weights = np.asarray(luma_weights, dtype=np.float32)
-    ev_y = np.log2(np.maximum((safe @ weights) / 0.18, EPS))
-    for c in range(3):
-        r_c = np.interp(ev_c[:, c], ev_grid, ratios[:, c])
-        r_y = np.interp(ev_y, ev_grid, ratios[:, c])
-        gain[:, c] = r_c / np.maximum(r_y, EPS)
-    return np.clip(gain, 0.25, 4.0, out=gain)
-
-
-def film_channel_gain(inset: Any, plan: Any, luma_weights: Any) -> Any | None:
-    """Combined film channel gain: measured ratio field x declared colour head.
-
-    The two fields share provenance (the same fitted spectral chain) and the same
-    application point (finish_formation's channel gain, after hue restore), so
-    they compose multiplicatively here. Either half returns None when inactive;
-    both inactive keeps the whole render on the None fast path.
-    """
-    if str(getattr(plan, "film_mode", "observe")) != "full":
-        # Observe-mode film colour does not ride the formation channels: it is
-        # applied post-outset by apply_film_color_rec2020. The legacy
-        # film-takeover core consumes only the ratio field here — the colour
-        # head joined the shared post-core operator in every mode (stage 3).
-        return None
-    return channel_ratio_gain(inset, plan, luma_weights)
-
-
-def formation_luma_row(outset_matrix: Any) -> Any:
-    """Rec.2020 luminance row transported to pre-outset formation RGB.
-
-    Same construction as hdr_color.formation_luma_weights; duplicated here (three
-    lines) so the SDR formation does not import the HDR colour module.
-    """
-    from .constants import REC2020_LUMA
-
-    weights = np.asarray(REC2020_LUMA, dtype=np.float64) @ np.asarray(
-        outset_matrix, dtype=np.float64
-    )
-    return (weights / np.sum(weights)).astype(np.float32)
-
-
 REC2020_LUMA_WEIGHTS = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
 
 # Bradford LMS sandwich for the joint colour-head field (derived from the
@@ -1027,9 +929,8 @@ def apply_core(rgb_rec2020: Any, plan: Any, inset_matrix: Any, outset_matrix: An
     for preset-specific inset/outset before invoking this function.
     """
     inset, pre_hue = prepare_formation(rgb_rec2020, plan, inset_matrix)
-    gain = film_channel_gain(inset, plan, formation_luma_row(outset_matrix))
     linear = apply_formation_curve(inset, plan)
-    mapped = finish_formation(linear, pre_hue, plan, outset_matrix, channel_gain=gain)
+    mapped = finish_formation(linear, pre_hue, plan, outset_matrix)
     return apply_film_color_rec2020(mapped, rgb_rec2020, plan)
 
 
@@ -1051,12 +952,9 @@ def apply_core_parallel(
     if hue_restore > 1e-6:
         nonnegative = np.maximum(inset, 0.0)
         pre_hue_future = _FORMATION_POOL.submit(_rgb_to_hsv, nonnegative)
-    gain = film_channel_gain(inset, plan, formation_luma_row(outset_matrix))
     linear = apply_formation_curve(inset, plan)
     pre_hue = (
         pre_hue_future.result()[:, 0] if pre_hue_future is not None else None
     )
-    mapped = finish_formation(
-        linear, pre_hue, plan, outset_matrix, channel_gain=gain
-    )
+    mapped = finish_formation(linear, pre_hue, plan, outset_matrix)
     return apply_film_color_rec2020(mapped, rgb_rec2020, plan)

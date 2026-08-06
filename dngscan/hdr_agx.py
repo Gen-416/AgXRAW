@@ -173,13 +173,12 @@ def _form_hdr_chunk(
     # both dispatchers must apply the identical gain or the gain map inherits the
     # difference as chroma error. Beyond the fit domain the field clamps toward 1,
     # so the extended shoulder stays neutral by construction.
-    channel_gain = agx_engine.film_channel_gain(inset, hdr_tone_plan, formation_y)
     native_table, reference_table = curve_tables
     native_formation = native_table.apply(inset)
 
     def formation_tail(formation: Any) -> Any:
         mapped_rec = agx_engine.finish_formation(
-            formation, pre_hue, hdr_tone_plan, outset_matrix, channel_gain=channel_gain
+            formation, pre_hue, hdr_tone_plan, outset_matrix, channel_gain=None
         )
         # Observe-mode film colour joins here — post-outset Rec.2020, scene
         # luminance axis — mirroring the SDR order (outset -> film colour ->

@@ -345,8 +345,9 @@ class ApplyPresetTests(unittest.TestCase):
 
 
 class FilmModeTests(unittest.TestCase):
-    """The two-mode contract: observe = film declares, AgX develops (no ratio);
-    full = the film development core takes over per-channel (EXPERIMENTAL)."""
+    """The two-mode contract: observe = film declares, AgX develops; full = the
+    baked spectral-chain LUT takes over (a constrained tristimulus
+    reconstruction — see film_develop's honesty label)."""
 
     def _film_plan(self, name: str = "portra400", mode: str = "observe"):
         from dataclasses import replace
@@ -363,31 +364,25 @@ class FilmModeTests(unittest.TestCase):
         )
         return replace(apply_film_curve_preset(base, name), film_mode=mode)
 
-    def test_observe_mode_disables_the_ratio_gain(self) -> None:
-        """Colour belongs to AgX in observe mode: the ratio field must not leak
-        into the formation, or the film would silently co-own development colour
-        again — the exact hybrid the two-mode contract retired."""
-        from dngscan import agx as agx_engine
-
-        plan = self._film_plan(mode="observe")
-        _, outset_mtx = agx_engine.formation_matrices(plan)
-        weights = agx_engine.formation_luma_row(outset_mtx)
-        rgb = np.array([[0.5, 0.2, 0.1]], dtype=np.float32)
-        self.assertIsNone(agx_engine.channel_ratio_gain(rgb, plan, weights))
-
-    def test_full_mode_gain_is_unity_on_the_neutral_axis(self) -> None:
-        from dngscan import agx as agx_engine
+    def test_lut_neutral_axis_matches_the_published_tone_target(self) -> None:
+        """The takeover LUT's self-consistency gate, run at the runtime level:
+        a neutral ramp through the baked chain must land on the same tone the
+        preset's published target curve declares (both come from the identical
+        solved spectral chain; the LUT adds only grid + f16 quantization)."""
+        from dngscan.film_develop import apply_film_core
 
         plan = self._film_plan(mode="full")
-        _, outset_mtx = agx_engine.formation_matrices(plan)
-        weights = agx_engine.formation_luma_row(outset_mtx)
-        neutral = np.repeat(
-            np.geomspace(1e-4, 8.0, 64, dtype=np.float32)[:, None], 3, axis=1
-        )
-        gain = agx_engine.channel_ratio_gain(neutral, plan, weights)
-        self.assertIsNotNone(gain)
-        # Exact in real arithmetic; float32's luminance dot product rounds <=1 ulp.
-        self.assertLess(float(np.abs(gain - 1.0).max()), 2e-6)
+        preset = FILM_CURVE_PRESETS["portra400"]
+        ev_t = np.asarray(preset["target_curve"]["ev"], dtype=np.float64)
+        y_t = np.asarray(preset["target_curve"]["display_linear"], dtype=np.float64)
+        keep = (ev_t > -8.0) & (ev_t < 5.0) & (y_t > 1e-3)
+        ramp = np.repeat(
+            (0.18 * np.exp2(ev_t[keep]))[:, None], 3, axis=1
+        ).astype(np.float32)
+        out = apply_film_core(ramp, plan)
+        y_lut = out @ np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+        err = np.abs(np.log2(np.maximum(y_lut, 1e-6) / np.maximum(y_t[keep], 1e-6)))
+        self.assertLess(float(err.max()), 0.05)
 
     def test_film_core_preserves_neutrality_and_differs_from_agx(self) -> None:
         from dngscan.film_develop import apply_film_core
@@ -398,8 +393,10 @@ class FilmModeTests(unittest.TestCase):
             np.geomspace(1e-3, 4.0, 32, dtype=np.float32)[:, None], 3, axis=1
         )
         developed = apply_film_core(neutral, plan)
-        # Per-channel identical curve on identical channels: neutrality holds.
-        self.assertLess(float(np.abs(developed - developed[:, :1]).max()), 2e-5)
+        # The neutralized default keeps grays strictly neutral by construction;
+        # the residual is the LUT's f16 quantization through the cast division.
+        rel = np.abs(developed - developed[:, :1]) / np.maximum(developed[:, :1], 1e-5)
+        self.assertLess(float(rel.max()), 8e-3)
         chroma = np.array([[2.4, 0.9, 0.4], [0.05, 0.5, 0.02]], dtype=np.float32)
         inset_mtx, outset_mtx = agx_engine.formation_matrices(plan)
         agx_out = agx_engine.apply_core(chroma, plan, inset_mtx, outset_mtx)
@@ -435,10 +432,13 @@ class FilmModeTests(unittest.TestCase):
 
 
 class FilmCrossoverTests(unittest.TestCase):
-    """The declared crossover switch (plan.film_crossover) on the measured ratio
-    field: "off" (default) keeps the luminance-normalized anti-hidden-WB rail
-    byte-for-byte; "datasheet" re-anchors at mid-grey so the fitted inter-layer
-    drift appears on the neutral axis while EV0 stays strictly white-balanced."""
+    """The crossover switch in the LUT era: plan.film_crossover selects how the
+    baked chain serves the neutral axis. "off" (default) is the NEUTRALIZED
+    digital variant — each channel divided by the neutral ramp's cast at that
+    channel's own input exposure, grays strictly neutral by construction;
+    "datasheet" is the chain verbatim, inter-layer drift included as the data
+    reports it. One LUT ships per stock; the variant is a division, not a
+    second bake."""
 
     def _film_plan(self, name: str = "velvia100", mode: str = "full",
                    crossover: str = "off"):
@@ -467,19 +467,14 @@ class FilmCrossoverTests(unittest.TestCase):
         )
 
     def test_off_is_the_default_and_the_status_quo(self) -> None:
-        """A plan that never heard of the field and an explicit "off" plan must
-        produce the identical gain — the freeze discipline in one assertion."""
-        from dngscan import agx as agx_engine
+        """A plan that never heard of the switch and an explicit "off" plan
+        must develop identically — the freeze discipline in one assertion."""
+        from dngscan.film_develop import apply_film_core
 
         plan_off = self._film_plan(crossover="off")
-        _, outset_mtx = agx_engine.formation_matrices(plan_off)
-        weights = agx_engine.formation_luma_row(outset_mtx)
         self.assertEqual(plan_off.film_crossover, "off")
-        rgb = np.array(
-            [[0.5, 0.2, 0.1], [0.02, 0.4, 1.3], [0.18, 0.18, 0.18]],
-            dtype=np.float32,
-        )
-        gain_off = agx_engine.channel_ratio_gain(rgb, plan_off, weights)
+        _, ramp = self._neutral_ramp()
+        out_off = apply_film_core(ramp, plan_off)
 
         class LegacyPlanView:
             """The plan as an older caller would build it: no crossover field."""
@@ -492,86 +487,53 @@ class FilmCrossoverTests(unittest.TestCase):
                     raise AttributeError(name)
                 return getattr(self._inner, name)
 
-        gain_legacy = agx_engine.channel_ratio_gain(
-            rgb, LegacyPlanView(plan_off), weights
-        )
-        np.testing.assert_array_equal(gain_off, gain_legacy)
+        out_legacy = apply_film_core(ramp, LegacyPlanView(plan_off))
+        np.testing.assert_array_equal(out_off, out_legacy)
 
     def test_datasheet_is_inert_outside_full_mode(self) -> None:
-        from dngscan import agx as agx_engine
+        """Observe mode never routes the takeover core, so the switch has
+        nothing to act on: both settings must render byte-identically."""
+        from dngscan.render import apply_tone_core
 
-        plan = self._film_plan(mode="observe", crossover="datasheet")
-        _, outset_mtx = agx_engine.formation_matrices(plan)
-        weights = agx_engine.formation_luma_row(outset_mtx)
-        rgb = np.array([[0.5, 0.2, 0.1]], dtype=np.float32)
-        self.assertIsNone(agx_engine.channel_ratio_gain(rgb, plan, weights))
+        rgb = np.array(
+            [[0.5, 0.2, 0.1], [0.045, 0.045, 0.045]], dtype=np.float32
+        )
+        out_off = apply_tone_core(rgb, self._film_plan(mode="observe", crossover="off"))
+        out_ds = apply_tone_core(
+            rgb, self._film_plan(mode="observe", crossover="datasheet")
+        )
+        np.testing.assert_array_equal(out_off, out_ds)
 
-    def test_datasheet_matches_the_field_pointwise_on_the_neutral_axis(self) -> None:
-        """gain_c(EV) must equal r_c(EV)/r_c(0) exactly (clamped to the rail):
-        the switch releases the measured data, it does not reshape it."""
-        from dngscan import agx as agx_engine
-        from dngscan.film_curve import channel_ratio_field
+    def test_variants_differ_by_exactly_the_published_cast(self) -> None:
+        """datasheet / off on the neutral ramp must reproduce the npz's own
+        ramp_cast pointwise (per-channel input exposure): the switch releases
+        the baked data, it does not reshape it."""
+        from dngscan.film_develop import _load_lut, apply_film_core
 
-        plan = self._film_plan(crossover="datasheet")
-        _, outset_mtx = agx_engine.formation_matrices(plan)
-        weights = agx_engine.formation_luma_row(outset_mtx)
         ev, ramp = self._neutral_ramp()
-        gain = agx_engine.channel_ratio_gain(ramp, plan, weights)
-        self.assertIsNotNone(gain)
-        grid, ratios = channel_ratio_field("velvia100")
+        out_off = apply_film_core(ramp, self._film_plan(crossover="off"))
+        out_ds = apply_film_core(ramp, self._film_plan(crossover="datasheet"))
+        _lut, _lo, _hi, _n, ramp_ev, ramp_cast = _load_lut("velvia100")
         for c in range(3):
-            expected = np.interp(ev, grid, ratios[:, c]) / float(
-                np.interp(0.0, grid, ratios[:, c])
-            )
-            np.testing.assert_allclose(
-                gain[:, c], np.clip(expected, 0.25, 4.0), rtol=0.0, atol=2e-5
-            )
+            expected = np.interp(ev, ramp_ev, ramp_cast[:, c])
+            ratio = out_ds[:, c] / np.maximum(out_off[:, c], 1e-7)
+            np.testing.assert_allclose(ratio, expected, rtol=0.0, atol=2e-3)
 
     def test_datasheet_semantics_mid_grey_shadows_and_highlights(self) -> None:
-        """Mid-grey strictly neutral; EV-2 clearly cool (B/R >> 1, the fitted
-        Velvia shadow differential); EV+1 slightly blue — per the field data."""
-        from dngscan import agx as agx_engine
-
-        plan = self._film_plan(crossover="datasheet")
-        _, outset_mtx = agx_engine.formation_matrices(plan)
-        weights = agx_engine.formation_luma_row(outset_mtx)
-        probe = np.array(
-            [[0.18, 0.18, 0.18],
-             [0.045, 0.045, 0.045],   # EV-2
-             [0.36, 0.36, 0.36]],     # EV+1
-            dtype=np.float32,
-        )
-        gain = agx_engine.channel_ratio_gain(probe, plan, weights)
-        # EV0: r_c(0)/r_c(0) — WB fidelity at the anchor is exact.
-        self.assertLess(float(np.abs(gain[0] - 1.0).max()), 1e-6)
-        # EV-2: measured cool shadows (field: B 1.327 / R 0.894, B/R ~ 1.48).
-        self.assertGreater(float(gain[1, 2] / gain[1, 0]), 1.3)
-        # EV+1: slight blue lean (field: B ~ 1.040).
-        self.assertGreater(float(gain[2, 2] / gain[2, 0]), 1.0)
-        self.assertLess(float(gain[2, 2] / gain[2, 0]), 1.1)
-
-    def test_film_core_neutral_ramp_renders_the_declared_drift(self) -> None:
-        """Render-level: through film_develop.apply_film_core a neutral ramp
-        stays neutral at EV0 (1e-6), turns cool at EV-2, slightly blue at EV+1;
-        with the switch off the same ramp stays neutral everywhere."""
+        """Mid-grey neutral (the q-solve anchors it); EV-2 clearly cool for
+        Velvia (the fitted shadow differential); EV+1 only slightly blue."""
         from dngscan.film_develop import apply_film_core
 
         probe = np.array(
             [[0.18, 0.18, 0.18], [0.045, 0.045, 0.045], [0.36, 0.36, 0.36]],
             dtype=np.float32,
         )
-        out_off = apply_film_core(probe, self._film_plan(crossover="off"))
-        self.assertLess(
-            float(np.abs(out_off - out_off[:, :1]).max()), 2e-5
-        )
         out = apply_film_core(probe, self._film_plan(crossover="datasheet"))
-        # EV0 mid-grey: channels equal within 1e-6 relative to their magnitude.
-        self.assertLess(
-            float(np.abs(out[0] - out[0].mean()).max()), 1e-6 + 1e-6 * out[0].mean()
-        )
+        mid_dev = float(np.abs(out[0] / out[0].mean() - 1.0).max())
+        self.assertLess(mid_dev, 5e-3)
         self.assertGreater(float(out[1, 2] / out[1, 0]), 1.3)
         self.assertGreater(float(out[2, 2] / out[2, 0]), 1.0)
-        self.assertLess(float(out[2, 2] / out[2, 0]), 1.1)
+        self.assertLess(float(out[2, 2] / out[2, 0]), 1.2)
 
     def test_build_render_plan_validates_and_defaults_the_switch(self) -> None:
         """The plan compiler's crossover plumbing: unknown values collapse to
