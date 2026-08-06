@@ -559,24 +559,46 @@ COLOR_HEAD_EV_POINTS = 64
 COLOR_HEAD_FILTER_LAYER = {"y": 2, "m": 1}
 
 
-def build_color_head_field(stock: dict, theatrical: bool = False) -> dict | None:
-    """Per-preset colour-head response grid, or None for reversal stocks.
+JOINT_HEAD_CC_STEP = 5.0
+JOINT_HEAD_CC_MAX = 200.0
 
-    Reversal film has no printing stage — the slide is its own display medium —
-    so there is physically no enlarger head to model and the field is None.
+
+def build_joint_color_head_field(
+    stock: dict,
+    theatrical: bool = False,
+    ev_points: int = 96,
+):
+    """Stage-3 joint Y x M colour-head field, or None for reversal stocks.
+
+    Every real detent (0..200 CC step 5, both filters) is solved JOINTLY: both
+    filter densities perturb the effective exposures together and the print is
+    re-timed ONCE — the single spectral solve the separable gY x gM product was
+    refuted against (Portra 30Y+30M: ~0.35 stop RMS apart).
+
+    The published gains are diagonal in Bradford LMS, not Rec.2020: extreme
+    filtration drives print channels toward zero, where Rec.2020 components can
+    cross zero and a ratio stops meaning anything; LMS of a physical (
+    non-negative-XYZ) print stays positive, so the ratio field remains
+    numerically meaningful over the whole hardware throw. The 0CC x 0CC entry
+    is written as EXACT identity — the runtime's bit-exactness contract does
+    not rest on solver residuals.
+
+    Returns dict(ev[N], cc_grid[41], gains_lms[41,41,N,3] float32) with axes
+    [Y, M, EV, channel].
     """
     if stock.get("positive"):
         return None
+    sb = _spectral_base()
     chain = _solved_print_chain(stock, "native" if theatrical else None)
     ev, channels_base, t_neutral, _floor = _finish_print(chain)
 
+    # LMS view of the chain's viewed Rec.2020 (D65) channels.
+    rec2020_to_lms = sb._BRADFORD @ np.linalg.inv(sb.XYZ_TO_REC2020)
+
+    def to_lms(rgb: np.ndarray) -> np.ndarray:
+        return np.maximum(rgb @ rec2020_to_lms.T, 1e-9)
+
     def retimed(q_vec: np.ndarray) -> np.ndarray:
-        """Re-time the filtered print: one COMMON exposure shift restoring viewed
-        mid luminance to 0.18 (darkroom test-strip convention: filtration decides
-        colour, time is re-decided once). The viewing translation is already part
-        of develop(); nothing is re-normalized, so the dialled cast survives.
-        Mid luminance is strictly decreasing in the shift; bisection converges
-        unconditionally."""
         lo, hi = -2.5, 2.5
         for _ in range(60):
             mid = 0.5 * (lo + hi)
@@ -588,54 +610,32 @@ def build_color_head_field(stock: dict, theatrical: bool = False) -> dict | None
                 hi = mid
         return np.maximum(chain.develop(q_vec + 0.5 * (lo + hi)), 1e-7)
 
-    # Same visible-domain rule as the channel_ratio field: below ~1e-3 the display
-    # channels sit on numerical clamps and a ratio is artifact, not filtration.
     visible = t_neutral > 1e-3
     ev_vis = ev[visible]
-    idx = np.linspace(
-        0, ev_vis.size - 1, min(COLOR_HEAD_EV_POINTS, ev_vis.size)
-    ).round().astype(int)
-    base_vis = channels_base[visible]
+    idx = np.linspace(0, ev_vis.size - 1, min(ev_points, ev_vis.size)).round().astype(int)
+    ev_grid = ev_vis[idx]
+    base_lms = to_lms(channels_base[visible][idx])
 
-    field: dict[str, object] = {
-        "unit": "cc",
-        "cc_grid": [float(v) for v in COLOR_HEAD_CC_GRID],
-        "ev": [round(float(v), 5) for v in ev_vis[idx]],
-    }
-    mid_gain_30cc: dict[str, list[float]] = {}
-    for name, layer in COLOR_HEAD_FILTER_LAYER.items():
-        per_cc = []
-        for cc in COLOR_HEAD_CC_GRID:
+    cc_grid = np.arange(0.0, JOINT_HEAD_CC_MAX + 0.1, JOINT_HEAD_CC_STEP)
+    n_cc = cc_grid.size
+    gains = np.empty((n_cc, n_cc, ev_grid.size, 3), dtype=np.float32)
+    for yi, y_cc in enumerate(cc_grid):
+        for mi, m_cc in enumerate(cc_grid):
+            if y_cc == 0.0 and m_cc == 0.0:
+                gains[yi, mi] = 1.0  # exact identity by construction
+                continue
             q_f = chain.q.copy()
-            q_f[layer] -= cc / 100.0
-            ratio = np.clip(retimed(q_f)[visible] / base_vis, 0.05, 20.0)
-            if cc == 30.0:
-                mid_gain_30cc[name] = [
-                    round(float(np.interp(0.0, ev_vis, ratio[:, c])), 5)
-                    for c in range(3)
-                ]
-            g_mid = float(np.interp(0.0, ev_vis, ratio[:, layer]))
-            if g_mid <= 1.0:
-                raise RuntimeError(
-                    f"{chain.label}: colour-head direction violated for {name} "
-                    f"{cc:g}CC: displayed channel {layer} mid gain {g_mid:.4f} <= 1 "
-                    "(less dye must brighten its own band)"
-                )
-            per_cc.append([
-                [round(float(ratio[i, c]), 5) for c in range(3)] for i in idx
-            ])
-        field[name] = per_cc
-    field["mid_gain_30cc"] = mid_gain_30cc
-    field["model"] = (
-        "spectral print re-exposed: a Y (M) CC filter of density d attenuates the "
-        "paper's blue-(green-)sensitive layer exposure by 10^-d through the same "
-        "printer-light machinery the neutral solve uses; print re-timed to viewed "
-        "mid-gray luminance 0.18 (darkroom test-strip convention); field = "
-        "filtered/unfiltered display ratio along the neutral ramp under the base "
-        "anchor; runtime interpolates in CC and EV and combines Y x M "
-        "multiplicatively (declared separable approximation)"
-    )
-    return field
+            q_f[COLOR_HEAD_FILTER_LAYER["y"]] -= y_cc / 100.0
+            q_f[COLOR_HEAD_FILTER_LAYER["m"]] -= m_cc / 100.0
+            filtered = retimed(q_f)[visible][idx]
+            gains[yi, mi] = (to_lms(filtered) / base_lms).astype(np.float32)
+    return {
+        "ev": ev_grid.astype(np.float32),
+        "cc_grid": cc_grid.astype(np.float32),
+        "gains_lms": gains,
+        "basis": "bradford-lms",
+        "label": chain.label,
+    }
 
 
 def _agx_curve(ev: np.ndarray, params_vec: np.ndarray, target_black: float = 0.0) -> np.ndarray:
@@ -843,7 +843,26 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
         # film — its own display medium, physically without a printing stage.
         # The enlarger colour head exists only for the former.
         "process": "reversal" if stock.get("positive") else "negative",
-        "color_head": build_color_head_field(stock, theatrical=theatrical),
+        "color_head": (
+            None
+            if stock.get("positive")
+            else {
+                "format": "joint-lms-npz-v3",
+                "file": f"color_head/{key}.npz",
+                "cc_step": JOINT_HEAD_CC_STEP,
+                "cc_max": JOINT_HEAD_CC_MAX,
+                "model": (
+                    "joint paper-layer exposure model: every real Y x M detent "
+                    "solved together through the TH-KG3 printing chain with ONE "
+                    "re-time (test-strip convention); gains diagonal in Bradford "
+                    "LMS along the neutral ramp (stable at extreme filtration "
+                    "where Rec.2020 components may cross zero); runtime "
+                    "interpolates EV only — detents index directly. This is a "
+                    "neutral-axis paper-exposure model, not a filter-spectra "
+                    "oracle: no Y/M transmission spectra exist in the data yet."
+                ),
+            }
+        ),
         "params": {
             "black_ev": round(float(best[0]), 4),
             "white_ev": round(float(best[1]), 4),
@@ -953,53 +972,40 @@ def plot(presets: dict, out_path: Path) -> None:
     print(f"wrote {out_path}")
 
 
-def augment_color_head() -> int:
-    """Add process classification + colour-head fields to the published presets.
-
-    Deliberately NOT a refit: tone params, fit residuals, target and ratio curves
-    stay byte-identical (the golden freeze rests on them). The printer-light solve
-    is deterministic, so the colour-head build reproduces the exact k of the
-    original fit run before perturbing it.
-    """
-    raw = json.load(open(PRESET_PATH))
-    presets = raw.get("presets", {})
-    for key, preset in presets.items():
-        theatrical = key.endswith("_theatrical")
-        stock = STOCKS[key.removesuffix("_theatrical")]
-        preset["process"] = "reversal" if stock.get("positive") else "negative"
-        preset["color_head"] = build_color_head_field(stock, theatrical=theatrical)
-        if preset["color_head"] is not None:
-            mid = preset["color_head"]["mid_gain_30cc"]
-            print(f"{key}: negative, 30CC mid gains Y={mid['y']} M={mid['m']}")
-        else:
-            print(f"{key}: reversal — no printing stage, no colour head")
-    PRESET_PATH.write_text(
-        json.dumps(raw, indent=1, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    print(f"wrote {PRESET_PATH}")
-    return 0
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--stocks", nargs="*", default=list(STOCKS))
     ap.add_argument("--plot", type=Path,
                     default=PROJECT_ROOT / "docs" / "assets" / "film-curve-fits.png")
-    ap.add_argument(
-        "--augment-color-head", action="store_true",
-        help="only add process/colour-head fields to the existing presets (no refit)",
-    )
     args = ap.parse_args()
-    if args.augment_color_head:
-        return augment_color_head()
 
     presets = {}
     if PRESET_PATH.is_file():
         presets = json.load(open(PRESET_PATH)).get("presets", {})
+    data_dir = PROJECT_ROOT / "dngscan" / "data" / "color_head"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    def write_joint_head(key: str, stock: dict, theatrical: bool) -> None:
+        field = build_joint_color_head_field(stock, theatrical=theatrical)
+        if field is None:
+            return
+        out = data_dir / f"{key}.npz"
+        np.savez_compressed(
+            out,
+            ev=field["ev"].astype(np.float32),
+            cc_grid=field["cc_grid"].astype(np.float32),
+            gains_lms=field["gains_lms"].astype(np.float16),
+            basis=np.asarray(field["basis"]),
+            label=np.asarray(field["label"]),
+        )
+        print(f"  joint colour head -> {out.name} "
+              f"({out.stat().st_size/1024:.0f} KiB)")
+
     for key in args.stocks:
         stock = STOCKS[key]
         preset = fit_stock(key, stock)
         presets[key] = preset
+        write_joint_head(key, stock, theatrical=False)
         print(f"{key}: rms {preset['fit']['rms_stop']:.4f} stop, "
               f"max {preset['fit']['max_stop']:.4f} stop, params {preset['params']}")
         # Theatrical quotation variants for dark-surround projection chains: the
@@ -1008,6 +1014,7 @@ def main() -> int:
             tkey = f"{key}_theatrical"
             tpreset = fit_stock(tkey, stock, theatrical=True)
             presets[tkey] = tpreset
+            write_joint_head(tkey, stock, theatrical=True)
             print(f"{tkey}: rms {tpreset['fit']['rms_stop']:.4f} stop, "
                   f"max {tpreset['fit']['max_stop']:.4f} stop")
     PRESET_PATH.write_text(

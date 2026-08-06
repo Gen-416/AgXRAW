@@ -898,49 +898,6 @@ def channel_ratio_gain(inset: Any, plan: Any, luma_weights: Any) -> Any | None:
     return np.clip(gain, 0.25, 4.0, out=gain)
 
 
-def color_head_gain(inset: Any, plan: Any) -> Any | None:
-    """Enlarger colour head: the user's declared Y/M printing filtration.
-
-    gain_c = g_c(EV_c) with g the preset's spectrally derived colour-head field
-    (film_curve.color_head_gain_curves) and EV_c the channel's own formation
-    exposure — the same per-channel evaluation domain as the fitted curve, because
-    the filter acts on the print's per-layer exposure, not on the finished pixel.
-    The field was built by re-exposing the fitted spectral print with the filter in
-    the enlarger light path and re-timing to a 0.18 mid (tools/fit_film_curve.py):
-    it saturates toward 1 where the paper saturates, so this is an EV-dependent
-    print response, not a flat RGB multiplier. Direction follows the darkroom
-    mnemonic by construction (add the colour the print has too much of): +Y CC
-    raises the displayed blue channel at mid (less yellow dye), +M raises green.
-
-    Unlike channel_ratio_gain this is NOT gated on film_mode: the colour head is a
-    printing decision made by the user in both contracts (in "observe" the film
-    declares what the observer saw — including how the print was filtered; in
-    "full" the film development model consumes the same field). It is also not 1
-    on the neutral axis — shifting neutrals is the control's purpose, and it is a
-    declared input, not a hidden cast. Returns None when both dials are at 0 or
-    the preset carries no field (reversal film / no preset): zero cost, byte-exact
-    status quo.
-    """
-    y = float(getattr(plan, "color_head_y", 0.0))
-    m = float(getattr(plan, "color_head_m", 0.0))
-    if y <= 0.0 and m <= 0.0:
-        return None
-    from .film_curve import color_head_gain_curves
-
-    curves = color_head_gain_curves(
-        str(getattr(plan, "curve_preset", "") or ""), y, m
-    )
-    if curves is None:
-        return None
-    ev_grid, gains = curves
-    safe = np.maximum(inset.astype(np.float32, copy=False), 0.0)
-    ev_c = np.log2(np.maximum(safe / 0.18, EPS))
-    gain = np.empty_like(ev_c, dtype=np.float32)
-    for c in range(3):
-        gain[:, c] = np.interp(ev_c[:, c], ev_grid, gains[:, c])
-    return gain
-
-
 def film_channel_gain(inset: Any, plan: Any, luma_weights: Any) -> Any | None:
     """Combined film channel gain: measured ratio field x declared colour head.
 
@@ -950,18 +907,12 @@ def film_channel_gain(inset: Any, plan: Any, luma_weights: Any) -> Any | None:
     both inactive keeps the whole render on the None fast path.
     """
     if str(getattr(plan, "film_mode", "observe")) != "full":
-        # Observe-mode film colour no longer rides the formation channels: the
-        # v2 fields are Rec.2020-basis measurements, applied post-outset by
-        # apply_film_color_rec2020 on the scene luminance axis. Only the legacy
-        # film-takeover core still composes both halves here, in its own basis.
+        # Observe-mode film colour does not ride the formation channels: it is
+        # applied post-outset by apply_film_color_rec2020. The legacy
+        # film-takeover core consumes only the ratio field here — the colour
+        # head joined the shared post-core operator in every mode (stage 3).
         return None
-    ratio = channel_ratio_gain(inset, plan, luma_weights)
-    head = color_head_gain(inset, plan)
-    if ratio is None:
-        return head
-    if head is None:
-        return ratio
-    return ratio * head
+    return channel_ratio_gain(inset, plan, luma_weights)
 
 
 def formation_luma_row(outset_matrix: Any) -> Any:
@@ -980,6 +931,26 @@ def formation_luma_row(outset_matrix: Any) -> Any:
 
 REC2020_LUMA_WEIGHTS = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
 
+# Bradford LMS sandwich for the joint colour-head field (derived from the
+# calibration-base matrices: _BRADFORD @ inv(XYZ_TO_REC2020_white_exact); the
+# field's diagonal gains are only meaningful in this basis).
+REC2020_TO_LMS = np.asarray(
+    [
+        [0.6401768878, 0.3055303801, -0.0042787330],
+        [-0.0277113829, 1.0542746845, 0.0138541654],
+        [0.0067832589, -0.0119134710, 1.0946628631],
+    ],
+    dtype=np.float32,
+)
+LMS_TO_REC2020 = np.asarray(
+    [
+        [1.5425987843, -0.4469153832, 0.0116857969],
+        [0.0406666745, 0.9366019925, -0.0116947761],
+        [-0.0091163827, 0.0129626425, 0.9133235816],
+    ],
+    dtype=np.float32,
+)
+
 
 def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> Any:
     """Observe-mode film colour, applied where it was calibrated (stage C).
@@ -994,18 +965,18 @@ def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> 
     measured along the neutral axis — one exposure, one gain triple, honestly a
     neutral-axis generalization rather than three imagined emulsion exposures.
 
-    The legacy film-takeover core (film_mode="full") owns its own colour and is
-    excluded here; so are renders with both dials at zero (byte-exact fast path).
+    The gains are diagonal in Bradford LMS (stage 3's joint field — stable at
+    extreme filtration where Rec.2020 components may cross zero), so the pixel
+    makes a round trip through the fixed LMS sandwich. Renders with both dials
+    at zero keep the byte-exact fast path.
     """
-    if str(getattr(plan, "film_mode", "observe")) == "full":
-        return mapped_rec
     y_cc = float(getattr(plan, "color_head_y", 0.0))
     m_cc = float(getattr(plan, "color_head_m", 0.0))
     if y_cc <= 0.0 and m_cc <= 0.0:
         return mapped_rec
-    from .film_curve import color_head_gain_curves
+    from .film_curve import color_head_gain_lms
 
-    curves = color_head_gain_curves(
+    curves = color_head_gain_lms(
         str(getattr(plan, "curve_preset", "") or ""), y_cc, m_cc
     )
     if curves is None:
@@ -1017,7 +988,8 @@ def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> 
         [np.interp(ev_y, ev_grid, gains[:, c]).astype(np.float32) for c in range(3)],
         axis=-1,
     )
-    return (mapped_rec * gain).astype(np.float32, copy=False)
+    lms = np.maximum(mapped_rec @ REC2020_TO_LMS.T, 0.0)
+    return ((lms * gain) @ LMS_TO_REC2020.T).astype(np.float32, copy=False)
 
 
 def finish_formation(

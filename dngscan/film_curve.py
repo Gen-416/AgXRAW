@@ -198,84 +198,70 @@ def validate_color_head_cc(value: Any, label: str) -> float:
 _COLOR_HEAD_FIELD_CACHE: dict[str, tuple[Any, Any, dict[str, Any]] | None] = {}
 
 
-def _color_head_field(name: str) -> tuple[Any, Any, dict[str, Any]] | None:
-    """(ev_grid, cc_grid, {filter: gains[ncc, nev, 3]}) as float arrays, or None."""
+DATA_DIR = Path(__file__).with_name("data")
+
+
+def color_head_joint_field(name: str):
+    """(ev[N], cc_grid[41], gains_lms[41,41,N,3] float32) of a preset, or None.
+
+    Stage-3 joint Y x M paper-exposure field: every real detent solved together
+    through the printing chain with one re-time; gains diagonal in Bradford LMS
+    (see tools/fit_film_curve.build_joint_color_head_field). Loaded once per
+    preset from the packaged npz; float16 storage upcasts to float32 here.
+    """
     key = str(name)
     if key in _COLOR_HEAD_FIELD_CACHE:
         return _COLOR_HEAD_FIELD_CACHE[key]
     preset = FILM_CURVE_PRESETS.get(key)
-    raw = preset.get("color_head") if isinstance(preset, dict) else None
-    field: tuple[Any, Any, dict[str, Any]] | None = None
-    if isinstance(raw, dict) and raw.get("ev") and raw.get("cc_grid"):
+    pointer = preset.get("color_head") if isinstance(preset, dict) else None
+    field = None
+    if isinstance(pointer, dict) and pointer.get("file"):
+        path = DATA_DIR / str(pointer["file"])
         try:
-            ev = np.asarray(raw["ev"], dtype=np.float32)
-            cc = np.asarray(raw["cc_grid"], dtype=np.float64)
-            gains = {
-                f: np.asarray(raw[f], dtype=np.float32) for f in ("y", "m")
-            }
-            valid = (
-                ev.ndim == 1 and ev.size >= 2 and np.all(np.diff(ev) > 0)
-                and all(
-                    g.shape == (cc.size, ev.size, 3) for g in gains.values()
-                )
+            with np.load(path, allow_pickle=False) as payload:
+                ev = np.asarray(payload["ev"], dtype=np.float32)
+                cc = np.asarray(payload["cc_grid"], dtype=np.float64)
+                gains = np.asarray(payload["gains_lms"], dtype=np.float32)
+            if (
+                ev.ndim == 1 and ev.size >= 2 and bool(np.all(np.diff(ev) > 0))
+                and gains.shape == (cc.size, cc.size, ev.size, 3)
+            ):
+                ev.setflags(write=False)
+                gains.setflags(write=False)
+                field = (ev, cc, gains)
+        except (OSError, KeyError, ValueError):
+            field = None
+        if field is None:
+            raise RuntimeError(
+                f"colour-head field for '{key}' is declared but unreadable at "
+                f"{path}; regenerate with tools/fit_film_curve.py"
             )
-        except (TypeError, ValueError):
-            valid = False
-        if valid:
-            ev.setflags(write=False)
-            for g in gains.values():
-                g.setflags(write=False)
-            field = (ev, cc, gains)
     _COLOR_HEAD_FIELD_CACHE[key] = field
     return field
 
 
-_COLOR_HEAD_GAIN_CACHE: dict[tuple[str, float, float], tuple[Any, Any] | None] = {}
-
-
-def color_head_gain_curves(
+def color_head_gain_lms(
     name: str, y_cc: float, m_cc: float
 ) -> tuple[Any, Any] | None:
-    """Combined Y+M colour-head gain curves g_c(EV) for a dialled setting.
+    """Joint-field gains for a dialled detent pair: (ev_grid, gains_lms[N,3]).
 
-    The published field samples each filter at a small CC grid; a dialled value is
-    interpolated between grid points in log-gain (filter densities compose
-    multiplicatively, so log-gain is the linear-in-density domain), and the two
-    filters combine multiplicatively — the fitter's declared separable
-    approximation. Returns (ev_grid, gains[N, 3]) float32 read-only, or None when
-    the preset has no field or both dials are at zero. np.interp end clamping IS
-    the out-of-domain semantics: beyond the visible fit domain the print sits on
-    its own endpoints where filtration physically stops mattering.
+    Detents index the field DIRECTLY — validate_color_head_cc restricts both
+    dials to the 5 CC hardware步进, so there is no CC interpolation and no
+    separable composition anywhere; only EV is interpolated at apply time.
+    Returns None when the preset has no field or both dials are at zero.
     """
     y_cc, m_cc = float(y_cc), float(m_cc)
     if y_cc <= 0.0 and m_cc <= 0.0:
         return None
-    key = (str(name), y_cc, m_cc)
-    if key in _COLOR_HEAD_GAIN_CACHE:
-        return _COLOR_HEAD_GAIN_CACHE[key]
-    field = _color_head_field(str(name))
-    result: tuple[Any, Any] | None = None
-    if field is not None:
-        ev, cc_grid, gains = field
-        log_total = np.zeros((ev.size, 3), dtype=np.float64)
-        for filter_name, cc in (("y", y_cc), ("m", m_cc)):
-            if cc <= 0.0:
-                continue
-            # log-gain per grid density, with the implicit identity row at 0 CC.
-            log_g = np.log(np.maximum(gains[filter_name].astype(np.float64), 1e-9))
-            grid = np.concatenate(([0.0], cc_grid))
-            table = np.concatenate((np.zeros((1, ev.size, 3)), log_g), axis=0)
-            hi = int(np.searchsorted(grid, min(cc, grid[-1]), side="left"))
-            hi = max(1, min(hi, grid.size - 1))
-            lo = hi - 1
-            t = (min(cc, grid[-1]) - grid[lo]) / (grid[hi] - grid[lo])
-            log_total += (1.0 - t) * table[lo] + t * table[hi]
-        combined = np.exp(log_total).astype(np.float32)
-        combined.setflags(write=False)
-        result = (ev, combined)
-    _COLOR_HEAD_GAIN_CACHE[key] = result
-    return result
-
+    field = color_head_joint_field(str(name))
+    if field is None:
+        return None
+    ev, cc_grid, gains = field
+    yi = int(round(y_cc / float(cc_grid[1] - cc_grid[0])))
+    mi = int(round(m_cc / float(cc_grid[1] - cc_grid[0])))
+    yi = max(0, min(yi, cc_grid.size - 1))
+    mi = max(0, min(mi, cc_grid.size - 1))
+    return ev, gains[yi, mi]
 
 def apply_film_curve_preset(tone_plan: Any, name: str) -> Any:
     """Replace the scene-compiled curve with the preset's fixed coordinate.

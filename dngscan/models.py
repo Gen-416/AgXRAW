@@ -290,7 +290,7 @@ class ToneCompressionPlan:
     # layer, M the green-sensitive), ~one stop of that separation's printing
     # exposure per 30 CC. 0 = the preset's neutral printing decision (byte-exact
     # status quo). Consumed through the preset's spectrally derived colour-head
-    # field (film_curve.color_head_gain_curves); meaningless without a negative
+    # field (film_curve.color_head_gain_lms, stage-3 joint field); meaningless without a negative
     # curve_preset, and physically absent for reversal film (no printing stage).
     color_head_y: float = 0.0
     color_head_m: float = 0.0

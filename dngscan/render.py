@@ -295,7 +295,12 @@ def apply_tone_core(
     ):
         from .film_develop import apply_film_core
 
-        return apply_film_core(rgb_rec2020, plan)
+        # The colour head joins after the takeover core, through the same
+        # shared post-core operator as observe (stage 3): one field, one
+        # application point, no per-mode basis drift.
+        return agx_engine.apply_film_color_rec2020(
+            apply_film_core(rgb_rec2020, plan), rgb_rec2020, plan
+        )
     if core == "neutral":
         return neutral_engine.apply_neutral_core(rgb_rec2020, plan)
     if core == "lum":
