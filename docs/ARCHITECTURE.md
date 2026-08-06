@@ -1041,13 +1041,24 @@ real landing, so black_ev is data-determined).
 
 `tools/crosscheck_2383.py` cross-checks the density-domain composition against an
 independent implementation (DiVERE's Kodak 2383 curve, its curve-domain convention
-verified line-by-line from source) — and the same external ruler has now been used
-twice. Round one located the old channel shortcut's defect (blue rms 0.383 with a
-wavelength-monotone scale ladder 0.75/0.84/0.96 — the spectral signature of
-misread printing density). After the spectral-print upgrade, round two passes: the
-ladder vanishes and blue collapses to 0.048, all three channels converging at
-<= 0.086 stop. Details in the contract's external-validation and spectral-print
-sections.
+verified line-by-line from source) — the same external ruler has now been used five
+times. Round one located the old channel shortcut's defect (blue rms 0.383 with a
+wavelength-monotone scale ladder — the spectral signature of misread printing
+density); round two validated the spectral-print upgrade; rounds three and four
+left two open findings (a G deep-shadow divergence and a B density-scale
+deviation). **Round five closed both** (`--input divere-status`): projecting BOTH
+chains into ISO 5-3 densitometry — chain A as the developed print's Status A
+reading, chain B's input as the negative's Status M reading through DiVERE's
+default Cineon matrix — collapses all five 2383 stocks to rms R 0.092–0.100 /
+G 0.039–0.043 / B 0.077–0.103 stop with fitted density scales 1.02–1.10. The
+historical findings were METRIC artifacts: per-dye amounts were being compared
+against densitometer readings, so inter-dye crosstalk was booked as shape
+disagreement. Kodak's own H-1-2383 curves arbitrate (mid gamma ~4, Dmax ~4.1 —
+both chains inside), and the negatives' Status M gammas (0.50–0.56 per logE)
+match Kodak 5207's published values. The residual ~1.1x G scale is the
+difference between the Cineon-era generic matrix and this stock pairing's
+spectral relationship — a convention gap, not a defect. Responsivity data lives
+in `dngscan_assets/spectral/densitometer/` (Giorgianni/Madden/Kriss 2009).
 
 The root difference from other film tools: every declaration lives on the
 scene-referred side, so film character survives into Ultra HDR delivery — a film body

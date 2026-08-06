@@ -23,6 +23,16 @@ used by Eary Chow's AgX LUT generator:
 
 No third-party display or camera LUT is distributed with dngscan.
 
+## Status A / Status M densitometer responsivities
+
+`dngscan_assets/spectral/densitometer/` carries the ISO 5-3 Status A and
+Status M spectral responsivities as digitized in Giorgianni, Madden & Kriss,
+*Digital Color Management* (Wiley 2009), p. 335, redistributed from the
+agx-emulsion project's v0.2.0-legacy tree
+(`agx_emulsion/data/densitometer/`, GPL-3.0-or-later — same license as this
+project). Offline verification only (`tools/crosscheck_2383.py`); not used in
+rendering and not packaged into wheels.
+
 ## spektrafilm film profiles (CC BY-SA 4.0)
 
 Film stock profiles under `dngscan_assets/spectral/spektrafilm/` (spectral
