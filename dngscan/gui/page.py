@@ -353,7 +353,7 @@ FILM_CURVE_OPTIONS
       </select>
     </div>
   </div>
-  <div class="row" id="colorHeadBlock" style="margin-top:12px;display:none">
+  <div class="row" id="colorHeadBlock" style="margin-top:12px">
     <div class="sliderField">
       <div class="labelRow"><label title="放大机色头黄（Y）分色滤镜，真实暗房单位：CC 密度档位，30CC=0.30 光学密度≈相纸蓝敏层 1 档印相曝光衰减。暗房口诀：成片偏什么色，加什么色的滤镜——偏黄加 Y、去黄。方向已渲染级验证：portra400 人像样张 +30CC Y 使成片中位 b*（黄蓝轴）从 +9.4 移到 -36.8（100% 像素向去黄方向移动）。响应由该预设的拟合光谱印相模型推导（构建期把滤镜放进放大机光路重曝相纸并按暗房惯例重解曝光时间，中灰亮度不变），运行时按 CC 与曝光插值——不是后置 RGB 增益。仅负片预设显示：反转片无印相环节，物理上没有色头。">色头 Y（黄）</label><span class="val" id="colorHeadYVal">0</span></div>
       <input type="range" id="colorHeadY" min="0" max="200" step="5" value="0" title="向右加黄滤镜档位：成片去黄（偏蓝）。0=预设的中性印相决定。">
@@ -362,6 +362,7 @@ FILM_CURVE_OPTIONS
       <div class="labelRow"><label title="放大机色头品（M）分色滤镜：CC 密度档位，30CC≈相纸绿敏层 1 档印相曝光衰减。暗房口诀：成片偏品加 M、去品。方向已渲染级验证：portra400 人像样张 +30CC M 使成片中位 a*（品绿轴）从 +0.8 移到 -45.2（100% 像素向去品方向移动）。同 Y：响应来自拟合光谱印相模型，改档位后自动重解曝光时间，中灰亮度不变。仅负片预设显示：反转片无印相环节。">色头 M（品）</label><span class="val" id="colorHeadMVal">0</span></div>
       <input type="range" id="colorHeadM" min="0" max="200" step="5" value="0" title="向右加品滤镜档位：成片去品（偏绿）。0=预设的中性印相决定。">
     </div>
+    <div class="ctlFact" id="colorHeadHint" style="flex-basis:100%"></div>
   </div>
   <div class="row" id="filmModeRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
@@ -963,18 +964,27 @@ function setColorHeadLabels(){
   $("#colorHeadMVal").textContent=$("#colorHeadM").value+" CC";
 }
 function updateColorHeadUi(){
-  // Negatives only (a print stage physically exists) AND observe mode only:
-  // full mode's baked spectral chain refuses filtration at every backend
-  // layer, so the dials hide and RESET — a stale non-zero Y/M must never ride
-  // a full-mode payload into the server-side rejection.
-  const supported=!!FILM_COLOR_HEADS[$("#filmCurve").value]
-    &&$("#filmMode").value!=="full";
-  const block=$("#colorHeadBlock");
-  if(supported){block.style.display="flex";}
-  else{
-    block.style.display="none";
-    $("#colorHeadY").value=0;$("#colorHeadM").value=0;
+  // Discoverability contract: the colour-head block is ALWAYS visible.
+  // Hiding it taught users the feature was gone; instead the dials disable
+  // with the reason on screen. Disabled states also RESET to 0 — a stale
+  // non-zero Y/M must never ride a payload the backend would reject
+  // (full mode) or silently ignore (no negative preset).
+  const preset=$("#filmCurve").value;
+  const isNegative=!!FILM_COLOR_HEADS[preset];
+  const isFull=$("#filmMode").value==="full";
+  let reason="";
+  if(preset==="none"){reason="色头需要一个负片曲线预设——请先选择 Portra/Gold/Superia/Vision3 等负片";}
+  else if(!isNegative){reason="反转片没有印相色头：幻灯片自身就是显示介质，物理上不存在放大机环节";}
+  else if(isFull){reason="接管 LUT 固定烘焙于 0CC——切换“显影分工”回“观察”模式即可启用色头";}
+  const enabled=!reason;
+  for(const id of ["colorHeadY","colorHeadM"]){
+    const el=$("#"+id);
+    el.disabled=!enabled;
+    if(!enabled){el.value=0;}
   }
+  const hint=$("#colorHeadHint");
+  hint.textContent=reason;
+  hint.style.display=enabled?"none":"";
   setColorHeadLabels();
 }
 ["colorHeadY","colorHeadM"].forEach(id=>$("#"+id).oninput=()=>{setColorHeadLabels();saveSettings();scheduleLivePreview();});
