@@ -373,7 +373,7 @@ FILM_CURVE_OPTIONS
     </div>
     <div id="filmCrossoverBlock" style="flex:1;min-width:190px;display:none">
       <label>层间漂移</label>
-      <select id="filmCrossover" title="crossover 声明开关（仅接管模式）。关=中性轴分区染色按构造抵消（反隐藏白平衡安全轨，现状）；数据手册=中灰严格保持白平衡，中性轴两端按拟合器实测的层间数据漂移（如 Velvia 阴影偏冷）——实验选项，量级未经外部裁决。">
+      <select id="filmCrossover" title="crossover 声明开关（仅接管模式）。关=数字中性化变体：接管 LUT 输出按像素亮度曝光除以随包的有界中性染色曲线，介质灰阶偏中性两档以内严格中性；数据手册=光谱链原样：中灰由印相求解锚定，暗部/亮部按层间数据漂移（如 Velvia 阴影温和偏冷）——量级未经外部裁决。">
         <option value="off">关 · 中性轴恒等 · 默认</option>
         <option value="datasheet">数据手册 · 中灰锚定（实验）</option>
       </select>
@@ -893,8 +893,7 @@ function restoreSettings(){
   if(s.hdrHeadroom!==undefined)$("#hdrHeadroom").value=s.hdrHeadroom;
   if(s.outdir)$("#outdir").value=s.outdir;
   if(s.png!==undefined)$("#png").checked=!!s.png;
-  setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateColorHeadUi();
-  setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();
+  setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();updateColorHeadUi();
   if(migrated)saveSettings();
 }
 ["quality","outdir","png"].forEach(id=>$("#"+id).addEventListener("change",saveSettings));
@@ -921,21 +920,39 @@ $("#film").addEventListener("change",()=>{
     $("#sceneTransformStrength").value=1;setSceneTransformStrengthLabel();
     $("#agxPrimaries").value="base";
   }
-  updateColorHeadUi();updateDecoderUi();updateSceneTransformUi();saveSettings();preparePreview();
-  updateDecoderUi();updateSceneTransformUi();updateFilmModeUi();saveSettings();preparePreview();
+  updateFilmModeUi();updateColorHeadUi();updateDecoderUi();updateSceneTransformUi();saveSettings();preparePreview();
 });
 // Film-takeover controls (EXPERIMENTAL): the mode row appears only with an active
 // curve preset, and the crossover declaration only in full (takeover) mode.
+// Controls the takeover LUT ignores by construction: the baked spectral
+// chain replaces the AgX formation wholesale, so tone shaping, primaries and
+// punch are inert in full mode and the backend REJECTS full + non-agx cores.
+// Disable them (with the reason in the tooltip) rather than let dead sliders
+// pretend to edit.
+const FILM_FULL_INERT_IDS=["toneCore","midtoneBrightness","midtoneContrast",
+  "shadowTransition","highlightTransition","highlightFade","punch",
+  "agxPrimaries","lumNorm"];
 function updateFilmModeUi(){
   const hasCurve=$("#filmCurve").value!=="none";
   $("#filmModeRow").style.display=hasCurve?"":"none";
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
+  if(full&&$("#toneCore").value!=="agx"){
+    $("#toneCore").value="agx";
+    updateToneCoreUi();
+  }
+  for(const id of FILM_FULL_INERT_IDS){
+    const el=$("#"+id);
+    if(!el) continue;
+    el.disabled=full;
+    if(full){el.dataset.fullInert="1";}
+    else{delete el.dataset.fullInert;}
+  }
 }
 $("#filmMode").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
 $("#filmCrossover").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
-$("#filmCurve").addEventListener("change",()=>{updateColorHeadUi();saveSettings();scheduleLivePreview();});
+
 // Enlarger colour head: shown only while the selected curve preset is a NEGATIVE
 // (a print stage physically exists); reversal presets and "none" hide the block
 // and reset the dials — the payload must never carry filtration the server would
@@ -961,7 +978,7 @@ function updateColorHeadUi(){
   setColorHeadLabels();
 }
 ["colorHeadY","colorHeadM"].forEach(id=>$("#"+id).oninput=()=>{setColorHeadLabels();saveSettings();scheduleLivePreview();});
-$("#filmCurve").addEventListener("change",()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();});
+$("#filmCurve").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
 $("#toneCore").addEventListener("change",()=>{updateToneCoreUi();updateToneCoreExportUi();saveSettings();preparePreview();});
 $("#lumNorm").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#agxPrimaries").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});

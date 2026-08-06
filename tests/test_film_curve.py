@@ -752,3 +752,92 @@ class WholeRollConsistencyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FilmFullCoreExclusivityTests(unittest.TestCase):
+    """Batch-7 P1: full + lum/neutral/gated compiled fine but the render stage
+    silently fell back to the requested core (measured 0.0 diff vs observe)
+    while the filename still claimed filmfull. The takeover LUT only runs in
+    the agx pipeline slot, so the combination is rejected explicitly at the
+    plan compiler, the CLI and the GUI service."""
+
+    def test_plan_compiler_rejects_full_with_non_agx_cores(self) -> None:
+        from golden_support import build_daylight_wide_dr
+        from dngscan.tone import build_render_plan
+
+        scene = build_daylight_wide_dr()
+        for core in ("lum", "neutral", "gated"):
+            with self.subTest(core=core), self.assertRaises(ValueError):
+                build_render_plan(
+                    scene.bundle,
+                    scene.analysis,
+                    "agx",
+                    "srgb",
+                    film_curve="portra400",
+                    film_mode="full",
+                    tone_core=core,
+                )
+        plan = build_render_plan(
+            scene.bundle,
+            scene.analysis,
+            "agx",
+            "srgb",
+            film_curve="portra400",
+            film_mode="full",
+            tone_core="agx",
+        )
+        self.assertEqual(plan.tone.film_mode, "full")
+
+    def test_gui_service_rejects_full_with_non_agx_core(self) -> None:
+        from dngscan.gui.service import parse_film_params
+
+        with self.assertRaises(ValueError):
+            parse_film_params({
+                "filmCurve": "portra400",
+                "filmMode": "full",
+                "toneCore": "lum",
+            })
+
+
+class ShippedAssetContractTests(unittest.TestCase):
+    """Batch-7 P2: the loading contract fails CLOSED. A tampered or stale
+    asset raises instead of being silently sampled."""
+
+    def test_full_lut_loader_rejects_a_tampered_cast_bound(self) -> None:
+        import tempfile
+        import unittest.mock as mock
+
+        from dngscan import film_develop
+        from dngscan.film_develop import _LUT_DIR, _load_lut
+
+        src = _LUT_DIR / "portra400.npz"
+        with np.load(src, allow_pickle=False) as z:
+            payload = {k: np.asarray(z[k]) for k in z.files}
+        payload["cast_bounded"] = payload["cast_bounded"].copy()
+        payload["cast_bounded"][0, 0] = 9.0  # outside the declared [0.25, 4]
+        with tempfile.TemporaryDirectory() as td:
+            bad_dir = Path(td)
+            np.savez_compressed(bad_dir / "portra400.npz", **payload)
+            with mock.patch.object(film_develop, "_LUT_DIR", bad_dir), \
+                    mock.patch.object(film_develop, "_LUT_CACHE", {}):
+                with self.assertRaises(RuntimeError):
+                    _load_lut("portra400")
+
+    def test_shipped_assets_pass_their_own_hard_gates(self) -> None:
+        from dngscan.film_curve import (
+            FILM_CURVE_PRESETS,
+            color_head_joint_field,
+            film_process,
+        )
+        from dngscan.film_develop import _LUT_CACHE, _LUT_DIR, _load_lut
+
+        _LUT_CACHE.clear()
+        for path in sorted(_LUT_DIR.glob("*.npz")):
+            _load_lut(path.stem)  # raises on any contract violation
+        heads = 0
+        for name in FILM_CURVE_PRESETS:
+            if film_process(name) != "negative":
+                continue
+            self.assertIsNotNone(color_head_joint_field(name), name)
+            heads += 1
+        self.assertGreaterEqual(heads, 15)

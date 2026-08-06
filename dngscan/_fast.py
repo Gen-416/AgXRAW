@@ -87,9 +87,9 @@ def supports_agx(plan: ToneCompressionPlan) -> bool:
     if float(getattr(plan, "color_head_y", 0.0)) > 0.0 or float(
         getattr(plan, "color_head_m", 0.0)
     ) > 0.0:
-        # Enlarger colour head: an EV-dependent per-channel gain field the kernel
-        # does not model (same exclusion precedent as the film ratio field). Zero
-        # dials keep the native path — and the byte-exact status quo.
+        # Enlarger colour head: an EV-dependent LMS gain field the kernel
+        # does not model. Zero dials keep the native path — and the byte-exact
+        # status quo.
         return False
     if _fast_mode() == "off":
         return False
@@ -136,10 +136,10 @@ def apply_agx_core_f32(rgb: np.ndarray, plan: Any) -> np.ndarray:
 def supports_hdr_formation(formation_plan: Any) -> bool:
     """Whether the native HDR formation kernel may be dispatched for this plan.
 
-    The kernel covers the full _form_hdr_chunk chain except the film channel-ratio
-    gain: with film_mode="full" and an active curve preset the gain field is a
-    per-pixel transfer the kernel does not model, so those plans keep the NumPy
-    path (same exclusion precedent as supports_agx).
+    The kernel covers the full _form_hdr_chunk chain; film_mode="full" with an
+    active curve preset swaps in the takeover LUT — a per-pixel transfer the
+    kernel does not model — so those plans keep the NumPy path (same exclusion
+    precedent as supports_agx).
     """
     if _fast_mode() == "off":
         return False

@@ -71,10 +71,25 @@ def _load_lut(name: str):
         with np.load(path, allow_pickle=False) as payload:
             lut = np.asarray(payload["lut_datasheet"], dtype=np.float32)
             n = int(payload["n"])
+            cast_ev = np.asarray(payload["cast_ev"], dtype=np.float32)
+            cast = np.asarray(payload["cast_bounded"], dtype=np.float32)
+            # Hard loading contract (review batch 7): schema, declared input
+            # space and value sanity fail CLOSED — a stale or corrupted LUT
+            # must never be silently sampled.
+            if int(payload["schema"]) != 2:
+                raise ValueError(f"full-LUT schema {int(payload['schema'])}, expected 2")
+            input_space = str(np.asarray(payload["input_space"]))
+            if input_space != "post-prefeed_rec2020":
+                raise ValueError(f"full-LUT input_space {input_space!r}")
+            if not bool(np.isfinite(lut).all()) or float(lut.min()) < 0.0:
+                raise ValueError("full-LUT volume contains non-finite or negative values")
+            if not bool(np.isfinite(cast).all()) or \
+                    float(cast.min()) < 0.25 - 1e-4 or float(cast.max()) > 4.0 + 1e-4:
+                raise ValueError("bounded cast curve outside its declared [0.25, 4] bound")
             entry = (
                 lut,
-                np.asarray(payload["cast_ev"], dtype=np.float32),
-                np.asarray(payload["cast_bounded"], dtype=np.float32),
+                cast_ev,
+                cast,
                 float(payload["ev_min"]),
                 float(payload["ev_max"]),
                 n,

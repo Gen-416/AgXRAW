@@ -331,8 +331,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "胶片分工模式（仅在胶片曲线激活时有意义）。observe=胶片声明观察者看见了"
             "什么（WB/分离/音调签名），颜色由 AgX 显影（默认，已验证路径）；"
-            "full=胶片显影模型整体接管（逐通道曲线+比率场，实验性：色彩侧无外部"
-            "验证），AgX 只保留交付端色域安全。full 暂仅支持 SDR"
+            "full=胶片显影模型整体接管（离线烘焙光谱链 65³ LUT：观察者逆矩阵→"
+            "三层乳剂→特性曲线→印相/幻灯观看链；实验性），AgX 只保留交付端色域"
+            "安全。full 仅支持 SDR、仅 AgX tone core、不支持放大机色头"
         ),
     )
     parser.add_argument(
@@ -340,12 +341,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("off", "datasheet"),
         default="off",
         help=(
-            "胶片层间漂移（crossover）声明开关，仅 --film-mode full 且预设携带"
-            "实测比率场时有意义（其余组合零改变）。off=现状（默认）：比率增益按"
-            "像素自身亮度 EV 归一，中性轴分区染色按构造抵消（反隐藏白平衡安全"
-            "轨）；datasheet=中灰锚定：中灰严格保持白平衡，中性轴两端按拟合器"
-            "实测的层间数据漂移（如 Velvia 阴影偏冷）——实验选项，量级未经外部"
-            "oracle 裁决"
+            "胶片层间漂移（crossover）声明开关，仅 --film-mode full 有意义"
+            "（其余组合零改变）。off=数字中性化变体（默认）：接管 LUT 的输出按"
+            "像素亮度曝光除以随包的有界中性染色曲线，介质灰阶偏中性两档以内严格"
+            "中性；datasheet=光谱链原样：中灰由印相求解锚定，暗部/亮部按层间"
+            "数据漂移（如 Velvia 阴影温和偏冷）——量级未经外部 oracle 裁决"
         ),
     )
     parser.add_argument(
@@ -499,6 +499,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     if is_hdr_output_format(args.output_format) and args.tone_core != "agx":
         parser.error("HDR 输出当前只实现 AgX tone core；请使用 --tone-core agx")
+    if args.film_mode == "full" and args.tone_core != "agx":
+        parser.error(
+            "胶片接管显影（--film-mode full）只在 AgX tone core 上运行；"
+            "请使用 --tone-core agx 或切回 observe"
+        )
     try:
         container = container_for_output_format(args.output_format)
         if args.delivery_profile is None and (

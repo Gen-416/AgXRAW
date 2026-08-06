@@ -41,7 +41,7 @@ Three **declaration disciplines** follow, and apply repository-wide:
    "magically derived from somewhere" (Siragusano's phrase) are not admitted.
 2. **A fixed pipeline position.** Every transform declares where in the chain it
    acts (the lens filter before the prefeed, the surround term inside the fit
-   target, the ratio field after hue restore); the position is part of the contract.
+   target, the colour-head LMS field after the outset); the position is part of the contract.
 3. **A measurable residual.** Every fit publishes rms/max and its bound-pinned
    parameters (`fit.pinned` = declared out-of-domain extrapolation). Residuals are
    part of the product, not an embarrassment to hide.
@@ -782,11 +782,10 @@ The pre-curve `inset` contracts the working primaries toward the neutral axis an
 a small rotation. Extreme colors do not hit a single channel ceiling directly and gain
 a smoother path to white. The post-curve `outset` restores purity, but is deliberately
 not the exact inverse of the inset. The difference between the two, plus optional hue
-restoration, is part of AgX's color character. With a film preset active, a
-**per-channel ratio stage** `r_c(EV_c)/r_c(EV_Y)` sits between hue restore and the
-outset (see the film observation section) — deliberately after hue restore: that
-control moderates the generic curve's own hue swing, while the ratio field is the
-medium's measured report and must not be diluted by the renderer's hue discipline. This also addresses the notorious six of
+restoration, is part of AgX's color character. With a NEGATIVE film preset active and
+enlarger colour-head dials above zero, the stage-3 **joint Y x M LMS gain field**
+applies after the outset (diagonal in Bradford LMS, indexed by the pixel's luminance
+exposure; exact identity at 0CC). This also addresses the notorious six of
 bare per-channel curves, such as pure red moving toward orange-yellow and pure blue
 toward cyan as they brighten; the inset rotation carries some Abney-style perceptual hue
 compensation as well.
@@ -888,7 +887,7 @@ flowchart LR
     D2["Lens filter (optional)<br/>Wratten mired shift<br/>(Layer 1 optics)"]
     D3["Spectral separation<br/>the film's layers as the observer<br/>(prefeed)"]
     D4["Development curve + viewing translation<br/>named AgX coordinate · surround term · medium floor<br/>(Layer 2 Tone)"]
-    D5["Per-channel ratio field<br/>layer-saturation differential, after hue restore<br/>(Layer 3 formation)"]
+    D5["Exposure-dependent colour<br/>observe: post-outset colour head (negatives)<br/>full: baked spectral-chain LUT"]
     D1 --> D2 --> D3 --> D4 --> D5
     D5 --> OUT["Layer 4 works unchanged<br/>including Ultra HDR gain-map delivery"]
 ```
@@ -925,25 +924,30 @@ flowchart LR
   a monitor" appearance is the `*_theatrical` quotation variant — the contract
   separates **translation** from **quotation**; quotations occupy neither the
   stock's name nor its viewing translation.
-- **Per-channel ratio field** (full mode only): the layer-saturation differential
-  solved from the same characteristic curves, `r_c(EV) = T_c / T_neutral`, applied
-  as `r_c(EV_c)/r_c(EV_Y)` (exactly 1 on the neutral axis by construction). It is
-  the carrier of "film takes over development colour" — and the colour dimension of
-  the reconstruction has **no external oracle** (the tone dimension does), so it is
-  off by default.
+- **Exposure-dependent colour**: in observe mode, the joint Y x M colour-head
+  field for negatives (stage 3 — both filter densities perturb the print
+  exposures together and the print is re-timed once; published as diagonal
+  Bradford-LMS gains, exact identity at 0CC). In full mode, the offline-baked
+  spectral-chain 65-cubed LUT (stage 4 — constrained observer inverse, per-layer
+  characteristic curves, TH-KG3 print chain or direct slide viewing, with the
+  observer's metamer residual stamped per stock). The colour dimension still has
+  **no external oracle** (the tone dimension does), so full mode stays opt-in.
 
 **The two-mode division** (`--film-mode`; contract, spectral-print/two-mode
 section): **observe (default)** = the film declares what the observer saw
 (WB/separation/tone signature) and AgX develops — the division drawn at the data's
 trust boundary; a film preset is then just curve parameters and the native kernel
 accelerates as usual. **full (experimental)** = the film's development model takes
-over (the `film_develop` core: per-channel curve x ratio field, no AgX colour
-geometry); AgX keeps only delivery-side gamut safety; SDR only for now. With
-`--film` off the pipeline is pure AgX. Per-channel rolloff IS a colour operation —
-which is the structural reason "AgX for stretch/rolloff, film for colour" cannot be
-split down the middle and had to become a two-pole switch.
-
-![observe vs full, same frame: Portra 400 / Kodachrome 64 / Vision3 theatrical](assets/film-mode-observe-vs-full.jpg)
+over (the `film_develop` core: the baked spectral-chain LUT — no AgX colour
+geometry, no colour head, AgX tone core required); AgX keeps only delivery-side
+gamut safety; SDR only for now. With `--film` off the pipeline is pure AgX.
+Per-channel rolloff IS a colour operation — which is the structural reason "AgX
+for stretch/rolloff, film for colour" cannot be split down the middle and had to
+become a two-pole switch. An honest empirical note: after the spectral rebuild,
+observe and full nearly CONVERGE on real scenes (about 1% of pixels above the
+visibility threshold on the park sample; the old takeover's 23-degree green shift
+was mostly an artifact of the retired RGB heuristic) — two independent paths
+corroborating each other.
 
 ### Style pairings — observe mode's look layer
 

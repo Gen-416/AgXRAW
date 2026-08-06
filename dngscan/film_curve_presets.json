@@ -2085,7 +2085,7 @@
     "film": "spektrafilm/kodak_portra_400.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -4186,7 +4186,7 @@
     "film": "spektrafilm/fujifilm_xtra_400.json",
     "print": "spektrafilm/fujifilm_crystal_archive_typeii.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -6287,7 +6287,7 @@
     "film": "spektrafilm/fujifilm_c200.json",
     "print": "spektrafilm/fujifilm_crystal_archive_typeii.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -8388,7 +8388,7 @@
     "film": "spektrafilm/fujifilm_pro_400h.json",
     "print": "spektrafilm/fujifilm_crystal_archive_typeii.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -16778,7 +16778,7 @@
     "film": "spektrafilm/kodak_ektar_100.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -18879,7 +18879,7 @@
     "film": "spektrafilm/kodak_gold_200.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -23075,7 +23075,7 @@
     "film": "spektrafilm/kodak_portra_160.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -25176,7 +25176,7 @@
     "film": "spektrafilm/kodak_portra_800.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -27277,7 +27277,7 @@
     "film": "spektrafilm/kodak_portra_800_push1.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -29378,7 +29378,7 @@
     "film": "spektrafilm/kodak_portra_800_push2.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -31479,7 +31479,7 @@
     "film": "spektrafilm/kodak_ultramax_400.json",
     "print": "spektrafilm/kodak_portra_endura.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), surround term identity (reflection paper matches delivery)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -33582,7 +33582,7 @@
     "film": "spektrafilm/kodak_verita_200d.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -35683,7 +35683,7 @@
     "film": "spektrafilm/kodak_vision3_200t.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -37784,7 +37784,7 @@
     "film": "spektrafilm/kodak_vision3_250d.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -39887,7 +39887,7 @@
     "film": "spektrafilm/kodak_vision3_500t.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -41990,7 +41990,7 @@
     "film": "spektrafilm/kodak_vision3_50d.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), dark-surround projection print to average surround via T^(1/1.5)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -43731,7 +43731,7 @@
     "film": "spektrafilm/kodak_verita_200d.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -45499,7 +45499,7 @@
     "film": "spektrafilm/kodak_vision3_200t.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -47276,7 +47276,7 @@
     "film": "spektrafilm/kodak_vision3_250d.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -49053,7 +49053,7 @@
     "film": "spektrafilm/kodak_vision3_500t.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",
@@ -50808,7 +50808,7 @@
     "film": "spektrafilm/kodak_vision3_50d.json",
     "print": "spektrafilm/kodak_2383.json",
     "license": "CC BY-SA 4.0 (spektrafilm profiles, Andrea Volpato)",
-    "model": "spectral contact print: paper spectral sensitivity x 3200K enlarger over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
+    "model": "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger (3400K x Schott KG3) over the negative's dye-stack transmittance, printer lights solved to a neutral 18% mid, viewed under the print's declared illuminant (relative colorimetry, CIE 1931), theatrical quotation: dark-surround report carried verbatim (no surround term — a quotation, not a translation; see contract §8.1)",
     "colorimetry": {
      "backend": "colour-science",
      "version": "0.4.7",

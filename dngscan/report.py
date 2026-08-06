@@ -327,7 +327,7 @@ def print_report(
                 f"全图亮度参考：提升 {auto_ev.ev_boost:+.2f} EV（相对 EV 0）"
                 f"{limit_note}；应用 EV={auto_ev.ev:+.2f}"
             )
-        print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, 'curve_preset', 'none'))}")
+        print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, 'curve_preset', 'none'), getattr(tone_plan, 'film_mode', 'observe'))}")
         plan_line = jpeg_tone_plan_cn(
             bundle,
             analysis,
@@ -342,20 +342,21 @@ def print_report(
 
 
 def jpeg_policy_cn(
-    mode: str, output_gamut: str = "srgb", curve_preset: str = "none"
+    mode: str, output_gamut: str = "srgb", curve_preset: str = "none",
+    film_mode: str = "observe",
 ) -> str:
     label = output_gamut_label(output_gamut)
     if mode == "agx":
-        # The formation order must be reported as actually executed: a film preset
-        # inserts the measured channel-ratio stage between hue restore and outset.
-        from .film_curve import channel_ratio_field
-
-        ratio_stage = (
-            "→胶片逐通道比率（实测层饱和差异，中性轴恒等）"
-            if channel_ratio_field(str(curve_preset or "")) is not None
-            else ""
-        )
-        return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore{ratio_stage}→outset；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；4:4:4 色度采样"
+        if film_mode == "full" and str(curve_preset or "none") != "none":
+            # The takeover LUT replaces the AgX formation wholesale — the
+            # policy line must not describe stages that never ran.
+            return (
+                f"agx·filmfull: scene-linear Rec.2020 工作空间；白平衡按导出"
+                f"选项；prefeed 后进入离线烘焙的胶片光谱链 65³ LUT（观察者逆"
+                f"矩阵→三层乳剂→特性曲线→印相/幻灯观看链），AgX 仅保留交付"
+                f"侧色域安全；最后转 {label}；4:4:4 色度采样"
+            )
+        return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore→outset（负片色头档位>0 时后接 LMS 对角增益场）；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；4:4:4 色度采样"
     if mode == "lum":
         return f"lum: scene-linear Rec.2020 工作空间；逐像素 CFA mask 存在时驱动曲线前褪白；场景编译 C1 作用于标量亮度/norm，RGB 比例保持；显示白附近再温和褪色；无 AgX inset/outset，最后转 {label} 并做输出色域 fit"
     if mode == "gated":
@@ -380,6 +381,16 @@ def jpeg_tone_plan_cn(
         return (
             f"neutral: fixed diagnostic curve (Y ratio, black={NEUTRAL_BLACK_EV:.1f}EV "
             f"white=+{NEUTRAL_WHITE_EV:.1f}EV); no AgX; delivery={output_gamut}"
+        )
+    if mode == "agx" and tone_plan is not None and \
+            str(getattr(tone_plan, "film_mode", "observe")) == "full" and \
+            str(getattr(tone_plan, "curve_preset", "none")) != "none":
+        plan = tone_plan
+        return (
+            f"filmfull({plan.curve_preset}) 接管显影：烘焙光谱链 LUT，"
+            f"层间漂移={getattr(plan, 'film_crossover', 'off')}；"
+            f"AgX endpoint/contrast/toe/shoulder/punch 不参与（接管核心整体替换 "
+            f"formation，仅保留交付侧色域安全）；SDR"
         )
     if mode in ("agx", "lum", "gated"):
         plan = tone_plan if tone_plan is not None else plan_for_mode(
@@ -521,7 +532,7 @@ def csv_row(
         "jpeg_exposure_gain": bundle.exposure_gain if jpeg_path is not None else "",
         "jpeg_icc_embedded": jpeg_icc_embedded if jpeg_path is not None else "",
         "jpeg_srgb_icc_embedded": jpeg_icc_embedded if jpeg_path is not None and output_gamut == "srgb" else "",
-        "jpeg_policy_cn": jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, "curve_preset", "none")) if jpeg_path is not None else "",
+        "jpeg_policy_cn": jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, "curve_preset", "none"), getattr(tone_plan, "film_mode", "observe")) if jpeg_path is not None else "",
         "jpeg_tone_plan_cn": jpeg_tone_plan_cn(
             bundle,
             analysis,

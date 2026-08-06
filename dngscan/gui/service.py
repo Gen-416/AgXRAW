@@ -868,6 +868,11 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float]:
             "full 模式暂不支持放大机色头：接管核心是完整烘焙的光谱链，"
             "请切回 observe 或把色头归零"
         )
+    tone_core_req = str(params.get("toneCore", params.get("tone_core", "agx")))
+    if film_mode == "full" and tone_core_req != "agx":
+        raise ValueError(
+            "full 模式只在 AgX tone core 上运行；请把 tone 核切回 agx 或使用 observe"
+        )
     film_crossover = str(
         params.get("filmCrossover", params.get("film_crossover", "off"))
     )
