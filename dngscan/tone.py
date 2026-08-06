@@ -586,6 +586,16 @@ def apply_render_adjustments(
     shadow_bias = clamp_float(float(adjustments.shadow_transition), -1.0, 1.0)
     highlight_bias = clamp_float(float(adjustments.highlight_transition), -1.0, 1.0)
     fade_bias = clamp_float(float(adjustments.highlight_fade), -1.0, 1.0)
+    if (
+        str(getattr(plan.tone, "film_mode", "observe")) == "full"
+        and str(getattr(plan.tone, "curve_preset", "none")) != "none"
+    ):
+        # The takeover LUT owns the highlight colour path entirely; a stale
+        # highlight-fade value from before the mode switch measurably altered
+        # full-mode exports (0.129 max linear channel diff on _SDI0222 +
+        # Velvia) through a control the GUI shows as disabled. Forced off at
+        # the compiler so no payload can smuggle it in (review batch 10).
+        fade_bias = 0.0
     toe_end_bias = clamp_float(float(adjustments.toe_end_offset), -3.0, 0.5)
     shoulder_white_bias = clamp_float(float(adjustments.shoulder_white_offset), -2.0, 3.0)
 
@@ -693,6 +703,12 @@ def build_render_plan(
     color_head_m: float = 0.0,
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
+    # Full-mode input-domain normalization also lives HERE so hand callers of
+    # build_render_plan cannot desynchronize the plan sample from the render
+    # (review batch 10; the CLI and GUI already normalize at their sources).
+    from .scene_transform import effective_scene_transform
+
+    scene_transform = effective_scene_transform(scene_transform, film_mode, film_curve)
     tone_core = tone_core if tone_core in TONE_CORE_CHOICES else "agx"
     lum_norm = lum_norm if lum_norm in LUM_NORM_CHOICES else "y"
     endpoint_mode = endpoint_mode if endpoint_mode in ENDPOINT_MODE_CHOICES else "adaptive"

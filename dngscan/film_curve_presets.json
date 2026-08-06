@@ -1,15 +1,16 @@
 {
- "version": 3,
+ "version": 4,
  "presets": {
   "portra400": {
    "label": "Kodak Portra 400（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/portra400.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "6e60973594283241b21dfacec3cefdbf0b4674d47d2d9beafe5b7ebc79df62bb"
    },
    "params": {
     "black_ev": -4.8855,
@@ -22,7 +23,9 @@
     "target_black_linear": 0.005072
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.005072,
+   "medium_floor_native_linear": 0.005072,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -2110,11 +2113,12 @@
    "label": "Fujifilm Superia X-TRA 400（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/superia400.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "b3c13ec09b1b21970348c104464b40829bea584f981d1e74ea4023673529e713"
    },
    "params": {
     "black_ev": -4.8707,
@@ -2127,7 +2131,9 @@
     "target_black_linear": 0.004701
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.004701,
+   "medium_floor_native_linear": 0.004701,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -4215,11 +4221,12 @@
    "label": "Fujifilm C200（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/c200.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "135bb937b48ea0aae2fe6cd5794b44e1b674b5021d346c36f1f85232edd50baa"
    },
    "params": {
     "black_ev": -5.06,
@@ -4232,7 +4239,9 @@
     "target_black_linear": 0.004698
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.004698,
+   "medium_floor_native_linear": 0.004698,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -6320,11 +6329,12 @@
    "label": "Fujifilm Pro 400H（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/pro400h.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "c0f2ebe21d6c25b23113e2b94985b5890ead1650bbd9cab2a3e119b078accdad"
    },
    "params": {
     "black_ev": -4.8084,
@@ -6337,7 +6347,9 @@
     "target_black_linear": 0.004623
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.004623,
+   "medium_floor_native_linear": 0.004623,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -8435,8 +8447,10 @@
     "latitude_hi_ev": 0.0,
     "target_black_linear": 0.008373
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.008373,
+   "medium_floor_native_linear": 0.000765,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -10546,8 +10560,10 @@
     "latitude_hi_ev": 0.0,
     "target_black_linear": 0.00537
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.00537,
+   "medium_floor_native_linear": 0.000391,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -12645,8 +12661,10 @@
     "latitude_hi_ev": 0.0266,
     "target_black_linear": 0.005881
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.005881,
+   "medium_floor_native_linear": 0.000452,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -14734,11 +14752,12 @@
    "label": "Kodak Ektar 100（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/ektar100.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "b926f0da24be1df0f882d0d7e20d6c5d54e68c749dbd5d67d2e8580aeb81a3a4"
    },
    "params": {
     "black_ev": -4.9968,
@@ -14751,7 +14770,9 @@
     "target_black_linear": 0.005496
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.005496,
+   "medium_floor_native_linear": 0.005496,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -16839,11 +16860,12 @@
    "label": "Kodak Gold 200（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/gold200.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "07590f472b2bd043fcd9a25c88158c620b71097e3875b7813b20de2b39dcc593"
    },
    "params": {
     "black_ev": -5.3536,
@@ -16856,7 +16878,9 @@
     "target_black_linear": 0.005034
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.005034,
+   "medium_floor_native_linear": 0.005034,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -18956,8 +18980,10 @@
     "latitude_hi_ev": 0.2362,
     "target_black_linear": 0.013061
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.013061,
+   "medium_floor_native_linear": 0.001501,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -21045,11 +21071,12 @@
    "label": "Kodak Portra 160（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/portra160.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "4cee2c82f6bd8b6632d91381fc65b1f43af5e8a81518c57a572677d7295e7a08"
    },
    "params": {
     "black_ev": -4.8783,
@@ -21062,7 +21089,9 @@
     "target_black_linear": 0.005105
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.005105,
+   "medium_floor_native_linear": 0.005105,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -23150,11 +23179,12 @@
    "label": "Kodak Portra 800（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/portra800.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "b0fac2963ab6637fa6694c1d133de17ca20f1c9b923ec3dcdfcf70dd0b4245b1"
    },
    "params": {
     "black_ev": -5.5419,
@@ -23167,7 +23197,9 @@
     "target_black_linear": 0.004898
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.004898,
+   "medium_floor_native_linear": 0.004898,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -25255,11 +25287,12 @@
    "label": "Kodak Portra 800 (Push 1)（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/portra800push1.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "c757b5a9eb4a0f93633e11fea4d35421634cef51380c3cf538b91512d8b7c777"
    },
    "params": {
     "black_ev": -5.1958,
@@ -25272,7 +25305,9 @@
     "target_black_linear": 0.004889
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.004889,
+   "medium_floor_native_linear": 0.004889,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -27360,11 +27395,12 @@
    "label": "Kodak Portra 800 (Push 2)（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/portra800push2.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "14e7b4ca99ecba29c5b0ac98cbcc95994ebf4c61b7dd15c8929f480e4b7be1c3"
    },
    "params": {
     "black_ev": -5.1755,
@@ -27377,7 +27413,9 @@
     "target_black_linear": 0.004894
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.004894,
+   "medium_floor_native_linear": 0.004894,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -29467,11 +29505,12 @@
    "label": "Kodak Ultramax 400（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/ultramax400.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "1e7329dd2c265de81deb29e118059c9ca14851dc550b0da6fcca2313586d8c88"
    },
    "params": {
     "black_ev": -5.5425,
@@ -29484,7 +29523,9 @@
     "target_black_linear": 0.004885
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.004885,
+   "medium_floor_native_linear": 0.004885,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -31572,11 +31613,12 @@
    "label": "Kodak Verita 200D（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/verita200d.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "b312c0bd80263915c9c4c145df7a504b9a8d62681ea31fe01f9925b1d5d0003c"
    },
    "params": {
     "black_ev": -5.7219,
@@ -31588,8 +31630,10 @@
     "latitude_hi_ev": 0.103,
     "target_black_linear": 0.004045
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.004045,
+   "medium_floor_native_linear": 0.000401,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -33679,11 +33723,12 @@
    "label": "Kodak Vision3 200T（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision3200t.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "6408f5b24cac312032e174956eebdf1b088ddfebb3e7d5911e7c3f490316ed0d"
    },
    "params": {
     "black_ev": -6.1692,
@@ -33695,8 +33740,10 @@
     "latitude_hi_ev": 1.266,
     "target_black_linear": 0.003621
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.003621,
+   "medium_floor_native_linear": 0.000308,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -35784,11 +35831,12 @@
    "label": "Kodak Vision3 250D（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision3250d.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "f59ab5872c7543e7effb8a17754e755a63bdb680a8a082f3bfd1b72c3df5d43c"
    },
    "params": {
     "black_ev": -6.741,
@@ -35800,8 +35848,10 @@
     "latitude_hi_ev": 0.3762,
     "target_black_linear": 0.003699
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.003699,
+   "medium_floor_native_linear": 0.000324,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -37889,11 +37939,12 @@
    "label": "Kodak Vision3 500T（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision3500t.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "5cd94331523665d247d343bf36baba1e7674024fb46c9ecaa41a172ae7c001f5"
    },
    "params": {
     "black_ev": -6.7517,
@@ -37905,8 +37956,10 @@
     "latitude_hi_ev": 0.6253,
     "target_black_linear": 0.003543
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.003543,
+   "medium_floor_native_linear": 0.000293,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -39996,11 +40049,12 @@
    "label": "Kodak Vision3 50D（负片+相纸）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision350d.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "a1c9aa469b56972dfc5d6ce63392498d3b8976f6c3aeeb9c44492f7c5e97e5f4"
    },
    "params": {
     "black_ev": -5.5994,
@@ -40012,8 +40066,10 @@
     "latitude_hi_ev": 1.7036,
     "target_black_linear": 0.003679
    },
-   "black_policy": "medium-native",
+   "black_policy": "medium-translated",
+   "surround_translation_exponent": 0.666667,
    "medium_floor_linear": 0.003679,
+   "medium_floor_native_linear": 0.00032,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -42103,11 +42159,12 @@
    "label": "Kodak Verita 200D（负片+相纸）（影院放映外观）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/verita200d_theatrical.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "bb7773ccfe3c960266b84c2f7ff5af475497d40950806837ec92837a09fe79df"
    },
    "params": {
     "black_ev": -5.6035,
@@ -42120,7 +42177,9 @@
     "target_black_linear": 0.000401
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.000401,
+   "medium_floor_native_linear": 0.000401,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -43848,11 +43907,12 @@
    "label": "Kodak Vision3 200T（负片+相纸）（影院放映外观）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision3200t_theatrical.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "6bddbcde63227b32f1f51bce8d77ad0886a0f4ab663ed772d9f9d7424611c872"
    },
    "params": {
     "black_ev": -6.5654,
@@ -43865,7 +43925,9 @@
     "target_black_linear": 0.000308
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.000308,
+   "medium_floor_native_linear": 0.000308,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -45620,11 +45682,12 @@
    "label": "Kodak Vision3 250D（负片+相纸）（影院放映外观）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision3250d_theatrical.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "1945661f0d0faeebe02f7473442303c06b56d10ae9e0ca4ed76edcabd5fcfa07"
    },
    "params": {
     "black_ev": -6.8525,
@@ -45637,7 +45700,9 @@
     "target_black_linear": 0.000324
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.000324,
+   "medium_floor_native_linear": 0.000324,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -47401,11 +47466,12 @@
    "label": "Kodak Vision3 500T（负片+相纸）（影院放映外观）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision3500t_theatrical.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "c23c718dacd8f06a5b4b0942a5e6900699b58de8c091abe480c595df765d2504"
    },
    "params": {
     "black_ev": -7.0205,
@@ -47418,7 +47484,9 @@
     "target_black_linear": 0.000293
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.000293,
+   "medium_floor_native_linear": 0.000293,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {
@@ -49182,11 +49250,12 @@
    "label": "Kodak Vision3 50D（负片+相纸）（影院放映外观）",
    "process": "negative",
    "color_head": {
-    "format": "joint-lms-npz-v3",
+    "format": "joint-lms-npz-v4",
     "file": "color_head/vision350d_theatrical.npz",
     "cc_step": 5.0,
     "cc_max": 200.0,
-    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet."
+    "model": "joint paper-layer exposure model: every real Y x M detent solved together through the TH-KG3 printing chain with ONE re-time (test-strip convention); gains diagonal in Bradford LMS along the neutral ramp (stable at extreme filtration where Rec.2020 components may cross zero); runtime interpolates EV only — detents index directly. This is a neutral-axis paper-exposure model, not a filter-spectra oracle: no Y/M transmission spectra exist in the data yet.",
+    "sha256": "8243b40a96233839436f5e829f1bc4de043d4eb59dfc6f0ce015ae1abd9d51d4"
    },
    "params": {
     "black_ev": -6.0661,
@@ -49199,7 +49268,9 @@
     "target_black_linear": 0.00032
    },
    "black_policy": "medium-native",
+   "surround_translation_exponent": 1.0,
    "medium_floor_linear": 0.00032,
+   "medium_floor_native_linear": 0.00032,
    "calibration_viewing_flare": 0.0,
    "delivery_viewing_flare": 0.0,
    "fit": {

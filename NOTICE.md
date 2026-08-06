@@ -36,8 +36,9 @@ rendering and not packaged into wheels.
 ## spektrafilm film profiles (CC BY-SA 4.0)
 
 Film stock profiles under `dngscan_assets/spectral/spektrafilm/` (spectral
-sensitivities and characteristic curves for Kodak Portra 400 / Portra Endura and
-Fujifilm Superia X-TRA 400 / Crystal Archive Type II) come verbatim from Andrea
+sensitivities and characteristic curves for the twenty simulated stocks and their
+paired print media — the full roster is listed in
+`dngscan_assets/spectral/spektrafilm/README.md`) come verbatim from Andrea
 Volpato's spektrafilm project:
 
 - https://github.com/andreavolpato/agx-emulsion

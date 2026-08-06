@@ -24,13 +24,10 @@ from .constants import (
     REALTIME_PREVIEW_JPEG_SUBSAMPLING,
 )
 from .histogram import display_histogram, hdr_earned_ev, scene_ev_base, scene_ev_histogram
-from .preview_cache import PREVIEW_STORE, PreviewEntry, downsample_mean
+from .preview_cache import PREVIEW_STORE, PreviewEntry
 from .preview_scheduler import PREVIEW_COORDINATOR
 
 
-# Kept as aliases for callers/tests that clear the in-process proxy cache.
-PREVIEW_CACHE = PREVIEW_STORE.entries
-PREVIEW_CACHE_LOCK = PREVIEW_STORE.lock
 RENDER_LOCK = threading.Lock()
 
 
@@ -229,25 +226,6 @@ def output_luminance_metrics(path: Path, gamut: str, ev: float) -> dict[str, flo
     return output_luminance_metrics_u8(encoded_u8, gamut, ev)
 
 
-def output_metrics_from_linear(rgb_linear: object, gamut: str) -> dict[str, float]:
-    np = dg.np
-    if np is None:
-        return {}
-    rgb = np.clip(np.nan_to_num(rgb_linear, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0)
-    matrix = dg.RGB_TO_XYZ[dg.output_gamut_space(gamut)]
-    y = matrix[1, 0] * rgb[:, 0] + matrix[1, 1] * rgb[:, 1] + matrix[1, 2] * rgb[:, 2]
-    y = np.clip(np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0)
-    max_channel = np.max(rgb, axis=1)
-    y_p999 = float(np.percentile(y, 99.9))
-    max_p999 = float(np.percentile(max_channel, 99.9))
-    return {
-        "luma_p999_pct": y_p999 * 100.0,
-        "max_channel_p999_pct": max_p999 * 100.0,
-        "near_white_pct": float(np.mean(max_channel >= np.float32(0.956)) * 100.0),
-        "clipped_channel_pct": float(np.mean(np.any(rgb >= np.float32(0.999), axis=1)) * 100.0),
-    }
-
-
 def estimate_ev_headroom(
     bundle: dg.RawBundle,
     analysis: dg.Analysis | None,
@@ -398,9 +376,6 @@ def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, i
     return inp, highlight, gamut, output_format, ev, hdr_headroom, quality, want_png, outdir, ev_auto
 
 
-def plan_for_bundle(bundle: dg.RawBundle, analysis: dg.Analysis, gamut: str) -> dg.RenderPlan:
-    return dg.build_render_plan(bundle, analysis, RENDER_MODE, gamut)
-
 
 def parse_punch(params: dict) -> float:
     try:
@@ -456,6 +431,14 @@ def parse_endpoint_mode(params: dict) -> str:
 
 def parse_scene_transform(params: dict) -> tuple[str, float]:
     transform = dg.validate_scene_transform(str(params.get("sceneTransform", "none")))
+    # Full mode's input-domain contract at the GUI's parameter source: every
+    # consumer (plan, histograms, brightness reference, cache keys, preview
+    # and export) reads the transform through this parse (review batch 10).
+    from dngscan.scene_transform import effective_scene_transform
+
+    film_curve = str(params.get("filmCurve", params.get("film_curve", "none")))
+    film_mode = str(params.get("filmMode", params.get("film_mode", "observe")))
+    transform = effective_scene_transform(transform, film_mode, film_curve)
     strength = float(params.get("sceneTransformStrength", params.get("scene_transform_strength", 1.0)))
     if not 0.0 <= strength <= 3.0:
         raise ValueError("scene transform 强度需在 0-3 之间")

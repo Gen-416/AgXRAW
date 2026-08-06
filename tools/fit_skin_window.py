@@ -86,46 +86,6 @@ def robust_fit(chroma: np.ndarray, iterations: int = 3) -> tuple[np.ndarray, np.
 MIN_COMPONENT_SAMPLES = 1500
 
 
-def mixture_fit(chroma: np.ndarray, k: int, seed: int = 0) -> list[tuple[np.ndarray, np.ndarray, float]]:
-    """k-means split, then a trimmed Gaussian per cluster.
-
-    Single-Gaussian trimming rejects secondary illumination clusters wholesale (measured:
-    shade-lit skin sits ~0.55 B/G from tungsten-lit skin in the daylight frame); k-means
-    keeps each lighting mode as its own component. Undersized clusters are dropped and K
-    effectively shrinks. Returns (mu, cov, fraction) sorted by fraction, descending."""
-    rng = np.random.default_rng(seed)
-    k = max(1, int(k))
-    if k == 1 or chroma.shape[0] < 2 * MIN_COMPONENT_SAMPLES:
-        mu, cov = robust_fit(chroma)
-        return [(mu, cov, 1.0)]
-    centers = chroma[rng.choice(chroma.shape[0], size=k, replace=False)]
-    labels = np.zeros(chroma.shape[0], dtype=np.int64)
-    for _ in range(25):
-        dist = ((chroma[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)
-        new_labels = dist.argmin(axis=1)
-        if np.array_equal(new_labels, labels):
-            break
-        labels = new_labels
-        for j in range(k):
-            member = chroma[labels == j]
-            if member.shape[0]:
-                centers[j] = member.mean(axis=0)
-    out: list[tuple[np.ndarray, np.ndarray, float]] = []
-    total = float(chroma.shape[0])
-    for j in range(k):
-        member = chroma[labels == j]
-        if member.shape[0] < MIN_COMPONENT_SAMPLES:
-            print(f"  分量 {j}: 仅 {member.shape[0]} 样本，丢弃（K 自动收缩）")
-            continue
-        mu, cov = robust_fit(member)
-        out.append((mu, cov, member.shape[0] / total))
-    if not out:
-        mu, cov = robust_fit(chroma)
-        out = [(mu, cov, 1.0)]
-    out.sort(key=lambda item: -item[2])
-    return out
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dng", type=Path, action="append", required=True)

@@ -426,6 +426,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # the documented defaults here, in one place, before validation.
     if args.scene_transform_strength is None:
         args.scene_transform_strength = 1.0
+    # Full mode's input-domain contract, applied at the SOURCE so the plan,
+    # the histograms, auto-EV probes, cache keys, filenames, reports and the
+    # pixel render all read the same value (review batch 10).
+    from .scene_transform import effective_scene_transform
+
+    args.scene_transform = effective_scene_transform(
+        args.scene_transform, args.film_mode, args.film_curve
+    )
     if args.agx_primaries is None:
         args.agx_primaries = "base"
     args.agx_primaries = resolve_agx_primaries(args.agx_primaries)

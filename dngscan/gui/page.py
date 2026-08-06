@@ -932,12 +932,26 @@ $("#film").addEventListener("change",()=>{
 // pretend to edit.
 const FILM_FULL_INERT_IDS=["toneCore","midtoneBrightness","midtoneContrast",
   "shadowTransition","highlightTransition","highlightFade","punch",
-  "agxPrimaries","lumNorm","sceneTransform","sceneTransformStrength"];
+  "agxPrimaries","lumNorm","sceneTransform","sceneTransformStrength",
+  "toeEndOffset","shoulderWhiteOffset","endpointMode"];
+// Controls whose STALE VALUE would still alter a full-mode export if left in
+// the payload (the backend also forces them off; the reset keeps the UI and
+// the payload telling the same story).
+const FILM_FULL_RESET_ZERO_IDS=["highlightFade"];
 function updateFilmModeUi(){
   const hasCurve=$("#filmCurve").value!=="none";
   $("#filmModeRow").style.display=hasCurve?"":"none";
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
+  // Scene-adaptive auto punch is an editorial compensation, not film
+  // calibration data — film presets compile punch to 0, so the multiplier
+  // slider is genuinely dead there and says so instead of pretending.
+  const punchEl=$("#punch");
+  if(punchEl){
+    punchEl.disabled=hasCurve;
+    const v=$("#punchVal");
+    if(v){v.textContent=hasCurve?"胶片预设下关闭":Number(punchEl.value).toFixed(2);}
+  }
   if(full&&$("#toneCore").value!=="agx"){
     $("#toneCore").value="agx";
     updateToneCoreUi();
@@ -948,6 +962,13 @@ function updateFilmModeUi(){
     el.disabled=full;
     if(full){el.dataset.fullInert="1";}
     else{delete el.dataset.fullInert;}
+  }
+  if(full){
+    for(const id of FILM_FULL_RESET_ZERO_IDS){
+      const el=$("#"+id);
+      if(el){el.value=0;}
+    }
+    if(typeof setAdjustmentLabels==="function"){setAdjustmentLabels();}
   }
 }
 $("#filmMode").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});

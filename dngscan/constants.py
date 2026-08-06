@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 
 from ._deps import np
-from . import agx as agx_engine
 
 
 EPS = 1e-12
@@ -49,7 +47,6 @@ OUTPUT_GAMUT_LABELS = {"srgb": "sRGB", "p3": "Display P3"}
 
 
 JPEG_OUTPUT_FORMATS = ("sdr", "ultrahdr", "ultrahdr-heic")
-HDR_OUTPUT_FORMATS = ("ultrahdr", "ultrahdr-heic")
 
 
 # HDR authoring policy. Apple defines headroom as a ratio and does not mandate an absolute
@@ -115,25 +112,6 @@ RGB_TO_XYZ = {
     for name, matrix in XYZ_TO_RGB.items()
 }
 
-
-REC2020_TO_SRGB = (
-    (XYZ_TO_RGB["sRGB"] @ RGB_TO_XYZ["Rec2020"]).astype(np.float64)
-    if np is not None
-    else None
-)
-
-
-SRGB_TO_REC2020 = (
-    (XYZ_TO_RGB["Rec2020"] @ RGB_TO_XYZ["sRGB"]).astype(np.float64)
-    if np is not None
-    else None
-)
-
-
-AGX_INSET = agx_engine.AGX_INSET_REC2020
-
-
-AGX_OUTSET = agx_engine.AGX_OUTSET_REC2020
 
 
 # As-shot, the LibRaw daylight-metadata anchor (kept for compatibility and as the

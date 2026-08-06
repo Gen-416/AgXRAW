@@ -23,7 +23,7 @@ from .color import (
     rec2020_to_output, rgb_to_oklab, smoothstep,
 )
 from .models import Analysis, ColorGeometryPlan, RawBundle, RenderPlan, ToneCompressionPlan
-from .tone import build_render_plan, scene_intent_rec2020, scene_rec2020_to_float
+from .tone import build_render_plan, scene_intent_rec2020
 
 # Streamed-export chunking. The dither RNG consumes noise in quantize-group order, so
 # render chunks must tile each quantize group exactly (quantize % render == 0) for the
@@ -231,10 +231,6 @@ def _apply_output_color_ops(
     return piece
 
 
-def agx_compress_into_gamut(rgb: Any) -> Any:
-    return agx_engine.compress_into_gamut(rgb)
-
-
 def plan_with_look_overrides(
     plan: ToneCompressionPlan | RenderPlan, look: str, look_strength: float = 1.0
 ) -> ToneCompressionPlan | RenderPlan:
@@ -339,11 +335,10 @@ def scene_render_to_display_linear(
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w))
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
-    # Input-domain contract (review batch 9): the film-takeover LUT's observer
-    # inverse is fitted on PLAIN scene Rec.2020 stimuli — the LUT itself owns
-    # the film's spectral separation. Feeding it prefeed-transformed pixels
-    # applied the film observer twice (scene_transform followed by the LUT's
-    # SSF matrix), so full mode bypasses the scene transform entirely.
+    # Input-domain contract: normalized at the parameter sources (CLI/GUI via
+    # scene_transform.effective_scene_transform, review batch 10) so the plan,
+    # histograms, auto-EV and this render agree. The conditional below stays
+    # as defence in depth for hand-built plans that bypass those sources.
     film_full = (
         str(getattr(tone_plan, "film_mode", "observe")) == "full"
         and str(getattr(tone_plan, "curve_preset", "none")) != "none"

@@ -352,9 +352,10 @@ def jpeg_policy_cn(
             # policy line must not describe stages that never ran.
             return (
                 f"agx·filmfull: scene-linear Rec.2020 工作空间；白平衡按导出"
-                f"选项；prefeed 后进入离线烘焙的胶片光谱链 65³ LUT（观察者逆"
-                f"矩阵→三层乳剂→特性曲线→印相/幻灯观看链），AgX 仅保留交付"
-                f"侧色域安全；最后转 {label}；4:4:4 色度采样"
+                f"选项；跳过胶片前馈（LUT 的观察者逆矩阵自担分色），场景颜色"
+                f"直接进入离线烘焙的胶片光谱链 65³ LUT（观察者逆矩阵→三层乳剂"
+                f"→特性曲线→印相/幻灯观看链），AgX 仅保留交付侧色域安全；"
+                f"最后转 {label}；4:4:4 色度采样"
             )
         return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore→outset（负片色头档位>0 时后接 LMS 对角增益场）；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；4:4:4 色度采样"
     if mode == "lum":

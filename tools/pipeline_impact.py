@@ -14,7 +14,7 @@ claims subtlety but measures huge is a leak; a pair that should be identical
 (native kernel vs NumPy reference) measuring above one dither step is a defect.
 
 Special pairs measured against each other rather than the baseline:
-  film full-mode  vs observe-mode   -> the ratio field's real contribution
+  film full-mode  vs observe-mode   -> the takeover LUT's real contribution
   theatrical      vs translated     -> the surround term's real contribution
   DNGSCAN_FAST=0  vs baseline       -> native/NumPy parity
 
@@ -81,8 +81,8 @@ VARIANTS: list[tuple[str, list[str], str]] = [
 ]
 
 PAIRS = [
-    ("ratio field (full vs observe)", "film=portra400 (full)",
-     "film=portra400 (observe)", "比率场净贡献：小-中（无锚重建）"),
+    ("takeover LUT (full vs observe)", "film=portra400 (full)",
+     "film=portra400 (observe)", "烘焙光谱链 LUT 对 AgX formation+色头的净差"),
     ("surround term (theatrical vs translated)", "film=v3250d theatrical",
      "film=vision3250d", "surround 1.5 净贡献：中"),
 ]

@@ -10,16 +10,18 @@ datasheet-processed profiles. Every preset records its source and fit residual; 
 runtime only ever consumes the fitted AgX parameters through the same compiled C1
 machinery every render already uses.
 
-End-to-end target construction (v2 spectral base; tools/spectral_base.py owns
-the physical conventions):
+End-to-end target construction (tools/spectral_base.py owns the physical
+conventions):
     D_neg(lambda,e) = sum_dye amount_dye(e) * dyeSpec(lambda) + base(lambda)
     E_paper_c(e)    = trapz S_paper_c(lambda) * I_THKG3(lambda) * 10^-D_neg
                       (TH-KG3 = 3400K blackbody x Schott KG3, native 380-780/5nm)
     dye_paper_c(e)  = paper_curve_c(log10 E_paper_c + q_c)
     XYZ(e)          = relative colorimetry vs the medium white on the medium-grid
-                      x CMF-support intersection; then flare in XYZ, the
-                      luminance-only surround term, Bradford CAT medium-white ->
-                      D65, and the Rec.2020 matrix (scene-linear D65 basis)
+                      x CMF-support intersection; then the luminance-only
+                      surround term, Bradford CAT medium-white -> D65, and the
+                      Rec.2020 matrix (scene-linear D65 basis; calibration
+                      flare is zero in every path since the medium-native
+                      decoupling)
 The three effective exposures q_c = k_c + t are solved DIRECTLY in the final
 viewing domain — F(q) = log(RGB_view(EV0;q)/0.18) = 0 — so print finishing is
 verification, not correction (no post-hoc anchor shift, no channel gains; the
@@ -279,7 +281,8 @@ def _display_rec2020(reflect: np.ndarray, white: np.ndarray, wl: np.ndarray,
     """Medium spectra -> scene-linear Rec.2020(D65) via the declared translation.
 
     Colorimetry runs on the intersection of the medium grid with the CMF support
-    (trapezoidal), relative to the medium white; then flare in XYZ, the
+    (trapezoidal), relative to the medium white; then flare in XYZ (zero in
+    every calibration path since the medium-native decoupling), the
     luminance-only surround term, Bradford CAT medium-white -> D65 and the
     Rec.2020 matrix — so printer lights never eat the D50->D65 difference. [n,3]
     """
@@ -359,7 +362,7 @@ DISPLAY_PROJECTION_FLARE = 0.005   # ISO 3664-class projection / lightbox
 # quotation variants. (Bartleson-Breneman constants; contract §8.)
 
 def _build_reversal_target(
-    stock: dict,
+    stock: dict, surround_override: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Slide film, spectrally: the developed dye stack viewed as its own display.
 
@@ -373,7 +376,7 @@ def _build_reversal_target(
     viewing flare: slide black is the medium's Dmax through the translation,
     not a projection room's veiling glare (see DISPLAY_PROJECTION_FLARE)."""
     neg = _load_spectral(stock["negative"])
-    exp = surround_exponent("dark")
+    exp = 1.0 if surround_override == "native" else surround_exponent("dark")
     reflect = _stack_reflectance(neg, neg["amounts"])
     # White is the medium's own brightest state (Dmin INCLUDING residual dye), not
     # the bare base: slides never clear completely, and normalizing against the
@@ -560,7 +563,7 @@ def build_endtoend_target(
     theatrical variants, per the contract's quotation-vs-translation distinction.
     """
     if stock.get("positive"):
-        return _build_reversal_target(stock)
+        return _build_reversal_target(stock, surround_override)
     return _finish_print(_solved_print_chain(stock, surround_override))
 
 
@@ -585,18 +588,14 @@ def build_endtoend_target(
 # yellow gets MORE Y filtration -> less blue exposure -> less yellow dye -> the
 # finished print moves AWAY from yellow. Each build asserts this direction.
 #
-# The published field is g_c(EV; filter, cc) = T_c^filtered / T_c^base along the
-# neutral ramp, finished under the BASE target's anchor (same flare, surround
-# term, exposure anchor and per-channel mid gains — re-normalizing would erase
-# the very cast the user dialled in). The runtime consumes it as an EV-dependent
-# per-channel gain: spectrally derived, saturating exactly where the paper
-# saturates (g -> 1 at both paper endpoints), and NOT a flat RGB multiplier.
-# Y and M combine multiplicatively at runtime — a declared separable
-# approximation; their physical coupling is second-order (only through the
-# shared re-timing and dye-absorption overlap).
+# The published field is the JOINT Y x M solve (build_joint_color_head_field
+# below): every real detent pair re-timed through the full spectral chain and
+# published as diagonal Bradford-LMS gains on a shared adaptive EV grid,
+# finished under the BASE target's anchor (same surround term, exposure anchor
+# and per-channel mid gains — re-normalizing would erase the very cast the
+# user dialled in). An earlier separable gY x gM per-filter product was refuted
+# against this joint solve (Portra 30Y+30M: ~0.35 stop RMS apart) and retired.
 
-COLOR_HEAD_CC_GRID = (30.0, 60.0, 120.0, 200.0)
-COLOR_HEAD_EV_POINTS = 64
 # Paper layer a CC filter attenuates: Y absorbs blue (layer 2 -> yellow dye),
 # M absorbs green (layer 1 -> magenta dye).
 COLOR_HEAD_FILTER_LAYER = {"y": 2, "m": 1}
@@ -650,7 +649,7 @@ def build_joint_color_head_field(
     The published gains are diagonal in Bradford LMS, not Rec.2020: extreme
     filtration drives print channels toward zero, where Rec.2020 components can
     cross zero and a ratio stops meaning anything; LMS of a physical (
-    non-negative-XYZ) print stays positive, so the ratio field remains
+    non-negative-XYZ) print stays positive, so the gain field remains
     numerically meaningful over the whole hardware throw. The 0CC x 0CC entry
     is written as EXACT identity — the runtime's bit-exactness contract does
     not rest on solver residuals.
@@ -758,7 +757,7 @@ def build_joint_color_head_field(
         "oracle": np.asarray(oracle, dtype=np.float32),
         "basis": "bradford-lms",
         "label": chain.label,
-        "schema": 3,
+        "schema": 4,
         "audit_max_stop": audit_max_stop,
     }
 
@@ -916,6 +915,25 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
     ev_full, channels_full, target_full, floor_black = build_endtoend_target(
         stock, surround_override="native" if theatrical else None
     )
+    # Schema v4 honesty (review batch 10): for dark-surround media the
+    # calibrated floor is the medium's Dmax THROUGH the declared appearance
+    # translation, not the raw Dmax — record both numbers and name the policy
+    # for what it is. Reflection papers and theatrical quotations carry no
+    # translation (exponent 1), so their floor IS medium-native.
+    if theatrical:
+        translation_exponent = 1.0
+    elif stock.get("positive"):
+        translation_exponent = surround_exponent("dark")
+    else:
+        translation_exponent = surround_exponent(
+            PRINT_SURROUND.get(str(stock.get("print")), "average")
+        )
+    if abs(translation_exponent - 1.0) < 1e-9:
+        floor_native = floor_black
+    else:
+        _, _, _, floor_native = build_endtoend_target(
+            stock, surround_override="native"
+        )
     mask = (ev_full >= FIT_EV_LO) & (ev_full <= FIT_EV_HI)
     ev, target = ev_full[mask], target_full[mask]
     channels = channels_full[mask]
@@ -934,15 +952,15 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
 
     idx = np.linspace(0, ev.size - 1, TARGET_POINTS_STORED).round().astype(int)
 
-    # Exposure-dependent colour, phase 1 (contract boundary #1 work package): the
-    # per-channel ratio field r_c(EV) = T_c / T_neutral along the balanced neutral
-    # ramp. This is the stock's own measured layer-saturation differential — the
-    # first-order source of "highlights warm as the blue layer saturates" — with
-    # provenance identical to the tone target (same channels, same balance, same
-    # surround term). r_c(0) = 1 exactly by the per-channel mid-scale balance.
-    # Runtime semantics (phase 2): out_c = C(EV_c) * r_c(EV_c) / r_c(EV_Y), which is
-    # exactly 1 on the neutral axis (EV_c = EV_Y) — boundary #2 held by construction.
-    # The ratio field is only defined where the display value is a measurement:
+    # Neutral-field measurement record: the per-channel ratio r_c(EV) =
+    # T_c / T_neutral along the balanced neutral ramp. This is the stock's own
+    # measured layer-saturation differential — the first-order source of
+    # "highlights warm as the blue layer saturates" — with provenance identical
+    # to the tone target (same channels, same balance, same surround term).
+    # r_c(0) = 1 exactly by the per-channel mid-scale balance. No runtime
+    # consumes it (observe-mode colour is the joint LMS colour head, full mode
+    # the baked LUT); it ships as the documented measurement behind both.
+    # The ratio is only defined where the display value is a measurement:
     # below ~1e-3 (about sRGB code 1) the channels sit on numerical clamps and a
     # ratio there is artifact, not dye differential. The runtime interpolation
     # clamps to the grid edges anyway, so trimming the grid to the visible domain
@@ -951,9 +969,9 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
     ratio = channels[visible] / target[visible, None]
     # Deep saturated shadows of some media (Kodachrome above all) leave the
     # working gamut: a display channel there is clamped, and its ratio is a gamut fact,
-    # not a dye differential. The stored field carries the same [0.25, 4] rail the
-    # runtime applies (agx.channel_ratio_gain), so data and application agree on
-    # where measurement ends and the rail begins.
+    # not a dye differential. The stored field carries the same [0.25, 4] rail
+    # the full-mode LUT's bounded neutralization declares, so the shipped data
+    # states where measurement ends and the rail begins.
     ratio = np.clip(ratio, 0.25, 4.0)
     ratio_ev = ev[visible]
     ridx = np.linspace(0, ratio_ev.size - 1, min(TARGET_POINTS_STORED, ratio_ev.size)
@@ -974,7 +992,7 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             None
             if stock.get("positive")
             else {
-                "format": "joint-lms-npz-v3",
+                "format": "joint-lms-npz-v4",
                 "file": f"color_head/{key}.npz",
                 "cc_step": JOINT_HEAD_CC_STEP,
                 "cc_max": JOINT_HEAD_CC_MAX,
@@ -1000,13 +1018,20 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             "latitude_hi_ev": round(float(best[6]), 4),
             "target_black_linear": round(floor_black, 6),
         },
-        # Schema v3 (medium-native black): the medium's own floor, stamped
-        # explicitly, with the calibration's viewing flare REQUIRED to be zero.
-        # target_black_linear must equal medium_floor_linear (loader-enforced);
-        # delivery_viewing_flare is reserved for a future view-simulation layer
-        # and stays zero until that layer exists.
-        "black_policy": "medium-native",
+        # Schema v4: zero calibration flare everywhere, and the floor named
+        # honestly. "medium-native" (exponent 1.0) means the floor IS the
+        # medium's Dmax through viewing colorimetry; "medium-translated"
+        # means the medium's Dmax through the declared dark->average surround
+        # translation (the translation-vs-quotation contract, kept as the
+        # rendering default). Both numbers are recorded; delivery flare is
+        # reserved for a future view-simulation layer.
+        "black_policy": (
+            "medium-native" if abs(translation_exponent - 1.0) < 1e-9
+            else "medium-translated"
+        ),
+        "surround_translation_exponent": round(float(translation_exponent), 6),
         "medium_floor_linear": round(floor_black, 6),
+        "medium_floor_native_linear": round(float(floor_native), 6),
         "calibration_viewing_flare": 0.0,
         "delivery_viewing_flare": 0.0,
         "fit": {
@@ -1019,7 +1044,8 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             "ev": [round(float(v), 5) for v in ev[idx]],
             "display_linear": [round(float(v), 7) for v in target[idx]],
         },
-        # v2 neutral field, Rec.2020 basis (stage C of the spectral rebuild).
+        # Neutral field, Rec.2020 basis — a shipped measurement record with no
+        # runtime consumer (see the neutral-field comment in fit_stock above).
         # neutral_rgb is the MEASUREMENT (the neutral scale's exposure-dependent
         # colour); neutral_gain = neutral_rgb / target_y is what a runtime that
         # wants to reproduce that colour multiplies by. Storing both keeps the
@@ -1121,10 +1147,10 @@ def main() -> int:
     data_dir = PROJECT_ROOT / "dngscan" / "data" / "color_head"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    def write_joint_head(key: str, stock: dict, theatrical: bool) -> None:
+    def write_joint_head(key: str, stock: dict, theatrical: bool) -> str | None:
         field = build_joint_color_head_field(stock, theatrical=theatrical)
         if field is None:
-            return
+            return None
         out = data_dir / f"{key}.npz"
         np.savez_compressed(
             out,
@@ -1137,14 +1163,23 @@ def main() -> int:
             schema=np.int32(field["schema"]),
             audit_max_stop=np.float32(field["audit_max_stop"]),
         )
+        import hashlib as _hashlib
+
+        digest = _hashlib.sha256(out.read_bytes()).hexdigest()
         print(f"  joint colour head -> {out.name} "
-              f"({out.stat().st_size/1024:.0f} KiB)")
+              f"({out.stat().st_size/1024:.0f} KiB, sha256 {digest[:12]}...)")
+        return digest
 
     for key in args.stocks:
         stock = STOCKS[key]
         preset = fit_stock(key, stock)
         presets[key] = preset
-        write_joint_head(key, stock, theatrical=False)
+        digest = write_joint_head(key, stock, theatrical=False)
+        if digest and preset.get("color_head"):
+            # Content pinning (review batch 10): the preset names its exact
+            # asset bytes, so a new JSON can never silently pair with a stale
+            # or foreign colour-head npz.
+            preset["color_head"]["sha256"] = digest
         print(f"{key}: rms {preset['fit']['rms_stop']:.4f} stop, "
               f"max {preset['fit']['max_stop']:.4f} stop, params {preset['params']}")
         # Theatrical quotation variants for dark-surround projection chains: the
@@ -1153,11 +1188,13 @@ def main() -> int:
             tkey = f"{key}_theatrical"
             tpreset = fit_stock(tkey, stock, theatrical=True)
             presets[tkey] = tpreset
-            write_joint_head(tkey, stock, theatrical=True)
+            tdigest = write_joint_head(tkey, stock, theatrical=True)
+            if tdigest and tpreset.get("color_head"):
+                tpreset["color_head"]["sha256"] = tdigest
             print(f"{tkey}: rms {tpreset['fit']['rms_stop']:.4f} stop, "
                   f"max {tpreset['fit']['max_stop']:.4f} stop")
     PRESET_PATH.write_text(
-        json.dumps({"version": 3, "presets": presets}, indent=1, ensure_ascii=False)
+        json.dumps({"version": 4, "presets": presets}, indent=1, ensure_ascii=False)
         + "\n",
         encoding="utf-8",
     )

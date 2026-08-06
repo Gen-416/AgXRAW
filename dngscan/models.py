@@ -562,11 +562,6 @@ class HdrToneCurve:
     # compile of the same request. The compiler must never re-read this to choose a shape.
     shoulder_alpha: float = float("nan")
 
-    @property
-    def budget_headroom_ev(self) -> float:
-        """Deprecated alias for `rendered_headroom_ev`, kept for one version."""
-        return self.rendered_headroom_ev
-
 
 @dataclass(frozen=True)
 class HdrColorGeometry:

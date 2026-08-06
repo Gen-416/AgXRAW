@@ -98,13 +98,6 @@ def scale_compensation_for_mode(mode: str) -> float:
 
 COREIMAGE_DECODER_VERSIONS = ("auto", "9", "8", "7")
 
-# Diagnostic-only alignment floors. The Core Image path is a SEPARATE pipeline: it does
-# not reuse LibRaw's per-pixel evidence, so frame alignment is no longer a correctness
-# precondition and is never gated on. Retained for the report and for tools that want to
-# quantify how far Apple's corrected geometry sits from LibRaw's uncorrected frame.
-GEOMETRY_CORR_MIN = 0.80
-GEOMETRY_CORR_FLIP_MARGIN = 0.30
-
 # DNG opcode IDs (DNG 1.7 spec, Chapter 6) that make Apple's decoded frame geometrically
 # or radiometrically incomparable to LibRaw's. WarpRectilinear is the decisive one: it is
 # a per-plane radial polynomial, so corners move by tens of pixels (measured ~70 px on a

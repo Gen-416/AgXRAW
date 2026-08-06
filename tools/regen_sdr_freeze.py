@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Regenerate Phase-0 SDR freeze fixtures for the ACES 2 HDR migration.
+"""Regenerate the SDR freeze fixtures.
 
 These fixtures pin Display-P3 SDR linear + u8 outputs that HDR work must not change.
 Do not regenerate casually: any intentional update needs an explicit review gate
-(see docs/ACES2_HDR_IMPLEMENTATION_PLAN.zh-CN.md Phase 0).
+(see docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md).
 """
 from __future__ import annotations
 

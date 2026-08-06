@@ -220,7 +220,7 @@ class PlanCompilationTests(unittest.TestCase):
         small = compile_hdr_agx_plan(plan, HdrDisplayTarget(peak_nits=400.0))
         large = compile_hdr_agx_plan(plan, HdrDisplayTarget(peak_nits=4000.0))
         self.assertEqual(small.tone.white_ev, large.tone.white_ev)
-        self.assertGreaterEqual(large.tone.budget_headroom_ev, small.tone.budget_headroom_ev)
+        self.assertGreaterEqual(large.tone.rendered_headroom_ev, small.tone.rendered_headroom_ev)
 
     def test_absent_tail_measurement_does_not_grant_headroom(self) -> None:
         """A missing measurement must not read as an unlimited tail."""
@@ -230,7 +230,7 @@ class PlanCompilationTests(unittest.TestCase):
         stripped = dataclasses.replace(plan, scene=None)
         self.assertTrue(np.isnan(reliable_tail_ev(stripped)))
         compiled = compile_hdr_agx_plan(stripped, analysis=analysis)
-        self.assertEqual(compiled.tone.budget_headroom_ev, 0.0)
+        self.assertEqual(compiled.tone.rendered_headroom_ev, 0.0)
 
     def test_unfiltered_tail_cannot_replace_missing_reliable_tail(self) -> None:
         bundle = load_raw(FRAMES["daylight"], scene_half_size=True)
@@ -240,7 +240,7 @@ class PlanCompilationTests(unittest.TestCase):
             plan.scene, reliable_tail_ev_p9999=float("nan"), tail_ev_p9999=12.0
         )
         compiled = compile_hdr_agx_plan(dataclasses.replace(plan, scene=scene), analysis=analysis)
-        self.assertEqual(compiled.tone.budget_headroom_ev, 0.0)
+        self.assertEqual(compiled.tone.rendered_headroom_ev, 0.0)
 
     def test_sdr_plan_is_not_mutated(self) -> None:
         bundle = load_raw(FRAMES["daylight"], scene_half_size=True)

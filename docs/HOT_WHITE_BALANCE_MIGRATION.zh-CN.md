@@ -1,5 +1,11 @@
 # 固定重建与热白平衡迁移
 
+> **状态：已落地**（PR #10，2026-08-04 双盲裁决通过，golden/SDR 冻结逐字节
+> 不变）。本文为迁移的设计与裁决记录；现行行为见
+> [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md) 一层·白平衡。唯一未结项：
+> 真正命中 rung 1 + 双光源标定的机型（如 Adobe 转制 DNG）尚无真实样张量化，
+> 见文末"与原裁决的关系"。
+
 ## 决策
 
 用户白平衡不再参与每次 RAW 重建。文件、decoder、Core Image 版本、解拜耳、高光与 opcode 策略不变时，管线只建立一次 `DecodeContext`：

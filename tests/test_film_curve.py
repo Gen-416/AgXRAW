@@ -31,14 +31,15 @@ SAMPLE_NIGHT = Path.home() / "Pictures" / "_SDI0199.DNG"
 # retired the reversal exception entirely: the "structural AgX-vs-slide distance" was
 # an arithmetic-mean floor sitting up to 0.57 stop above the luminance target's own
 # asymptote (Velvia rms 0.284 -> 0.013, all four reversals now pin-free interior
-# solutions). Worst stock today: Ektar 100 rms 0.067 / max 0.164.
+# solutions). Worst non-theatrical stock after the medium-native (v4) refit:
+# provia100f rms 0.0526.
 RMS_GATE = 0.10
 MAX_GATE = 0.25
 REVERSAL_GATE_FACTOR = 1.0  # retired 2026-07-30: reversals fit as well as negatives
 # Theatrical quotations carry the dark-surround report verbatim into a curve family
 # shaped for average-surround media — intentionally out-of-condition, and the extra
-# ~1.5x contrast strains the family (worst: Verita theatrical rms 0.102). The looser
-# gate is the declared cost of quotation over translation.
+# ~1.5x contrast strains the family (worst after the v4 refit: Verita theatrical
+# rms 0.0605). The looser gate is the declared cost of quotation over translation.
 THEATRICAL_GATE_FACTOR = 1.25
 STORED_RESIDUAL_SLACK = 0.005
 
@@ -132,10 +133,11 @@ class ResidualGateTests(unittest.TestCase):
                 self.assertAlmostEqual(deep, floor, delta=floor * 0.25)
 
 
-class ChannelRatioFieldTests(unittest.TestCase):
-    """Exposure-dependent colour phase 1: the per-channel ratio field's invariants.
+class NeutralCurveFieldTests(unittest.TestCase):
+    """The shipped neutral-field measurement record's invariants (no runtime
+    consumer: observe-mode colour is the joint LMS head, full mode the LUT).
 
-    The v2 neutral curve stores the measurement (neutral_rgb_rec2020) beside the
+    The neutral curve stores the measurement (neutral_rgb_rec2020) beside the
     scalar tone target (target_y) and their quotient (neutral_gain_rec2020), all
     in the Rec.2020 basis of the rebuilt viewing translation. Contract: gain is
     unity at the EV0 anchor (the q-solve guarantees a neutral 0.18 there),
@@ -143,7 +145,7 @@ class ChannelRatioFieldTests(unittest.TestCase):
     quotient of the stored measurement (no drift between the three arrays).
     """
 
-    def test_every_preset_carries_a_ratio_field(self) -> None:
+    def test_every_preset_carries_a_neutral_curve(self) -> None:
         for name, preset in FILM_CURVE_PRESETS.items():
             with self.subTest(preset=name):
                 rc = preset.get("neutral_curve")
@@ -637,7 +639,7 @@ class FilmCrossoverTests(unittest.TestCase):
         presets reject the colour head entirely, so --film-crossover datasheet
         on velvia100 (the flagship crossover stock) could never reach the plan.
         The declared switch must ride the tone plan with the preset alone."""
-        from golden_support import build_daylight_wide_dr
+        from tests.golden_support import build_daylight_wide_dr
         from dngscan.tone import build_render_plan
 
         scene = build_daylight_wide_dr()
@@ -762,7 +764,7 @@ class FilmFullCoreExclusivityTests(unittest.TestCase):
     plan compiler, the CLI and the GUI service."""
 
     def test_plan_compiler_rejects_full_with_non_agx_cores(self) -> None:
-        from golden_support import build_daylight_wide_dr
+        from tests.golden_support import build_daylight_wide_dr
         from dngscan.tone import build_render_plan
 
         scene = build_daylight_wide_dr()
@@ -844,21 +846,47 @@ class ShippedAssetContractTests(unittest.TestCase):
 
 
 class MediumNativeBlackContractTests(unittest.TestCase):
-    """Schema v3 (review batch 9 + the decoupling directive): the calibration
-    describes THE MEDIUM — paper/slide black is the medium's own Dmax, and the
-    display room's viewing flare is banned from the fitted targets."""
+    """Schema v4 (the decoupling directive + review batch 10): the calibration
+    describes THE MEDIUM — paper/slide black is the medium's own Dmax (through
+    the declared surround translation where one applies), the display room's
+    viewing flare is banned from the fitted targets, and the black policy is
+    named for what it is."""
 
-    def test_every_preset_carries_the_v3_contract(self) -> None:
+    def test_every_preset_carries_the_v4_contract(self) -> None:
+        """v4 names the black policy honestly: reflection papers and
+        theatrical quotations are medium-native (translation exponent 1);
+        dark-surround media (reversals, non-theatrical cine) are
+        medium-TRANSLATED — the medium's Dmax through the declared surround
+        translation — with the untranslated native floor recorded beside it
+        (review batch 10)."""
         for name, preset in FILM_CURVE_PRESETS.items():
             with self.subTest(preset=name):
-                self.assertEqual(preset.get("black_policy"), "medium-native")
+                policy = preset.get("black_policy")
+                exponent = float(preset["surround_translation_exponent"])
+                native = float(preset["medium_floor_native_linear"])
+                translated = float(preset["medium_floor_linear"])
                 self.assertEqual(float(preset["calibration_viewing_flare"]), 0.0)
                 self.assertEqual(float(preset["delivery_viewing_flare"]), 0.0)
                 self.assertLessEqual(
-                    abs(float(preset["params"]["target_black_linear"])
-                        - float(preset["medium_floor_linear"])),
+                    abs(float(preset["params"]["target_black_linear"]) - translated),
                     1e-6,
                 )
+                model = str(preset["source"].get("model", ""))
+                dark_medium = ("reversal" in model) or name.startswith(
+                    ("vision3", "verita")
+                ) and "theatrical" not in name
+                if "theatrical" in name or not dark_medium:
+                    self.assertEqual(policy, "medium-native", name)
+                    self.assertAlmostEqual(exponent, 1.0, places=9)
+                    self.assertLessEqual(abs(native - translated), 1e-6)
+                else:
+                    self.assertEqual(policy, "medium-translated", name)
+                    self.assertLess(exponent, 1.0)
+                    self.assertLess(native, translated)
+                head = preset.get("color_head")
+                if head is not None:
+                    self.assertEqual(head.get("format"), "joint-lms-npz-v4")
+                    self.assertEqual(len(str(head.get("sha256", ""))), 64)
 
     def test_no_black_sits_in_the_flare_lifted_band(self) -> None:
         """The v2 chain lifted every reflection-paper black to >=0.0149 (sRGB
@@ -904,13 +932,68 @@ class FullModeInputDomainTests(unittest.TestCase):
     Rec.2020 stimuli, so full mode must NOT feed prefeed-transformed pixels
     (that applied the film observer twice)."""
 
-    def test_render_bypasses_the_scene_transform_in_full_mode(self) -> None:
-        import inspect
-        from dngscan import render as render_mod
+    def test_full_mode_normalizes_the_transform_at_every_source(self) -> None:
+        """Behavioral, not string-grep (the review called the old form a fake
+        green light): the GUI parameter parser and the plan compiler must
+        BOTH resolve any scene transform to none under full mode, so the
+        plan sample, histograms, probes and render read one value."""
+        from dngscan.scene_transform import effective_scene_transform
+        from dngscan.gui.service import parse_scene_transform
 
-        src = inspect.getsource(render_mod)
-        self.assertIn("film_full", src)
-        self.assertIn("if not film_full:", src)
+        self.assertEqual(
+            effective_scene_transform("velvia100_d55", "full", "velvia100"),
+            "none",
+        )
+        self.assertEqual(
+            effective_scene_transform("velvia100_d55", "observe", "velvia100"),
+            "velvia100_d55",
+        )
+        transform, _ = parse_scene_transform({
+            "sceneTransform": "portra400_d55",
+            "filmCurve": "portra400",
+            "filmMode": "full",
+        })
+        self.assertEqual(transform, "none")
+
+    def test_full_mode_plan_is_invariant_to_the_requested_transform(self) -> None:
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan.tone import build_render_plan
+
+        scene = build_daylight_wide_dr()
+        plans = [
+            build_render_plan(
+                scene.bundle, scene.analysis, "agx", "srgb",
+                film_curve="portra400", film_mode="full",
+                scene_transform=st,
+            )
+            for st in ("none", "portra400_d55")
+        ]
+        self.assertEqual(plans[0].tone, plans[1].tone)
+
+    def test_full_mode_forces_highlight_fade_off(self) -> None:
+        """A stale highlight-fade from before the mode switch measurably
+        altered full exports (0.129 max channel diff) through a disabled
+        control; the plan compiler now zeroes it under full."""
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan.models import RenderAdjustments
+        from dngscan.tone import apply_render_adjustments, build_render_plan
+
+        scene = build_daylight_wide_dr()
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "srgb",
+            film_curve="portra400", film_mode="full",
+        )
+        adjusted = apply_render_adjustments(
+            plan, RenderAdjustments(highlight_fade=1.0)
+        )
+        self.assertEqual(
+            float(adjusted.color.display_highlight_chroma_retreat),
+            float(plan.color.display_highlight_chroma_retreat),
+        )
+        self.assertEqual(
+            float(adjusted.color.display_highlight_chroma_start),
+            float(plan.color.display_highlight_chroma_start),
+        )
 
     def test_lut_declares_the_plain_scene_input_space(self) -> None:
         from dngscan.film_develop import _LUT_DIR
@@ -924,10 +1007,11 @@ class FullModeInputDomainTests(unittest.TestCase):
 class UnchangedGroupRegressionTests(unittest.TestCase):
     """Medium-native acceptance grouping: the cine chains (dark-surround
     print media) never carried a calibration flare, so their fitted
-    coordinates must be BYTE-IDENTICAL across the v2->v3 transition — a
-    change here means shared code moved under them. Verified against the
-    v2 backup at transition time; pinned literally so future refits show
-    up in review as a pin edit, not a silent drift."""
+    coordinates must be BYTE-IDENTICAL across the black-semantics
+    transitions (v2 -> v3 -> v4) — a change here means shared code moved
+    under them. Verified against the v2 backup at the v3 transition;
+    pinned literally so future refits show up in review as a pin edit,
+    not a silent drift."""
 
     _CINE_PINS = {
         "verita200d": (-5.7219, 8.4094, 2.4612, 0.004045),
@@ -956,8 +1040,9 @@ class UnchangedGroupRegressionTests(unittest.TestCase):
     def test_all_presets_hold_the_medium_native_rms_gate(self) -> None:
         """The decoupling directive's acceptance bar: every preset (including
         theatrical quotations) refits at rms <= 0.07 stop under medium-native
-        black. Measured worst after the v3 refit: provia100f 0.0526
-        (non-theatrical), verita200d_theatrical 0.0605."""
+        black. Measured worst after the medium-native refit (unchanged by the
+        v4 renaming): provia100f 0.0526 (non-theatrical),
+        verita200d_theatrical 0.0605."""
         for name, preset in FILM_CURVE_PRESETS.items():
             with self.subTest(preset=name):
                 self.assertLessEqual(float(preset["fit"]["rms_stop"]), 0.07)

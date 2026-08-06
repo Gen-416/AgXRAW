@@ -9,7 +9,7 @@ from typing import Any
 
 from ._deps import np
 from . import priors as sensor_priors
-from .color import apply_rgb_matrix3, clamp_float, XYZ_TO_RGB
+from .color import clamp_float, XYZ_TO_RGB
 from .constants import (
     CEILING_MIN_PILE_FRACTION, CEILING_MIN_PILE_PIXELS, EPS, EV_REPORT_FLOOR, GAMUT_EPS,
     GRAY_EV, MIDGRAY_HEADROOM_STOPS, NOISE_DR_EPS, SNR_BRIGHT_UNRELIABLE_STOP,
@@ -73,11 +73,6 @@ def format_pct(value: float) -> str:
         return f"{value:.4f}"
     return f"{value:.3f}"
 
-
-def format_stops(value: float) -> str:
-    if isinstance(value, float) and math.isnan(value):
-        return "n/a"
-    return f"{value:.2f}"
 
 
 def format_snr_dr(values: dict[str, float]) -> str:

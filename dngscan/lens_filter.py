@@ -76,12 +76,6 @@ _BRADFORD = np.array(
 )
 
 
-def lens_filter_label(name: str) -> str:
-    if name == "none":
-        return "无"
-    entry = LENS_FILTERS.get(name)
-    return entry[2] if entry is not None else name
-
 
 def validate_lens_filter(name: str) -> str:
     if name == "none" or name in LENS_FILTERS:

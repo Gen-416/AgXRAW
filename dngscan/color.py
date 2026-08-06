@@ -2,7 +2,6 @@
 """Color space transforms, Oklab, and gamut fitting."""
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any
 
@@ -111,14 +110,6 @@ def srgb_to_output(rgb: Any, output_gamut: str) -> Any:
 
 def luminance_from_rec2020(rgb: Any) -> Any:
     matrix = RGB_TO_XYZ["Rec2020"]
-    y = (matrix[1, 0] * rgb[:, 0] + matrix[1, 1] * rgb[:, 1] + matrix[1, 2] * rgb[:, 2]).astype(
-        np.float32, copy=False
-    )
-    return np.clip(np.nan_to_num(y, nan=0.0, posinf=1e6, neginf=0.0), 0.0, None)
-
-
-def luminance_from_srgb(rgb: Any) -> Any:
-    matrix = RGB_TO_XYZ["sRGB"]
     y = (matrix[1, 0] * rgb[:, 0] + matrix[1, 1] * rgb[:, 1] + matrix[1, 2] * rgb[:, 2]).astype(
         np.float32, copy=False
     )
