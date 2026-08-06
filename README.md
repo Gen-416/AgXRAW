@@ -23,9 +23,6 @@ same RAW evidence and validation instead of rebuilding the whole pipeline.
 [Editing tutorial](docs/EDITING_TUTORIAL.zh-CN.md) (a guided workflow from import to export, control by control; Chinese) ·
 [Film tutorial](docs/FILM_TUTORIAL.zh-CN.md) (what every film slider and choice does, with samples; Chinese) ·
 [User guide](docs/USER_GUIDE.md) (supported cameras, interface fields, export choices) ·
-[Architecture and technical details](docs/ARCHITECTURE.md) (the full pipeline and why each stage is built this way) ·
-[Engineering notes](docs/ENGINEERING_NOTES.zh-CN.md) (problems, evidence and reasoning; Chinese) ·
-[Design contract](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (film observation contract and boundaries; Chinese) ·
 [Sensor support](docs/SENSOR_SUPPORT.zh-CN.md) (per-body data, degradation policy, LibRaw upgrades; Chinese)
 
 ## HDR in one frame
@@ -240,6 +237,12 @@ AgXRAW does not currently manage a library or perform local retouching. That is 
 current product, not the full ambition of the project. Its larger potential is an open,
 explainable imaging workbench: useful both for making photographs and for comparing algorithms,
 testing standards, and developing new image-formation methods on the same captures.
+
+## Technical documentation for developers
+
+[Architecture and technical details](docs/ARCHITECTURE.md) (the full pipeline and why each stage is built this way) ·
+[Engineering notes](docs/ENGINEERING_NOTES.zh-CN.md) (problems, evidence and reasoning; Chinese) ·
+[Design contract](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (film observation contract and boundaries; Chinese)
 
 ## License
 
