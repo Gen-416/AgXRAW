@@ -70,6 +70,23 @@ def wb_postprocess_kwargs(
 
 
 
+def _fixed_asshot_wb_kwargs(camera_wb: Any) -> dict[str, Any]:
+    """The production LibRaw WB contract, shared with the alignment reference.
+
+    Demosaic/highlight always sees one immutable per-capture preconditioner;
+    supplying the as-shot values explicitly avoids a decoder-specific
+    camera-WB fallback changing this fixed boundary.
+    """
+    if camera_wb and len(camera_wb) >= 3 and all(
+        np.isfinite(value) and value > 0.0 for value in camera_wb[:3]
+    ):
+        fixed_wb = [float(value) for value in camera_wb[:4]]
+        while len(fixed_wb) < 4:
+            fixed_wb.append(fixed_wb[1])
+        return {"use_camera_wb": False, "user_wb": fixed_wb}
+    return {"use_camera_wb": True}
+
+
 def _apply_gain_maps_mosaic(raw: Any, maps: list, black_levels: list[float], white_level: int) -> None:
     """Apply pre-demosaic GainMap opcodes to the live rawpy mosaic in place.
 
@@ -1240,15 +1257,7 @@ def load_raw(
                 # preconditioner.  User WB is deliberately not passed into LibRaw.
                 # Supplying the as-shot values explicitly also avoids a decoder-specific
                 # camera-WB fallback changing this fixed boundary.
-                if camera_wb and len(camera_wb) >= 3 and all(
-                    np.isfinite(value) and value > 0.0 for value in camera_wb[:3]
-                ):
-                    fixed_wb = [float(value) for value in camera_wb[:4]]
-                    while len(fixed_wb) < 4:
-                        fixed_wb.append(fixed_wb[1])
-                    wb_kwargs = {"use_camera_wb": False, "user_wb": fixed_wb}
-                else:
-                    wb_kwargs = {"use_camera_wb": True}
+                wb_kwargs = _fixed_asshot_wb_kwargs(camera_wb)
                 demosaic_alg = resolve_demosaic_algorithm(raw, demosaic)
                 scene_rec2020_render = render_to_scene_rec2020(
                     raw,
@@ -1358,12 +1367,31 @@ def load_raw(
                 # the A/B scale measurement cross illuminants.
                 reference_wb_mode = "camera"
                 with rawpy.imread(str(path)) as reference_raw:
+                    # The reference must be the PRODUCTION LibRaw decode, not a
+                    # bare one: the DNG's dark-field corrections (pre-demosaic
+                    # GainMap, post-render FixVignetteRadial) are part of what
+                    # both decoders render, and skipping them here read lens
+                    # shading as a decoder exposure difference — measured up to
+                    # +0.88 EV on iPhone Standard RAW, pulling aligned-mode
+                    # RAW 9 toward the uncorrected dark reference.
+                    reference_shading = dng_metadata.read_dng_shading_ops(path)
+                    if reference_shading["gain_maps"]:
+                        _apply_gain_maps_mosaic(
+                            reference_raw,
+                            reference_shading["gain_maps"],
+                            [float(x) for x in black_levels],
+                            white_level,
+                        )
                     reference_scene = render_to_scene_rec2020(
                         reference_raw,
                         effective_highlight_mode,
                         True,
                         None,
-                        wb_postprocess_kwargs(reference_wb_mode, daylight_wb, kelvin_wb),
+                        _fixed_asshot_wb_kwargs(camera_wb),
+                    )
+                if reference_shading["vignette"] is not None:
+                    reference_scene = _apply_vignette_render(
+                        reference_scene, reference_shading["vignette"]
                     )
                 # Decode the reference with the same storage-scale contract as the main
                 # LibRaw path. Normalising reconstruct by 65535 would lose its reserved

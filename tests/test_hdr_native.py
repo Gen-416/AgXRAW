@@ -373,7 +373,6 @@ class HdrReferenceDispatchSemanticsTests(unittest.TestCase):
         from dngscan.hdr_color import blend_native_hdr_paths, output_luma_weights
 
         inset, pre_hue = agx_engine.prepare_formation(rgb, setup[1], setup[2])
-        channel_gain = None
         native_formation = setup[5][0].apply(inset)
         common = blend_native_hdr_paths(
             setup[5][1].apply(inset), native_formation, 0.0, setup[4]
@@ -381,7 +380,7 @@ class HdrReferenceDispatchSemanticsTests(unittest.TestCase):
 
         def tail(formation):
             mapped = agx_engine.finish_formation(
-                formation, pre_hue, setup[1], setup[3], channel_gain=channel_gain
+                formation, pre_hue, setup[1], setup[3]
             )
             mapped = hdr_agx.punch_engine.apply_punch_rec2020(
                 mapped, float(getattr(setup[1], "punch_strength", 0.0))

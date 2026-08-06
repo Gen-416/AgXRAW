@@ -176,7 +176,7 @@ def _form_hdr_chunk(
 
     def formation_tail(formation: Any) -> Any:
         mapped_rec = agx_engine.finish_formation(
-            formation, pre_hue, hdr_tone_plan, outset_matrix, channel_gain=None
+            formation, pre_hue, hdr_tone_plan, outset_matrix
         )
         # Observe-mode film colour joins here — post-outset Rec.2020, scene
         # luminance axis — mirroring the SDR order (outset -> film colour ->

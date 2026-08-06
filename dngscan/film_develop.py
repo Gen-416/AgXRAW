@@ -86,6 +86,25 @@ def _load_lut(name: str):
             if not bool(np.isfinite(cast).all()) or \
                     float(cast.min()) < 0.25 - 1e-4 or float(cast.max()) > 4.0 + 1e-4:
                 raise ValueError("bounded cast curve outside its declared [0.25, 4] bound")
+            # Structural contract (review batch 8): a structurally broken asset
+            # must fail HERE, not deep inside interpolation or normalization.
+            ev_min_v = float(payload["ev_min"])
+            ev_max_v = float(payload["ev_max"])
+            if n < 2:
+                raise ValueError(f"full-LUT grid n={n} < 2")
+            if not (np.isfinite(ev_min_v) and np.isfinite(ev_max_v)) or \
+                    not ev_max_v > ev_min_v:
+                raise ValueError(f"full-LUT EV domain [{ev_min_v}, {ev_max_v}] is degenerate")
+            if cast_ev.ndim != 1 or cast.ndim != 2 or cast.shape != (cast_ev.size, 3):
+                raise ValueError("cast curve arrays are mis-shaped")
+            if cast_ev.size < 2 or not bool(np.all(np.diff(cast_ev) > 0)):
+                raise ValueError("cast_ev axis is not strictly increasing")
+            if not bool(np.isfinite(cast_ev).all()) or \
+                    abs(float(cast_ev[0]) - ev_min_v) > 1e-3 or \
+                    abs(float(cast_ev[-1]) - ev_max_v) > 1e-3:
+                raise ValueError(
+                    "cast_ev axis does not span the LUT's declared EV domain"
+                )
             entry = (
                 lut,
                 cast_ev,

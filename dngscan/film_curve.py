@@ -202,6 +202,18 @@ def color_head_joint_field(name: str):
                 raise ValueError("colour-head gains contain non-finite values")
             if float(gains.min()) <= 1e-4 or float(gains.max()) >= 1e4:
                 raise ValueError("colour-head gains outside sane multiplier range")
+            # The runtime indexes detents DIRECTLY as round(cc / step): that
+            # assumption (zero-based, uniform, hardware 5 CC step) is validated
+            # here, hard — an offset or non-uniform grid would silently index
+            # the wrong detent at apply time (review batch 8).
+            if cc.ndim != 1 or cc.size < 2:
+                raise ValueError("colour-head cc_grid is mis-shaped")
+            step = float(cc[1] - cc[0])
+            if abs(float(cc[0])) > 1e-6 or abs(step - 5.0) > 1e-6 or \
+                    not bool(np.allclose(np.diff(cc), step, atol=1e-6)):
+                raise ValueError(
+                    "colour-head cc_grid violates the zero-based uniform 5 CC contract"
+                )
             if (
                 ev.ndim == 1 and ev.size >= 2 and bool(np.all(np.diff(ev) > 0))
                 and gains.shape == (cc.size, cc.size, ev.size, 3)
