@@ -332,32 +332,31 @@ def _regrid(spec: dict, wl: np.ndarray) -> dict:
 
 
 
-# Veiling glare of the reference viewing condition. The delivery contract already
-# reads prints "as an sRGB-condition viewer would"; IEC 61966-2-1 specifies that
-# reference environment with 1.0% viewing flare. Applied to the linear stimulus
-# BEFORE the surround term (glare is physics in the room, surround is the
-# appearance translation of what the room presents). The zero-flare shortcut was
-# a declared missing piece of the contact-print model; with spectral printing
-# honest about dye crosstalk, its absence became the binding source of crushed,
-# abrupt shadows. Quotation (theatrical) presets skip flare with the rest of the
-# viewing translation: a quotation carries the report, not the reading room.
-VIEWING_FLARE = 0.01
+# DISPLAY-ENVIRONMENT viewing flare — NOT part of film calibration.
+#
+# Three things used to be one: the negative's response, the paper/slide
+# medium's physical response, and the viewing environment. The calibration
+# chain now describes THE MEDIUM ONLY: paper black is the paper's true Dmax
+# and slide black is the slide's Dmax through the declared appearance
+# translation — with ZERO viewing flare. Baking IEC 61966-2-1's 1% reference
+# flare (papers) or a 0.5% projection flare (slides) into the fitted targets
+# lifted every film black into a haze that read as film character (Velvia's
+# floor sat at 0.0307 linear, only 2.55 EV below mid-grey; Portra's at
+# ~0.015): a display-room property masquerading as a medium property.
+#
+# If viewing-environment simulation returns, it belongs in the delivery /
+# view-simulation layer: default OFF, SDR and HDR defined separately, SDR
+# flare relative to reference white (never to file peak), and never written
+# into the physical calibration these constants used to contaminate. The
+# named values are kept for that future layer:
+DISPLAY_VIEWING_FLARE = 0.01       # IEC 61966-2-1 sRGB reference room
+DISPLAY_PROJECTION_FLARE = 0.005   # ISO 3664-class projection / lightbox
 
-# Veiling glare of the reversal viewing condition (projection / lightbox, dark
-# surround). The zero-flare shortcut let the slide's Dmax residual tint reach
-# the display at full strength: Velvia's floor rendered as a 12:1 magenta-
-# purple black, where the datasheet's own Status A plateaus (R 3.38 / G 3.82 /
-# B 3.68, AF3-202E) describe a MILD red-leaning magenta of ~2.8:1 — and no
-# real projector or lightbox shows Dmax colour at all, because ~0.5-1.5% of
-# open-gate luminance rides on every black (projector lens veiling glare,
-# screen and room inter-reflection; ISO 3664 projection conditions). 0.5% is
-# the declared, conservative value: at Dmax (transmission ~2e-4) the neutral
-# flare dominates ~25:1 and the floor reads as black; the -2 EV cool shift
-# (transmission ~3%) is barely touched. Theatrical quotations still skip
-# flare with the rest of the viewing translation — a quotation carries the
-# report, not the reading room.
-REVERSAL_PROJECTION_FLARE = 0.005
-
+# What REMAINS in calibration is the appearance TRANSLATION (surround
+# exponents): a dark-surround medium reported for an average-surround
+# delivery is a translation of the medium's own appearance, not a room
+# simulation — the untranslated report stays available as the *_theatrical
+# quotation variants. (Bartleson-Breneman constants; contract §8.)
 
 def _build_reversal_target(
     stock: dict,
@@ -369,9 +368,10 @@ def _build_reversal_target(
     global exposure shift places viewed Y=0.18 at scene EV 0 (light-meter
     semantics) and per-channel mid gains pin exact neutrality (anti-hidden-WB:
     the exposure-DEPENDENT differential is what the neutral field carries).
-    Colorimetry runs on the slide's native grid through the full viewing
-    translation (dark surround, declared 0.5% projection flare — see
-    REVERSAL_PROJECTION_FLARE — CAT to D65, Rec.2020)."""
+    Colorimetry runs on the slide's native grid through the appearance
+    translation only (dark-surround exponent, CAT to D65, Rec.2020) — ZERO
+    viewing flare: slide black is the medium's Dmax through the translation,
+    not a projection room's veiling glare (see DISPLAY_PROJECTION_FLARE)."""
     neg = _load_spectral(stock["negative"])
     exp = surround_exponent("dark")
     reflect = _stack_reflectance(neg, neg["amounts"])
@@ -379,7 +379,7 @@ def _build_reversal_target(
     # the bare base: slides never clear completely, and normalizing against the
     # bare base capped relative luminance at ~0.46 instead of ~1.
     white = _stack_reflectance(neg, np.nanmin(neg["amounts"], axis=0)[None, :])[0]
-    flare = REVERSAL_PROJECTION_FLARE
+    flare = 0.0
     rgb = _display_rec2020(reflect, white, neg["wl"], neg["viewing"], flare, exp)
     deep = _stack_reflectance(neg, np.nanmax(neg["amounts"], axis=0)[None, :])
     floor_rgb = _display_rec2020(deep, white, neg["wl"], neg["viewing"], flare, exp)[0]
@@ -433,12 +433,10 @@ def _solved_print_chain(stock: dict, surround_override: str | None = None) -> Si
         exp = 1.0
     else:
         exp = surround_exponent(PRINT_SURROUND.get(stock["print"], "average"))
-    surround_kind = PRINT_SURROUND.get(stock["print"], "average")
-    flare = (
-        VIEWING_FLARE
-        if surround_override != "native" and surround_kind == "average"
-        else 0.0
-    )
+    # Medium-native calibration: zero viewing flare in every print chain.
+    # (The average-surround exponent is 1.0, so reflection papers carry no
+    # appearance translation either — the chain below is the paper itself.)
+    flare = 0.0
 
     sb = _spectral_base()
     enlarger = sb.th_kg3_spd(wl)
@@ -887,7 +885,8 @@ def _model_note(stock: dict, theatrical: bool = False) -> str:
             "spectral reversal: dye-stack transmittance vs the medium's Dmin white "
             "under the declared viewing illuminant (relative colorimetry, CIE 1931), "
             f"dark-surround report to {TARGET_SURROUND} surround via T^(1/{g:g}), "
-            "0.5% projection flare, global exposure anchor (light-meter semantics)"
+            "zero calibration flare (medium-native), global exposure anchor "
+            "(light-meter semantics)"
         )
     surround = PRINT_SURROUND.get(str(stock.get("print")), "average")
     base = (
@@ -1001,6 +1000,15 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             "latitude_hi_ev": round(float(best[6]), 4),
             "target_black_linear": round(floor_black, 6),
         },
+        # Schema v3 (medium-native black): the medium's own floor, stamped
+        # explicitly, with the calibration's viewing flare REQUIRED to be zero.
+        # target_black_linear must equal medium_floor_linear (loader-enforced);
+        # delivery_viewing_flare is reserved for a future view-simulation layer
+        # and stays zero until that layer exists.
+        "black_policy": "medium-native",
+        "medium_floor_linear": round(floor_black, 6),
+        "calibration_viewing_flare": 0.0,
+        "delivery_viewing_flare": 0.0,
         "fit": {
             "rms_stop": round(rms, 5),
             "max_stop": round(worst, 5),
@@ -1149,7 +1157,7 @@ def main() -> int:
             print(f"{tkey}: rms {tpreset['fit']['rms_stop']:.4f} stop, "
                   f"max {tpreset['fit']['max_stop']:.4f} stop")
     PRESET_PATH.write_text(
-        json.dumps({"version": 2, "presets": presets}, indent=1, ensure_ascii=False)
+        json.dumps({"version": 3, "presets": presets}, indent=1, ensure_ascii=False)
         + "\n",
         encoding="utf-8",
     )

@@ -932,7 +932,7 @@ $("#film").addEventListener("change",()=>{
 // pretend to edit.
 const FILM_FULL_INERT_IDS=["toneCore","midtoneBrightness","midtoneContrast",
   "shadowTransition","highlightTransition","highlightFade","punch",
-  "agxPrimaries","lumNorm"];
+  "agxPrimaries","lumNorm","sceneTransform","sceneTransformStrength"];
 function updateFilmModeUi(){
   const hasCurve=$("#filmCurve").value!=="none";
   $("#filmModeRow").style.display=hasCurve?"":"none";

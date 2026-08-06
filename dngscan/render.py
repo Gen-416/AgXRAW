@@ -339,12 +339,22 @@ def scene_render_to_display_linear(
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w))
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
+    # Input-domain contract (review batch 9): the film-takeover LUT's observer
+    # inverse is fitted on PLAIN scene Rec.2020 stimuli — the LUT itself owns
+    # the film's spectral separation. Feeding it prefeed-transformed pixels
+    # applied the film observer twice (scene_transform followed by the LUT's
+    # SSF matrix), so full mode bypasses the scene transform entirely.
+    film_full = (
+        str(getattr(tone_plan, "film_mode", "observe")) == "full"
+        and str(getattr(tone_plan, "curve_preset", "none")) != "none"
+    )
     for start in range(0, flat_scene.shape[0], chunk):
         end = min(start + chunk, flat_scene.shape[0])
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
-        rec = scene_transform_engine.apply_scene_transform_rec2020(
-            rec, scene_transform, scene_transform_strength, wb_adapt
-        )
+        if not film_full:
+            rec = scene_transform_engine.apply_scene_transform_rec2020(
+                rec, scene_transform, scene_transform_strength, wb_adapt
+            )
         if clip_masks is not None and float(color_plan.raw_clip_retreat_strength) > 0.0:
             rec = retreat_engine.apply_clip_retreat_rec2020(
                 rec,

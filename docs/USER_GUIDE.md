@@ -168,8 +168,9 @@ the reason this film simulation stays stable.
 
 - Slides and cinema prints target **dark projection rooms** (~1.5× contrastier);
   delivery to an everyday screen translates that away using the classic
-  viewing-condition constants (including standard reflection-print viewing flare)
-  — *looking* right on your display outranks being numerically raw;
+  surround constants — the translation carries the appearance term only. The
+  calibration describes THE MEDIUM (black = the paper's or slide's own Dmax);
+  viewing-room flare is no longer baked into film curves;
 - **Two modes** (CLI `--film-mode`): the default **observe** is everything above —
   use it day to day. **full** is experimental: the film development model takes
   over wholesale — scene colour passes through a constrained observer inverse

@@ -841,3 +841,123 @@ class ShippedAssetContractTests(unittest.TestCase):
             self.assertIsNotNone(color_head_joint_field(name), name)
             heads += 1
         self.assertGreaterEqual(heads, 15)
+
+
+class MediumNativeBlackContractTests(unittest.TestCase):
+    """Schema v3 (review batch 9 + the decoupling directive): the calibration
+    describes THE MEDIUM — paper/slide black is the medium's own Dmax, and the
+    display room's viewing flare is banned from the fitted targets."""
+
+    def test_every_preset_carries_the_v3_contract(self) -> None:
+        for name, preset in FILM_CURVE_PRESETS.items():
+            with self.subTest(preset=name):
+                self.assertEqual(preset.get("black_policy"), "medium-native")
+                self.assertEqual(float(preset["calibration_viewing_flare"]), 0.0)
+                self.assertEqual(float(preset["delivery_viewing_flare"]), 0.0)
+                self.assertLessEqual(
+                    abs(float(preset["params"]["target_black_linear"])
+                        - float(preset["medium_floor_linear"])),
+                    1e-6,
+                )
+
+    def test_no_black_sits_in_the_flare_lifted_band(self) -> None:
+        """The v2 chain lifted every reflection-paper black to >=0.0149 (sRGB
+        code 32) and slide black to ~0.031 (code 49) — a room property, not a
+        medium property. Medium-native floors sit below that band; the
+        shallowest genuine medium is Kodachrome 64 at 0.0131 (its own Dmax
+        through the declared surround translation), still under the old
+        flare-lifted minimum."""
+        for name, preset in FILM_CURVE_PRESETS.items():
+            with self.subTest(preset=name):
+                self.assertLess(float(preset["medium_floor_linear"]), 0.0145)
+                self.assertGreater(float(preset["medium_floor_linear"]), 0.0)
+
+    def test_compiled_curves_are_monotone_finite_and_non_negative(self) -> None:
+        ev = np.linspace(-10.0, 8.0, 361)
+        for name, preset in FILM_CURVE_PRESETS.items():
+            with self.subTest(preset=name):
+                out = _compiled_curve(preset["params"], ev)
+                self.assertTrue(bool(np.isfinite(out).all()), name)
+                self.assertGreaterEqual(float(out.min()), 0.0, name)
+                self.assertTrue(bool(np.all(np.diff(out) >= -1e-9)), name)
+
+    def test_presets_neutralize_the_per_image_auto_look_inputs(self) -> None:
+        """Auto punch_strength and view_brightness are scene-adaptive editorial
+        compensations; under a fixed film curve they made the same preset
+        change purity photo by photo (measured auto punch 0..0.803)."""
+        from dngscan.models import ToneCompressionPlan
+        tone = ToneCompressionPlan(
+            target_gamut="Rec2020", luma_p1=0.01, luma_p50=0.18, luma_p99=1.0,
+            luma_p999=2.0, black_ev=-6.0, white_ev=4.0, dynamic_range_ev=10.0,
+            contrast=3.0, toe_power=1.5, shoulder_power=3.0, chroma_p95=0.0,
+            negative_rgb_pct=0.0, over_rgb_pct=0.0, toe_start_ev=-3.0,
+            shoulder_start_ev=0.2, use_c1_endpoints=True,
+            punch_strength=0.803, view_brightness=1.3,
+        )
+        applied = apply_film_curve_preset(tone, "portra400")
+        self.assertEqual(float(applied.punch_strength), 0.0)
+        self.assertEqual(float(applied.view_brightness), 1.0)
+
+
+class FullModeInputDomainTests(unittest.TestCase):
+    """Review batch 9 P1.2: the LUT's observer inverse is fitted on plain
+    Rec.2020 stimuli, so full mode must NOT feed prefeed-transformed pixels
+    (that applied the film observer twice)."""
+
+    def test_render_bypasses_the_scene_transform_in_full_mode(self) -> None:
+        import inspect
+        from dngscan import render as render_mod
+
+        src = inspect.getsource(render_mod)
+        self.assertIn("film_full", src)
+        self.assertIn("if not film_full:", src)
+
+    def test_lut_declares_the_plain_scene_input_space(self) -> None:
+        from dngscan.film_develop import _LUT_DIR
+
+        for path in sorted(_LUT_DIR.glob("*.npz"))[:3]:
+            with np.load(path, allow_pickle=False) as z:
+                self.assertEqual(str(np.asarray(z["input_space"])), "scene_rec2020")
+                self.assertEqual(int(z["schema"]), 3)
+
+
+class UnchangedGroupRegressionTests(unittest.TestCase):
+    """Medium-native acceptance grouping: the cine chains (dark-surround
+    print media) never carried a calibration flare, so their fitted
+    coordinates must be BYTE-IDENTICAL across the v2->v3 transition — a
+    change here means shared code moved under them. Verified against the
+    v2 backup at transition time; pinned literally so future refits show
+    up in review as a pin edit, not a silent drift."""
+
+    _CINE_PINS = {
+        "verita200d": (-5.7219, 8.4094, 2.4612, 0.004045),
+        "verita200d_theatrical": (-5.6035, 7.0159, 2.6776, 0.000401),
+        "vision3200t": (-6.1692, 6.6776, 2.4967, 0.003621),
+        "vision3200t_theatrical": (-6.5654, 8.4997, 2.7675, 0.000308),
+        "vision3250d": (-6.741, 7.4718, 2.5729, 0.003699),
+        "vision3250d_theatrical": (-6.8525, 6.2828, 2.8756, 0.000324),
+        "vision3500t": (-6.7517, 8.5, 2.5702, 0.003543),
+        "vision3500t_theatrical": (-7.0205, 6.1336, 2.9035, 0.000293),
+        "vision350d": (-5.5994, 8.5, 2.5666, 0.003679),
+        "vision350d_theatrical": (-6.0661, 6.1686, 2.8036, 0.00032),
+    }
+
+    def test_cine_presets_are_pinned(self) -> None:
+        for name, (black_ev, white_ev, contrast, floor) in self._CINE_PINS.items():
+            with self.subTest(preset=name):
+                p = FILM_CURVE_PRESETS[name]["params"]
+                self.assertAlmostEqual(float(p["black_ev"]), black_ev, places=4)
+                self.assertAlmostEqual(float(p["white_ev"]), white_ev, places=4)
+                self.assertAlmostEqual(float(p["contrast"]), contrast, places=4)
+                self.assertAlmostEqual(
+                    float(p["target_black_linear"]), floor, places=6
+                )
+
+    def test_all_presets_hold_the_medium_native_rms_gate(self) -> None:
+        """The decoupling directive's acceptance bar: every preset (including
+        theatrical quotations) refits at rms <= 0.07 stop under medium-native
+        black. Measured worst after the v3 refit: provia100f 0.0526
+        (non-theatrical), verita200d_theatrical 0.0605."""
+        for name, preset in FILM_CURVE_PRESETS.items():
+            with self.subTest(preset=name):
+                self.assertLessEqual(float(preset["fit"]["rms_stop"]), 0.07)

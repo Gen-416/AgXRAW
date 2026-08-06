@@ -33,19 +33,45 @@ def _load() -> dict[str, dict[str, Any]]:
     except (OSError, ValueError):
         return {}
     version = int(raw.get("version", 0) or 0)
-    if version != 2:
-        # v1 presets were calibrated in linear sRGB and consumed as diagonal
-        # gains in other bases — the exact coordinate error the spectral rebuild
-        # removes. The refusal is LAZY: importing dngscan (including the fit
+    if version != 3:
+        # v1 presets were calibrated in linear sRGB; v2 presets baked the
+        # display room's viewing flare (IEC 1% for papers, 0.5% projection for
+        # slides) into the medium's fitted black — a viewing-environment
+        # property masquerading as film character. Schema v3 is medium-native:
+        # black is the medium's own Dmax and calibration flare is zero by
+        # contract. The refusal is LAZY: importing dngscan (including the fit
         # tool that regenerates this very file) must not die on stale data;
         # any actual film request does, loudly.
         _SCHEMA_ERROR = (
             f"film_curve_presets.json schema v{version} is not supported; "
-            "regenerate with tools/fit_film_curve.py (schema v2, Rec.2020 basis)"
+            "regenerate with tools/fit_film_curve.py (schema v3, medium-native black)"
         )
         return {}
     presets = raw.get("presets", {})
-    return presets if isinstance(presets, dict) else {}
+    if not isinstance(presets, dict):
+        return {}
+    for name, preset in presets.items():
+        # Hard v3 contract per preset — a mixed or hand-edited file fails
+        # closed instead of silently mixing black policies.
+        try:
+            ok = (
+                str(preset.get("black_policy")) == "medium-native"
+                and float(preset.get("calibration_viewing_flare", -1.0)) == 0.0
+                and abs(
+                    float(preset["params"]["target_black_linear"])
+                    - float(preset["medium_floor_linear"])
+                ) <= 1e-6
+            )
+        except (KeyError, TypeError, ValueError):
+            ok = False
+        if not ok:
+            _SCHEMA_ERROR = (
+                f"film preset '{name}' violates the v3 medium-native contract "
+                "(black_policy/medium_floor_linear/calibration_viewing_flare); "
+                "regenerate with tools/fit_film_curve.py"
+            )
+            return {}
+    return presets
 
 
 FILM_CURVE_PRESETS: dict[str, dict[str, Any]] = _load()
@@ -258,9 +284,13 @@ def color_head_gain_lms(
 def apply_film_curve_preset(tone_plan: Any, name: str) -> Any:
     """Replace the scene-compiled curve with the preset's fixed coordinate.
 
-    Only curve-shape fields move; everything else on the tone plan (scene metrics,
-    colour policy inputs, tone_core) is untouched, so HDR budgeting still reads the
-    real scene while the SDR body renders the declared film curve.
+    Curve-shape fields move, and the two PER-IMAGE automatic look inputs are
+    neutralized (review batch 9): auto punch_strength and view_brightness are
+    scene-adaptive editorial compensations, not film calibration data — left
+    live they made the same preset change purity and tone photo by photo
+    (measured auto punch 0 to 0.803 across samples). Everything else on the
+    tone plan (scene metrics, colour policy inputs, tone_core) is untouched,
+    so HDR budgeting still reads the real scene.
     """
     if name == "none":
         return tone_plan
@@ -282,4 +312,6 @@ def apply_film_curve_preset(tone_plan: Any, name: str) -> Any:
         shoulder_start_ev=float(p["latitude_hi_ev"]),
         target_black_linear=float(p.get("target_black_linear", 0.0)),
         curve_preset=str(name),
+        punch_strength=0.0,
+        view_brightness=1.0,
     )
