@@ -8,6 +8,7 @@ version = "0.2.0"
 description = "RAW scan and AgX render pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
+classifiers = ["Operating System :: MacOS"]
 license = { text = "GPL-3.0-or-later" }
 dependencies = [
     "numpy>=1.24",

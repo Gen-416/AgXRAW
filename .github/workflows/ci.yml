@@ -4,6 +4,9 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # Manual trigger — added after a GitHub incident swallowed pull_request
+  # events and left a PR with no way to start CI by hand.
+  workflow_dispatch:
 
 jobs:
   test:
@@ -12,7 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14]
+        # macOS only: the tool's Core Image / RAW 9 decoder, HDR gain-map
+        # delivery and its validation loop are macOS-native, and the Linux
+        # legs' failures were routinely platform noise on a path no user
+        # runs. The supported platform is declared, not implied.
+        os: [macos-14]
         python: ["3.11", "3.12"]
     env:
       MPLBACKEND: Agg
