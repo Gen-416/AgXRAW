@@ -21,9 +21,6 @@ LibRaw 或 Core Image 形成场景线性 Rec. 2020 图像，再把测量结果�
 [修图教程](docs/EDITING_TUTORIAL.zh-CN.md)（从导入到导出的完整流程，逐个控件讲用法）·
 [胶片教程](docs/FILM_TUTORIAL.zh-CN.md)（每个胶片滑条和选择到底有什么用，配样张）·
 [使用说明](docs/USER_GUIDE.zh-CN.md)（支持的相机、界面字段、导出选择）·
-[架构与技术细节](docs/ARCHITECTURE.zh-CN.md)（完整管线与每个环节的设计理由）·
-[工程决策记录](docs/ENGINEERING_NOTES.zh-CN.md)（问题、证据与解法的推理过程）·
-[设计合同](docs/FILM_OBSERVATION_PLAN.zh-CN.md)（胶片观察的生产合同与计算边界）·
 [机型支持](docs/SENSOR_SUPPORT.zh-CN.md)（传感器数据、降级策略与 LibRaw 升级）
 
 ## 一张图看 HDR
@@ -217,6 +214,12 @@ AgXRAW 还会重新打开成品，确认 SDR 底图、HDR 效果和增益图都�
 AgXRAW 目前不管理图库，也不做局部调整。这是现阶段产品的边界，不是项目想象力的边界。
 它更大的潜力，是成为一套开放、可解释的数字成像工作台：既能直接用来出片，也能在同一
 批照片上比较算法、验证标准，并继续发展新的成像方法。
+
+## 面向开发者的技术文档
+
+[架构与技术细节](docs/ARCHITECTURE.zh-CN.md)（完整管线与每个环节的设计理由）·
+[工程决策记录](docs/ENGINEERING_NOTES.zh-CN.md)（问题、证据与解法的推理过程）·
+[设计合同](docs/FILM_OBSERVATION_PLAN.zh-CN.md)（胶片观察的生产合同与计算边界）
 
 ## 许可证
 
