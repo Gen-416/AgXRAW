@@ -489,31 +489,48 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 
 ## 九 · 调整的潜力：同一张照片的六种读法
 
-同一张香港山道、同一卷 Velvia 100，六个版本——没有哪个是"正确答案"，
-每个都是一种成立的读法。胶片给底子，每一层调整都是声明的、可组合的、
-可复现的（每张下方即完整参数）。
+前八节把每层控件拆开讲；这一节把它们合起来。每张合成图六个版本——没有
+哪个是"正确答案"，每个都是一种成立的读法；每层调整都是声明的、可组合的、
+可复现的（编号对应下方参数）。
 
-| AgX 基线 · 无胶片 | Velvia 100 · 默认组合 |
-|---|---|
-| ![](assets/film-tutorial/hk_look_baseline.jpg) | ![](assets/film-tutorial/hk_look_default.jpg) |
-| （默认参数） | `--film velvia100` |
+同一张香港山道、同一卷 Velvia 100：
 
-中性参照系 → 忠实于测量的 Velvia 底子。
+![](assets/film-tutorial/look_grid_hk.jpg)
 
-| 加密度 · 分离上驱 | 压硬 · 收黑加对比 |
-|---|---|
-| ![](assets/film-tutorial/hk_look_dense.jpg) | ![](assets/film-tutorial/hk_look_hard.jpg) |
-| `--film velvia100 --scene-transform-strength 2.2 --ev -0.3` | 左列参数 + `--toe-end-offset -1 --midtone-contrast 0.3` |
+1. 默认参数（无胶片）
+2. `--film velvia100`
+3. ② + `--scene-transform-strength 2.2 --ev -0.3`
+4. ③ + `--toe-end-offset -1 --midtone-contrast 0.3`
+5. `--film velvia100 --film-mode full --film-crossover datasheet --ev -0.3`（仅 SDR；色彩侧无外部 oracle 的声明照旧）
+6. `--film velvia100 --grade look:optic_warm_cyan --grade-strength 0.5 --scene-transform-strength 2.0 --ev -0.2`
 
-分离与密度往"浓"里推 → 再收黑加对比，暗端立起来。
+②忠实底子 → ③④密度与对比逐级推进 → ⑤晴空转深紫蓝 → ⑥胶片层上再叠独立 look 层。
 
-| 光谱链接管 · full+datasheet | 叠加 look · 暖青 grade |
-|---|---|
-| ![](assets/film-tutorial/hk_look_fullchain.jpg) | ![](assets/film-tutorial/hk_look_graded.jpg) |
-| `--film velvia100 --film-mode full --film-crossover datasheet --ev -0.3` | `--film velvia100 --grade look:optic_warm_cyan --grade-strength 0.5 --scene-transform-strength 2.0 --ev -0.2` |
+公园样张换一卷负片，Portra 400——⑤展示负片独有的色头档位：
 
-晴空转向深紫蓝、暗部按实测漂移（无 oracle 声明照旧，仅 SDR）→ 胶片层上
-再叠独立的 look 层。
+![](assets/film-tutorial/look_grid_park.jpg)
+
+1. 默认参数（无胶片）
+2. `--film portra400`
+3. ② + `--scene-transform-strength 1.8 --ev -0.2 --midtone-contrast 0.2`
+4. ③ + `--toe-end-offset -1`
+5. `--film portra400 --color-head-y 15`
+6. `--film portra400 --film-mode full --film-crossover datasheet --ev -0.2`
+
+负片的推法更温和：③④密度小步走，⑤印相端 Y 档把画面往蓝侧修，⑥光谱链接管后绿的分离更放开。
+
+暗场景同样成立——live house 后台、Velvia 100：
+
+![](assets/film-tutorial/look_grid_backstage.jpg)
+
+1. 默认参数（无胶片）
+2. `--film velvia100`
+3. ② + `--scene-transform-strength 2.2 --ev -0.3`
+4. ③ + `--toe-end-offset -1 --midtone-contrast 0.3`
+5. `--film velvia100 --film-mode full --film-crossover datasheet --ev -0.3`
+6. `--film velvia100 --grade look:optic_warm_cyan --grade-strength 0.5 --scene-transform-strength 2.0 --ev -0.2`
+
+品红与暗部逐级变浓，暗场景没有塌——同一套推法明暗通吃。
 
 从"忠实的测量"到"最大的距离"是一条连续的路，停在哪站由你决定。
 
