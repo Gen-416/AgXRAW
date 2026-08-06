@@ -857,10 +857,11 @@ LMS_TO_REC2020 = np.asarray(
 def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> Any:
     """Observe-mode film colour, applied where it was calibrated (stage C).
 
-    The v2 colour-head field is a Rec.2020-basis measurement along the neutral
-    exposure axis, so it multiplies post-outset Rec.2020 pixels — a diagonal
-    gain does not commute with the outset or any output matrix, which is exactly
-    how the v1 sRGB-basis numbers went wrong. The lookup exposure is the SINGLE
+    The colour-head field (schema 3, stage-3 joint solve) is diagonal in
+    Bradford LMS along the neutral exposure axis; it applies to post-outset
+    Rec.2020 pixels through the fixed LMS sandwich — a diagonal gain does not
+    commute with the outset or any output matrix, which is exactly how the v1
+    sRGB-basis numbers went wrong. The lookup exposure is the SINGLE
     luminance axis EV_Y = log2(Y_scene/0.18) taken from the scene-linear input
     BEFORE tone mapping: a display value has been through the shoulder and no
     longer corresponds to the calibration exposure, and the field was only ever
@@ -908,19 +909,16 @@ def finish_formation(
     pre_hue: Any | None,
     plan: Any,
     outset_matrix: Any,
-    channel_gain: Any | None = None,
 ) -> Any:
-    """Apply darktable hue restore, the film channel gain, and the outset.
+    """Apply darktable hue restore and the outset.
 
-    Order: hue restore first, channel gain second. The gain is the medium's measured
-    report (layer-saturation differential), not a curve-origin hue swing — hue
-    restore exists to moderate the latter and must not dilute the former.
+    Film colour — the enlarger colour head for negatives — applies AFTER the
+    outset (apply_film_color_rec2020); the retired channel-ratio gain no
+    longer exists anywhere in the formation.
     """
     hue_restore = _plan_hue_restore(plan)
     if pre_hue is not None:
         linear = _mix_hue(linear, pre_hue, hue_restore)
-    if channel_gain is not None:
-        linear = linear * channel_gain
     return _apply_matrix3(linear, outset_matrix).astype(np.float32)
 
 

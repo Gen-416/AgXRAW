@@ -476,11 +476,13 @@ camera-interpretation choice, not an HDR budget leak.
 ![LibRaw vs Apple RAW 9, same frame through the same AgX plan: the differences are camera interpretation, not pipeline drift](assets/decoder-libraw-vs-raw9.jpg)
 
 Dark-field parity runs the other way too: the LibRaw path now honours the DNG
-dark-field opcodes — `GainMap` before demosaic (fp), `FixVignetteRadial` after the
-render (iPhone ProRAW) — with evidence copies taken from the pre-correction sensor
-truth. The iPhone main-camera decoder pair (same frame, same AgX plan):
+dark-field opcodes — `GainMap` before demosaic (measured on Sigma fp), and
+`FixVignetteRadial` after the render (measured on iPhone Standard RAW, whose
+files carry `FixVignetteRadial` with no `GainMap`) — with evidence copies taken
+from the pre-correction sensor truth. Both decode paths honour the same vignette
+opcode. The iPhone main-camera decoder pair (same frame, same AgX plan):
 
-![iPhone 16 Pro, same frame decoded twice: LibRaw applying the DNG GainMap vs RAW 9's FixVignetteRadial — corner brightness agrees](assets/decoder-iphone-libraw-vs-raw9.jpg)
+![iPhone 16 Pro, same frame decoded twice: LibRaw and RAW 9 both honouring the file's FixVignetteRadial — corner brightness agrees](assets/decoder-iphone-libraw-vs-raw9.jpg)
 
 Core Image and LibRaw do not expose the same scene unit, and a single fitted correction
 did not generalize across cameras or scenes. The default is therefore

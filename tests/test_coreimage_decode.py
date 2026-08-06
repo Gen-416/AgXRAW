@@ -16,6 +16,7 @@ from dngscan.retreat import clip_masks_for_shape, resize_clip_masks
 
 PICTURES = Path.home() / "Pictures"
 SIGMA_DNG = PICTURES / "_SDI0150.DNG"
+IPHONE_DNG = PICTURES / "Original RAW 26-07-12 182506394.dng"
 SIGMA_VERTICAL_DNG = PICTURES / "_SDI0165.DNG"
 FUJI_RAF = PICTURES / "DSCF0614.RAF"
 
@@ -355,6 +356,37 @@ class CoreImageLiveTests(unittest.TestCase):
 
         delta_ev = float(np.log2(body_median(ci_bundle) / body_median(libraw)))
         self.assertLess(abs(delta_ev), 0.15)
+
+    def test_alignment_reference_carries_the_dng_dark_field(self) -> None:
+        """Batch-8 P1: the aligned-mode LibRaw reference skipped the DNG's
+        dark-field opcodes (pre-demosaic GainMap, post-render
+        FixVignetteRadial), so lens shading read as a decoder exposure
+        difference — measured up to +0.88 EV on iPhone Standard RAW, whose
+        files carry FixVignetteRadial. The reference now reuses the production
+        decode context; the decoder pair must agree on this iPhone frame.
+        The bound is looser than the Sigma one: Apple's iPhone rendition
+        differs more from LibRaw's than its Sigma rendition does (post-fix
+        residual measured 0.152 EV on this frame at the half-size proxy,
+        down from 0.62+ before the reference carried the dark field)."""
+        _skip_unless_available()
+        if not IPHONE_DNG.is_file():
+            raise unittest.SkipTest(f"missing {IPHONE_DNG}")
+        from dngscan.raw_io import load_raw
+
+        libraw = load_raw(IPHONE_DNG, scene_half_size=True, decoder="libraw")
+        ci_bundle = load_raw(IPHONE_DNG, scene_half_size=True, decoder="coreimage")
+        self.assertEqual(ci_bundle.scene_scale_mode, "aligned")
+        self.assertIsNone(ci_bundle.scene_align_error)
+
+        def body_median(bundle) -> float:
+            arr = np.asarray(bundle.scene_rec2020_render, dtype=np.float32) / float(
+                bundle.scene_scale
+            )
+            y = 0.2627 * arr[:, :, 0] + 0.6780 * arr[:, :, 1] + 0.0593 * arr[:, :, 2]
+            return float(np.median(y[(y > 0.01) & (y < 0.5)]))
+
+        delta_ev = float(np.log2(body_median(ci_bundle) / body_median(libraw)))
+        self.assertLess(abs(delta_ev), 0.2)
 
     def test_full_resolution_production_path_renders(self) -> None:
         """Exercise the resolution the exporter actually uses.
