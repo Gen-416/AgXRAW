@@ -208,9 +208,38 @@ def _load_spectral(name: str) -> dict[str, np.ndarray]:
              if isinstance(row, list) else (np.nan if row is None else float(row))
              for row in data[key]], dtype=np.float64)
 
+    def edge_hold(a: np.ndarray) -> np.ndarray:
+        # Out-of-range convention for absorptive quantities (declared in
+        # spectral_base's module docstring since stage 1, enforced here since
+        # the Velvia-floor investigation): dye and base densities HOLD their
+        # edge value outside the tabulated support. Zero-filling made the
+        # developed stack TRANSPARENT out of band — Kodachrome's dyes are only
+        # tabulated 425-695 nm, so its Dmax "black" leaked ~70% of the light
+        # below 425 and above 695 nm into the CMF's blue and red lobes and
+        # rendered as violet (measured blue channel 0.38 display-linear where
+        # the in-band stopband sits at 1e-4; no viewing flare can mask a leak
+        # 50x its own size). Sensitivities keep the ZERO convention — no
+        # tabulated response means no response.
+        out = np.atleast_2d(a.copy().T).T
+        for c in range(out.shape[1]):
+            col = out[:, c]
+            fin = np.flatnonzero(np.isfinite(col))
+            if fin.size == 0:
+                col[:] = 0.0
+                continue
+            col[: fin[0]] = col[fin[0]]
+            col[fin[-1] + 1 :] = col[fin[-1]]
+            inner = ~np.isfinite(col)
+            if np.any(inner):
+                col[inner] = np.interp(
+                    np.flatnonzero(inner), np.flatnonzero(~inner),
+                    col[~inner],
+                )
+        return out.reshape(a.shape)
+
     wl = arr("wavelengths")
-    dye = np.nan_to_num(arr("channel_density"), nan=0.0)          # [81,3] C/M/Y
-    base = np.nan_to_num(arr("base_density"), nan=0.0)            # [81]
+    dye = edge_hold(arr("channel_density"))                       # [81,3] C/M/Y
+    base = edge_hold(arr("base_density"))                         # [81]
     le = np.asarray(data["log_exposure"], dtype=np.float64)
     amounts = np.asarray(data["density_curves"], dtype=np.float64)  # [n,3] per dye
     keep = np.all(np.isfinite(amounts), axis=1)
@@ -314,6 +343,21 @@ def _regrid(spec: dict, wl: np.ndarray) -> dict:
 # viewing translation: a quotation carries the report, not the reading room.
 VIEWING_FLARE = 0.01
 
+# Veiling glare of the reversal viewing condition (projection / lightbox, dark
+# surround). The zero-flare shortcut let the slide's Dmax residual tint reach
+# the display at full strength: Velvia's floor rendered as a 12:1 magenta-
+# purple black, where the datasheet's own Status A plateaus (R 3.38 / G 3.82 /
+# B 3.68, AF3-202E) describe a MILD red-leaning magenta of ~2.8:1 — and no
+# real projector or lightbox shows Dmax colour at all, because ~0.5-1.5% of
+# open-gate luminance rides on every black (projector lens veiling glare,
+# screen and room inter-reflection; ISO 3664 projection conditions). 0.5% is
+# the declared, conservative value: at Dmax (transmission ~2e-4) the neutral
+# flare dominates ~25:1 and the floor reads as black; the -2 EV cool shift
+# (transmission ~3%) is barely touched. Theatrical quotations still skip
+# flare with the rest of the viewing translation — a quotation carries the
+# report, not the reading room.
+REVERSAL_PROJECTION_FLARE = 0.005
+
 
 def _build_reversal_target(
     stock: dict,
@@ -326,7 +370,8 @@ def _build_reversal_target(
     semantics) and per-channel mid gains pin exact neutrality (anti-hidden-WB:
     the exposure-DEPENDENT differential is what the neutral field carries).
     Colorimetry runs on the slide's native grid through the full viewing
-    translation (dark surround, zero declared flare, CAT to D65, Rec.2020)."""
+    translation (dark surround, declared 0.5% projection flare — see
+    REVERSAL_PROJECTION_FLARE — CAT to D65, Rec.2020)."""
     neg = _load_spectral(stock["negative"])
     exp = surround_exponent("dark")
     reflect = _stack_reflectance(neg, neg["amounts"])
@@ -334,9 +379,10 @@ def _build_reversal_target(
     # the bare base: slides never clear completely, and normalizing against the
     # bare base capped relative luminance at ~0.46 instead of ~1.
     white = _stack_reflectance(neg, np.nanmin(neg["amounts"], axis=0)[None, :])[0]
-    rgb = _display_rec2020(reflect, white, neg["wl"], neg["viewing"], 0.0, exp)
+    flare = REVERSAL_PROJECTION_FLARE
+    rgb = _display_rec2020(reflect, white, neg["wl"], neg["viewing"], flare, exp)
     deep = _stack_reflectance(neg, np.nanmax(neg["amounts"], axis=0)[None, :])
-    floor_rgb = _display_rec2020(deep, white, neg["wl"], neg["viewing"], 0.0, exp)[0]
+    floor_rgb = _display_rec2020(deep, white, neg["wl"], neg["viewing"], flare, exp)[0]
     ev = neg["le"] / LOG10_2
     y = rgb @ _LUMA_2020
     order = np.argsort(y)
@@ -817,7 +863,7 @@ def _model_note(stock: dict, theatrical: bool = False) -> str:
             "spectral reversal: dye-stack transmittance vs the medium's Dmin white "
             "under the declared viewing illuminant (relative colorimetry, CIE 1931), "
             f"dark-surround report to {TARGET_SURROUND} surround via T^(1/{g:g}), "
-            "zero projection flare, global exposure anchor (light-meter semantics)"
+            "0.5% projection flare, global exposure anchor (light-meter semantics)"
         )
     surround = PRINT_SURROUND.get(str(stock.get("print")), "average")
     base = (

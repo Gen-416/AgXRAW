@@ -178,8 +178,9 @@ class _Chain:
         self.reversal = bool(stock.get("positive"))
         if self.reversal:
             exp = ff.surround_exponent("dark")
+            flare = ff.REVERSAL_PROJECTION_FLARE
             self.view = lambda reflect, white: ff._display_rec2020(
-                reflect, white, self.wl, self.neg["viewing"], 0.0, exp
+                reflect, white, self.wl, self.neg["viewing"], flare, exp
             )
             self.white = ff._stack_reflectance(
                 self.neg, np.nanmin(self.neg["amounts"], axis=0)[None, :]
