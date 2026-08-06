@@ -1,5 +1,7 @@
 # 胶片调整说明书 —— 每个控件干什么，判断归你
 
+[修图教程](EDITING_TUTORIAL.zh-CN.md) · [胶片教程](FILM_TUTORIAL.zh-CN.md) · [使用说明](USER_GUIDE.zh-CN.md) · [架构与技术细节](ARCHITECTURE.zh-CN.md)
+
 这份说明书与《修图工作流说明书》同一部宪法：只讲清胶片区每个滑条与选择器
 **干的是什么**——它改变画面的哪一部分、你能看到什么变化。"这卷胶片适不
 适合这张照片"，判断完整地属于你的眼睛。文中所有对比图都由 dngscan 按所列
@@ -45,6 +47,55 @@
 
 ---
 
+## 全部胶片选项一览
+
+二十款胶卷加五款影院变体，按负片/反转片分类。每款的标定色温、印相介质与
+风格配对都是界面上可见可改的普通参数；"风格配对"列（前馈强度倍率 × AgX
+原色几何）是**编辑取向不是测量**，其余各列来自数据手册。
+
+**彩色负片 · 民用（11 款）**——印相到各自配对的相纸，支持放大机色头：
+
+| 选项 | 胶卷 | 标定色温 | 印相相纸 | 风格配对 |
+|---|---|---|---|---|
+| `portra160` | Kodak Portra 160 | 5500K 日光 | Portra Endura | ×1.3 · base |
+| `portra400` | Kodak Portra 400 | 5500K 日光 | Portra Endura | ×1.3 · base |
+| `portra800` | Kodak Portra 800 | 5500K 日光 | Portra Endura | ×1.3 · base |
+| `portra800push1` | Portra 800 迫冲 +1 | 5500K 日光 | Portra Endura | ×1.35 · base |
+| `portra800push2` | Portra 800 迫冲 +2 | 5500K 日光 | Portra Endura | ×1.4 · base |
+| `ektar100` | Kodak Ektar 100 | 5500K 日光 | Portra Endura | ×1.4 · punchy |
+| `gold200` | Kodak Gold 200 | 5500K 日光 | Portra Endura | ×1.4 · base |
+| `ultramax400` | Kodak UltraMax 400 | 5500K 日光 | Portra Endura | ×1.4 · base |
+| `superia400` | Fujifilm Superia X-TRA 400 | 5500K 日光 | Crystal Archive II | ×1.5 · base |
+| `c200` | Fujifilm C200 | 5500K 日光 | Crystal Archive II | ×1.4 · base |
+| `pro400h` | Fujifilm Pro 400H | 5500K 日光 | Crystal Archive II | ×1.3 · muted |
+
+**彩色负片 · 电影（5 款）**——印相到 Kodak 2383 放映拷贝；每款另有
+"·影院放映外观"引用变体（暗厅对比原样上屏，不做观看条件折算），合计
+五款影院变体：
+
+| 选项 | 胶卷 | 标定色温 | 印相介质 | 风格配对 |
+|---|---|---|---|---|
+| `vision350d` | Kodak Vision3 50D | 5500K 日光 | Kodak 2383 | ×1.2 · muted |
+| `vision3250d` | Kodak Vision3 250D | 5500K 日光 | Kodak 2383 | ×1.2 · muted |
+| `vision3200t` | Kodak Vision3 200T | 3200K 钨丝 | Kodak 2383 | ×1.2 · muted |
+| `vision3500t` | Kodak Vision3 500T | 3200K 钨丝 | Kodak 2383 | ×1.2 · muted |
+| `verita200d` | Kodak Verita 200D | 5500K 日光 | Kodak 2383 | ×1.2 · muted |
+
+**反转片（4 款）**——幻灯片自身就是显示介质：无印相环节、无放大机色头，
+观看链为暗环境投影（含声明的 0.5% 投影杂光）：
+
+| 选项 | 胶卷 | 标定色温 | 观看 | 风格配对 |
+|---|---|---|---|---|
+| `provia100f` | Fujifilm Provia 100F | 5500K 日光 | 幻灯直看 | ×1.4 · base |
+| `velvia100` | Fujifilm Velvia 100 | 5500K 日光 | 幻灯直看 | ×1.6 · punchy |
+| `ektachrome100` | Kodak Ektachrome E100 | 5500K 日光 | 幻灯直看 | ×1.4 · base |
+| `kodachrome64` | Kodak Kodachrome 64 | 5500K 日光 | 幻灯直看 | ×1.4 · muted |
+
+全部选项都支持 observe（默认）与 full 两种显影分工（第六节）;层间漂移开关
+仅 full 模式有效（第七节）。
+
+---
+
 ## 一 · 选一卷胶片：选卷时发生什么
 
 选择器的 GUI 名叫"胶片观察位置"。同一张公园样张，胶片选"无"、Portra 400、
@@ -68,7 +119,7 @@ Velvia 把绿压深、变密。再看画面底部的黄墙与人物，三联里�
 
 ## 二 · 白平衡固定色温与镜前滤镜
 
-机理已在《使用指南》三点五节讲过：固定色温不是用眼睛调白平衡，而是一个
+机理已在《使用指南》第四节讲过：固定色温不是用眼睛调白平衡，而是一个
 标准参考值，换算系数由照片文件自身的颜色标定精确求出。对胶片模拟，它的
 意义是**整卷统一**——胶片不会逐张适应现场光，5500K 日光卷在钨丝灯下就该
 偏橙。
@@ -106,7 +157,7 @@ Velvia 把绿压深、变密。再看画面底部的黄墙与人物，三联里�
 前的转换玻璃（85B 日光转钨丝、80A 钨丝转日光等），作用在感色特性之前，
 HDR 的亮度测量也透过滤镜进行——真胶片就是这样测光的。滤镜没有强度滑杆
 ——玻璃没有半片。用于复刻"钨丝卷 + 85B 拍日光"这类历史工作流，详见
-《使用指南》三点七节。
+《使用指南》第五节。
 
 ---
 

@@ -1056,7 +1056,7 @@ log-stop 亮度比，因此只回答“DRT 把额外亮度放在哪里”，不�
 
 接近零的主体亮度变化是这里最重要的控制量：HDR 把显示余量花在高光上，没有把 headroom
 变成隐蔽的整体曝光提升。表里的百分比统计超过 reference white 的 RGB 通道样本，不是整像素。
-这些半分辨率诊断图由 [`tools/hdr_ab.py`](tools/hdr_ab.py) 生成；正式 JPEG 仍按全分辨率渲染，
+这些半分辨率诊断图由 [`tools/hdr_ab.py`](../tools/hdr_ab.py) 生成；正式 JPEG 仍按全分辨率渲染，
 并在写入后展开 gain map 做 round-trip 校验。
 
 **混合光室内人像——额外亮度留给线形灯具与反光**
@@ -1115,7 +1115,7 @@ ALEV III SSF 数字化自 Leonhardt & Brendel 的 CIC23 论文。ARRI 在论文�
 它们在 ALEV 上本应有的区别。而且传感器滤镜栈存在个体差异，严肃标定应该针对实际使用的
 每一台相机。目前缺少可控光源、标准靶和光谱设备，所以现有结果更接近一个克制的几何颜色映射，
 离最初设定的 ARRI 肤色目标仍有距离。数据来源、假设、CSV 和拟合报告放在
-[`dngscan_assets/spectral/`](dngscan_assets/spectral/) 里。
+[`dngscan_assets/spectral/`](../dngscan_assets/spectral/) 里。
 
 ## 附：风格与 LUT
 
