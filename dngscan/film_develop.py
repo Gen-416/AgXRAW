@@ -22,11 +22,15 @@ sampled output per pixel by a BOUNDED neutral-cast curve shipped inside the
 npz, indexed at the pixel's LUMINANCE exposure EV_Y (the same single-axis
 declaration as the colour head — a per-channel-exposure divisor re-imported
 the retired channels-as-layer-exposures reading and blew up off-axis on hard
-reversals). Bounded means the luma-normalized chroma correction is clipped to
-[0.25, 4] per channel and then luma-renormalized: grays are strictly neutral
-wherever the medium's own gray sits within two stops of neutral per channel,
-tone follows the chain everywhere, and deeper tint — Kodachrome's floor above
-all — is kept as medium character rather than chased with near-singular gains.
+reversals). Bounded means the correction multiplier walks the straight line
+h(t) = 1 + t*(1/cast - 1) from identity toward full neutralization, at the
+largest t in [0,1] keeping every channel inside [0.25, 4] — every point on
+that line preserves the neutral axis' luminance exactly, so grays are
+strictly neutral wherever the medium's own gray sits within two stops of
+neutral per channel, tone follows the chain everywhere, and deeper tint —
+Kodachrome's floor above all — is kept as medium character rather than
+half-chased with near-singular gains (a clip-then-renormalize cut was
+measured shipping a 0.081 divisor, +3.6 EV, outside its own claimed bound).
 Why the division is at runtime and not a second baked volume: with a bounded
 divisor evaluated exactly per pixel, the quotient's visible-stop error equals
 the datasheet volume's own; baking the composite instead put the EV_Y kink

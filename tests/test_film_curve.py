@@ -529,23 +529,28 @@ class FilmCrossoverTests(unittest.TestCase):
             with np.load(_LUT_DIR / f"{name}.npz", allow_pickle=False) as z:
                 ramp_ev = np.asarray(z["ramp_ev"], dtype=np.float64)
                 raw_cast = np.asarray(z["ramp_cast"], dtype=np.float64)
-            cast_at = np.stack(
-                [np.interp(ev_t[keep], ramp_ev, raw_cast[:, c]) for c in range(3)],
-                axis=1,
-            )
-            in_bounds = np.all((cast_at >= 0.25) & (cast_at <= 4.0), axis=1)
+            # Eroded by one LUT node spacing: the stored divisor curve lives
+            # on the 65-node axis, so an exposure between an in-bounds node
+            # and an out-of-bounds one is only partially neutralized.
+            node = 20.0 / 64.0
+            cast_at = np.stack([
+                np.stack(
+                    [np.interp(ev_t[keep] + d, ramp_ev, raw_cast[:, c])
+                     for c in range(3)], axis=1)
+                for d in (-node, 0.0, node)
+            ])
+            in_bounds = np.all((cast_at >= 0.25) & (cast_at <= 4.0), axis=(0, 2))
             self.assertGreater(int(in_bounds.sum()), 40, name)
             rel = np.abs(out - out[:, :1]) / np.maximum(out[:, :1], 1e-5)
             self.assertLess(float(rel[in_bounds].max()), 5e-2, name)
             # ...and on the published tone EVERYWHERE, not multiple stops off.
-            # The node-matched division makes the on-axis quotient a mediant
-            # of node-exact values, bounding tone error by the inter-node
-            # tone variation: measured worst 0.136 EV, in Kodachrome's cast
-            # transition zone at the 0.31 EV grid spacing.
+            # The t-path divisor preserves neutral-axis luminance at every
+            # node and the node-matched division interpolates as a mediant of
+            # node-exact values: measured worst 0.071 EV (Kodachrome).
             err = np.abs(np.log2(
                 np.maximum(out @ luma, 1e-6) / np.maximum(y_t[keep], 1e-6)
             ))
-            self.assertLess(float(err.max()), 0.15, name)
+            self.assertLess(float(err.max()), 0.12, name)
 
     def test_full_lut_matches_the_shipped_offline_oracle(self) -> None:
         """Random in-domain samples with float64-chain truth ride inside every
@@ -561,8 +566,9 @@ class FilmCrossoverTests(unittest.TestCase):
         from dngscan.film_develop import apply_film_core
         from dngscan.film_develop import _LUT_DIR
 
-        for name in ("portra400", "velvia100", "ektachrome100",
-                     "kodachrome64", "vision3250d"):
+        names = sorted(p.stem for p in _LUT_DIR.glob("*.npz"))
+        self.assertGreaterEqual(len(names), 25)
+        for name in names:
             with np.load(_LUT_DIR / f"{name}.npz", allow_pickle=False) as z:
                 oracle_ev = np.asarray(z["oracle_ev"], dtype=np.float32)
                 want_ds = np.asarray(z["oracle_datasheet"], dtype=np.float32)

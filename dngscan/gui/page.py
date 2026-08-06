@@ -361,10 +361,12 @@ FILM_CURVE_OPTIONS
     <div class="sliderField">
       <div class="labelRow"><label title="放大机色头品（M）分色滤镜：CC 密度档位，30CC≈相纸绿敏层 1 档印相曝光衰减。暗房口诀：成片偏品加 M、去品。方向已渲染级验证：portra400 人像样张 +30CC M 使成片中位 a*（品绿轴）从 +0.8 移到 -45.2（100% 像素向去品方向移动）。同 Y：响应来自拟合光谱印相模型，改档位后自动重解曝光时间，中灰亮度不变。仅负片预设显示：反转片无印相环节。">色头 M（品）</label><span class="val" id="colorHeadMVal">0</span></div>
       <input type="range" id="colorHeadM" min="0" max="200" step="5" value="0" title="向右加品滤镜档位：成片去品（偏绿）。0=预设的中性印相决定。">
+    </div>
+  </div>
   <div class="row" id="filmModeRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
       <label>显影分工</label>
-      <select id="filmMode" title="observe=胶片声明观察者看见了什么，颜色由 AgX 显影（默认，已验证路径）；full=胶片显影模型整体接管（逐通道曲线+实测比率场，实验：色彩侧无外部验证，仅 SDR 输出）。">
+      <select id="filmMode" title="observe=胶片声明观察者看见了什么，颜色由 AgX 显影（默认，已验证路径）；full=胶片显影模型整体接管（离线烘焙光谱链 65³ 查找表：观察者逆矩阵→三层乳剂→特性曲线→印相链；实验，仅 SDR 输出，且不支持放大机色头——完整光谱链后不能追加中性轴近似）。">
         <option value="observe">观察 · AgX 显影 · 默认</option>
         <option value="full">接管 · 胶片显影模型（实验 · 仅 SDR）</option>
       </select>
@@ -930,7 +932,7 @@ function updateFilmModeUi(){
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
 }
-$("#filmMode").addEventListener("change",()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();});
+$("#filmMode").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
 $("#filmCrossover").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#filmCurve").addEventListener("change",()=>{updateColorHeadUi();saveSettings();scheduleLivePreview();});
@@ -944,7 +946,12 @@ function setColorHeadLabels(){
   $("#colorHeadMVal").textContent=$("#colorHeadM").value+" CC";
 }
 function updateColorHeadUi(){
-  const supported=!!FILM_COLOR_HEADS[$("#filmCurve").value];
+  // Negatives only (a print stage physically exists) AND observe mode only:
+  // full mode's baked spectral chain refuses filtration at every backend
+  // layer, so the dials hide and RESET — a stale non-zero Y/M must never ride
+  // a full-mode payload into the server-side rejection.
+  const supported=!!FILM_COLOR_HEADS[$("#filmCurve").value]
+    &&$("#filmMode").value!=="full";
   const block=$("#colorHeadBlock");
   if(supported){block.style.display="flex";}
   else{
