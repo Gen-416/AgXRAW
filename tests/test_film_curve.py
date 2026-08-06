@@ -612,7 +612,11 @@ class FilmCrossoverTests(unittest.TestCase):
         out = apply_film_core(probe, self._film_plan(crossover="datasheet"))
         mid_dev = float(np.abs(out[0] / out[0].mean() - 1.0).max())
         self.assertLess(mid_dev, 5e-3)
-        self.assertGreater(float(out[1, 2] / out[1, 0]), 1.3)
+        # 1.3 was pinned against the leaky chain: zero-filled dye tables let
+        # UV/IR light through the Dmax stack and inflated the shadow cast.
+        # With edge-held dye spectra the fitted cool shift is milder but
+        # still unambiguous (measured B/R 1.175 at EV-2).
+        self.assertGreater(float(out[1, 2] / out[1, 0]), 1.1)
         self.assertGreater(float(out[2, 2] / out[2, 0]), 1.0)
         self.assertLess(float(out[2, 2] / out[2, 0]), 1.2)
 
