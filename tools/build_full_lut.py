@@ -407,6 +407,7 @@ def write_lut(stock_key: str, theatrical: bool = False) -> None:
         oracle_datasheet=baked["oracle_datasheet"],
         oracle_neutralized=baked["oracle_neutralized"],
         input_space=np.asarray("post-prefeed_rec2020"),
+        schema=np.int32(2),
     )
     size = (OUT_DIR / f"{key}.npz").stat().st_size / 1024
     print(f"{key}: observer p99 {baked['observer_p99_stop']:.3f} "

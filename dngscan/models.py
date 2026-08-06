@@ -294,15 +294,15 @@ class ToneCompressionPlan:
     # curve_preset, and physically absent for reversal film (no printing stage).
     color_head_y: float = 0.0
     color_head_m: float = 0.0
-    # Declared crossover switch for the measured channel-ratio field. Meaningful only
-    # with film_mode="full" and a preset that carries a ratio field; otherwise inert.
-    # "off" (default) anchors each channel's gain at the pixel's own formation-
-    # luminance EV — gain_c = r_c(EV_c)/r_c(EV_Y) — which cancels neutral-axis
-    # inter-layer drift by construction (the anti-hidden-WB safety rail: zone tints
-    # on the neutral axis are normalized away). "datasheet" re-anchors at mid-grey —
-    # gain_c = r_c(EV_c)/r_c(0) — keeping strict WB fidelity at EV0 while letting
-    # the rest of the neutral axis drift per the fitted inter-layer data (the
-    # photographic meaning of crossover: e.g. Velvia's cool shadows).
+    # Declared crossover switch for the film-takeover LUT's neutral-axis
+    # serving. Meaningful only with film_mode="full"; otherwise inert. "off"
+    # (default) is the DIGITAL NEUTRALIZED variant: the sampled LUT output is
+    # divided per pixel by the shipped bounded neutral-cast curve at the
+    # pixel's luminance exposure (grays neutral wherever the medium's own gray
+    # is within two stops of neutral per channel). "datasheet" serves the
+    # spectral chain verbatim — mid-grey anchored by the printer-light solve,
+    # the rest of the neutral axis drifting per the inter-layer data (the
+    # photographic meaning of crossover: e.g. Velvia's mildly cool shadows).
     film_crossover: str = "off"
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.

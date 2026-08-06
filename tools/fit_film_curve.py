@@ -168,9 +168,9 @@ def _load_curves(name: str) -> tuple[np.ndarray, np.ndarray]:
 # the samples showed.
 #
 # Declared constants of this model:
-#   * enlarger lamp: 3200 K blackbody (tungsten-halogen; agx-emulsion's TH-KG3
-#     convention, heat-filter shaping absorbed by the per-channel printer
-#     lights k);
+#   * enlarger lamp: TH-KG3 — 3400 K blackbody through a Schott KG3 heat
+#     filter (spectral_base.th_kg3_spd, the upstream spektrafilm convention;
+#     an earlier 3200 K bare-blackbody stand-in is retired);
 #   * viewing: the print profile's own viewing_illuminant (D50 for papers),
 #     CIE 1931 2-degree observer, relative colorimetry against the medium's
 #     clear/white point (per-channel normalization = von Kries to that white);
@@ -714,6 +714,28 @@ def build_joint_color_head_field(
     ev_grid = ev_vis[knots]
     gains = np.ascontiguousarray(full[:, :, knots, :])
 
+    # HARD GATE (review batch 7): the knot selection audits float32, but the
+    # npz ships float16 — re-audit the FINAL bytes (f16-quantized knot gains,
+    # linearly interpolated back onto the full-resolution chain grid) and
+    # refuse to emit an asset whose worst error exceeds the acceptance gate.
+    # Hitting the knot budget also lands here instead of shipping silently.
+    gains_f16 = gains.astype(np.float16).astype(np.float32)
+    pos = np.arange(ev_vis.size)
+    seg = np.clip(np.searchsorted(knots, pos, side="right") - 1, 0, knots.size - 2)
+    k0, k1 = knots[seg], knots[seg + 1]
+    w = ((pos - k0) / np.maximum(k1 - k0, 1)).astype(np.float32)
+    approx = gains_f16[:, :, seg, :] * (1.0 - w)[None, None, :, None] \
+        + gains_f16[:, :, seg + 1, :] * w[None, None, :, None]
+    audit_max_stop = float(np.abs(
+        np.log2(np.maximum(approx, 1e-9) / np.maximum(full, 1e-9))
+    ).max())
+    if audit_max_stop > 0.02:
+        raise RuntimeError(
+            f"{chain.label}: joint colour-head field failed its own audit — "
+            f"worst f16-quantized interpolation error {audit_max_stop:.4f} stop "
+            f"> 0.02 gate ({knots.size} knots, budget {ev_points})"
+        )
+
     # Oracle fixtures: random detents solved at the CHAIN's full EV resolution
     # (off-grid relative to the stored axis), so the runtime test measures the
     # deployed field + EV interpolation against the direct spectral solve — the
@@ -738,6 +760,8 @@ def build_joint_color_head_field(
         "oracle": np.asarray(oracle, dtype=np.float32),
         "basis": "bradford-lms",
         "label": chain.label,
+        "schema": 3,
+        "audit_max_stop": audit_max_stop,
     }
 
 
@@ -867,7 +891,8 @@ def _model_note(stock: dict, theatrical: bool = False) -> str:
         )
     surround = PRINT_SURROUND.get(str(stock.get("print")), "average")
     base = (
-        "spectral contact print: paper spectral sensitivity x 3200K enlarger over "
+        "spectral contact print: paper spectral sensitivity x TH-KG3 enlarger "
+        "(3400K x Schott KG3) over "
         "the negative's dye-stack transmittance, printer lights solved to a "
         "neutral 18% mid, viewed under the print's declared illuminant "
         "(relative colorimetry, CIE 1931)"
@@ -1101,6 +1126,8 @@ def main() -> int:
             oracle=field["oracle"],
             basis=np.asarray(field["basis"]),
             label=np.asarray(field["label"]),
+            schema=np.int32(field["schema"]),
+            audit_max_stop=np.float32(field["audit_max_stop"]),
         )
         print(f"  joint colour head -> {out.name} "
               f"({out.stat().st_size/1024:.0f} KiB)")

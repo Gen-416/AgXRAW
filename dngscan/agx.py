@@ -894,7 +894,12 @@ def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> 
         [np.interp(ev_y, ev_grid, gains[:, c]).astype(np.float32) for c in range(3)],
         axis=-1,
     )
-    lms = np.maximum(mapped_rec @ REC2020_TO_LMS.T, 0.0)
+    # Bradford LMS is a mathematical basis, not a physical gamut: saturated
+    # Rec.2020 primaries legally map to negative LMS components, and clamping
+    # them here was an UNDECLARED nonlinear projection (measured 0.026 max
+    # channel error at unit gains, where the operator must be exact identity).
+    # Output-boundary duty stays with the downstream gamut fit.
+    lms = mapped_rec @ REC2020_TO_LMS.T
     return ((lms * gain) @ LMS_TO_REC2020.T).astype(np.float32, copy=False)
 
 
@@ -923,8 +928,9 @@ def apply_core(rgb_rec2020: Any, plan: Any, inset_matrix: Any, outset_matrix: An
     """AgX's shared formation order in the Rec.2020 working space:
 
     guard rail -> inset (rotation+attenuation) -> log2 window -> sigmoid ->
-    linearize -> hue restore (darktable semantics) -> film channel-ratio gain
-    (film presets only) -> outset in LINEAR light.
+    linearize -> hue restore (darktable semantics) -> outset in LINEAR light
+    (negative presets with colour-head dials then apply the LMS gain field
+    post-outset via apply_film_color_rec2020).
 
     Deviations from the reference, all deliberate: the endpoint-normalized log2 window
     and C1 sigmoid parameters come from the scene plan while EV=0 remains the calibrated

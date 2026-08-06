@@ -115,42 +115,6 @@ def film_style_pairing(name: str) -> tuple[float, str]:
     return FILM_STYLE_PAIRINGS.get(str(name), _DEFAULT_STYLE)
 
 
-_RATIO_FIELD_CACHE: dict[str, tuple[Any, Any] | None] = {}
-
-
-def channel_ratio_field(name: str) -> tuple[Any, Any] | None:
-    """Measured per-channel ratio field r_c(EV) of a preset; None when absent.
-
-    r_c(EV) = neutral_gain_rec2020 = neutral_rgb_rec2020(EV) / target_Y(EV) along
-    the stock's balanced neutral ramp — the exposure-dependent neutral colour
-    solved by tools/fit_film_curve.py in the same Rec.2020 basis and viewing
-    translation as the tone target (schema v2). Returns
-    (ev_grid, ratios[N, 3]) as read-only float32 arrays for np.interp consumption;
-    the grid is ascending and covers the fit domain, and interpolation clamps at the
-    ends by construction (deep white ratios approach 1, deep shadow ratios approach
-    the dye-floor differential).
-    """
-    key = str(name)
-    if key in _RATIO_FIELD_CACHE:
-        return _RATIO_FIELD_CACHE[key]
-    preset = FILM_CURVE_PRESETS.get(key)
-    raw = preset.get("neutral_curve") if isinstance(preset, dict) else None
-    field: tuple[Any, Any] | None = None
-    if isinstance(raw, dict) and raw.get("ev") and raw.get("neutral_gain_rec2020"):
-        ev = np.asarray(raw["ev"], dtype=np.float32)
-        ratios = np.asarray(raw["neutral_gain_rec2020"], dtype=np.float32)
-        if ev.ndim == 1 and ratios.shape == (ev.size, 3) and ev.size >= 2:
-            # De-duplicate the stored grid (the fitter's index subsample can repeat
-            # rows); np.interp requires strictly usable ascending x.
-            keep = np.concatenate(([True], np.diff(ev) > 0))
-            ev, ratios = ev[keep], ratios[keep]
-            ev.setflags(write=False)
-            ratios.setflags(write=False)
-            field = (ev, ratios)
-    _RATIO_FIELD_CACHE[key] = field
-    return field
-
-
 def film_process(name: str) -> str | None:
     """Physical process class of a preset: "negative" (print-through C-41/ECN-2),
     "reversal" (E-6/K-14 slide — its own display medium), or None when unknown.
@@ -222,6 +186,22 @@ def color_head_joint_field(name: str):
                 ev = np.asarray(payload["ev"], dtype=np.float32)
                 cc = np.asarray(payload["cc_grid"], dtype=np.float64)
                 gains = np.asarray(payload["gains_lms"], dtype=np.float32)
+                # Hard loading contract (review batch 7): schema, basis and
+                # value sanity fail CLOSED — a wrong-basis or corrupted field
+                # must never be silently applied to pixels.
+                schema = int(payload["schema"])
+                basis = str(np.asarray(payload["basis"]))
+                audit = float(payload["audit_max_stop"])
+            if schema != 3:
+                raise ValueError(f"colour-head schema {schema}, expected 3")
+            if basis != "bradford-lms":
+                raise ValueError(f"colour-head basis {basis!r}, expected bradford-lms")
+            if not (0.0 <= audit <= 0.02):
+                raise ValueError(f"colour-head audit_max_stop {audit} out of gate")
+            if not bool(np.isfinite(gains).all()):
+                raise ValueError("colour-head gains contain non-finite values")
+            if float(gains.min()) <= 1e-4 or float(gains.max()) >= 1e4:
+                raise ValueError("colour-head gains outside sane multiplier range")
             if (
                 ev.ndim == 1 and ev.size >= 2 and bool(np.all(np.diff(ev) > 0))
                 and gains.shape == (cc.size, cc.size, ev.size, 3)

@@ -113,12 +113,18 @@ class RoundtripErrorTests(unittest.TestCase):
             a[mask] / np.maximum(a[mask].sum(axis=1, keepdims=True), 1e-6)
             - e[mask] / np.maximum(e[mask].sum(axis=1, keepdims=True), 1e-6)
         )
-        self.assertEqual(banded["chroma_error"], float(np.percentile(chroma, 99.0)))
-        self.assertEqual(
-            banded["median_relative_error"], float(np.median(relative))
+        # _exact_upper_percentile and np.percentile agree only to float
+        # rounding, and the residual (~1e-8) drifts across NumPy minor
+        # versions; the production gate reads whole code-value thresholds.
+        self.assertAlmostEqual(
+            banded["chroma_error"], float(np.percentile(chroma, 99.0)), places=6
         )
-        self.assertEqual(
-            banded["p99_relative_error"], float(np.percentile(relative, 99.0))
+        self.assertAlmostEqual(
+            banded["median_relative_error"], float(np.median(relative)), places=6
+        )
+        self.assertAlmostEqual(
+            banded["p99_relative_error"], float(np.percentile(relative, 99.0)),
+            places=6,
         )
         h8, w8 = height - height % 8, width - width % 8
         ab = expanded[:h8, :w8, :3].astype(np.float32).reshape(

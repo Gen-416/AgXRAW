@@ -168,11 +168,9 @@ def _form_hdr_chunk(
             if fast_backend.strict_requested():
                 raise fast_backend.NativeKernelError(str(exc)) from exc
     inset, pre_hue = agx_engine.prepare_formation(intent_rec, hdr_tone_plan, inset_matrix)
-    # Film channel-ratio gain, same construction as the SDR body (agx.apply_core):
-    # the HDR plan is a replace() of the film plan so curve_preset rides along, and
-    # both dispatchers must apply the identical gain or the gain map inherits the
-    # difference as chroma error. Beyond the fit domain the field clamps toward 1,
-    # so the extended shoulder stays neutral by construction.
+    # The HDR plan is a replace() of the film plan so curve_preset rides along;
+    # the retired channel-ratio machinery no longer exists in either dispatcher,
+    # and exposure-dependent film colour (the colour head) is SDR/observe-side.
     native_table, reference_table = curve_tables
     native_formation = native_table.apply(inset)
 

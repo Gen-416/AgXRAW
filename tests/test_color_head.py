@@ -306,3 +306,35 @@ class TestPlanGuards(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LmsOperatorLinearityTests(unittest.TestCase):
+    """Batch-7 P1: clamping negative LMS components before the gain multiply
+    was an UNDECLARED nonlinear projection (0.026 max channel error at unit
+    gains on saturated primaries). Bradford LMS is a mathematical basis, not a
+    physical gamut — the operator must be exactly linear, and output-boundary
+    duty belongs to the downstream gamut fit."""
+
+    def test_unit_gains_are_identity_even_on_saturated_primaries(self) -> None:
+        import unittest.mock as mock
+
+        from dngscan import agx
+
+        probe = np.array(
+            [
+                [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0], [0.18, 0.18, 0.18], [2.0, 0.01, 0.01],
+            ],
+            dtype=np.float32,
+        )
+        plan = _film_plan(color_head_y=30.0)
+        ev = np.linspace(-10.0, 6.0, 32).astype(np.float32)
+        ones = np.ones((ev.size, 3), dtype=np.float32)
+        with mock.patch.object(
+            agx, "np", agx.np
+        ), mock.patch(
+            "dngscan.film_curve.color_head_gain_lms", return_value=(ev, ones)
+        ):
+            out = agx.apply_film_color_rec2020(probe, probe, plan)
+        err = np.abs(out - probe)
+        self.assertLess(float(err.max()), 1e-4)

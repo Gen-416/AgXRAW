@@ -756,7 +756,17 @@ def build_render_plan(
         tone = apply_film_curve_preset(tone, film_curve)
         tone = _replace(tone, endpoint_mode="adaptive", endpoint_note=None)
         mode_value = film_mode if film_mode in ("observe", "full") else "observe"
-        # Crossover is a declaration on the ratio field: it rides the plan only
+        if mode_value == "full" and str(tone_core) != "agx":
+            # The takeover LUT replaces the AgX formation wholesale and only
+            # runs in the agx pipeline slot; the render stage would otherwise
+            # fall back to the requested core SILENTLY while the filename
+            # still claimed filmfull (the review's measured 0.0-diff bug).
+            raise ValueError(
+                "胶片接管显影（full 模式）只在 AgX tone core 上运行：接管 LUT "
+                "整体替换 AgX formation，lum/neutral/gated 核会静默退回普通渲染；"
+                "请使用 --tone-core agx 或切回 observe 模式"
+            )
+        # Crossover is a declaration on the takeover LUT's neutral axis: it rides the plan only
         # alongside an active preset, defaults to "off" (byte-identical status quo)
         # and is inert outside full mode (the film-takeover LUT's variant switch).
         # It must be stamped here, with the preset itself — not inside the
