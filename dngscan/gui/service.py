@@ -456,6 +456,14 @@ def parse_endpoint_mode(params: dict) -> str:
 
 def parse_scene_transform(params: dict) -> tuple[str, float]:
     transform = dg.validate_scene_transform(str(params.get("sceneTransform", "none")))
+    # Full mode's input-domain contract at the GUI's parameter source: every
+    # consumer (plan, histograms, brightness reference, cache keys, preview
+    # and export) reads the transform through this parse (review batch 10).
+    from dngscan.scene_transform import effective_scene_transform
+
+    film_curve = str(params.get("filmCurve", params.get("film_curve", "none")))
+    film_mode = str(params.get("filmMode", params.get("film_mode", "observe")))
+    transform = effective_scene_transform(transform, film_mode, film_curve)
     strength = float(params.get("sceneTransformStrength", params.get("scene_transform_strength", 1.0)))
     if not 0.0 <= strength <= 3.0:
         raise ValueError("scene transform 强度需在 0-3 之间")

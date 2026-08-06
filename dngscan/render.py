@@ -339,11 +339,10 @@ def scene_render_to_display_linear(
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w))
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
-    # Input-domain contract (review batch 9): the film-takeover LUT's observer
-    # inverse is fitted on PLAIN scene Rec.2020 stimuli — the LUT itself owns
-    # the film's spectral separation. Feeding it prefeed-transformed pixels
-    # applied the film observer twice (scene_transform followed by the LUT's
-    # SSF matrix), so full mode bypasses the scene transform entirely.
+    # Input-domain contract: normalized at the parameter sources (CLI/GUI via
+    # scene_transform.effective_scene_transform, review batch 10) so the plan,
+    # histograms, auto-EV and this render agree. The conditional below stays
+    # as defence in depth for hand-built plans that bypass those sources.
     film_full = (
         str(getattr(tone_plan, "film_mode", "observe")) == "full"
         and str(getattr(tone_plan, "curve_preset", "none")) != "none"

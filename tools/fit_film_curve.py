@@ -359,7 +359,7 @@ DISPLAY_PROJECTION_FLARE = 0.005   # ISO 3664-class projection / lightbox
 # quotation variants. (Bartleson-Breneman constants; contract §8.)
 
 def _build_reversal_target(
-    stock: dict,
+    stock: dict, surround_override: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Slide film, spectrally: the developed dye stack viewed as its own display.
 
@@ -373,7 +373,7 @@ def _build_reversal_target(
     viewing flare: slide black is the medium's Dmax through the translation,
     not a projection room's veiling glare (see DISPLAY_PROJECTION_FLARE)."""
     neg = _load_spectral(stock["negative"])
-    exp = surround_exponent("dark")
+    exp = 1.0 if surround_override == "native" else surround_exponent("dark")
     reflect = _stack_reflectance(neg, neg["amounts"])
     # White is the medium's own brightest state (Dmin INCLUDING residual dye), not
     # the bare base: slides never clear completely, and normalizing against the
@@ -560,7 +560,7 @@ def build_endtoend_target(
     theatrical variants, per the contract's quotation-vs-translation distinction.
     """
     if stock.get("positive"):
-        return _build_reversal_target(stock)
+        return _build_reversal_target(stock, surround_override)
     return _finish_print(_solved_print_chain(stock, surround_override))
 
 
@@ -758,7 +758,7 @@ def build_joint_color_head_field(
         "oracle": np.asarray(oracle, dtype=np.float32),
         "basis": "bradford-lms",
         "label": chain.label,
-        "schema": 3,
+        "schema": 4,
         "audit_max_stop": audit_max_stop,
     }
 
@@ -916,6 +916,25 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
     ev_full, channels_full, target_full, floor_black = build_endtoend_target(
         stock, surround_override="native" if theatrical else None
     )
+    # Schema v4 honesty (review batch 10): for dark-surround media the
+    # calibrated floor is the medium's Dmax THROUGH the declared appearance
+    # translation, not the raw Dmax — record both numbers and name the policy
+    # for what it is. Reflection papers and theatrical quotations carry no
+    # translation (exponent 1), so their floor IS medium-native.
+    if theatrical:
+        translation_exponent = 1.0
+    elif stock.get("positive"):
+        translation_exponent = surround_exponent("dark")
+    else:
+        translation_exponent = surround_exponent(
+            PRINT_SURROUND.get(str(stock.get("print")), "average")
+        )
+    if abs(translation_exponent - 1.0) < 1e-9:
+        floor_native = floor_black
+    else:
+        _, _, _, floor_native = build_endtoend_target(
+            stock, surround_override="native"
+        )
     mask = (ev_full >= FIT_EV_LO) & (ev_full <= FIT_EV_HI)
     ev, target = ev_full[mask], target_full[mask]
     channels = channels_full[mask]
@@ -974,7 +993,7 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             None
             if stock.get("positive")
             else {
-                "format": "joint-lms-npz-v3",
+                "format": "joint-lms-npz-v4",
                 "file": f"color_head/{key}.npz",
                 "cc_step": JOINT_HEAD_CC_STEP,
                 "cc_max": JOINT_HEAD_CC_MAX,
@@ -1000,13 +1019,20 @@ def fit_stock(key: str, stock: dict, theatrical: bool = False) -> dict:
             "latitude_hi_ev": round(float(best[6]), 4),
             "target_black_linear": round(floor_black, 6),
         },
-        # Schema v3 (medium-native black): the medium's own floor, stamped
-        # explicitly, with the calibration's viewing flare REQUIRED to be zero.
-        # target_black_linear must equal medium_floor_linear (loader-enforced);
-        # delivery_viewing_flare is reserved for a future view-simulation layer
-        # and stays zero until that layer exists.
-        "black_policy": "medium-native",
+        # Schema v4: zero calibration flare everywhere, and the floor named
+        # honestly. "medium-native" (exponent 1.0) means the floor IS the
+        # medium's Dmax through viewing colorimetry; "medium-translated"
+        # means the medium's Dmax through the declared dark->average surround
+        # translation (the translation-vs-quotation contract, kept as the
+        # rendering default). Both numbers are recorded; delivery flare is
+        # reserved for a future view-simulation layer.
+        "black_policy": (
+            "medium-native" if abs(translation_exponent - 1.0) < 1e-9
+            else "medium-translated"
+        ),
+        "surround_translation_exponent": round(float(translation_exponent), 6),
         "medium_floor_linear": round(floor_black, 6),
+        "medium_floor_native_linear": round(float(floor_native), 6),
         "calibration_viewing_flare": 0.0,
         "delivery_viewing_flare": 0.0,
         "fit": {
@@ -1121,10 +1147,10 @@ def main() -> int:
     data_dir = PROJECT_ROOT / "dngscan" / "data" / "color_head"
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    def write_joint_head(key: str, stock: dict, theatrical: bool) -> None:
+    def write_joint_head(key: str, stock: dict, theatrical: bool) -> str | None:
         field = build_joint_color_head_field(stock, theatrical=theatrical)
         if field is None:
-            return
+            return None
         out = data_dir / f"{key}.npz"
         np.savez_compressed(
             out,
@@ -1137,14 +1163,23 @@ def main() -> int:
             schema=np.int32(field["schema"]),
             audit_max_stop=np.float32(field["audit_max_stop"]),
         )
+        import hashlib as _hashlib
+
+        digest = _hashlib.sha256(out.read_bytes()).hexdigest()
         print(f"  joint colour head -> {out.name} "
-              f"({out.stat().st_size/1024:.0f} KiB)")
+              f"({out.stat().st_size/1024:.0f} KiB, sha256 {digest[:12]}...)")
+        return digest
 
     for key in args.stocks:
         stock = STOCKS[key]
         preset = fit_stock(key, stock)
         presets[key] = preset
-        write_joint_head(key, stock, theatrical=False)
+        digest = write_joint_head(key, stock, theatrical=False)
+        if digest and preset.get("color_head"):
+            # Content pinning (review batch 10): the preset names its exact
+            # asset bytes, so a new JSON can never silently pair with a stale
+            # or foreign colour-head npz.
+            preset["color_head"]["sha256"] = digest
         print(f"{key}: rms {preset['fit']['rms_stop']:.4f} stop, "
               f"max {preset['fit']['max_stop']:.4f} stop, params {preset['params']}")
         # Theatrical quotation variants for dark-surround projection chains: the
@@ -1153,11 +1188,13 @@ def main() -> int:
             tkey = f"{key}_theatrical"
             tpreset = fit_stock(tkey, stock, theatrical=True)
             presets[tkey] = tpreset
-            write_joint_head(tkey, stock, theatrical=True)
+            tdigest = write_joint_head(tkey, stock, theatrical=True)
+            if tdigest and tpreset.get("color_head"):
+                tpreset["color_head"]["sha256"] = tdigest
             print(f"{tkey}: rms {tpreset['fit']['rms_stop']:.4f} stop, "
                   f"max {tpreset['fit']['max_stop']:.4f} stop")
     PRESET_PATH.write_text(
-        json.dumps({"version": 3, "presets": presets}, indent=1, ensure_ascii=False)
+        json.dumps({"version": 4, "presets": presets}, indent=1, ensure_ascii=False)
         + "\n",
         encoding="utf-8",
     )

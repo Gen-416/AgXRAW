@@ -66,6 +66,25 @@ class SceneTransformPreset:
     note: str = ""
 
 
+
+def effective_scene_transform(
+    scene_transform: str, film_mode: str, film_curve: str
+) -> str:
+    """The ONE normalization point for full mode's input-domain contract.
+
+    The takeover LUT's observer inverse is fitted on plain Rec.2020, so with
+    film_mode="full" the film prefeed must not touch ANY consumer — the plan
+    sample, the scene-EV histogram, the brightness-reference probe, cache
+    keys, reports and the pixel render all read the transform through this
+    helper, so they cannot disagree (review batch 10: skipping it only in
+    the render loop left the histogram and auto-EV describing a scene the
+    render never saw).
+    """
+    if str(film_mode) == "full" and str(film_curve or "none") != "none":
+        return "none"
+    return str(scene_transform)
+
+
 def _component_from_dict(raw: dict[str, Any]) -> SceneTransformComponent:
     return SceneTransformComponent(
         mu_rg_bg=tuple(float(v) for v in raw["mu_rg_bg"]),  # type: ignore[arg-type]

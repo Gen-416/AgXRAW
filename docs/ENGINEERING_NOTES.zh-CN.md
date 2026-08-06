@@ -325,6 +325,13 @@ IEC 61966-2-1 的 1% 参考房间杂光（反射相纸）和 0.5% 投影杂光�
 标定杂光恒为零（schema 字段 `calibration_viewing_flare` 加载端强制）；
 观看环境模拟若将来出现,住在 Delivery/View-Simulation 层,默认关闭。
 
+批十的命名修正（schema v4）：暗环境介质（反转片、非 theatrical 电影链）
+的地板其实是"介质 Dmax **经声明的环绕外观翻译**"而非严格原生 Dmax（Velvia
+原生 0.00039,翻译后 0.00537——翻译抬 3.78 EV）。渲染默认保留翻译（翻译
+vs 引用契约）,但 v4 把政策按组如实命名（medium-native / medium-translated）
+并把两个数字都记录在案（medium_floor_linear / medium_floor_native_linear）
+——"计算成立"与"命名成立"都要。
+
 数字全景（Portra 400,曲线输出）：EV0 三版严格 0.18；EV−1 几乎重合
 （0.064/0.059/0.056）；EV−4 从 v2 的 c33 灰雾到 v3 的 c18——深而有物,
 不是数字死黑（c0 对照组）。两项意外红利：①Velvia 的 white 参数不再顶满

@@ -33,7 +33,7 @@ def _load() -> dict[str, dict[str, Any]]:
     except (OSError, ValueError):
         return {}
     version = int(raw.get("version", 0) or 0)
-    if version != 3:
+    if version != 4:
         # v1 presets were calibrated in linear sRGB; v2 presets baked the
         # display room's viewing flare (IEC 1% for papers, 0.5% projection for
         # slides) into the medium's fitted black — a viewing-environment
@@ -44,7 +44,8 @@ def _load() -> dict[str, dict[str, Any]]:
         # any actual film request does, loudly.
         _SCHEMA_ERROR = (
             f"film_curve_presets.json schema v{version} is not supported; "
-            "regenerate with tools/fit_film_curve.py (schema v3, medium-native black)"
+            "regenerate with tools/fit_film_curve.py (schema v4: honestly named "
+            "black policy, dual floors, content-pinned colour heads)"
         )
         return {}
     presets = raw.get("presets", {})
@@ -54,21 +55,36 @@ def _load() -> dict[str, dict[str, Any]]:
         # Hard v3 contract per preset — a mixed or hand-edited file fails
         # closed instead of silently mixing black policies.
         try:
+            policy = str(preset.get("black_policy"))
+            exponent = float(preset["surround_translation_exponent"])
+            native = float(preset["medium_floor_native_linear"])
+            translated = float(preset["medium_floor_linear"])
+            head = preset.get("color_head")
             ok = (
-                str(preset.get("black_policy")) == "medium-native"
-                and float(preset.get("calibration_viewing_flare", -1.0)) == 0.0
+                float(preset.get("calibration_viewing_flare", -1.0)) == 0.0
                 and abs(
-                    float(preset["params"]["target_black_linear"])
-                    - float(preset["medium_floor_linear"])
+                    float(preset["params"]["target_black_linear"]) - translated
                 ) <= 1e-6
+                and 0.0 < native <= translated + 1e-9
+                and (
+                    (policy == "medium-native" and abs(exponent - 1.0) < 1e-9)
+                    or (policy == "medium-translated" and 0.0 < exponent < 1.0)
+                )
+                and (
+                    head is None
+                    or (
+                        str(head.get("format")) == "joint-lms-npz-v4"
+                        and len(str(head.get("sha256", ""))) == 64
+                    )
+                )
             )
         except (KeyError, TypeError, ValueError):
             ok = False
         if not ok:
             _SCHEMA_ERROR = (
-                f"film preset '{name}' violates the v3 medium-native contract "
-                "(black_policy/medium_floor_linear/calibration_viewing_flare); "
-                "regenerate with tools/fit_film_curve.py"
+                f"film preset '{name}' violates the v4 contract (black policy/"
+                "translation exponent/dual floors/zero calibration flare/"
+                "content-pinned colour head); regenerate with tools/fit_film_curve.py"
             )
             return {}
     return presets
@@ -218,8 +234,19 @@ def color_head_joint_field(name: str):
                 schema = int(payload["schema"])
                 basis = str(np.asarray(payload["basis"]))
                 audit = float(payload["audit_max_stop"])
-            if schema != 3:
-                raise ValueError(f"colour-head schema {schema}, expected 3")
+            if schema != 4:
+                raise ValueError(f"colour-head schema {schema}, expected 4")
+            expected_sha = str(pointer.get("sha256", ""))
+            import hashlib as _hashlib
+
+            actual_sha = _hashlib.sha256(path.read_bytes()).hexdigest()
+            if actual_sha != expected_sha:
+                # Content pinning: a v4 preset names its exact asset bytes; a
+                # stale or foreign npz must fail here, not misindex at apply.
+                raise ValueError(
+                    f"colour-head content hash mismatch for {path.name}: "
+                    f"preset pins {expected_sha[:12]}..., file is {actual_sha[:12]}..."
+                )
             if basis != "bradford-lms":
                 raise ValueError(f"colour-head basis {basis!r}, expected bradford-lms")
             if not (0.0 <= audit <= 0.02):
