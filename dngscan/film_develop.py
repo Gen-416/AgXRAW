@@ -7,7 +7,7 @@ pole — and since the stage-4 rebuild it no longer feeds Rec.2020 channels to
 per-channel curves (the RGB heuristic the review refused to call a
 reconstruction). It samples an offline-baked LUT of the honest chain:
 
-    post-prefeed Rec.2020 -> constrained observer inverse (fitted over the
+    plain scene Rec.2020 -> constrained observer inverse (fitted over the
     rawtoaces training reflectances under D55) -> per-layer exposures ->
     characteristic curves -> negative spectral density -> TH-KG3 print chain
     (or the slide viewed directly) -> XYZ -> CAT -> Rec.2020.
@@ -76,10 +76,10 @@ def _load_lut(name: str):
             # Hard loading contract (review batch 7): schema, declared input
             # space and value sanity fail CLOSED — a stale or corrupted LUT
             # must never be silently sampled.
-            if int(payload["schema"]) != 2:
-                raise ValueError(f"full-LUT schema {int(payload['schema'])}, expected 2")
+            if int(payload["schema"]) != 3:
+                raise ValueError(f"full-LUT schema {int(payload['schema'])}, expected 3")
             input_space = str(np.asarray(payload["input_space"]))
-            if input_space != "post-prefeed_rec2020":
+            if input_space != "scene_rec2020":
                 raise ValueError(f"full-LUT input_space {input_space!r}")
             if not bool(np.isfinite(lut).all()) or float(lut.min()) < 0.0:
                 raise ValueError("full-LUT volume contains non-finite or negative values")

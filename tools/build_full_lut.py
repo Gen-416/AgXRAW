@@ -5,7 +5,7 @@ The v1 "full" mode fed Rec.2020 channels to per-channel characteristic curves �
 an RGB heuristic the review correctly refused to call a reconstruction. This
 bake runs the honest chain offline and samples it:
 
-    post-prefeed scene Rec.2020 (D65, daylight-balanced)
+    plain scene Rec.2020 (D65, daylight-balanced; prefeed bypassed in full)
       -> constrained observer inverse (3x3, fitted on the rawtoaces training
          reflectances under D55: the film's spectral log-sensitivities against
          the same stimuli's Rec.2020 tristimulus; tristimulus input cannot
@@ -36,8 +36,11 @@ so shadow precision is not squandered on the linear top end. Outside the
 domain the runtime clamps u — beyond EV_MAX the print sits on Dmin/Dmax where
 the response is flat, and below EV_MIN it is film-base black.
 
-LUT input is POST-PREFEED Rec.2020 by declaration: the runtime applies the
-material-aware prefeed as usual and the LUT must not embed it again.
+LUT input is PLAIN scene Rec.2020 by declaration (schema 3): the observer
+inverse is fitted on plain Rec.2020 stimuli, so the LUT owns the film's
+spectral separation itself — the runtime BYPASSES the film scene-transform
+(prefeed) in full mode. Feeding prefed pixels applied the film observer
+twice (review batch 9's input-domain finding).
 """
 from __future__ import annotations
 
@@ -178,9 +181,11 @@ class _Chain:
         self.reversal = bool(stock.get("positive"))
         if self.reversal:
             exp = ff.surround_exponent("dark")
-            flare = ff.REVERSAL_PROJECTION_FLARE
+            # Medium-native calibration: zero viewing flare (the display /
+            # projection room is not a film property — see fit_film_curve's
+            # DISPLAY_* constants for the future view-simulation layer).
             self.view = lambda reflect, white: ff._display_rec2020(
-                reflect, white, self.wl, self.neg["viewing"], flare, exp
+                reflect, white, self.wl, self.neg["viewing"], 0.0, exp
             )
             self.white = ff._stack_reflectance(
                 self.neg, np.nanmin(self.neg["amounts"], axis=0)[None, :]
@@ -406,8 +411,8 @@ def write_lut(stock_key: str, theatrical: bool = False) -> None:
         oracle_ev=baked["oracle_ev"],
         oracle_datasheet=baked["oracle_datasheet"],
         oracle_neutralized=baked["oracle_neutralized"],
-        input_space=np.asarray("post-prefeed_rec2020"),
-        schema=np.int32(2),
+        input_space=np.asarray("scene_rec2020"),
+        schema=np.int32(3),
     )
     size = (OUT_DIR / f"{key}.npz").stat().st_size / 1024
     print(f"{key}: observer p99 {baked['observer_p99_stop']:.3f} "
