@@ -459,6 +459,7 @@ SCENE_TRANSFORM_OPTIONS
 GRADE_OPTIONS
       </select>
     </div>
+    <div class="ctlFact" id="gradeModeHint" style="display:none"></div>
     <div id="gradeStrengthBlock" class="sliderField" style="display:none">
       <div class="labelRow"><label>风格强度</label><span class="val" id="gradeStrengthVal">1.00</span></div>
       <input type="range" id="gradeStrength" min="0" max="1.5" step="0.05" value="1">
@@ -506,6 +507,7 @@ GRADE_OPTIONS
           <option value="ultrahdr">HDR gain-map · JPEG</option>
           <option value="ultrahdr-heic">HDR gain-map · HEIC</option>
         </select>
+        <div class="ctlFact" id="formatModeHint" style="display:none"></div>
       </div>
       <div style="flex:1;min-width:160px">
         <label>交付档</label>
@@ -698,6 +700,36 @@ function updateToneCoreExportUi(){
   $("#exportConfirm").disabled=incompatible;
   $("#exportConfirm").title=incompatible?"HDR 容器导出目前只支持 AgX":"";
 }
+let HDR_BACKEND_OK=true;
+function updateHdrOptionGate(){
+  // Mode gating (declared convention): an option a mode cannot use is greyed
+  // with the reason on screen, and a selection the backend would reject never
+  // rides the payload — it snaps back with a visible notice.
+  const fullFilm=$("#filmCurve").value!=="none"&&$("#filmMode").value==="full";
+  const hint=$("#formatModeHint");
+  for(const v of ["ultrahdr","ultrahdr-heic"]){
+    const option=[...$("#format").options].find(o=>o.value===v);
+    if(option)option.disabled=!HDR_BACKEND_OK||fullFilm;
+  }
+  hint.textContent=fullFilm?"接管模式（full）暂仅支持 SDR：胶片接管显影没有 HDR 对应物。":"";
+  hint.style.display=fullFilm?"":"none";
+  if(fullFilm&&["ultrahdr","ultrahdr-heic"].includes($("#format").value)){
+    $("#format").value="sdr";updateFormatUi();saveSettings();
+    setStatus("full 模式暂仅支持 SDR，导出格式已切回 SDR JPEG。","warn");
+  }
+}
+function updateGradeModeUi(){
+  const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);
+  const grade=$("#grade");
+  const hint=$("#gradeModeHint");
+  if(hdr&&grade.value!=="none"){
+    grade.value="none";updateGradeUi();saveSettings();
+    setStatus("HDR 容器暂不支持 display look，已重置为无。","warn");
+  }
+  grade.disabled=hdr;
+  hint.textContent=hdr?"HDR 容器暂不支持 display look/filter——请用 SDR 导出。":"";
+  hint.style.display=hdr?"":"none";
+}
 function updateFormatUi(){
   const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);
   $("#hdrBlock").style.display=hdr?"flex":"none";
@@ -708,13 +740,15 @@ function updateFormatUi(){
   applyDeliveryConstraints();
   updateToneCoreExportUi();
   updateToneCoreUi();
+  updateGradeModeUi();
 }
 async function checkHdrBackend(){
   const option=[...$("#format").options].find(o=>o.value==="ultrahdr");
   const optionHeic=[...$("#format").options].find(o=>o.value==="ultrahdr-heic");
   try{
     const response=await fetch("/hdr-status");const status=await response.json();
-    if(status.available){option.disabled=false;optionHeic.disabled=false;return;}
+    if(status.available){HDR_BACKEND_OK=true;updateHdrOptionGate();return;}
+    HDR_BACKEND_OK=false;
     option.disabled=true;option.textContent="HDR JPEG · 当前不可用";
     optionHeic.disabled=true;optionHeic.textContent="HDR HEIC · 当前不可用";
     $("#hdrHint").textContent=status.reason||"HDR 后端未通过回读验证。";
@@ -894,7 +928,7 @@ function restoreSettings(){
   if(s.hdrHeadroom!==undefined)$("#hdrHeadroom").value=s.hdrHeadroom;
   if(s.outdir)$("#outdir").value=s.outdir;
   if(s.png!==undefined)$("#png").checked=!!s.png;
-  setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();updateColorHeadUi();
+  setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();
   if(migrated)saveSettings();
 }
 ["quality","outdir","png"].forEach(id=>$("#"+id).addEventListener("change",saveSettings));
@@ -921,7 +955,7 @@ $("#film").addEventListener("change",()=>{
     $("#sceneTransformStrength").value=1;setSceneTransformStrengthLabel();
     $("#agxPrimaries").value="base";
   }
-  updateFilmModeUi();updateColorHeadUi();updateDecoderUi();updateSceneTransformUi();saveSettings();preparePreview();
+  updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();updateDecoderUi();updateSceneTransformUi();saveSettings();preparePreview();
 });
 // Film-takeover controls (EXPERIMENTAL): the mode row appears only with an active
 // curve preset, and the crossover declaration only in full (takeover) mode.
@@ -971,7 +1005,7 @@ function updateFilmModeUi(){
     if(typeof setAdjustmentLabels==="function"){setAdjustmentLabels();}
   }
 }
-$("#filmMode").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
+$("#filmMode").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();saveSettings();scheduleLivePreview();});
 $("#filmCrossover").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 
@@ -985,17 +1019,25 @@ function setColorHeadLabels(){
   $("#colorHeadMVal").textContent=$("#colorHeadM").value+" CC";
 }
 function updateColorHeadUi(){
-  // Discoverability contract: the colour-head block is ALWAYS visible.
-  // Hiding it taught users the feature was gone; instead the dials disable
-  // with the reason on screen. Disabled states also RESET to 0 — a stale
-  // non-zero Y/M must never ride a payload the backend would reject
-  // (full mode) or silently ignore (no negative preset).
+  // Discoverability contract (refined): once ANY film curve is selected the
+  // colour-head block stays visible — unavailable states disable with the
+  // reason on screen (reversal / full mode). With NO film selected at all the
+  // whole block hides: film adjustments below an empty selector are noise.
+  // Disabled states also RESET to 0 — a stale non-zero Y/M must never ride a
+  // payload the backend would reject (full mode) or silently ignore.
   const preset=$("#filmCurve").value;
+  const block=$("#colorHeadBlock");
+  if(preset==="none"){
+    block.style.display="none";
+    for(const id of ["colorHeadY","colorHeadM"]){const el=$("#"+id);el.disabled=true;el.value=0;}
+    setColorHeadLabels();
+    return;
+  }
+  block.style.display="";
   const isNegative=!!FILM_COLOR_HEADS[preset];
   const isFull=$("#filmMode").value==="full";
   let reason="";
-  if(preset==="none"){reason="色头需要一个负片曲线预设——请先选择 Portra/Gold/Superia/Vision3 等负片";}
-  else if(!isNegative){reason="反转片没有印相色头：幻灯片自身就是显示介质，物理上不存在放大机环节";}
+  if(!isNegative){reason="反转片没有印相色头：幻灯片自身就是显示介质，物理上不存在放大机环节";}
   else if(isFull){reason="接管 LUT 固定烘焙于 0CC——切换“显影分工”回“观察”模式即可启用色头";}
   const enabled=!reason;
   for(const id of ["colorHeadY","colorHeadM"]){
@@ -1009,7 +1051,7 @@ function updateColorHeadUi(){
   setColorHeadLabels();
 }
 ["colorHeadY","colorHeadM"].forEach(id=>$("#"+id).oninput=()=>{setColorHeadLabels();saveSettings();scheduleLivePreview();});
-$("#filmCurve").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
+$("#filmCurve").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();saveSettings();scheduleLivePreview();});
 $("#toneCore").addEventListener("change",()=>{updateToneCoreUi();updateToneCoreExportUi();saveSettings();preparePreview();});
 $("#lumNorm").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#agxPrimaries").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
