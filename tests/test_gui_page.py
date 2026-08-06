@@ -417,11 +417,24 @@ class FilmModePlacementTests(unittest.TestCase):
         )
         self.assertEqual(parser.depth, 0)
 
-    def test_full_mode_hides_and_resets_the_colour_head(self) -> None:
+    def test_colour_head_is_always_visible_and_disables_with_a_reason(self) -> None:
+        """Discoverability (user report): hiding the block taught users the
+        feature was gone. It now stays visible in every state; the dials
+        disable with the reason on screen (no preset / reversal / full mode)
+        and reset to zero whenever disabled, and switching film mode still
+        refreshes the block."""
         head_ui = PAGE[PAGE.index("function updateColorHeadUi(") :]
         head_ui = head_ui[: head_ui.index("\n}")]
-        self.assertIn('$("#filmMode").value!=="full"', head_ui)
-        self.assertIn('$("#colorHeadY").value=0', head_ui)
+        self.assertNotIn('style.display="none"', head_ui.replace(
+            'hint.style.display=enabled?"none":""', ""
+        ))
+        self.assertIn('isFull=$("#filmMode").value==="full"', head_ui)
+        self.assertIn("负片曲线预设", head_ui)
+        self.assertIn("反转片没有印相色头", head_ui)
+        self.assertIn("0CC", head_ui)
+        self.assertIn("el.disabled=!enabled", head_ui)
+        self.assertIn("el.value=0", head_ui)
+        self.assertIn('id="colorHeadHint"', PAGE)
         listener = '$("#filmMode").addEventListener'
         line = PAGE[PAGE.index(listener) : PAGE.index("\n", PAGE.index(listener))]
         self.assertIn("updateColorHeadUi()", line)
