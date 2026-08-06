@@ -19,11 +19,14 @@ bake runs the honest chain offline and samples it:
          published neutral targets
       -> XYZ -> CAT -> scene-referred Rec.2020 display-linear output.
 
-Two variants per stock: "datasheet" (the chain verbatim — inter-layer
-crossover included as the data reports it) and "neutralized" (a DIGITAL
-variant: each output channel divided by the neutral ramp's cast at that
-channel's own input exposure, so grays stay strictly neutral; this is a
-numeric convention, not a second physical process).
+Two crossover variants per stock, ONE baked volume: "datasheet" is the chain
+verbatim (inter-layer crossover included as the data reports it), and
+"neutralized" is a DIGITAL variant produced at runtime by dividing the
+sampled datasheet output by a BOUNDED neutral-cast curve shipped alongside
+the volume (a numeric convention, not a second physical process). The full
+architecture argument — why the divisor must be bounded, why the bounded
+composite must not be baked, and why bounded runtime division is exact in
+the visible-stop metric — lives at the cast_b computation in bake().
 
 The grid lives in per-channel log2 exposure (the reviewer's shaper):
 
@@ -103,14 +106,52 @@ def observer_matrix(stock: dict) -> np.ndarray:
     rgb = xyz @ m.T  # [S, 3]，白板 -> [1,1,1]
     a_rows = []
     for layer in range(3):
-        row, *_ = np.linalg.lstsq(rgb, exposures[:, layer], rcond=None)
-        row = np.maximum(row, 0.0)
-        scale = exposures[0, layer] / max(float(row @ rgb[0]), 1e-12)
-        a_rows.append(row * scale)
+        a_rows.append(_nnls_3(rgb, exposures[:, layer]))
     a = np.stack(a_rows, axis=0)
+    # Anchor: the perfect reflector's exposure must be exactly A @ [1,1,1].
+    for layer in range(3):
+        a[layer] *= exposures[0, layer] / max(float(a[layer] @ rgb[0]), 1e-12)
     pred = rgb @ a.T
     resid = np.abs(np.log10(np.maximum(pred[1:], 1e-9) / np.maximum(exposures[1:], 1e-9)))
-    return a, float(np.percentile(resid, 99)) / np.log10(2.0)
+    # Leave-out cross validation on a deterministic 5-fold split: the fit must
+    # not owe its residual to memorizing the training set.
+    n = rgb.shape[0] - 1
+    cv = []
+    for fold in range(5):
+        mask = np.ones(n, dtype=bool)
+        mask[fold::5] = False
+        keep = np.concatenate(([True], mask))
+        hold = np.concatenate(([False], ~mask))
+        a_cv = np.stack([_nnls_3(rgb[keep], exposures[keep][:, l]) for l in range(3)])
+        p_cv = rgb[hold] @ a_cv.T
+        cv.append(np.abs(np.log10(
+            np.maximum(p_cv, 1e-9) / np.maximum(exposures[hold], 1e-9)
+        )))
+    cv_p99 = float(np.percentile(np.concatenate(cv).ravel(), 99)) / np.log10(2.0)
+    return a, float(np.percentile(resid, 99)) / np.log10(2.0), cv_p99
+
+
+def _nnls_3(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """True non-negative least squares for a 3-variable row (active set).
+
+    Clip-and-rescale of the unconstrained solution is NOT NNLS — the review
+    called it, and with only three variables the exact active-set enumeration
+    is eight subproblems.
+    """
+    best, best_cost = None, np.inf
+    for mask in range(1, 8):
+        idx = [i for i in range(3) if mask >> i & 1]
+        sub, *_ = np.linalg.lstsq(x[:, idx], y, rcond=None)
+        if np.any(sub < 0.0):
+            continue
+        row = np.zeros(3)
+        row[idx] = sub
+        cost = float(np.sum((x @ row - y) ** 2))
+        if cost < best_cost:
+            best, best_cost = row, cost
+    if best is None:
+        best = np.zeros(3)
+    return best
 
 
 class _Chain:
@@ -213,45 +254,119 @@ def chain_eval(stock: dict, chain: _Chain, a: np.ndarray, rgb: np.ndarray) -> np
 def bake(stock_key: str, theatrical: bool = False) -> dict:
     stock = ff.STOCKS[stock_key.removesuffix("_theatrical")]
     chain = _Chain(stock, theatrical)
-    a, observer_p99 = observer_matrix(stock)
+    a, observer_p99, observer_cv_p99 = observer_matrix(stock)
 
     axis = EV_MIN + (EV_MAX - EV_MIN) * np.arange(LUT_N) / (LUT_N - 1)
     ev = np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
     rgb = SCENE_MID * np.exp2(ev)
-    out = chain_eval(stock, chain, a, rgb).astype(np.float32)
+    out = chain_eval(stock, chain, a, rgb)
 
-    # Neutral ramp for the neutralized variant AND the self-consistency gate.
+    # Neutral ramp: the self-consistency gate and the neutralized division —
+    # applied HERE, at full precision, before any quantization.
     ramp_ev = np.linspace(EV_MIN, EV_MAX, 257)
     ramp_rgb = SCENE_MID * np.exp2(ramp_ev)[:, None].repeat(3, axis=1)
     ramp_out = chain_eval(stock, chain, a, ramp_rgb)
     ramp_y = ramp_out @ _LUMA_2020
     cast = ramp_out / np.maximum(ramp_y, 1e-9)[:, None]
 
+    # The neutralized variant is NOT a second baked volume. It is the
+    # datasheet volume divided AT RUNTIME by a bounded neutral-cast curve
+    # indexed at the sample's LUMINANCE exposure EV_Y (the same single-axis
+    # declaration as the colour head; a per-channel-exposure divisor
+    # re-imported the retired channels-as-layer-exposures reading and blew up
+    # off-axis on hard reversals). Three measured facts force this shape:
+    #   1. The divisor must be BOUNDED. The raw cast of a hard reversal is
+    #      near-singular (Kodachrome's deep gray has ZERO green — its floor
+    #      is magenta), and dividing by it blew off-axis samples up by whole
+    #      stops no matter where the division happened (runtime: +4.3 EV
+    #      Ektachrome / ~13 EV Kodachrome; baked at full precision: 4.4 /
+    #      1.6 EV — both measured).
+    #   2. The bounded composite out(x)/g(EV_Y(x)) must NOT be baked either:
+    #      EV_Y is diagonal to the grid, and where g swings steeply (the
+    #      Kodachrome green divisor moves 4x across ~2 EV in the shadow
+    #      transition) the 65-grid cannot represent the kink — the baked
+    #      composite measured 1.73 EV worst off-axis against its own oracle.
+    #   3. With a bounded divisor, runtime division is EXACT in the visible-
+    #      stop metric: the denominator is evaluated per pixel, so the
+    #      quotient's log error equals the datasheet volume's log error
+    #      (~0.03 stop). The original review refuted runtime division of the
+    #      quantized LUT by the UNBOUNDED high-precision cast; the root sin
+    #      there was the unbounded divisor, which is what the clip removes.
+    # Bounding rule: the cast is the ramp's luma-normalized chroma vector;
+    # each channel's correction is clipped to [0.25, 4] (strict neutrality is
+    # only demanded where the medium's gray sits within two stops of neutral
+    # per channel; deeper tint — Kodachrome's floor above all — stays as
+    # medium character), then the clipped vector is luma-renormalized so the
+    # division never moves the neutral axis' TONE off the chain's tone.
+    cast_b = np.clip(cast, 0.25, 4.0)
+    cast_b *= ((cast / cast_b) @ _LUMA_2020)[:, None]
+    # The shipped curve is sampled on the LUT'S OWN 65-node axis and the
+    # runtime interpolates it LINEARLY: on the neutral axis tetrahedral
+    # interpolation degenerates to 1-D linear interpolation along the
+    # diagonal, so the quotient of the two linear interpolants is a weighted
+    # mediant of node-exact values — monotone between node tones, no
+    # overshoot. A continuous 257-point denominator against the discretized
+    # numerator measured a 0.55 EV tone spike in Kodachrome's cast
+    # transition zone; node-matched sampling removes the mismatch class.
+    assert (ramp_ev.size - 1) % (LUT_N - 1) == 0
+    step = (ramp_ev.size - 1) // (LUT_N - 1)
+    cast_ev = ramp_ev[::step].astype(np.float32)
+    cast_b = cast_b[::step].astype(np.float32)
+
+    # Oracle fixtures: random in-domain samples with float64-chain truth for
+    # BOTH variants, shipped inside the npz so the runtime test compares the
+    # exact deployed bytes against the offline chain — not against itself.
+    rng = np.random.default_rng(20260806)
+    oracle_ev = rng.uniform(-9.0, 5.0, (96, 3))
+    oracle_rgb = SCENE_MID * np.exp2(oracle_ev)
+    oracle_ds = chain_eval(stock, chain, a, oracle_rgb)
+    oracle_nz = oracle_ds.copy()
+    oracle_ev_y = np.log2(np.maximum(oracle_rgb @ _LUMA_2020, 1e-9) / SCENE_MID)
+    for c in range(3):
+        # Same f32 curve, same nodes, same linear interp the runtime uses.
+        g = np.interp(oracle_ev_y, cast_ev, cast_b[:, c].astype(np.float64))
+        oracle_nz[:, c] = oracle_nz[:, c] / g
+
     return {
-        "datasheet": out.reshape(LUT_N, LUT_N, LUT_N, 3),
+        "datasheet": out.reshape(LUT_N, LUT_N, LUT_N, 3).astype(np.float32),
+        "cast_ev": cast_ev,
+        "cast_bounded": cast_b,
         "observer": a.astype(np.float64),
         "observer_p99_stop": observer_p99,
+        "observer_cv_p99_stop": observer_cv_p99,
         "ramp_ev": ramp_ev.astype(np.float32),
         "ramp_y": ramp_y.astype(np.float32),
         "ramp_cast": cast.astype(np.float32),
+        "oracle_ev": oracle_ev.astype(np.float32),
+        "oracle_datasheet": oracle_ds.astype(np.float32),
+        "oracle_neutralized": oracle_nz.astype(np.float32),
         "chain": chain,
         "a": a,
     }
 
 
-def write_lut(stock_key: str, theatrical: bool = False) -> None:
-    """One datasheet LUT + the neutral-ramp cast curve per stock.
+def _quant_error_stop(volume_f32: np.ndarray) -> float:
+    """Worst per-sample error introduced by the float16 quantization alone."""
+    q = volume_f32.astype(np.float16).astype(np.float32)
+    vis = volume_f32 > 5e-3
+    if not np.any(vis):
+        return 0.0
+    return float(np.abs(np.log2(
+        np.maximum(q[vis], 1e-9) / np.maximum(volume_f32[vis], 1e-9)
+    )).max())
 
-    The "neutralized" crossover variant is DERIVED at runtime — each output
-    channel divided by the neutral cast at that channel's own input exposure —
-    so it costs a 257-point curve instead of a second 65^3 volume.
-    """
+
+def write_lut(stock_key: str, theatrical: bool = False) -> None:
+    """One baked datasheet volume + the bounded cast curve, oracles inside."""
     baked = bake(stock_key, theatrical)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     key = f"{stock_key}_theatrical" if theatrical else stock_key
+    quant = {"datasheet": _quant_error_stop(baked["datasheet"])}
     np.savez_compressed(
         OUT_DIR / f"{key}.npz",
-        lut=baked["datasheet"].astype(np.float16),
+        lut_datasheet=baked["datasheet"].astype(np.float16),
+        cast_ev=baked["cast_ev"],
+        cast_bounded=baked["cast_bounded"],
         ev_min=np.float32(EV_MIN),
         ev_max=np.float32(EV_MAX),
         n=np.int32(LUT_N),
@@ -259,10 +374,17 @@ def write_lut(stock_key: str, theatrical: bool = False) -> None:
         ramp_cast=baked["ramp_cast"],
         observer=baked["observer"],
         observer_p99_stop=np.float32(baked["observer_p99_stop"]),
+        observer_cv_p99_stop=np.float32(baked["observer_cv_p99_stop"]),
+        quant_err_datasheet_stop=np.float32(quant["datasheet"]),
+        oracle_ev=baked["oracle_ev"],
+        oracle_datasheet=baked["oracle_datasheet"],
+        oracle_neutralized=baked["oracle_neutralized"],
         input_space=np.asarray("post-prefeed_rec2020"),
     )
     size = (OUT_DIR / f"{key}.npz").stat().st_size / 1024
-    print(f"{key}: observer p99 {baked['observer_p99_stop']:.3f} stop; "
+    print(f"{key}: observer p99 {baked['observer_p99_stop']:.3f} "
+          f"(cv {baked['observer_cv_p99_stop']:.3f}) stop; "
+          f"quant ds {quant['datasheet']:.4f}; "
           f"{size:.0f} KiB")
 
 
