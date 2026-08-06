@@ -417,19 +417,20 @@ class FilmModePlacementTests(unittest.TestCase):
         )
         self.assertEqual(parser.depth, 0)
 
-    def test_colour_head_is_always_visible_and_disables_with_a_reason(self) -> None:
-        """Discoverability (user report): hiding the block taught users the
-        feature was gone. It now stays visible in every state; the dials
-        disable with the reason on screen (no preset / reversal / full mode)
-        and reset to zero whenever disabled, and switching film mode still
-        refreshes the block."""
+    def test_colour_head_visibility_follows_the_refined_contract(self) -> None:
+        """Refined discoverability contract (user directive, 2026-08-06):
+        with NO film curve selected the whole block HIDES — film adjustments
+        below an empty selector are noise; once any curve preset is active
+        the block stays visible and unavailable states disable with the
+        reason on screen (reversal / full mode), resetting the dials to zero
+        so a rejected payload never carries stale filtration."""
         head_ui = PAGE[PAGE.index("function updateColorHeadUi(") :]
         head_ui = head_ui[: head_ui.index("\n}")]
-        self.assertNotIn('style.display="none"', head_ui.replace(
-            'hint.style.display=enabled?"none":""', ""
-        ))
+        # Hidden only through the explicit none-preset early return.
+        self.assertIn('if(preset==="none")', head_ui)
+        self.assertIn('block.style.display="none"', head_ui)
+        self.assertIn('block.style.display=""', head_ui)
         self.assertIn('isFull=$("#filmMode").value==="full"', head_ui)
-        self.assertIn("负片曲线预设", head_ui)
         self.assertIn("反转片没有印相色头", head_ui)
         self.assertIn("0CC", head_ui)
         self.assertIn("el.disabled=!enabled", head_ui)
@@ -438,3 +439,25 @@ class FilmModePlacementTests(unittest.TestCase):
         listener = '$("#filmMode").addEventListener'
         line = PAGE[PAGE.index(listener) : PAGE.index("\n", PAGE.index(listener))]
         self.assertIn("updateColorHeadUi()", line)
+
+    def test_mode_gates_grey_out_with_reasons(self) -> None:
+        """Mode-gating convention (user directive, 2026-08-06): an option a
+        mode cannot use is greyed with the reason on screen, and a selection
+        the backend would reject snaps back visibly. Covers: full mode vs
+        HDR containers, HDR containers vs display looks."""
+        gate = PAGE[PAGE.index("function updateHdrOptionGate(") :]
+        gate = gate[: gate.index("\n}")]
+        self.assertIn("接管模式（full）暂仅支持 SDR", gate)
+        self.assertIn('option.disabled=!HDR_BACKEND_OK||fullFilm', gate)
+        self.assertIn('$("#format").value="sdr"', gate)
+        grade_gate = PAGE[PAGE.index("function updateGradeModeUi(") :]
+        grade_gate = grade_gate[: grade_gate.index("\n}")]
+        self.assertIn("HDR 容器暂不支持 display look", grade_gate)
+        self.assertIn("grade.disabled=hdr", grade_gate)
+        self.assertIn('grade.value="none"', grade_gate)
+        self.assertIn('id="formatModeHint"', PAGE)
+        self.assertIn('id="gradeModeHint"', PAGE)
+        for listener in ('$("#filmMode").addEventListener',
+                         '$("#filmCurve").addEventListener'):
+            line = PAGE[PAGE.index(listener) : PAGE.index("\n", PAGE.index(listener))]
+            self.assertIn("updateHdrOptionGate()", line)
