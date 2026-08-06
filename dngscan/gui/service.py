@@ -863,6 +863,11 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float]:
     film_mode = str(params.get("filmMode", params.get("film_mode", "observe")))
     if film_mode not in ("observe", "full"):
         raise ValueError(f"未知胶片分工模式：{film_mode}")
+    if film_mode == "full" and (color_head_y > 0.0 or color_head_m > 0.0):
+        raise ValueError(
+            "full 模式暂不支持放大机色头：接管核心是完整烘焙的光谱链，"
+            "请切回 observe 或把色头归零"
+        )
     film_crossover = str(
         params.get("filmCrossover", params.get("film_crossover", "off"))
     )

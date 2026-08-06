@@ -276,7 +276,12 @@ sRGB 都不钉死它——边界原样保留。内容与编码就此分离：**�
 
 ### 声明的计算边界（经三方对照确认）
 
-1. **曝光依赖色彩**（interlayer/DIR、逐通道密度行为）——工作包进行中：
+1. **曝光依赖色彩**（interlayer/DIR、逐通道密度行为）——**已由光谱重建
+   （2026-08-06 阶段四）收编**：运行时的逐通道比率增益机制整体退役，full 模式
+   改为离线烘焙的完整光谱链 65³ LUT（`dngscan/data/full_lut/`，datasheet 与
+   neutralized 两只真实卷）；曝光依赖色彩由链自身携带，`channel_ratio_curve`
+   的 v2 后继（`neutral_curve` 三元组）仍作为测量数据随预设发布。以下为该
+   工作包的历史记录：
    - **数据裁定（2026-07-30）**：spektrafilm profile 不含按卷 DIR 耦合参数
      （agx-emulsion 的 DIR 是运行时通用默认值，属"magically derived"，按声明
      三原则弃用）；按卷实测数据 = 逐通道密度曲线本身（Portra 400 实测：
@@ -285,7 +290,8 @@ sRGB 都不钉死它——边界原样保留。内容与编码就此分离：**�
      `r_c(EV) = T_c(EV) / T_neutral(EV)`（与音调目标同源同衡同 surround 项），
      192 点入预设 `channel_ratio_curve`；不变量入测试（r_c(0)=1 由逐通道
      平衡构造保证、全域有界 [0.2, 5]）。
-   - **二期（已完成，同日）**：formation 运行时施加
+   - **二期（已完成，同日；2026-08-06 起由光谱重建替代——见下方注记）**：
+     formation 运行时曾施加
      `out_c = C(EV_c) × r_c(EV_c) / r_c(EV_Y)`（`agx.channel_ratio_gain`）——
      中性像素 EV_c = EV_Y 时比率恒为 1（实数域构造精确，float32 亮度点积
      舍入 ~1e-7，测试钉定），**边界 #2 由构造保持**；色度越高通道曝光越散、

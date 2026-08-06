@@ -16,11 +16,26 @@ Honesty label: this is a TRISTIMULUS reconstruction CONSTRAINED by spectral
 data — three numbers cannot recover a spectrum, and the observer inverse's
 metamer residual is measured and stamped into every LUT (observer_p99_stop).
 DIR couplers / interlayer effects remain absent from the data and therefore
-from the chain. The plan.film_crossover switch selects how the neutral axis is
-served: "datasheet" is the chain verbatim, "neutralized" divides each channel
-by the neutral ramp's cast at that channel's own input exposure — a declared
-DIGITAL variant, not a second physical process. SDR only; the enlarger colour
-head joins after this core through the shared post-core operator.
+from the chain. The plan.film_crossover switch selects how the neutral axis
+is served: "datasheet" is the baked chain verbatim; "neutralized" divides the
+sampled output per pixel by a BOUNDED neutral-cast curve shipped inside the
+npz, indexed at the pixel's LUMINANCE exposure EV_Y (the same single-axis
+declaration as the colour head — a per-channel-exposure divisor re-imported
+the retired channels-as-layer-exposures reading and blew up off-axis on hard
+reversals). Bounded means the luma-normalized chroma correction is clipped to
+[0.25, 4] per channel and then luma-renormalized: grays are strictly neutral
+wherever the medium's own gray sits within two stops of neutral per channel,
+tone follows the chain everywhere, and deeper tint — Kodachrome's floor above
+all — is kept as medium character rather than chased with near-singular gains.
+Why the division is at runtime and not a second baked volume: with a bounded
+divisor evaluated exactly per pixel, the quotient's visible-stop error equals
+the datasheet volume's own; baking the composite instead put the EV_Y kink
+diagonal to the grid and measured 1.73 EV worst off-axis (full argument at
+the cast_b computation in tools/build_full_lut.py).
+SDR only; the enlarger colour head is REFUSED in full mode — appending a
+neutral-axis LMS field to a baked chain would contradict the chain's own
+physics, so the plan compiler, CLI and GUI reject the combination until
+filtration is itself baked into LUT variants.
 
 The LUT grid lives in per-channel log2 exposure,
 
@@ -50,15 +65,15 @@ def _load_lut(name: str):
     entry = None
     try:
         with np.load(path, allow_pickle=False) as payload:
-            lut = np.asarray(payload["lut"], dtype=np.float32)
+            lut = np.asarray(payload["lut_datasheet"], dtype=np.float32)
             n = int(payload["n"])
             entry = (
                 lut,
+                np.asarray(payload["cast_ev"], dtype=np.float32),
+                np.asarray(payload["cast_bounded"], dtype=np.float32),
                 float(payload["ev_min"]),
                 float(payload["ev_max"]),
                 n,
-                np.asarray(payload["ramp_ev"], dtype=np.float32),
-                np.asarray(payload["ramp_cast"], dtype=np.float32),
             )
             if lut.shape != (n, n, n, 3):
                 entry = None
@@ -131,14 +146,19 @@ def _tetrahedral(lut: Any, u: Any, n: int) -> Any:
 def apply_film_core(rgb_rec2020: Any, plan: Any) -> Any:
     """Film-takeover development: sample the baked spectral chain. [N,3]->[N,3]."""
     preset = str(getattr(plan, "curve_preset", "") or "")
-    lut, ev_min, ev_max, n, ramp_ev, ramp_cast = _load_lut(preset)
+    lut, cast_ev, cast_bounded, ev_min, ev_max, n = _load_lut(preset)
     rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float32), 0.0)
     ev = np.log2(np.maximum(rgb / np.float32(0.18), EPS))
     u = (ev - ev_min) / (ev_max - ev_min)
     developed = _tetrahedral(lut, u, n)
     if str(getattr(plan, "film_crossover", "off")) != "datasheet":
-        # Neutralized (digital) variant: strict neutral grays by construction.
+        # Neutralized variant: per-pixel division by the bounded cast at the
+        # pixel's luminance exposure. The curve is sampled on the LUT's own
+        # axis and interpolated linearly, so on the neutral axis the quotient
+        # is a mediant of node-exact values (no overshoot), and off-axis the
+        # quotient's visible-stop error equals the datasheet volume's own —
+        # see the architecture note in tools/build_full_lut.py.
+        ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
         for c in range(3):
-            cast = np.interp(ev[:, c], ramp_ev, ramp_cast[:, c])
-            developed[:, c] = developed[:, c] / np.maximum(cast, 1e-6)
+            developed[:, c] /= np.interp(ev_y, cast_ev, cast_bounded[:, c])
     return np.maximum(developed, 0.0).astype(np.float32, copy=False)

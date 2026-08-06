@@ -448,6 +448,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                 f"放大机色头仅对负片预设有效：{args.film_curve} 是反转片，"
                 "物理上没有印相环节（幻灯片自身就是显示介质）"
             )
+    if args.film_mode == "full" and (
+        float(args.color_head_y) > 0.0 or float(args.color_head_m) > 0.0
+    ):
+        parser.error(
+            "--film-mode full 暂不支持放大机色头（接管核心是完整烘焙的光谱链）；"
+            "请改用 observe 模式或把 --color-head-y/--color-head-m 归零"
+        )
     if (
         args.film_mode == "full"
         and args.film_curve != "none"

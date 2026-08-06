@@ -504,20 +504,95 @@ class FilmCrossoverTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(out_off, out_ds)
 
-    def test_variants_differ_by_exactly_the_published_cast(self) -> None:
-        """datasheet / off on the neutral ramp must reproduce the npz's own
-        ramp_cast pointwise (per-channel input exposure): the switch releases
-        the baked data, it does not reshape it."""
-        from dngscan.film_develop import _load_lut, apply_film_core
+    def test_neutralized_reversals_hold_the_tone_target_in_deep_shadow(self) -> None:
+        """The review's exact failure: dividing the LUT by an UNBOUNDED cast
+        blew Ektachrome to +4.3 EV and Kodachrome to ~13 EV in the shadows.
+        The bounded contract on precisely those stocks: the neutral ramp's
+        TONE tracks the published target everywhere, and grays are strictly
+        neutral wherever the medium's own cast is within the [0.25, 4] bound
+        per channel; deeper tint (Kodachrome's magenta floor — its deep gray
+        has literally zero green) is kept as medium character."""
+        from dngscan.film_develop import _LUT_DIR, apply_film_core
 
-        ev, ramp = self._neutral_ramp()
-        out_off = apply_film_core(ramp, self._film_plan(crossover="off"))
-        out_ds = apply_film_core(ramp, self._film_plan(crossover="datasheet"))
-        _lut, _lo, _hi, _n, ramp_ev, ramp_cast = _load_lut("velvia100")
-        for c in range(3):
-            expected = np.interp(ev, ramp_ev, ramp_cast[:, c])
-            ratio = out_ds[:, c] / np.maximum(out_off[:, c], 1e-7)
-            np.testing.assert_allclose(ratio, expected, rtol=0.0, atol=2e-3)
+        luma = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+        for name in ("ektachrome100", "kodachrome64"):
+            plan = self._film_plan(name=name, crossover="off")
+            preset = FILM_CURVE_PRESETS[name]
+            ev_t = np.asarray(preset["target_curve"]["ev"], dtype=np.float64)
+            y_t = np.asarray(preset["target_curve"]["display_linear"], dtype=np.float64)
+            keep = (ev_t > -7.5) & (ev_t < 4.0) & (y_t > 1e-3)
+            ramp = np.repeat(
+                (0.18 * np.exp2(ev_t[keep]))[:, None], 3, axis=1
+            ).astype(np.float32)
+            out = apply_film_core(ramp, plan)
+            # Strictly neutral wherever the raw cast is inside the bound...
+            with np.load(_LUT_DIR / f"{name}.npz", allow_pickle=False) as z:
+                ramp_ev = np.asarray(z["ramp_ev"], dtype=np.float64)
+                raw_cast = np.asarray(z["ramp_cast"], dtype=np.float64)
+            cast_at = np.stack(
+                [np.interp(ev_t[keep], ramp_ev, raw_cast[:, c]) for c in range(3)],
+                axis=1,
+            )
+            in_bounds = np.all((cast_at >= 0.25) & (cast_at <= 4.0), axis=1)
+            self.assertGreater(int(in_bounds.sum()), 40, name)
+            rel = np.abs(out - out[:, :1]) / np.maximum(out[:, :1], 1e-5)
+            self.assertLess(float(rel[in_bounds].max()), 5e-2, name)
+            # ...and on the published tone EVERYWHERE, not multiple stops off.
+            # The node-matched division makes the on-axis quotient a mediant
+            # of node-exact values, bounding tone error by the inter-node
+            # tone variation: measured worst 0.136 EV, in Kodachrome's cast
+            # transition zone at the 0.31 EV grid spacing.
+            err = np.abs(np.log2(
+                np.maximum(out @ luma, 1e-6) / np.maximum(y_t[keep], 1e-6)
+            ))
+            self.assertLess(float(err.max()), 0.15, name)
+
+    def test_full_lut_matches_the_shipped_offline_oracle(self) -> None:
+        """Random in-domain samples with float64-chain truth ride inside every
+        npz; the runtime's sampling of the deployed bytes must land on them.
+        Visibility is judged in the DATASHEET domain for both variants: the
+        neutralized output is the datasheet sample divided by the shipped
+        bounded cast, so its visible-stop error equals the datasheet's by
+        construction, while its dark-end absolutes are amplified by up to the
+        divisor bound — hence the separate cap. (Judging visibility in the
+        divided domain manufactured phantom multi-stop 'errors' out of
+        sub-visibility datasheet residuals that the division lifted over the
+        floor — measured 1.72 EV on Kodachrome at |got-want| = 0.019.)"""
+        from dngscan.film_develop import apply_film_core
+        from dngscan.film_develop import _LUT_DIR
+
+        for name in ("portra400", "velvia100", "ektachrome100",
+                     "kodachrome64", "vision3250d"):
+            with np.load(_LUT_DIR / f"{name}.npz", allow_pickle=False) as z:
+                oracle_ev = np.asarray(z["oracle_ev"], dtype=np.float32)
+                want_ds = np.asarray(z["oracle_datasheet"], dtype=np.float32)
+                want_nz = np.asarray(z["oracle_neutralized"], dtype=np.float32)
+            rgb = (0.18 * np.exp2(oracle_ev)).astype(np.float32)
+            got_ds = apply_film_core(
+                rgb, self._film_plan(name=name, crossover="datasheet")
+            )
+            got_nz = apply_film_core(
+                rgb, self._film_plan(name=name, crossover="off")
+            )
+            vis = (want_ds > 5e-3) & (got_ds > 5e-3)
+            self.assertGreater(int(vis.sum()), 100, name)
+            for label, got, want, dark_cap in (
+                ("datasheet", got_ds, want_ds, 4e-3),
+                ("off", got_nz, want_nz, 3e-2),
+            ):
+                e_stop = np.abs(np.log2(
+                    np.maximum(got, 1e-9) / np.maximum(want, 1e-9)
+                ))[vis]
+                self.assertLess(
+                    float(np.percentile(e_stop, 99)), 0.04, (name, label)
+                )
+                self.assertLess(float(e_stop.max()), 0.12, (name, label))
+                dark = ~vis
+                if bool(np.any(dark)):
+                    self.assertLess(
+                        float(np.abs(got - want)[dark].max()), dark_cap,
+                        (name, label),
+                    )
 
     def test_datasheet_semantics_mid_grey_shadows_and_highlights(self) -> None:
         """Mid-grey neutral (the q-solve anchors it); EV-2 clearly cool for

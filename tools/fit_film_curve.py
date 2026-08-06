@@ -10,23 +10,22 @@ datasheet-processed profiles. Every preset records its source and fit residual; 
 runtime only ever consumes the fitted AgX parameters through the same compiled C1
 machinery every render already uses.
 
-End-to-end target construction (SPECTRAL contact print; see the section comment at
-_load_spectral for provenance and validation):
+End-to-end target construction (v2 spectral base; tools/spectral_base.py owns
+the physical conventions):
     D_neg(lambda,e) = sum_dye amount_dye(e) * dyeSpec(lambda) + base(lambda)
-    E_paper_c(e)    = integral S_paper_c(lambda) * I_enlarger(lambda) * 10^-D_neg
-    dye_paper_c(e)  = paper_curve_c(log10 E_paper_c + k_c)     (printer lights k)
-    RGB(e)          = relative colorimetry of the print's dye stack vs its white
-                      under the declared viewing illuminant (CIE 1931 -> linear sRGB)
-    T(e)            = ((RGB + f)/(1 + f))^s                    (viewing flare f,
-                      surround term s; both routed by the medium's viewing condition)
-The printer lights k are solved so the print is neutral at mid; the exposure anchor
-is then a GLOBAL shift solved so viewed Y = 0.18 (light-meter semantics — the
-profiles' logE=0 is a normalization convention, not scene mid-gray), followed by
-per-channel gains that pin exact neutrality. These finishing moves are NOT small
-for every chain — the 2383 theatrical chain measures about -0.82 EV of anchor
-shift and R x1.09-1.10 / B x0.95-1.00 of rebalance — so this is a declared
-numeric normalization spec ("the final mid gray must be neutral 0.18"), not a
-claim that the viewing translation is surround-only. Scene EV = logE / log10(2).
+    E_paper_c(e)    = trapz S_paper_c(lambda) * I_THKG3(lambda) * 10^-D_neg
+                      (TH-KG3 = 3400K blackbody x Schott KG3, native 380-780/5nm)
+    dye_paper_c(e)  = paper_curve_c(log10 E_paper_c + q_c)
+    XYZ(e)          = relative colorimetry vs the medium white on the medium-grid
+                      x CMF-support intersection; then flare in XYZ, the
+                      luminance-only surround term, Bradford CAT medium-white ->
+                      D65, and the Rec.2020 matrix (scene-linear D65 basis)
+The three effective exposures q_c = k_c + t are solved DIRECTLY in the final
+viewing domain — F(q) = log(RGB_view(EV0;q)/0.18) = 0 — so print finishing is
+verification, not correction (no post-hoc anchor shift, no channel gains; the
+recorded decomposition t = mean(q), k = q - t carries sum(k) = 0 exactly).
+Reversals have no printer lights and keep their own declared anchor. Scene
+EV = logE / log10(2).
 
 Offline tool: writes dngscan/film_curve_presets.json entries and a comparison plot.
 No scipy; a compact Nelder-Mead is included.
@@ -566,7 +565,7 @@ JOINT_HEAD_CC_MAX = 200.0
 def build_joint_color_head_field(
     stock: dict,
     theatrical: bool = False,
-    ev_points: int = 96,
+    ev_points: int = 128,
 ):
     """Stage-3 joint Y x M colour-head field, or None for reversal stocks.
 
@@ -629,10 +628,29 @@ def build_joint_color_head_field(
             q_f[COLOR_HEAD_FILTER_LAYER["m"]] -= m_cc / 100.0
             filtered = retimed(q_f)[visible][idx]
             gains[yi, mi] = (to_lms(filtered) / base_lms).astype(np.float32)
+
+    # Oracle fixtures: random detents solved at the CHAIN's full EV resolution
+    # (off-grid relative to the stored axis), so the runtime test measures the
+    # deployed field + EV interpolation against the direct spectral solve — the
+    # review's gate — rather than the field against itself.
+    rng = np.random.default_rng(20260806)
+    base_lms_full = to_lms(channels_base[visible])
+    oracle = []
+    for _ in range(8):
+        yi = int(rng.integers(0, n_cc))
+        mi = int(rng.integers(0, n_cc))
+        q_f = chain.q.copy()
+        q_f[COLOR_HEAD_FILTER_LAYER["y"]] -= float(cc_grid[yi]) / 100.0
+        q_f[COLOR_HEAD_FILTER_LAYER["m"]] -= float(cc_grid[mi]) / 100.0
+        truth = to_lms(retimed(q_f)[visible]) / base_lms_full
+        pick = rng.integers(0, ev_vis.size, 6)
+        for k in pick:
+            oracle.append((float(yi), float(mi), float(ev_vis[k]), *truth[k]))
     return {
         "ev": ev_grid.astype(np.float32),
         "cc_grid": cc_grid.astype(np.float32),
         "gains_lms": gains,
+        "oracle": np.asarray(oracle, dtype=np.float32),
         "basis": "bradford-lms",
         "label": chain.label,
     }
@@ -995,6 +1013,7 @@ def main() -> int:
             ev=field["ev"].astype(np.float32),
             cc_grid=field["cc_grid"].astype(np.float32),
             gains_lms=field["gains_lms"].astype(np.float16),
+            oracle=field["oracle"],
             basis=np.asarray(field["basis"]),
             label=np.asarray(field["label"]),
         )

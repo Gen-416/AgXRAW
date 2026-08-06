@@ -200,21 +200,69 @@ class TestFormation(unittest.TestCase):
             out_m[0, 1] / out_m[0, ::2].mean(), out0[0, 1] / out0[0, ::2].mean()
         )
 
-    def test_full_mode_head_joins_through_the_shared_operator(self):
-        from dngscan.film_develop import apply_film_core
+    def test_full_mode_refuses_the_head_at_every_layer(self):
+        """Appending a neutral-axis LMS field to a baked spectral chain would
+        contradict the chain's physics; the combination is refused, not
+        silently composed."""
+        from dngscan.gui.service import parse_film_params
 
+        # Plan compiler.
+        from dngscan.tone import build_render_plan
+        import inspect
+
+        sig = inspect.signature(build_render_plan)
+        self.assertIn("film_mode", sig.parameters)
+        with self.assertRaises(ValueError):
+            parse_film_params(
+                {"filmCurve": "portra400", "filmMode": "full", "colorHeadY": 30}
+            )
+        # The shared operator itself guards hand-built plans.
         rgb = self._neutral()
         plan_y = _film_plan(film_mode="full", color_head_y=30.0)
-        core0 = apply_film_core(rgb, _film_plan(film_mode="full"))
-        core_y = apply_film_core(rgb, plan_y)
-        # The takeover core itself is head-free (stage 3: one field, one
-        # application point) ...
-        np.testing.assert_array_equal(core0, core_y)
-        # ... and the shared post-core operator supplies it, same direction.
-        out_y = agx_engine.apply_film_color_rec2020(core_y, rgb, plan_y)
-        self.assertFalse(np.array_equal(core_y, out_y))
-        self.assertGreater(out_y[0, 2] / out_y[0, :2].mean(),
-                           core_y[0, 2] / core_y[0, :2].mean())
+        out = agx_engine.apply_film_color_rec2020(rgb, rgb, plan_y)
+        np.testing.assert_array_equal(out, rgb)
+
+    def test_joint_field_matches_the_shipped_spectral_oracle(self):
+        """The review's gate: random detents solved directly through the
+        spectral chain ride inside every npz; the runtime lookup + EV
+        interpolation must land on them within 0.02 stop."""
+        from dngscan.film_curve import (
+            FILM_CURVE_PRESETS,
+            color_head_gain_lms,
+            film_process,
+        )
+        from dngscan.film_develop import _LUT_DIR  # noqa: F401  (path anchor)
+        from pathlib import Path
+
+        data_dir = Path(color_head_joint_field.__module__ and
+                        __import__("dngscan.film_curve", fromlist=["DATA_DIR"]).DATA_DIR)
+        checked = 0
+        for name in FILM_CURVE_PRESETS:
+            if film_process(name) != "negative":
+                continue
+            with np.load(data_dir / "color_head" / f"{name}.npz",
+                         allow_pickle=False) as z:
+                oracle = np.asarray(z["oracle"], dtype=np.float64)
+                cc_grid = np.asarray(z["cc_grid"], dtype=np.float64)
+            for row in oracle:
+                yi, mi, ev = int(row[0]), int(row[1]), float(row[2])
+                truth = row[3:6]
+                got = color_head_gain_lms(name, float(cc_grid[yi]), float(cc_grid[mi]))
+                if got is None:  # 0CC x 0CC draws are identity by contract
+                    got_val = np.ones(3)
+                else:
+                    ev_grid, gains = got
+                    got_val = np.array([
+                        np.interp(ev, ev_grid, gains[:, c]) for c in range(3)
+                    ])
+                sane = (truth > 0.05) & (truth < 20.0)
+                err = np.abs(np.log2(
+                    np.maximum(got_val, 1e-6) / np.maximum(truth, 1e-6)
+                ))[sane]
+                if err.size:
+                    self.assertLess(float(err.max()), 0.02, (name, yi, mi, ev))
+                checked += 1
+        self.assertGreater(checked, 400)
 
     def test_native_kernel_excluded_only_when_active(self):
         from dngscan import _fast

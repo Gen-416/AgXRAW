@@ -872,6 +872,10 @@ def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> 
     makes a round trip through the fixed LMS sandwich. Renders with both dials
     at zero keep the byte-exact fast path.
     """
+    if str(getattr(plan, "film_mode", "observe")) == "full":
+        # Full mode refuses the head at plan compile; this guard keeps the
+        # operator honest even for hand-built plans.
+        return mapped_rec
     y_cc = float(getattr(plan, "color_head_y", 0.0))
     m_cc = float(getattr(plan, "color_head_m", 0.0))
     if y_cc <= 0.0 and m_cc <= 0.0:

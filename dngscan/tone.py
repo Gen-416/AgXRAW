@@ -785,6 +785,12 @@ def build_render_plan(
                 f"放大机色头仅对负片预设有效：{film_curve} 是反转片，"
                 "物理上没有印相环节（幻灯片自身就是显示介质）"
             )
+        if str(film_mode) == "full":
+            raise ValueError(
+                "胶片接管显影（full 模式）暂不支持放大机色头：接管核心是完整"
+                "烘焙的光谱印相链，在其结果上追加中性轴色头场会与链自身的物理"
+                "语义冲突；请改用 observe 模式，或把色头归零"
+            )
         from dataclasses import replace as _replace
 
         # film_mode/film_crossover are already stamped with the preset above;
