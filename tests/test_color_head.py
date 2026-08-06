@@ -19,7 +19,8 @@ from dngscan import agx as agx_engine
 from dngscan.film_curve import (
     FILM_CURVE_PRESETS,
     apply_film_curve_preset,
-    color_head_gain_curves,
+    color_head_gain_lms,
+    color_head_joint_field,
     color_head_supported,
     film_process,
     validate_color_head_cc,
@@ -93,14 +94,14 @@ class TestDialValidation(unittest.TestCase):
 
 class TestGainCurves(unittest.TestCase):
     def _mid(self, name: str, y: float, m: float) -> list[float]:
-        ev, g = color_head_gain_curves(name, y, m)
+        ev, g = color_head_gain_lms(name, y, m)
         return [float(np.interp(0.0, ev, g[:, c])) for c in range(3)]
 
     def test_zero_is_none(self):
-        self.assertIsNone(color_head_gain_curves("portra400", 0.0, 0.0))
+        self.assertIsNone(color_head_gain_lms("portra400", 0.0, 0.0))
 
     def test_reversal_is_none(self):
-        self.assertIsNone(color_head_gain_curves("velvia100", 30.0, 0.0))
+        self.assertIsNone(color_head_gain_lms("velvia100", 30.0, 0.0))
 
     def test_direction_darkroom_mnemonic(self):
         """+Y raises displayed blue at mid (print loses yellow), +M raises green."""
@@ -112,14 +113,20 @@ class TestGainCurves(unittest.TestCase):
             m_mid = self._mid(key, 0.0, 30.0)
             self.assertGreater(m_mid[1], 1.0, key)
 
-    def test_retimed_mid_luminance_is_preserved(self):
-        """The darkroom re-timing: filtration changes colour, not mid luminance."""
-        # v2 fields are Rec.2020-basis; mid-luminance preservation is judged in
-        # the calibration basis, not BT.709.
-        luma = np.array([0.2627, 0.6780, 0.0593])
-        for y, m in ((30.0, 0.0), (0.0, 60.0), (120.0, 0.0)):
-            mid = np.array(self._mid("portra400", y, m))
-            self.assertLess(abs(float(mid @ luma) - 1.0), 0.02, (y, m))
+    def test_retimed_mid_luminance_survives_the_sandwich(self):
+        """The darkroom re-timing: filtration changes colour, not mid luminance.
+
+        Judged where the runtime applies it: a neutral mid pixel through the
+        LMS sandwich keeps its Rec.2020 luminance within the re-time tolerance,
+        for single filters AND joint detents (the joint solve re-times once)."""
+        for y, m in ((30.0, 0.0), (0.0, 60.0), (120.0, 0.0), (30.0, 30.0)):
+            plan = _film_plan(color_head_y=y, color_head_m=m)
+            mid = np.full((1, 3), 0.18, dtype=np.float32)
+            out = agx_engine.apply_film_color_rec2020(mid, mid, plan)
+            ratio = float(out[0] @ agx_engine.REC2020_LUMA_WEIGHTS) / float(
+                mid[0] @ agx_engine.REC2020_LUMA_WEIGHTS
+            )
+            self.assertLess(abs(ratio - 1.0), 0.03, (y, m))
 
     def test_monotone_in_cc_including_interpolated_detents(self):
         """Strictly monotone through 120 CC; at 200 CC the paper's blue layer
@@ -132,21 +139,26 @@ class TestGainCurves(unittest.TestCase):
         m200 = self._mid("portra400", 200.0, 0.0)[2]
         self.assertGreater(m200, mids[-1] * 0.995)
 
-    def test_separable_combination(self):
-        """Y and M compose multiplicatively (the declared approximation).
+    def test_joint_field_refutes_separability(self):
+        """30Y+30M is a single joint solve, not gY x gM.
 
-        HONEST LIMIT (review finding): this asserts the implementation's own
-        definition, not physical truth — the joint spectral re-time refutes
-        separability at ~0.35 stop RMS on Portra 30Y+30M (0.44 on Superia).
-        The real acceptance test is a joint Y x M solve as oracle; it arrives
-        with the two-dimensional colour-head field (spectral rebuild stage 3).
-        Until then this test only pins that the runtime matches the published
-        approximation it claims to implement.
+        The separable product was refuted at ~0.35 stop RMS on this very
+        combination; the shipped field must therefore DISAGREE with the product
+        materially. Each detent row is itself the direct spectral solve — the
+        oracle is the construction, and this regression keeps anyone from
+        quietly reintroducing the multiplicative shortcut.
         """
-        ev, g_y = color_head_gain_curves("portra400", 30.0, 0.0)
-        _, g_m = color_head_gain_curves("portra400", 0.0, 30.0)
-        _, g_ym = color_head_gain_curves("portra400", 30.0, 30.0)
-        np.testing.assert_allclose(g_ym, g_y * g_m, rtol=1e-5)
+        ev, g_y = color_head_gain_lms("portra400", 30.0, 0.0)
+        _, g_m = color_head_gain_lms("portra400", 0.0, 30.0)
+        _, g_ym = color_head_gain_lms("portra400", 30.0, 30.0)
+        gap = np.abs(np.log2(np.maximum(g_ym, 1e-6) / np.maximum(g_y * g_m, 1e-6)))
+        self.assertGreater(float(gap.max()), 0.1)
+
+    def test_zero_detent_row_is_exact_identity(self):
+        field = color_head_joint_field("portra400")
+        self.assertIsNotNone(field)
+        _ev, _cc, gains = field
+        self.assertTrue(bool(np.all(gains[0, 0] == 1.0)))
 
     def test_magnitude_matches_cc_density_physics(self):
         """30 CC = one stop of the blue layer's PRINT exposure; through the
@@ -188,15 +200,21 @@ class TestFormation(unittest.TestCase):
             out_m[0, 1] / out_m[0, ::2].mean(), out0[0, 1] / out0[0, ::2].mean()
         )
 
-    def test_full_mode_film_core_consumes_the_head(self):
+    def test_full_mode_head_joins_through_the_shared_operator(self):
         from dngscan.film_develop import apply_film_core
 
         rgb = self._neutral()
-        out0 = apply_film_core(rgb, _film_plan(film_mode="full"))
-        out_y = apply_film_core(rgb, _film_plan(film_mode="full", color_head_y=30.0))
-        self.assertFalse(np.array_equal(out0, out_y))
+        plan_y = _film_plan(film_mode="full", color_head_y=30.0)
+        core0 = apply_film_core(rgb, _film_plan(film_mode="full"))
+        core_y = apply_film_core(rgb, plan_y)
+        # The takeover core itself is head-free (stage 3: one field, one
+        # application point) ...
+        np.testing.assert_array_equal(core0, core_y)
+        # ... and the shared post-core operator supplies it, same direction.
+        out_y = agx_engine.apply_film_color_rec2020(core_y, rgb, plan_y)
+        self.assertFalse(np.array_equal(core_y, out_y))
         self.assertGreater(out_y[0, 2] / out_y[0, :2].mean(),
-                           out0[0, 2] / out0[0, :2].mean())
+                           core_y[0, 2] / core_y[0, :2].mean())
 
     def test_native_kernel_excluded_only_when_active(self):
         from dngscan import _fast

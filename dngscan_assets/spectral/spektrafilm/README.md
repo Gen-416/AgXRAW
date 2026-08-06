@@ -35,6 +35,8 @@
 wheel 只打包 `dngscan/`；本目录（及整个 `dngscan_assets/`）不进 wheel。当前
 运行时已有两处对 `dngscan_assets` 的路径依赖（`display_filter` 的 vendor LUT、
 `look.py` 的 look_fields）——源码运行正常、安装后的 wheel 缺文件，属先存缺口。
-决策：光谱重建第三阶段的联合色头 npz（~1.3MiB/卷）与第四阶段的 full LUT 一律
-放入 `dngscan/data/`（随 wheel 发行），同时把上述两处先存依赖迁入包内或声明为
-可选数据件——打包重构随第三阶段实施，避免中间态反复。
+决策（第三阶段已执行）：项目自产的数据一律放入 `dngscan/data/`（随 wheel 发行）
+——联合色头 npz 已就位，第四阶段 full LUT 同规。上述两处先存依赖经核查属**用户
+自备数据**：vendor LUT 是专有文件（Resolve FPE 等）本就不可随包分发，look_fields
+为用户本地测量；二者缺失时运行时均优雅降级（look 合并静默跳过、滤镜在使用时
+明确报错），维持现状即为正确边界。

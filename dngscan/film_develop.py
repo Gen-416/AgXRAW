@@ -38,9 +38,9 @@ def apply_film_core(rgb_rec2020: Any, plan: Any) -> Any:
     params = curve_params_from_plan(plan)
     ev = np.log2(np.maximum(rgb / np.float32(0.18), EPS))
     developed = apply_c1_endpoints(ev, plan, params=params)
-    # Combined film gain: the measured ratio field (this mode's per-channel
-    # transfer) times the user's declared enlarger colour-head filtration — the
-    # same composition as the observe-mode formation (agx.film_channel_gain).
+    # The measured ratio field is this mode's per-channel transfer; the colour
+    # head no longer composes here — it joins through the shared post-core
+    # operator (agx.apply_film_color_rec2020) in every mode (stage 3).
     # The plan.film_crossover anchor lives inside channel_ratio_gain (see its docstring).
     gain = agx_engine.film_channel_gain(rgb, plan, REC2020_LUMA)
     if gain is not None:
