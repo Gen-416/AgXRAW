@@ -89,10 +89,12 @@ strictly neutral); right is the datasheet served verbatim.
 
 ## Quick start
 
-Python 3.11 or newer is required (the CI-tested floor). The validated rawpy/LibRaw dependency is built
-from its pinned source revision on first install, so Git and a native compiler
-are also required (Xcode Command Line Tools on macOS, or the standard build
-toolchain on Linux).
+**macOS** (Apple Silicon or Intel) and Python 3.11 or newer are required. The
+tool is deeply integrated with Core Image / RAW 9 decoding, HDR gain-map
+delivery and its read-back validation; macOS is the declared supported
+platform — a stated boundary, not an untested default. The validated
+rawpy/LibRaw dependency is built from its pinned source revision on first
+install, so Git and the Xcode Command Line Tools are also required.
 
 ### GUI
 
