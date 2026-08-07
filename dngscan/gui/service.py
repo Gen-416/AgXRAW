@@ -249,6 +249,8 @@ def estimate_ev_headroom(
     film_crossover: str = "off",
     film_exposure_ev: float = 0.0,
     film_print_timing: str = "fixed",
+    film_print_medium: str = "",
+    film_print_exposure_ev: float = 0.0,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
     lens_filter: str | None = None,
@@ -278,6 +280,8 @@ def estimate_ev_headroom(
         film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
         lens_filter=lens_filter,
@@ -507,6 +511,8 @@ def _cached_render_plan(
     film_crossover: str = "off",
     film_exposure_ev: float = 0.0,
     film_print_timing: str = "fixed",
+    film_print_medium: str = "",
+    film_print_exposure_ev: float = 0.0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     key = (
@@ -524,6 +530,8 @@ def _cached_render_plan(
         film_crossover,
         _cache_float(film_exposure_ev),
         film_print_timing,
+        film_print_medium,
+        _cache_float(film_print_exposure_ev),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
     )
@@ -545,6 +553,8 @@ def _cached_render_plan(
             film_crossover=film_crossover,
             film_exposure_ev=film_exposure_ev,
             film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
             adjustments=None,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
@@ -672,6 +682,8 @@ def export_preview_jpeg(
     film_crossover: str = "off",
     film_exposure_ev: float = 0.0,
     film_print_timing: str = "fixed",
+    film_print_medium: str = "",
+    film_print_exposure_ev: float = 0.0,
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -859,7 +871,10 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, f
     film_mode = str(params.get("filmMode", params.get("film_mode", "observe")))
     if film_mode not in ("observe", "full"):
         raise ValueError(f"未知胶片分工模式：{film_mode}")
-    if film_mode == "full" and (color_head_y > 0.0 or color_head_m > 0.0):
+    _timing_req = str(params.get("filmPrintTiming", params.get("film_print_timing", "fixed")) or "fixed")
+    if film_mode == "full" and _timing_req != "custom" and (
+        color_head_y > 0.0 or color_head_m > 0.0
+    ):
         raise ValueError(
             "full 模式暂不支持放大机色头：接管核心是完整烘焙的光谱链，"
             "请切回 observe 或把色头归零"
@@ -869,25 +884,51 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, f
         raise ValueError(
             "full 模式只在 AgX tone core 上运行；请把 tone 核切回 agx 或使用 observe"
         )
-    film_crossover = str(
-        params.get("filmCrossover", params.get("film_crossover", "off"))
-    )
-    if film_crossover not in ("off", "datasheet"):
-        raise ValueError(f"未知层间漂移开关：{film_crossover}")
+    neutral_req = params.get("filmNeutralization", params.get("film_neutralization"))
+    crossover_req = params.get("filmCrossover", params.get("film_crossover"))
+    if neutral_req is not None and crossover_req is not None:
+        raise ValueError(
+            "filmCrossover 已弃用为 filmNeutralization 的别名;两者不能同时给出"
+        )
+    if neutral_req is not None:
+        if str(neutral_req) not in ("bounded", "datasheet"):
+            raise ValueError(f"未知灰阶中性化：{neutral_req}")
+        film_crossover = "off" if str(neutral_req) == "bounded" else "datasheet"
+    else:
+        film_crossover = str(crossover_req if crossover_req is not None else "off")
+        if film_crossover not in ("off", "datasheet"):
+            raise ValueError(f"未知层间漂移开关：{film_crossover}")
     try:
         film_exposure_ev = float(params.get("filmExposure", params.get("film_exposure_ev", 0.0)) or 0.0)
     except (TypeError, ValueError):
         raise ValueError("胶片曝光必须是数值(EV)")
     film_print_timing = str(params.get("filmPrintTiming", params.get("film_print_timing", "fixed")) or "fixed")
-    if film_print_timing not in ("fixed", "retimed"):
+    if film_print_timing not in ("fixed", "retimed", "custom"):
         raise ValueError(f"未知印相 timing:{film_print_timing}")
-    if film_mode != "full" and (film_exposure_ev != 0.0 or film_print_timing != "fixed"):
-        raise ValueError(
-            "胶片曝光状态与印相 timing 属于接管显影(full 模式);GUI 在其他状态"
-            "灰显/隐藏这两个控件,非零载荷是直接 API 合同违规"
+    film_print_medium = str(params.get("filmPrintMedium", params.get("film_print_medium", "")) or "")
+    try:
+        film_print_exposure_ev = float(
+            params.get("filmPrintExposure", params.get("film_print_exposure_ev", 0.0)) or 0.0
         )
+    except (TypeError, ValueError):
+        raise ValueError("印相曝光必须是数值(EV)")
+    if film_mode != "full" and (
+        film_exposure_ev != 0.0 or film_print_timing != "fixed"
+        or film_print_medium != "" or film_print_exposure_ev != 0.0
+    ):
+        raise ValueError(
+            "胶片曝光/印相 timing/介质/印相曝光属于接管显影(full 模式);GUI 在"
+            "其他状态灰显/隐藏这些控件,非零载荷是直接 API 合同违规"
+        )
+    if film_print_timing == "custom" and film_crossover != "datasheet":
+        raise ValueError(
+            "custom timing 与有界灰阶中性化互斥:请配 filmNeutralization=datasheet"
+        )
+    if film_print_timing != "custom" and film_print_exposure_ev != 0.0:
+        raise ValueError("手动印相曝光仅在 timing=custom 下有意义")
     return (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-            color_head_m, film_exposure_ev, film_print_timing)
+            color_head_m, film_exposure_ev, film_print_timing,
+            film_print_medium, film_print_exposure_ev)
 
 
 def run_preview(params: dict) -> dict:
@@ -917,7 +958,8 @@ def run_preview(params: dict) -> dict:
     tone_core, lum_norm = parse_tone_core(params)
     agx_primaries = parse_agx_primaries(params)
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-     color_head_m, film_exposure_ev, film_print_timing) = parse_film_params(params)
+     color_head_m, film_exposure_ev, film_print_timing,
+     film_print_medium, film_print_exposure_ev) = parse_film_params(params)
     endpoint_mode = parse_endpoint_mode(params)
     try:
         cached = PREVIEW_STORE.get(
@@ -954,6 +996,8 @@ def run_preview(params: dict) -> dict:
                 film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,
@@ -990,6 +1034,8 @@ def run_preview(params: dict) -> dict:
             film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
@@ -1081,7 +1127,8 @@ def prepare_preview(params: dict) -> dict:
     adjustments = parse_render_adjustments(params)
     agx_primaries = parse_agx_primaries(params)
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-     color_head_m, film_exposure_ev, film_print_timing) = parse_film_params(params)
+     color_head_m, film_exposure_ev, film_print_timing,
+     film_print_medium, film_print_exposure_ev) = parse_film_params(params)
     endpoint_mode = parse_endpoint_mode(params)
     # Do not compete with the full-resolution export worker for memory bandwidth.
     with RENDER_LOCK:
@@ -1155,6 +1202,8 @@ def export_suffix_parts(
     film_crossover: str = "off",
     film_exposure_ev: float = 0.0,
     film_print_timing: str = "fixed",
+    film_print_medium: str = "",
+    film_print_exposure_ev: float = 0.0,
 ) -> str:
     """Build the filename stem suffix for GUI JPEG/PNG exports."""
     parts = [tone_core]
@@ -1179,6 +1228,12 @@ def export_suffix_parts(
             )
         if film_print_timing == "retimed":
             parts.append("retimed")
+        if film_print_timing == "custom":
+            parts.append("customprint")
+        if film_print_medium:
+            parts.append(
+                film_print_medium.replace("__", "-").replace("_", "")[:24]
+            )
     if highlight != "clip":
         parts.append(highlight)
     if gamut != "srgb":
@@ -1327,7 +1382,8 @@ def run_export(params: dict) -> dict:
         raise RuntimeError("HDR 输出当前只实现 AgX tone core")
     agx_primaries = parse_agx_primaries(params)
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-     color_head_m, film_exposure_ev, film_print_timing) = parse_film_params(params)
+     color_head_m, film_exposure_ev, film_print_timing,
+     film_print_medium, film_print_exposure_ev) = parse_film_params(params)
     if (
         dg.is_hdr_output_format(output_format)
         and film_mode == "full"
@@ -1390,6 +1446,8 @@ def run_export(params: dict) -> dict:
             film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             lens_filter=lens_filter,
@@ -1413,6 +1471,8 @@ def run_export(params: dict) -> dict:
         film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -1438,6 +1498,8 @@ def run_export(params: dict) -> dict:
         film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
     )
     fingerprint = export_plan_fingerprint(
         wb=wb,
@@ -1463,6 +1525,8 @@ def run_export(params: dict) -> dict:
         film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
         color_head_y=float(color_head_y),
         color_head_m=float(color_head_m),
         adjustments=dataclasses.astuple(adjustments),
@@ -1549,6 +1613,8 @@ def run_export(params: dict) -> dict:
                 film_crossover=film_crossover,
         film_exposure_ev=film_exposure_ev,
         film_print_timing=film_print_timing,
+        film_print_medium=film_print_medium,
+        film_print_exposure_ev=film_print_exposure_ev,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,

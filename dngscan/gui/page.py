@@ -373,11 +373,15 @@ FILM_CURVE_OPTIONS
       </select>
     </div>
     <div id="filmCrossoverBlock" style="flex:1;min-width:190px;display:none">
-      <label>层间漂移</label>
-      <select id="filmCrossover" title="crossover 声明开关（仅接管模式）。关=数字中性化变体：接管 LUT 输出按像素亮度曝光除以随包的有界中性染色曲线，介质灰阶偏中性两档以内严格中性；数据手册=光谱链原样：中灰由印相求解锚定，暗部/亮部按层间数据漂移（如 Velvia 阴影温和偏冷）——量级未经外部裁决。">
-        <option value="off">关 · 中性轴恒等 · 默认</option>
-        <option value="datasheet">数据手册 · 中灰锚定（实验）</option>
+      <label>灰阶中性化</label>
+      <select id="filmNeutralization" title="灰阶中性化（与印相 timing 正交，仅接管模式）。有界数字中性=完整链输出按像素亮度曝光除以随包的有界中性染色曲线，介质灰阶偏中性两档以内严格中性（即原层间漂移=关）；数据手册漂移=链原样，中灰由印相求解锚定，暗部/亮部按层间数据漂移（如 Velvia 阴影温和偏冷）——量级未经外部裁决。">
+        <option value="bounded">有界数字中性 · 默认</option>
+        <option value="datasheet">数据手册漂移（实验）</option>
       </select>
+    </div>
+    <div id="filmMediumBlock" style="flex:1;min-width:190px;display:none">
+      <label>印相介质</label>
+      <select id="filmPrintMedium" title="film v2 印相介质：默认为该卷的出厂配对；仅列出已烘焙的介质（B1/τ 按 卷×介质 求解，B2 跨卷复用）。"></select>
     </div>
   </div>
   <div class="row" id="filmExposureRow" style="margin-top:12px;display:none">
@@ -388,10 +392,15 @@ FILM_CURVE_OPTIONS
     <div style="flex:1;min-width:190px">
       <label>印相 timing</label>
       <select id="filmPrintTiming" title="fixed=沿用 EV0 联合求解的 q(0)（同一放大机设置，默认）；retimed=随胶片曝光重解 q(E)（因式分解 Stage B；试点负片 portra400/vision3250d）。反转片无印相环节，一律 fixed。">
-        <option value="fixed">固定 · q(0) · 默认</option>
-        <option value="retimed">随胶片曝光重定时（试点负片）</option>
+        <option value="fixed">固定 · τ(0) · 默认</option>
+        <option value="retimed">随胶片曝光重定时（负片）</option>
+        <option value="custom">自定义印相 · 色头+曝光（modelled）</option>
       </select>
       <div class="ctlFact" id="filmTimingHint" style="display:none"></div>
+    </div>
+    <div class="sliderField" id="filmPrintExposureBlock" style="display:none">
+      <div class="labelRow"><label title="custom timing 的手动印相曝光（log2 域，作用于三个纸层）。fixed/retimed 的印相由联合求解决定。">印相曝光</label><span class="val" id="filmPrintExposureVal">0.00 EV</span></div>
+      <input type="range" id="filmPrintExposure" min="-2" max="2" step="0.05" value="0">
     </div>
   </div>
   <div class="row" style="margin-top:12px">
@@ -864,8 +873,9 @@ function saveSettings(){
   try{localStorage.setItem(STORE_KEY,JSON.stringify({
     ev:$("#ev").value,quality:$("#quality").value,
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,film:$("#film").value,
-    filmMode:$("#filmMode").value,filmCrossover:$("#filmCrossover").value,
+    filmMode:$("#filmMode").value,filmNeutralization:$("#filmNeutralization").value,
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
+    filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     highlight:$("#highlight").dataset.librawValue||$("#highlight").value,gamut:$("#gamut").value,wb:$("#wb").value,demosaic:$("#demosaic").dataset.librawValue||$("#demosaic").value,
     decoder:$("#decoder").value,coreimageVersion:$("#coreimageVersion").value,
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,
@@ -915,7 +925,11 @@ function restoreSettings(){
   if(s.colorHeadM!==undefined)$("#colorHeadM").value=s.colorHeadM;
   if(s.film&&[...$("#film").options].some(o=>o.value===s.film))$("#film").value=s.film;
   if(s.filmMode&&[...$("#filmMode").options].some(o=>o.value===s.filmMode))$("#filmMode").value=s.filmMode;
-  if(s.filmCrossover&&[...$("#filmCrossover").options].some(o=>o.value===s.filmCrossover))$("#filmCrossover").value=s.filmCrossover;
+  if(s.filmNeutralization&&["bounded","datasheet"].includes(s.filmNeutralization))$("#filmNeutralization").value=s.filmNeutralization;
+  else if(s.filmCrossover){$("#filmNeutralization").value=s.filmCrossover==="datasheet"?"datasheet":"bounded";}
+  if(s.filmPrintMedium!==undefined)window.__pendingMedium=s.filmPrintMedium;
+  if(s.filmPrintExposure!==undefined)$("#filmPrintExposure").value=s.filmPrintExposure;
+  if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
   if(s.filmExposure!==undefined)$("#filmExposure").value=s.filmExposure;
   if(s.filmPrintTiming&&["fixed","retimed"].includes(s.filmPrintTiming))$("#filmPrintTiming").value=s.filmPrintTiming;
   if(typeof setFilmExposureLabel==="function")setFilmExposureLabel();
@@ -1001,24 +1015,58 @@ function updateFilmModeUi(){
     if(!full){
       // 清除会污染 payload 的陈旧值(既定惯例)。
       $("#filmExposure").value=0;$("#filmPrintTiming").value="fixed";
+      $("#filmPrintMedium").value="";$("#filmPrintExposure").value=0;
       if(typeof setFilmExposureLabel==="function")setFilmExposureLabel();
+      if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
     } else {
       const preset=$("#filmCurve").value;
+      const isNeg=!!FILM_COLOR_HEADS[preset];
       const canRetime=FILM_RETIMED.includes(preset);
       const timing=$("#filmPrintTiming");
       const retimedOpt=[...timing.options].find(o=>o.value==="retimed");
+      const customOpt=[...timing.options].find(o=>o.value==="custom");
       if(retimedOpt)retimedOpt.disabled=!canRetime;
+      if(customOpt)customOpt.disabled=!isNeg;
       const hint=$("#filmTimingHint");
       let reason="";
-      if(!canRetime){
-        if(!FILM_COLOR_HEADS[preset]&&preset!=="none"){
-          reason="反转片无印相环节，不存在重定时——timing 一律 fixed";
-        } else {
-          reason="该卷尚无 retimed 印相资产（试点：portra400 / vision3250d）";
-        }
-        if(timing.value==="retimed"){timing.value="fixed";}
+      if(!isNeg&&preset!=="none"){
+        reason="反转片无印相环节——timing 一律 fixed";
+        if(timing.value!=="fixed"){timing.value="fixed";}
+      } else if(!canRetime&&timing.value==="retimed"){
+        reason="该卷尚无 retimed 印相资产";
+        timing.value="fixed";
       }
       if(hint){hint.textContent=reason;hint.style.display=reason?"":"none";}
+      // custom timing 需要 datasheet 中性化(互斥合同);GUI 直接联动
+      if(timing.value==="custom"&&$("#filmNeutralization").value!=="datasheet"){
+        $("#filmNeutralization").value="datasheet";
+      }
+      const peb=$("#filmPrintExposureBlock");
+      if(peb){
+        peb.style.display=timing.value==="custom"?"":"none";
+        if(timing.value!=="custom"){
+          $("#filmPrintExposure").value=0;
+          if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
+        }
+      }
+      // 介质下拉:能力注入,>1 才显示
+      const mediaBlock=$("#filmMediumBlock");
+      if(mediaBlock){
+        const media=FILM_MEDIA[preset]||[];
+        const sel=$("#filmPrintMedium");
+        if(media.length>1){
+          const want=window.__pendingMedium!==undefined?window.__pendingMedium:sel.value;
+          sel.innerHTML=media.map((m,i)=>
+            `<option value="${i===0?"":m}">${i===0?"默认配对 · "+m:m}</option>`
+          ).join("");
+          if([...sel.options].some(o=>o.value===want))sel.value=want;
+          delete window.__pendingMedium;
+          mediaBlock.style.display="";
+        } else {
+          sel.innerHTML="";sel.value="";
+          mediaBlock.style.display="none";
+        }
+      }
     }
   }
   // Scene-adaptive auto punch is an editorial compensation, not film
@@ -1050,7 +1098,10 @@ function updateFilmModeUi(){
   }
 }
 $("#filmMode").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();saveSettings();scheduleLivePreview();});
-$("#filmCrossover").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+$("#filmNeutralization").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
+$("#filmPrintMedium").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+function setFilmPrintExposureLabel(){const v=+$("#filmPrintExposure").value;$("#filmPrintExposureVal").textContent=(v>0?"+":"")+v.toFixed(2)+" EV";}
+$("#filmPrintExposure").oninput=()=>{setFilmPrintExposureLabel();saveSettings();scheduleLivePreview();};
 function setFilmExposureLabel(){const v=+$("#filmExposure").value;$("#filmExposureVal").textContent=(v>0?"+":"")+v.toFixed(2)+" EV";}
 $("#filmExposure").oninput=()=>{setFilmExposureLabel();saveSettings();scheduleLivePreview();};
 $("#filmPrintTiming").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
@@ -1062,6 +1113,7 @@ $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePrevi
 // reject as physically meaningless.
 const FILM_COLOR_HEADS=FILM_COLOR_HEADS_JSON;
 const FILM_RETIMED=FILM_RETIMED_JSON;
+const FILM_MEDIA=FILM_MEDIA_JSON;
 function setColorHeadLabels(){
   $("#colorHeadYVal").textContent=$("#colorHeadY").value+" CC";
   $("#colorHeadMVal").textContent=$("#colorHeadM").value+" CC";
@@ -1086,7 +1138,7 @@ function updateColorHeadUi(){
   const isFull=$("#filmMode").value==="full";
   let reason="";
   if(!isNegative){reason="反转片没有印相色头：幻灯片自身就是显示介质，物理上不存在放大机环节";}
-  else if(isFull){reason="接管 LUT 固定烘焙于 0CC——切换“显影分工”回“观察”模式即可启用色头";}
+  else if(isFull&&$("#filmPrintTiming").value!=="custom"){reason="fixed/retimed 印相由联合求解决定——full 下要用色头请把印相 timing 切到 custom（modelled Δτ）";}
   const enabled=!reason;
   for(const id of ["colorHeadY","colorHeadM"]){
     const el=$("#"+id);
@@ -1183,8 +1235,9 @@ function payload(){
     decoder:$("#decoder").value,coreimageVersion:$("#coreimageVersion").value,
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,
     colorHeadY:+$("#colorHeadY").value,colorHeadM:+$("#colorHeadM").value,
-    filmMode:$("#filmMode").value,filmCrossover:$("#filmCrossover").value,
+    filmMode:$("#filmMode").value,filmNeutralization:$("#filmNeutralization").value,
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
+    filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
     toneCore:$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
@@ -1625,19 +1678,45 @@ def _scene_transform_options_html() -> str:
 
 
 def _film_retimed_json() -> str:
-    """Presets whose v2 asset ships the retimed print payload (P2 pilot)."""
+    """Presets whose asset family ships retimed print states (P3: every
+    negative; reversals never)."""
     import json
     from pathlib import Path as _P
+
+    import numpy as _np
 
     out = []
     v2_dir = _P(__file__).resolve().parents[1] / "data" / "film_v2"
     for npz in sorted(v2_dir.glob("*.npz")):
+        if npz.name.startswith(("print__", "b2__")):
+            continue
         try:
-            import zipfile
-
-            with zipfile.ZipFile(npz) as zf:
-                if "retimed_nodes.npy" in zf.namelist():
+            with _np.load(npz, allow_pickle=False) as z:
+                if str(_np.asarray(z.get("kind", ""))) == "stock" and not bool(z["reversal"]):
                     out.append(npz.stem)
+        except OSError:
+            continue
+    return json.dumps(out)
+
+
+def _film_media_json() -> str:
+    """stock -> baked media list (default first), from the asset family."""
+    import json
+
+    from pathlib import Path as _P
+
+    out: dict[str, list[str]] = {}
+    v2_dir = _P(__file__).resolve().parents[1] / "data" / "film_v2"
+    import numpy as _np
+
+    for npz in sorted(v2_dir.glob("*.npz")):
+        if npz.name.startswith(("print__", "b2__")):
+            continue
+        try:
+            with _np.load(npz, allow_pickle=False) as z:
+                if str(_np.asarray(z.get("kind", ""))) != "stock":
+                    continue
+                out[npz.stem] = [str(m) for m in z["media"]]
         except OSError:
             continue
     return json.dumps(out)
@@ -1706,5 +1785,6 @@ def render_page(init_dir: str) -> bytes:
         .replace("FILM_COMBOS_JSON", combos_json)
         .replace("FILM_COLOR_HEADS_JSON", color_heads_json)
         .replace("FILM_RETIMED_JSON", _film_retimed_json())
+        .replace("FILM_MEDIA_JSON", _film_media_json())
     )
     return html.encode("utf-8")

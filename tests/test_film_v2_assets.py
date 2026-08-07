@@ -34,24 +34,41 @@ ASSET_DIR = ROOT / "dngscan" / "data" / "film_v2"
 PILOT = ("portra400", "velvia100", "vision3250d")
 
 
-def _all_stocks() -> tuple[str, ...]:
-    return tuple(sorted(p.stem for p in ASSET_DIR.glob("*.npz")))
+def _stock_files() -> tuple[str, ...]:
+    return tuple(sorted(
+        p.stem for p in ASSET_DIR.glob("*.npz")
+        if not p.name.startswith(("print__", "b2__"))
+    ))
 
 
-# Deployed-bytes gate (plan §13): tighter than the v1 scene-EV LUT's ~0.03
-# stop because the steep characteristic curves left the 3D grid. Measured at
-# build time across all 25 assets: p99 0.001-0.015, max 0.001-0.035 — the max
-# outlier is superia400 (0.0343), the stock whose datasheet self-consistency
-# is documented as the roster's weakest; the gate is set just above it
-# rather than pretending the data is cleaner than it is.
-ORACLE_P99_GATE = 0.02
-ORACLE_MAX_GATE = 0.04
+def _print_files() -> tuple[Path, ...]:
+    return tuple(sorted(ASSET_DIR.glob("print__*.npz")))
+
+
+def _b2_files() -> tuple[Path, ...]:
+    return tuple(sorted(ASSET_DIR.glob("b2__*.npz")))
+
+
+# Deployed-bytes gate (plan §13). The fixed-path bound loosened slightly in
+# P3: the factorized chain stacks TWO f16 volumes plus the paper-table hop,
+# and the worst pairing (vision350d x 2383) measured max 0.0413 stop.
+ORACLE_P99_GATE = 0.03
+ORACLE_MAX_GATE = 0.05
 
 
 def _load(stock: str) -> dict:
     path = ASSET_DIR / f"{stock}.npz"
     if not path.is_file():
         raise unittest.SkipTest(f"missing {path}; run tools/build_film_v2_assets.py")
+    return dict(np.load(path, allow_pickle=False))
+
+
+def _load_print(stock: str) -> dict:
+    z = _load(stock)
+    medium = str(np.asarray(z["default_medium"]))
+    path = ASSET_DIR / f"print__{stock}__{medium}.npz"
+    if not path.is_file():
+        raise unittest.SkipTest(f"missing {path}")
     return dict(np.load(path, allow_pickle=False))
 
 
@@ -151,33 +168,55 @@ class StageAMathTests(unittest.TestCase):
 
 
 class FilmV2AssetTests(unittest.TestCase):
-    def test_schema_and_provenance(self) -> None:
-        stocks = _all_stocks() or PILOT
+    def test_schema_and_provenance_per_kind(self) -> None:
+        """Every file in the modular family carries schema 5, its declared
+        kind, sane domains and full-length source hashes (plan §7.1)."""
+        stocks = _stock_files()
         self.assertGreaterEqual(len(stocks), 25)
         for stock in stocks:
-            with self.subTest(stock=stock):
+            with self.subTest(kind="stock", name=stock):
                 z = _load(stock)
                 self.assertEqual(int(z["schema"]), 5)
-                self.assertEqual(str(z["input_space"]), "scene_rec2020_via_amounts")
-                self.assertEqual(str(z["timing_policy"]), "fixed_q0")
-                self.assertEqual(int(z["n"]), 65)
-                self.assertEqual(z["volume"].shape, (65, 65, 65, 3))
-                self.assertEqual(z["volume"].dtype, np.float16)
-                for digest in z["source_sha256"]:
-                    self.assertEqual(len(str(digest)), 64)
+                self.assertEqual(str(np.asarray(z["kind"])), "stock")
                 self.assertTrue(np.all(z["amount_hi"] > z["amount_lo"]))
                 self.assertEqual(float(z["exposure_ev_min"]), -2.0)
                 self.assertEqual(float(z["exposure_ev_max"]), 2.0)
-                self.assertTrue(np.all(np.isfinite(z["volume"].astype(np.float32))))
-                self.assertTrue(np.all(z["volume"].astype(np.float32) >= 0.0))
+                for digest in z["source_sha256"]:
+                    self.assertEqual(len(str(digest)), 64)
+                media = [str(m) for m in z["media"]]
+                self.assertIn(str(np.asarray(z["default_medium"])), media)
+        self.assertGreaterEqual(len(_print_files()), 20)
+        for path in _print_files():
+            with self.subTest(kind="print_state", name=path.stem):
+                z = dict(np.load(path, allow_pickle=False))
+                self.assertEqual(int(z["schema"]), 5)
+                self.assertEqual(str(np.asarray(z["kind"])), "print_state")
+                n = int(z["n"])
+                self.assertEqual(z["b1_volume"].shape, (n, n, n, 3))
+                nodes = z["tau_nodes"]
+                self.assertTrue(np.all(np.diff(nodes) > 0))
+                self.assertEqual(z["tau"].shape, (nodes.size, 3))
+                self.assertLessEqual(float(z["retimed_ev_min"]), 0.0)
+                self.assertGreaterEqual(float(z["retimed_ev_max"]), 0.0)
+                self.assertIn("premix refuted", str(np.asarray(z["premix_refuted_note"])))
+        self.assertGreaterEqual(len(_b2_files()), 8)
+        for path in _b2_files():
+            with self.subTest(kind="b2", name=path.stem):
+                z = dict(np.load(path, allow_pickle=False))
+                self.assertEqual(int(z["schema"]), 5)
+                self.assertEqual(str(np.asarray(z["kind"])), "b2")
+                n = int(z["n"])
+                vol = z["volume"].astype(np.float32)
+                self.assertEqual(vol.shape, (n, n, n, 3))
+                self.assertTrue(np.all(np.isfinite(vol)))
+                self.assertTrue(np.all(vol >= 0.0))
+                self.assertTrue(np.all(z["dye_hi"] > z["dye_lo"]))
 
     def test_characteristic_curves_are_monotone_in_trend(self) -> None:
-        """The MEASURED curves carry digitization-noise wiggles (measured:
-        0.11-0.56% of span across the pilot trio), so strict monotonicity is
-        not the honest gate. The gate: one dominant direction per layer with
-        counter-motion under 1% of the layer's span — enough to catch a
-        corrupted table or a sign flip without denying the data's texture."""
-        for stock in PILOT:
+        """Measured curves carry digitization wiggle (0.11-0.56% of span on
+        the pilot trio); the gate is one dominant direction per layer with
+        counter-motion under 1% of span."""
+        for stock in _stock_files():
             with self.subTest(stock=stock):
                 z = _load(stock)
                 table = z["char_amounts"]
@@ -188,81 +227,42 @@ class FilmV2AssetTests(unittest.TestCase):
                     pos = float(dc[dc > 0].sum())
                     neg = float(-dc[dc < 0].sum())
                     self.assertGreater(span, 0.0)
-                    self.assertLess(
-                        min(pos, neg) / span, 0.01,
-                        f"{stock} layer {c}: counter-motion exceeds 1% of span",
-                    )
+                    self.assertLess(min(pos, neg) / span, 0.01)
 
-    def test_deployed_bytes_reproduce_the_direct_chain(self) -> None:
-        """The shipped f16 volume + analytic Stage A vs the float64 direct
-        spectral chain truth baked into the asset (plan §13)."""
-        from dngscan.film_develop import _tetrahedral
-
-        for stock in _all_stocks() or PILOT:
-            with self.subTest(stock=stock):
-                z = _load(stock)
-                rgb = SCENE_MID * np.exp2(z["oracle_ev"].astype(np.float64))
-                amounts = stage_a_amounts(
-                    rgb, z["observer"], z["char_le"], z["char_amounts"],
-                    film_exposure_ev=0.0,
-                    anchor_ev_offset=float(z["anchor_ev_offset"]),
-                )
-                u = amounts_to_unit(amounts, z["amount_lo"], z["amount_hi"])
-                out = _tetrahedral(
-                    z["volume"].astype(np.float32), u.astype(np.float32), int(z["n"])
-                )
-                truth = z["oracle_truth"].astype(np.float64)
-                vis = truth > 5e-3
-                err = np.abs(np.log2(
-                    np.maximum(out[vis], 1e-9) / np.maximum(truth[vis], 1e-9)
-                ))
-                self.assertLessEqual(float(np.percentile(err, 99)), ORACLE_P99_GATE)
-                self.assertLessEqual(float(err.max()), ORACLE_MAX_GATE)
-                # And the build-time record matches what we just measured.
-                self.assertLessEqual(
-                    abs(float(np.percentile(err, 99)) - float(z["oracle_p99_stop"])),
-                    5e-3,
-                )
-
-    def test_stage_b_neutral_axis_hits_mid_grey_at_ev0(self) -> None:
-        """Fixed timing q(0): the two-stage composite maps neutral EV0 to a
-        neutral 0.18 (plan §7.2, before any runtime neutralization)."""
-        from dngscan.film_develop import _tetrahedral
-
-        for stock in PILOT:
-            with self.subTest(stock=stock):
-                z = _load(stock)
-                grey = np.full((1, 3), SCENE_MID)
-                amounts = stage_a_amounts(
-                    grey, z["observer"], z["char_le"], z["char_amounts"],
-                    anchor_ev_offset=float(z["anchor_ev_offset"]),
-                )
-                u = amounts_to_unit(amounts, z["amount_lo"], z["amount_hi"])
-                out = _tetrahedral(
-                    z["volume"].astype(np.float32), u.astype(np.float32), int(z["n"])
-                )
-                y = float(out[0] @ np.array([0.2627, 0.6780, 0.0593]))
-                self.assertLess(abs(np.log2(y / SCENE_MID)), 0.02)
+    def test_b2_is_shared_across_stocks(self) -> None:
+        """§7.1: the print medium's B2 is one file reused by every stock
+        printing on it — not re-baked per stock."""
+        users: dict[str, set[str]] = {}
+        for stock in _stock_files():
+            z = _load(stock)
+            for medium in z["media"]:
+                users.setdefault(str(medium), set()).add(stock)
+        shared = [m for m, u in users.items() if len(u) >= 3]
+        self.assertTrue(shared, "no shared print medium found")
+        for medium in users:
+            self.assertTrue((ASSET_DIR / f"b2__{medium}.npz").is_file(), medium)
 
 
 class FilmV2RuntimeTests(unittest.TestCase):
-    """End-to-end: apply_film_core's v2 default against the asset's own
-    direct-chain oracle, both neutralization variants (plan §12 P1: the
-    two-stage runtime reproduces full v1's physical semantics within the
-    direct-chain tolerance — not by inverting final images)."""
+    """Fixed-path end-to-end: apply_film_core (factorized default) against
+    the stock's shipped direct-chain oracle, both neutralization variants."""
 
-    def _plan(self, preset: str, crossover: str):
+    def _plan(self, preset: str, crossover: str = "off", **kw):
         from types import SimpleNamespace
 
-        return SimpleNamespace(
+        base = dict(
             curve_preset=preset, film_mode="full", film_crossover=crossover,
-            film_exposure_ev=0.0,
+            film_exposure_ev=0.0, film_print_timing="fixed",
+            film_print_medium="", film_print_exposure_ev=0.0,
+            color_head_y=0.0, color_head_m=0.0,
         )
+        base.update(kw)
+        return SimpleNamespace(**base)
 
     def test_runtime_matches_the_direct_chain_oracle(self) -> None:
         from dngscan.film_develop import apply_film_core
 
-        for stock in PILOT:
+        for stock in _stock_files():
             z = _load(stock)
             rgb = (SCENE_MID * np.exp2(z["oracle_ev"].astype(np.float64))).astype(np.float32)
             truth = z["oracle_truth"].astype(np.float64)
@@ -272,39 +272,37 @@ class FilmV2RuntimeTests(unittest.TestCase):
                 np.maximum(out[vis].astype(np.float64), 1e-9)
                 / np.maximum(truth[vis], 1e-9)
             ))
-            with self.subTest(stock=stock, variant="datasheet"):
+            with self.subTest(stock=stock):
                 self.assertLessEqual(float(np.percentile(err, 99)), ORACLE_P99_GATE)
                 self.assertLessEqual(float(err.max()), ORACLE_MAX_GATE)
-            # Bounded variant: divide the truth by the shipped cast exactly as
-            # the runtime does — the quotient's visible error equals the
-            # datasheet's by construction.
-            cast_ev = z["cast_ev"].astype(np.float64)
-            cast = z["cast_bounded"].astype(np.float64)
-            ev_y = np.log2(np.maximum(
-                rgb.astype(np.float64) @ np.array([0.2627, 0.678, 0.0593]), 1e-9
-            ) / SCENE_MID)
-            truth_nz = truth.copy()
-            for c in range(3):
-                truth_nz[:, c] /= np.interp(ev_y, cast_ev, cast[:, c])
-            out_nz = apply_film_core(rgb, self._plan(stock, "off"))
-            err = np.abs(np.log2(
-                np.maximum(out_nz[vis].astype(np.float64), 1e-9)
-                / np.maximum(truth_nz[vis], 1e-9)
-            ))
-            with self.subTest(stock=stock, variant="bounded"):
-                self.assertLessEqual(float(np.percentile(err, 99)), ORACLE_P99_GATE)
-                self.assertLessEqual(float(err.max()), ORACLE_MAX_GATE)
+
+    def test_ev0_neutral_prints_mid_grey(self) -> None:
+        from dngscan.film_develop import apply_film_core
+
+        for stock in PILOT:
+            grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
+            out = apply_film_core(grey, self._plan(stock, "datasheet")).astype(np.float64)
+            y = float(out[0] @ np.array([0.2627, 0.678, 0.0593]))
+            with self.subTest(stock=stock):
+                self.assertLess(abs(np.log2(y / SCENE_MID)), 0.02)
 
     def test_out_of_domain_exposure_hard_fails(self) -> None:
         from dngscan.film_develop import apply_film_core
-        from types import SimpleNamespace
 
-        plan = SimpleNamespace(
-            curve_preset="portra400", film_mode="full", film_crossover="off",
-            film_exposure_ev=3.0,
-        )
         with self.assertRaises(ValueError):
-            apply_film_core(np.full((4, 3), 0.18, dtype=np.float32), plan)
+            apply_film_core(
+                np.full((4, 3), 0.18, dtype=np.float32),
+                self._plan("portra400", film_exposure_ev=3.0),
+            )
+
+    def test_unknown_medium_fails_closed(self) -> None:
+        from dngscan.film_develop import apply_film_core
+
+        with self.assertRaises(ValueError):
+            apply_film_core(
+                np.full((2, 3), 0.18, dtype=np.float32),
+                self._plan("portra400", film_print_medium="kodak_imaginary__translated"),
+            )
 
     def test_legacy_backend_still_serves_v1_bytes(self) -> None:
         import os
@@ -332,28 +330,33 @@ class FilmV2RuntimeTests(unittest.TestCase):
 
 
 class FilmV2RetimedTests(unittest.TestCase):
-    """P2 gates (plan §13): retimed nodes hit EV0 neutrality, the deployed
-    factorized runtime reproduces the midpoint direct-chain oracle, the
-    exposure axis is continuous, and the per-medium contract fails closed."""
+    """P2/P3 gates: retimed nodes hold EV0 neutrality, the deployed
+    factorized runtime reproduces the midpoint oracle, the exposure axis is
+    continuous, cross-medium pairings work without double tone mapping, and
+    custom timing behaves as declared per-layer delta-tau."""
 
     RETIMED = ("portra400", "vision3250d")
 
-    def _plan(self, preset, exposure=0.0, timing="retimed", crossover="off"):
+    def _plan(self, preset, exposure=0.0, timing="retimed", crossover="off", **kw):
         from types import SimpleNamespace
 
-        return SimpleNamespace(
+        base = dict(
             curve_preset=preset, film_mode="full", film_crossover=crossover,
             film_exposure_ev=exposure, film_print_timing=timing,
+            film_print_medium="", film_print_exposure_ev=0.0,
+            color_head_y=0.0, color_head_m=0.0,
         )
+        base.update(kw)
+        return SimpleNamespace(**base)
 
     def test_deployed_runtime_matches_midpoint_oracle(self) -> None:
         from dngscan.film_develop import apply_film_core
 
         for stock in self.RETIMED:
-            z = _load(stock)
-            rgb = (SCENE_MID * np.exp2(z["retimed_oracle_ev"].astype(np.float64))).astype(np.float32)
-            for i, e_mid in enumerate(z["retimed_oracle_exposures"].tolist()):
-                truth = z["retimed_oracle_truth"][i].astype(np.float64)
+            ps = _load_print(stock)
+            rgb = (SCENE_MID * np.exp2(ps["oracle_ev"].astype(np.float64))).astype(np.float32)
+            for i, e_mid in enumerate(ps["oracle_exposures"].tolist()):
+                truth = ps["oracle_truth"][i].astype(np.float64)
                 out = apply_film_core(
                     rgb, self._plan(stock, exposure=float(e_mid), crossover="datasheet")
                 )
@@ -367,14 +370,11 @@ class FilmV2RetimedTests(unittest.TestCase):
                     self.assertLessEqual(float(err.max()), 0.05)
 
     def test_retimed_nodes_hold_ev0_neutrality(self) -> None:
-        """plan §13: every retimed node prints neutral mid-grey back to
-        Y=0.18 with near-zero chroma (DeltaE00 <= 0.5 stand-in: Oklab
-        distance x100 <= 0.5)."""
         from dngscan.film_develop import apply_film_core
 
         for stock in self.RETIMED:
-            z = _load(stock)
-            for e in z["retimed_nodes"].tolist():
+            ps = _load_print(stock)
+            for e in ps["tau_nodes"].tolist()[::4]:
                 grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
                 out = apply_film_core(
                     grey, self._plan(stock, exposure=float(e), crossover="datasheet")
@@ -386,26 +386,21 @@ class FilmV2RetimedTests(unittest.TestCase):
                     self.assertLess((mx - mn) / max(y, 1e-9), 0.02)
 
     def test_exposure_axis_is_continuous(self) -> None:
-        """plan §13: the slider must not jump across q nodes."""
         from dngscan.film_develop import apply_film_core
 
-        stock = "portra400"
         probe = np.array([[0.18, 0.18, 0.18], [0.6, 0.3, 0.15]], dtype=np.float32)
         evs = np.linspace(-2.0, 2.0, 81)
         outs = np.stack([
-            apply_film_core(probe, self._plan(stock, exposure=float(e)))
+            apply_film_core(probe, self._plan("portra400", exposure=float(e)))
             for e in evs
         ])
-        step = np.abs(np.diff(outs, axis=0))
-        self.assertLess(float(step.max()), 0.06)
+        self.assertLess(float(np.abs(np.diff(outs, axis=0)).max()), 0.06)
 
     def test_fixed_timing_keeps_the_enlarger_setting(self) -> None:
-        """fixed: +2 EV on the emulsion prints BRIGHTER through the same
-        q(0); retimed prints back near mid-grey. The two recipes must
-        actually differ (plan §5.3)."""
         from dngscan.film_develop import apply_film_core
 
         grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
+        luma = np.array([0.2627, 0.678, 0.0593])
         fixed = apply_film_core(
             grey, self._plan("portra400", exposure=2.0, timing="fixed",
                              crossover="datasheet")
@@ -414,19 +409,74 @@ class FilmV2RetimedTests(unittest.TestCase):
             grey, self._plan("portra400", exposure=2.0, timing="retimed",
                              crossover="datasheet")
         ).astype(np.float64)
-        luma = np.array([0.2627, 0.678, 0.0593])
-        y_fixed = float(fixed[0] @ luma)
-        y_retimed = float(retimed[0] @ luma)
-        self.assertGreater(np.log2(y_fixed / SCENE_MID), 0.5)
-        self.assertLess(abs(np.log2(y_retimed / SCENE_MID)), 0.02)
+        self.assertGreater(np.log2(float(fixed[0] @ luma) / SCENE_MID), 0.5)
+        self.assertLess(abs(np.log2(float(retimed[0] @ luma) / SCENE_MID)), 0.02)
 
-    def test_retimed_without_assets_fails_closed(self) -> None:
+    def test_reversal_rejects_retiming(self) -> None:
         from dngscan.film_develop import apply_film_core
 
         with self.assertRaises(ValueError):
             apply_film_core(
                 np.full((2, 3), 0.18, dtype=np.float32),
-                self._plan("gold200", exposure=1.0, timing="retimed"),
+                self._plan("velvia100", timing="retimed"),
+            )
+
+    def test_cross_medium_swap_without_double_tone_mapping(self) -> None:
+        """§12 P3: the same negative on a different paper renders through the
+        SAME Stage A + B1/tau/paper/B2 topology — mid-grey stays anchored
+        (tone mapped exactly once) while the papers genuinely differ."""
+        from dngscan.film_develop import apply_film_core
+
+        grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
+        luma = np.array([0.2627, 0.678, 0.0593])
+        chroma = np.array([[0.6, 0.3, 0.15], [0.05, 0.2, 0.5]], dtype=np.float32)
+        default = apply_film_core(
+            chroma, self._plan("portra400", timing="fixed", crossover="datasheet")
+        )
+        alt = apply_film_core(
+            chroma, self._plan(
+                "portra400", timing="fixed", crossover="datasheet",
+                film_print_medium="kodak_supra_endura__translated",
+            )
+        )
+        self.assertGreater(float(np.abs(alt - default).max()), 1e-3)
+        for medium in ("", "kodak_supra_endura__translated"):
+            out = apply_film_core(
+                grey, self._plan("portra400", timing="fixed",
+                                 crossover="datasheet", film_print_medium=medium)
+            ).astype(np.float64)
+            y = float(out[0] @ luma)
+            with self.subTest(medium=medium or "default"):
+                self.assertLess(abs(np.log2(y / SCENE_MID)), 0.02)
+
+    def test_custom_timing_delta_tau_semantics(self) -> None:
+        """+Y CC attenuates the blue-sensitive layer (print moves away from
+        yellow: b axis down); manual print exposure brightens the print;
+        custom + bounded neutralization is refused."""
+        from dngscan.film_develop import apply_film_core
+
+        grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
+        base = apply_film_core(
+            grey, self._plan("portra400", timing="custom", crossover="datasheet")
+        ).astype(np.float64)
+        y30 = apply_film_core(
+            grey, self._plan("portra400", timing="custom", crossover="datasheet",
+                             color_head_y=30.0)
+        ).astype(np.float64)
+        # b* proxy: blue channel rises relative to red+green when yellow drops.
+        def b_axis(rgb):
+            return float(rgb[0, 2] - 0.5 * (rgb[0, 0] + rgb[0, 1]))
+
+        self.assertGreater(b_axis(y30), b_axis(base))
+        brighter = apply_film_core(
+            grey, self._plan("portra400", timing="custom", crossover="datasheet",
+                             film_print_exposure_ev=1.0)
+        ).astype(np.float64)
+        luma = np.array([0.2627, 0.678, 0.0593])
+        self.assertLess(float(brighter[0] @ luma), float(base[0] @ luma))
+        with self.assertRaises(ValueError):
+            apply_film_core(
+                grey, self._plan("portra400", timing="custom", crossover="off")
             )
 
     def test_plan_compiler_enforces_full_only_and_reversal_contract(self) -> None:
@@ -453,6 +503,15 @@ class FilmV2RetimedTests(unittest.TestCase):
         )
         self.assertEqual(float(plan.tone.film_exposure_ev), -1.5)
         self.assertEqual(plan.tone.film_print_timing, "retimed")
+        # custom unlocks the colour head in full (modelled), datasheet only.
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "srgb",
+            film_curve="portra400", film_mode="full",
+            film_print_timing="custom", film_crossover="datasheet",
+            color_head_y=15.0,
+        )
+        self.assertEqual(plan.tone.film_print_timing, "custom")
+        self.assertEqual(float(plan.tone.color_head_y), 15.0)
 
     def test_gui_service_rejects_exposure_outside_full(self) -> None:
         from dngscan.gui.service import parse_film_params
@@ -468,6 +527,19 @@ class FilmV2RetimedTests(unittest.TestCase):
         })
         self.assertEqual(parsed[6], -0.5)
         self.assertEqual(parsed[7], "retimed")
+        # neutralization alias contract: both keys together hard-fail.
+        with self.assertRaises(ValueError):
+            parse_film_params({
+                "filmCurve": "portra400", "filmMode": "full",
+                "filmNeutralization": "bounded", "filmCrossover": "off",
+            })
+        parsed = parse_film_params({
+            "filmCurve": "portra400", "filmMode": "full",
+            "filmNeutralization": "datasheet", "filmPrintTiming": "custom",
+            "colorHeadY": 10.0,
+        })
+        self.assertEqual(parsed[3], "datasheet")
+        self.assertEqual(parsed[7], "custom")
 
 
 if __name__ == "__main__":

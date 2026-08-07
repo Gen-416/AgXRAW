@@ -51,7 +51,11 @@ class ExportSuffixTests(unittest.TestCase):
         # NOT vendor LUTs — they are dngscan's own calibrated declarations fitted from
         # published datasheet data — so the guard targets LUT product names, not the
         # manufacturers whose stocks the film feature legitimately names.
-        for vendor_lut in ("ARRI Classic", "ARRI Reveal", "RED IPP2", "LC-709", "2383", ".cube"):
+        # "2383" left this list in P3: the print-MEDIUM selector legitimately
+        # names Kodak 2383/2393 as dngscan's own calibrated print declarations
+        # (the same carve-out as the film stock names); the guard keeps
+        # targeting LUT product names and .cube payloads.
+        for vendor_lut in ("ARRI Classic", "ARRI Reveal", "RED IPP2", "LC-709", ".cube"):
             self.assertNotIn(vendor_lut, html)
         self.assertIn("Kodak Portra 400", html)
         self.assertIn("Fujifilm Superia X-TRA 400", html)
@@ -109,6 +113,7 @@ class ExportSuffixTests(unittest.TestCase):
             "color_head_y", "color_head_m", "adjustments",
             "hdr_headroom", "delivery", "quality", "chroma",
             "film_exposure_ev", "film_print_timing",
+            "film_print_medium", "film_print_exposure_ev",
         }
         for kws in keyword_sets:
             self.assertTrue(

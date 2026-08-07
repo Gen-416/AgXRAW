@@ -432,7 +432,10 @@ class FilmModePlacementTests(unittest.TestCase):
         self.assertIn('block.style.display=""', head_ui)
         self.assertIn('isFull=$("#filmMode").value==="full"', head_ui)
         self.assertIn("反转片没有印相色头", head_ui)
-        self.assertIn("0CC", head_ui)
+        # P3: full-mode heads unlock under custom timing (modelled delta-tau);
+        # the fixed/retimed reason names the joint solve instead of 0CC.
+        self.assertIn("custom", head_ui)
+        self.assertIn("联合求解", head_ui)
         self.assertIn("el.disabled=!enabled", head_ui)
         self.assertIn("el.value=0", head_ui)
         self.assertIn('id="colorHeadHint"', PAGE)

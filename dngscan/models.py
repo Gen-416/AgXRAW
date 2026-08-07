@@ -314,6 +314,11 @@ class ToneCompressionPlan:
     # q(E) re-solved per exposure via the factorized Stage B (negatives with
     # retimed assets only; fail-closed elsewhere).
     film_print_timing: str = "fixed"
+    # film v2 P3 (§7.1/§7.2): the selected print medium id ("" = the stock's
+    # default pairing) and the custom-timing manual print exposure in EV
+    # (log2; only meaningful under timing="custom", identity 0.0).
+    film_print_medium: str = ""
+    film_print_exposure_ev: float = 0.0
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0
