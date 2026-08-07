@@ -1,0 +1,1854 @@
+{
+ "schema": 1,
+ "note": "film v2 P0 freeze (plan §12 P0). Regeneration requires an explicit review gate; see tools/regen_film_freeze.py.",
+ "cases": [
+  {
+   "scene": "crop__SDI0150",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "082af578b0c2d7f4fd32f09e66d878448cf6b43c9a9815326753e2005e2de355",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 19.3887,
+   "p50_u8": 15.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "22d54efa0075611961fefcbcccbaac31f6e1f1d625393c169716908894ce89ec",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 21.5266,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "e37e5125390185a35a2e01d487f46ba7430abc336b19f25dafc3a3af684514ef",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 19.2975,
+   "p50_u8": 15.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "cb834f22fdcba63f2494eaa68bafca4ace363f5d0230ce4f70d61900ec045fe8",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 21.458,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "98d47e16aa5232de5854746509cccebd527a6d7e20db90a3ae2f2ba57a9acb7b",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 21.7879,
+   "p50_u8": 21.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "29b4316a984cc9dd636591b5e9807fa5c141a7bc2316a17c55750d3a6627d95a",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 22.2457,
+   "p50_u8": 22.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "14e5c7d05134c591bddc006f91ef6dcc34cb5ae3e1517bbb00d66235412c6ee9",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 20.5673,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "774a195a265dd867d9add73a43ce023c46e041703c2ef5b8d383e0531551e184",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 19.3036,
+   "p50_u8": 15.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "3dabf01d21fde5a382ef979fbe7061fa710d37081015b573955e8cbce4000040",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 20.4354,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "0ea607331b378f966ce5919a511c1647a0737ffdc2dc69a77685bc9e00556126",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 21.0925,
+   "p50_u8": 18.0
+  },
+  {
+   "scene": "crop__SDI0150",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "58f1887d3a057d12f6ddab9dc2abcabe3d0dc9896965f2e985f794a2fc1c86a3",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 23.5891,
+   "p50_u8": 25.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "0fd34145d8076b3c8a2cdf12befd7767192b83f4d939a31f5b8f16bdea4b780c",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 103.9015,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "9dd0d659f3ff106c82337eec2d411a2c3950d6fdaf0092bc4b29e3bb80c32fe9",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 107.6716,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "bff1acc1f73af108da8c1bd69d6460466d85a5d34538c84edbd54694f81cb523",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 103.7034,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "73adc4dbff110e0cf706d75f6812f95d6bde8e4e494b882f6b290214e39dcbdc",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 107.4672,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "78e770824d2066eab8bc7bac00a95da54b21e1a6c9b4219960afae11a11f77e8",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 107.8972,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "1938802e6f8215a845f67752b5cddc40e9464088d339a8c06899a3913d48300b",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 107.7352,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "0da000710835b73d7e89c32901f3990e0a623696dc7749dac8bf1cd6cdf326d9",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 107.6746,
+   "p50_u8": 114.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "2ffe37deb2b5b5a49d9b2a4c96cb80e40bfa9e37a5a735cfd09a6d4d9de58b73",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 103.5196,
+   "p50_u8": 112.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "5261cd9f0b1b177e795d533f29bdc85c14863ba726ada8f8586158d64e62b4bc",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 107.1836,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "5596d91cac02bdc6763e4795356ac7033fa3fd27363cad56a0be21847f245d37",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 107.8761,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "crop__SDI0238",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "e06eacdd298dbaf95d296ab787ab30886c8e1e71725cb537653cc0ea371079bc",
+   "shape": [
+    96,
+    64,
+    3
+   ],
+   "mean_u8": 108.0226,
+   "p50_u8": 113.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "0a580b296d1b04530cb120d2f9614d2f865d3b0b28df0a19a9ac82d8bebc2ea8",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 37.8054,
+   "p50_u8": 0.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "065ffff69764da63b70189428faca3fdbaf38485c45efe515b3bbe53a7153a1f",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 53.374,
+   "p50_u8": 23.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "807dad6140ce80d50c81a186486cb34977953921f2f44366feff1e1ce2da43c8",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 37.9465,
+   "p50_u8": 0.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "6c673b95475ad77294ee64112f4c4f47382cff5fa5f76942aed6b4f5701d628d",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 53.4889,
+   "p50_u8": 23.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "327c7084a9fd4329a6cf9bfda05f0d9b7d35fa525122f7fb04ddf56132a5a2df",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 51.9059,
+   "p50_u8": 22.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "a611a286075b799cd5848093fdfae58b2b2ac67a4c51a1793916eac773761d06",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 52.1147,
+   "p50_u8": 23.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "4d9bb1d3eb813088c25b4a0b474b70e48cd3e51f3aeb080953d1149ba22dd2de",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 51.0785,
+   "p50_u8": 20.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "3f78814f366981d9fa36c657ac4ca59a06dc9fca1369cf69ba404bf0fb91ce20",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 38.2579,
+   "p50_u8": 0.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "b8a13dbe4eccdcce955f72791e041adbcffd28ba4867d48f0680da49488bc758",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 51.6719,
+   "p50_u8": 20.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "6f56eff369a98a379425d8db89fa7fc2ff780a06fb8b7a7cc51f2627785099c4",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 50.8134,
+   "p50_u8": 20.0
+  },
+  {
+   "scene": "daylight_wide_dr",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "1d31db633d66f3ffa4e23aae38dfd69d2964d1073bbba5f14fb33491493e93fd",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 52.9838,
+   "p50_u8": 21.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "df3050e3f12f6601b46dbedcd6077c8a7eeef50bd61bdddc4bd96c75706b27ee",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 199.7528,
+   "p50_u8": 201.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "df1c8a85fd74a6f32d5f6286ac25fec62fabe7d97b2f23592de02e4c6c304a74",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 205.5475,
+   "p50_u8": 207.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "7103bbdb1d83af5abd27d4da14a72f4b5b528a696f8ac948b269695e2cb2ef94",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 200.0807,
+   "p50_u8": 201.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "5f8d167e023374a8cfa5b126ee7d919e4e1a0363b3e2cd60c7d6a44b3033cc66",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 205.9749,
+   "p50_u8": 208.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "0d207c8e215fd5c1bb7b3e3e916a1e2e732db70321c1261bd17501dcd43923c5",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 207.8267,
+   "p50_u8": 209.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "1bc2285b427dfc55e0839b4f7cfaa8c83cc0ce0db5109d0ca66d7ad9342fc1af",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 208.3783,
+   "p50_u8": 210.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "e5ce556866d5ec1258e0a9f68062468d4bc3a2d107cd8af223a7b64327fb3987",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 201.0344,
+   "p50_u8": 202.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "d2592ea731637f4f5b178e040909a669c73eee62fc313ce6e876c654ab03bf50",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 200.797,
+   "p50_u8": 203.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "3ab3b7e4b1ae57b7f24b262afa07994576a0843d0d8048a7d35840213cdef719",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 202.5898,
+   "p50_u8": 204.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "b5f91ade862983f0e7d4a9cfcee1ca63df6f452c7df9e0d3519cdc039c14d704",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 204.1377,
+   "p50_u8": 206.0
+  },
+  {
+   "scene": "high_key",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "17287d29fd3278929caeacdf623de563bd566c628601b0291b344b6b87d0207b",
+   "shape": [
+    64,
+    64,
+    3
+   ],
+   "mean_u8": 205.0605,
+   "p50_u8": 207.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "b10262add3a892efa0a29994bf148cb355f11d3a924a7c23817349ee1e9b14c4",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 86.4993,
+   "p50_u8": 79.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "f4c28515b6658993f61251f7fa339ad0ab463b88a4b4cdaf27a47606f84e0e4a",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 95.9139,
+   "p50_u8": 83.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "477deea3f02082a7d8d0f98ea7f799d43fe595f2aee7510a0f330d4ecde6c242",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 87.3419,
+   "p50_u8": 81.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "cd62392363e84b2b4d985cb5afa55c8fdc530f5d55f779e42e168dfd734b0719",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 97.2463,
+   "p50_u8": 92.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "6b0b8a0e2e262ea7f6dc913c24468d14cd8297e7404f423054b8648f85fbc414",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 95.2357,
+   "p50_u8": 93.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "f0ca792ebbd73c946a80cf0c2d7ab97d3a990b2c52ee4490530541f72f60f8a1",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 95.7366,
+   "p50_u8": 92.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "e5969c2affb6dd431c6f39f6a73fda373aaee1ce0891607ceca77762e1c10500",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 95.0527,
+   "p50_u8": 85.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "306065b0a0b4ea1657cbc1f344e5b9f494163244121c1ed1eed0ee6c2ca1266d",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 88.5013,
+   "p50_u8": 87.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "bece8c96df3e6d14ca8f991effc00a5f65267508c2d3239f197b05a30e2bc370",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 98.0607,
+   "p50_u8": 94.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "11726065cfd7c6701979061cf2206e6d6fbc15212880a76535d16cdac71e504e",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 94.4925,
+   "p50_u8": 84.0
+  },
+  {
+   "scene": "neutral_hue_wheel",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "0bf8d992b5b4d45eb65a546a4989d99fed471f0fa685e72ade5bf0c306b95000",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 95.9822,
+   "p50_u8": 84.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "e718e9a0285b56c187a24dbac72fbc51db26afa6a4121d43e12aaaec17b4165b",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 22.1602,
+   "p50_u8": 15.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "8029afb0ae776a4db1770216bb7582aac4c58fb6e47996084289af8227cd2b16",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 25.0907,
+   "p50_u8": 16.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "5453c181db2abdde50bcce944643c66c7dadc0192261d68b21cdf96400e42839",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 22.3039,
+   "p50_u8": 15.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "5c65a0a1689ccf1eb2ef8dd336e4b775c37716e3d7dc34fdfb343162f9d76dfa",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 25.1034,
+   "p50_u8": 16.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "e445c06b39810fe14e47de1c63ba6054bcb65c51928ae492ee0536ce1cc02f88",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 25.3774,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "46b577cbb5f748a45d9f433d440100094de509da066ac6ea5ffcfea0b18cc358",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 26.2407,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "2dbe129a13815297b6e49ea3027fe8674b11b914dfe1a42a48a338cd5a194881",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 25.0746,
+   "p50_u8": 16.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "65ac481f58f857995e6e94fa9e5e9c624422098466191e68211bb3611387eb7b",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 22.6688,
+   "p50_u8": 15.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "6e78fe0d55a719af2c69deb6537e43d5cbeb4e5210649467134ca4e7f399c3bb",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 25.0804,
+   "p50_u8": 16.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "6e7c26ce4414184abb959f28cf3dc5cf690c6cc3c7c3887cb474f2225b89856c",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 25.3346,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "night_sparse_lamps",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "39d6bda9f788f72d1be83456ac27394e0859c3252eb0ef8d0bcaf8833201e407",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 28.1543,
+   "p50_u8": 18.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "c590ccd41fad1050dd468b523a162b2da436ef7c517ab50191eab0a2d41c333d",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 35.6041,
+   "p50_u8": 0.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "364655aa2118df6417841c3d8d3703b85d95ccbf2976354db458e2ef40e2ff18",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 48.551,
+   "p50_u8": 16.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "dcf9e4c356130691d81c1b1940f1dd714fbe065d9d45fa67190f73fc0c8d6dc8",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 34.8456,
+   "p50_u8": 0.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "551ee5d68d420542085690d33eb4e740a4ae66a5d776f023787e9d30909a61cc",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 47.8187,
+   "p50_u8": 16.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "ed19e797a7515bf2d24ca4d801ec8f14b208c2b8b9344e5d8fb72b42e3ba2911",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 48.8718,
+   "p50_u8": 16.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "84c291e63ae5d7348c7fd1a4cc9422c2524a3a3c997063bf5c6c4c0cf90012ca",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 49.5396,
+   "p50_u8": 19.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "56a31ec4dcef3c06d9fcc9983df74cb2240366614dc086d9d2381ff10edabb08",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 48.4497,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "af822ff56c79404c8bd831736820c1c516193231f9a67d969947ca44fd379316",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 34.4072,
+   "p50_u8": 0.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "14a9b1164b020366e9e1a6c7d5068ba34116f7d27c030a62dd2a07b46d9d37fc",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 47.3638,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "214db68240d8dd826aa638a76ceba654a10f52700af462392859d47df6802481",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 48.8513,
+   "p50_u8": 17.0
+  },
+  {
+   "scene": "skin_grid",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "68bee02fd3f4c8b27a3c9ef64dc20350328cf994ffb2c396ab2bf43ce4f4fdf5",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 50.9053,
+   "p50_u8": 25.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "none",
+   "config": "agx_baseline",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "215d2f0854a254bb4557ecd46236f9da1375e385a2502a361f3fcbaa8de5c324",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 173.1619,
+   "p50_u8": 194.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "portra400",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "8e8b6522915caf765dce60dd439cbb25820839e09c4d9175cd17ff58050194e2",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 180.2374,
+   "p50_u8": 200.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "portra400",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "4882d0c471dbfed14206c1a538fe4bd3c4f98992a959c55eea93cbd09aa23461",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 172.8055,
+   "p50_u8": 194.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "portra400",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "portra400_d55",
+    "scene_transform_strength": 1.3,
+    "agx_primaries": "base"
+   },
+   "sha256": "b60b3b218be672a9ef84924ede5752745f2c5c43e87199181c2888e3f7f45900",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 179.8073,
+   "p50_u8": 200.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "portra400",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "63e91fdd6b9142f1c2dc20d6a621c04e7c56a2f2940c1fe8340f935b89792d14",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 181.1641,
+   "p50_u8": 203.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "portra400",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "portra400",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "768a7ca7fcea6c7a26f560bc6c1bb2771c8d9fc4ea0e276fdfa3ca4b8b16b912",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 181.3691,
+   "p50_u8": 203.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "velvia100",
+   "config": "curve_only",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "202aa3fd673f21725054c8867da681871c0b51a488d635ae0e9f72e4964fa113",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 177.7715,
+   "p50_u8": 195.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "velvia100",
+   "config": "prefeed_only",
+   "params": {
+    "film_curve": "none",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "b14f8d864682cb3fb45cfc8dbd61a480dc8765717a6772784ef1b77b5cb5f456",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 172.6976,
+   "p50_u8": 193.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "velvia100",
+   "config": "observe_combo",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "observe",
+    "film_crossover": "off",
+    "scene_transform": "velvia100_d55",
+    "scene_transform_strength": 1.6,
+    "agx_primaries": "punchy"
+   },
+   "sha256": "f81054a483b8a6b095dc9921bd9382ad05d422868e72d1854cb3d2076757b0bf",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 177.057,
+   "p50_u8": 195.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "velvia100",
+   "config": "full_bounded",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "off",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "bba06cf5834057bf48678a47df582bacfe038240bdb1cf67f5e0601ede4e0a15",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 178.5478,
+   "p50_u8": 198.0
+  },
+  {
+   "scene": "staggered_clip",
+   "stock": "velvia100",
+   "config": "full_datasheet",
+   "params": {
+    "film_curve": "velvia100",
+    "film_mode": "full",
+    "film_crossover": "datasheet",
+    "scene_transform": "none",
+    "scene_transform_strength": 1.0,
+    "agx_primaries": "base"
+   },
+   "sha256": "0518afc7fc59b5be476c412393eaedc0c97a3d99c911fc1291def6819f6ac281",
+   "shape": [
+    96,
+    96,
+    3
+   ],
+   "mean_u8": 179.1616,
+   "p50_u8": 198.0
+  }
+ ]
+}
