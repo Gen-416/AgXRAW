@@ -54,22 +54,29 @@ flowchart LR
     LAYERS --> HAL["Halation<br/>回注到乳剂层曝光"]
     HAL --> DEV["三条 1D 特性曲线<br/>得到层密度 D_c"]
     DEV --> GRAIN["曝光相关 density grain"]
-    GRAIN --> PRINTLUT["Stage B · density-domain 3D LUT<br/>染料/片基 -> TH-KG3 印相<br/>相纸/正片 -> 观看 Rec.2020"]
-    PRINTLUT --> VIEW["可选有界灰阶数字中性化<br/>现行 crossover=off 的后继"]
+    GRAIN --> MEDIUM{"介质路径"}
+    MEDIUM -->|负片| B1["Stage B1 · 负片密度 -> log 纸层曝光"]
+    B1 --> TIMING["+ timing stops τ(E)<br/>三个解析标量"]
+    TIMING --> PAPER["三条 1D 相纸曲线<br/>得到正介质密度"]
+    PAPER --> B2["Stage B2 · 正介质密度 -> 观看 Rec.2020"]
+    MEDIUM -->|reversal_direct| B2
+    B2 --> VIEW["可选有界灰阶数字中性化<br/>现行 crossover=off 的后继"]
     VIEW --> BLOOM["Medium bloom / intrinsic scatter"]
     BLOOM --> DEL
 
     RAW -. "full-well、clip mask<br/>只限制可用信息，不替用户选口味" .-> FCOMP
 ```
 
-所有 tone、colour geometry 和空间算子都必须只出现一次。`full v2` 必须明确拆成两段：
+所有 tone、colour geometry 和空间算子都必须只出现一次。`full v2` 的外层仍拆成 Stage A 与 Stage B，但 Stage B 必须继续因式分解，不能重新坍缩成一只 LUT：
 
 1. **Stage A，运行时解析段**：plain scene Rec.2020 -> 观察者逆矩阵 -> 三层曝光 -> halation -> 三条 1D 特性曲线 -> density grain，输出三通道有界层密度 `D_c`；
-2. **Stage B，密度域 3D LUT**：`D_c` -> 染料/片基光谱 -> 负片印相或反转片直看 -> 观看 XYZ -> display-linear Rec.2020。
+2. **Stage B1，负片密度域 3D LUT**：负片 `D_c` -> 染料/片基透过谱 -> 三层 `log2` 相纸曝光，不包含 timing；
+3. **解析 timing 与相纸曲线**：把三个 `tau_j(E)=log2(q_j(E))` 加到纸层 log exposure，再过三条 1D 相纸特性曲线得到正介质密度；
+4. **Stage B2，正介质密度域 3D LUT**：相纸/电影正片密度 -> 观看 XYZ -> display-linear Rec.2020。`reversal_direct` 跳过 B1、timing 和相纸曲线，直接由 Stage A 进入相应 B2。
 
-现行单只 `scene -> display` 65^3 LUT 在 v2 中退役：它把中间密度坍缩掉，运行时既无法在正确位置注入 halation 和 grain，也让更换印相介质必须重烘整条前链。两段式使胶片曝光、显影、halation 和 grain 留在便宜的解析前段；更换相纸/正片只重建 Stage B。Stage B 的输入 shaper 使用每卷声明的三通道 density `Dmin/Dmax`，Stage A 输出按物理密度域验证；超域值钳到声明边界并计数报告，不能静默超出 LUT 合同。
+现行单只 `scene -> display` 65^3 LUT 在 v2 中退役：它把中间密度坍缩掉，运行时既无法在正确位置注入 halation 和 grain，也让更换印相介质必须重烘整条前链。Stage A 保留胶片曝光、显影、halation 和 grain；B1/B2 分解则把会随 timing 平移的相纸曲线输入重新暴露出来。B1 的输入 shaper 使用负片三通道 density `Dmin/Dmax`，B2 使用目标正介质的 density `Dmin/Dmax`；所有超域值都钳到声明边界并计数报告，不能静默超出 LUT 合同。
 
-`full v2` 的 Stage B 输出已经是正片/相纸在声明观看条件下的 display-linear Rec.2020；之后只允许已声明的灰阶中性化、medium bloom、gamut fit 和输出编码，不再运行 AgX formation。放大机、扫描器、投影机或观看环境的 veiling glare 不属于这条介质链，未来若实现必须进入独立的光学/观看计划。
+`full v2` 的 B2 输出已经是正片/相纸在声明观看条件下的 display-linear Rec.2020；之后只允许已声明的灰阶中性化、medium bloom、gamut fit 和输出编码，不再运行 AgX formation。放大机、扫描器、投影机或观看环境的 veiling glare 不属于这条介质链，未来若实现必须进入独立的光学/观看计划。
 
 ## 4. 计划数据结构
 
@@ -162,11 +169,12 @@ L_print(lambda; kY,kM) = L_TH-KG3(lambda)
 印相纸层曝光：
 
 ```text
-p_j = q * integral L_print(lambda;kY,kM) * T_neg(lambda)
-                   * S_paper,j(lambda) d lambda
+i_j = integral L_print(lambda;kY,kM) * T_neg(lambda)
+                 * S_paper,j(lambda) d lambda
+p_j = q_j * i_j
 ```
 
-相纸显影后得到反射谱，再经声明观看光源积分到 XYZ，最后转换到 display-linear Rec.2020。
+当前 paper-layer exposure model 中，`q_j` 是三个纸层的有效 timing gain；令 `tau_j=log2(q_j)`，则 timing 在 log exposure 域表现为严格加法。它不是有实测滤镜谱支持的放大机 Y/M 光谱模型。相纸显影后得到反射谱，再经声明观看光源积分到 XYZ，最后转换到 display-linear Rec.2020。
 
 ### 5.3 曝光范围、节点与 timing
 
@@ -176,37 +184,34 @@ p_j = q * integral L_print(lambda;kY,kM) * T_neg(lambda)
 
 但“曝光只影响前段”和“每个曝光节点重新把负片印回相同中灰”不能同时无条件成立。必须公开两种 print recipe：
 
-- **fixed print timing**：沿用 EV0 解出的 `q`，曝光只影响 Stage A；这是同一放大机设置下改变胶片曝光；
-- **retimed profile**：每个 `-2/0/+2` 节点独立求 `q(E)`，使 `neutral 0.18 -> output neutral Y=0.18`。这时 Stage B 也必须选择/插值对应 timing 的 density LUT，不能把 `q(E)` 假装成前段参数。
+- **fixed print timing**：沿用 EV0 解出的 `tau(0)`，曝光只影响 Stage A；这是同一放大机设置下改变胶片曝光；
+- **retimed profile**：每个声明节点独立求三个 `tau_j(E)=log2(q_j(E))`，使 `neutral 0.18 -> output neutral Y=0.18`。运行时在 B1 与相纸 1D 曲线之间加入 `tau(E)`，不选择或预混输出侧 timing LUT；
 
 面向 Dehancer 式“不同胶片曝光、最终亮度可比较”的完整预设使用 `retimed profile`；物理研究和自定义印相保留 `fixed print timing`。两者都不是最终 RGB 归一化。
 
-中间 retimed 状态不能直接假定 RGB 线性插值。构建工具在 `-1/+1 EV` 运行直接光谱 oracle，并比较 display-linear Rec.2020、XYZ log-Y+xy 和 Oklab 三种预混域；选择同时满足最低亮度 stop 误差和最低 DeltaE00 的域。三节点不达标则升级为五节点，不使用高阶插值掩盖误差。
+`-2/0/+2` 仍是 stock 状态的标定与 oracle 声明节点，不等于 timing 表的采样密度。输出域 LUT 预混已经被实测否证；retimed 的 `tau/cast` 求解表使用 0.25 EV 步长，在节点之间插值，并由中间曝光的直接光谱 oracle 验证。
 
 ### 5.4 运行时实现（P2 修正案：预混被实测否证，改为因式分解）
 
-Stage A 始终解析运行，逐像素成本是一次 3x3、EV 偏移和三条 1D 曲线。fixed
-timing 只采样一只 Stage B density LUT。
+Stage A 始终解析运行，逐像素成本是一次 3x3、EV 偏移和三条 1D 曲线。负片随后固定采样一只 B1 与一只 B2；fixed 和 retimed 的区别只在两者之间使用 `tau(0)` 还是 `tau(E)`。
 
-**retimed 的原设计（预混相邻 timing LUT）被它自己的验收门否证**：输出域
-预混在三节点下最优域 p99 0.36–0.73 stop、五节点下 0.13–0.22（门槛
-0.03）——印相重定时移动的是相纸曲线的输入，输出空间的混合无法表现这个
-平移（与"烘复合 cast"同一失败类,均实测）。链自身的结构给出精确解：q 位于
-印相积分与相纸曲线之间，因此 Stage B 因式分解为
+**retimed 的原设计（预混相邻 timing LUT）被它自己的验收门否证**：输出域预混在三节点下最优域 p99 为 0.36–0.73 stop，五节点下仍为 0.13–0.22 stop，均未达到 0.03 stop 门槛。印相重定时移动的是相纸曲线的输入，输出空间的任何混合都无法精确表现这个平移；这与“烘复合 cast 撞 EV_Y 折点”属于同一失败类。
+
+链自身给出了可因式分解的解。定义：
 
 ```text
-B1: 染料量 -> log 纸曝光      （与 q 无关的 65^3 体积）
-+q(E): 三个随 E 光滑的标量     （0.25 EV 步长求解节点,线性插值）
-paper: 三条 1D 相纸显影曲线    （解析表）
-B2: 纸染料量 -> 观看 Rec.2020  （与 q 无关的 65^3 体积）
+ell(D_neg) = B1(D_neg)                 # 三层 log2 纸曝光，65^3
+tau(E)     = log2(q(E))                # 三个 timing stops
+u          = ell(D_neg) + tau(E)
+D_print    = H_paper(u)                # 三条解析 1D 相纸曲线
+rgb_view   = B2(D_print)                # 正介质密度 -> 观看 Rec.2020，65^3
 ```
 
-任意曝光态在 q 上精确（残差分解实测：体积 0.003 stop,q 插值在 1 EV 节点
-下 0.037 → 0.25 EV 节点后整链 p99 0.010–0.017 stop、ΔE95 ≤0.09,全部过
-门）。逐节点 bounded cast 随 E 线性插值——节点处精确,节点间为声明的近似。
-预混域研究（display-linear / XYZ logY+xy / Oklab）保留为否证证据记录于
-资产 metadata,不再是出厂机制。§5.3 的节点语义不变：`-2/0/+2` 仍是标定与
-oracle 声明,q/cast 的 0.25 EV 加密只是求解采样。
+因式分解本身对 timing 平移是精确的，剩余误差只来自 B1/B2 体积逼近和 `tau/cast` 的节点间插值。残差分解实测：体积贡献约 0.003 stop；1 EV timing 节点时插值残差约 0.037 stop；加密到 0.25 EV 后，整链 p99 为 0.010–0.017 stop、DeltaE00 p95 不超过 0.09，全部通过门槛。逐节点 bounded cast 随 E 线性插值：节点处精确，节点间是已声明并被 oracle 约束的近似。
+
+这里的“精确”限定于当前 paper-layer exposure model：三个 `q_j` 是作用在积分结果后的有效纸层增益。未来若取得真实 Y/M 滤镜透过谱，色头会改变 B1 内的光谱积分，不能整体化为密度无关的 `tau[3]`；只有公共曝光时间的标量部分仍可在 log exposure 域解析相加，色头部分必须进入 B1 或经独立 oracle 证明可分解。
+
+display-linear Rec.2020、XYZ log-Y+xy 与 Oklab 的预混实验及其失败数字必须保存在资产 metadata 中，作为架构否证证据，不再参与出厂渲染。§5.3 的 `-2/0/+2` 节点语义不变；`tau/cast` 的 0.25 EV 加密只是求解采样，不伪装成新的实测 stock 状态。
 
 ## 6. 显影状态
 
@@ -232,8 +237,10 @@ H'_c(x) = Dmin'_c + (Dmax'_c-Dmin'_c) * H_c(a_c*x+b_c)
 ### 7.1 资产拆分
 
 - `stock_profile`：观察者逆变换、三层特性曲线、染料谱、片基、有效 EV 域与 density `Dmin/Dmax`；
-- `print_profile`：相纸/电影正片感度、染料谱、Dmin/Dmax、观看光源，以及可选的 `intrinsic_scatter_profile`；
-- `compiled_density_volume`：某 stock dye stack + print + timing node 的 `density -> viewed Rec.2020` Stage B 缓存，可由上面两份资产重建；Stage A 不烘 3D LUT。
+- `print_profile`：相纸/电影正片感度、三条特性曲线、染料谱、Dmin/Dmax、观看光源，以及可选的 `intrinsic_scatter_profile`；
+- `compiled_b1_volume`：某 stock dye stack + print sensitometry + 声明 printer-light 光谱状态的 `negative density -> log2 paper-layer exposure` 缓存，不含 `tau(E)`；
+- `timing_table`：0.25 EV 网格上的 `tau(E)[3]` 与 bounded cast，含直接光谱 oracle 残差和失败的输出预混实验记录；
+- `compiled_b2_volume`：目标相纸/正片的 `positive-medium density -> viewed Rec.2020` 缓存；同一 print medium 与观看条件可跨 stock 复用。`reversal_direct` 只使用对应 B2。
 
 所有资产使用 schema v5，记录输入空间、网格、曝光节点、积分网格、每个源文件 SHA-256、构建器 commit 和 oracle 误差。运行时对 schema、哈希和输入空间 fail closed。
 
@@ -243,20 +250,20 @@ H'_c(x) = Dmin'_c + (Dmax'_c-Dmin'_c) * H_c(a_c*x+b_c)
 
 这两个概念必须正交，不能再用一个“技术中性/native”枚举混在一起：
 
-- **timing policy** 决定进入相纸曲线前的有效曝光 `q`：`fixed` 沿用 EV0 联合求解得到的 `q(0)`；`retimed` 随 film exposure 选择/插值独立求解的 `q(E)`；`custom` 由 print exposure 与 Y/M 色头定义。基础 `q(0)` 使 EV0 的 viewed RGB 精确为 `[0.18,0.18,0.18]`；
+- **timing policy** 决定进入相纸曲线前的三个 exposure offset `tau=log2(q)`：`fixed` 沿用 EV0 联合求解得到的 `tau(0)`；`retimed` 随 film exposure 从 0.25 EV 表中插值得到 `tau(E)`；`custom` 由 print exposure 与 Y/M 色头定义。基础 `tau(0)` 使 EV0 的 viewed RGB 精确为 `[0.18,0.18,0.18]`；
 - **neutralization policy** 决定完整光谱链之后是否再校正中性灰阶：`datasheet` 不做后处理，保留 EV0 之外的曝光依赖 cast/crossover；`bounded` 使用现行按 scene luminance EV 查表的有界数字除法，使可校正范围内的灰阶保持中性。
 
 现行开关的精确迁移如下：
 
 | 现行 `--film-crossover` | v2 timing | v2 neutralization | 行为 |
 |---|---|---|---|
-| `off`（默认） | `fixed`（使用解得的 q(0)） | `bounded` | q 先解 EV0 中性，再对完整 LUT 输出做有界数字中性化；策略与现状相同 |
-| `datasheet` | `fixed`（使用解得的 q(0)） | `datasheet` | q 仍解 EV0 中性，但保留其余灰阶的层间漂移；策略与现状相同 |
+| `off`（默认） | `fixed`（使用解得的 tau(0)） | `bounded` | tau 先解 EV0 中性，再对完整链输出做有界数字中性化；策略与现状相同 |
+| `datasheet` | `fixed`（使用解得的 tau(0)） | `datasheet` | tau 仍解 EV0 中性，但保留其余灰阶的层间漂移；策略与现状相同 |
 | observe 下任一值 | 不适用 | 不适用 | 现状即惰性，迁移后不得改变 observe |
 
 新增 CLI 使用 `--film-print-timing` 与 `--film-neutralization`。旧 `--film-crossover off|datasheet` 保留一个稳定版本作为弃用别名；若新旧参数同时出现则硬失败，避免优先级猜测。GUI 原“层间漂移”改为“灰阶中性化”，旧设置文件加载时按上表一次性迁移，报告同时记录 timing 与 neutralization。两段式改变了 LUT 的插值与量化位置，不能承诺 v2 对旧 f16 单 LUT 逐字节相同；过渡期由隐藏的测试后端保留旧 freeze，v2 则对同一高精度光谱链 oracle 验证，并单独记录相对旧输出的可见域差异。
 
-色头必须进入光谱印相求解或选择相应 Stage B density volume，不能在 full 输出后追加 LMS 近似。当前联合色头场没有真实 Y/M 滤镜透过谱，只是 paper-layer exposure model；在取得滤镜谱以前，full v2 的色头只能标为 `modelled`，不能写成完整滤镜光谱 oracle。observe 保留现有联合 LMS 色头作为快速近似。
+色头不能在 full 输出后追加 LMS 近似。当前联合色头场没有真实 Y/M 滤镜透过谱，只是 paper-layer exposure model，因此可转换为 B1 后的三个 `Delta tau_j`；在这个模型内它与 retimed timing 一样解析、可验证，但只能标为 `modelled`。取得真实滤镜透过谱后，Y/M 会改变 B1 内部的 `L_print(lambda)`，其效应通常依赖负片密度，不能再冒充固定三标量；届时必须按色头状态重建/选择 B1，或建立经过 oracle 验证的参数化 B1。observe 保留现有联合 LMS 色头作为快速近似。
 
 per-medium 字段有效性：
 
@@ -267,7 +274,7 @@ per-medium 字段有效性：
 
 反转片没有印相、重新 timing 或放大机色头。任何 `reversal_direct + retimed/custom`、非零 Y/M CC 或非零 print exposure 在 plan 编译器、CLI/API、GUI payload 校验和资产加载层都必须明确失败，不能重置后继续、静默忽略或退回 fixed。
 
-普通资产规模不是限制：现行单卷 float16 65^3 LUT 约 0.5 MB，三 timing 节点乘 25 卷约 38 MB；density-domain Stage B 同量级，可接受。不能因此把曝光节点降采样。真正的组合爆炸只在完整 `41x41` Y/M 色头体积；在取得滤镜谱和更好的参数化办法前，不预烘全部 1681 个色头 volume。
+普通资产规模不是限制：按现行压缩方式，单只 float16 65^3 volume 的磁盘体积约 0.5 MB。B1 通常按 stock + print-light/print-medium 组合生成，B2 可按 print medium + viewing condition 跨 stock 复用；0.25 EV 的 `tau/cast` 表只有几十个标量，体积可忽略。真正的组合爆炸只在取得真实滤镜谱后穷举完整 `41x41` Y/M 色头 B1；在更好的参数化办法通过 oracle 以前，不预烘全部 1681 个色头 volume。
 
 ## 8. Film Compression：数字捕获到胶片曝光的桥
 
@@ -379,20 +386,21 @@ CLI 建议新增：
 - 对每张输出 AgX、曲线 only、前馈 only、observe combo、full neutralized、full datasheet 六联；
 - 记录每层对 Y、Oklab C/L、hue path 和像素差的贡献，防止新功能靠未声明的层制造差异。
 
-### P1：两段式内核、计划对象与 schema v5
+### P1：因式分解内核、计划对象与 schema v5
 
 - 引入四个 plan，但所有新字段默认恒等；
-- 把现行构建链拆成运行时 Stage A（observer inverse + 三条 1D 特性曲线）和 Stage B density LUT；
-- 拆出可重建的 stock/print 描述、三通道 density shaper 和 compiled cache metadata；
-- 用当前 fixed timing、grain/halation 关闭、现行 neutralization 重现 full v1 的物理语义；两段式结果必须在现有 direct-chain oracle 容差内，而不是用最终图像反推密度；旧单 LUT 仅作为隐藏测试后端保留 freeze；
+- 把现行构建链拆成运行时 Stage A、B1、解析 `tau + paper curves` 与 B2；反转片旁路 B1/timing/paper；
+- 拆出可重建的 stock/print 描述、负片与正介质各自的三通道 density shaper、B1/B2 compiled cache 和 timing metadata；
+- 用当前 fixed timing、grain/halation 关闭、现行 neutralization 重现 full v1 的物理语义；因式分解结果必须在现有 direct-chain oracle 容差内，而不是用最终图像反推密度；旧单 LUT 仅作为隐藏测试后端保留 freeze；
 - 完成 fail-closed、哈希、provenance 与报告。
 
 ### P2：胶片曝光与 retimed profile
 
 - 对首批 Portra 400、Velvia 100、Vision3 250D 验证 Stage A 在 `-2/0/+2` 的解析密度；
-- 支持 fixed print timing；再为负片生成 `-2/0/+2` retimed Stage B volume，反转片保持无重定时语义；
-- 用 `-1/+1` 直接光谱结果选择插值域；
-- NumPy 两段式端到端 A/B 后，再把 density shaper 与 tetrahedral lookup 接入 C++ 内核；
+- 支持 fixed print timing；再为负片在 `[-2,+2] EV` 内生成 0.25 EV 步长的 `tau/cast` 求解表，反转片保持无重定时语义；
+- `-2/0/+2` 保持 stock 标定与 oracle 节点；用其间直接光谱结果验证 `tau/cast` 插值，不生成或预混 retimed 输出 LUT；
+- 把 display-linear、XYZ log-Y+xy 与 Oklab 预混的失败结果写入 metadata，防止后续实现退回已否证架构；
+- NumPy 因式分解端到端 A/B 后，再把两套 density shaper 与 tetrahedral lookup 接入 C++ 内核；
 - GUI 增加胶片曝光滑杆，这是首个用户可见里程碑。
 
 ### P3：印相模块化
@@ -439,9 +447,10 @@ CLI 建议新增：
 - `observe` 默认输出逐字节不变；
 - full 链无 NaN/负谱/非单调中性阶；
 - Stage A 在无空间效果时对 observer inverse + 三条直接特性曲线 oracle 达到 float32 容差，输出 density 严格落在声明 shaper 域；
-- Stage B 65^3 density LUT 对直接染料/印相/观看链：沿用并收紧当前可见域 stop/DeltaE gate；
-- retimed 负片每个曝光节点的 EV0：`Y=0.18`，中性 DeltaE00 <= 0.5；fixed timing 不套这条断言，而是对同一 q 的直接链；
-- 中间 retimed 状态对直接光谱 oracle：亮度 p99 <= 0.03 stop、DeltaE00 p95 <= 1、max <= 3；门槛达不到则增加节点；
+- B1 65^3 对直接负片染料/印相积分的 log paper exposure oracle、B2 65^3 对直接正介质染料/观看链分别设 stop/DeltaE gate；整链必须额外验证，不能让两段误差相互抵消；
+- retimed 负片每个 0.25 EV `tau` 求解节点的参考中灰：`Y=0.18`，中性 DeltaE00 <= 0.5；fixed timing 不套这条断言，而是对同一 `tau(0)` 的直接链；
+- `tau/cast` 节点之间对直接光谱 oracle：亮度 p99 <= 0.03 stop、DeltaE00 p95 <= 0.2、max <= 3；当前基线 p99 为 0.010–0.017 stop、DeltaE00 p95 <= 0.09，回归报告必须单列体积误差与 timing 插值误差；
+- 资产 metadata 必须保存被否证的三/五节点输出预混误差及测试域；生产路径不得包含 timing volume 预混分支；
 - `film_exposure_ev=0` 与 v2 零节点一致；滑杆跨节点连续，无 hue/导数跳变；
 - `film_exposure_ev` 超出资产域时 GUI 不可到达，CLI/API 明确报错；
 - `film-crossover=off/datasheet` 按迁移表分别进入 bounded/datasheet；旧后端保持 freeze，v2 对各自 direct-chain oracle 过门，不能互换或静默改名；
@@ -473,7 +482,7 @@ CLI 建议新增：
 
 1. 当前 `observe` 不是失败的胶片模拟，而是完成度较高的胶片数据驱动 AgX；保持不动。
 2. 明显胶片观感由 `full v2` 承担，首要新增维度是**胶片曝光状态 + 重新印相**，不是总强度。
-3. full v2 拆成解析的 scene->density Stage A 与 density->print/view Stage B LUT；halation、grain 与印相介质由此获得正确插入点。
+3. full v2 拆成解析的 scene->density Stage A，以及 `B1 -> tau(E) -> paper curves -> B2`；halation、grain、印相 timing 与介质由此获得正确插入点。
 4. 印相 timing 与事后灰阶中性化正交；现行 `off/datasheet` 按迁移表保持原义。
 5. 胶片、显影、印相和模拟光学分别建模；full 路径独占 DRT，不再追加 AgX formation。
 6. 真实测量与主观配方并存，但必须在数据、计划、报告和 UI 中明确分层。
