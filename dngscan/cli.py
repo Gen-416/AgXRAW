@@ -349,6 +349,28 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--film-exposure",
+        type=float,
+        default=0.0,
+        metavar="EV",
+        help=(
+            "film v2:胶片乳剂相对标称 EI 的曝光状态(不是输出曝光),仅 "
+            "--film-mode full。负片配 --film-print-timing retimed 时按暗房惯例"
+            "重新印相(总体亮度接近不变,颜色/对比/趾肩变化);fixed 保持同一放大机"
+            "设置。域 [-2,+2](资产声明,越域报错)"
+        ),
+    )
+    parser.add_argument(
+        "--film-print-timing",
+        choices=("fixed", "retimed"),
+        default="fixed",
+        help=(
+            "film v2 印相 timing:fixed=沿用 EV0 联合求解的 q(0)(默认);"
+            "retimed=随胶片曝光重解 q(E)(因式分解 Stage B,目前试点负片 "
+            "portra400/vision3250d;反转片无印相环节,一律拒绝)"
+        ),
+    )
+    parser.add_argument(
         "--demosaic",
         choices=DEMOSAIC_CHOICES,
         default="auto",
@@ -692,6 +714,8 @@ def main(argv: list[str]) -> int:
                 film_curve=args.film_curve,
                 film_mode=args.film_mode,
                 film_crossover=args.film_crossover,
+                film_exposure_ev=args.film_exposure,
+                film_print_timing=args.film_print_timing,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
             )
@@ -724,6 +748,8 @@ def main(argv: list[str]) -> int:
                 film_curve=args.film_curve,
                 film_mode=args.film_mode,
                 film_crossover=args.film_crossover,
+                film_exposure_ev=args.film_exposure,
+                film_print_timing=args.film_print_timing,
                 endpoint_mode=args.endpoint_mode,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,

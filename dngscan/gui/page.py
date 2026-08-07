@@ -380,6 +380,20 @@ FILM_CURVE_OPTIONS
       </select>
     </div>
   </div>
+  <div class="row" id="filmExposureRow" style="margin-top:12px;display:none">
+    <div class="sliderField">
+      <div class="labelRow"><label title="film v2：胶片乳剂相对标称 EI 的曝光状态——改变乳剂状态，不等于输出曝光。负片配 retimed 印相时按暗房惯例重新定时（总体亮度接近不变，颜色/对比/趾肩变化）；fixed 保持同一放大机设置。域 [-2,+2]，资产声明。">胶片曝光</label><span class="val" id="filmExposureVal">0.00 EV</span></div>
+      <input type="range" id="filmExposure" min="-2" max="2" step="0.05" value="0" title="改变乳剂状态，不等于输出曝光。">
+    </div>
+    <div style="flex:1;min-width:190px">
+      <label>印相 timing</label>
+      <select id="filmPrintTiming" title="fixed=沿用 EV0 联合求解的 q(0)（同一放大机设置，默认）；retimed=随胶片曝光重解 q(E)（因式分解 Stage B；试点负片 portra400/vision3250d）。反转片无印相环节，一律 fixed。">
+        <option value="fixed">固定 · q(0) · 默认</option>
+        <option value="retimed">随胶片曝光重定时（试点负片）</option>
+      </select>
+      <div class="ctlFact" id="filmTimingHint" style="display:none"></div>
+    </div>
+  </div>
   <div class="row" style="margin-top:12px">
     <div style="flex:2;min-width:210px">
       <label>压缩核心</label>
@@ -851,6 +865,7 @@ function saveSettings(){
     ev:$("#ev").value,quality:$("#quality").value,
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,film:$("#film").value,
     filmMode:$("#filmMode").value,filmCrossover:$("#filmCrossover").value,
+    filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
     highlight:$("#highlight").dataset.librawValue||$("#highlight").value,gamut:$("#gamut").value,wb:$("#wb").value,demosaic:$("#demosaic").dataset.librawValue||$("#demosaic").value,
     decoder:$("#decoder").value,coreimageVersion:$("#coreimageVersion").value,
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,
@@ -901,6 +916,9 @@ function restoreSettings(){
   if(s.film&&[...$("#film").options].some(o=>o.value===s.film))$("#film").value=s.film;
   if(s.filmMode&&[...$("#filmMode").options].some(o=>o.value===s.filmMode))$("#filmMode").value=s.filmMode;
   if(s.filmCrossover&&[...$("#filmCrossover").options].some(o=>o.value===s.filmCrossover))$("#filmCrossover").value=s.filmCrossover;
+  if(s.filmExposure!==undefined)$("#filmExposure").value=s.filmExposure;
+  if(s.filmPrintTiming&&["fixed","retimed"].includes(s.filmPrintTiming))$("#filmPrintTiming").value=s.filmPrintTiming;
+  if(typeof setFilmExposureLabel==="function")setFilmExposureLabel();
   if(s.deliveryProfile&&[...$("#deliveryProfile").options].some(o=>o.value===s.deliveryProfile))$("#deliveryProfile").value=s.deliveryProfile;
   if(s.toneCore&&[...$("#toneCore").options].some(o=>o.value===s.toneCore))$("#toneCore").value=s.toneCore;
   if(s.lumNorm&&[...$("#lumNorm").options].some(o=>o.value===s.lumNorm))$("#lumNorm").value=s.lumNorm;
@@ -977,6 +995,32 @@ function updateFilmModeUi(){
   $("#filmModeRow").style.display=hasCurve?"":"none";
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
+  const expRow=$("#filmExposureRow");
+  if(expRow){
+    expRow.style.display=full?"":"none";
+    if(!full){
+      // 清除会污染 payload 的陈旧值(既定惯例)。
+      $("#filmExposure").value=0;$("#filmPrintTiming").value="fixed";
+      if(typeof setFilmExposureLabel==="function")setFilmExposureLabel();
+    } else {
+      const preset=$("#filmCurve").value;
+      const canRetime=FILM_RETIMED.includes(preset);
+      const timing=$("#filmPrintTiming");
+      const retimedOpt=[...timing.options].find(o=>o.value==="retimed");
+      if(retimedOpt)retimedOpt.disabled=!canRetime;
+      const hint=$("#filmTimingHint");
+      let reason="";
+      if(!canRetime){
+        if(!FILM_COLOR_HEADS[preset]&&preset!=="none"){
+          reason="反转片无印相环节，不存在重定时——timing 一律 fixed";
+        } else {
+          reason="该卷尚无 retimed 印相资产（试点：portra400 / vision3250d）";
+        }
+        if(timing.value==="retimed"){timing.value="fixed";}
+      }
+      if(hint){hint.textContent=reason;hint.style.display=reason?"":"none";}
+    }
+  }
   // Scene-adaptive auto punch is an editorial compensation, not film
   // calibration data — film presets compile punch to 0, so the multiplier
   // slider is genuinely dead there and says so instead of pretending.
@@ -1007,6 +1051,9 @@ function updateFilmModeUi(){
 }
 $("#filmMode").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();saveSettings();scheduleLivePreview();});
 $("#filmCrossover").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+function setFilmExposureLabel(){const v=+$("#filmExposure").value;$("#filmExposureVal").textContent=(v>0?"+":"")+v.toFixed(2)+" EV";}
+$("#filmExposure").oninput=()=>{setFilmExposureLabel();saveSettings();scheduleLivePreview();};
+$("#filmPrintTiming").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 
 // Enlarger colour head: shown only while the selected curve preset is a NEGATIVE
@@ -1014,6 +1061,7 @@ $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePrevi
 // and reset the dials — the payload must never carry filtration the server would
 // reject as physically meaningless.
 const FILM_COLOR_HEADS=FILM_COLOR_HEADS_JSON;
+const FILM_RETIMED=FILM_RETIMED_JSON;
 function setColorHeadLabels(){
   $("#colorHeadYVal").textContent=$("#colorHeadY").value+" CC";
   $("#colorHeadMVal").textContent=$("#colorHeadM").value+" CC";
@@ -1136,6 +1184,7 @@ function payload(){
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,
     colorHeadY:+$("#colorHeadY").value,colorHeadM:+$("#colorHeadM").value,
     filmMode:$("#filmMode").value,filmCrossover:$("#filmCrossover").value,
+    filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
     toneCore:$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
@@ -1575,6 +1624,25 @@ def _scene_transform_options_html() -> str:
     return "\n".join(lines)
 
 
+def _film_retimed_json() -> str:
+    """Presets whose v2 asset ships the retimed print payload (P2 pilot)."""
+    import json
+    from pathlib import Path as _P
+
+    out = []
+    v2_dir = _P(__file__).resolve().parents[1] / "data" / "film_v2"
+    for npz in sorted(v2_dir.glob("*.npz")):
+        try:
+            import zipfile
+
+            with zipfile.ZipFile(npz) as zf:
+                if "retimed_nodes.npy" in zf.namelist():
+                    out.append(npz.stem)
+        except OSError:
+            continue
+    return json.dumps(out)
+
+
 def _film_options_html() -> tuple[str, str, str, str]:
     from ..film_curve import (
         FILM_CURVE_PRESETS,
@@ -1637,5 +1705,6 @@ def render_page(init_dir: str) -> bytes:
         .replace("FILM_CURVE_OPTIONS", curve_opts)
         .replace("FILM_COMBOS_JSON", combos_json)
         .replace("FILM_COLOR_HEADS_JSON", color_heads_json)
+        .replace("FILM_RETIMED_JSON", _film_retimed_json())
     )
     return html.encode("utf-8")

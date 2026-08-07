@@ -288,13 +288,13 @@ class TestPlanGuards(unittest.TestCase):
             parse_film_params({"filmCurve": "velvia100", "colorHeadY": 30})
         with self.assertRaises(ValueError):
             parse_film_params({"filmCurve": "none", "colorHeadM": 5})
-        lens, curve, _mode, _xover, y, m = parse_film_params(
+        lens, curve, _mode, _xover, y, m, _fexp, _ftim = parse_film_params(
             {"filmCurve": "portra400", "colorHeadY": 30, "colorHeadM": 5}
         )
         self.assertEqual((curve, y, m), ("portra400", 30.0, 5.0))
         # Reversal preset with zero dials stays valid — the control is absent,
         # not the preset.
-        lens, curve, _mode, _xover, y, m = parse_film_params({"filmCurve": "velvia100"})
+        lens, curve, _mode, _xover, y, m, _fexp, _ftim = parse_film_params({"filmCurve": "velvia100"})
         self.assertEqual((curve, y, m), ("velvia100", 0.0, 0.0))
 
     def test_gui_parser_rejects_off_detent(self):

@@ -254,9 +254,35 @@ def _load_v2(name: str):
                 raise ValueError("film v2 cast outside its declared bound")
             if not exp_hi > exp_lo:
                 raise ValueError("film v2 exposure domain degenerate")
+            retimed = None
+            if "retimed_nodes" in z:
+                r_nodes = np.asarray(z["retimed_nodes"], dtype=np.float64)
+                r_q = np.asarray(z["retimed_q"], dtype=np.float64)
+                r_b1 = np.asarray(z["retimed_b1_logep"], dtype=np.float32)
+                r_b2 = np.asarray(z["retimed_b2_volume"], dtype=np.float32)
+                r_ple = np.asarray(z["retimed_paper_le"], dtype=np.float64)
+                r_pam = np.asarray(z["retimed_paper_amounts"], dtype=np.float64)
+                r_plo = np.asarray(z["retimed_paper_lo"], dtype=np.float64)
+                r_phi = np.asarray(z["retimed_paper_hi"], dtype=np.float64)
+                r_casts = np.asarray(z["retimed_casts"], dtype=np.float32)
+                if r_nodes.size < 2 or not bool(np.all(np.diff(r_nodes) > 0)):
+                    raise ValueError("retimed nodes axis degenerate")
+                if r_q.shape != (r_nodes.size, 3):
+                    raise ValueError("retimed q table mis-shaped")
+                if r_b1.shape != (n, n, n, 3) or r_b2.shape != (n, n, n, 3):
+                    raise ValueError("retimed volumes mis-shaped")
+                if not bool(np.all(r_phi > r_plo)) or r_ple.size < 2:
+                    raise ValueError("retimed paper tables degenerate")
+                if r_casts.shape != (r_nodes.size, cast_ev.size, 3):
+                    raise ValueError("retimed casts mis-shaped")
+                if not bool(np.isfinite(r_casts).all()) or \
+                        float(r_casts.min()) < 0.25 - 1e-4 or \
+                        float(r_casts.max()) > 4.0 + 1e-4:
+                    raise ValueError("retimed cast outside its declared bound")
+                retimed = (r_nodes, r_q, r_b1, r_b2, r_ple, r_pam, r_plo, r_phi, r_casts)
             entry = (
                 volume, observer, char_le, char_amounts, lo, hi,
-                anchor, cast_ev, cast, exp_lo, exp_hi, n,
+                anchor, cast_ev, cast, exp_lo, exp_hi, n, retimed,
             )
     except (OSError, KeyError, ValueError):
         entry = None
@@ -273,8 +299,9 @@ def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
     from .film_v2_math import amounts_to_unit, stage_a_amounts
 
     (volume, observer, char_le, char_amounts, lo, hi, anchor,
-     cast_ev, cast_bounded, exp_lo, exp_hi, n) = _load_v2(preset)
+     cast_ev, cast_bounded, exp_lo, exp_hi, n, retimed) = _load_v2(preset)
     exposure_ev = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
+    timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
     if not exp_lo <= exposure_ev <= exp_hi:
         # §5.3: out-of-domain values hard-fail, never silently clamp.
         raise ValueError(
@@ -285,6 +312,39 @@ def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
         rgb, observer, char_le, char_amounts,
         film_exposure_ev=exposure_ev, anchor_ev_offset=anchor,
     )
+    if timing == "retimed":
+        if retimed is None:
+            # §7.2 fail closed: retimed needs the solved node payload — no
+            # silent downgrade to fixed.
+            raise ValueError(
+                f"'{preset}' 无 retimed 印相资产（试点为负片 portra400/"
+                "vision3250d）；请用 --film-print-timing fixed 或重新烘焙资产"
+            )
+        (r_nodes, r_q, r_b1, r_b2, r_ple, r_pam, r_plo, r_phi, r_casts) = retimed
+        # Factorized Stage B (plan §5.4, amended): B1 -> +q(E) -> paper 1-D
+        # development -> B2; q interpolated over 0.25 EV solved nodes.
+        u1 = amounts_to_unit(amounts, lo, hi)
+        log_ep = _tetrahedral(r_b1, u1.astype(np.float32), n).astype(np.float64)
+        q = np.array([
+            np.interp(exposure_ev, r_nodes, r_q[:, c]) for c in range(3)
+        ])
+        dye = np.stack([
+            np.interp(log_ep[:, c] + q[c], r_ple, r_pam[:, c])
+            for c in range(3)
+        ], axis=1)
+        u2 = amounts_to_unit(dye, r_plo, r_phi)
+        developed = _tetrahedral(r_b2, u2.astype(np.float32), n)
+        if str(getattr(plan, "film_crossover", "off")) != "datasheet":
+            ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
+            # Per-node casts, linearly interpolated in E: exact at nodes,
+            # declared approximation between them.
+            i_hi = int(np.searchsorted(r_nodes, exposure_ev, side="left").clip(1, r_nodes.size - 1))
+            i_lo = i_hi - 1
+            t = (exposure_ev - r_nodes[i_lo]) / (r_nodes[i_hi] - r_nodes[i_lo])
+            cast_e = (1.0 - t) * r_casts[i_lo] + t * r_casts[i_hi]
+            for c in range(3):
+                developed[:, c] /= np.interp(ev_y, cast_ev, cast_e[:, c])
+        return np.maximum(developed, 0.0).astype(np.float32, copy=False)
     u = amounts_to_unit(amounts, lo, hi)
     developed = _tetrahedral(volume, u.astype(np.float32), n)
     if str(getattr(plan, "film_crossover", "off")) != "datasheet":

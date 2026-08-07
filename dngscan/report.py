@@ -387,8 +387,18 @@ def jpeg_tone_plan_cn(
             str(getattr(tone_plan, "film_mode", "observe")) == "full" and \
             str(getattr(tone_plan, "curve_preset", "none")) != "none":
         plan = tone_plan
+        exposure = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
+        timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
+        state = ""
+        if exposure != 0.0 or timing != "fixed":
+            state = (
+                f"胶片曝光 {exposure:+.2f} EV·印相 "
+                + ("retimed(q(E) 重解)" if timing == "retimed" else "fixed(q(0))")
+                + "；"
+            )
         return (
-            f"filmfull({plan.curve_preset}) 接管显影：烘焙光谱链 LUT，"
+            f"filmfull({plan.curve_preset}) 接管显影：两段式(解析 Stage A + "
+            f"密度域 Stage B)，{state}"
             f"层间漂移={getattr(plan, 'film_crossover', 'off')}；"
             f"AgX endpoint/contrast/toe/shoulder/punch 不参与（接管核心整体替换 "
             f"formation，仅保留交付侧色域安全）；SDR"

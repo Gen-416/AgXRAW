@@ -331,5 +331,144 @@ class FilmV2RuntimeTests(unittest.TestCase):
                 os.environ["DNGSCAN_FILM_LEGACY_LUT"] = prev
 
 
+class FilmV2RetimedTests(unittest.TestCase):
+    """P2 gates (plan §13): retimed nodes hit EV0 neutrality, the deployed
+    factorized runtime reproduces the midpoint direct-chain oracle, the
+    exposure axis is continuous, and the per-medium contract fails closed."""
+
+    RETIMED = ("portra400", "vision3250d")
+
+    def _plan(self, preset, exposure=0.0, timing="retimed", crossover="off"):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            curve_preset=preset, film_mode="full", film_crossover=crossover,
+            film_exposure_ev=exposure, film_print_timing=timing,
+        )
+
+    def test_deployed_runtime_matches_midpoint_oracle(self) -> None:
+        from dngscan.film_develop import apply_film_core
+
+        for stock in self.RETIMED:
+            z = _load(stock)
+            rgb = (SCENE_MID * np.exp2(z["retimed_oracle_ev"].astype(np.float64))).astype(np.float32)
+            for i, e_mid in enumerate(z["retimed_oracle_exposures"].tolist()):
+                truth = z["retimed_oracle_truth"][i].astype(np.float64)
+                out = apply_film_core(
+                    rgb, self._plan(stock, exposure=float(e_mid), crossover="datasheet")
+                )
+                vis = truth > 5e-3
+                err = np.abs(np.log2(
+                    np.maximum(out[vis].astype(np.float64), 1e-9)
+                    / np.maximum(truth[vis], 1e-9)
+                ))
+                with self.subTest(stock=stock, exposure=e_mid):
+                    self.assertLessEqual(float(np.percentile(err, 99)), 0.03)
+                    self.assertLessEqual(float(err.max()), 0.05)
+
+    def test_retimed_nodes_hold_ev0_neutrality(self) -> None:
+        """plan §13: every retimed node prints neutral mid-grey back to
+        Y=0.18 with near-zero chroma (DeltaE00 <= 0.5 stand-in: Oklab
+        distance x100 <= 0.5)."""
+        from dngscan.film_develop import apply_film_core
+
+        for stock in self.RETIMED:
+            z = _load(stock)
+            for e in z["retimed_nodes"].tolist():
+                grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
+                out = apply_film_core(
+                    grey, self._plan(stock, exposure=float(e), crossover="datasheet")
+                ).astype(np.float64)
+                y = float(out[0] @ np.array([0.2627, 0.678, 0.0593]))
+                with self.subTest(stock=stock, node=e):
+                    self.assertLess(abs(np.log2(y / SCENE_MID)), 0.02)
+                    mx, mn = float(out[0].max()), float(out[0].min())
+                    self.assertLess((mx - mn) / max(y, 1e-9), 0.02)
+
+    def test_exposure_axis_is_continuous(self) -> None:
+        """plan §13: the slider must not jump across q nodes."""
+        from dngscan.film_develop import apply_film_core
+
+        stock = "portra400"
+        probe = np.array([[0.18, 0.18, 0.18], [0.6, 0.3, 0.15]], dtype=np.float32)
+        evs = np.linspace(-2.0, 2.0, 81)
+        outs = np.stack([
+            apply_film_core(probe, self._plan(stock, exposure=float(e)))
+            for e in evs
+        ])
+        step = np.abs(np.diff(outs, axis=0))
+        self.assertLess(float(step.max()), 0.06)
+
+    def test_fixed_timing_keeps_the_enlarger_setting(self) -> None:
+        """fixed: +2 EV on the emulsion prints BRIGHTER through the same
+        q(0); retimed prints back near mid-grey. The two recipes must
+        actually differ (plan §5.3)."""
+        from dngscan.film_develop import apply_film_core
+
+        grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
+        fixed = apply_film_core(
+            grey, self._plan("portra400", exposure=2.0, timing="fixed",
+                             crossover="datasheet")
+        ).astype(np.float64)
+        retimed = apply_film_core(
+            grey, self._plan("portra400", exposure=2.0, timing="retimed",
+                             crossover="datasheet")
+        ).astype(np.float64)
+        luma = np.array([0.2627, 0.678, 0.0593])
+        y_fixed = float(fixed[0] @ luma)
+        y_retimed = float(retimed[0] @ luma)
+        self.assertGreater(np.log2(y_fixed / SCENE_MID), 0.5)
+        self.assertLess(abs(np.log2(y_retimed / SCENE_MID)), 0.02)
+
+    def test_retimed_without_assets_fails_closed(self) -> None:
+        from dngscan.film_develop import apply_film_core
+
+        with self.assertRaises(ValueError):
+            apply_film_core(
+                np.full((2, 3), 0.18, dtype=np.float32),
+                self._plan("gold200", exposure=1.0, timing="retimed"),
+            )
+
+    def test_plan_compiler_enforces_full_only_and_reversal_contract(self) -> None:
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan.tone import build_render_plan
+
+        scene = build_daylight_wide_dr()
+        with self.assertRaises(ValueError):
+            build_render_plan(
+                scene.bundle, scene.analysis, "agx", "srgb",
+                film_curve="portra400", film_mode="observe",
+                film_exposure_ev=1.0,
+            )
+        with self.assertRaises(ValueError):
+            build_render_plan(
+                scene.bundle, scene.analysis, "agx", "srgb",
+                film_curve="velvia100", film_mode="full",
+                film_print_timing="retimed",
+            )
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "srgb",
+            film_curve="portra400", film_mode="full",
+            film_exposure_ev=-1.5, film_print_timing="retimed",
+        )
+        self.assertEqual(float(plan.tone.film_exposure_ev), -1.5)
+        self.assertEqual(plan.tone.film_print_timing, "retimed")
+
+    def test_gui_service_rejects_exposure_outside_full(self) -> None:
+        from dngscan.gui.service import parse_film_params
+
+        with self.assertRaises(ValueError):
+            parse_film_params({
+                "filmCurve": "portra400", "filmMode": "observe",
+                "filmExposure": 1.0,
+            })
+        parsed = parse_film_params({
+            "filmCurve": "portra400", "filmMode": "full",
+            "filmExposure": -0.5, "filmPrintTiming": "retimed",
+        })
+        self.assertEqual(parsed[6], -0.5)
+        self.assertEqual(parsed[7], "retimed")
+
+
 if __name__ == "__main__":
     unittest.main()
