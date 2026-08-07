@@ -786,7 +786,9 @@ adaptive_monotone_segments   # 仅 reference-white 辅助色度候选显式使�
 - 编译 B/K/W，不继承 SDR white endpoint；
 - 编译 `H_content/P/Z_peak`；
 - 从 HDR body 的实际渲染值和同参数解析导数求 `T_K/Z_K/M_K`；
-- 编译且只编译一个权威 shoulder segment；越界时 fail closed；
+- 编译权威 shoulder：`alpha <= 3` 恰好单段；`alpha > 3` 按 §7.4 细分为多段
+  单调 Hermite 链（同一结构合同、同一验收）；严格 fail closed 只保留给
+  真正的退化输入（`DeltaZ<=0`、`W<=K`、锚点非有限）；
 - 保留现有 rho/clip/gamut confidence 编译；
 - 报告内容与显示容量分离。
 

@@ -1085,7 +1085,9 @@ profile is unavailable rather than writing untagged wide-gamut values.
 
 HDR output is an optional Apple ISO 21496-1 gain-map package (JPEG or HEIC), currently
 available only through the macOS/Core Image backend and only with the AgX tone core. HEIC
-uses the same formation masters; only the last encode hop changes (usually smaller files).
+uses the same formation masters; only the last encode hop changes — and measured on this
+pipeline the HEIC files come out LARGER with higher round-trip error than the JPEG
+container (see the delivery notes and USER_GUIDE), so JPEG stays the recommended default.
 It does not amplify the
 finished SDR image. The same scene-linear Rec.2020 buffer splits before display formation
 into independent SDR and HDR AgX DRTs. They share capture exposure intent and RAW analysis,

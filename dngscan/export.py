@@ -230,6 +230,20 @@ def export_jpeg(
     chroma: str = "444",
 ) -> Any:
     if is_hdr_output_format(output_format):
+        # Library-level mirror of the CLI/GUI contract (review batch 11): the
+        # film-takeover development has no HDR counterpart. Without this guard
+        # a direct API caller gets a gain-map whose SDR base is the takeover
+        # LUT while the HDR leg is AgX formation — two developments in one
+        # file. Same class as the full+non-AgX silent mismatch (batch 7).
+        _plan_tone = getattr(tone_plan, "tone", tone_plan)
+        if (
+            str(getattr(_plan_tone, "film_mode", "observe")) == "full"
+            and str(getattr(_plan_tone, "curve_preset", "none")) != "none"
+        ):
+            raise ValueError(
+                "胶片接管显影（film_mode=full）暂仅支持 SDR：HDR 容器导出没有"
+                "接管对应物。请改用 SDR 输出或 observe 模式"
+            )
         cont = container_for_output_format(output_format)
         profile = delivery
         if profile is None:

@@ -763,6 +763,51 @@ class FilmFullCoreExclusivityTests(unittest.TestCase):
     the agx pipeline slot, so the combination is rejected explicitly at the
     plan compiler, the CLI and the GUI service."""
 
+    def test_library_export_rejects_full_with_hdr_containers(self) -> None:
+        """Batch-11 P1: the CLI/GUI guard the combination, but a direct
+        export_jpeg caller could get a gain-map whose SDR base is the
+        takeover LUT while the HDR leg is AgX formation. The library now
+        refuses before any encoding work."""
+        from pathlib import Path
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan.export import export_jpeg
+        from dngscan.tone import build_render_plan
+
+        scene = build_daylight_wide_dr()
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "p3",
+            film_curve="portra400", film_mode="full", tone_core="agx",
+        )
+        for fmt in ("ultrahdr", "ultrahdr-heic"):
+            with self.subTest(fmt=fmt), self.assertRaises(ValueError):
+                export_jpeg(
+                    path=Path("unused.dng"),
+                    out_path=Path("unused.jpg"),
+                    quality=90,
+                    bundle=scene.bundle,
+                    analysis=scene.analysis,
+                    tone_plan=plan,
+                    output_gamut="p3",
+                    output_format=fmt,
+                )
+
+    def test_ultrahdr_pair_kernel_rejects_full(self) -> None:
+        """Batch-11 P1 defence in depth: the pair kernel itself refuses a
+        full-takeover plan even when export_jpeg was bypassed."""
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan.hdr_agx import render_ultrahdr_agx_pair
+        from dngscan.tone import build_render_plan
+
+        scene = build_daylight_wide_dr()
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "p3",
+            film_curve="portra400", film_mode="full", tone_core="agx",
+        )
+        with self.assertRaises(RuntimeError):
+            render_ultrahdr_agx_pair(
+                scene.bundle, scene.analysis, plan, hdr_plan=None
+            )
+
     def test_plan_compiler_rejects_full_with_non_agx_cores(self) -> None:
         from tests.golden_support import build_daylight_wide_dr
         from dngscan.tone import build_render_plan
