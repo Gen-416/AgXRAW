@@ -21,8 +21,10 @@ struct HdrCurveTableView {
 //   compress_into_gamut -> inset -> curve table (native + optional reference-white
 //   chroma candidate blended by RAW-gated rho) -> hue restore -> outset -> punch ->
 //   Rec.2020 -> XYZ -> output RGB -> nan_to_num -> HDR colour-volume fit.
-// The film channel-ratio gain is deliberately not represented; plans that need it
-// are excluded from native dispatch (dngscan/_fast.py supports_hdr_formation).
+// Two film features are deliberately not represented and keep the NumPy path
+// via dispatch exclusion (dngscan/_fast.py supports_hdr_formation): the full-mode
+// takeover LUT (film_mode="full" with an active curve preset) and the enlarger
+// colour-head LMS gain field (non-zero Y/M filtration).
 struct NativeHdrPlan {
   float inset[9];
   float outset[9];

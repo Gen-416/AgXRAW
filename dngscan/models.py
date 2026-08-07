@@ -510,7 +510,14 @@ class HdrShoulderSegment:
 
     @property
     def alpha(self) -> float:
-        """Normalized start tangent. Monotone when alpha <= 3 and m1 = 0."""
+        """Normalized start tangent.
+
+        For a SINGLE segment with a flat white end (m1 = 0), alpha <= 3 is the
+        exact monotonicity bound. Interior segments of a subdivided chain have
+        m1 > 0 and are validated by the exact quadratic-derivative check
+        instead — their alpha may legitimately exceed 3 (see the HDR plan
+        §7.4; alpha > 3 on the requested single segment is what TRIGGERS
+        subdivision, not an illegal state)."""
         span_e = self.e1 - self.e0
         span_z = self.z1 - self.z0
         if span_e <= 0.0 or span_z <= 1e-12:

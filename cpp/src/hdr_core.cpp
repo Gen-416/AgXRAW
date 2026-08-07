@@ -4,8 +4,9 @@
 //   dngscan/hdr_agx.py (_form_hdr_chunk), dngscan/hdr_curve.py (HdrCurveTable.apply),
 //   dngscan/hdr_color.py (raw_gated_channel_separation, blend_native_hdr_paths,
 //   fit_hdr_color_volume), dngscan/agx.py (prepare/finish formation), dngscan/punch.py.
-// Each step replicates the NumPy float32 operation order; the film channel-ratio
-// gain path is excluded at dispatch time instead of being reimplemented here.
+// Each step replicates the NumPy float32 operation order; the film takeover LUT
+// (full mode) and the colour-head gain field are excluded at dispatch time
+// (supports_hdr_formation) instead of being reimplemented here.
 
 #include "dngscan_fast/hdr_core.h"
 #include "dngscan_fast/pixel_math.h"
