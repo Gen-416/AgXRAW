@@ -1488,16 +1488,6 @@ def run_export(params: dict) -> dict:
      color_head_m, film_exposure_ev, film_print_timing,
      film_print_medium, film_print_exposure_ev,
      film_grain, film_halation, film_bloom) = parse_film_params(params)
-    if (
-        dg.is_hdr_output_format(output_format)
-        and film_mode == "full"
-        and film_curve != "none"
-    ):
-        # Mirror the CLI contract: the film-takeover development has no HDR
-        # counterpart (AgX's HDR colour machinery has yielded in that mode).
-        raise RuntimeError(
-            "胶片接管显影（full 模式）暂仅支持 SDR：请改用 SDR 输出或 observe 模式"
-        )
     endpoint_mode = parse_endpoint_mode(params)
     bundle = dg.load_raw(
         inp,

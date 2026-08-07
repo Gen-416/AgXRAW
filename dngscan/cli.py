@@ -621,16 +621,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "exposure model 内的逐层 Δτ,modelled）;fixed/retimed 的印相由联合"
             "求解决定"
         )
-    if (
-        args.film_mode == "full"
-        and args.film_curve != "none"
-        and str(args.output_format).startswith("ultrahdr")
-    ):
-        parser.error(
-            "--film-mode full 暂仅支持 SDR：胶片接管显影没有 HDR 对应物"
-            "（AgX 的 HDR 色彩机制在该模式下已让位）。请改用 --output-format sdr "
-            "或 --film-mode observe"
-        )
+    # P6 (§10): full+ultrahdr is now served by the 胶片印相+scene HDR 扩展
+    # pair (film print as SDR base, C1 scene-highlight gain above reference
+    # white) — no CLI-level exclusion remains.
     # film v2 P3 迁移(§7.2 表):--film-neutralization 是正名,--film-crossover
     # 为弃用别名;同时给出硬失败,不做优先级猜测。内部存储沿用 off|datasheet。
     if args.film_crossover is not None and args.film_neutralization is not None:
@@ -1045,9 +1038,15 @@ def main(argv: list[str]) -> int:
         )
         if jpeg_path is not None and is_hdr_output_format(args.output_format):
             container = "HEIC" if args.output_format == "ultrahdr-heic" else "JPEG"
+            film_hdr = args.film_mode == "full" and args.film_curve != "none"
+            leg = (
+                "胶片印相+scene HDR 扩展 gain map（参考白之上 C1 场景高光增益，"
+                "不声称物理胶片 HDR）"
+                if film_hdr else "darktable 式 HDR AgX RGB gain map"
+            )
             print(
                 f"{container} HDR: Apple Core Image ISO 21496-1；Display P3 SDR 底图；"
-                f"darktable 式 HDR AgX RGB gain map；capacity=+{args.hdr_headroom:.2f}EV；"
+                f"{leg}；capacity=+{args.hdr_headroom:.2f}EV；"
                 f"delivery={args.delivery_profile}"
             )
         return 0

@@ -318,6 +318,73 @@ def scene_render_to_hdr_display_linear(
     return out.reshape(h, w, 3)
 
 
+def render_ultrahdr_film_pair(
+    bundle: RawBundle,
+    analysis: Analysis,
+    plan: RenderPlan,
+    hdr_plan: HdrAgxPlan,
+    output_gamut: str = "p3",
+) -> tuple[Any, Any]:
+    """胶片印相 + scene HDR 扩展 (plan §10): SDR base and HDR alternate for a
+    film-takeover plan.
+
+    The SDR base IS the standalone film print — produced by the very same
+    render_output_u8 call an SDR export runs, so it is byte-identical by
+    construction (never a reimplementation that could drift). The HDR
+    alternate multiplies the print's display-linear rendition by a C1
+    luminance gain driven by the SCENE's own highlight EV: gain 1 at and
+    below the print's reference-white join (film_reference_white_ev probe),
+    smoothstep up to the plan's solved reliable headroom. This extends
+    reliable scene highlights above reference white; it never re-develops
+    the body and never claims physical film HDR. Costs a second film walk
+    (an honest first version; fusing the two walks is P7 material).
+    """
+    from .film_develop import film_reference_white_ev
+    from .film_v2_math import film_hdr_gain_log2
+    from .render import (
+        _optics_band_rows,
+        render_output_u8,
+        scene_render_to_display_linear,
+    )
+
+    tone = plan.tone
+    if (
+        str(getattr(tone, "film_mode", "observe")) != "full"
+        or str(getattr(tone, "curve_preset", "none")) == "none"
+    ):
+        raise RuntimeError("render_ultrahdr_film_pair 只服务 film full 计划")
+    base_u8 = render_output_u8(bundle, analysis, output_gamut, plan)
+    # Display-linear print, pre-encode (same banded spatial machinery); the
+    # gamut fit below makes it the exact linear the SDR base encodes.
+    sdr_linear = scene_render_to_display_linear(bundle, plan, output_gamut)
+    h, w = sdr_linear.shape[:2]
+    flat = sdr_linear.reshape(-1, 3)
+    color_plan = plan.color
+    gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05
+    join_ev = film_reference_white_ev(tone)
+    headroom_ev = float(hdr_plan.tone.rendered_headroom_ev)
+    span_ev = max(headroom_ev, 1.0) * 1.5
+    scene = bundle.scene_rec2020_render
+    flat_scene = scene.reshape(-1, scene.shape[-1])
+    luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float64)
+    hdr_out = np.empty((flat.shape[0], 3), dtype=np.float32)
+    band = max(_optics_band_rows(w), 1) * w
+    for s0 in range(0, flat.shape[0], band):
+        e0 = min(s0 + band, flat.shape[0])
+        fitted = fit_to_output_gamut(
+            flat[s0:e0], output_gamut, alpha=gamut_alpha
+        ).astype(np.float64, copy=False)
+        rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
+        ev = np.log2(
+            np.maximum(np.asarray(rec, dtype=np.float64) @ luma, 1e-9) / 0.18
+        )
+        gain = np.exp2(film_hdr_gain_log2(
+            ev, headroom_ev=headroom_ev, join_ev=join_ev, span_ev=span_ev,
+        ))
+        hdr_out[s0:e0] = (fitted * gain[:, None]).astype(np.float32)
+    return base_u8, hdr_out.reshape(h, w, 3)
+
+
 def render_ultrahdr_agx_pair(
     bundle: RawBundle,
     analysis: Analysis,

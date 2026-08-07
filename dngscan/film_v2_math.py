@@ -178,3 +178,27 @@ def film_compression_ev(
         chroma_scale = np.exp(-rho * d)[:, None]
         out = y_new[:, None] * ((out / y_new[:, None] - 1.0) * chroma_scale + 1.0)
     return np.maximum(out, 0.0)
+
+
+def film_hdr_gain_log2(
+    scene_ev: Any,
+    *,
+    headroom_ev: float,
+    join_ev: float,
+    span_ev: float,
+) -> Any:
+    """P6 (plan §10) "胶片印相 + scene HDR 扩展" gain, in log2 units.
+
+    Zero (gain 1) at and below the print's reference-white join, rising along
+    a smoothstep of the SCENE's own highlight EV to the solved reliable
+    headroom. Smoothstep is C1 at both ends: the SDR body below the join is
+    untouched exactly, the ceiling is approached without a slope break, gain
+    never drops below 1 and never exceeds the headroom — the §10 acceptance
+    set by construction. This scales the film print's display-linear output;
+    it is a scene-highlight extension, NOT a claim of physical film HDR.
+    """
+    ev = np.asarray(scene_ev, dtype=np.float64)
+    h = max(float(headroom_ev), 0.0)
+    span = max(float(span_ev), 1e-6)
+    t = np.clip((ev - float(join_ev)) / span, 0.0, 1.0)
+    return h * t * t * (3.0 - 2.0 * t)

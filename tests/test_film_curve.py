@@ -767,11 +767,12 @@ class FilmFullCoreExclusivityTests(unittest.TestCase):
     the agx pipeline slot, so the combination is rejected explicitly at the
     plan compiler, the CLI and the GUI service."""
 
-    def test_library_export_rejects_full_with_hdr_containers(self) -> None:
-        """Batch-11 P1: the CLI/GUI guard the combination, but a direct
-        export_jpeg caller could get a gain-map whose SDR base is the
-        takeover LUT while the HDR leg is AgX formation. The library now
-        refuses before any encoding work."""
+    def test_library_export_full_hdr_refuses_honestly_without_content(self) -> None:
+        """P6 (§10): full+ultrahdr is now served by the 胶片印相+scene HDR
+        扩展 pair. For a scene whose highlights never exceed the print's
+        reference white (this synthetic tops out ~2.1 EV vs a ~3 EV join),
+        the gain field is 1 everywhere and the export refuses HONESTLY with
+        the no-HDR-content error — never a silent SDR-in-HDR-clothes file."""
         from pathlib import Path
         from tests.golden_support import build_daylight_wide_dr
         from dngscan.export import export_jpeg
@@ -783,7 +784,9 @@ class FilmFullCoreExclusivityTests(unittest.TestCase):
             film_curve="portra400", film_mode="full", tone_core="agx",
         )
         for fmt in ("ultrahdr", "ultrahdr-heic"):
-            with self.subTest(fmt=fmt), self.assertRaises(ValueError):
+            with self.subTest(fmt=fmt), self.assertRaisesRegex(
+                RuntimeError, "reference white"
+            ):
                 export_jpeg(
                     path=Path("unused.dng"),
                     out_path=Path("unused.jpg"),
