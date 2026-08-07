@@ -344,11 +344,12 @@ full 约七成像素过可见阈，但平均差温和（约 4.5/255）——差�
 
 分歧住在哪种颜色里，取决于场景把哪种颜色端给它。树荫的绿只是温和地变暖；
 **晴空的蓝分歧最大**——同一卷 Velvia，香港山道的天空在 full 下明显转向
-深紫蓝（约三成二像素可见），是光谱链自己算出来的方向，与 Velvia 声名在外
-的深蓝天一致；observe 的 AgX 成像端则把蓝天留在更"标准"的位置。色彩侧
-无外部 oracle 的声明对两条路径一体适用——这里展示的是分歧本身：
+深紫蓝（天空区域九成像素可见，蓝通道平均 +20 码值、绿微降），是光谱链
+自己算出来的方向，与 Velvia 声名在外的深蓝天一致；observe 的 AgX 成像端
+则把蓝天留在更"标准"的位置。色彩侧无外部 oracle 的声明对两条路径一体
+适用——这里展示的是分歧本身：
 
-| observe · Velvia 100 | full · Velvia 100 |
+| observe · Velvia 100 | full · Velvia 100 · 印相 fixed·默认配对·datasheet · 模拟光学关 |
 |---|---|
 | ![](assets/film-tutorial/fullmode_hk_observe.jpg) | ![](assets/film-tutorial/fullmode_hk_full.jpg) |
 
@@ -356,7 +357,7 @@ full 约七成像素过可见阈，但平均差温和（约 4.5/255）——差�
 暗部密度与织物色的细微下沉）——full 与 observe 的距离**随卷不同**，
 反转片的硬性格在光谱链里最放得开：
 
-| observe · Portra 400 | full · Portra 400 |
+| observe · Portra 400 | full · Portra 400 · 印相 fixed·默认配对·datasheet · 模拟光学关 |
 |---|---|
 | ![](assets/film-tutorial/fullmode_expo_observe.jpg) | ![](assets/film-tutorial/fullmode_expo_full.jpg) |
 
@@ -400,9 +401,9 @@ Velvia 的阴影温和偏冷，电影负片系偏绿青。这个开关决定实�
 |---|---|
 | ![](assets/film-tutorial/crop_crossover_verita_off.jpg) | ![](assets/film-tutorial/crop_crossover_verita_datasheet.jpg) |
 
-实测：过可见阈的像素约 8%，几乎全部住在暗部（放宽到 3/255 的尺子则八成
-像素都有轻微移动）——暗部三成像素的均值移约 8 个码值（红 −6.4、绿 +1.6），
-亮部均值只动一到三个码值，全图亮度差中位数为 0。观察要点：雕花
+实测（因式分解链重渲）：过可见阈的像素约 6%，几乎全部住在暗部（放宽到
+3/255 的尺子则约七成像素都有轻微移动）——暗部三成像素的均值移动集中在
+红绿（红 −6.6、绿 +1.7），亮部均值只动一两个码值，全图亮度差中位数为 0。观察要点：雕花
 木门和石阶平台从中性黑转出绿青，白墙和受光的卵石地纹丝不动——门里门外
 正好是"阴影动、亮部不动"的现成分区。
 
@@ -413,9 +414,9 @@ Velvia 的阴影温和偏冷，电影负片系偏绿青。这个开关决定实�
 |---|---|
 | ![](assets/film-tutorial/crop_crossover_k64_off.jpg) | ![](assets/film-tutorial/crop_crossover_k64_datasheet.jpg) |
 
-实测：过可见阈的像素约两成三（3/255 尺子下 55%），暗部均值向暖移约
-16 个码值（红 +6、蓝 −10——标定去掉观看杂光后，数据手册的琥珀移不再被
-杂光稀释），亮部均值接近零。观察要点：树影里的沥青和背光挡土墙转出琥珀暖意，日照路面、
+实测（因式分解链重渲）：过可见阈的像素约两成三（3/255 尺子下约四成），
+暗部均值向暖移约 16 个码值（红 +6、蓝 −11——标定去掉观看杂光后，数据
+手册的琥珀移不再被杂光稀释），亮部均值接近零。观察要点：树影里的沥青和背光挡土墙转出琥珀暖意，日照路面、
 大巴和天空不动。（全图对比见
 [off](assets/film-tutorial/crossover_k64_off.jpg) /
 [datasheet](assets/film-tutorial/crossover_k64_datasheet.jpg)。）
