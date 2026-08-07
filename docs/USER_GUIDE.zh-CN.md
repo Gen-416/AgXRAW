@@ -126,16 +126,24 @@ RAW 也不会绕过这个分析前提。
   相纸/幻灯自身的 Dmax），观看环境的杂光不再烘进胶片曲线；
 - **两种模式**（CLI `--film-mode`）：默认 **observe** 即上述全部，日常用它；
   **full** 是实验模式——胶片显影模型整体接管：场景颜色经观察者逆矩阵折算为
-  三层乳剂曝光，过特性曲线、染料光谱与印相/幻灯观看链，离线烘焙成 65³ 查找
-  表采样。诚实光谱链下它与 observe 在多数照片上近乎合流（互为印证）；仅
-  SDR、仅 AgX 压缩核心、不支持放大机色头。full 下另有声明开关
-  `--film-crossover`（GUI"层间漂移"，即胶片色偏 crossover）：默认 off 为
-  数字中性化变体（灰阶偏中性两档以内严格保持中性），datasheet 为光谱链
-  原样——阴影按各卷数据手册偏色（电影负片偏绿青、Kodachrome 偏琥珀、
-  Velvia 温和偏冷），中灰由印相求解锚定，明暗完全不变；
+  三层乳剂曝光，过特性曲线得负片密度，再走因式分解的印相链（负片密度→相纸
+  层曝光→印相 timing→相纸显影→观看色彩）。诚实光谱链下它与 observe 同向
+  互证；仅 AgX 压缩核心。full 的可声明状态：`--film-exposure`（乳剂曝光态
+  ±2EV）、`--film-print-medium`（印相介质，跨介质配对换纸不重曝）、
+  `--film-print-timing fixed|retimed|custom`（custom 解锁色头 Δτ 与
+  `--film-print-exposure`）、`--film-neutralization bounded|datasheet`
+  （GUI"灰阶中性化"；旧名 `--film-crossover` 为弃用别名——bounded 即
+  数字中性化变体，灰阶偏中性两档以内严格保持中性；datasheet 为链原样，
+  阴影按各卷数据手册偏色，电影负片偏绿青、Kodachrome 偏琥珀、Velvia 温和
+  偏冷，中灰由印相求解锚定）、`--film-development editorial_custom` 显影
+  配方（对比/fog/色密度有界扰动，报告如实标注）、`--film-compression`
+  （C1 高光压缩+高光色密度）与模拟光学 `--film-grain/--film-halation/
+  --film-bloom`（GUI"模拟光学"档位；负片毫米坐标确定性颗粒场，预览与
+  全尺寸共享同一实现）；
 - 不加颗粒、不加暗角——改变的是"这台相机看世界的方式"；
-- **HDR 照常工作**（observe 模式）：胶片的身体 + 真实测量的高光余量，这是
-  市面上其他胶片工具做不到的组合。
+- **HDR 照常工作**：observe 模式一如既往；full 模式的 Ultra HDR 是
+  "胶片印相 + scene HDR 扩展"——SDR 底图就是胶片印相（逐字节一致），
+  参考白之上按场景自身可靠高光平滑增益，不声称物理胶片 HDR。
 
 ### 放大机色头（仅负片）
 

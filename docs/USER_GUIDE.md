@@ -175,19 +175,31 @@ the reason this film simulation stays stable.
   use it day to day. **full** is experimental: the film development model takes
   over wholesale — scene colour passes through a constrained observer inverse
   into three emulsion exposures, through each layer's characteristic curve, the
-  dye spectra and the print/slide viewing chain, baked offline into a 65-cubed
-  LUT. Under the honest spectral chain it nearly converges with observe on most
-  photos (the two independent paths corroborate each other); SDR only, AgX
-  compression core only, no enlarger colour head. Within full mode the declared
-  `--film-crossover` switch (GUI: "层间漂移") picks how the neutral axis is
-  served: off (default) is the digitally neutralized variant (grays within two
-  stops of neutral stay strictly neutral), datasheet serves the chain verbatim —
-  shadows tint per each stock's datasheet (cine negatives green-teal, Kodachrome
-  amber, Velvia mildly cool), mid-grey anchored by the printer-light solve, tone
-  untouched;
+  the characteristic curves into negative dye density, then through the
+  FACTORIZED print chain (negative density -> paper-layer exposure -> print
+  timing -> paper development -> viewing colour). Under the honest spectral
+  chain it corroborates observe directionally; AgX compression core only.
+  Declarable full-mode state: `--film-exposure` (emulsion state, ±2 EV),
+  `--film-print-medium` (print medium; cross-medium pairings re-print the
+  same negative without double tone mapping), `--film-print-timing
+  fixed|retimed|custom` (custom unlocks the modelled colour-head Δτ and
+  `--film-print-exposure`), `--film-neutralization bounded|datasheet`
+  (GUI: 灰阶中性化; the old `--film-crossover` is a deprecated alias —
+  bounded is the digitally neutralized variant with grays within two stops
+  of neutral held strictly neutral, datasheet serves the chain verbatim
+  with shadows tinting per each stock's data: cine negatives green-teal,
+  Kodachrome amber, Velvia mildly cool, mid-grey anchored by the print
+  solve), `--film-development editorial_custom` developer recipes (bounded
+  contrast/fog/colour-density perturbations, honestly labelled in the
+  report), `--film-compression` (C1 highlight compression plus highlight
+  colour density), and the analog optics `--film-grain` / `--film-halation`
+  / `--film-bloom` (GUI: 模拟光学 tiers; a deterministic film-space grain
+  field shared between preview and full-size export);
 - No grain, no vignette — it changes *how the camera saw the world*;
-- **HDR keeps working** (observe mode): a film body plus genuinely measured
-  highlight headroom — a combination no other film tool offers.
+- **HDR keeps working**: observe mode as always; full-mode Ultra HDR is
+  "film print + scene HDR extension" — the SDR base IS the film print
+  (byte-identical), and reliable scene highlights gain smoothly above the
+  print's reference white. No claim of physical film HDR is made.
 
 **Lens filters** (RAW decode card) are the companion control: Wratten conversion
 glass simulated from Kodak's published parameters (85B daylight-to-tungsten, 80A the

@@ -932,20 +932,28 @@ flowchart LR
   exposures together and the print is re-timed once; published as diagonal
   Bradford-LMS gains on a shared adaptive EV grid, exact identity at 0CC,
   shipped as schema-4 npz whose bytes are SHA-256-pinned inside the preset
-  JSON). In full mode, the offline-baked
-  spectral-chain 65-cubed LUT (stage 4 — constrained observer inverse, per-layer
-  characteristic curves, TH-KG3 print chain or direct slide viewing, with the
-  observer's metamer residual stamped per stock). The colour dimension still has
-  **no external oracle** (the tone dimension does), so full mode stays opt-in.
+  JSON). In full mode, the film v2 factorized chain (constrained observer
+  inverse and per-layer characteristic curves analytically at Stage A, then
+  B1 negative-density->paper-exposure, the print-timing τ table, the paper's
+  1-D development curves and the B2 positive-density->viewing volume — or
+  direct slide viewing for reversals — with the observer's metamer residual
+  stamped per stock). The colour dimension still has **no external oracle**
+  (the tone dimension does), so full mode stays opt-in.
 
 **The two-mode division** (`--film-mode`; contract, spectral-print/two-mode
 section): **observe (default)** = the film declares what the observer saw
 (WB/separation/tone signature) and AgX develops — the division drawn at the data's
 trust boundary; a film preset is then just curve parameters and the native kernel
 accelerates as usual. **full (experimental)** = the film's development model takes
-over (the `film_develop` core: the baked spectral-chain LUT — no AgX colour
-geometry, no colour head, AgX tone core required); AgX keeps only delivery-side
-gamut safety; SDR only for now. With `--film` off the pipeline is pure AgX.
+over (the `film_develop` core: the film v2 factorized chain — no AgX colour
+geometry, AgX tone core required, the colour head unlocked only under
+timing=custom as a modelled per-layer Δτ); AgX keeps only delivery-side
+gamut safety. Beyond SDR, Ultra HDR runs full mode as "film print + scene
+HDR extension" — the SDR base is the film print byte-identically, and
+reliable scene highlights gain smoothly (C1) above the print's reference
+white, capped at the solved reliable headroom. Assets live in
+`dngscan/data/film_v2/` as the stock / print_state / b2 family (schema 5,
+fail-closed loaders). With `--film` off the pipeline is pure AgX.
 Per-channel rolloff IS a colour operation — which is the structural reason "AgX
 for stretch/rolloff, film for colour" cannot be split down the middle and had to
 become a two-pole switch. An honest empirical note: after the spectral rebuild,
