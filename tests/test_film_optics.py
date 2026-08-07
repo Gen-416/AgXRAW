@@ -386,3 +386,114 @@ class P5PlanContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class P5cServiceTests(unittest.TestCase):
+    def _parse(self, **params):
+        from dngscan.gui.service import parse_film_params
+
+        base = {"filmCurve": "portra400", "filmMode": "full"}
+        base.update(params)
+        return parse_film_params(base)
+
+    def test_tiers_map_to_declared_amounts(self) -> None:
+        for tier, expect in (
+            ("off", (0.0, 0.0, 0.0)),
+            ("light", (0.25, 0.2, 0.15)),
+            ("standard", (0.5, 0.4, 0.3)),
+        ):
+            got = self._parse(filmOptics=tier)[-3:]
+            self.assertEqual(got, expect, tier)
+        got = self._parse(
+            filmOptics="custom", filmGrain=0.7, filmHalation=0.1, filmBloom=0.0
+        )[-3:]
+        self.assertEqual(got, (0.7, 0.1, 0.0))
+
+    def test_service_contract_failures(self) -> None:
+        with self.assertRaises(ValueError):
+            self._parse(filmOptics="heavy")
+        with self.assertRaises(ValueError):
+            self._parse(filmOptics="custom", filmGrain=1.5)
+        with self.assertRaises(ValueError):
+            # observe mode must carry no optics payload
+            self._parse(filmMode="observe", filmOptics="standard")
+
+    def test_preview_plan_carries_the_film_state(self) -> None:
+        """Regression: the preview's _cached_render_plan call sites truncated
+        at film_crossover, so the P2/P3 exposure/timing/medium dials (and now
+        the optics) never reached the preview plan while the export honoured
+        them."""
+        import inspect
+
+        from dngscan.gui import service
+
+        src = inspect.getsource(service)
+        starts = [i for i in range(len(src)) if src.startswith("_cached_render_plan(", i)]
+        call_sites = [s_ for s_ in starts if not src[:s_].rstrip().endswith("def")]
+        self.assertGreaterEqual(len(call_sites), 2)
+        for i in call_sites:
+            window = src[i:i + 1400]
+            for field in (
+                "film_exposure_ev", "film_print_timing", "film_print_medium",
+                "film_print_exposure_ev", "film_grain", "film_halation",
+                "film_bloom",
+            ):
+                self.assertIn(
+                    field, window,
+                    f"_cached_render_plan call site must pass {field}",
+                )
+
+    def test_pixel_cache_key_covers_the_film_state(self) -> None:
+        from dngscan.gui.service import _preview_pixel_key
+
+        class _B:
+            lens_filter = "none"
+
+        common = dict(
+            bundle=_B(), gamut="srgb", ev=0.0, look="none", look_strength=1.0,
+            display_filter="none", filter_strength=1.0, scene_transform="none",
+            scene_transform_strength=1.0, punch_scale=1.0, tone_core="agx",
+            lum_norm="y", agx_primaries="base", lens_filter="none",
+            film_curve="portra400", adjustments=None, film_mode="full",
+        )
+        base = _preview_pixel_key(**common)
+        for kw in (
+            dict(film_exposure_ev=1.0),
+            dict(film_print_timing="retimed"),
+            dict(film_print_medium="kodak_supra_endura__translated"),
+            dict(film_grain=0.5),
+            dict(film_halation=0.4),
+            dict(film_bloom=0.3),
+        ):
+            self.assertNotEqual(
+                base, _preview_pixel_key(**common, **kw),
+                f"pixel cache key must vary with {kw}",
+            )
+
+    def test_page_contract(self) -> None:
+        from dngscan.gui.page import render_page
+
+        html = render_page("").decode("utf-8")
+        for needle in (
+            'id="filmOptics"', 'id="filmOpticsBlock"', 'id="filmOpticsCustom"',
+            'id="filmGrain"', 'id="filmHalation"', 'id="filmBloom"',
+            'value="light"', 'value="standard"',
+        ):
+            self.assertIn(needle, html)
+
+    def test_export_suffix_names_the_optics(self) -> None:
+        from dngscan.gui.service import export_suffix_parts
+
+        clean = export_suffix_parts(
+            "clip", "srgb", "sdr", film_mode="full",
+        )
+        optics = export_suffix_parts(
+            "clip", "srgb", "sdr", film_mode="full",
+            film_grain=0.5, film_halation=0.4, film_bloom=0.3,
+        )
+        self.assertNotEqual(clean, optics)
+        self.assertIn("optics", optics)
+
+
+if __name__ == "__main__":
+    unittest.main()

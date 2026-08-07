@@ -402,6 +402,31 @@ FILM_CURVE_OPTIONS
       <div class="labelRow"><label title="custom timing 的手动印相曝光（log2 域，作用于三个纸层）。fixed/retimed 的印相由联合求解决定。">印相曝光</label><span class="val" id="filmPrintExposureVal">0.00 EV</span></div>
       <input type="range" id="filmPrintExposure" min="-2" max="2" step="0.05" value="0">
     </div>
+    <div id="filmOpticsBlock" style="flex:1;min-width:190px;display:none">
+      <label>模拟光学</label>
+      <select id="filmOptics" title="胶片的空间成像（modelled profile）：颗粒在负片毫米坐标下调制显影密度（预览/裁切/全尺寸共享同一颗粒实现），halation 把高亮场景曝光经红敏背散射回注层曝光，bloom 是正介质自身高光的低频扩散。关闭=严格恒等。">
+        <option value="off">关闭 · 默认</option>
+        <option value="light">轻 · 颗粒0.25/晕0.20/泛0.15</option>
+        <option value="standard">标准 · 颗粒0.50/晕0.40/泛0.30</option>
+        <option value="custom">自定义</option>
+      </select>
+    </div>
+    <div id="filmOpticsCustom" style="display:none;flex-basis:100%">
+      <div class="row">
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="density grain：负片毫米坐标的确定性带限颗粒场，先扰动密度再经印相，参与颜色与局部反差。">颗粒</label><span class="val" id="filmGrainVal">0.00</span></div>
+          <input type="range" id="filmGrain" min="0" max="1" step="0.05" value="0">
+        </div>
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="halation：高亮场景曝光经红敏背散射核扩散后回注层曝光，位于特性曲线之前。">Halation</label><span class="val" id="filmHalationVal">0.00</span></div>
+          <input type="range" id="filmHalation" min="0" max="1" step="0.05" value="0">
+        </div>
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="medium bloom：正介质自身高光的多尺度低频扩散，印相形成之后、gamut fit 之前。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
+          <input type="range" id="filmBloom" min="0" max="1" step="0.05" value="0">
+        </div>
+      </div>
+    </div>
   </div>
   <div class="row" style="margin-top:12px">
     <div style="flex:2;min-width:210px">
@@ -875,6 +900,8 @@ function saveSettings(){
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,film:$("#film").value,
     filmMode:$("#filmMode").value,filmNeutralization:$("#filmNeutralization").value,
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
+    filmOptics:$("#filmOptics").value,filmGrain:$("#filmGrain").value,
+    filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     highlight:$("#highlight").dataset.librawValue||$("#highlight").value,gamut:$("#gamut").value,wb:$("#wb").value,demosaic:$("#demosaic").dataset.librawValue||$("#demosaic").value,
     decoder:$("#decoder").value,coreimageVersion:$("#coreimageVersion").value,
@@ -932,6 +959,10 @@ function restoreSettings(){
   if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
   if(s.filmExposure!==undefined)$("#filmExposure").value=s.filmExposure;
   if(s.filmPrintTiming&&["fixed","retimed"].includes(s.filmPrintTiming))$("#filmPrintTiming").value=s.filmPrintTiming;
+  if(s.filmOptics&&["off","light","standard","custom"].includes(s.filmOptics))$("#filmOptics").value=s.filmOptics;
+  for(const [k,el] of [["filmGrain","#filmGrain"],["filmHalation","#filmHalation"],["filmBloom","#filmBloom"]]){
+    const v=parseFloat(s[k]);if(Number.isFinite(v)&&v>=0&&v<=1)$(el).value=v;
+  }
   if(typeof setFilmExposureLabel==="function")setFilmExposureLabel();
   if(s.deliveryProfile&&[...$("#deliveryProfile").options].some(o=>o.value===s.deliveryProfile))$("#deliveryProfile").value=s.deliveryProfile;
   if(s.toneCore&&[...$("#toneCore").options].some(o=>o.value===s.toneCore))$("#toneCore").value=s.toneCore;
@@ -1009,6 +1040,7 @@ function updateFilmModeUi(){
   $("#filmModeRow").style.display=hasCurve?"":"none";
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
+  if(!full){const ob=$("#filmOpticsBlock");if(ob)ob.style.display="none";const oc=$("#filmOpticsCustom");if(oc)oc.style.display="none";}
   const expRow=$("#filmExposureRow");
   if(expRow){
     expRow.style.display=full?"":"none";
@@ -1016,6 +1048,9 @@ function updateFilmModeUi(){
       // 清除会污染 payload 的陈旧值(既定惯例)。
       $("#filmExposure").value=0;$("#filmPrintTiming").value="fixed";
       $("#filmPrintMedium").value="";$("#filmPrintExposure").value=0;
+      $("#filmOptics").value="off";
+      $("#filmGrain").value=0;$("#filmHalation").value=0;$("#filmBloom").value=0;
+      if(typeof setFilmOpticsLabels==="function")setFilmOpticsLabels();
       if(typeof setFilmExposureLabel==="function")setFilmExposureLabel();
       if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
     } else {
@@ -1047,6 +1082,17 @@ function updateFilmModeUi(){
         if(timing.value!=="custom"){
           $("#filmPrintExposure").value=0;
           if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
+        }
+      }
+      // 模拟光学:full 才显示;custom 才露滑杆
+      const opticsBlock=$("#filmOpticsBlock");
+      if(opticsBlock){
+        opticsBlock.style.display="";
+        const custom=$("#filmOptics").value==="custom";
+        $("#filmOpticsCustom").style.display=custom?"":"none";
+        if(!custom){
+          $("#filmGrain").value=0;$("#filmHalation").value=0;$("#filmBloom").value=0;
+          if(typeof setFilmOpticsLabels==="function")setFilmOpticsLabels();
         }
       }
       // 介质下拉:能力注入,>1 才显示
@@ -1105,6 +1151,16 @@ $("#filmPrintExposure").oninput=()=>{setFilmPrintExposureLabel();saveSettings();
 function setFilmExposureLabel(){const v=+$("#filmExposure").value;$("#filmExposureVal").textContent=(v>0?"+":"")+v.toFixed(2)+" EV";}
 $("#filmExposure").oninput=()=>{setFilmExposureLabel();saveSettings();scheduleLivePreview();};
 $("#filmPrintTiming").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+function setFilmOpticsLabels(){
+  $("#filmGrainVal").textContent=parseFloat($("#filmGrain").value).toFixed(2);
+  $("#filmHalationVal").textContent=parseFloat($("#filmHalation").value).toFixed(2);
+  $("#filmBloomVal").textContent=parseFloat($("#filmBloom").value).toFixed(2);
+}
+setFilmOpticsLabels();
+$("#filmOptics").addEventListener("change",()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();});
+for(const id of ["filmGrain","filmHalation","filmBloom"]){
+  $("#"+id).addEventListener("input",()=>{setFilmOpticsLabels();saveSettings();scheduleLivePreview();});
+}
 $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 
 // Enlarger colour head: shown only while the selected curve preset is a NEGATIVE
@@ -1237,6 +1293,8 @@ function payload(){
     colorHeadY:+$("#colorHeadY").value,colorHeadM:+$("#colorHeadM").value,
     filmMode:$("#filmMode").value,filmNeutralization:$("#filmNeutralization").value,
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
+    filmOptics:$("#filmOptics").value,filmGrain:$("#filmGrain").value,
+    filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,

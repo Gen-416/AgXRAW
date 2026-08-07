@@ -251,6 +251,9 @@ def estimate_ev_headroom(
     film_print_timing: str = "fixed",
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
+    film_grain: float = 0.0,
+    film_halation: float = 0.0,
+    film_bloom: float = 0.0,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
     lens_filter: str | None = None,
@@ -282,6 +285,9 @@ def estimate_ev_headroom(
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
         lens_filter=lens_filter,
@@ -513,6 +519,9 @@ def _cached_render_plan(
     film_print_timing: str = "fixed",
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
+    film_grain: float = 0.0,
+    film_halation: float = 0.0,
+    film_bloom: float = 0.0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     key = (
@@ -532,6 +541,9 @@ def _cached_render_plan(
         film_print_timing,
         film_print_medium,
         _cache_float(film_print_exposure_ev),
+        _cache_float(film_grain),
+        _cache_float(film_halation),
+        _cache_float(film_bloom),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
     )
@@ -555,6 +567,9 @@ def _cached_render_plan(
             film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+            film_grain=film_grain,
+            film_halation=film_halation,
+            film_bloom=film_bloom,
             adjustments=None,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
@@ -586,6 +601,13 @@ def _preview_pixel_key(
     color_head_m: float = 0.0,
     film_mode: str = "observe",
     film_crossover: str = "off",
+    film_exposure_ev: float = 0.0,
+    film_print_timing: str = "fixed",
+    film_print_medium: str = "",
+    film_print_exposure_ev: float = 0.0,
+    film_grain: float = 0.0,
+    film_halation: float = 0.0,
+    film_bloom: float = 0.0,
 ) -> tuple[Any, ...]:
     return (
         gamut,
@@ -606,6 +628,13 @@ def _preview_pixel_key(
         _cache_float(color_head_m),
         film_mode,
         film_crossover,
+        _cache_float(film_exposure_ev),
+        film_print_timing,
+        film_print_medium,
+        _cache_float(film_print_exposure_ev),
+        _cache_float(film_grain),
+        _cache_float(film_halation),
+        _cache_float(film_bloom),
         endpoint_mode,
         _adjustment_key(adjustments),
         # Exposure is represented by ``ev`` above; the scale contract guards against
@@ -684,6 +713,9 @@ def export_preview_jpeg(
     film_print_timing: str = "fixed",
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
+    film_grain: float = 0.0,
+    film_halation: float = 0.0,
+    film_bloom: float = 0.0,
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -741,6 +773,13 @@ def export_preview_jpeg(
         color_head_m,
         film_mode,
         film_crossover,
+        film_exposure_ev,
+        film_print_timing,
+        film_print_medium,
+        film_print_exposure_ev,
+        film_grain,
+        film_halation,
+        film_bloom,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
     if auto_ev is None:
@@ -774,6 +813,17 @@ def export_preview_jpeg(
             color_head_m,
             film_mode,
             film_crossover,
+            # P5c fix: the preview plan silently dropped every film state
+            # after crossover (exposure/timing/medium/print exposure since
+            # P2/P3, optics now) — the preview rendered EV0 fixed timing
+            # regardless of the dials while the export honoured them.
+            film_exposure_ev,
+            film_print_timing,
+            film_print_medium,
+            film_print_exposure_ev,
+            film_grain,
+            film_halation,
+            film_bloom,
         )
         if rgb_u8 is None:
             ensure_current()
@@ -926,9 +976,38 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, f
         )
     if film_print_timing != "custom" and film_print_exposure_ev != 0.0:
         raise ValueError("手动印相曝光仅在 timing=custom 下有意义")
+    # P5c (§11): 模拟光学 tiers. off/light/standard map to declared amount
+    # triples; custom reads the three sliders. Non-full modes must carry no
+    # optics payload (the GUI hides the control there).
+    optics_tier = str(params.get("filmOptics", params.get("film_optics", "off")) or "off")
+    tiers = {
+        "off": (0.0, 0.0, 0.0),
+        "light": (0.25, 0.2, 0.15),
+        "standard": (0.5, 0.4, 0.3),
+    }
+    if optics_tier in tiers:
+        film_grain, film_halation, film_bloom = tiers[optics_tier]
+    elif optics_tier == "custom":
+        try:
+            film_grain = float(params.get("filmGrain", params.get("film_grain", 0.0)) or 0.0)
+            film_halation = float(params.get("filmHalation", params.get("film_halation", 0.0)) or 0.0)
+            film_bloom = float(params.get("filmBloom", params.get("film_bloom", 0.0)) or 0.0)
+        except (TypeError, ValueError):
+            raise ValueError("模拟光学强度必须是数值")
+        for label, v in (("颗粒", film_grain), ("halation", film_halation), ("bloom", film_bloom)):
+            if not 0.0 <= v <= 1.0:
+                raise ValueError(f"模拟光学{label}强度域为 [0,1]")
+    else:
+        raise ValueError(f"未知模拟光学档位:{optics_tier}(可选 off/light/standard/custom)")
+    if film_mode != "full" and (film_grain or film_halation or film_bloom):
+        raise ValueError(
+            "模拟光学属于接管显影(full 模式);GUI 在其他状态隐藏该控件,"
+            "非零载荷是直接 API 合同违规"
+        )
     return (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
             color_head_m, film_exposure_ev, film_print_timing,
-            film_print_medium, film_print_exposure_ev)
+            film_print_medium, film_print_exposure_ev,
+            film_grain, film_halation, film_bloom)
 
 
 def run_preview(params: dict) -> dict:
@@ -959,7 +1038,8 @@ def run_preview(params: dict) -> dict:
     agx_primaries = parse_agx_primaries(params)
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
      color_head_m, film_exposure_ev, film_print_timing,
-     film_print_medium, film_print_exposure_ev) = parse_film_params(params)
+     film_print_medium, film_print_exposure_ev,
+     film_grain, film_halation, film_bloom) = parse_film_params(params)
     endpoint_mode = parse_endpoint_mode(params)
     try:
         cached = PREVIEW_STORE.get(
@@ -998,6 +1078,9 @@ def run_preview(params: dict) -> dict:
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,
@@ -1036,6 +1119,9 @@ def run_preview(params: dict) -> dict:
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
@@ -1128,7 +1214,8 @@ def prepare_preview(params: dict) -> dict:
     agx_primaries = parse_agx_primaries(params)
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
      color_head_m, film_exposure_ev, film_print_timing,
-     film_print_medium, film_print_exposure_ev) = parse_film_params(params)
+     film_print_medium, film_print_exposure_ev,
+     film_grain, film_halation, film_bloom) = parse_film_params(params)
     endpoint_mode = parse_endpoint_mode(params)
     # Do not compete with the full-resolution export worker for memory bandwidth.
     with RENDER_LOCK:
@@ -1165,6 +1252,13 @@ def prepare_preview(params: dict) -> dict:
             color_head_m,
             film_mode,
             film_crossover,
+            film_exposure_ev,
+            film_print_timing,
+            film_print_medium,
+            film_print_exposure_ev,
+            film_grain,
+            film_halation,
+            film_bloom,
         )
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
@@ -1204,6 +1298,9 @@ def export_suffix_parts(
     film_print_timing: str = "fixed",
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
+    film_grain: float = 0.0,
+    film_halation: float = 0.0,
+    film_bloom: float = 0.0,
 ) -> str:
     """Build the filename stem suffix for GUI JPEG/PNG exports."""
     parts = [tone_core]
@@ -1233,6 +1330,12 @@ def export_suffix_parts(
         if film_print_medium:
             parts.append(
                 film_print_medium.replace("__", "-").replace("_", "")[:24]
+            )
+        if float(film_grain) or float(film_halation) or float(film_bloom):
+            # An optics render must not silently overwrite the clean one.
+            parts.append(
+                ("optics" + f"-g{float(film_grain):g}h{float(film_halation):g}"
+                 f"b{float(film_bloom):g}").replace(".", "_")
             )
     if highlight != "clip":
         parts.append(highlight)
@@ -1383,7 +1486,8 @@ def run_export(params: dict) -> dict:
     agx_primaries = parse_agx_primaries(params)
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
      color_head_m, film_exposure_ev, film_print_timing,
-     film_print_medium, film_print_exposure_ev) = parse_film_params(params)
+     film_print_medium, film_print_exposure_ev,
+     film_grain, film_halation, film_bloom) = parse_film_params(params)
     if (
         dg.is_hdr_output_format(output_format)
         and film_mode == "full"
@@ -1448,6 +1552,9 @@ def run_export(params: dict) -> dict:
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             lens_filter=lens_filter,
@@ -1473,6 +1580,9 @@ def run_export(params: dict) -> dict:
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -1500,6 +1610,9 @@ def run_export(params: dict) -> dict:
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
     )
     fingerprint = export_plan_fingerprint(
         wb=wb,
@@ -1527,6 +1640,9 @@ def run_export(params: dict) -> dict:
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
         color_head_y=float(color_head_y),
         color_head_m=float(color_head_m),
         adjustments=dataclasses.astuple(adjustments),
@@ -1615,6 +1731,9 @@ def run_export(params: dict) -> dict:
         film_print_timing=film_print_timing,
         film_print_medium=film_print_medium,
         film_print_exposure_ev=film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,
