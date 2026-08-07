@@ -705,6 +705,13 @@ def build_render_plan(
     film_print_timing: str = "fixed",
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
+    film_development: str = "measured_default",
+    film_dev_contrast: float = 0.0,
+    film_dev_fog: float = 0.0,
+    film_dev_density: float = 0.0,
+    film_compression: float = 0.0,
+    film_compression_knee: float = 2.0,
+    film_highlight_density: float = 0.0,
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
     # Full-mode input-domain normalization also lives HERE so hand callers of
@@ -816,6 +823,21 @@ def build_render_plan(
                 "胶片曝光状态、印相 timing/介质与手动印相曝光属于接管显影"
                 "(full 模式):observe 模式没有乳剂/印相模型"
             )
+        development_value = str(film_development or "measured_default")
+        if development_value not in ("measured_default", "editorial_custom"):
+            raise ValueError(
+                f"未知显影配方:{development_value}"
+                "(可选 measured_default/editorial_custom)"
+            )
+        if mode_value != "full" and (
+            development_value != "measured_default"
+            or float(film_compression) != 0.0
+            or float(film_highlight_density) != 0.0
+        ):
+            raise ValueError(
+                "显影配方与 Film Compression 属于接管显影(full 模式):"
+                "observe 模式没有显影/压缩模型"
+            )
         if timing_value != "custom" and print_exposure_value != 0.0:
             raise ValueError(
                 "手动印相曝光仅在 timing=custom 下有意义;fixed/retimed 的印相"
@@ -829,6 +851,13 @@ def build_render_plan(
             film_print_timing=timing_value,
             film_print_medium=medium_value,
             film_print_exposure_ev=print_exposure_value,
+            film_development=development_value,
+            film_dev_contrast=float(film_dev_contrast),
+            film_dev_fog=float(film_dev_fog),
+            film_dev_density=float(film_dev_density),
+            film_compression=float(film_compression),
+            film_compression_knee=float(film_compression_knee),
+            film_highlight_density=float(film_highlight_density),
         )
     if float(color_head_y) != 0.0 or float(color_head_m) != 0.0:
         # Enlarger colour head: a declared printing decision, valid only where a
@@ -861,6 +890,13 @@ def build_render_plan(
     # film v2 plan objects (FILM_PRINT_RENDERING_PLAN §4): identity defaults,
     # validated fail-closed whenever the film domain is active. P1 wires the
     # structure; exposure/development/print state grows in later stages.
+    if film_curve == "none" and (
+        str(film_development or "measured_default") != "measured_default"
+        or float(film_dev_contrast) != 0.0 or float(film_dev_fog) != 0.0
+        or float(film_dev_density) != 0.0 or float(film_compression) != 0.0
+        or float(film_highlight_density) != 0.0
+    ):
+        raise ValueError("显影配方与 Film Compression 需要一个胶片曲线预设")
     film_plans = None
     if film_curve != "none":
         from .film_curve import film_process
@@ -882,7 +918,17 @@ def build_render_plan(
                 stock_id=film_curve,
                 exposure_ev=float(getattr(tone, "film_exposure_ev", 0.0)),
             ),
-            FilmDevelopmentPlan(),
+            FilmDevelopmentPlan(
+                recipe_id=str(getattr(tone, "film_development", "measured_default")),
+                contrast_delta=float(getattr(tone, "film_dev_contrast", 0.0)),
+                fog_delta=float(getattr(tone, "film_dev_fog", 0.0)),
+                color_density=float(getattr(tone, "film_dev_density", 0.0)),
+                provenance=(
+                    "editorial"
+                    if str(getattr(tone, "film_development", "measured_default"))
+                    == "editorial_custom" else "measured"
+                ),
+            ),
             FilmPrintPlan(
                 medium_id=(
                     "reversal_direct" if process == "reversal"
@@ -894,7 +940,13 @@ def build_render_plan(
                 printer_m_cc=float(getattr(tone, "color_head_m", 0.0)),
                 print_exposure_ev=float(getattr(tone, "film_print_exposure_ev", 0.0)),
             ),
-            AnalogFinishPlan(),
+            AnalogFinishPlan(
+                compression=float(getattr(tone, "film_compression", 0.0)),
+                compression_knee_ev=float(getattr(tone, "film_compression_knee", 2.0)),
+                highlight_color_density=float(
+                    getattr(tone, "film_highlight_density", 0.0)
+                ),
+            ),
         )
         validate_film_plans(*film_plans)
     plan = RenderPlan(

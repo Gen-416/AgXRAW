@@ -319,6 +319,22 @@ class ToneCompressionPlan:
     # (log2; only meaningful under timing="custom", identity 0.0).
     film_print_medium: str = ""
     film_print_exposure_ev: float = 0.0
+    # film v2 P4 (§6): editorial developer recipe — a bounded analytic
+    # perturbation of the three characteristic curves (contrast scales the
+    # logE axis about the mid-grey anchor, colour density scales amounts about
+    # the same anchor, fog adds uniform density and deliberately moves mid).
+    # "measured_default" locks all three deltas at 0.
+    film_development: str = "measured_default"
+    film_dev_contrast: float = 0.0
+    film_dev_fog: float = 0.0
+    film_dev_density: float = 0.0
+    # film v2 P4 (§8): optional editorial Film Compression — a C1 saturating
+    # map on scene luminance EV above the knee, applied BEFORE the emulsion
+    # (impact 0 = strict identity fast path), plus highlight colour density
+    # rho driving C' = C*exp(-rho*d) toward the luminance-preserved neutral.
+    film_compression: float = 0.0
+    film_compression_knee: float = 2.0
+    film_highlight_density: float = 0.0
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0

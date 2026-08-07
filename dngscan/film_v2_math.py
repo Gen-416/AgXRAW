@@ -91,3 +91,90 @@ def stage_a_amounts(
         log_e, le_axis, amounts_table,
         ev_offset=float(film_exposure_ev) + float(anchor_ev_offset),
     )
+
+
+def developer_perturbation(
+    char_le: Any,
+    char_amounts: Any,
+    *,
+    contrast_delta: float = 0.0,
+    fog_delta: float = 0.0,
+    color_density: float = 0.0,
+) -> Any:
+    """editorial_custom developer recipe (plan §6): a BOUNDED perturbation of
+    the three characteristic curves, applied analytically at Stage A — no
+    volume rebuild, because the curves never left the analytic front.
+
+        H'_c(x) = mid_c + (1 + color_density) * (H_c(a*(x-x0)+x0) - mid_c)
+                  + fog_delta
+
+    with a = 1 + contrast_delta and x0 the logE of scene mid-grey (0). The
+    mid-grey amount is unchanged by CONSTRUCTION for the contrast and
+    colour-density terms (both scale about the anchor); fog is a uniform
+    density addition and deliberately moves everything including mid — that
+    is what chemical fog does, and hiding it would be a lie. Monotonicity is
+    preserved for a > 0 and any color_density > -1. Amounts clamp at zero
+    (density cannot be negative); provenance: editorial, never measured.
+    """
+    le = np.asarray(char_le, dtype=np.float64)
+    table = np.asarray(char_amounts, dtype=np.float64)
+    a = 1.0 + float(contrast_delta)
+    cd = 1.0 + float(color_density)
+    if a <= 0.0 or cd <= 0.0:
+        raise ValueError("developer perturbation out of physical range")
+    if a == 1.0 and cd == 1.0 and float(fog_delta) == 0.0:
+        return table
+    x0 = 0.0  # scene mid-grey on the neutral-anchored logE axis
+    warped_x = a * (le - x0) + x0
+    out = np.empty_like(table)
+    for c in range(3):
+        mid = float(np.interp(x0, le, table[:, c]))
+        resampled = np.interp(warped_x, le, table[:, c])
+        out[:, c] = mid + cd * (resampled - mid) + float(fog_delta)
+    return np.maximum(out, 0.0)
+
+
+def film_compression_ev(
+    rgb_rec2020: Any,
+    *,
+    impact: float,
+    knee_ev: float,
+    width_ev: float = 2.0,
+    highlight_color_density: float = 0.0,
+) -> Any:
+    """Film Compression (plan §8): an OPTIONAL editorial bridge from the
+    sensor's hard highlight distribution toward negative latitude, applied to
+    scene-linear Rec.2020 BEFORE the film exposure model. C1 at the knee:
+
+        x_f = k + w*(1 - exp(-(x-k)/w))   for x > k, identity below
+        x'  = (1-impact)*x + impact*x_f
+
+    operating on the LUMINANCE EV so hue never rotates; the compression
+    amount d = x - x' additionally drives highlight colour density
+    C' = C * exp(-rho*d) as a chroma scale toward the (luminance-preserved)
+    neutral — no per-channel clamps. impact = 0 is a strict identity (the
+    caller keeps the fast path). CFA-clipped channels were already handled
+    by decode-side reconstruction; this operator claims nothing about lost
+    information.
+    """
+    rgb = np.asarray(rgb_rec2020, dtype=np.float64)
+    impact = float(impact)
+    if impact <= 0.0:
+        return rgb
+    luma = np.array([0.2627, 0.6780, 0.0593])
+    y = np.maximum(rgb @ luma, 1e-9)
+    x = np.log2(y / SCENE_MID)
+    k = float(knee_ev)
+    w = max(float(width_ev), 1e-3)
+    over = x > k
+    x_f = np.where(over, k + w * (1.0 - np.exp(-(x - k) / w)), x)
+    x_new = (1.0 - impact) * x + impact * x_f
+    gain = np.exp2(x_new - x)
+    out = rgb * gain[:, None]
+    d = np.maximum(x - x_new, 0.0)
+    rho = float(highlight_color_density)
+    if rho > 0.0:
+        y_new = np.maximum(out @ luma, 1e-9)
+        chroma_scale = np.exp(-rho * d)[:, None]
+        out = y_new[:, None] * ((out / y_new[:, None] - 1.0) * chroma_scale + 1.0)
+    return np.maximum(out, 0.0)

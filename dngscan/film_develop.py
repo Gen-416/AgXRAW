@@ -352,9 +352,27 @@ def _custom_delta_tau(color_head_y: float, color_head_m: float,
 
 
 def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
-    from .film_v2_math import amounts_to_unit, stage_a_amounts
+    from .film_v2_math import (
+        amounts_to_unit,
+        developer_perturbation,
+        film_compression_ev,
+        stage_a_amounts,
+    )
 
     stock, media = _load_v2(preset)
+    # P4 §8: Film Compression happens BEFORE the emulsion — the film (and the
+    # neutralization casts, which key on the emulsion's input luminance) sees
+    # the compressed scene. impact 0 keeps the strict identity fast path.
+    compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
+    if compression > 0.0:
+        rgb = film_compression_ev(
+            rgb,
+            impact=compression,
+            knee_ev=float(getattr(plan, "film_compression_knee", 2.0) or 2.0),
+            highlight_color_density=float(
+                getattr(plan, "film_highlight_density", 0.0) or 0.0
+            ),
+        ).astype(np.float32, copy=False)
     exposure_ev = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
     timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
     medium = str(getattr(plan, "film_print_medium", "") or "") or stock["default_medium"]
@@ -368,8 +386,20 @@ def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
             f"[{stock['exp_lo']}, {stock['exp_hi']}]"
         )
     ps, b2 = media[medium]
+    char_amounts = stock["char_amounts"]
+    if str(getattr(plan, "film_development", "measured_default")) == "editorial_custom":
+        # P4 §6: the recipe perturbs the analytic characteristic tables — no
+        # volume rebuild, because B1/B2 live in the (q-free) density domain.
+        # validate_film_plans already refused retimed timing and bounded
+        # neutralization (both are solved against measured development).
+        char_amounts = developer_perturbation(
+            stock["char_le"], char_amounts,
+            contrast_delta=float(getattr(plan, "film_dev_contrast", 0.0) or 0.0),
+            fog_delta=float(getattr(plan, "film_dev_fog", 0.0) or 0.0),
+            color_density=float(getattr(plan, "film_dev_density", 0.0) or 0.0),
+        )
     amounts = stage_a_amounts(
-        rgb, stock["observer"], stock["char_le"], stock["char_amounts"],
+        rgb, stock["observer"], stock["char_le"], char_amounts,
         film_exposure_ev=exposure_ev, anchor_ev_offset=stock["anchor"],
     )
     bounded = str(getattr(plan, "film_crossover", "off")) != "datasheet"

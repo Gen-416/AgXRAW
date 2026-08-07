@@ -405,6 +405,26 @@ def jpeg_tone_plan_cn(
             if str(getattr(plan, "film_crossover", "off")) == "datasheet"
             else "bounded"
         )
+        if str(getattr(plan, "film_development", "measured_default")) == "editorial_custom":
+            state += (
+                "编辑显影配方(对比{:+.2f}/fog{:+.2f}/色密度{:+.2f})；".format(
+                    float(getattr(plan, "film_dev_contrast", 0.0)),
+                    float(getattr(plan, "film_dev_fog", 0.0)),
+                    float(getattr(plan, "film_dev_density", 0.0)),
+                )
+            )
+        compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
+        if compression > 0.0:
+            state += (
+                "Film Compression {:.2f}@knee+{:.1f}EV".format(
+                    compression,
+                    float(getattr(plan, "film_compression_knee", 2.0)),
+                )
+            )
+            rho = float(getattr(plan, "film_highlight_density", 0.0) or 0.0)
+            if rho > 0.0:
+                state += f"·高光色密度ρ={rho:.2f}"
+            state += "；"
         return (
             f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
             f"→B1→τ→相纸曲线→B2)，{state}"
