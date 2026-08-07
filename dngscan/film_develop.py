@@ -351,12 +351,15 @@ def _custom_delta_tau(color_head_y: float, color_head_m: float,
     return delta
 
 
-def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
+def _apply_film_core_v2(
+    rgb: Any, plan: Any, preset: str, spatial_shape: tuple | None = None
+) -> Any:
     from .film_v2_math import (
         amounts_to_unit,
+        characteristic_amounts,
         developer_perturbation,
         film_compression_ev,
-        stage_a_amounts,
+        layer_log_exposure,
     )
 
     stock, media = _load_v2(preset)
@@ -373,6 +376,20 @@ def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
                 getattr(plan, "film_highlight_density", 0.0) or 0.0
             ),
         ).astype(np.float32, copy=False)
+    # P5 (§9): analog optics run only on the full-frame spatial path. The
+    # renderer routes here with the image shape whenever any amount is
+    # engaged; flat colorimetric callers (probes, tests) see amounts as off.
+    grain_amt = float(getattr(plan, "film_grain", 0.0) or 0.0)
+    halation_amt = float(getattr(plan, "film_halation", 0.0) or 0.0)
+    bloom_amt = float(getattr(plan, "film_bloom", 0.0) or 0.0)
+    geometry = None
+    optics = None
+    if spatial_shape is not None and (grain_amt or halation_amt or bloom_amt):
+        from .film_optics import MODELLED_DEFAULT, FilmGeometry
+
+        geometry = FilmGeometry(int(spatial_shape[0]), int(spatial_shape[1]))
+        optics = MODELLED_DEFAULT
+    optics_seed = int(getattr(plan, "film_optics_seed", 0) or 0)
     exposure_ev = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
     timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
     medium = str(getattr(plan, "film_print_medium", "") or "") or stock["default_medium"]
@@ -398,10 +415,33 @@ def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
             fog_delta=float(getattr(plan, "film_dev_fog", 0.0) or 0.0),
             color_density=float(getattr(plan, "film_dev_density", 0.0) or 0.0),
         )
-    amounts = stage_a_amounts(
-        rgb, stock["observer"], stock["char_le"], char_amounts,
-        film_exposure_ev=exposure_ev, anchor_ev_offset=stock["anchor"],
+    log_e = layer_log_exposure(rgb, stock["observer"])
+    if geometry is not None and halation_amt > 0.0:
+        from .film_optics import halation_reinject
+
+        # §9.2: source is the PRE-emulsion highlight scene exposure, spread
+        # red-heavy, reinjected into layer exposure before the curves.
+        hal_ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
+        log_e = halation_reinject(
+            log_e, hal_ev_y, geometry, optics, halation_amt
+        )
+    amounts = characteristic_amounts(
+        log_e, stock["char_le"], char_amounts,
+        ev_offset=exposure_ev + float(stock["anchor"]),
     )
+    if geometry is not None and grain_amt > 0.0:
+        from .film_optics import apply_density_grain
+
+        # §9.1: grain modulates DENSITY before printing. The span is the
+        # branch's declared dye domain (negative: stock cube; reversal: the
+        # direct B2 cube), so sigma peaks at mid density in that branch.
+        _g_lo, _g_hi = (
+            (stock["lo"], stock["hi"]) if not stock["reversal"]
+            else (media[medium][1]["dye_lo"], media[medium][1]["dye_hi"])
+        )
+        amounts = apply_density_grain(
+            amounts, _g_lo, _g_hi, geometry, optics, grain_amt, optics_seed
+        )
     bounded = str(getattr(plan, "film_crossover", "off")) != "datasheet"
     if stock["reversal"]:
         if timing != "fixed":
@@ -414,7 +454,12 @@ def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
                 developed[:, c] /= np.interp(
                     ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
                 )
-        return np.maximum(developed, 0.0).astype(np.float32, copy=False)
+        developed = np.maximum(developed, 0.0)
+        if geometry is not None and bloom_amt > 0.0:
+            from .film_optics import medium_bloom
+
+            developed = medium_bloom(developed, geometry, optics, bloom_amt)
+        return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
     u1 = amounts_to_unit(amounts, stock["lo"], stock["hi"])
     lep2 = _tetrahedral(ps["b1"], u1.astype(np.float32), ps["n"]).astype(np.float64)
@@ -464,15 +509,30 @@ def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
         cast_e = (1.0 - t) * ps["casts"][i_lo] + t * ps["casts"][i_hi]
         for c in range(3):
             developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
-    return np.maximum(developed, 0.0).astype(np.float32, copy=False)
+    developed = np.maximum(developed, 0.0)
+    if geometry is not None and bloom_amt > 0.0:
+        from .film_optics import medium_bloom
+
+        # §9.2: the positive medium's intrinsic scatter, after print
+        # formation, before delivery gamut fit downstream.
+        developed = medium_bloom(developed, geometry, optics, bloom_amt)
+    return developed.astype(np.float32, copy=False)
 
 
-def apply_film_core(rgb_rec2020: Any, plan: Any) -> Any:
-    """Film-takeover development. [N,3] -> [N,3]; two-stage v2 by default."""
+def apply_film_core(
+    rgb_rec2020: Any, plan: Any, spatial_shape: tuple | None = None
+) -> Any:
+    """Film-takeover development. [N,3] -> [N,3]; two-stage v2 by default.
+
+    spatial_shape=(h, w) declares that the flat array is the FULL image in
+    row-major order, unlocking the §9 analog optics (grain/halation/bloom).
+    Without it the plan's optics amounts are inert — chunked or probe callers
+    cannot run spatial operators (the renderer routes full-frame instead).
+    """
     preset = str(getattr(plan, "curve_preset", "") or "")
     rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float32), 0.0)
     if not _use_legacy_backend():
-        return _apply_film_core_v2(rgb, plan, preset)
+        return _apply_film_core_v2(rgb, plan, preset, spatial_shape)
     lut, cast_ev, cast_bounded, ev_min, ev_max, n = _load_lut(preset)
     ev = np.log2(np.maximum(rgb / np.float32(0.18), EPS))
     u = (ev - ev_min) / (ev_max - ev_min)

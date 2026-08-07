@@ -468,6 +468,44 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--film-grain",
+        type=float,
+        default=0.0,
+        metavar="A",
+        help=(
+            "film v2 颗粒 [0,1](仅 full;modelled profile):负片毫米坐标下的"
+            "确定性带限密度颗粒场,先扰动密度再经印相,预览/裁切/全尺寸共享"
+            "同一颗粒实现;0=严格恒等"
+        ),
+    )
+    parser.add_argument(
+        "--film-halation",
+        type=float,
+        default=0.0,
+        metavar="A",
+        help=(
+            "film v2 halation [0,1](仅 full;modelled profile):高亮场景曝光"
+            "经红敏背散射核扩散后回注层曝光,位于特性曲线之前;0=严格恒等"
+        ),
+    )
+    parser.add_argument(
+        "--film-bloom",
+        type=float,
+        default=0.0,
+        metavar="A",
+        help=(
+            "film v2 medium bloom [0,1](仅 full;modelled profile):正介质"
+            "自身高光的多尺度低频扩散,印相形成之后、gamut fit 之前;0=严格恒等"
+        ),
+    )
+    parser.add_argument(
+        "--film-optics-seed",
+        type=int,
+        default=0,
+        metavar="N",
+        help="film v2 模拟光学随机 seed(固定 seed=可复现的同一颗粒实现)",
+    )
+    parser.add_argument(
         "--demosaic",
         choices=DEMOSAIC_CHOICES,
         default="auto",
@@ -637,6 +675,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--film-highlight-density 只在 --film-compression > 0 时有意义")
     if not 0.0 <= args.film_compression <= 1.0:
         parser.error("--film-compression 域为 [0,1]")
+    for _flag, _v in (
+        ("--film-grain", args.film_grain),
+        ("--film-halation", args.film_halation),
+        ("--film-bloom", args.film_bloom),
+    ):
+        if not 0.0 <= _v <= 1.0:
+            parser.error(f"{_flag} 域为 [0,1]")
     if args.jpeg_quality is not None and not 1 <= args.jpeg_quality <= 100:
         parser.error("--jpeg-quality must be between 1 and 100")
     if not 0 <= args.hdr_headroom <= MAX_HDR_HEADROOM_EV + 1e-9:
@@ -867,6 +912,10 @@ def main(argv: list[str]) -> int:
                 film_compression=args.film_compression,
                 film_compression_knee=args.film_compression_knee,
                 film_highlight_density=args.film_highlight_density,
+                film_grain=args.film_grain,
+                film_halation=args.film_halation,
+                film_bloom=args.film_bloom,
+                film_optics_seed=args.film_optics_seed,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
             )
@@ -910,6 +959,10 @@ def main(argv: list[str]) -> int:
                 film_compression=args.film_compression,
                 film_compression_knee=args.film_compression_knee,
                 film_highlight_density=args.film_highlight_density,
+                film_grain=args.film_grain,
+                film_halation=args.film_halation,
+                film_bloom=args.film_bloom,
+                film_optics_seed=args.film_optics_seed,
                 endpoint_mode=args.endpoint_mode,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,

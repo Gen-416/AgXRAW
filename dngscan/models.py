@@ -335,6 +335,15 @@ class ToneCompressionPlan:
     film_compression: float = 0.0
     film_compression_knee: float = 2.0
     film_highlight_density: float = 0.0
+    # film v2 P5 (§9): analog optics amounts (modelled_default profile, first
+    # version is profile+amount only). Grain modulates density on a
+    # deterministic film-space field; halation reinjects red-heavy backscatter
+    # into layer exposure; bloom is the positive medium's intrinsic scatter.
+    # All zero = strict identity fast path (chunk streaming preserved).
+    film_grain: float = 0.0
+    film_halation: float = 0.0
+    film_bloom: float = 0.0
+    film_optics_seed: int = 0
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0

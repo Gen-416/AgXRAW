@@ -712,6 +712,10 @@ def build_render_plan(
     film_compression: float = 0.0,
     film_compression_knee: float = 2.0,
     film_highlight_density: float = 0.0,
+    film_grain: float = 0.0,
+    film_halation: float = 0.0,
+    film_bloom: float = 0.0,
+    film_optics_seed: int = 0,
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
     # Full-mode input-domain normalization also lives HERE so hand callers of
@@ -838,6 +842,14 @@ def build_render_plan(
                 "显影配方与 Film Compression 属于接管显影(full 模式):"
                 "observe 模式没有显影/压缩模型"
             )
+        if mode_value != "full" and (
+            float(film_grain) != 0.0 or float(film_halation) != 0.0
+            or float(film_bloom) != 0.0
+        ):
+            raise ValueError(
+                "模拟光学(颗粒/halation/bloom)属于接管显影(full 模式):"
+                "observe 模式没有密度/印相空间模型"
+            )
         if timing_value != "custom" and print_exposure_value != 0.0:
             raise ValueError(
                 "手动印相曝光仅在 timing=custom 下有意义;fixed/retimed 的印相"
@@ -858,6 +870,10 @@ def build_render_plan(
             film_compression=float(film_compression),
             film_compression_knee=float(film_compression_knee),
             film_highlight_density=float(film_highlight_density),
+            film_grain=float(film_grain),
+            film_halation=float(film_halation),
+            film_bloom=float(film_bloom),
+            film_optics_seed=int(film_optics_seed),
         )
     if float(color_head_y) != 0.0 or float(color_head_m) != 0.0:
         # Enlarger colour head: a declared printing decision, valid only where a
@@ -895,8 +911,10 @@ def build_render_plan(
         or float(film_dev_contrast) != 0.0 or float(film_dev_fog) != 0.0
         or float(film_dev_density) != 0.0 or float(film_compression) != 0.0
         or float(film_highlight_density) != 0.0
+        or float(film_grain) != 0.0 or float(film_halation) != 0.0
+        or float(film_bloom) != 0.0
     ):
-        raise ValueError("显影配方与 Film Compression 需要一个胶片曲线预设")
+        raise ValueError("显影配方、Film Compression 与模拟光学需要一个胶片曲线预设")
     film_plans = None
     if film_curve != "none":
         from .film_curve import film_process
@@ -946,6 +964,18 @@ def build_render_plan(
                 highlight_color_density=float(
                     getattr(tone, "film_highlight_density", 0.0)
                 ),
+                grain_profile=(
+                    "modelled_default"
+                    if float(getattr(tone, "film_grain", 0.0)) > 0.0 else "off"
+                ),
+                grain_amount=float(getattr(tone, "film_grain", 0.0)),
+                halation_profile=(
+                    "modelled_default"
+                    if float(getattr(tone, "film_halation", 0.0)) > 0.0 else "off"
+                ),
+                halation_amount=float(getattr(tone, "film_halation", 0.0)),
+                bloom_amount=float(getattr(tone, "film_bloom", 0.0)),
+                seed=int(getattr(tone, "film_optics_seed", 0)),
             ),
         )
         validate_film_plans(*film_plans)
