@@ -23,8 +23,8 @@ from dngscan.hdr_agx_math import (
     validate_hdr_shoulder,
 )
 
-SAMPLE = Path.home() / "Pictures" / "_SDI0150.DNG"
-SAMPLE_NIGHT = Path.home() / "Pictures" / "_SDI0199.DNG"
+SAMPLE = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
+SAMPLE_NIGHT = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0199.DNG"
 
 # Calibrated to the measured residual landscape across all twenty stocks after the
 # viewing-condition-complete refit AND the luminance-composed floor fix. The floor fix

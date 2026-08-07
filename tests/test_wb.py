@@ -30,7 +30,7 @@ from dngscan.raw_io import (
     resolve_hot_wb_c0,
 )
 
-SAMPLE = Path.home() / "Pictures" / "_SDI0150.DNG"
+SAMPLE = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
 
 
 class CctChromaticityTests(unittest.TestCase):

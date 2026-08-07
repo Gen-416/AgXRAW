@@ -65,9 +65,19 @@ OPTICS_PROFILES = {"modelled_default": MODELLED_DEFAULT}
 class FilmGeometry:
     """Affine from the full negative gate to this rendering's pixel grid.
 
-    The image covers the gate region [x0, x0+w_mm] × [y0, y0+h_mm]. Crops and
-    preview scales share the ONE gate: a crop passes the sub-region it covers,
-    a preview passes the same region with fewer pixels.
+    The image covers the gate region [x0, x0+w_mm] × [y0, y0+h_mm], in IMAGE
+    axes. `rotated` declares a portrait capture: the physical gate is turned
+    90° in the camera, so image x runs along the gate's 24 mm side and image
+    y along the 36 mm side (the stored field is one landscape grid; rotated
+    geometries sample it transposed). Crops and preview scales share the ONE
+    gate: a crop passes the sub-region it covers, a preview passes the same
+    region with fewer pixels.
+
+    Use `FilmGeometry.fit(height, width)` for whole-image renderings: it
+    orients the gate to the image and letterboxes non-3:2 aspects CENTERED
+    inside the gate, so every pixel maps to a real emulsion position (the
+    review's measured failure: portrait and 4:3 images spilled past the
+    24 mm side and whole row bands sampled a zero field).
     """
 
     height: int
@@ -76,6 +86,37 @@ class FilmGeometry:
     y0_mm: float = 0.0
     w_mm: float = GATE_W_MM
     h_mm: float = 0.0  # 0 -> derived from the image aspect over w_mm
+    rotated: bool = False
+
+    @classmethod
+    def fit(cls, height: int, width: int) -> "FilmGeometry":
+        rotated = height > width
+        gate_w, gate_h = (GATE_H_MM, GATE_W_MM) if rotated else (GATE_W_MM, GATE_H_MM)
+        aspect = height / max(width, 1)
+        if gate_w * aspect <= gate_h:
+            w_mm = gate_w
+            h_mm = gate_w * aspect
+        else:
+            h_mm = gate_h
+            w_mm = gate_h / aspect
+        return cls(
+            height, width,
+            x0_mm=(gate_w - w_mm) / 2.0,
+            y0_mm=(gate_h - h_mm) / 2.0,
+            w_mm=w_mm, h_mm=h_mm, rotated=rotated,
+        )
+
+    def rows(self, y0: int, y1: int) -> "FilmGeometry":
+        """The sub-geometry for output rows [y0, y1) — same gate mapping."""
+        _, base_y0, w_mm, h_mm = self.region()
+        return FilmGeometry(
+            y1 - y0, self.width,
+            x0_mm=self.x0_mm,
+            y0_mm=base_y0 + h_mm * y0 / max(self.height, 1),
+            w_mm=w_mm,
+            h_mm=h_mm * (y1 - y0) / max(self.height, 1),
+            rotated=self.rotated,
+        )
 
     def region(self) -> tuple[float, float, float, float]:
         h_mm = (
@@ -215,11 +256,46 @@ def _sep_axis(padded: np.ndarray, kernel: np.ndarray, n: int, axis: int) -> np.n
     acc = np.zeros(
         (n,) + padded.shape[1:] if axis == 0
         else (padded.shape[0], n, padded.shape[2]),
-        dtype=np.float64,
+        dtype=np.float32,
     )
     for i in range(kernel.size):
         acc += kernel[i] * (padded[i:i + n] if axis == 0 else padded[:, i:i + n])
     return acc.astype(np.float32)
+
+
+def _gaussian_blur_slabbed(img: np.ndarray, sigma: float, slab: int = 256) -> np.ndarray:
+    """Separable Gaussian for LARGE arrays, processed in halo slabs so the
+    transient working set stays at slab scale (review batch 13: the whole-
+    array pad/accumulate chain alone spent ~390 MiB on the grain grid).
+    Reflect-padded, float32, identical taps to _gaussian_blur."""
+    if sigma <= 0.0:
+        return np.asarray(img, dtype=np.float32)
+    radius = max(int(np.ceil(3.0 * sigma)), 1)
+    x = np.arange(-radius, radius + 1, dtype=np.float64)
+    k = np.exp(-0.5 * (x / sigma) ** 2)
+    k /= k.sum()
+    k32 = k.astype(np.float32)
+    src = np.ascontiguousarray(img, dtype=np.float32)
+    h, w = src.shape[:2]
+    # Both passes write back IN PLACE per slab (the pad copy already holds
+    # the slab's context), so the whole-array footprint stays at one buffer.
+    for c0 in range(0, w, slab):     # vertical pass, column slabs
+        c1 = min(c0 + slab, w)
+        pad = np.pad(src[:, c0:c1], ((radius, radius), (0, 0), (0, 0)),
+                     mode="reflect")
+        acc = np.zeros((h, c1 - c0, src.shape[2]), dtype=np.float32)
+        for i in range(k32.size):
+            acc += k32[i] * pad[i:i + h]
+        src[:, c0:c1] = acc
+    for r0 in range(0, h, slab):     # horizontal pass, row slabs
+        r1 = min(r0 + slab, h)
+        pad = np.pad(src[r0:r1], ((0, 0), (radius, radius), (0, 0)),
+                     mode="reflect")
+        acc = np.zeros((r1 - r0, w, src.shape[2]), dtype=np.float32)
+        for i in range(k32.size):
+            acc += k32[i] * pad[:, i:i + w]
+        src[r0:r1] = acc
+    return src
 
 
 def _gaussian_blur(img: np.ndarray, sigma: float) -> np.ndarray:
@@ -255,23 +331,68 @@ def _band_limited_field(profile: OpticsProfile, seed: int) -> np.ndarray:
     white = rng.standard_normal((gh, gw, 3), dtype=np.float32)
     shared = rng.standard_normal((gh, gw, 1), dtype=np.float32)
     c = float(np.clip(profile.grain_layer_corr, 0.0, 1.0))
-    mixed = np.sqrt(1.0 - c) * white + np.sqrt(c) * shared
-    field = _gaussian_blur(mixed, profile.grain_size_um / profile.grain_pitch_um)
-    rms = np.sqrt(np.mean(np.square(field, dtype=np.float64), axis=(0, 1)))
-    return (field / np.maximum(rms, 1e-12)).astype(np.float32)
+    # In-place mixing and an einsum RMS: the naive expression chain held four
+    # grid-sized temporaries at once and the float64 square another two —
+    # the measured ~620 MiB build transient of review batch 13.
+    white *= np.float32(np.sqrt(1.0 - c))
+    for ch in range(3):
+        white[..., ch] += np.float32(np.sqrt(c)) * shared[..., 0]
+    del shared
+    field = _gaussian_blur_slabbed(
+        white, profile.grain_size_um / profile.grain_pitch_um
+    )
+    del white
+    n = field.shape[0] * field.shape[1]
+    rms = np.sqrt(
+        np.einsum("hwc,hwc->c", field, field, dtype=np.float64) / n
+    )
+    field /= np.maximum(rms, 1e-12).astype(np.float32)
+    return field
 
 
 _FIELD_CACHE: dict[tuple, np.ndarray] = {}
 
 
 def grain_field_for(profile: OpticsProfile, seed: int) -> np.ndarray:
+    """The deterministic film-space field (kept for tests/inspection; the
+    sampling path uses the cached integral image below)."""
+    return _band_limited_field(profile, seed)
+
+
+def _grain_ii_for(profile: OpticsProfile, seed: int) -> np.ndarray:
+    """The field's 2-D integral image, built ONCE per (profile, seed) and
+    cached INSTEAD of the field (review batch 13): rebuilding the ~144 MB
+    float64 integral every row band dominated the measured peak, and the
+    field itself is never needed after the integral exists. The old entry is
+    released before the replacement is built."""
     key = (profile, int(seed))
     got = _FIELD_CACHE.get(key)
     if got is None:
-        got = _band_limited_field(profile, seed)
-        _FIELD_CACHE.clear()  # one field resident at a time (the grid is large)
-        _FIELD_CACHE[key] = got
+        _FIELD_CACHE.clear()
+        field = _band_limited_field(profile, seed)
+        gh, gw = field.shape[:2]
+        ii = np.zeros((gh + 1, gw + 1, field.shape[2]), dtype=np.float64)
+        np.cumsum(field, axis=0, out=ii[1:, 1:])
+        del field
+        np.cumsum(ii[1:, 1:], axis=1, out=ii[1:, 1:])
+        _FIELD_CACHE[key] = ii
+        got = ii
     return got
+
+
+def _as_integral(arr: np.ndarray) -> np.ndarray:
+    """Accept a raw field [gh,gw,c] or a prebuilt integral image
+    [gh+1,gw+1,c] (recognized by the zero first row/column of the latter)."""
+    if (
+        arr.dtype == np.float64
+        and arr.shape[0] > 1 and arr.shape[1] > 1
+        and not arr[0].any() and not arr[:, 0].any()
+    ):
+        return arr
+    ii = np.zeros((arr.shape[0] + 1, arr.shape[1] + 1, arr.shape[2]), dtype=np.float64)
+    np.cumsum(arr, axis=0, out=ii[1:, 1:])
+    np.cumsum(ii[1:, 1:], axis=1, out=ii[1:, 1:])
+    return ii
 
 
 def sample_field(field: np.ndarray, geometry: FilmGeometry) -> np.ndarray:
@@ -282,21 +403,32 @@ def sample_field(field: np.ndarray, geometry: FilmGeometry) -> np.ndarray:
     for cell-constant fields at fractional coordinates). A half-resolution
     preview therefore equals the block mean of the full-resolution sampling
     by construction, and a crop equals the corresponding region of the full
-    frame — the §9.1 shared-coordinate contract.
+    frame — the §9.1 shared-coordinate contract. Rotated (portrait)
+    geometries sample the one landscape grid transposed, so the same
+    emulsion position keeps the same realization in either orientation.
+    Output rows are processed in slabs so the query temporaries stay bounded
+    (review batch 13: the unslabbed path peaked at several output-sized
+    float64 arrays); the integral image itself (~144 MB at the default
+    grain grid) is accounted in the renderer's budget.
     """
-    gh, gw = field.shape[:2]
+    ii = _as_integral(field)
+    if geometry.rotated:
+        # querying the SAME integral with swapped axes samples the
+        # transposed field — no data movement
+        ii = ii.transpose(1, 0, 2)
+        gate_w_mm, gate_h_mm = GATE_H_MM, GATE_W_MM
+    else:
+        gate_w_mm, gate_h_mm = GATE_W_MM, GATE_H_MM
+    gh, gw = ii.shape[0] - 1, ii.shape[1] - 1
     x0, y0, w_mm, h_mm = geometry.region()
-    ii = np.zeros((gh + 1, gw + 1, field.shape[2]), dtype=np.float64)
-    np.cumsum(field, axis=0, out=ii[1:, 1:])
-    np.cumsum(ii[1:, 1:], axis=1, out=ii[1:, 1:])
 
     ye = np.clip(
         (y0 + h_mm * np.arange(geometry.height + 1) / geometry.height)
-        / GATE_H_MM * gh, 0.0, gh,
+        / gate_h_mm * gh, 0.0, gh,
     )
     xe = np.clip(
         (x0 + w_mm * np.arange(geometry.width + 1) / geometry.width)
-        / GATE_W_MM * gw, 0.0, gw,
+        / gate_w_mm * gw, 0.0, gw,
     )
 
     def _ii_at(yq: np.ndarray, xq: np.ndarray) -> np.ndarray:
@@ -308,15 +440,18 @@ def sample_field(field: np.ndarray, geometry: FilmGeometry) -> np.ndarray:
         bot = ii[yi + 1][:, xi] * (1 - xf) + ii[yi + 1][:, xi + 1] * xf
         return top * (1 - yf) + bot * yf
 
-    s = (
-        _ii_at(ye[1:], xe[1:]) - _ii_at(ye[1:], xe[:-1])
-        - _ii_at(ye[:-1], xe[1:]) + _ii_at(ye[:-1], xe[:-1])
-    )
-    area = np.maximum(
-        (ye[1:] - ye[:-1])[:, None, None] * (xe[1:] - xe[:-1])[None, :, None],
-        1e-12,
-    )
-    return (s / area).astype(np.float32)
+    out = np.empty((geometry.height, geometry.width, field.shape[2]), dtype=np.float32)
+    area_x = np.maximum(xe[1:] - xe[:-1], 1e-12)[None, :, None]
+    slab = max(1, 8_000_000 // max(geometry.width, 1))
+    for r0 in range(0, geometry.height, slab):
+        r1 = min(r0 + slab, geometry.height)
+        s00 = _ii_at(ye[r0:r1], xe[:-1])
+        s01 = _ii_at(ye[r0:r1], xe[1:])
+        s10 = _ii_at(ye[r0 + 1:r1 + 1], xe[:-1])
+        s11 = _ii_at(ye[r0 + 1:r1 + 1], xe[1:])
+        area = (ye[r0 + 1:r1 + 1] - ye[r0:r1])[:, None, None] * area_x
+        out[r0:r1] = (s11 - s10 - s01 + s00) / np.maximum(area, 1e-12)
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -339,7 +474,7 @@ def apply_density_grain(
     if amount <= 0.0:
         return amounts
     h, w = geometry.height, geometry.width
-    field = sample_field(grain_field_for(profile, seed), geometry)
+    field = sample_field(_grain_ii_for(profile, seed), geometry)
     a = np.asarray(amounts, dtype=np.float64).reshape(h, w, 3)
     lo64 = np.asarray(lo, dtype=np.float64)
     span = np.maximum(np.asarray(hi, dtype=np.float64) - lo64, 1e-9)
@@ -407,20 +542,32 @@ def bloom_spread_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.nd
     spread = np.zeros_like(level)
     total = 0.0
     for lvl in range(profile.bloom_levels):
-        sh, sw = max(level.shape[0] // 2, 1), max(level.shape[1] // 2, 1)
-        level = level[: sh * 2, : sw * 2].reshape(sh, 2, sw, 2, 3).mean(axis=(1, 3))
+        if min(level.shape[0], level.shape[1]) <= 1:
+            # nothing left to spread at this scale (tiny inputs / deep grids)
+            break
+        # Odd edges are edge-padded to even BEFORE the 2x2 block mean: the
+        # bare truncation dropped the last row/column each level, so a
+        # highlight on the odd edge lost its bloom entirely and sizes like
+        # 5x5 crashed the reshape (review batch 13).
+        pad_h = level.shape[0] % 2
+        pad_w = level.shape[1] % 2
+        if pad_h or pad_w:
+            level = np.pad(level, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
+        sh, sw = level.shape[0] // 2, level.shape[1] // 2
+        level = level.reshape(sh, 2, sw, 2, 3).mean(axis=(1, 3))
         blurred = _gaussian_blur(level, 2.0)
         factor = 2 ** (lvl + 1)
-        up = np.repeat(np.repeat(blurred, factor, axis=0), factor, axis=1)
-        if up.shape[0] < dh or up.shape[1] < dw:
-            up = np.pad(
-                up,
-                ((0, dh - min(up.shape[0], dh)), (0, dw - min(up.shape[1], dw)), (0, 0)),
-                mode="edge",
-            )
+        # slab-wise nearest-neighbour accumulate: the double np.repeat held
+        # two dec-grid-sized copies per level (review batch 13)
+        col_idx = np.minimum(np.arange(dw) // factor, blurred.shape[1] - 1)
         wgt = 1.0 / (lvl + 1.0)
         total += wgt
-        spread += wgt * up[:dh, :dw]
+        for r0 in range(0, dh, 256):
+            r1 = min(r0 + 256, dh)
+            row_idx = np.minimum(
+                np.arange(r0, r1) // factor, blurred.shape[0] - 1
+            )
+            spread[r0:r1] += wgt * blurred[row_idx][:, col_idx]
     return spread / max(total, 1e-9)
 
 

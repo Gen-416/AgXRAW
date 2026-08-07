@@ -16,7 +16,7 @@ from dngscan.metadata import (
 )
 from dngscan.raw_io import _apply_gain_maps_mosaic, _apply_vignette_render
 
-SAMPLE_FP = Path.home() / "Pictures" / "_SDI0150.DNG"
+SAMPLE_FP = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
 SAMPLE_IPHONE = Path.home() / "Pictures" / "Original RAW 26-05-11 193721820.dng"
 
 

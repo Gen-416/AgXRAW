@@ -112,7 +112,7 @@ class LibRawSceneScaleTests(unittest.TestCase):
         self.assertGreater(float(decoded[0, 0, 2]), 1.05)
 
     def test_sigma_clip_and_reconstruct_keep_the_same_body_exposure(self) -> None:
-        source = Path.home() / "Pictures" / "_SDI0150.DNG"
+        source = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
         if not source.is_file():
             raise unittest.SkipTest(f"missing {source}")
         clip = load_raw(source, "clip", scene_half_size=True)

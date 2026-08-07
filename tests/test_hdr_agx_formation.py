@@ -28,9 +28,9 @@ PICTURES = Path.home() / "Pictures"
 # Daylight, two night frames and a phone capture: the night frames are the ones that
 # would expose an HDR capacity quietly re-exposing a dark scene.
 FRAMES = {
-    "daylight": PICTURES / "_SDI0150.DNG",
-    "night_stage": PICTURES / "_SDI0199.DNG",
-    "night_bar": PICTURES / "_SDI0133.DNG",
+    "daylight": PICTURES / "AgXRAW样张" / "_SDI0150.DNG",
+    "night_stage": PICTURES / "AgXRAW样张" / "_SDI0199.DNG",
+    "night_bar": PICTURES / "AgXRAW样张" / "_SDI0133.DNG",
 }
 
 

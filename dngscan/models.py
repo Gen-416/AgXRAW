@@ -279,9 +279,11 @@ class ToneCompressionPlan:
     curve_preset: str = "none"
     # Two-mode film contract: "observe" (default) = the film declares what the
     # observer saw (WB/separation/tone signature), AgX develops — colour stays with
-    # the pipeline's validated rendering. "full" = the film's development model takes
-    # over per-channel (film_develop core, EXPERIMENTAL: colour side has no external
-    # oracle); AgX keeps only delivery-side gamut safety. Meaningful only while a
+    # the pipeline's validated rendering. "full" = the film v2 factorized chain
+    # takes over (film_develop core: Stage A analytic front -> B1/tau/paper/B2,
+    # EXPERIMENTAL: colour side has no external oracle); AgX keeps only
+    # delivery-side gamut safety, and Ultra HDR serves full mode as the
+    # "film print + scene HDR extension" pair. Meaningful only while a
     # curve_preset is active.
     film_mode: str = "observe"
     # Enlarger colour head (negative film presets only): Y/M subtractive filtration

@@ -219,11 +219,30 @@ class _PrintChain:
         )
 
 
+# Editorial developer envelope (dngscan.film_plans bounds): colour density
+# scales amounts about the mid-grey anchor by up to 1.5x, fog adds up to 0.3
+# uniform density (contrast warps the logE axis and cannot leave the measured
+# amount range). The B1 / reversal-B2 computational shaper domains must COVER
+# this envelope — review batch 13 measured 35-47% of perturbed curve nodes
+# silently clamped against the bare measured envelope. The spectral chain
+# evaluates the extension by the same Beer-Lambert stacking (declared
+# extrapolation beyond the measured Dmin/Dmax).
+EDITORIAL_DENSITY_SCALE = 1.5
+EDITORIAL_FOG_MAX = 0.3
+
+
 def _stage_a_tables(stock: dict):
     neg = ff._load_spectral(stock["negative"])
     char_le = np.asarray(neg["le"], dtype=np.float64)
     char_amounts = np.asarray(neg["amounts"], dtype=np.float64)
-    return neg, char_le, char_amounts, char_amounts.min(axis=0), char_amounts.max(axis=0)
+    mid = np.array([
+        np.interp(0.0, char_le, char_amounts[:, c]) for c in range(3)
+    ])
+    meas_lo = char_amounts.min(axis=0)
+    meas_hi = char_amounts.max(axis=0)
+    lo = np.maximum(mid - EDITORIAL_DENSITY_SCALE * (mid - meas_lo), 0.0)
+    hi = mid + EDITORIAL_DENSITY_SCALE * (meas_hi - mid) + EDITORIAL_FOG_MAX
+    return neg, char_le, char_amounts, lo, hi
 
 
 def _observer(stock: dict):
@@ -241,6 +260,7 @@ def _grid_u() -> np.ndarray:
 
 def build_b2_negative(paper_name: str, theatrical: bool) -> dict:
     """Positive-medium density cube -> viewed Rec.2020 for a print paper."""
+    medium_id = f"{paper_name}__{'native' if theatrical else 'translated'}"
     probe = ff._load_spectral(paper_name)
     wl = np.asarray(probe["wl"], dtype=np.float64)
     paper = probe
@@ -258,6 +278,7 @@ def build_b2_negative(paper_name: str, theatrical: bool) -> dict:
     ).astype(np.float32).reshape(GRID_N, GRID_N, GRID_N, 3)
     return {
         "kind": np.asarray("b2"),
+        "medium": np.asarray(medium_id),
         "volume": volume.astype(np.float16),
         "paper_le2": (np.asarray(paper["le"], dtype=np.float64) / LOG10_2),
         "paper_amounts": np.asarray(paper["amounts"], dtype=np.float64),
@@ -276,6 +297,7 @@ def build_b2_negative(paper_name: str, theatrical: bool) -> dict:
 
 def build_b2_reversal(stock_key: str) -> dict:
     """Slide dye cube -> viewed Rec.2020 (the reversal's direct medium)."""
+    medium_id = f"direct__{stock_key}"
     stock = ff.STOCKS[stock_key]
     chain = v1._Chain(stock, theatrical=False)
     _, _, _, lo, hi = _stage_a_tables(stock)
@@ -283,6 +305,7 @@ def build_b2_reversal(stock_key: str) -> dict:
     volume = chain.develop_amounts(dye_grid).astype(np.float32)
     return {
         "kind": np.asarray("b2"),
+        "medium": np.asarray(medium_id),
         "volume": volume.astype(np.float16).reshape(GRID_N, GRID_N, GRID_N, 3),
         "paper_le2": np.zeros(2),   # no print development stage
         "paper_amounts": np.zeros((2, 3)),
@@ -447,6 +470,7 @@ def build_stock_asset(stock_key: str) -> dict:
     truth = v1.chain_eval(ff.STOCKS[stock_key.removesuffix("_theatrical")], chain, a, oracle_rgb)
     entry = {
         "kind": np.asarray("stock"),
+        "stock": np.asarray(stock_key),
         "observer": observer.astype(np.float64),
         "observer_p99_stop": np.float32(obs_p99),
         "observer_cv_p99_stop": np.float32(obs_cv),

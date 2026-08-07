@@ -1,67 +1,53 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Film-takeover development core (film_mode="full") — two-stage edition.
+"""Film-takeover development core (film_mode="full") — the film v2
+factorized chain (FILM_PRINT_RENDERING_PLAN §3/§5.4/§7.1).
 
-film v2 (FILM_PRINT_RENDERING_PLAN §3): the default backend is the TWO-STAGE
-composite — Stage A runs the analytic scene->density front per pixel
-(observer inverse -> three 1-D characteristic curves -> dye amounts, with the
-film exposure state and the reversal anchor sharing the layer-exposure slot),
-Stage B samples a density-domain 65^3 volume of the same solved chain (fixed
-timing q(0)). Halation and grain will insert between A and B in later stages;
-their off-state leaves this path bit-identical. v2 validates
-against the direct-chain oracle shipped inside every schema-5 asset
-(plan §7.2 migration semantics); the v1 single scene-EV LUT backend and its
-P0 freeze completed their migration duty and were REMOVED at P7.
+Stage A runs ANALYTICALLY per pixel: optional Film Compression on the scene
+(§8, before the emulsion), observer inverse -> per-layer log exposure ->
+optional halation reinjection (§9.2, spatial context) -> three 1-D
+characteristic curves (the film exposure state and the reversal anchor share
+the layer-exposure slot; editorial developer recipes perturb the tables here,
+§6) -> negative dye density -> optional density grain (§9.1).
 
-The narrative below still describes the shared chain and the
-neutralization contract; only the sampling topology changed.
+Stage B is FACTORIZED, never one baked composite: B1 (negative density ->
+log2 paper-layer exposure, 65^3, q-free) -> print timing tau (fixed = tau(0)
+node; retimed = interpolated from the 0.25 EV table inside the pairing's
+declared reachable span; custom = tau(0) + manual print exposure + the
+modelled colour-head delta-tau, datasheet neutralization required) -> the
+paper's 1-D development curves on the log2 axis -> B2 (positive-medium
+density -> viewed Rec.2020, 65^3, keyed by print medium x viewing and reused
+across stocks). Reversals skip B1/tau/paper into their direct B2. Medium
+bloom (§9.2) applies after B2, before delivery gamut fit. Beyond SDR, the
+Ultra HDR export runs this chain as "film print + scene HDR extension"
+(hdr_agx.render_ultrahdr_film_pair).
 
-
-The two-mode contract (docs/FILM_OBSERVATION_PLAN): in "observe" mode the film
-declares what the observer saw and AgX develops it. This module is the other
-pole — and since the stage-4 rebuild it no longer feeds Rec.2020 channels to
-per-channel curves (the RGB heuristic the review refused to call a
-reconstruction). It samples an offline-baked LUT of the honest chain:
-
-    plain scene Rec.2020 -> constrained observer inverse (fitted over the
-    rawtoaces training reflectances under D55) -> per-layer exposures ->
-    characteristic curves -> negative spectral density -> TH-KG3 print chain
-    (or the slide viewed directly) -> XYZ -> CAT -> Rec.2020.
-
-Honesty label: this is a TRISTIMULUS reconstruction CONSTRAINED by spectral
+Honesty labels: this is a TRISTIMULUS reconstruction CONSTRAINED by spectral
 data — three numbers cannot recover a spectrum, and the observer inverse's
-metamer residual is measured and stamped into every LUT (observer_p99_stop).
-DIR couplers / interlayer effects remain absent from the data and therefore
-from the chain. The plan.film_crossover switch selects how the neutral axis
-is served: "datasheet" is the baked chain verbatim; "neutralized" divides the
-sampled output per pixel by a BOUNDED neutral-cast curve shipped inside the
-npz, indexed at the pixel's LUMINANCE exposure EV_Y (the same single-axis
-declaration as the colour head — a per-channel-exposure divisor re-imported
-the retired channels-as-layer-exposures reading and blew up off-axis on hard
-reversals). Bounded means the correction multiplier walks the straight line
-h(t) = 1 + t*(1/cast - 1) from identity toward full neutralization, at the
-largest t in [0,1] keeping every channel inside [0.25, 4] — every point on
-that line preserves the neutral axis' luminance exactly, so grays are
-strictly neutral wherever the medium's own gray sits within two stops of
-neutral per channel, tone follows the chain everywhere, and deeper tint —
-Kodachrome's floor above all — is kept as medium character rather than
-half-chased with near-singular gains (a clip-then-renormalize cut was
-measured shipping a 0.081 divisor, +3.6 EV, outside its own claimed bound).
-Why the division is at runtime and not a second baked volume: with a bounded
-divisor evaluated exactly per pixel, the quotient's visible-stop error equals
-the datasheet volume's own; baking the composite instead put the EV_Y kink
-diagonal to the grid and measured 1.73 EV worst off-axis (full argument at
-the cast_b computation in tools/build_full_lut.py).
-SDR only; the enlarger colour head is REFUSED in full mode — appending a
-neutral-axis LMS field to a baked chain would contradict the chain's own
-physics, so the plan compiler, CLI and GUI reject the combination until
-filtration is itself baked into LUT variants.
+metamer residual is measured and stamped per stock. DIR couplers/interlayer
+effects remain absent from the data and therefore from the chain. The
+computational shaper domains (amount_lo/hi, dye_lo/hi) are baked WIDER than
+the measured curve envelope to cover the declared editorial developer
+envelope (review batch 13), so recipe-perturbed densities stay in-domain.
 
-The LUT grid lives in per-channel log2 exposure,
+Grey-scale neutralization (plan.film_crossover storage; surface name
+--film-neutralization): "datasheet" serves the chain verbatim; "bounded"
+(off) divides the output per pixel by a BOUNDED neutral-cast curve indexed
+at the pixel's LUMINANCE exposure EV_Y — the correction multiplier walks
+h(t) = 1 + t*(1/cast - 1) toward full neutralization at the largest
+t in [0,1] keeping every channel inside [0.25, 4], preserving neutral-axis
+luminance exactly; deeper tint (Kodachrome's floor) stays medium character.
+The division is at runtime, not a second baked volume: evaluated exactly per
+pixel the quotient's visible-stop error equals the datasheet volume's own,
+while a baked composite put the EV_Y kink diagonal to the grid (1.73 EV
+worst off-axis, measured). For negatives the per-node cast tables ride the
+print_state asset and interpolate in exposure state; both cast families are
+solved against MEASURED development, which is why editorial recipes refuse
+bounded neutralization.
 
-    u_c = (log2(E_c/0.18) - ev_min) / (ev_max - ev_min),
-
-sampled with tetrahedral interpolation; outside the domain u clamps (beyond
-the top the print sits on Dmin/Dmax, below the bottom is film-base black).
+Loading is fail-closed end to end: schema, kind, identity (stock/medium/
+input space), shapes, monotone axes, finiteness and cast bounds all raise
+instead of serving a stale or tampered asset; the published family is
+additionally pinned by tests against dngscan/data/film_v2/MANIFEST.json.
 """
 from __future__ import annotations
 
@@ -155,6 +141,10 @@ def _load_v2(name: str):
     try:
         with _npz(stock_path) as z:
             _check_common(z, "stock", stock_path)
+            if str(np.asarray(z["stock"])) != key:
+                raise ValueError(
+                    f"stock asset identity {np.asarray(z['stock'])} != {key}"
+                )
             observer = np.asarray(z["observer"], dtype=np.float64)
             char_le = np.asarray(z["char_le"], dtype=np.float64)
             char_amounts = np.asarray(z["char_amounts"], dtype=np.float64)
@@ -164,6 +154,10 @@ def _load_v2(name: str):
                 raise ValueError("observer mis-shaped")
             if char_amounts.shape != (char_le.size, 3) or char_le.size < 2:
                 raise ValueError("characteristic tables mis-shaped")
+            for _n, _a in (("char_le", char_le), ("char_amounts", char_amounts),
+                           ("amount_lo", lo), ("amount_hi", hi)):
+                if not bool(np.isfinite(_a).all()):
+                    raise ValueError(f"{_n} non-finite")
             if not bool(np.all(np.diff(char_le) > 0)):
                 raise ValueError("logE axis not strictly increasing")
             if not bool(np.all(hi > lo)):
@@ -199,6 +193,12 @@ def _load_v2(name: str):
             b2_path = _V2_DIR / f"b2__{medium}.npz"
             with _npz(b2_path) as z:
                 _check_common(z, "b2", b2_path)
+                if str(np.asarray(z["medium"])) != medium:
+                    raise ValueError(
+                        f"{b2_path.name}: medium identity mismatch"
+                    )
+                if str(np.asarray(z["input_space"])) != "positive_density":
+                    raise ValueError(f"{b2_path.name}: wrong input space")
                 n = int(z["n"])
                 vol = np.asarray(z["volume"], dtype=np.float32)
                 if vol.shape != (n, n, n, 3) or n < 2:
@@ -209,10 +209,16 @@ def _load_v2(name: str):
                 dye_hi = np.asarray(z["dye_hi"], dtype=np.float64)
                 if not bool(np.all(dye_hi > dye_lo)):
                     raise ValueError(f"{b2_path.name}: dye domain degenerate")
+                paper_le2 = np.asarray(z["paper_le2"], dtype=np.float64)
+                paper_amounts = np.asarray(z["paper_amounts"], dtype=np.float64)
+                if not bool(np.isfinite(paper_le2).all()) or                         not bool(np.isfinite(paper_amounts).all()):
+                    raise ValueError(f"{b2_path.name}: paper tables non-finite")
+                if not bool(np.isfinite(dye_lo).all()) or                         not bool(np.isfinite(dye_hi).all()):
+                    raise ValueError(f"{b2_path.name}: dye domain non-finite")
                 b2 = {
                     "volume": vol, "n": n,
-                    "paper_le2": np.asarray(z["paper_le2"], dtype=np.float64),
-                    "paper_amounts": np.asarray(z["paper_amounts"], dtype=np.float64),
+                    "paper_le2": paper_le2,
+                    "paper_amounts": paper_amounts,
                     "dye_lo": dye_lo, "dye_hi": dye_hi,
                 }
             ps = None
@@ -220,15 +226,29 @@ def _load_v2(name: str):
                 ps_path = _V2_DIR / f"print__{key}__{medium}.npz"
                 with _npz(ps_path) as z:
                     _check_common(z, "print_state", ps_path)
+                    if str(np.asarray(z["stock"])) != key or \
+                            str(np.asarray(z["medium"])) != medium:
+                        raise ValueError(f"{ps_path.name}: identity mismatch")
+                    if str(np.asarray(z["input_space"])) != "negative_density":
+                        raise ValueError(f"{ps_path.name}: wrong input space")
                     n = int(z["n"])
                     b1 = np.asarray(z["b1_volume"], dtype=np.float32)
                     if b1.shape != (n, n, n, 3):
                         raise ValueError(f"{ps_path.name}: B1 mis-shaped")
+                    if not bool(np.isfinite(b1).all()):
+                        raise ValueError(f"{ps_path.name}: B1 non-finite")
                     tau_nodes = np.asarray(z["tau_nodes"], dtype=np.float64)
                     tau = np.asarray(z["tau"], dtype=np.float64)
                     if tau.shape != (tau_nodes.size, 3) or tau_nodes.size < 2 or \
                             not bool(np.all(np.diff(tau_nodes) > 0)):
                         raise ValueError(f"{ps_path.name}: tau table mis-shaped")
+                    if not bool(np.isfinite(tau).all()) or \
+                            not bool(np.isfinite(tau_nodes).all()):
+                        raise ValueError(f"{ps_path.name}: tau non-finite")
+                    _span = (float(z["retimed_ev_min"]), float(z["retimed_ev_max"]))
+                    if not (np.isfinite(_span[0]) and np.isfinite(_span[1])
+                            and _span[1] >= _span[0]):
+                        raise ValueError(f"{ps_path.name}: retimed span invalid")
                     cast_ev = np.asarray(z["cast_ev"], dtype=np.float32)
                     casts = np.asarray(z["casts"], dtype=np.float32)
                     if casts.shape != (tau_nodes.size, cast_ev.size, 3):
@@ -285,11 +305,11 @@ class FilmSpatialContext:
 
     __slots__ = (
         "height", "width", "profile", "grain", "halation", "bloom", "seed",
-        "hal_map", "bloom_map", "h_mm",
+        "hal_map", "bloom_map", "geometry",
     )
 
     def __init__(self, height: int, width: int, plan: Any) -> None:
-        from .film_optics import GATE_W_MM, MODELLED_DEFAULT
+        from .film_optics import MODELLED_DEFAULT
 
         self.height = int(height)
         self.width = int(width)
@@ -300,29 +320,26 @@ class FilmSpatialContext:
         self.seed = int(getattr(plan, "film_optics_seed", 0) or 0)
         self.hal_map = None
         self.bloom_map = None
-        self.h_mm = GATE_W_MM * self.height / max(self.width, 1)
+        # Orientation-aware centered gate mapping (review batch 13): portrait
+        # images use the 24x36 rotated gate and non-3:2 aspects letterbox
+        # inside it, so no row band ever samples outside the field.
+        from .film_optics import FilmGeometry
+
+        self.geometry = FilmGeometry.fit(self.height, self.width)
 
     @property
     def engaged(self) -> bool:
         return self.grain > 0.0 or self.halation > 0.0 or self.bloom > 0.0
 
     def band_geometry(self, y0: int, y1: int):
-        from .film_optics import GATE_W_MM, FilmGeometry
-
-        return FilmGeometry(
-            y1 - y0, self.width,
-            x0_mm=0.0,
-            y0_mm=self.h_mm * y0 / self.height,
-            w_mm=GATE_W_MM,
-            h_mm=self.h_mm * (y1 - y0) / self.height,
-        )
+        return self.geometry.rows(y0, y1)
 
     def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
         """Build the spread maps from the decimated post-intent scene
         (linear Rec.2020, area-decimated). The bloom source is the
         COLORIMETRIC developed image of that decimated scene — the spatial
         operators themselves never enter the source definition."""
-        from .film_optics import GATE_W_MM, halation_spread_map, bloom_spread_map
+        from .film_optics import halation_spread_map, bloom_spread_map
         from .film_v2_math import film_compression_ev
 
         dh, dw = rgb_dec.shape[:2]
@@ -341,14 +358,22 @@ class FilmSpatialContext:
             exposure_lin = (
                 np.maximum(flat @ REC2020_LUMA, EPS) / 0.18
             ).reshape(dh, dw)
+            _, _, geo_w_mm, _ = self.geometry.region()
             self.hal_map = halation_spread_map(
-                exposure_lin, self.width, GATE_W_MM, self.profile
+                exposure_lin, self.width, geo_w_mm, self.profile
             )
         if self.bloom > 0.0:
-            developed = _apply_film_core_v2(
-                np.maximum(rgb_dec.reshape(-1, 3).astype(np.float32), 0.0),
-                plan, preset, None,
-            )
+            flat_dec = np.maximum(rgb_dec.reshape(-1, 3).astype(np.float32), 0.0)
+            developed = np.empty_like(flat_dec)
+            # Chunked colorimetric develop of the decimated source: one shot
+            # through the tetra gathers materialized ~550 MiB of transients
+            # at the 2048-wide spread grid (review batch 13).
+            step = 262_144
+            for c0 in range(0, flat_dec.shape[0], step):
+                c1 = min(c0 + step, flat_dec.shape[0])
+                developed[c0:c1] = _apply_film_core_v2(
+                    flat_dec[c0:c1], plan, preset, None
+                )
             self.bloom_map = bloom_spread_map(
                 developed.reshape(dh, dw, 3), self.profile
             )

@@ -33,7 +33,7 @@ from dngscan.raw_io import load_raw
 from dngscan.render import render_output_u8
 from dngscan.tone import build_render_plan
 
-SIGMA = Path.home() / "Pictures" / "_SDI0150.DNG"
+SIGMA = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
 _BACKEND_OK, _BACKEND_WHY = apple_gainmap_backend_status()
 
 
