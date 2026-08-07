@@ -367,9 +367,9 @@ FILM_CURVE_OPTIONS
   <div class="row" id="filmModeRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
       <label>显影分工</label>
-      <select id="filmMode" title="observe=胶片声明观察者看见了什么，颜色由 AgX 显影（默认，已验证路径）；full=胶片显影模型整体接管（离线烘焙光谱链 65³ 查找表：观察者逆矩阵→三层乳剂→特性曲线→印相链；实验，仅 SDR 输出，且不支持放大机色头——完整光谱链后不能追加中性轴近似）。">
+      <select id="filmMode" title="observe=胶片声明观察者看见了什么，颜色由 AgX 显影（默认，已验证路径）；full=胶片显影模型整体接管（film v2 因式分解链：观察者逆矩阵→三层乳剂→特性曲线→B1→印相 timing→相纸显影→B2 观看；实验）。印相介质/timing/显影配方/模拟光学随之可声明;色头在 timing=custom 下解锁;Ultra HDR 下以'胶片印相+scene HDR 扩展'参与。">
         <option value="observe">观察 · AgX 显影 · 默认</option>
-        <option value="full">接管 · 胶片显影模型（实验 · 仅 SDR）</option>
+        <option value="full">接管 · 胶片显影模型（实验）</option>
       </select>
     </div>
     <div id="filmCrossoverBlock" style="flex:1;min-width:190px;display:none">
@@ -1148,7 +1148,7 @@ function setFilmPrintExposureLabel(){const v=+$("#filmPrintExposure").value;$("#
 $("#filmPrintExposure").oninput=()=>{setFilmPrintExposureLabel();saveSettings();scheduleLivePreview();};
 function setFilmExposureLabel(){const v=+$("#filmExposure").value;$("#filmExposureVal").textContent=(v>0?"+":"")+v.toFixed(2)+" EV";}
 $("#filmExposure").oninput=()=>{setFilmExposureLabel();saveSettings();scheduleLivePreview();};
-$("#filmPrintTiming").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+$("#filmPrintTiming").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
 function setFilmOpticsLabels(){
   $("#filmGrainVal").textContent=parseFloat($("#filmGrain").value).toFixed(2);
   $("#filmHalationVal").textContent=parseFloat($("#filmHalation").value).toFixed(2);

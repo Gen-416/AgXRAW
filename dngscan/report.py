@@ -441,7 +441,8 @@ def jpeg_tone_plan_cn(
             f"→B1→τ→相纸曲线→B2)，{state}"
             f"灰阶中性化={neutral}；"
             f"AgX endpoint/contrast/toe/shoulder/punch 不参与（接管核心整体替换 "
-            f"formation，仅保留交付侧色域安全）；SDR"
+            f"formation，仅保留交付侧色域安全）；SDR 印相"
+            f"（Ultra HDR 导出时作\"胶片印相+scene HDR 扩展\"的底图）"
         )
     if mode in ("agx", "lum", "gated"):
         plan = tone_plan if tone_plan is not None else plan_for_mode(

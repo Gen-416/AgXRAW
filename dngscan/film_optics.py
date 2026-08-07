@@ -371,12 +371,28 @@ def _grain_ii_for(profile: OpticsProfile, seed: int) -> np.ndarray:
         _FIELD_CACHE.clear()
         field = _band_limited_field(profile, seed)
         gh, gw = field.shape[:2]
-        ii = np.zeros((gh + 1, gw + 1, field.shape[2]), dtype=np.float64)
-        np.cumsum(field, axis=0, out=ii[1:, 1:])
+        # float64 during accumulation (the running sums reach ~1e3 x cell
+        # values), stored float32: sampling differences carry ~1e-4 relative
+        # noise on the unit-RMS field — orders below the grain sigma it
+        # modulates. The accumulation runs in COLUMN SLABS with a float64
+        # carry, written straight into the float32 store: the whole-grid
+        # float64 intermediate plus its astype copy peaked ~290 MB and sank
+        # the 256 MiB tier on CI (review batch 14).
+        ii32 = np.zeros((gh + 1, gw + 1, field.shape[2]), dtype=np.float32)
+        carry = np.zeros((gh + 1, 1, field.shape[2]), dtype=np.float64)
+        slab = 256
+        for c0 in range(0, gw, slab):
+            c1 = min(c0 + slab, gw)
+            block = field[:, c0:c1].astype(np.float64)
+            np.cumsum(block, axis=0, out=block)
+            np.cumsum(block, axis=1, out=block)
+            block += carry[1:]
+            ii32[1:, c0 + 1:c1 + 1] = block
+            carry[1:] = block[:, -1:]
+            del block
         del field
-        np.cumsum(ii[1:, 1:], axis=1, out=ii[1:, 1:])
-        _FIELD_CACHE[key] = ii
-        got = ii
+        _FIELD_CACHE[key] = ii32
+        got = ii32
     return got
 
 
@@ -384,7 +400,7 @@ def _as_integral(arr: np.ndarray) -> np.ndarray:
     """Accept a raw field [gh,gw,c] or a prebuilt integral image
     [gh+1,gw+1,c] (recognized by the zero first row/column of the latter)."""
     if (
-        arr.dtype == np.float64
+        arr.dtype in (np.float32, np.float64)
         and arr.shape[0] > 1 and arr.shape[1] > 1
         and not arr[0].any() and not arr[:, 0].any()
     ):

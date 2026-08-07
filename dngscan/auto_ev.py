@@ -119,6 +119,7 @@ def render_sample_linear_output(
     sample_masks: Any | None = None,
     sample_raw_guidance: Any | None = None,
     adjustments: RenderAdjustments | None = None,
+    spatial_shape: tuple | None = None,
 ) -> Any:
     from .grade import RENDER_MODE
 
@@ -152,7 +153,16 @@ def render_sample_linear_output(
     effective_plan = plan_with_look_overrides(plan, look, look_strength) if plan is not None else None
     effective_tone = effective_plan.tone if isinstance(effective_plan, RenderPlan) else effective_plan
     eff_color = effective_plan.color if isinstance(effective_plan, RenderPlan) else color_plan
-    mapped_rec = apply_tone_core(rec, effective_tone, eff_color, sample_masks, sample_raw_guidance)
+    if spatial_shape is not None:
+        # Analog-optics probe (review batch 14): the samples are an
+        # area-decimated IMAGE, so the §9 spatial operators participate in
+        # the safe-EV answer at preview scale (halation and bloom are
+        # low-frequency and survive decimation; grain area-averages out).
+        from .film_develop import apply_film_core
+
+        mapped_rec = apply_film_core(rec, effective_tone, spatial_shape=spatial_shape)
+    else:
+        mapped_rec = apply_tone_core(rec, effective_tone, eff_color, sample_masks, sample_raw_guidance)
     if display_filter != "none" and filter_strength > 0.0:
         output_linear = filter_engine.apply_display_filter_rec2020(
             mapped_rec, gamut, display_filter, filter_strength, scene_rec2020=rec
@@ -291,10 +301,36 @@ def max_safe_ev(
 
     flat = bundle.scene_rec2020_render.reshape(-1, bundle.scene_rec2020_render.shape[-1])
     step = max(1, int(math.ceil(flat.shape[0] / max_samples)))
-    sample_rgb = flat[::step, :3]
-    sample_masks = None
+    probe_tone = tone_plan.tone if isinstance(tone_plan, RenderPlan) else tone_plan
+    spatial_shape = None
+    from .render import _film_spatial_engaged
+
+    if probe_tone is not None and _film_spatial_engaged(probe_tone):
+        # Decimated-image probe: strided flat samples cannot carry the
+        # spatial operators, so bloom/halation silently sat out the safe-EV
+        # answer (review batch 14).
+        from .film_optics import area_decimate
+
+        sh, sw = bundle.scene_rec2020_render.shape[:2]
+        scale = min(1.0, (max_samples / float(sh * sw)) ** 0.5)
+        dh = max(int(round(sh * scale)), 16)
+        dw = max(int(round(sw * scale)), 16)
+        sample_rgb = area_decimate(
+            bundle.scene_rec2020_render[:, :, :3], dh, dw
+        ).reshape(-1, 3)
+        spatial_shape = (dh, dw)
+        sample_masks = None
+        sample_raw_guidance = None
+        if getattr(bundle, "clip_masks", None) is not None:
+            masks = retreat_engine.clip_masks_for_shape(
+                bundle, (sh, sw)
+            ).astype(np.float32)
+            sample_masks = area_decimate(masks, dh, dw).reshape(-1, 3)
+    else:
+        sample_rgb = flat[::step, :3]
+        sample_masks = None
     sample_raw_guidance = None
-    if getattr(bundle, "clip_masks", None) is not None:
+    if spatial_shape is None and getattr(bundle, "clip_masks", None) is not None:
         masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2]).reshape(-1, 3)
         sample_masks = masks[::step]
         if tone_core == "gated":
@@ -325,6 +361,7 @@ def max_safe_ev(
             sample_masks=sample_masks,
             sample_raw_guidance=sample_raw_guidance,
             adjustments=adjustments,
+            spatial_shape=spatial_shape,
         )
         return output_highlight_margin(rgb, gamut, baseline_stats)
 
@@ -348,6 +385,7 @@ def max_safe_ev(
         sample_masks=sample_masks,
         sample_raw_guidance=sample_raw_guidance,
         adjustments=adjustments,
+        spatial_shape=spatial_shape,
     )
     baseline_stats = output_highlight_stats(baseline_rgb, gamut)
     if output_highlight_margin(baseline_rgb, gamut, baseline_stats) <= 0.0:
