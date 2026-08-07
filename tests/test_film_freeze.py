@@ -33,7 +33,13 @@ class FilmFreezeGateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls._fast_env = os.environ.get("DNGSCAN_FAST")
+        cls._legacy_env = os.environ.get("DNGSCAN_FILM_LEGACY_LUT")
         os.environ["DNGSCAN_FAST"] = "0"
+        # P1 migration (plan §7.2): the freeze pins the LEGACY v1 backend's
+        # bytes — that is this backend's entire remaining purpose. The v2
+        # two-stage default validates against the direct-chain oracle in
+        # tests/test_film_v2_assets.py instead.
+        os.environ["DNGSCAN_FILM_LEGACY_LUT"] = "1"
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -41,6 +47,10 @@ class FilmFreezeGateTest(unittest.TestCase):
             os.environ.pop("DNGSCAN_FAST", None)
         else:
             os.environ["DNGSCAN_FAST"] = cls._fast_env
+        if cls._legacy_env is None:
+            os.environ.pop("DNGSCAN_FILM_LEGACY_LUT", None)
+        else:
+            os.environ["DNGSCAN_FILM_LEGACY_LUT"] = cls._legacy_env
 
     def test_manifest_covers_the_declared_ladder(self) -> None:
         from tools.regen_film_freeze import BASELINE, SCHEMA, STOCKS, freeze_configs

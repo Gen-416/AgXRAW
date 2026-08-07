@@ -78,8 +78,9 @@ def _builder_commit() -> str:
 
 
 def build_stock(stock_key: str) -> dict:
-    stock = ff.STOCKS[stock_key]
-    chain = v1._Chain(stock, theatrical=False)
+    theatrical = stock_key.endswith("_theatrical")
+    stock = ff.STOCKS[stock_key.removesuffix("_theatrical")]
+    chain = v1._Chain(stock, theatrical=theatrical)
     observer, obs_p99, obs_cv_p99 = v1.observer_matrix(stock)
 
     neg = chain.neg
@@ -205,7 +206,18 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stocks", nargs="*", default=list(PILOT_STOCKS))
+    ap.add_argument("--stocks", nargs="*", default=None,
+                    help="默认:全部卷(含影院引用变体);或显式列出")
     args = ap.parse_args()
-    for key in args.stocks:
+    if args.stocks:
+        keys = args.stocks
+    else:
+        keys = []
+        for key in ff.STOCKS:
+            keys.append(key)
+            stock = ff.STOCKS[key]
+            if (not stock.get("positive")
+                    and ff.PRINT_SURROUND.get(str(stock.get("print"))) == "dark"):
+                keys.append(f"{key}_theatrical")
+    for key in keys:
         write_stock(key)

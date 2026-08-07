@@ -304,6 +304,11 @@ class ToneCompressionPlan:
     # the rest of the neutral axis drifting per the inter-layer data (the
     # photographic meaning of crossover: e.g. Velvia's mildly cool shadows).
     film_crossover: str = "off"
+    # film v2 (FILM_PRINT_RENDERING_PLAN §5.1): the emulsion's exposure state
+    # relative to nominal EI — NOT an output exposure. 0.0 is the exact v1
+    # identity; the public domain is declared by the stock's asset and the
+    # plan compiler fail-closes out-of-domain values (§5.3).
+    film_exposure_ev: float = 0.0
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0
@@ -383,6 +388,10 @@ class RenderPlan:
     tone: ToneCompressionPlan
     color: ColorGeometryPlan
     scene: SceneToneMetrics
+    # film v2 plan objects (FILM_PRINT_RENDERING_PLAN §4): populated (with
+    # identity defaults) whenever a film curve preset is active; None outside
+    # the film domain. Validated fail-closed at compile time.
+    film: tuple | None = None
 
 
 @dataclass(frozen=True)

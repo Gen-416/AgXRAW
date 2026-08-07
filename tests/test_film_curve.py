@@ -396,9 +396,13 @@ class FilmModeTests(unittest.TestCase):
         )
         developed = apply_film_core(neutral, plan)
         # The neutralized default keeps grays strictly neutral by construction;
-        # the residual is the LUT's f16 quantization through the cast division.
+        # the residual is quantization + interpolation. v1's neutral axis WAS
+        # the grid diagonal (1-D interp, 8e-3); in the v2 density-domain cube
+        # the neutral line is a curve through the lattice, so tetrahedral
+        # residual joins in — measured 9.6e-3 max on this ramp (~0.014 stop,
+        # far below visibility).
         rel = np.abs(developed - developed[:, :1]) / np.maximum(developed[:, :1], 1e-5)
-        self.assertLess(float(rel.max()), 8e-3)
+        self.assertLess(float(rel.max()), 1.2e-2)
         chroma = np.array([[2.4, 0.9, 0.4], [0.05, 0.5, 0.02]], dtype=np.float32)
         inset_mtx, outset_mtx = agx_engine.formation_matrices(plan)
         agx_out = agx_engine.apply_core(chroma, plan, inset_mtx, outset_mtx)
