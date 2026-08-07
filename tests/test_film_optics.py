@@ -77,12 +77,14 @@ class GrainFieldContractTests(unittest.TestCase):
         # half-resolution preview == block mean of the full sampling
         half = sample_field(field, FilmGeometry(200, 300))
         block = full.reshape(200, 2, 300, 2, 3).mean(axis=(1, 3))
-        np.testing.assert_allclose(half, block, atol=2e-6)
+        # float32 integral storage (review batch 14): identity holds to
+        # integral precision, far below the grain sigma it modulates
+        np.testing.assert_allclose(half, block, atol=2e-4)
         # a crop covers the corresponding region of the full frame
         crop = sample_field(
             field, FilmGeometry(200, 300, x0_mm=9.0, y0_mm=6.0, w_mm=18.0)
         )
-        np.testing.assert_allclose(crop, full[100:300, 150:450], atol=2e-6)
+        np.testing.assert_allclose(crop, full[100:300, 150:450], atol=2e-4)
 
 
 class SpatialOperatorTests(unittest.TestCase):

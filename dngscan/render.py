@@ -295,7 +295,7 @@ def _optics_budget_mib() -> int:
 # integral image dominated the real peak): the resident float32 grain field
 # (2000x3000x3), its float64 integral image during sampling, plus the
 # decimated spread maps and blur temporaries.
-_OPTICS_FIXED_MIB = 72 + 144 + 48
+_OPTICS_FIXED_MIB = 72 + 48  # float32 integral image + spread maps/blur
 
 
 def _optics_band_rows(width: int) -> int:

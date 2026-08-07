@@ -263,24 +263,30 @@ for y0 in range(0, h, band_rows):
 print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 """
 
-        def run(grain, hal, bloom):
+        def run(grain, hal, bloom, tier=512):
+            import os
+
             body = (script.replace("GRAIN", str(grain))
                     .replace("HAL", str(hal)).replace("BLOOM", str(bloom)))
+            env = dict(os.environ, DNGSCAN_OPTICS_BUDGET_MIB=str(tier))
             proc = subprocess.run(
                 [sys.executable, "-c", body], capture_output=True,
-                text=True, cwd=str(ROOT), timeout=600,
+                text=True, cwd=str(ROOT), timeout=600, env=env,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
             return int(proc.stdout.strip().splitlines()[-1])
 
         baseline = run(0.0, 0.0, 0.0)
-        spatial = run(0.7, 0.5, 0.4)
-        extra_mib = (spatial - baseline) / (1 << 20)
-        self.assertLess(
-            extra_mib, 512 + 128,
-            f"spatial extra peak {extra_mib:.0f} MiB exceeds the default "
-            "tier (+128 MiB allocator slack)",
-        )
+        # EVERY public tier gets its own measured gate (review batch 14: the
+        # 256 tier was mathematically unreachable while advertised).
+        for tier in (256, 512):
+            spatial = run(0.7, 0.5, 0.4, tier=tier)
+            extra_mib = (spatial - baseline) / (1 << 20)
+            self.assertLess(
+                extra_mib, tier + 96,
+                f"tier {tier}: spatial extra peak {extra_mib:.0f} MiB "
+                "exceeds the advertised budget (+96 MiB allocator slack)",
+            )
 
 
 if __name__ == "__main__":

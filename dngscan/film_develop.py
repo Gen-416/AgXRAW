@@ -122,8 +122,14 @@ def _npz(path):
 
 
 def _check_common(z, kind: str, path) -> None:
-    if int(z["schema"]) != 5:
-        raise ValueError(f"{path.name}: schema {int(z['schema'])}, expected 5")
+    # schema 6 (review batch 14): the identity fields (stock/medium) became
+    # part of the ABI, so pre-identity schema-5 files are refused by NUMBER
+    # with a real reason instead of a KeyError swallowed into "unreadable".
+    if int(z["schema"]) != 6:
+        raise ValueError(
+            f"{path.name}: schema {int(z['schema'])}, expected 6 — "
+            "regenerate with tools/build_film_v2_assets.py"
+        )
     if str(np.asarray(z["kind"])) != kind:
         raise ValueError(f"{path.name}: kind {np.asarray(z['kind'])}, expected {kind}")
 
@@ -265,12 +271,17 @@ def _load_v2(name: str):
                     }
             media[medium] = (ps, b2)
         entry = (stock, media)
-    except (OSError, KeyError, ValueError):
-        entry = None
+    except (OSError, KeyError, ValueError) as exc:
+        # Keep the underlying validation failure visible (review batch 14):
+        # "missing or unreadable" hid schema and identity refusals.
+        raise RuntimeError(
+            f"film v2 asset family for '{key}' failed to load from "
+            f"{_V2_DIR}: {type(exc).__name__}: {exc}"
+        ) from exc
     if entry is None:
         raise RuntimeError(
-            f"film v2 asset family for '{key}' is missing or unreadable under "
-            f"{_V2_DIR}; regenerate with tools/build_film_v2_assets.py"
+            f"film v2 asset family for '{key}' is missing under {_V2_DIR}; "
+            "regenerate with tools/build_film_v2_assets.py"
         )
     _V2_CACHE[key] = entry
     return entry
@@ -593,14 +604,27 @@ def apply_film_core(
 
 def film_reference_white_ev(plan: Any) -> float:
     """The scene EV where this plan's print reaches its paper-white plateau
-    (90% of the deep-highlight luminance level) on a neutral ramp — the P6
-    HDR extension's join point: below it the SDR print IS the HDR body."""
-    evs = np.linspace(0.0, 6.0, 121)
-    rgb = (0.18 * np.exp2(evs))[:, None].repeat(3, axis=1).astype(np.float32)
+    (90% of the TRUE plateau level) on a neutral ramp — the P6 HDR
+    extension's join point: below it the SDR print IS the HDR body.
+
+    The plateau is anchored at a scene EV far beyond every characteristic
+    domain shifted by any legal film exposure / timing / manual print state
+    (+24 EV; the curves clamp at their table ends, so this IS the chain's
+    asymptotic upper bound — review batch 14: the old fixed 0..+6 scan
+    declared +6 EV "the plateau" while e.g. Portra 400 at film exposure -2
+    with a +2 custom print was still climbing at slope ~1.3 there). The
+    search runs over [-6, +14] EV, so heavily re-timed states whose paper
+    white arrives below scene mid-grey are found too; if 90% of the true
+    plateau is not reached by +14 EV the join is pinned there — the gain
+    field then never engages inside any real scene and the HDR export
+    refuses honestly for lack of content."""
+    evs = np.linspace(-6.0, 14.0, 401)
+    probe = np.concatenate([evs, [24.0]])
+    rgb = (0.18 * np.exp2(probe))[:, None].repeat(3, axis=1).astype(np.float32)
     out = apply_film_core(rgb, plan)
     luma = np.asarray(out, dtype=np.float64) @ REC2020_LUMA
     plateau = float(luma[-1])
     if plateau <= 0.0:
         return 2.0
-    reached = np.nonzero(luma >= 0.9 * plateau)[0]
-    return float(evs[reached[0]]) if reached.size else 2.0
+    reached = np.nonzero(luma[:-1] >= 0.9 * plateau)[0]
+    return float(evs[reached[0]]) if reached.size else float(evs[-1])

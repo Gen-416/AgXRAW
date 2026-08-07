@@ -351,35 +351,56 @@ def render_ultrahdr_film_pair(
         raise RuntimeError("render_ultrahdr_film_pair 只服务 film full 计划")
     base_u8 = render_output_u8(bundle, analysis, output_gamut, plan)
     h, w = base_u8.shape[:2]
-    # The HDR alternate multiplies the DECODED real base — the 8-bit,
-    # dithered, gamut-fitted pixels the file actually carries — never the
-    # pre-quantization float print. Review batch 13 measured the float-print
-    # variant shipping sub-1 gains on most body pixels (quantization noise
-    # made base > alternate per channel); building on the decoded base makes
-    # gain >= 1 hold against the REAL SDR leg by construction.
+    # The HDR alternate (review batch 14):
+    #     hdr = decoded_base + float_print * (gain - 1)
+    # Below the join gain == 1, so the body IS the decoded real base (the
+    # 8-bit dithered pixels the file carries — gain >= 1 holds against the
+    # actual SDR leg by construction). Above the join the INCREMENT comes
+    # from the high-precision float print, so highlight detail is not
+    # limited to 8-bit steps and quantization noise is not amplified by the
+    # gain (the pure decoded-base construction measured p99 ~0.007 linear
+    # error at a mere +0.15 EV headroom). Everything is banded float32 —
+    # the previous full-frame float64 decode held ~1.4 GB at 60 MP.
     from .color import srgb_decode
+    from .film_develop import film_reference_white_ev
+    from .film_v2_math import film_hdr_gain_log2
+    from .render import scene_render_to_display_linear
 
-    flat_base = srgb_decode(
-        base_u8.reshape(-1, 3).astype(np.float32) / 255.0
-    ).astype(np.float64)
+    sdr_linear = scene_render_to_display_linear(bundle, plan, output_gamut)
+    color_plan = plan.color
+    gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05
     join_ev = film_reference_white_ev(tone)
-    headroom_ev = float(hdr_plan.tone.rendered_headroom_ev)
+    # The extension may only spend RELIABLE scene highlights above the join:
+    # the solved headroom is co-compiled with the reliable tail's distance
+    # from the join (review batch 14), so gain never engages content the
+    # RAW cannot vouch for.
+    headroom_ev = min(
+        float(hdr_plan.tone.rendered_headroom_ev),
+        max(float(hdr_plan.tone.reliable_tail_ev) - join_ev, 0.0),
+    )
     span_ev = max(headroom_ev, 1.0) * 1.5
     scene = bundle.scene_rec2020_render
     flat_scene = scene.reshape(-1, scene.shape[-1])
-    luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float64)
-    hdr_out = np.empty((flat_base.shape[0], 3), dtype=np.float32)
+    flat_sdr = sdr_linear.reshape(-1, 3)
+    flat_u8 = base_u8.reshape(-1, 3)
+    luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    hdr_out = np.empty((flat_u8.shape[0], 3), dtype=np.float32)
     band = max(_optics_band_rows(w), 1) * w
-    for s0 in range(0, flat_base.shape[0], band):
-        e0 = min(s0 + band, flat_base.shape[0])
+    for s0 in range(0, flat_u8.shape[0], band):
+        e0 = min(s0 + band, flat_u8.shape[0])
+        decoded = srgb_decode(flat_u8[s0:e0].astype(np.float32) / 255.0)
+        fitted = fit_to_output_gamut(
+            flat_sdr[s0:e0], output_gamut, alpha=gamut_alpha
+        ).astype(np.float32, copy=False)
         rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
         ev = np.log2(
-            np.maximum(np.asarray(rec, dtype=np.float64) @ luma, 1e-9) / 0.18
+            np.maximum(np.asarray(rec, dtype=np.float32) @ luma, 1e-9)
+            / np.float32(0.18)
         )
         gain = np.exp2(film_hdr_gain_log2(
             ev, headroom_ev=headroom_ev, join_ev=join_ev, span_ev=span_ev,
-        ))
-        hdr_out[s0:e0] = (flat_base[s0:e0] * gain[:, None]).astype(np.float32)
+        )).astype(np.float32)
+        hdr_out[s0:e0] = decoded + fitted * (gain[:, None] - 1.0)
     return base_u8, hdr_out.reshape(h, w, 3)
 
 

@@ -61,7 +61,7 @@ from dngscan.film_v2_math import (  # noqa: E402
 
 OUT_DIR = PROJECT_ROOT / "dngscan" / "data" / "film_v2"
 GRID_N = 65
-SCHEMA = 5
+SCHEMA = 6  # 6: identity fields (stock/medium) are part of the ABI
 EXPOSURE_EV_MIN, EXPOSURE_EV_MAX = -2.0, 2.0
 TAU_NODES = tuple(round(-2.0 + 0.25 * i, 4) for i in range(17))
 MIDPOINT_ORACLE_EVS = (-1.875, -0.625, 0.375, 1.625)

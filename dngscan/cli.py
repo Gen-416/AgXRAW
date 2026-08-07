@@ -331,9 +331,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "胶片分工模式（仅在胶片曲线激活时有意义）。observe=胶片声明观察者看见了"
             "什么（WB/分离/音调签名），颜色由 AgX 显影（默认，已验证路径）；"
-            "full=胶片显影模型整体接管（离线烘焙光谱链 65³ LUT：观察者逆矩阵→"
-            "三层乳剂→特性曲线→印相/幻灯观看链；实验性），AgX 只保留交付端色域"
-            "安全。full 仅支持 SDR、仅 AgX tone core、不支持放大机色头"
+            "full=胶片显影模型整体接管（film v2 因式分解链：Stage A 解析——观察者"
+            "逆矩阵→三层乳剂→特性曲线→染料密度；Stage B——B1→印相 timing τ→"
+            "相纸显影曲线→B2 观看；实验性），AgX 只保留交付端色域安全。仅 AgX "
+            "tone core;色头在 --film-print-timing custom 下解锁(modelled Δτ);"
+            "Ultra HDR 下 full 以\"胶片印相+scene HDR 扩展\"参与"
         ),
     )
     parser.add_argument(
@@ -342,7 +344,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "胶片层间漂移（crossover）声明开关，仅 --film-mode full 有意义"
-            "（其余组合零改变）。off=数字中性化变体（默认）：接管 LUT 的输出按"
+            "（其余组合零改变）。off=数字中性化变体（默认）：因式分解链的输出按"
             "像素亮度曝光除以随包的有界中性染色曲线，介质灰阶偏中性两档以内严格"
             "中性；datasheet=光谱链原样：中灰由印相求解锚定，暗部/亮部按层间"
             "数据漂移（如 Velvia 阴影温和偏冷）——量级未经外部 oracle 裁决"

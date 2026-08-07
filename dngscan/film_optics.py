@@ -371,12 +371,18 @@ def _grain_ii_for(profile: OpticsProfile, seed: int) -> np.ndarray:
         _FIELD_CACHE.clear()
         field = _band_limited_field(profile, seed)
         gh, gw = field.shape[:2]
+        # float64 during accumulation (the running sums reach ~1e3 x cell
+        # values), stored float32: sampling differences carry ~1e-4 relative
+        # noise on the unit-RMS field — orders below the grain sigma it
+        # modulates — and the resident cost halves to 72 MB, which is what
+        # lets the 256 MiB tier exist at all (review batch 14).
         ii = np.zeros((gh + 1, gw + 1, field.shape[2]), dtype=np.float64)
         np.cumsum(field, axis=0, out=ii[1:, 1:])
         del field
         np.cumsum(ii[1:, 1:], axis=1, out=ii[1:, 1:])
-        _FIELD_CACHE[key] = ii
-        got = ii
+        got = ii.astype(np.float32)
+        del ii
+        _FIELD_CACHE[key] = got
     return got
 
 
@@ -384,7 +390,7 @@ def _as_integral(arr: np.ndarray) -> np.ndarray:
     """Accept a raw field [gh,gw,c] or a prebuilt integral image
     [gh+1,gw+1,c] (recognized by the zero first row/column of the latter)."""
     if (
-        arr.dtype == np.float64
+        arr.dtype in (np.float32, np.float64)
         and arr.shape[0] > 1 and arr.shape[1] > 1
         and not arr[0].any() and not arr[:, 0].any()
     ):
