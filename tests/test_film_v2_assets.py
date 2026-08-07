@@ -101,11 +101,16 @@ class FilmPlanContractTests(unittest.TestCase):
             validate_film_plans(**self._valid(
                 development=FilmDevelopmentPlan(contrast_delta=0.1)
             ))
+        # P4: an editorial recipe must pair with datasheet neutralization
+        # (the bounded casts are solved against measured development).
         validate_film_plans(**self._valid(
             development=FilmDevelopmentPlan(
                 recipe_id="editorial_custom", contrast_delta=0.1,
                 provenance="editorial",
-            )
+            ),
+            print_plan=FilmPrintPlan(
+                medium_id="print_paper", neutralization_policy="datasheet",
+            ),
         ))
 
     def test_reversal_direct_fails_closed(self) -> None:

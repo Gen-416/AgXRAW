@@ -162,3 +162,30 @@ def validate_film_plans(
         raise ValueError("模拟光学强度不能为负")
     if not 0.0 <= float(finish.compression) <= 1.0:
         raise ValueError("film compression 强度域为 [0,1]")
+    if finish.compression > 0.0 and not 0.0 <= float(finish.compression_knee_ev) <= 6.0:
+        raise ValueError("film compression knee 域为 [0,6] EV(中灰之上)")
+    if not 0.0 <= float(finish.highlight_color_density) <= 2.0:
+        raise ValueError("高光色密度 rho 域为 [0,2]")
+    if development.recipe_id == "editorial_custom":
+        # §6 bounded perturbation: declared editorial domains, hard-rejected
+        # beyond (the anchor-preserving construction only holds inside them).
+        if not -0.5 <= float(development.contrast_delta) <= 0.5:
+            raise ValueError("显影对比扰动域为 [-0.5, 0.5]")
+        if not 0.0 <= float(development.fog_delta) <= 0.3:
+            raise ValueError("显影 fog 域为 [0, 0.3](fog 只会增加密度)")
+        if not -0.5 <= float(development.color_density) <= 0.5:
+            raise ValueError("显影色密度扰动域为 [-0.5, 0.5]")
+        # The retimed tau table and the bounded neutralization casts are both
+        # SOLVED against the measured development; an editorial recipe moves
+        # the negative's densities out from under them. Fail closed instead of
+        # serving stale solutions as if they still applied.
+        if print_plan.timing_policy == "retimed":
+            raise ValueError(
+                "editorial_custom 显影与 retimed timing 互斥:retimed τ 表按 "
+                "measured 显影求解;编辑显影请配 fixed 或 custom timing"
+            )
+        if print_plan.neutralization_policy == "bounded":
+            raise ValueError(
+                "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 "
+                "measured 显影求解;请配 --film-neutralization datasheet"
+            )

@@ -400,6 +400,74 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="film v2 手动印相曝光(log2;仅 timing=custom)",
     )
     parser.add_argument(
+        "--film-development",
+        choices=("measured_default", "editorial_custom"),
+        default="measured_default",
+        help=(
+            "film v2 显影配方(仅 full):measured_default=测量曲线锁定(默认);"
+            "editorial_custom=解锁 --film-dev-* 有界扰动(报告如实标注编辑显影;"
+            "与 retimed timing、bounded 中性化互斥——二者按 measured 显影求解)"
+        ),
+    )
+    parser.add_argument(
+        "--film-dev-contrast",
+        type=float,
+        default=0.0,
+        metavar="D",
+        help=(
+            "film v2 显影对比扰动 [-0.5,0.5]:绕中灰锚缩放特性曲线的 logE 轴"
+            "(推/拉冲的对比维度;中灰不漂由构造保证);需 editorial_custom"
+        ),
+    )
+    parser.add_argument(
+        "--film-dev-fog",
+        type=float,
+        default=0.0,
+        metavar="D",
+        help=(
+            "film v2 显影 fog [0,0.3]:三层均匀加密度(化学灰雾;会整体提亮"
+            "印相——这是 fog 的真实行为,不做隐藏补偿);需 editorial_custom"
+        ),
+    )
+    parser.add_argument(
+        "--film-dev-density",
+        type=float,
+        default=0.0,
+        metavar="D",
+        help=(
+            "film v2 显影色密度扰动 [-0.5,0.5]:绕中灰锚缩放染料量幅度"
+            "(显影出的染料 yield;中灰不漂);需 editorial_custom"
+        ),
+    )
+    parser.add_argument(
+        "--film-compression",
+        type=float,
+        default=0.0,
+        metavar="T",
+        help=(
+            "film v2 Film Compression [0,1](仅 full):乳剂之前对场景亮度 EV "
+            "在 knee 之上做 C1 饱和压缩的强度(editorial 桥接数字硬高光与负片"
+            "宽容度;0=严格恒等)"
+        ),
+    )
+    parser.add_argument(
+        "--film-compression-knee",
+        type=float,
+        default=2.0,
+        metavar="EV",
+        help="film v2 压缩 knee(中灰之上 EV,[0,6];默认 2.0;仅压缩>0 时有意义)",
+    )
+    parser.add_argument(
+        "--film-highlight-density",
+        type=float,
+        default=0.0,
+        metavar="RHO",
+        help=(
+            "film v2 高光色密度 rho [0,2]:被压缩的高光按 C'=C·exp(-ρd) 向"
+            "保亮度中性收敛(负片高光染料密度趋满的观感);需压缩>0"
+        ),
+    )
+    parser.add_argument(
         "--demosaic",
         choices=DEMOSAIC_CHOICES,
         default="auto",
@@ -543,6 +611,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "custom timing 与有界灰阶中性化互斥:手动印相的意义是保留印出的"
             "样子;请配 --film-neutralization datasheet"
         )
+    if args.film_development == "measured_default" and (
+        args.film_dev_contrast != 0.0
+        or args.film_dev_fog != 0.0
+        or args.film_dev_density != 0.0
+    ):
+        parser.error(
+            "--film-dev-* 需要显式声明 --film-development editorial_custom"
+            "(measured_default 的显影参数全部锁定)"
+        )
+    if args.film_development == "editorial_custom":
+        # Mirror of the plan gate (P4 §6), surfaced at the parser so a
+        # scan-only run cannot carry an invalid declaration silently.
+        if args.film_crossover != "datasheet":
+            parser.error(
+                "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 "
+                "measured 显影求解;请配 --film-neutralization datasheet"
+            )
+        if args.film_print_timing == "retimed":
+            parser.error(
+                "editorial_custom 显影与 retimed timing 互斥:retimed τ 表按 "
+                "measured 显影求解;请配 fixed 或 custom timing"
+            )
+    if args.film_compression == 0.0 and args.film_highlight_density != 0.0:
+        parser.error("--film-highlight-density 只在 --film-compression > 0 时有意义")
+    if not 0.0 <= args.film_compression <= 1.0:
+        parser.error("--film-compression 域为 [0,1]")
     if args.jpeg_quality is not None and not 1 <= args.jpeg_quality <= 100:
         parser.error("--jpeg-quality must be between 1 and 100")
     if not 0 <= args.hdr_headroom <= MAX_HDR_HEADROOM_EV + 1e-9:
@@ -766,6 +860,13 @@ def main(argv: list[str]) -> int:
                 film_print_timing=args.film_print_timing,
                 film_print_medium=args.film_print_medium,
                 film_print_exposure_ev=args.film_print_exposure,
+                film_development=args.film_development,
+                film_dev_contrast=args.film_dev_contrast,
+                film_dev_fog=args.film_dev_fog,
+                film_dev_density=args.film_dev_density,
+                film_compression=args.film_compression,
+                film_compression_knee=args.film_compression_knee,
+                film_highlight_density=args.film_highlight_density,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
             )
@@ -802,6 +903,13 @@ def main(argv: list[str]) -> int:
                 film_print_timing=args.film_print_timing,
                 film_print_medium=args.film_print_medium,
                 film_print_exposure_ev=args.film_print_exposure,
+                film_development=args.film_development,
+                film_dev_contrast=args.film_dev_contrast,
+                film_dev_fog=args.film_dev_fog,
+                film_dev_density=args.film_dev_density,
+                film_compression=args.film_compression,
+                film_compression_knee=args.film_compression_knee,
+                film_highlight_density=args.film_highlight_density,
                 endpoint_mode=args.endpoint_mode,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
