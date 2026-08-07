@@ -440,6 +440,26 @@ class FilmModePlacementTests(unittest.TestCase):
         line = PAGE[PAGE.index(listener) : PAGE.index("\n", PAGE.index(listener))]
         self.assertIn("updateColorHeadUi()", line)
 
+    def test_film_exposure_controls_follow_the_conventions(self) -> None:
+        """P2: the exposure/timing block is a FULL-mode surface — hidden
+        outside it with stale values cleared; retimed is greyed with the
+        reason for reversals and for stocks without the retimed payload,
+        driven by the server-injected capability list."""
+        self.assertIn('id="filmExposureRow"', PAGE)
+        self.assertIn('id="filmExposure"', PAGE)
+        self.assertIn('id="filmPrintTiming"', PAGE)
+        self.assertIn("const FILM_RETIMED=FILM_RETIMED_JSON", PAGE)
+        served = render_page("").decode("utf-8")
+        self.assertNotIn("FILM_RETIMED_JSON", served)
+        self.assertIn('"portra400"', served[served.index("const FILM_RETIMED="):][:200])
+        ui = PAGE[PAGE.index("function updateFilmModeUi(") :]
+        ui = ui[: ui.index("\n}")]
+        self.assertIn('expRow.style.display=full?"":"none"', ui)
+        self.assertIn('$("#filmExposure").value=0', ui)
+        self.assertIn('$("#filmPrintTiming").value="fixed"', ui)
+        self.assertIn("反转片无印相环节", ui)
+        self.assertIn("尚无 retimed 印相资产", ui)
+
     def test_mode_gates_grey_out_with_reasons(self) -> None:
         """Mode-gating convention (user directive, 2026-08-06): an option a
         mode cannot use is greyed with the reason on screen, and a selection

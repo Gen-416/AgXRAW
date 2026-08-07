@@ -183,9 +183,30 @@ p_j = q * integral L_print(lambda;kY,kM) * T_neg(lambda)
 
 中间 retimed 状态不能直接假定 RGB 线性插值。构建工具在 `-1/+1 EV` 运行直接光谱 oracle，并比较 display-linear Rec.2020、XYZ log-Y+xy 和 Oklab 三种预混域；选择同时满足最低亮度 stop 误差和最低 DeltaE00 的域。三节点不达标则升级为五节点，不使用高阶插值掩盖误差。
 
-### 5.4 运行时实现
+### 5.4 运行时实现（P2 修正案：预混被实测否证，改为因式分解）
 
-Stage A 始终解析运行，逐像素成本是一次 3x3、EV 偏移和三条 1D 曲线。fixed timing 只采样一只 Stage B density LUT；retimed profile 在设置改变时预混相邻的 Stage B timing LUT，逐像素仍只做一次 tetrahedral lookup。曝光滑杆改变只产生一次 LUT 预混，稳定帧成本与单只 Stage B LUT 相同。
+Stage A 始终解析运行，逐像素成本是一次 3x3、EV 偏移和三条 1D 曲线。fixed
+timing 只采样一只 Stage B density LUT。
+
+**retimed 的原设计（预混相邻 timing LUT）被它自己的验收门否证**：输出域
+预混在三节点下最优域 p99 0.36–0.73 stop、五节点下 0.13–0.22（门槛
+0.03）——印相重定时移动的是相纸曲线的输入，输出空间的混合无法表现这个
+平移（与"烘复合 cast"同一失败类,均实测）。链自身的结构给出精确解：q 位于
+印相积分与相纸曲线之间，因此 Stage B 因式分解为
+
+```text
+B1: 染料量 -> log 纸曝光      （与 q 无关的 65^3 体积）
++q(E): 三个随 E 光滑的标量     （0.25 EV 步长求解节点,线性插值）
+paper: 三条 1D 相纸显影曲线    （解析表）
+B2: 纸染料量 -> 观看 Rec.2020  （与 q 无关的 65^3 体积）
+```
+
+任意曝光态在 q 上精确（残差分解实测：体积 0.003 stop,q 插值在 1 EV 节点
+下 0.037 → 0.25 EV 节点后整链 p99 0.010–0.017 stop、ΔE95 ≤0.09,全部过
+门）。逐节点 bounded cast 随 E 线性插值——节点处精确,节点间为声明的近似。
+预混域研究（display-linear / XYZ logY+xy / Oklab）保留为否证证据记录于
+资产 metadata,不再是出厂机制。§5.3 的节点语义不变：`-2/0/+2` 仍是标定与
+oracle 声明,q/cast 的 0.25 EV 加密只是求解采样。
 
 ## 6. 显影状态
 

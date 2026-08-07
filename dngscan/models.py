@@ -309,6 +309,11 @@ class ToneCompressionPlan:
     # identity; the public domain is declared by the stock's asset and the
     # plan compiler fail-closes out-of-domain values (§5.3).
     film_exposure_ev: float = 0.0
+    # film v2 (§7.2): print timing policy. "fixed" = the EV0 joint solve's
+    # q(0) regardless of exposure state (same enlarger setting); "retimed" =
+    # q(E) re-solved per exposure via the factorized Stage B (negatives with
+    # retimed assets only; fail-closed elsewhere).
+    film_print_timing: str = "fixed"
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0

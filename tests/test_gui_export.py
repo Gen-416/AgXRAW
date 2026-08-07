@@ -108,6 +108,7 @@ class ExportSuffixTests(unittest.TestCase):
             "lens_filter", "film_curve", "film_mode", "film_crossover",
             "color_head_y", "color_head_m", "adjustments",
             "hdr_headroom", "delivery", "quality", "chroma",
+            "film_exposure_ev", "film_print_timing",
         }
         for kws in keyword_sets:
             self.assertTrue(

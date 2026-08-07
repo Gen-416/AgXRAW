@@ -701,6 +701,8 @@ def build_render_plan(
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
+    film_exposure_ev: float = 0.0,
+    film_print_timing: str = "fixed",
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
     # Full-mode input-domain normalization also lives HERE so hand callers of
@@ -793,7 +795,26 @@ def build_render_plan(
         crossover_value = (
             film_crossover if film_crossover in ("off", "datasheet") else "off"
         )
-        tone = _replace(tone, film_mode=mode_value, film_crossover=crossover_value)
+        # film v2 P2: the emulsion exposure state and the print timing are
+        # FULL-mode declarations (observe has no emulsion/print model); the
+        # combination fails closed rather than silently ignoring the dial.
+        exposure_value = float(film_exposure_ev)
+        timing_value = str(film_print_timing or "fixed")
+        if timing_value not in ("fixed", "retimed"):
+            raise ValueError(f"未知印相 timing:{timing_value}(可选 fixed/retimed)")
+        if mode_value != "full" and (exposure_value != 0.0 or timing_value != "fixed"):
+            raise ValueError(
+                "胶片曝光状态与印相 timing 属于接管显影(full 模式):observe 模式"
+                "没有乳剂/印相模型。请切换 --film-mode full,或把曝光归零、"
+                "timing 保持 fixed"
+            )
+        tone = _replace(
+            tone,
+            film_mode=mode_value,
+            film_crossover=crossover_value,
+            film_exposure_ev=exposure_value,
+            film_print_timing=timing_value,
+        )
     if float(color_head_y) != 0.0 or float(color_head_m) != 0.0:
         # Enlarger colour head: a declared printing decision, valid only where a
         # printing stage physically exists — a negative preset. Reversal film is
@@ -849,6 +870,7 @@ def build_render_plan(
             FilmDevelopmentPlan(),
             FilmPrintPlan(
                 medium_id="reversal_direct" if process == "reversal" else "print_paper",
+                timing_policy=str(getattr(tone, "film_print_timing", "fixed")),
                 neutralization_policy=neutralization,
             ),
             AnalogFinishPlan(),
