@@ -773,7 +773,7 @@ body_anchor_from_curve       # 生产值 + 同参数解析导数；禁止有限�
 compile_hdr_shoulder
 evaluate_hdr_shoulder
 validate_hdr_shoulder
-adaptive_monotone_segments   # 仅 reference-white 辅助色度候选显式使用
+adaptive_monotone_segments   # 权威 plan（低 headroom，alpha>3）与 reference-white 色度候选均经 allow_subdivision=True 使用（§7.4）
 ```
 
 纯数学核不得 import 图像、Core Image 或 renderer。
@@ -969,7 +969,9 @@ round-trip luminance/chroma error
 2. `core: add log-stop HDR shoulder compiler`
    - 只加入纯数学结构，不接 renderer。
 3. `plan: compile HDR v2 tone plans`
-   - 权威 plan 只允许单段 shoulder，越界关闭 HDR。
+   - 权威 plan：`alpha <= 3` 恰好单段；越界按 §7.4 细分为多段单调 Hermite
+     链；fail closed 只保留给退化输入（历史版本此步写"越界关闭 HDR"，
+     该行为已被细分取代——见 ENGINEERING_NOTES §1）。
 4. `render: route HDR formation through v2`
    - SDR 像素必须逐字节不变。
 5. `color: align native/reference chroma paths with v2`

@@ -209,7 +209,10 @@ rms 0.10 / max 0.25。"结构性"的判据（放宽界后收敛到同一点）�
 条件、密度配校准锚点。审计的"不一致"往往不是哪一边错了，而是共享的前提
 少写了一项。
 
-**续二（同日）：曝光依赖色彩落地与两个报告层缺口**。比率场运行时
+**续二（同日）：曝光依赖色彩落地与两个报告层缺口**。（后记：本段的比率场
+运行时随后整体退役——observe 的曝光依赖色彩改由后置联合 LMS 色头场承担、
+full 改由烘焙光谱链 LUT 接管，`agx.channel_ratio_gain` 已删除；本段保留为
+落地当日的过程记录，"报告行是第八个交付物"的教训仍然有效。）比率场运行时
 （`out_c = C(EV_c)·r_c(EV_c)/r_c(EV_Y)`，agx.channel_ratio_gain）在 SDR/HDR
 的共同咽喉 `finish_formation` 施加，hue restore 之后（介质报告不受渲染器
 hue 纪律稀释）、outset 之前；HDR plan 经 replace 继承 curve_preset，双路一致
