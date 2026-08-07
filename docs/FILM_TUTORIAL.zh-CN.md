@@ -91,7 +91,7 @@
 | `ektachrome100` | Kodak Ektachrome E100 | 5500K 日光 | 幻灯直看 | ×1.4 · base |
 | `kodachrome64` | Kodak Kodachrome 64 | 5500K 日光 | 幻灯直看 | ×1.4 · muted |
 
-全部选项都支持 observe（默认）与 full 两种显影分工（第六节）;层间漂移开关
+全部选项都支持 observe（默认）与 full 两种显影分工（第六节）;灰阶中性化开关
 仅 full 模式有效（第七节）。
 
 ---
@@ -323,12 +323,14 @@ punchy 的红密而沉，桁架和背景的光洗透着密度；muted 把同一�
 机理对照。**observe**（默认）：胶片决定观察者看见了什么——白平衡、颜色
 分离、明暗性格——最终颜色由 AgX 负责成像。这是验证得最充分的路径，HDR
 照常工作。**full**：胶片的显影模型整体接管。光谱底座重建后它不再是"逐通道
-曲线吃 RGB"的启发式，而是离线烘焙的完整光谱链——场景颜色经受约束的观察者
-逆矩阵折算为三层乳剂曝光，过各层特性曲线、负片染料光谱、TH-KG3 印相链，
-再回到屏幕色彩——运行时按 65³ 查找表采样。如实声明两条边界：三个数字
-恢复不了光谱，观察者逆矩阵的同色异谱残差按卷实测盖章在数据里（最坏训练
-材料 p99 约 0.5–1.2 档）；显影抑制耦合（DIR）等层间效应数据中没有，链里
-就没有。
+曲线吃 RGB"的启发式，而是**因式分解的完整光谱链**——场景颜色经受约束的
+观察者逆矩阵折算为三层乳剂曝光，过各层特性曲线得到负片染料密度（Stage A，
+运行时解析，胶片曝光态与显影配方在这里生效），再过 B1（负片密度→相纸层
+曝光）、印相 timing τ、相纸显影曲线与 B2（正介质密度→观看色彩）回到屏幕
+（Stage B，两只 65³ 密度域体积+一维曲线；换印相介质只换 B2 侧，不重烘前
+链）。如实声明两条边界：三个数字恢复不了光谱，观察者逆矩阵的同色异谱残差
+按卷实测盖章在数据里（最坏训练材料 p99 约 0.5–1.2 档）；显影抑制耦合
+（DIR）等层间效应数据中没有，链里就没有。
 
 动了会发生什么（实测，film v2 因式分解链重渲）：在公园样张上 observe 与
 full 约七成像素过可见阈，但平均差温和（约 4.5/255）——差异广而轻，住在
@@ -358,20 +360,24 @@ full 约七成像素过可见阈，但平均差温和（约 4.5/255）——差�
 |---|---|
 | ![](assets/film-tutorial/fullmode_expo_observe.jpg) | ![](assets/film-tutorial/fullmode_expo_full.jpg) |
 
-full 的另一项独有载荷在下一节——层间漂移只有它能渲染；它仍仅支持 SDR，
-速度与 observe 同级。
+full 的独有载荷还有：印相介质与 timing（介质下拉、随胶片曝光重定时、
+自定义色头印相）、editorial 显影配方、Film Compression、模拟光学
+（颗粒/halation/bloom，GUI"模拟光学"档位），以及下一节的层间漂移。
+Ultra HDR 下 full 以"胶片印相 + scene HDR 扩展"参与：SDR 底图就是胶片
+印相，参考白之上按场景自身高光平滑增益，不声称物理胶片 HDR。
 
 ---
 
 ## 七 · 胶片色偏：阴影里的层间漂移（仅 full）
 
-GUI 名"层间漂移"，即胶片术语 crossover。机理先行：真实胶片的三层感光
+GUI 名"灰阶中性化"（`--film-neutralization`；旧名 `--film-crossover`/"层间
+漂移"已为弃用别名），机理即胶片术语 crossover。机理先行：真实胶片的三层感光
 乳剂并不完全平行——同样的中性灰，在暗部和亮部会显出不同程度的偏色，这
 就是胶片的层间色偏。各卷的幅度与方向都来自数据手册特性曲线：Kodachrome
 的阴影偏暖（琥珀色——三层在低曝光端的密度差，摄影史上有名的性格），
 Velvia 的阴影温和偏冷，电影负片系偏绿青。这个开关决定实测数据怎么用：
 
-- **off**（默认）：**数字中性化变体**——每个通道除以中性阶在该像素亮度
+- **bounded**（默认，内部旧名 off）：**数字中性化变体**——每个通道除以中性阶在该像素亮度
   曝光处的染色（与色头同一条单轴约定），且校正每通道限幅在 ±2 档以内：
   介质自身灰阶偏离中性两档之内的染色被完全中和，更深的染色（典型如
   Kodachrome 的地板色）如实保留为介质性格。这是声明的数字约定，不是第
@@ -501,7 +507,7 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 2. `--film velvia100`
 3. ② + `--scene-transform-strength 2.2 --ev -0.3`
 4. ③ + `--toe-end-offset -1 --midtone-contrast 0.3`
-5. `--film velvia100 --film-mode full --film-crossover datasheet --ev -0.3`（仅 SDR；色彩侧无外部 oracle 的声明照旧）
+5. `--film velvia100 --film-mode full --film-neutralization datasheet --ev -0.3`（仅 SDR；色彩侧无外部 oracle 的声明照旧）
 6. `--film velvia100 --grade look:optic_warm_cyan --grade-strength 0.5 --scene-transform-strength 2.0 --ev -0.2`
 
 ②忠实底子 → ③④密度与对比逐级推进 → ⑤晴空转深紫蓝 → ⑥胶片层上再叠独立 look 层。
@@ -515,7 +521,7 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 3. ② + `--scene-transform-strength 1.8 --ev -0.2 --midtone-contrast 0.2`
 4. ③ + `--toe-end-offset -1`
 5. `--film portra400 --color-head-y 15`
-6. `--film portra400 --film-mode full --film-crossover datasheet --ev -0.2`
+6. `--film portra400 --film-mode full --film-neutralization datasheet --ev -0.2`
 
 负片的推法更温和：③④密度小步走，⑤印相端 Y 档把画面往蓝侧修，⑥光谱链接管后绿的分离更放开。
 
@@ -527,7 +533,7 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 2. `--film velvia100`
 3. ② + `--scene-transform-strength 2.2 --ev -0.3`
 4. ③ + `--toe-end-offset -1 --midtone-contrast 0.3`
-5. `--film velvia100 --film-mode full --film-crossover datasheet --ev -0.3`
+5. `--film velvia100 --film-mode full --film-neutralization datasheet --ev -0.3`
 6. `--film velvia100 --grade look:optic_warm_cyan --grade-strength 0.5 --scene-transform-strength 2.0 --ev -0.2`
 
 品红与暗部逐级变浓，暗场景没有塌——同一套推法明暗通吃。
@@ -546,7 +552,7 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 | 前馈强度 ↑ | 感色分离性格加浓：同类颜色内部色相距离拉开；这卷胶片在该内容上动得少时如实几乎不动 |
 | 曲线预设 | 整卷固定的明暗性格替换场景自适应；端点模式此时不适用；趾/肩微调仍在预设曲线上有效 |
 | AgX 原色几何 | 高饱和色的密度与收白路径改变（punchy 密、muted 淡、smooth 近 base）；中性内容不动 |
-| 色彩由谁负责 → full | 胶片模型接管颜色，整体色相/密度重画（实验、仅 SDR、无外部色彩校验） |
+| 色彩由谁负责 → full | 胶片模型接管颜色，整体色相/密度重画（实验、无外部色彩校验；印相介质/timing/显影配方/模拟光学随之可声明，Ultra HDR 走"胶片印相+scene HDR 扩展"） |
 | 胶片色偏 → datasheet | 仅 full：中灰保持白平衡，深暗部按实测数据偏冷/偏色；中间调以上几乎不动 |
 | 色头 Y ↑ | 仅负片：印相去黄向蓝；精修 2–10CC 一步，30CC 起属粗调；亮度自动保持不变 |
 | 色头 M ↑ | 仅负片：印相去品向绿，机理同 Y、力道更大 |
@@ -560,7 +566,7 @@ E-6/K-14 反转片冲洗出来**自身就是显示介质**——幻灯片直接�
 - **曲线预设**：这卷胶片固定的明暗性格，整卷一致、自适应关闭。
 - **AgX 原色几何**：饱和色如何收进白；比前馈强度更大幅度的风格杠杆。
 - **色彩由谁负责**（显影分工）：observe=胶片观察+AgX 成像（默认）；full=胶片模型接管（实验）。
-- **胶片色偏**（层间漂移）：仅 full；datasheet=中灰保持白平衡、暗部亮部按实测数据偏移。
+- **灰阶中性化**（胶片色偏/层间漂移）：仅 full；datasheet=中灰保持白平衡、暗部亮部按实测数据偏移。
 - **色头 Y/M**：负片印相环节的分色滤镜档位，真实 CC 单位，亮度自动保持不变。
 
 本文全部对比图由 dngscan 按文中所列参数实际渲染（全尺寸解码；全图长边

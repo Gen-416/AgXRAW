@@ -55,11 +55,15 @@ Fujifilm Velvia 100（反转片）、Vision3 250D 影院放映外观（引用原
 | ![off](docs/assets/film-tutorial/crop_crossover_verita_off.jpg) | ![datasheet](docs/assets/film-tutorial/crop_crossover_verita_datasheet.jpg) |
 
 实验性的胶片接管模式（full）不再是"逐通道曲线"的启发式：场景颜色经过受约束的
-观察者逆矩阵折算为三层乳剂曝光，过各层特性曲线、染料光谱与 TH-KG3 印相链，离线
-烘焙成 65³ 查找表。上图是它能渲染而调色滤镜渲染不出的东西——Verita 200D 印相链
-按数据手册实测的**层间漂移**（crossover）：雕花木门与石阶的阴影转出绿青，白墙与
-受光的卵石地纹丝不动；全图亮度差中位数为 0。左边是默认的数字中性化变体（灰阶
-严格保持中性），右边是数据手册原样。
+观察者逆矩阵折算为三层乳剂曝光，过各层特性曲线进入**因式分解的印相链**——负片
+密度 → 相纸层曝光（B1）→ 印相 timing（τ）→ 相纸显影曲线 → 观看链（B2），印相
+介质、timing（固定/随胶片曝光重定时/自定义色头）、灰阶中性化、编辑显影配方、
+Film Compression 与模拟光学（颗粒/halation/bloom）都是这条链上可声明的真实状态；
+Ultra HDR 下它以"胶片印相 + scene HDR 扩展"参与（SDR 底图=胶片印相，参考白之上
+按场景高光平滑增益）。上图是它能渲染而调色滤镜渲染不出的东西——Verita 200D
+印相链按数据手册实测的**层间漂移**（crossover）：雕花木门与石阶的阴影转出绿青，
+白墙与受光的卵石地纹丝不动；全图亮度差中位数为 0。左边是默认的数字中性化变体
+（灰阶严格保持中性，即 `--film-neutralization bounded`），右边是数据手册原样。
 
 ## 功能
 

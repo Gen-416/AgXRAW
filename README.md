@@ -61,13 +61,22 @@ five theatrical variants are listed in the [film tutorial](docs/FILM_TUTORIAL.zh
 
 The experimental film-takeover mode (full) is no longer a per-channel-curve
 heuristic: scene colour passes through a constrained observer inverse into
-three emulsion exposures, through each layer's characteristic curve, the dye
-spectra and the TH-KG3 print chain, baked offline into a 65-cubed LUT. Above is
+three emulsion exposures, through each layer's characteristic curve into
+negative dye density, then through the FACTORIZED print chain — negative
+density to paper-layer exposure (B1), print timing (τ), the paper's
+development curves, and the viewing chain (B2). Print medium, timing
+(fixed / retimed with film exposure / custom with a modelled colour head),
+grey-scale neutralization, editorial developer recipes, Film Compression
+and the analog optics (grain / halation / bloom) are all declarable states
+of this one chain, and Ultra HDR runs it as "film print + scene HDR
+extension" (the SDR base IS the film print; reliable scene highlights gain
+smoothly above the print's reference white). Above is
 something it renders that no grading filter can: the Verita 200D print chain's
 measured inter-layer crossover — the carved door and stone steps in shadow turn
 green-teal while the sunlit wall and pebbles sit still, at zero median luminance
 difference. Left is the default digitally neutralized variant (grays stay
-strictly neutral); right is the datasheet served verbatim.
+strictly neutral, `--film-neutralization bounded`); right is the datasheet
+served verbatim.
 
 ## Features
 

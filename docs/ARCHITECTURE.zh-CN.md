@@ -813,9 +813,16 @@ flowchart LR
 **双模式分工**（`--film-mode`，合同 §光谱印相·双模式）：**observe（默认）**=
 胶片声明观察者看见了什么（WB/分离/音调签名），颜色由 AgX 显影——分工画在
 数据可信边界上，胶片预设在此模式下只是曲线参数，原生内核照常加速；
-**full（实验）**= 胶片显影模型整体接管（`film_develop` 核：离线烘焙的光谱链
-65³ LUT，无 AgX 色彩几何；无色头、要求 AgX tone core），AgX 只保留交付端
-色域安全，暂仅 SDR。关闭 `--film` 即纯 AgX。逐通道滚降本身就是颜色操作——这就是"AgX 只管拉伸滚降、颜色全给胶片"
+**full（实验）**= 胶片显影模型整体接管（`film_develop` 核，film v2 因式
+分解链：Stage A 解析——观察者逆矩阵→三条 1D 特性曲线→染料密度，含胶片
+曝光态、editorial 显影配方与 halation/颗粒挂点；Stage B 因式分解——B1
+密度→相纸层曝光 65³、τ(E) 印相 timing 表、相纸 1D 显影曲线、B2 正介质
+密度→观看 65³（按介质×观看条件键控、跨卷复用）；无 AgX 色彩几何，要求
+AgX tone core；色头仅在 timing=custom 下以 modelled Δτ 解锁），AgX 只保留
+交付端色域安全。SDR 之上，Ultra HDR 以"胶片印相 + scene HDR 扩展"参与
+（SDR base=胶片印相逐字节不变，参考白之上按场景高光 C1 增益，封顶可靠
+余量）。资产为 `dngscan/data/film_v2/` 三分家族（stock / print_state /
+b2，schema 5，全部 fail-closed 加载）。关闭 `--film` 即纯 AgX。逐通道滚降本身就是颜色操作——这就是"AgX 只管拉伸滚降、颜色全给胶片"
 无法折中切分、必须做成两极开关的结构原因。
 
 ### 曲线预设、色头与层间漂移的实现细节
