@@ -111,26 +111,32 @@ class FilmPairTests(unittest.TestCase):
         self.assertTrue(np.all(hdr_linear >= 0.0))
 
     def test_body_matches_sdr_and_highlights_gain(self) -> None:
-        from dngscan.color import fit_to_output_gamut
+        from dngscan.color import srgb_decode
         from dngscan.film_develop import film_reference_white_ev
-        from dngscan.render import scene_render_to_display_linear
         from dngscan.tone import scene_intent_rec2020
 
-        scene, plan, hdr_plan, _, hdr_linear = self._pair()
-        sdr_lin = scene_render_to_display_linear(scene.bundle, plan, "p3")
-        fitted = fit_to_output_gamut(
-            sdr_lin.reshape(-1, 3), "p3",
-            alpha=float(plan.color.gamut_fit_alpha),
-        ).reshape(sdr_lin.shape)
+        scene, plan, hdr_plan, base_u8, hdr_linear = self._pair()
+        # The §10 contract holds against the REAL encoded base (decoded from
+        # the 8-bit dithered pixels the file carries), not the float print
+        # (review batch 13: quantization noise broke gain >= 1 there).
+        decoded = srgb_decode(
+            base_u8.reshape(-1, 3).astype(np.float64) / 255.0
+        ).reshape(hdr_linear.shape)
+        self.assertGreaterEqual(
+            float((hdr_linear - decoded).min()), -1e-6,
+            "gain >= 1 must hold against the decoded real base everywhere "
+            "(HDR never darker than the encoded print, black stays black)",
+        )
         flat_scene = scene.bundle.scene_rec2020_render.reshape(-1, 3)
         rec = scene_intent_rec2020(flat_scene, scene.bundle)
         luma = np.array([0.2627, 0.6780, 0.0593])
-        ev = np.log2(np.maximum(rec @ luma, 1e-9) / 0.18).reshape(sdr_lin.shape[:2])
+        ev = np.log2(np.maximum(rec @ luma, 1e-9) / 0.18).reshape(hdr_linear.shape[:2])
         join = film_reference_white_ev(plan.tone)
         body = ev <= join
         np.testing.assert_allclose(
-            hdr_linear[body], fitted[body], rtol=0, atol=1e-6,
-            err_msg="below the reference-white join the HDR body IS the print",
+            hdr_linear[body], decoded[body], rtol=0, atol=1e-6,
+            err_msg="below the reference-white join the HDR body IS the "
+                    "decoded print",
         )
         hot = ev >= join + 0.5
         self.assertTrue(
@@ -138,14 +144,18 @@ class FilmPairTests(unittest.TestCase):
             "test scene must carry highlights above the join (the +1.5 EV "
             "emulsion overexposure moves the print's reference white down)",
         )
-        ratio = hdr_linear[hot] / np.maximum(fitted[hot], 1e-9)
+        hot_ratio = (
+            hdr_linear[hot] / np.maximum(decoded[hot], 1e-9)
+        )[decoded[hot] > 1e-3]
         self.assertGreater(
-            float(np.min(ratio)), 1.0,
+            float(hot_ratio.min()), 1.0,
             "reliable scene highlights must gain above reference white",
         )
         # never above the solved headroom
         self.assertTrue(np.all(
-            hdr_linear <= fitted * (2.0 ** float(hdr_plan.tone.rendered_headroom_ev)) + 1e-5
+            hdr_linear <= decoded * (
+                2.0 ** float(hdr_plan.tone.rendered_headroom_ev)
+            ) + 1e-5
         ))
 
     def test_export_paths_accept_full_plus_hdr(self) -> None:

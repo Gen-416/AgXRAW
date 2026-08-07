@@ -289,12 +289,24 @@ def _optics_budget_mib() -> int:
     return v if v in OPTICS_BUDGET_TIERS_MIB else 512
 
 
+# Fixed working-set costs of the analog-optics context, charged against the
+# budget BEFORE band sizing (review batch 13: the solver previously budgeted
+# only the band temporaries while the grain field build and the sampling
+# integral image dominated the real peak): the resident float32 grain field
+# (2000x3000x3), its float64 integral image during sampling, plus the
+# decimated spread maps and blur temporaries.
+_OPTICS_FIXED_MIB = 72 + 144 + 48
+
+
 def _optics_band_rows(width: int) -> int:
-    """Rows per sequential band so the band's working set (about eight
-    float32 RGB copies through intent/retreat/StageA/B1/paper/B2/finalize)
-    stays inside the budget. The spread maps are budgeted upstream by
-    SPREAD_MAX_DIM and the film grain grid is a fixed 2000x3000x3 float32."""
-    budget_bytes = _optics_budget_mib() * (1 << 20)
+    """Rows per sequential band so the fixed context costs PLUS the band's
+    working set (about eight float32 RGB copies through intent/retreat/
+    StageA/B1/paper/B2/finalize) stay inside the budget tier. Sampling and
+    blur paths are slab-bounded upstream so no full-frame temporary exists
+    outside this accounting; an independent-process RSS gate pins the sum."""
+    budget_bytes = max(
+        (_optics_budget_mib() - _OPTICS_FIXED_MIB), 32
+    ) * (1 << 20)
     per_row = max(width, 1) * 3 * 4 * 8
     return int(np.clip(budget_bytes // (3 * per_row), 64, 8192))
 

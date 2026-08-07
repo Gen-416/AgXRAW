@@ -341,11 +341,7 @@ def render_ultrahdr_film_pair(
     """
     from .film_develop import film_reference_white_ev
     from .film_v2_math import film_hdr_gain_log2
-    from .render import (
-        _optics_band_rows,
-        render_output_u8,
-        scene_render_to_display_linear,
-    )
+    from .render import _optics_band_rows, render_output_u8
 
     tone = plan.tone
     if (
@@ -354,26 +350,28 @@ def render_ultrahdr_film_pair(
     ):
         raise RuntimeError("render_ultrahdr_film_pair 只服务 film full 计划")
     base_u8 = render_output_u8(bundle, analysis, output_gamut, plan)
-    # Display-linear print, pre-encode (same banded spatial machinery); the
-    # gamut fit below makes it the exact linear the SDR base encodes.
-    sdr_linear = scene_render_to_display_linear(bundle, plan, output_gamut)
-    h, w = sdr_linear.shape[:2]
-    flat = sdr_linear.reshape(-1, 3)
-    color_plan = plan.color
-    gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05
+    h, w = base_u8.shape[:2]
+    # The HDR alternate multiplies the DECODED real base — the 8-bit,
+    # dithered, gamut-fitted pixels the file actually carries — never the
+    # pre-quantization float print. Review batch 13 measured the float-print
+    # variant shipping sub-1 gains on most body pixels (quantization noise
+    # made base > alternate per channel); building on the decoded base makes
+    # gain >= 1 hold against the REAL SDR leg by construction.
+    from .color import srgb_decode
+
+    flat_base = srgb_decode(
+        base_u8.reshape(-1, 3).astype(np.float32) / 255.0
+    ).astype(np.float64)
     join_ev = film_reference_white_ev(tone)
     headroom_ev = float(hdr_plan.tone.rendered_headroom_ev)
     span_ev = max(headroom_ev, 1.0) * 1.5
     scene = bundle.scene_rec2020_render
     flat_scene = scene.reshape(-1, scene.shape[-1])
     luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float64)
-    hdr_out = np.empty((flat.shape[0], 3), dtype=np.float32)
+    hdr_out = np.empty((flat_base.shape[0], 3), dtype=np.float32)
     band = max(_optics_band_rows(w), 1) * w
-    for s0 in range(0, flat.shape[0], band):
-        e0 = min(s0 + band, flat.shape[0])
-        fitted = fit_to_output_gamut(
-            flat[s0:e0], output_gamut, alpha=gamut_alpha
-        ).astype(np.float64, copy=False)
+    for s0 in range(0, flat_base.shape[0], band):
+        e0 = min(s0 + band, flat_base.shape[0])
         rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
         ev = np.log2(
             np.maximum(np.asarray(rec, dtype=np.float64) @ luma, 1e-9) / 0.18
@@ -381,7 +379,7 @@ def render_ultrahdr_film_pair(
         gain = np.exp2(film_hdr_gain_log2(
             ev, headroom_ev=headroom_ev, join_ev=join_ev, span_ev=span_ev,
         ))
-        hdr_out[s0:e0] = (fitted * gain[:, None]).astype(np.float32)
+        hdr_out[s0:e0] = (flat_base[s0:e0] * gain[:, None]).astype(np.float32)
     return base_u8, hdr_out.reshape(h, w, 3)
 
 
