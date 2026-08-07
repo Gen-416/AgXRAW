@@ -753,18 +753,16 @@ function updateHdrOptionGate(){
   // Mode gating (declared convention): an option a mode cannot use is greyed
   // with the reason on screen, and a selection the backend would reject never
   // rides the payload — it snaps back with a visible notice.
+  // P6: full+ultrahdr 由"胶片印相+scene HDR 扩展"服务(胶片印相为 SDR base,
+  // 参考白之上做 C1 场景高光增益),不再互斥。
   const fullFilm=$("#filmCurve").value!=="none"&&$("#filmMode").value==="full";
   const hint=$("#formatModeHint");
   for(const v of ["ultrahdr","ultrahdr-heic"]){
     const option=[...$("#format").options].find(o=>o.value===v);
-    if(option)option.disabled=!HDR_BACKEND_OK||fullFilm;
+    if(option)option.disabled=!HDR_BACKEND_OK;
   }
-  hint.textContent=fullFilm?"接管模式（full）暂仅支持 SDR：胶片接管显影没有 HDR 对应物。":"";
-  hint.style.display=fullFilm?"":"none";
-  if(fullFilm&&["ultrahdr","ultrahdr-heic"].includes($("#format").value)){
-    $("#format").value="sdr";updateFormatUi();saveSettings();
-    setStatus("full 模式暂仅支持 SDR，导出格式已切回 SDR JPEG。","warn");
-  }
+  hint.textContent=fullFilm&&["ultrahdr","ultrahdr-heic"].includes($("#format").value)?"胶片印相+scene HDR 扩展：SDR base=胶片印相；参考白之上按场景高光平滑增益。":"";
+  hint.style.display=hint.textContent?"":"none";
 }
 function updateGradeModeUi(){
   const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);

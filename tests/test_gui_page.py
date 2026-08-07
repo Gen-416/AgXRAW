@@ -470,9 +470,12 @@ class FilmModePlacementTests(unittest.TestCase):
         HDR containers, HDR containers vs display looks."""
         gate = PAGE[PAGE.index("function updateHdrOptionGate(") :]
         gate = gate[: gate.index("\n}")]
-        self.assertIn("接管模式（full）暂仅支持 SDR", gate)
-        self.assertIn('option.disabled=!HDR_BACKEND_OK||fullFilm', gate)
-        self.assertIn('$("#format").value="sdr"', gate)
+        # P6: full+ultrahdr is served by the 胶片印相+scene HDR 扩展 pair —
+        # the gate now only reflects backend availability, with the extension
+        # explained on screen instead of an exclusion.
+        self.assertIn("胶片印相+scene HDR 扩展", gate)
+        self.assertIn('option.disabled=!HDR_BACKEND_OK', gate)
+        self.assertNotIn('option.disabled=!HDR_BACKEND_OK||fullFilm', gate)
         grade_gate = PAGE[PAGE.index("function updateGradeModeUi(") :]
         grade_gate = grade_gate[: grade_gate.index("\n}")]
         self.assertIn("HDR 容器暂不支持 display look", grade_gate)

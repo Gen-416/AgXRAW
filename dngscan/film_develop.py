@@ -658,3 +658,18 @@ def apply_film_core(
         for c in range(3):
             developed[:, c] /= np.interp(ev_y, cast_ev, cast_bounded[:, c])
     return np.maximum(developed, 0.0).astype(np.float32, copy=False)
+
+
+def film_reference_white_ev(plan: Any) -> float:
+    """The scene EV where this plan's print reaches its paper-white plateau
+    (90% of the deep-highlight luminance level) on a neutral ramp — the P6
+    HDR extension's join point: below it the SDR print IS the HDR body."""
+    evs = np.linspace(0.0, 6.0, 121)
+    rgb = (0.18 * np.exp2(evs))[:, None].repeat(3, axis=1).astype(np.float32)
+    out = apply_film_core(rgb, plan)
+    luma = np.asarray(out, dtype=np.float64) @ REC2020_LUMA
+    plateau = float(luma[-1])
+    if plateau <= 0.0:
+        return 2.0
+    reached = np.nonzero(luma >= 0.9 * plateau)[0]
+    return float(evs[reached[0]]) if reached.size else 2.0

@@ -123,17 +123,31 @@ def export_ultrahdr_jpeg(
                 f"{describe_hdr_plan(hdr_plan)}。请改用 --output-format sdr"
             )
 
-        from .hdr_agx import render_ultrahdr_agx_pair
-
-        base_u8, hdr_linear = render_ultrahdr_agx_pair(
-            bundle,
-            analysis,
-            plan,
-            hdr_plan,
-            output_gamut,
-            scene_transform,
-            scene_transform_strength,
+        film_full = (
+            str(getattr(plan.tone, "film_mode", "observe")) == "full"
+            and str(getattr(plan.tone, "curve_preset", "none")) != "none"
         )
+        if film_full:
+            # P6 (§10) "胶片印相 + scene HDR 扩展": the film print is the SDR
+            # base; the HDR leg is a C1 scene-highlight gain above the
+            # print's reference white — never a second development.
+            from .hdr_agx import render_ultrahdr_film_pair
+
+            base_u8, hdr_linear = render_ultrahdr_film_pair(
+                bundle, analysis, plan, hdr_plan, output_gamut
+            )
+        else:
+            from .hdr_agx import render_ultrahdr_agx_pair
+
+            base_u8, hdr_linear = render_ultrahdr_agx_pair(
+                bundle,
+                analysis,
+                plan,
+                hdr_plan,
+                output_gamut,
+                scene_transform,
+                scene_transform_strength,
+            )
         actual = achieved_headroom(hdr_linear)
         # Encode-boundary guard at the scene-authorized content peak, not the display
         # capacity: the design contract (§9) keeps the alternate's ceiling at 2^H_content,
@@ -150,7 +164,10 @@ def export_ultrahdr_jpeg(
         del hdr_linear
         info = encode_finished_pair(pair, out_path, profile)
         info["output_path"] = str(out_path)
-        info["hdr_plan"] = describe_hdr_plan(hdr_plan)
+        info["hdr_plan"] = (
+            "胶片印相+scene HDR 扩展：" + describe_hdr_plan(hdr_plan)
+            if film_full else describe_hdr_plan(hdr_plan)
+        )
         info["display_headroom_ev"] = float(hdr_plan.tone.display_headroom_ev)
         info["requested_headroom_ev"] = float(hdr_plan.tone.requested_headroom_ev)
         info["rendered_headroom_ev"] = float(hdr_plan.tone.rendered_headroom_ev)
@@ -230,20 +247,6 @@ def export_jpeg(
     chroma: str = "444",
 ) -> Any:
     if is_hdr_output_format(output_format):
-        # Library-level mirror of the CLI/GUI contract (review batch 11): the
-        # film-takeover development has no HDR counterpart. Without this guard
-        # a direct API caller gets a gain-map whose SDR base is the takeover
-        # LUT while the HDR leg is AgX formation — two developments in one
-        # file. Same class as the full+non-AgX silent mismatch (batch 7).
-        _plan_tone = getattr(tone_plan, "tone", tone_plan)
-        if (
-            str(getattr(_plan_tone, "film_mode", "observe")) == "full"
-            and str(getattr(_plan_tone, "curve_preset", "none")) != "none"
-        ):
-            raise ValueError(
-                "胶片接管显影（film_mode=full）暂仅支持 SDR：HDR 容器导出没有"
-                "接管对应物。请改用 SDR 输出或 observe 模式"
-            )
         cont = container_for_output_format(output_format)
         profile = delivery
         if profile is None:
