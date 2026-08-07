@@ -425,6 +425,17 @@ def jpeg_tone_plan_cn(
             if rho > 0.0:
                 state += f"·高光色密度ρ={rho:.2f}"
             state += "；"
+        optics = [
+            f"{label}{val:.2f}"
+            for label, val in (
+                ("颗粒", float(getattr(plan, "film_grain", 0.0) or 0.0)),
+                ("halation", float(getattr(plan, "film_halation", 0.0) or 0.0)),
+                ("bloom", float(getattr(plan, "film_bloom", 0.0) or 0.0)),
+            )
+            if val > 0.0
+        ]
+        if optics:
+            state += "模拟光学(modelled) " + "·".join(optics) + "；"
         return (
             f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
             f"→B1→τ→相纸曲线→B2)，{state}"

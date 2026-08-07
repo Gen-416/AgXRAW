@@ -160,6 +160,12 @@ def validate_film_plans(
             )
     if finish.grain_amount < 0.0 or finish.halation_amount < 0.0 or finish.bloom_amount < 0.0:
         raise ValueError("模拟光学强度不能为负")
+    if finish.grain_amount > 1.0 or finish.halation_amount > 1.0 or finish.bloom_amount > 1.0:
+        raise ValueError("模拟光学强度域为 [0,1]")
+    if finish.grain_amount > 0.0 and finish.grain_profile == "off":
+        raise ValueError("grain_amount > 0 需要一个 grain profile")
+    if finish.halation_amount > 0.0 and finish.halation_profile == "off":
+        raise ValueError("halation_amount > 0 需要一个 halation profile")
     if not 0.0 <= float(finish.compression) <= 1.0:
         raise ValueError("film compression 强度域为 [0,1]")
     if finish.compression > 0.0 and not 0.0 <= float(finish.compression_knee_ev) <= 6.0:

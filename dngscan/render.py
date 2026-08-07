@@ -272,6 +272,21 @@ def apply_agx_core(rgb_rec2020: Any, plan: ToneCompressionPlan) -> Any:
     return punch_engine.apply_punch_rec2020(mapped, float(getattr(plan, "punch_strength", 0.0)))
 
 
+def _film_spatial_engaged(tone_plan: Any) -> bool:
+    """True when the full-mode film plan carries any §9 analog-optics amount.
+    Spatial operators need the whole image; the renderers precompute the tone
+    core full-frame in that case instead of chunk-streaming it."""
+    if (
+        str(getattr(tone_plan, "film_mode", "observe")) != "full"
+        or str(getattr(tone_plan, "curve_preset", "none")) == "none"
+    ):
+        return False
+    return any(
+        float(getattr(tone_plan, k, 0.0) or 0.0) > 0.0
+        for k in ("film_grain", "film_halation", "film_bloom")
+    )
+
+
 def apply_tone_core(
     rgb_rec2020: Any,
     plan: ToneCompressionPlan,
@@ -343,6 +358,20 @@ def scene_render_to_display_linear(
         str(getattr(tone_plan, "film_mode", "observe")) == "full"
         and str(getattr(tone_plan, "curve_preset", "none")) != "none"
     )
+    precomputed_tone = None
+    if _film_spatial_engaged(tone_plan):
+        # §9.3 P5a: spatial analog optics need the whole image. This is the
+        # full-frame oracle path (one float32 RGB working copy); the tiled
+        # budgeted scheduler is the P5b batch. All-off keeps streaming.
+        from .film_develop import apply_film_core
+
+        rec_full = scene_intent_rec2020(flat_scene[:, :3], bundle)
+        if clip_masks is not None and float(color_plan.raw_clip_retreat_strength) > 0.0:
+            rec_full = retreat_engine.apply_clip_retreat_rec2020(
+                rec_full, clip_masks, float(color_plan.raw_clip_retreat_strength)
+            )
+        precomputed_tone = apply_film_core(rec_full, tone_plan, spatial_shape=(h, w))
+        del rec_full
     for start in range(0, flat_scene.shape[0], chunk):
         end = min(start + chunk, flat_scene.shape[0])
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
@@ -356,7 +385,7 @@ def scene_render_to_display_linear(
                 clip_masks[start:end],
                 float(color_plan.raw_clip_retreat_strength),
             )
-        mapped_rec = apply_tone_core(
+        mapped_rec = precomputed_tone[start:end] if precomputed_tone is not None else apply_tone_core(
             rec,
             tone_plan,
             color_plan,
@@ -565,6 +594,25 @@ def render_output_u8(
         str(getattr(effective_tone, "film_mode", "observe")) == "full"
         and str(getattr(effective_tone, "curve_preset", "none")) != "none"
     )
+    precomputed_tone = None
+    if _film_spatial_engaged(effective_tone):
+        # §9.3 P5a full-frame spatial path (see scene_render_to_display_linear).
+        from .film_develop import apply_film_core
+
+        rec_full = scene_intent_rec2020(flat_scene[:, :3], bundle)
+        if (
+            clip_masks is not None
+            and color_plan is not None
+            and float(color_plan.raw_clip_retreat_strength) > 0.0
+        ):
+            rec_full = retreat_engine.apply_clip_retreat_rec2020(
+                rec_full, clip_masks, float(color_plan.raw_clip_retreat_strength)
+            )
+        precomputed_tone = apply_film_core(
+            rec_full, effective_tone, spatial_shape=(h, w)
+        )
+        del rec_full
+
     def render_post_tone_chunk(start: int, end: int) -> Any:
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
         if not film_full:
@@ -580,7 +628,7 @@ def render_output_u8(
             rec = retreat_engine.apply_clip_retreat_rec2020(
                 rec, sample_masks, float(color_plan.raw_clip_retreat_strength)
             )
-        mapped_rec = apply_tone_core(
+        mapped_rec = precomputed_tone[start:end] if precomputed_tone is not None else apply_tone_core(
             rec,
             effective_tone,
             color_plan,
