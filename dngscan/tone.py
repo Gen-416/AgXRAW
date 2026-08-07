@@ -822,10 +822,43 @@ def build_render_plan(
         # film_mode/film_crossover are already stamped with the preset above;
         # the colour head only adds its own dial values here.
         tone = _replace(tone, color_head_y=head_y, color_head_m=head_m)
+    # film v2 plan objects (FILM_PRINT_RENDERING_PLAN §4): identity defaults,
+    # validated fail-closed whenever the film domain is active. P1 wires the
+    # structure; exposure/development/print state grows in later stages.
+    film_plans = None
+    if film_curve != "none":
+        from .film_curve import film_process
+        from .film_plans import (
+            AnalogFinishPlan,
+            FilmDevelopmentPlan,
+            FilmExposurePlan,
+            FilmPrintPlan,
+            validate_film_plans,
+        )
+
+        process = film_process(film_curve)
+        neutralization = (
+            "datasheet" if str(getattr(tone, "film_crossover", "off")) == "datasheet"
+            else "bounded"
+        )
+        film_plans = (
+            FilmExposurePlan(
+                stock_id=film_curve,
+                exposure_ev=float(getattr(tone, "film_exposure_ev", 0.0)),
+            ),
+            FilmDevelopmentPlan(),
+            FilmPrintPlan(
+                medium_id="reversal_direct" if process == "reversal" else "print_paper",
+                neutralization_policy=neutralization,
+            ),
+            AnalogFinishPlan(),
+        )
+        validate_film_plans(*film_plans)
     plan = RenderPlan(
         tone=tone,
         color=build_color_geometry_plan(analysis, output_gamut, tone_core),
         scene=scene,
+        film=film_plans,
     )
     return apply_render_adjustments(plan, adjustments)
 

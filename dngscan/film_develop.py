@@ -1,5 +1,21 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Film-takeover development core (film_mode="full") — spectral-LUT edition.
+"""Film-takeover development core (film_mode="full") — two-stage edition.
+
+film v2 (FILM_PRINT_RENDERING_PLAN §3): the default backend is the TWO-STAGE
+composite — Stage A runs the analytic scene->density front per pixel
+(observer inverse -> three 1-D characteristic curves -> dye amounts, with the
+film exposure state and the reversal anchor sharing the layer-exposure slot),
+Stage B samples a density-domain 65^3 volume of the same solved chain (fixed
+timing q(0)). Halation and grain will insert between A and B in later stages;
+their off-state leaves this path bit-identical. The v1 single scene-EV LUT
+remains available as the HIDDEN LEGACY TEST BACKEND
+(DNGSCAN_FILM_LEGACY_LUT=1) whose bytes the P0 freeze pins; v2 validates
+against the direct-chain oracle shipped inside every schema-5 asset instead
+(plan §7.2 migration semantics).
+
+The v1 narrative below still describes the shared chain and the
+neutralization contract; only the sampling topology changed.
+
 
 The two-mode contract (docs/FILM_OBSERVATION_PLAN): in "observe" mode the film
 declares what the observer saw and AgX develops it. This module is the other
@@ -181,11 +197,110 @@ def _tetrahedral(lut: Any, u: Any, n: int) -> Any:
     return out
 
 
+_V2_DIR = _Path(__file__).with_name("data") / "film_v2"
+_V2_CACHE: dict[str, tuple | None] = {}
+
+
+def _use_legacy_backend() -> bool:
+    """Hidden legacy test backend (plan §7.2): the v1 single scene-EV LUT,
+    kept solely so the P0 freeze can pin its bytes. Never a user surface."""
+    import os
+
+    return os.environ.get("DNGSCAN_FILM_LEGACY_LUT") == "1"
+
+
+def _load_v2(name: str):
+    key = str(name)
+    if key in _V2_CACHE:
+        return _V2_CACHE[key]
+    path = _V2_DIR / f"{key}.npz"
+    entry = None
+    try:
+        with np.load(path, allow_pickle=False) as z:
+            # Fail-closed schema-v5 contract (plan §7.1): schema, input space,
+            # structure and value sanity — a stale or corrupted asset must
+            # never be silently sampled.
+            if int(z["schema"]) != 5:
+                raise ValueError(f"film v2 schema {int(z['schema'])}, expected 5")
+            if str(np.asarray(z["input_space"])) != "scene_rec2020_via_amounts":
+                raise ValueError("film v2 input_space mismatch")
+            n = int(z["n"])
+            volume = np.asarray(z["volume"], dtype=np.float32)
+            observer = np.asarray(z["observer"], dtype=np.float64)
+            char_le = np.asarray(z["char_le"], dtype=np.float64)
+            char_amounts = np.asarray(z["char_amounts"], dtype=np.float64)
+            lo = np.asarray(z["amount_lo"], dtype=np.float64)
+            hi = np.asarray(z["amount_hi"], dtype=np.float64)
+            cast_ev = np.asarray(z["cast_ev"], dtype=np.float32)
+            cast = np.asarray(z["cast_bounded"], dtype=np.float32)
+            anchor = float(z["anchor_ev_offset"])
+            exp_lo = float(z["exposure_ev_min"])
+            exp_hi = float(z["exposure_ev_max"])
+            if volume.shape != (n, n, n, 3) or n < 2:
+                raise ValueError("film v2 volume mis-shaped")
+            if not bool(np.isfinite(volume).all()) or float(volume.min()) < 0.0:
+                raise ValueError("film v2 volume non-finite or negative")
+            if observer.shape != (3, 3) or not bool(np.isfinite(observer).all()):
+                raise ValueError("film v2 observer mis-shaped")
+            if char_amounts.shape != (char_le.size, 3) or char_le.size < 2:
+                raise ValueError("film v2 characteristic tables mis-shaped")
+            if not bool(np.all(np.diff(char_le) > 0)):
+                raise ValueError("film v2 logE axis not strictly increasing")
+            if not bool(np.all(hi > lo)):
+                raise ValueError("film v2 amount domain degenerate")
+            if cast.shape != (cast_ev.size, 3) or cast_ev.size < 2 or                     not bool(np.all(np.diff(cast_ev) > 0)):
+                raise ValueError("film v2 cast arrays mis-shaped")
+            if not bool(np.isfinite(cast).all()) or                     float(cast.min()) < 0.25 - 1e-4 or float(cast.max()) > 4.0 + 1e-4:
+                raise ValueError("film v2 cast outside its declared bound")
+            if not exp_hi > exp_lo:
+                raise ValueError("film v2 exposure domain degenerate")
+            entry = (
+                volume, observer, char_le, char_amounts, lo, hi,
+                anchor, cast_ev, cast, exp_lo, exp_hi, n,
+            )
+    except (OSError, KeyError, ValueError):
+        entry = None
+    if entry is None:
+        raise RuntimeError(
+            f"film v2 asset for '{key}' is missing or unreadable at {path}; "
+            "regenerate with tools/build_film_v2_assets.py"
+        )
+    _V2_CACHE[key] = entry
+    return entry
+
+
+def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
+    from .film_v2_math import amounts_to_unit, stage_a_amounts
+
+    (volume, observer, char_le, char_amounts, lo, hi, anchor,
+     cast_ev, cast_bounded, exp_lo, exp_hi, n) = _load_v2(preset)
+    exposure_ev = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
+    if not exp_lo <= exposure_ev <= exp_hi:
+        # §5.3: out-of-domain values hard-fail, never silently clamp.
+        raise ValueError(
+            f"film_exposure_ev={exposure_ev} 超出 '{preset}' 资产声明域 "
+            f"[{exp_lo}, {exp_hi}]"
+        )
+    amounts = stage_a_amounts(
+        rgb, observer, char_le, char_amounts,
+        film_exposure_ev=exposure_ev, anchor_ev_offset=anchor,
+    )
+    u = amounts_to_unit(amounts, lo, hi)
+    developed = _tetrahedral(volume, u.astype(np.float32), n)
+    if str(getattr(plan, "film_crossover", "off")) != "datasheet":
+        ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
+        for c in range(3):
+            developed[:, c] /= np.interp(ev_y, cast_ev, cast_bounded[:, c])
+    return np.maximum(developed, 0.0).astype(np.float32, copy=False)
+
+
 def apply_film_core(rgb_rec2020: Any, plan: Any) -> Any:
-    """Film-takeover development: sample the baked spectral chain. [N,3]->[N,3]."""
+    """Film-takeover development. [N,3] -> [N,3]; two-stage v2 by default."""
     preset = str(getattr(plan, "curve_preset", "") or "")
-    lut, cast_ev, cast_bounded, ev_min, ev_max, n = _load_lut(preset)
     rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float32), 0.0)
+    if not _use_legacy_backend():
+        return _apply_film_core_v2(rgb, plan, preset)
+    lut, cast_ev, cast_bounded, ev_min, ev_max, n = _load_lut(preset)
     ev = np.log2(np.maximum(rgb / np.float32(0.18), EPS))
     u = (ev - ev_min) / (ev_max - ev_min)
     developed = _tetrahedral(lut, u, n)
