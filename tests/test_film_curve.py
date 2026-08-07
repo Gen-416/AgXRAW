@@ -776,8 +776,15 @@ class FilmFullCoreExclusivityTests(unittest.TestCase):
         from pathlib import Path
         from tests.golden_support import build_daylight_wide_dr
         from dngscan.export import export_jpeg
+        from dngscan.gainmap import apple_gainmap_backend_status
         from dngscan.tone import build_render_plan
 
+        available, reason = apple_gainmap_backend_status()
+        if not available:
+            # Same convention as test_delivery: CI runners without the Apple
+            # ISO gain-map API fail at the backend gate before the content
+            # check this test pins.
+            self.skipTest(f"Apple gain-map backend unavailable: {reason}")
         scene = build_daylight_wide_dr()
         plan = build_render_plan(
             scene.bundle, scene.analysis, "agx", "p3",
