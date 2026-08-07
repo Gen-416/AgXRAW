@@ -221,7 +221,8 @@ AgXRAW 目前不管理图库，也不做局部调整。这是现阶段产品的�
 
 [架构与技术细节](docs/ARCHITECTURE.zh-CN.md)（完整管线与每个环节的设计理由）·
 [工程决策记录](docs/ENGINEERING_NOTES.zh-CN.md)（问题、证据与解法的推理过程）·
-[设计合同](docs/FILM_OBSERVATION_PLAN.zh-CN.md)（胶片观察的生产合同与计算边界）
+[设计合同](docs/FILM_OBSERVATION_PLAN.zh-CN.md)（胶片观察的生产合同与计算边界）·
+[胶片印相与模拟成像层计划](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md)（full v2 设计提案：曝光状态、印相、颗粒与 halation）
 
 ## 许可证
 

@@ -244,7 +244,8 @@ testing standards, and developing new image-formation methods on the same captur
 
 [Architecture and technical details](docs/ARCHITECTURE.md) (the full pipeline and why each stage is built this way) ·
 [Engineering notes](docs/ENGINEERING_NOTES.zh-CN.md) (problems, evidence and reasoning; Chinese) ·
-[Design contract](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (film observation contract and boundaries; Chinese)
+[Design contract](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (film observation contract and boundaries; Chinese) ·
+[Film print rendering plan](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md) (full v2 design proposal: exposure state, printing, grain and halation; Chinese)
 
 ## License
 
