@@ -854,8 +854,10 @@ Bradford-LMS 对角增益发布（极端滤镜下 Rec.2020 分量可能过零，
 仅插值 EV。命名如实：这是**联合纸层曝光模型**——数据里尚无 Y/M 滤镜透射
 光谱，不称完整色头光谱 oracle。
 
-**层间漂移开关（`--film-crossover`，LUT 时代）**：full 模式的接管核心现在
-是离线烘焙的光谱链 65³ 查找表（`dngscan/data/full_lut/`，输入声明为
+**层间漂移开关（`--film-crossover`，LUT 时代——已由 film v2 因式分解链
+取代,本节保留为历史记录;现行资产为 `dngscan/data/film_v2/` 三分家族,
+开关正名 `--film-neutralization`,详见 FILM_PRINT_RENDERING_PLAN）**：
+当时 full 模式的接管核心是离线烘焙的光谱链 65³ 查找表（输入声明为
 纯场景线性 Rec.2020（`input_space=scene_rec2020`——full 模式跳过光谱前馈，
 观察者逆矩阵自担分色）、逐通道 log₂ 曝光整形、四面体插值、域外钳制），开关
 选择中性轴的供给方式：**off**（默认）——数字中性化变体，各通道除以中性阶

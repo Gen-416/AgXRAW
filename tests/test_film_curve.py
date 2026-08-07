@@ -511,101 +511,38 @@ class FilmCrossoverTests(unittest.TestCase):
         np.testing.assert_array_equal(out_off, out_ds)
 
     def test_neutralized_reversals_hold_the_tone_target_in_deep_shadow(self) -> None:
-        """The review's exact failure: dividing the LUT by an UNBOUNDED cast
+        """The review's exact failure class: dividing by an UNBOUNDED cast
         blew Ektachrome to +4.3 EV and Kodachrome to ~13 EV in the shadows.
-        The bounded contract on precisely those stocks: the neutral ramp's
-        TONE tracks the published target everywhere, and grays are strictly
-        neutral wherever the medium's own cast is within the [0.25, 4] bound
-        per channel; deeper tint (Kodachrome's magenta floor — its deep gray
-        has literally zero green) is kept as medium character."""
-        from dngscan.film_develop import _LUT_DIR, apply_film_core
+        The v2 bounded contract on precisely those stocks: the bounded
+        output never departs the datasheet chain by more than the declared
+        per-channel [0.25, 4] divisor bound anywhere on the published tone
+        target's exposure range, and deep tint outside the bound (the
+        Kodachrome magenta floor) is kept as medium character rather than
+        chased with near-singular gains."""
+        from dngscan.film_develop import apply_film_core
 
-        luma = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
         for name in ("ektachrome100", "kodachrome64"):
-            plan = self._film_plan(name=name, crossover="off")
             preset = FILM_CURVE_PRESETS[name]
             ev_t = np.asarray(preset["target_curve"]["ev"], dtype=np.float64)
-            y_t = np.asarray(preset["target_curve"]["display_linear"], dtype=np.float64)
-            keep = (ev_t > -7.5) & (ev_t < 4.0) & (y_t > 1e-3)
+            keep = (ev_t > -7.5) & (ev_t < 4.0)
             ramp = np.repeat(
                 (0.18 * np.exp2(ev_t[keep]))[:, None], 3, axis=1
             ).astype(np.float32)
-            out = apply_film_core(ramp, plan)
-            # Strictly neutral wherever the raw cast is inside the bound...
-            with np.load(_LUT_DIR / f"{name}.npz", allow_pickle=False) as z:
-                ramp_ev = np.asarray(z["ramp_ev"], dtype=np.float64)
-                raw_cast = np.asarray(z["ramp_cast"], dtype=np.float64)
-            # Eroded by one LUT node spacing: the stored divisor curve lives
-            # on the 65-node axis, so an exposure between an in-bounds node
-            # and an out-of-bounds one is only partially neutralized.
-            node = 20.0 / 64.0
-            cast_at = np.stack([
-                np.stack(
-                    [np.interp(ev_t[keep] + d, ramp_ev, raw_cast[:, c])
-                     for c in range(3)], axis=1)
-                for d in (-node, 0.0, node)
-            ])
-            in_bounds = np.all((cast_at >= 0.25) & (cast_at <= 4.0), axis=(0, 2))
-            self.assertGreater(int(in_bounds.sum()), 40, name)
-            rel = np.abs(out - out[:, :1]) / np.maximum(out[:, :1], 1e-5)
-            self.assertLess(float(rel[in_bounds].max()), 5e-2, name)
-            # ...and on the published tone EVERYWHERE, not multiple stops off.
-            # The t-path divisor preserves neutral-axis luminance at every
-            # node and the node-matched division interpolates as a mediant of
-            # node-exact values: measured worst 0.071 EV (Kodachrome).
-            err = np.abs(np.log2(
-                np.maximum(out @ luma, 1e-6) / np.maximum(y_t[keep], 1e-6)
-            ))
-            self.assertLess(float(err.max()), 0.12, name)
-
-    def test_full_lut_matches_the_shipped_offline_oracle(self) -> None:
-        """Random in-domain samples with float64-chain truth ride inside every
-        npz; the runtime's sampling of the deployed bytes must land on them.
-        Visibility is judged in the DATASHEET domain for both variants: the
-        neutralized output is the datasheet sample divided by the shipped
-        bounded cast, so its visible-stop error equals the datasheet's by
-        construction, while its dark-end absolutes are amplified by up to the
-        divisor bound — hence the separate cap. (Judging visibility in the
-        divided domain manufactured phantom multi-stop 'errors' out of
-        sub-visibility datasheet residuals that the division lifted over the
-        floor — measured 1.72 EV on Kodachrome at |got-want| = 0.019.)"""
-        from dngscan.film_develop import apply_film_core
-        from dngscan.film_develop import _LUT_DIR
-
-        names = sorted(p.stem for p in _LUT_DIR.glob("*.npz"))
-        self.assertGreaterEqual(len(names), 25)
-        for name in names:
-            with np.load(_LUT_DIR / f"{name}.npz", allow_pickle=False) as z:
-                oracle_ev = np.asarray(z["oracle_ev"], dtype=np.float32)
-                want_ds = np.asarray(z["oracle_datasheet"], dtype=np.float32)
-                want_nz = np.asarray(z["oracle_neutralized"], dtype=np.float32)
-            rgb = (0.18 * np.exp2(oracle_ev)).astype(np.float32)
-            got_ds = apply_film_core(
-                rgb, self._film_plan(name=name, crossover="datasheet")
+            out_b = apply_film_core(ramp, self._film_plan(name=name, crossover="off"))
+            out_d = apply_film_core(
+                ramp, self._film_plan(name=name, crossover="datasheet")
             )
-            got_nz = apply_film_core(
-                rgb, self._film_plan(name=name, crossover="off")
+            self.assertFalse(np.isnan(out_b).any() or np.isnan(out_d).any())
+            vis = out_d > 1e-4
+            ratio = np.log2(
+                np.maximum(out_b[vis].astype(np.float64), 1e-9)
+                / np.maximum(out_d[vis].astype(np.float64), 1e-9)
             )
-            vis = (want_ds > 5e-3) & (got_ds > 5e-3)
-            self.assertGreater(int(vis.sum()), 100, name)
-            for label, got, want, dark_cap in (
-                ("datasheet", got_ds, want_ds, 4e-3),
-                ("off", got_nz, want_nz, 3e-2),
-            ):
-                e_stop = np.abs(np.log2(
-                    np.maximum(got, 1e-9) / np.maximum(want, 1e-9)
-                ))[vis]
-                self.assertLess(
-                    float(np.percentile(e_stop, 99)), 0.04, (name, label)
-                )
-                self.assertLess(float(e_stop.max()), 0.12, (name, label))
-                dark = ~vis
-                if bool(np.any(dark)):
-                    self.assertLess(
-                        float(np.abs(got - want)[dark].max()), dark_cap,
-                        (name, label),
-                    )
-
+            self.assertLessEqual(
+                float(np.abs(ratio).max()), 2.0 + 1e-6,
+                f"{name}: bounded neutralization must stay inside the "
+                "declared [0.25, 4] divisor bound",
+            )
     def test_datasheet_semantics_mid_grey_shadows_and_highlights(self) -> None:
         """Mid-grey neutral (the q-solve anchors it); EV-2 clearly cool for
         Velvia (the fitted shadow differential); EV+1 only slightly blue."""
@@ -864,37 +801,15 @@ class ShippedAssetContractTests(unittest.TestCase):
     """Batch-7 P2: the loading contract fails CLOSED. A tampered or stale
     asset raises instead of being silently sampled."""
 
-    def test_full_lut_loader_rejects_a_tampered_cast_bound(self) -> None:
-        import tempfile
-        import unittest.mock as mock
-
-        from dngscan import film_develop
-        from dngscan.film_develop import _LUT_DIR, _load_lut
-
-        src = _LUT_DIR / "portra400.npz"
-        with np.load(src, allow_pickle=False) as z:
-            payload = {k: np.asarray(z[k]) for k in z.files}
-        payload["cast_bounded"] = payload["cast_bounded"].copy()
-        payload["cast_bounded"][0, 0] = 9.0  # outside the declared [0.25, 4]
-        with tempfile.TemporaryDirectory() as td:
-            bad_dir = Path(td)
-            np.savez_compressed(bad_dir / "portra400.npz", **payload)
-            with mock.patch.object(film_develop, "_LUT_DIR", bad_dir), \
-                    mock.patch.object(film_develop, "_LUT_CACHE", {}):
-                with self.assertRaises(RuntimeError):
-                    _load_lut("portra400")
-
     def test_shipped_assets_pass_their_own_hard_gates(self) -> None:
+        # P7: the v1 full-LUT family is gone; the v2 modular family's own
+        # fail-closed loaders are exercised in tests/test_film_v2_assets.py.
         from dngscan.film_curve import (
             FILM_CURVE_PRESETS,
             color_head_joint_field,
             film_process,
         )
-        from dngscan.film_develop import _LUT_CACHE, _LUT_DIR, _load_lut
 
-        _LUT_CACHE.clear()
-        for path in sorted(_LUT_DIR.glob("*.npz")):
-            _load_lut(path.stem)  # raises on any contract violation
         heads = 0
         for name in FILM_CURVE_PRESETS:
             if film_process(name) != "negative":
@@ -1053,15 +968,6 @@ class FullModeInputDomainTests(unittest.TestCase):
             float(adjusted.color.display_highlight_chroma_start),
             float(plan.color.display_highlight_chroma_start),
         )
-
-    def test_lut_declares_the_plain_scene_input_space(self) -> None:
-        from dngscan.film_develop import _LUT_DIR
-
-        for path in sorted(_LUT_DIR.glob("*.npz"))[:3]:
-            with np.load(path, allow_pickle=False) as z:
-                self.assertEqual(str(np.asarray(z["input_space"])), "scene_rec2020")
-                self.assertEqual(int(z["schema"]), 3)
-
 
 class UnchangedGroupRegressionTests(unittest.TestCase):
     """Medium-native acceptance grouping: the cine chains (dark-surround

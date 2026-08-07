@@ -309,30 +309,6 @@ class FilmV2RuntimeTests(unittest.TestCase):
                 self._plan("portra400", film_print_medium="kodak_imaginary__translated"),
             )
 
-    def test_legacy_backend_still_serves_v1_bytes(self) -> None:
-        import os
-
-        from dngscan.film_develop import apply_film_core, _LUT_DIR
-
-        prev = os.environ.get("DNGSCAN_FILM_LEGACY_LUT")
-        os.environ["DNGSCAN_FILM_LEGACY_LUT"] = "1"
-        try:
-            with np.load(_LUT_DIR / "portra400.npz", allow_pickle=False) as z:
-                rgb = (0.18 * np.exp2(z["oracle_ev"].astype(np.float64))).astype(np.float32)
-                want = z["oracle_datasheet"].astype(np.float64)
-            out = apply_film_core(rgb, self._plan("portra400", "datasheet"))
-            vis = want > 5e-3
-            err = np.abs(np.log2(
-                np.maximum(out[vis].astype(np.float64), 1e-9)
-                / np.maximum(want[vis], 1e-9)
-            ))
-            self.assertLessEqual(float(np.percentile(err, 99)), 0.05)
-        finally:
-            if prev is None:
-                os.environ.pop("DNGSCAN_FILM_LEGACY_LUT", None)
-            else:
-                os.environ["DNGSCAN_FILM_LEGACY_LUT"] = prev
-
 
 class FilmV2RetimedTests(unittest.TestCase):
     """P2/P3 gates: retimed nodes hold EV0 neutrality, the deployed
