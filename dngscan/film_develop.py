@@ -209,148 +209,231 @@ def _use_legacy_backend() -> bool:
     return os.environ.get("DNGSCAN_FILM_LEGACY_LUT") == "1"
 
 
+def _npz(path):
+    return np.load(path, allow_pickle=False)
+
+
+def _check_common(z, kind: str, path) -> None:
+    if int(z["schema"]) != 5:
+        raise ValueError(f"{path.name}: schema {int(z['schema'])}, expected 5")
+    if str(np.asarray(z["kind"])) != kind:
+        raise ValueError(f"{path.name}: kind {np.asarray(z['kind'])}, expected {kind}")
+
+
 def _load_v2(name: str):
+    """Assemble the modular §7.1 asset family for one preset, fail closed.
+
+    Returns (stock dict, {medium_id: (print_state dict | None, b2 dict)}).
+    """
     key = str(name)
     if key in _V2_CACHE:
         return _V2_CACHE[key]
-    path = _V2_DIR / f"{key}.npz"
+    stock_path = _V2_DIR / f"{key}.npz"
     entry = None
     try:
-        with np.load(path, allow_pickle=False) as z:
-            # Fail-closed schema-v5 contract (plan §7.1): schema, input space,
-            # structure and value sanity — a stale or corrupted asset must
-            # never be silently sampled.
-            if int(z["schema"]) != 5:
-                raise ValueError(f"film v2 schema {int(z['schema'])}, expected 5")
-            if str(np.asarray(z["input_space"])) != "scene_rec2020_via_amounts":
-                raise ValueError("film v2 input_space mismatch")
-            n = int(z["n"])
-            volume = np.asarray(z["volume"], dtype=np.float32)
+        with _npz(stock_path) as z:
+            _check_common(z, "stock", stock_path)
             observer = np.asarray(z["observer"], dtype=np.float64)
             char_le = np.asarray(z["char_le"], dtype=np.float64)
             char_amounts = np.asarray(z["char_amounts"], dtype=np.float64)
             lo = np.asarray(z["amount_lo"], dtype=np.float64)
             hi = np.asarray(z["amount_hi"], dtype=np.float64)
-            cast_ev = np.asarray(z["cast_ev"], dtype=np.float32)
-            cast = np.asarray(z["cast_bounded"], dtype=np.float32)
-            anchor = float(z["anchor_ev_offset"])
-            exp_lo = float(z["exposure_ev_min"])
-            exp_hi = float(z["exposure_ev_max"])
-            if volume.shape != (n, n, n, 3) or n < 2:
-                raise ValueError("film v2 volume mis-shaped")
-            if not bool(np.isfinite(volume).all()) or float(volume.min()) < 0.0:
-                raise ValueError("film v2 volume non-finite or negative")
             if observer.shape != (3, 3) or not bool(np.isfinite(observer).all()):
-                raise ValueError("film v2 observer mis-shaped")
+                raise ValueError("observer mis-shaped")
             if char_amounts.shape != (char_le.size, 3) or char_le.size < 2:
-                raise ValueError("film v2 characteristic tables mis-shaped")
+                raise ValueError("characteristic tables mis-shaped")
             if not bool(np.all(np.diff(char_le) > 0)):
-                raise ValueError("film v2 logE axis not strictly increasing")
+                raise ValueError("logE axis not strictly increasing")
             if not bool(np.all(hi > lo)):
-                raise ValueError("film v2 amount domain degenerate")
-            if cast.shape != (cast_ev.size, 3) or cast_ev.size < 2 or                     not bool(np.all(np.diff(cast_ev) > 0)):
-                raise ValueError("film v2 cast arrays mis-shaped")
-            if not bool(np.isfinite(cast).all()) or                     float(cast.min()) < 0.25 - 1e-4 or float(cast.max()) > 4.0 + 1e-4:
-                raise ValueError("film v2 cast outside its declared bound")
-            if not exp_hi > exp_lo:
-                raise ValueError("film v2 exposure domain degenerate")
-            retimed = None
-            if "retimed_nodes" in z:
-                r_nodes = np.asarray(z["retimed_nodes"], dtype=np.float64)
-                r_q = np.asarray(z["retimed_q"], dtype=np.float64)
-                r_b1 = np.asarray(z["retimed_b1_logep"], dtype=np.float32)
-                r_b2 = np.asarray(z["retimed_b2_volume"], dtype=np.float32)
-                r_ple = np.asarray(z["retimed_paper_le"], dtype=np.float64)
-                r_pam = np.asarray(z["retimed_paper_amounts"], dtype=np.float64)
-                r_plo = np.asarray(z["retimed_paper_lo"], dtype=np.float64)
-                r_phi = np.asarray(z["retimed_paper_hi"], dtype=np.float64)
-                r_casts = np.asarray(z["retimed_casts"], dtype=np.float32)
-                if r_nodes.size < 2 or not bool(np.all(np.diff(r_nodes) > 0)):
-                    raise ValueError("retimed nodes axis degenerate")
-                if r_q.shape != (r_nodes.size, 3):
-                    raise ValueError("retimed q table mis-shaped")
-                if r_b1.shape != (n, n, n, 3) or r_b2.shape != (n, n, n, 3):
-                    raise ValueError("retimed volumes mis-shaped")
-                if not bool(np.all(r_phi > r_plo)) or r_ple.size < 2:
-                    raise ValueError("retimed paper tables degenerate")
-                if r_casts.shape != (r_nodes.size, cast_ev.size, 3):
-                    raise ValueError("retimed casts mis-shaped")
-                if not bool(np.isfinite(r_casts).all()) or \
-                        float(r_casts.min()) < 0.25 - 1e-4 or \
-                        float(r_casts.max()) > 4.0 + 1e-4:
-                    raise ValueError("retimed cast outside its declared bound")
-                retimed = (r_nodes, r_q, r_b1, r_b2, r_ple, r_pam, r_plo, r_phi, r_casts)
-            entry = (
-                volume, observer, char_le, char_amounts, lo, hi,
-                anchor, cast_ev, cast, exp_lo, exp_hi, n, retimed,
-            )
+                raise ValueError("amount domain degenerate")
+            stock = {
+                "observer": observer,
+                "char_le": char_le,
+                "char_amounts": char_amounts,
+                "lo": lo,
+                "hi": hi,
+                "anchor": float(z["anchor_ev_offset"]),
+                "exp_lo": float(z["exposure_ev_min"]),
+                "exp_hi": float(z["exposure_ev_max"]),
+                "reversal": bool(z["reversal"]),
+                "default_medium": str(np.asarray(z["default_medium"])),
+                "media": [str(m) for m in z["media"]],
+            }
+            if stock["reversal"]:
+                cast_ev = np.asarray(z["cast_ev"], dtype=np.float32)
+                cast = np.asarray(z["cast_bounded"], dtype=np.float32)
+                if cast.shape != (cast_ev.size, 3) or cast_ev.size < 2 or \
+                        not bool(np.all(np.diff(cast_ev) > 0)):
+                    raise ValueError("reversal cast arrays mis-shaped")
+                if not bool(np.isfinite(cast).all()) or \
+                        float(cast.min()) < 0.25 - 1e-4 or float(cast.max()) > 4.0 + 1e-4:
+                    raise ValueError("reversal cast outside its declared bound")
+                stock["cast_ev"] = cast_ev
+                stock["cast_bounded"] = cast
+            if not stock["exp_hi"] > stock["exp_lo"]:
+                raise ValueError("exposure domain degenerate")
+        media = {}
+        for medium in stock["media"]:
+            b2_path = _V2_DIR / f"b2__{medium}.npz"
+            with _npz(b2_path) as z:
+                _check_common(z, "b2", b2_path)
+                n = int(z["n"])
+                vol = np.asarray(z["volume"], dtype=np.float32)
+                if vol.shape != (n, n, n, 3) or n < 2:
+                    raise ValueError(f"{b2_path.name}: volume mis-shaped")
+                if not bool(np.isfinite(vol).all()) or float(vol.min()) < 0.0:
+                    raise ValueError(f"{b2_path.name}: volume non-finite/negative")
+                dye_lo = np.asarray(z["dye_lo"], dtype=np.float64)
+                dye_hi = np.asarray(z["dye_hi"], dtype=np.float64)
+                if not bool(np.all(dye_hi > dye_lo)):
+                    raise ValueError(f"{b2_path.name}: dye domain degenerate")
+                b2 = {
+                    "volume": vol, "n": n,
+                    "paper_le2": np.asarray(z["paper_le2"], dtype=np.float64),
+                    "paper_amounts": np.asarray(z["paper_amounts"], dtype=np.float64),
+                    "dye_lo": dye_lo, "dye_hi": dye_hi,
+                }
+            ps = None
+            if not stock["reversal"]:
+                ps_path = _V2_DIR / f"print__{key}__{medium}.npz"
+                with _npz(ps_path) as z:
+                    _check_common(z, "print_state", ps_path)
+                    n = int(z["n"])
+                    b1 = np.asarray(z["b1_volume"], dtype=np.float32)
+                    if b1.shape != (n, n, n, 3):
+                        raise ValueError(f"{ps_path.name}: B1 mis-shaped")
+                    tau_nodes = np.asarray(z["tau_nodes"], dtype=np.float64)
+                    tau = np.asarray(z["tau"], dtype=np.float64)
+                    if tau.shape != (tau_nodes.size, 3) or tau_nodes.size < 2 or \
+                            not bool(np.all(np.diff(tau_nodes) > 0)):
+                        raise ValueError(f"{ps_path.name}: tau table mis-shaped")
+                    cast_ev = np.asarray(z["cast_ev"], dtype=np.float32)
+                    casts = np.asarray(z["casts"], dtype=np.float32)
+                    if casts.shape != (tau_nodes.size, cast_ev.size, 3):
+                        raise ValueError(f"{ps_path.name}: casts mis-shaped")
+                    if not bool(np.isfinite(casts).all()) or \
+                            float(casts.min()) < 0.25 - 1e-4 or \
+                            float(casts.max()) > 4.0 + 1e-4:
+                        raise ValueError(f"{ps_path.name}: cast outside bound")
+                    ps = {
+                        "b1": b1, "n": n, "tau_nodes": tau_nodes, "tau": tau,
+                        "cast_ev": cast_ev, "casts": casts,
+                        "retimed_ev_min": float(z["retimed_ev_min"]),
+                        "retimed_ev_max": float(z["retimed_ev_max"]),
+                    }
+            media[medium] = (ps, b2)
+        entry = (stock, media)
     except (OSError, KeyError, ValueError):
         entry = None
     if entry is None:
         raise RuntimeError(
-            f"film v2 asset for '{key}' is missing or unreadable at {path}; "
-            "regenerate with tools/build_film_v2_assets.py"
+            f"film v2 asset family for '{key}' is missing or unreadable under "
+            f"{_V2_DIR}; regenerate with tools/build_film_v2_assets.py"
         )
     _V2_CACHE[key] = entry
     return entry
 
 
+# Colour-head CC -> per-layer tau attenuation, valid ONLY inside the current
+# paper-layer exposure model (§7.2, modelled): a Y filter of d = CC/100
+# optical density attenuates the blue-sensitive layer's exposure by 10^-d,
+# i.e. delta_tau = -d / log10(2) log2 units on that layer. Real filter
+# spectra would change B1's integral density-dependently and must rebuild it.
+_CC_LAYER = {"y": 2, "m": 1}
+_LOG10_2 = 0.30102999566398119521
+
+
+def _custom_delta_tau(color_head_y: float, color_head_m: float,
+                      print_exposure_ev: float) -> Any:
+    delta = np.full(3, float(print_exposure_ev), dtype=np.float64)
+    delta[_CC_LAYER["y"]] -= (float(color_head_y) / 100.0) / _LOG10_2
+    delta[_CC_LAYER["m"]] -= (float(color_head_m) / 100.0) / _LOG10_2
+    return delta
+
+
 def _apply_film_core_v2(rgb: Any, plan: Any, preset: str) -> Any:
     from .film_v2_math import amounts_to_unit, stage_a_amounts
 
-    (volume, observer, char_le, char_amounts, lo, hi, anchor,
-     cast_ev, cast_bounded, exp_lo, exp_hi, n, retimed) = _load_v2(preset)
+    stock, media = _load_v2(preset)
     exposure_ev = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
     timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
-    if not exp_lo <= exposure_ev <= exp_hi:
-        # §5.3: out-of-domain values hard-fail, never silently clamp.
+    medium = str(getattr(plan, "film_print_medium", "") or "") or stock["default_medium"]
+    if medium not in media:
+        raise ValueError(
+            f"'{preset}' 未烘焙印相介质 '{medium}'（可用：{'/'.join(stock['media'])}）"
+        )
+    if not stock["exp_lo"] <= exposure_ev <= stock["exp_hi"]:
         raise ValueError(
             f"film_exposure_ev={exposure_ev} 超出 '{preset}' 资产声明域 "
-            f"[{exp_lo}, {exp_hi}]"
+            f"[{stock['exp_lo']}, {stock['exp_hi']}]"
         )
+    ps, b2 = media[medium]
     amounts = stage_a_amounts(
-        rgb, observer, char_le, char_amounts,
-        film_exposure_ev=exposure_ev, anchor_ev_offset=anchor,
+        rgb, stock["observer"], stock["char_le"], stock["char_amounts"],
+        film_exposure_ev=exposure_ev, anchor_ev_offset=stock["anchor"],
     )
-    if timing == "retimed":
-        if retimed is None:
-            # §7.2 fail closed: retimed needs the solved node payload — no
-            # silent downgrade to fixed.
-            raise ValueError(
-                f"'{preset}' 无 retimed 印相资产（试点为负片 portra400/"
-                "vision3250d）；请用 --film-print-timing fixed 或重新烘焙资产"
-            )
-        (r_nodes, r_q, r_b1, r_b2, r_ple, r_pam, r_plo, r_phi, r_casts) = retimed
-        # Factorized Stage B (plan §5.4, amended): B1 -> +q(E) -> paper 1-D
-        # development -> B2; q interpolated over 0.25 EV solved nodes.
-        u1 = amounts_to_unit(amounts, lo, hi)
-        log_ep = _tetrahedral(r_b1, u1.astype(np.float32), n).astype(np.float64)
-        q = np.array([
-            np.interp(exposure_ev, r_nodes, r_q[:, c]) for c in range(3)
-        ])
-        dye = np.stack([
-            np.interp(log_ep[:, c] + q[c], r_ple, r_pam[:, c])
-            for c in range(3)
-        ], axis=1)
-        u2 = amounts_to_unit(dye, r_plo, r_phi)
-        developed = _tetrahedral(r_b2, u2.astype(np.float32), n)
-        if str(getattr(plan, "film_crossover", "off")) != "datasheet":
+    bounded = str(getattr(plan, "film_crossover", "off")) != "datasheet"
+    if stock["reversal"]:
+        if timing != "fixed":
+            raise ValueError("reversal_direct 无印相环节：timing 只能是 fixed")
+        u = amounts_to_unit(amounts, b2["dye_lo"], b2["dye_hi"])
+        developed = _tetrahedral(b2["volume"], u.astype(np.float32), b2["n"])
+        if bounded:
             ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
-            # Per-node casts, linearly interpolated in E: exact at nodes,
-            # declared approximation between them.
-            i_hi = int(np.searchsorted(r_nodes, exposure_ev, side="left").clip(1, r_nodes.size - 1))
-            i_lo = i_hi - 1
-            t = (exposure_ev - r_nodes[i_lo]) / (r_nodes[i_hi] - r_nodes[i_lo])
-            cast_e = (1.0 - t) * r_casts[i_lo] + t * r_casts[i_hi]
             for c in range(3):
-                developed[:, c] /= np.interp(ev_y, cast_ev, cast_e[:, c])
+                developed[:, c] /= np.interp(
+                    ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
+                )
         return np.maximum(developed, 0.0).astype(np.float32, copy=False)
-    u = amounts_to_unit(amounts, lo, hi)
-    developed = _tetrahedral(volume, u.astype(np.float32), n)
-    if str(getattr(plan, "film_crossover", "off")) != "datasheet":
+    # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
+    u1 = amounts_to_unit(amounts, stock["lo"], stock["hi"])
+    lep2 = _tetrahedral(ps["b1"], u1.astype(np.float32), ps["n"]).astype(np.float64)
+    if timing == "retimed":
+        if not ps["retimed_ev_min"] <= exposure_ev <= ps["retimed_ev_max"]:
+            # The pairing's paper rails bound the re-timable span; beyond it
+            # the mid-grey target is physically unreachable — declared, not
+            # fabricated (§5.3 hard-reject convention).
+            raise ValueError(
+                f"'{preset}' × '{medium}' 的 retimed 可达域为 "
+                f"[{ps['retimed_ev_min']:+.2f}, {ps['retimed_ev_max']:+.2f}] EV"
+                f"（相纸轨道的物理界）；exposure={exposure_ev:+.2f} 超出。"
+                "可改用 fixed timing 或缩小胶片曝光"
+            )
+        tau = np.array([
+            np.interp(exposure_ev, ps["tau_nodes"], ps["tau"][:, c]) for c in range(3)
+        ])
+        cast_key_ev = exposure_ev
+    elif timing == "custom":
+        tau = ps["tau"][int(np.argmin(np.abs(ps["tau_nodes"])))].copy()
+        tau = tau + _custom_delta_tau(
+            float(getattr(plan, "color_head_y", 0.0) or 0.0),
+            float(getattr(plan, "color_head_m", 0.0) or 0.0),
+            float(getattr(plan, "film_print_exposure_ev", 0.0) or 0.0),
+        )
+        cast_key_ev = 0.0
+    else:
+        tau = ps["tau"][int(np.argmin(np.abs(ps["tau_nodes"])))]
+        cast_key_ev = 0.0
+    dye = np.stack([
+        np.interp(lep2[:, c] + tau[c], b2["paper_le2"], b2["paper_amounts"][:, c])
+        for c in range(3)
+    ], axis=1)
+    u2 = amounts_to_unit(dye, b2["dye_lo"], b2["dye_hi"])
+    developed = _tetrahedral(b2["volume"], u2.astype(np.float32), b2["n"])
+    if bounded:
+        if timing == "custom":
+            raise ValueError(
+                "custom timing 与有界灰阶中性化互斥：手动印相的意义是保留"
+                "印出的样子；请配 --film-neutralization datasheet"
+            )
         ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
+        nodes = ps["tau_nodes"]
+        i_hi = int(np.searchsorted(nodes, cast_key_ev, side="left").clip(1, nodes.size - 1))
+        i_lo = i_hi - 1
+        t = (cast_key_ev - nodes[i_lo]) / (nodes[i_hi] - nodes[i_lo])
+        cast_e = (1.0 - t) * ps["casts"][i_lo] + t * ps["casts"][i_hi]
         for c in range(3):
-            developed[:, c] /= np.interp(ev_y, cast_ev, cast_bounded[:, c])
+            developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
     return np.maximum(developed, 0.0).astype(np.float32, copy=False)
 
 

@@ -389,17 +389,26 @@ def jpeg_tone_plan_cn(
         plan = tone_plan
         exposure = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
         timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
+        medium = str(getattr(plan, "film_print_medium", "") or "")
+        timing_label = {
+            "fixed": "fixed(τ(0))", "retimed": "retimed(τ(E) 表插值)",
+            "custom": "custom(τ(0)+印相曝光+色头 Δτ,modelled)",
+        }.get(timing, timing)
         state = ""
-        if exposure != 0.0 or timing != "fixed":
-            state = (
-                f"胶片曝光 {exposure:+.2f} EV·印相 "
-                + ("retimed(q(E) 重解)" if timing == "retimed" else "fixed(q(0))")
-                + "；"
-            )
+        if exposure != 0.0 or timing != "fixed" or medium:
+            state = f"胶片曝光 {exposure:+.2f} EV·印相 {timing_label}"
+            if medium:
+                state += f"·介质 {medium}"
+            state += "；"
+        neutral = (
+            "datasheet"
+            if str(getattr(plan, "film_crossover", "off")) == "datasheet"
+            else "bounded"
+        )
         return (
-            f"filmfull({plan.curve_preset}) 接管显影：两段式(解析 Stage A + "
-            f"密度域 Stage B)，{state}"
-            f"层间漂移={getattr(plan, 'film_crossover', 'off')}；"
+            f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
+            f"→B1→τ→相纸曲线→B2)，{state}"
+            f"灰阶中性化={neutral}；"
             f"AgX endpoint/contrast/toe/shoulder/punch 不参与（接管核心整体替换 "
             f"formation，仅保留交付侧色域安全）；SDR"
         )

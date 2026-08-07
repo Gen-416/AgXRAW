@@ -703,6 +703,8 @@ def build_render_plan(
     color_head_m: float = 0.0,
     film_exposure_ev: float = 0.0,
     film_print_timing: str = "fixed",
+    film_print_medium: str = "",
+    film_print_exposure_ev: float = 0.0,
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
     # Full-mode input-domain normalization also lives HERE so hand callers of
@@ -800,13 +802,24 @@ def build_render_plan(
         # combination fails closed rather than silently ignoring the dial.
         exposure_value = float(film_exposure_ev)
         timing_value = str(film_print_timing or "fixed")
-        if timing_value not in ("fixed", "retimed"):
-            raise ValueError(f"未知印相 timing:{timing_value}(可选 fixed/retimed)")
-        if mode_value != "full" and (exposure_value != 0.0 or timing_value != "fixed"):
+        medium_value = str(film_print_medium or "")
+        print_exposure_value = float(film_print_exposure_ev)
+        if timing_value not in ("fixed", "retimed", "custom"):
             raise ValueError(
-                "胶片曝光状态与印相 timing 属于接管显影(full 模式):observe 模式"
-                "没有乳剂/印相模型。请切换 --film-mode full,或把曝光归零、"
-                "timing 保持 fixed"
+                f"未知印相 timing:{timing_value}(可选 fixed/retimed/custom)"
+            )
+        if mode_value != "full" and (
+            exposure_value != 0.0 or timing_value != "fixed"
+            or medium_value != "" or print_exposure_value != 0.0
+        ):
+            raise ValueError(
+                "胶片曝光状态、印相 timing/介质与手动印相曝光属于接管显影"
+                "(full 模式):observe 模式没有乳剂/印相模型"
+            )
+        if timing_value != "custom" and print_exposure_value != 0.0:
+            raise ValueError(
+                "手动印相曝光仅在 timing=custom 下有意义;fixed/retimed 的印相"
+                "由联合求解决定"
             )
         tone = _replace(
             tone,
@@ -814,6 +827,8 @@ def build_render_plan(
             film_crossover=crossover_value,
             film_exposure_ev=exposure_value,
             film_print_timing=timing_value,
+            film_print_medium=medium_value,
+            film_print_exposure_ev=print_exposure_value,
         )
     if float(color_head_y) != 0.0 or float(color_head_m) != 0.0:
         # Enlarger colour head: a declared printing decision, valid only where a
@@ -832,11 +847,11 @@ def build_render_plan(
                 f"放大机色头仅对负片预设有效：{film_curve} 是反转片，"
                 "物理上没有印相环节（幻灯片自身就是显示介质）"
             )
-        if str(film_mode) == "full":
+        if str(film_mode) == "full" and str(film_print_timing or "fixed") != "custom":
             raise ValueError(
-                "胶片接管显影（full 模式）暂不支持放大机色头：接管核心是完整"
-                "烘焙的光谱印相链，在其结果上追加中性轴色头场会与链自身的物理"
-                "语义冲突；请改用 observe 模式，或把色头归零"
+                "full 模式的色头只在 timing=custom 下可用（P3:在 paper-layer "
+                "exposure model 内转换为 B1 后的逐层 Δτ,标 modelled）;"
+                "fixed/retimed 的印相由联合求解决定,不能追加滤镜"
             )
         from dataclasses import replace as _replace
 
@@ -869,9 +884,15 @@ def build_render_plan(
             ),
             FilmDevelopmentPlan(),
             FilmPrintPlan(
-                medium_id="reversal_direct" if process == "reversal" else "print_paper",
+                medium_id=(
+                    "reversal_direct" if process == "reversal"
+                    else (str(getattr(tone, "film_print_medium", "")) or "print_paper")
+                ),
                 timing_policy=str(getattr(tone, "film_print_timing", "fixed")),
                 neutralization_policy=neutralization,
+                printer_y_cc=float(getattr(tone, "color_head_y", 0.0)),
+                printer_m_cc=float(getattr(tone, "color_head_m", 0.0)),
+                print_exposure_ev=float(getattr(tone, "film_print_exposure_ev", 0.0)),
             ),
             AnalogFinishPlan(),
         )

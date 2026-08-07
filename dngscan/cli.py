@@ -339,7 +339,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--film-crossover",
         choices=("off", "datasheet"),
-        default="off",
+        default=None,
         help=(
             "胶片层间漂移（crossover）声明开关，仅 --film-mode full 有意义"
             "（其余组合零改变）。off=数字中性化变体（默认）：接管 LUT 的输出按"
@@ -362,13 +362,42 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--film-print-timing",
-        choices=("fixed", "retimed"),
+        choices=("fixed", "retimed", "custom"),
         default="fixed",
         help=(
-            "film v2 印相 timing:fixed=沿用 EV0 联合求解的 q(0)(默认);"
-            "retimed=随胶片曝光重解 q(E)(因式分解 Stage B,目前试点负片 "
-            "portra400/vision3250d;反转片无印相环节,一律拒绝)"
+            "film v2 印相 timing:fixed=沿用 EV0 联合求解的 tau(0)(默认);"
+            "retimed=随胶片曝光从 0.25EV 表插值 tau(E)(全部负片;反转片无印相"
+            "一律拒绝);custom=手动印相——tau(0)+印相曝光+色头 Δτ(paper-layer "
+            "exposure model 内解析,标 modelled,需配 --film-neutralization "
+            "datasheet)"
         ),
+    )
+    parser.add_argument(
+        "--film-neutralization",
+        choices=("bounded", "datasheet"),
+        default=None,
+        help=(
+            "film v2 灰阶中性化(与 timing 正交):bounded=有界数字中性(默认,"
+            "即现行 crossover=off);datasheet=保留曝光依赖 cast/crossover。"
+            "与已弃用的 --film-crossover 同时给出时硬失败"
+        ),
+    )
+    parser.add_argument(
+        "--film-print-medium",
+        default="",
+        metavar="ID",
+        help=(
+            "film v2 印相介质(仅 full;空=该卷默认配对)。已烘焙的跨介质配对:"
+            "portra400 另有 kodak_supra_endura__translated,vision3250d 另有 "
+            "kodak_2393__translated;未烘焙的介质报错"
+        ),
+    )
+    parser.add_argument(
+        "--film-print-exposure",
+        type=float,
+        default=0.0,
+        metavar="EV",
+        help="film v2 手动印相曝光(log2;仅 timing=custom)",
     )
     parser.add_argument(
         "--demosaic",
@@ -478,12 +507,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                 f"放大机色头仅对负片预设有效：{args.film_curve} 是反转片，"
                 "物理上没有印相环节（幻灯片自身就是显示介质）"
             )
-    if args.film_mode == "full" and (
+    if args.film_mode == "full" and args.film_print_timing != "custom" and (
         float(args.color_head_y) > 0.0 or float(args.color_head_m) > 0.0
     ):
         parser.error(
-            "--film-mode full 暂不支持放大机色头（接管核心是完整烘焙的光谱链）；"
-            "请改用 observe 模式或把 --color-head-y/--color-head-m 归零"
+            "full 模式的色头只在 --film-print-timing custom 下可用（paper-layer "
+            "exposure model 内的逐层 Δτ,modelled）;fixed/retimed 的印相由联合"
+            "求解决定"
         )
     if (
         args.film_mode == "full"
@@ -494,6 +524,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "--film-mode full 暂仅支持 SDR：胶片接管显影没有 HDR 对应物"
             "（AgX 的 HDR 色彩机制在该模式下已让位）。请改用 --output-format sdr "
             "或 --film-mode observe"
+        )
+    # film v2 P3 迁移(§7.2 表):--film-neutralization 是正名,--film-crossover
+    # 为弃用别名;同时给出硬失败,不做优先级猜测。内部存储沿用 off|datasheet。
+    if args.film_crossover is not None and args.film_neutralization is not None:
+        parser.error(
+            "--film-crossover 已弃用为 --film-neutralization 的别名;两者不能"
+            "同时给出(off≡bounded,datasheet≡datasheet)"
+        )
+    if args.film_neutralization is not None:
+        args.film_crossover = (
+            "off" if args.film_neutralization == "bounded" else "datasheet"
+        )
+    elif args.film_crossover is None:
+        args.film_crossover = "off"
+    if args.film_print_timing == "custom" and args.film_crossover != "datasheet":
+        parser.error(
+            "custom timing 与有界灰阶中性化互斥:手动印相的意义是保留印出的"
+            "样子;请配 --film-neutralization datasheet"
         )
     if args.jpeg_quality is not None and not 1 <= args.jpeg_quality <= 100:
         parser.error("--jpeg-quality must be between 1 and 100")
@@ -716,6 +764,8 @@ def main(argv: list[str]) -> int:
                 film_crossover=args.film_crossover,
                 film_exposure_ev=args.film_exposure,
                 film_print_timing=args.film_print_timing,
+                film_print_medium=args.film_print_medium,
+                film_print_exposure_ev=args.film_print_exposure,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
             )
@@ -750,6 +800,8 @@ def main(argv: list[str]) -> int:
                 film_crossover=args.film_crossover,
                 film_exposure_ev=args.film_exposure,
                 film_print_timing=args.film_print_timing,
+                film_print_medium=args.film_print_medium,
+                film_print_exposure_ev=args.film_print_exposure,
                 endpoint_mode=args.endpoint_mode,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
