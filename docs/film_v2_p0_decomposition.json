@@ -1,0 +1,365 @@
+{
+ "stock": "portra400",
+ "samples": {
+  "daylight_skin": {
+   "label": "日光肤色 · 正午合照",
+   "status": "ok",
+   "path": "/Users/itoshikigen/Pictures/_SDI0238.DNG",
+   "transitions": {
+    "curve_layer": {
+     "label": "曲线层（胶片明暗坐标）",
+     "visible_pct_gt8": 17.9,
+     "mean_abs_u8": 6.61,
+     "dY_mean": 0.015,
+     "dY_p95_abs": 0.0861,
+     "dL_mean": 0.0181,
+     "dC_mean": -0.0046,
+     "dC_p95_abs": 0.0191,
+     "hue_median_abs_deg": 0.69,
+     "hue_p95_abs_deg": 4.77,
+     "chromatic_share_pct": 16.4
+    },
+    "prefeed_layer": {
+     "label": "前馈层（感色分离 @1.0）",
+     "visible_pct_gt8": 0.4,
+     "mean_abs_u8": 0.69,
+     "dY_mean": 0.0002,
+     "dY_p95_abs": 0.002,
+     "dL_mean": 0.0002,
+     "dC_mean": -0.0001,
+     "dC_p95_abs": 0.0027,
+     "hue_median_abs_deg": 0.48,
+     "hue_p95_abs_deg": 2.79,
+     "chromatic_share_pct": 16.4
+    },
+    "observe_total": {
+     "label": "observe 组合（曲线+配对强度前馈+配对原色）",
+     "visible_pct_gt8": 19.5,
+     "mean_abs_u8": 6.84,
+     "dY_mean": 0.0152,
+     "dY_p95_abs": 0.0863,
+     "dL_mean": 0.0183,
+     "dC_mean": -0.0047,
+     "dC_p95_abs": 0.0201,
+     "hue_median_abs_deg": 1.24,
+     "hue_p95_abs_deg": 5.88,
+     "chromatic_share_pct": 16.4
+    },
+    "takeover_delta": {
+     "label": "full 接管对 observe（有界中性化）",
+     "visible_pct_gt8": 5.6,
+     "mean_abs_u8": 4.08,
+     "dY_mean": 0.0033,
+     "dY_p95_abs": 0.0194,
+     "dL_mean": 0.0023,
+     "dC_mean": -0.0076,
+     "dC_p95_abs": 0.0198,
+     "hue_median_abs_deg": 12.15,
+     "hue_p95_abs_deg": 17.28,
+     "chromatic_share_pct": 8.8
+    },
+    "crossover_delta": {
+     "label": "层间漂移（datasheet 对 bounded）",
+     "visible_pct_gt8": 0.0,
+     "mean_abs_u8": 1.41,
+     "dY_mean": -0.0002,
+     "dY_p95_abs": 0.0021,
+     "dL_mean": -0.0001,
+     "dC_mean": 0.0008,
+     "dC_p95_abs": 0.0046,
+     "hue_median_abs_deg": 1.57,
+     "hue_p95_abs_deg": 4.47,
+     "chromatic_share_pct": 2.0
+    }
+   }
+  },
+  "overcast_foliage": {
+   "label": "阴天植物 · 公园树荫",
+   "status": "ok",
+   "path": "/Users/itoshikigen/Downloads/DSC00225.ARW",
+   "transitions": {
+    "curve_layer": {
+     "label": "曲线层（胶片明暗坐标）",
+     "visible_pct_gt8": 65.4,
+     "mean_abs_u8": 13.08,
+     "dY_mean": 0.025,
+     "dY_p95_abs": 0.0782,
+     "dL_mean": 0.0337,
+     "dC_mean": -0.0134,
+     "dC_p95_abs": 0.0273,
+     "hue_median_abs_deg": 0.95,
+     "hue_p95_abs_deg": 3.27,
+     "chromatic_share_pct": 38.1
+    },
+    "prefeed_layer": {
+     "label": "前馈层（感色分离 @1.0）",
+     "visible_pct_gt8": 0.4,
+     "mean_abs_u8": 1.36,
+     "dY_mean": 0.0013,
+     "dY_p95_abs": 0.0047,
+     "dL_mean": 0.0014,
+     "dC_mean": -0.0014,
+     "dC_p95_abs": 0.0058,
+     "hue_median_abs_deg": 1.51,
+     "hue_p95_abs_deg": 3.46,
+     "chromatic_share_pct": 38.1
+    },
+    "observe_total": {
+     "label": "observe 组合（曲线+配对强度前馈+配对原色）",
+     "visible_pct_gt8": 67.5,
+     "mean_abs_u8": 13.71,
+     "dY_mean": 0.0261,
+     "dY_p95_abs": 0.0784,
+     "dL_mean": 0.0349,
+     "dC_mean": -0.0148,
+     "dC_p95_abs": 0.0295,
+     "hue_median_abs_deg": 2.01,
+     "hue_p95_abs_deg": 6.43,
+     "chromatic_share_pct": 38.1
+    },
+    "takeover_delta": {
+     "label": "full 接管对 observe（有界中性化）",
+     "visible_pct_gt8": 4.7,
+     "mean_abs_u8": 3.93,
+     "dY_mean": -0.0051,
+     "dY_p95_abs": 0.0154,
+     "dL_mean": -0.0053,
+     "dC_mean": -0.0105,
+     "dC_p95_abs": 0.0228,
+     "hue_median_abs_deg": 15.71,
+     "hue_p95_abs_deg": 20.14,
+     "chromatic_share_pct": 9.0
+    },
+    "crossover_delta": {
+     "label": "层间漂移（datasheet 对 bounded）",
+     "visible_pct_gt8": 0.0,
+     "mean_abs_u8": 1.41,
+     "dY_mean": -0.0002,
+     "dY_p95_abs": 0.0021,
+     "dL_mean": -0.0002,
+     "dC_mean": 0.0004,
+     "dC_p95_abs": 0.0035,
+     "hue_median_abs_deg": 0.27,
+     "hue_p95_abs_deg": 3.43,
+     "chromatic_share_pct": 0.3
+    }
+   }
+  },
+  "tungsten_scene": {
+   "label": "钨丝场景 · 猫吧灯带（钨丝人像的替代样张）",
+   "status": "ok",
+   "path": "/Users/itoshikigen/Pictures/_SDI0016.DNG",
+   "transitions": {
+    "curve_layer": {
+     "label": "曲线层（胶片明暗坐标）",
+     "visible_pct_gt8": 40.2,
+     "mean_abs_u8": 8.23,
+     "dY_mean": 0.0068,
+     "dY_p95_abs": 0.0588,
+     "dL_mean": 0.0134,
+     "dC_mean": -0.0065,
+     "dC_p95_abs": 0.0212,
+     "hue_median_abs_deg": 1.43,
+     "hue_p95_abs_deg": 7.71,
+     "chromatic_share_pct": 57.6
+    },
+    "prefeed_layer": {
+     "label": "前馈层（感色分离 @1.0）",
+     "visible_pct_gt8": 2.5,
+     "mean_abs_u8": 1.87,
+     "dY_mean": -0.0001,
+     "dY_p95_abs": 0.0045,
+     "dL_mean": -0.0004,
+     "dC_mean": -0.0012,
+     "dC_p95_abs": 0.0059,
+     "hue_median_abs_deg": 1.79,
+     "hue_p95_abs_deg": 5.07,
+     "chromatic_share_pct": 57.6
+    },
+    "observe_total": {
+     "label": "observe 组合（曲线+配对强度前馈+配对原色）",
+     "visible_pct_gt8": 53.1,
+     "mean_abs_u8": 9.21,
+     "dY_mean": 0.0067,
+     "dY_p95_abs": 0.0588,
+     "dL_mean": 0.0129,
+     "dC_mean": -0.0081,
+     "dC_p95_abs": 0.0219,
+     "hue_median_abs_deg": 2.68,
+     "hue_p95_abs_deg": 8.48,
+     "chromatic_share_pct": 57.6
+    },
+    "takeover_delta": {
+     "label": "full 接管对 observe（有界中性化）",
+     "visible_pct_gt8": 43.9,
+     "mean_abs_u8": 9.85,
+     "dY_mean": -0.0044,
+     "dY_p95_abs": 0.0312,
+     "dL_mean": -0.0054,
+     "dC_mean": -0.0122,
+     "dC_p95_abs": 0.0298,
+     "hue_median_abs_deg": 10.66,
+     "hue_p95_abs_deg": 20.91,
+     "chromatic_share_pct": 46.8
+    },
+    "crossover_delta": {
+     "label": "层间漂移（datasheet 对 bounded）",
+     "visible_pct_gt8": 0.0,
+     "mean_abs_u8": 1.68,
+     "dY_mean": -0.0002,
+     "dY_p95_abs": 0.0021,
+     "dL_mean": -0.0003,
+     "dC_mean": 0.0,
+     "dC_p95_abs": 0.0066,
+     "hue_median_abs_deg": 1.09,
+     "hue_p95_abs_deg": 4.26,
+     "chromatic_share_pct": 30.0
+    }
+   }
+  },
+  "neon_highlights": {
+   "label": "霓虹高光 · 夜景",
+   "status": "ok",
+   "path": "/Users/itoshikigen/Pictures/_SDI0199.DNG",
+   "transitions": {
+    "curve_layer": {
+     "label": "曲线层（胶片明暗坐标）",
+     "visible_pct_gt8": 35.9,
+     "mean_abs_u8": 8.54,
+     "dY_mean": 0.0076,
+     "dY_p95_abs": 0.0588,
+     "dL_mean": 0.0143,
+     "dC_mean": -0.0078,
+     "dC_p95_abs": 0.034,
+     "hue_median_abs_deg": 0.87,
+     "hue_p95_abs_deg": 6.33,
+     "chromatic_share_pct": 58.9
+    },
+    "prefeed_layer": {
+     "label": "前馈层（感色分离 @1.0）",
+     "visible_pct_gt8": 1.6,
+     "mean_abs_u8": 0.77,
+     "dY_mean": 0.0005,
+     "dY_p95_abs": 0.0042,
+     "dL_mean": 0.0006,
+     "dC_mean": 0.0003,
+     "dC_p95_abs": 0.0038,
+     "hue_median_abs_deg": 0.0,
+     "hue_p95_abs_deg": 5.1,
+     "chromatic_share_pct": 58.9
+    },
+    "observe_total": {
+     "label": "observe 组合（曲线+配对强度前馈+配对原色）",
+     "visible_pct_gt8": 39.3,
+     "mean_abs_u8": 8.87,
+     "dY_mean": 0.0081,
+     "dY_p95_abs": 0.0588,
+     "dL_mean": 0.015,
+     "dC_mean": -0.0074,
+     "dC_p95_abs": 0.034,
+     "hue_median_abs_deg": 1.3,
+     "hue_p95_abs_deg": 8.41,
+     "chromatic_share_pct": 58.9
+    },
+    "takeover_delta": {
+     "label": "full 接管对 observe（有界中性化）",
+     "visible_pct_gt8": 36.7,
+     "mean_abs_u8": 8.07,
+     "dY_mean": 0.0101,
+     "dY_p95_abs": 0.0331,
+     "dL_mean": 0.0048,
+     "dC_mean": -0.0217,
+     "dC_p95_abs": 0.0581,
+     "hue_median_abs_deg": 9.21,
+     "hue_p95_abs_deg": 17.91,
+     "chromatic_share_pct": 43.4
+    },
+    "crossover_delta": {
+     "label": "层间漂移（datasheet 对 bounded）",
+     "visible_pct_gt8": 0.0,
+     "mean_abs_u8": 2.04,
+     "dY_mean": -0.0003,
+     "dY_p95_abs": 0.0021,
+     "dL_mean": -0.0001,
+     "dC_mean": 0.0015,
+     "dC_p95_abs": 0.0082,
+     "hue_median_abs_deg": 1.5,
+     "hue_p95_abs_deg": 5.08,
+     "chromatic_share_pct": 15.5
+    }
+   }
+  },
+  "deep_shadow_interior": {
+   "label": "深影室内 · live house 后台",
+   "status": "ok",
+   "path": "/Users/itoshikigen/Pictures/_SDI0173.DNG",
+   "transitions": {
+    "curve_layer": {
+     "label": "曲线层（胶片明暗坐标）",
+     "visible_pct_gt8": 86.0,
+     "mean_abs_u8": 12.9,
+     "dY_mean": 0.018,
+     "dY_p95_abs": 0.0617,
+     "dL_mean": 0.0356,
+     "dC_mean": -0.0147,
+     "dC_p95_abs": 0.0402,
+     "hue_median_abs_deg": 1.41,
+     "hue_p95_abs_deg": 17.63,
+     "chromatic_share_pct": 42.7
+    },
+    "prefeed_layer": {
+     "label": "前馈层（感色分离 @1.0）",
+     "visible_pct_gt8": 1.0,
+     "mean_abs_u8": 0.89,
+     "dY_mean": -0.0005,
+     "dY_p95_abs": 0.0042,
+     "dL_mean": -0.0008,
+     "dC_mean": -0.0006,
+     "dC_p95_abs": 0.0033,
+     "hue_median_abs_deg": 0.65,
+     "hue_p95_abs_deg": 6.74,
+     "chromatic_share_pct": 42.7
+    },
+    "observe_total": {
+     "label": "observe 组合（曲线+配对强度前馈+配对原色）",
+     "visible_pct_gt8": 87.2,
+     "mean_abs_u8": 13.41,
+     "dY_mean": 0.0174,
+     "dY_p95_abs": 0.0617,
+     "dL_mean": 0.0347,
+     "dC_mean": -0.0154,
+     "dC_p95_abs": 0.0402,
+     "hue_median_abs_deg": 2.92,
+     "hue_p95_abs_deg": 17.36,
+     "chromatic_share_pct": 42.7
+    },
+    "takeover_delta": {
+     "label": "full 接管对 observe（有界中性化）",
+     "visible_pct_gt8": 22.0,
+     "mean_abs_u8": 6.62,
+     "dY_mean": 0.0056,
+     "dY_p95_abs": 0.0333,
+     "dL_mean": -0.0004,
+     "dC_mean": -0.0139,
+     "dC_p95_abs": 0.0698,
+     "hue_median_abs_deg": 5.04,
+     "hue_p95_abs_deg": 12.78,
+     "chromatic_share_pct": 24.0
+    },
+    "crossover_delta": {
+     "label": "层间漂移（datasheet 对 bounded）",
+     "visible_pct_gt8": 0.0,
+     "mean_abs_u8": 2.62,
+     "dY_mean": -0.0003,
+     "dY_p95_abs": 0.0021,
+     "dL_mean": -0.0,
+     "dC_mean": 0.0029,
+     "dC_p95_abs": 0.0084,
+     "hue_median_abs_deg": 1.19,
+     "hue_p95_abs_deg": 4.27,
+     "chromatic_share_pct": 16.4
+    }
+   }
+  }
+ }
+}
