@@ -7,13 +7,12 @@ composite — Stage A runs the analytic scene->density front per pixel
 film exposure state and the reversal anchor sharing the layer-exposure slot),
 Stage B samples a density-domain 65^3 volume of the same solved chain (fixed
 timing q(0)). Halation and grain will insert between A and B in later stages;
-their off-state leaves this path bit-identical. The v1 single scene-EV LUT
-remains available as the HIDDEN LEGACY TEST BACKEND
-(DNGSCAN_FILM_LEGACY_LUT=1) whose bytes the P0 freeze pins; v2 validates
-against the direct-chain oracle shipped inside every schema-5 asset instead
-(plan §7.2 migration semantics).
+their off-state leaves this path bit-identical. v2 validates
+against the direct-chain oracle shipped inside every schema-5 asset
+(plan §7.2 migration semantics); the v1 single scene-EV LUT backend and its
+P0 freeze completed their migration duty and were REMOVED at P7.
 
-The v1 narrative below still describes the shared chain and the
+The narrative below still describes the shared chain and the
 neutralization contract; only the sampling topology changed.
 
 
@@ -73,75 +72,6 @@ from ._deps import np
 from .color import EPS
 
 REC2020_LUMA = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
-_LUT_DIR = _Path(__file__).with_name("data") / "full_lut"
-_LUT_CACHE: dict[str, tuple | None] = {}
-
-
-def _load_lut(name: str):
-    key = str(name)
-    if key in _LUT_CACHE:
-        return _LUT_CACHE[key]
-    path = _LUT_DIR / f"{key}.npz"
-    entry = None
-    try:
-        with np.load(path, allow_pickle=False) as payload:
-            lut = np.asarray(payload["lut_datasheet"], dtype=np.float32)
-            n = int(payload["n"])
-            cast_ev = np.asarray(payload["cast_ev"], dtype=np.float32)
-            cast = np.asarray(payload["cast_bounded"], dtype=np.float32)
-            # Hard loading contract (review batch 7): schema, declared input
-            # space and value sanity fail CLOSED — a stale or corrupted LUT
-            # must never be silently sampled.
-            if int(payload["schema"]) != 3:
-                raise ValueError(f"full-LUT schema {int(payload['schema'])}, expected 3")
-            input_space = str(np.asarray(payload["input_space"]))
-            if input_space != "scene_rec2020":
-                raise ValueError(f"full-LUT input_space {input_space!r}")
-            if not bool(np.isfinite(lut).all()) or float(lut.min()) < 0.0:
-                raise ValueError("full-LUT volume contains non-finite or negative values")
-            if not bool(np.isfinite(cast).all()) or \
-                    float(cast.min()) < 0.25 - 1e-4 or float(cast.max()) > 4.0 + 1e-4:
-                raise ValueError("bounded cast curve outside its declared [0.25, 4] bound")
-            # Structural contract (review batch 8): a structurally broken asset
-            # must fail HERE, not deep inside interpolation or normalization.
-            ev_min_v = float(payload["ev_min"])
-            ev_max_v = float(payload["ev_max"])
-            if n < 2:
-                raise ValueError(f"full-LUT grid n={n} < 2")
-            if not (np.isfinite(ev_min_v) and np.isfinite(ev_max_v)) or \
-                    not ev_max_v > ev_min_v:
-                raise ValueError(f"full-LUT EV domain [{ev_min_v}, {ev_max_v}] is degenerate")
-            if cast_ev.ndim != 1 or cast.ndim != 2 or cast.shape != (cast_ev.size, 3):
-                raise ValueError("cast curve arrays are mis-shaped")
-            if cast_ev.size < 2 or not bool(np.all(np.diff(cast_ev) > 0)):
-                raise ValueError("cast_ev axis is not strictly increasing")
-            if not bool(np.isfinite(cast_ev).all()) or \
-                    abs(float(cast_ev[0]) - ev_min_v) > 1e-3 or \
-                    abs(float(cast_ev[-1]) - ev_max_v) > 1e-3:
-                raise ValueError(
-                    "cast_ev axis does not span the LUT's declared EV domain"
-                )
-            entry = (
-                lut,
-                cast_ev,
-                cast,
-                float(payload["ev_min"]),
-                float(payload["ev_max"]),
-                n,
-            )
-            if lut.shape != (n, n, n, 3):
-                entry = None
-    except (OSError, KeyError, ValueError):
-        entry = None
-    if entry is None:
-        raise RuntimeError(
-            f"film-takeover LUT for '{key}' is missing or unreadable at {path}; "
-            "regenerate with tools/build_full_lut.py"
-        )
-    _LUT_CACHE[key] = entry
-    return entry
-
-
 def _tetrahedral(lut: Any, u: Any, n: int) -> Any:
     """Vectorized tetrahedral interpolation on a cubic lattice. [N,3] -> [N,3]."""
     g = np.clip(u, 0.0, 1.0) * (n - 1)
@@ -199,14 +129,6 @@ def _tetrahedral(lut: Any, u: Any, n: int) -> Any:
 
 _V2_DIR = _Path(__file__).with_name("data") / "film_v2"
 _V2_CACHE: dict[str, tuple | None] = {}
-
-
-def _use_legacy_backend() -> bool:
-    """Hidden legacy test backend (plan §7.2): the v1 single scene-EV LUT,
-    kept solely so the P0 freeze can pin its bytes. Never a user surface."""
-    import os
-
-    return os.environ.get("DNGSCAN_FILM_LEGACY_LUT") == "1"
 
 
 def _npz(path):
@@ -628,36 +550,20 @@ def apply_film_core(
     """
     preset = str(getattr(plan, "curve_preset", "") or "")
     rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float32), 0.0)
-    if not _use_legacy_backend():
-        if spatial is None and spatial_shape is not None:
-            h, w = int(spatial_shape[0]), int(spatial_shape[1])
-            ctx = prepare_film_spatial(plan, h, w)
-            if ctx is not None:
-                from .film_optics import area_decimate, spread_grid_shape
+    if spatial is None and spatial_shape is not None:
+        h, w = int(spatial_shape[0]), int(spatial_shape[1])
+        ctx = prepare_film_spatial(plan, h, w)
+        if ctx is not None:
+            from .film_optics import area_decimate, spread_grid_shape
 
-                if ctx.halation > 0.0 or ctx.bloom > 0.0:
-                    dh, dw = spread_grid_shape(h, w)
-                    ctx.finish_maps(
-                        area_decimate(rgb.reshape(h, w, 3), dh, dw),
-                        plan, preset,
-                    )
-                spatial = (ctx, 0, h)
-        return _apply_film_core_v2(rgb, plan, preset, spatial)
-    lut, cast_ev, cast_bounded, ev_min, ev_max, n = _load_lut(preset)
-    ev = np.log2(np.maximum(rgb / np.float32(0.18), EPS))
-    u = (ev - ev_min) / (ev_max - ev_min)
-    developed = _tetrahedral(lut, u, n)
-    if str(getattr(plan, "film_crossover", "off")) != "datasheet":
-        # Neutralized variant: per-pixel division by the bounded cast at the
-        # pixel's luminance exposure. The curve is sampled on the LUT's own
-        # axis and interpolated linearly, so on the neutral axis the quotient
-        # is a mediant of node-exact values (no overshoot), and off-axis the
-        # quotient's visible-stop error equals the datasheet volume's own —
-        # see the architecture note in tools/build_full_lut.py.
-        ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
-        for c in range(3):
-            developed[:, c] /= np.interp(ev_y, cast_ev, cast_bounded[:, c])
-    return np.maximum(developed, 0.0).astype(np.float32, copy=False)
+            if ctx.halation > 0.0 or ctx.bloom > 0.0:
+                dh, dw = spread_grid_shape(h, w)
+                ctx.finish_maps(
+                    area_decimate(rgb.reshape(h, w, 3), dh, dw),
+                    plan, preset,
+                )
+            spatial = (ctx, 0, h)
+    return _apply_film_core_v2(rgb, plan, preset, spatial)
 
 
 def film_reference_white_ev(plan: Any) -> float:

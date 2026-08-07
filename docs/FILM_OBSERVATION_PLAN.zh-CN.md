@@ -287,8 +287,8 @@ sRGB 都不钉死它——边界原样保留。内容与编码就此分离：**�
 
 1. **曝光依赖色彩**（interlayer/DIR、逐通道密度行为）——**已由光谱重建
    （2026-08-06 阶段四）收编**：运行时的逐通道比率增益机制整体退役，full 模式
-   改为离线烘焙的完整光谱链 65³ LUT（`dngscan/data/full_lut/`，datasheet 与
-   neutralized 两只真实卷）；曝光依赖色彩由链自身携带，`channel_ratio_curve`
+   改为离线烘焙的完整光谱链 65³ LUT（后于 film v2 P3 拆分为
+   `dngscan/data/film_v2/` 的 stock/print_state/b2 三分家族，单只 LUT 退役）；曝光依赖色彩由链自身携带，`channel_ratio_curve`
    的 v2 后继（`neutral_curve` 三元组）仍作为测量数据随预设发布。以下为该
    工作包的历史记录：
    - **数据裁定（2026-07-30）**：spektrafilm profile 不含按卷 DIR 耦合参数

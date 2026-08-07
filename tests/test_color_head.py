@@ -231,7 +231,6 @@ class TestFormation(unittest.TestCase):
             color_head_gain_lms,
             film_process,
         )
-        from dngscan.film_develop import _LUT_DIR  # noqa: F401  (path anchor)
         from pathlib import Path
 
         data_dir = Path(color_head_joint_field.__module__ and
