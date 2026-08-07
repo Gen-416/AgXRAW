@@ -272,6 +272,33 @@ def apply_agx_core(rgb_rec2020: Any, plan: ToneCompressionPlan) -> Any:
     return punch_engine.apply_punch_rec2020(mapped, float(getattr(plan, "punch_strength", 0.0)))
 
 
+OPTICS_BUDGET_TIERS_MIB = (256, 512, 1024)
+
+
+def _optics_budget_mib() -> int:
+    """§9.3 memory tiers for the analog-optics band path. Default 512 MiB;
+    DNGSCAN_OPTICS_BUDGET_MIB selects 256/512/1024 (invalid values fail
+    closed to the default rather than silently exceeding the contract)."""
+    import os
+
+    raw = os.environ.get("DNGSCAN_OPTICS_BUDGET_MIB", "")
+    try:
+        v = int(raw)
+    except ValueError:
+        return 512
+    return v if v in OPTICS_BUDGET_TIERS_MIB else 512
+
+
+def _optics_band_rows(width: int) -> int:
+    """Rows per sequential band so the band's working set (about eight
+    float32 RGB copies through intent/retreat/StageA/B1/paper/B2/finalize)
+    stays inside the budget. The spread maps are budgeted upstream by
+    SPREAD_MAX_DIM and the film grain grid is a fixed 2000x3000x3 float32."""
+    budget_bytes = _optics_budget_mib() * (1 << 20)
+    per_row = max(width, 1) * 3 * 4 * 8
+    return int(np.clip(budget_bytes // (3 * per_row), 64, 8192))
+
+
 def _film_spatial_engaged(tone_plan: Any) -> bool:
     """True when the full-mode film plan carries any §9 analog-optics amount.
     Spatial operators need the whole image; the renderers precompute the tone
@@ -320,6 +347,50 @@ def apply_tone_core(
     return apply_agx_core(rgb_rec2020, plan)
 
 
+def _prepare_spatial_pass1(
+    bundle: RawBundle,
+    tone_plan: Any,
+    color_plan: Any,
+    flat_scene: Any,
+    clip_masks: Any,
+    h: int,
+    w: int,
+) -> tuple:
+    """Pass 1 of the §9.3 band pipeline: build the FilmSpatialContext from
+    the band-streamed area-decimated post-intent scene (retreat included,
+    matching what the film core sees per band). Returns (ctx, band_chunk)
+    where band_chunk is row-aligned flat pixels per sequential band."""
+    from .film_develop import prepare_film_spatial
+    from .film_optics import area_decimate_rows, spread_grid_shape
+
+    ctx = prepare_film_spatial(tone_plan, h, w)
+    band_rows = _optics_band_rows(w)
+    if ctx is None:
+        raise RuntimeError("spatial pass-1 called without engaged optics")
+    if ctx.halation > 0.0 or ctx.bloom > 0.0:
+        dh, dw = spread_grid_shape(h, w)
+        acc = np.zeros((dh, dw, 3), dtype=np.float64)
+        retreat_strength = (
+            float(color_plan.raw_clip_retreat_strength)
+            if color_plan is not None else 0.0
+        )
+        for y0 in range(0, h, band_rows):
+            y1 = min(y0 + band_rows, h)
+            s0, e0 = y0 * w, y1 * w
+            rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
+            if clip_masks is not None and retreat_strength > 0.0:
+                rec = retreat_engine.apply_clip_retreat_rec2020(
+                    rec, clip_masks[s0:e0], retreat_strength
+                )
+            area_decimate_rows(rec, y0, h, w, dh, dw, acc)
+        ctx.finish_maps(
+            acc.astype(np.float32),
+            tone_plan,
+            str(getattr(tone_plan, "curve_preset", "") or ""),
+        )
+    return ctx, band_rows * w
+
+
 def scene_render_to_display_linear(
     bundle: RawBundle,
     plan: ToneCompressionPlan | RenderPlan,
@@ -358,20 +429,16 @@ def scene_render_to_display_linear(
         str(getattr(tone_plan, "film_mode", "observe")) == "full"
         and str(getattr(tone_plan, "curve_preset", "none")) != "none"
     )
-    precomputed_tone = None
+    spatial_ctx = None
     if _film_spatial_engaged(tone_plan):
-        # §9.3 P5a: spatial analog optics need the whole image. This is the
-        # full-frame oracle path (one float32 RGB working copy); the tiled
-        # budgeted scheduler is the P5b batch. All-off keeps streaming.
-        from .film_develop import apply_film_core
-
-        rec_full = scene_intent_rec2020(flat_scene[:, :3], bundle)
-        if clip_masks is not None and float(color_plan.raw_clip_retreat_strength) > 0.0:
-            rec_full = retreat_engine.apply_clip_retreat_rec2020(
-                rec_full, clip_masks, float(color_plan.raw_clip_retreat_strength)
-            )
-        precomputed_tone = apply_film_core(rec_full, tone_plan, spatial_shape=(h, w))
-        del rec_full
+        # §9.3: sequential row-band spatial path. Pass 1 area-decimates the
+        # post-intent scene in bands and builds the spread maps; pass 2
+        # below streams band-aligned chunks through the same context the
+        # full-frame oracle would build — seams exact, no full-resolution
+        # convolution, extra working set bounded by the budget tier.
+        spatial_ctx, chunk = _prepare_spatial_pass1(
+            bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w
+        )
     for start in range(0, flat_scene.shape[0], chunk):
         end = min(start + chunk, flat_scene.shape[0])
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
@@ -385,13 +452,20 @@ def scene_render_to_display_linear(
                 clip_masks[start:end],
                 float(color_plan.raw_clip_retreat_strength),
             )
-        mapped_rec = precomputed_tone[start:end] if precomputed_tone is not None else apply_tone_core(
-            rec,
-            tone_plan,
-            color_plan,
-            clip_masks[start:end] if clip_masks is not None else None,
-            guidance_engine.flatten_raw_guidance(raw_guidance, start, end) if raw_guidance is not None else None,
-        )
+        if spatial_ctx is not None:
+            from .film_develop import apply_film_core
+
+            mapped_rec = apply_film_core(
+                rec, tone_plan, spatial=(spatial_ctx, start // w, end // w)
+            )
+        else:
+            mapped_rec = apply_tone_core(
+                rec,
+                tone_plan,
+                color_plan,
+                clip_masks[start:end] if clip_masks is not None else None,
+                guidance_engine.flatten_raw_guidance(raw_guidance, start, end) if raw_guidance is not None else None,
+            )
         if display_filter != "none" and filter_strength > 0.0:
             output_linear = filter_engine.apply_display_filter_rec2020(
                 mapped_rec, output_gamut, display_filter, filter_strength, scene_rec2020=rec
@@ -594,24 +668,15 @@ def render_output_u8(
         str(getattr(effective_tone, "film_mode", "observe")) == "full"
         and str(getattr(effective_tone, "curve_preset", "none")) != "none"
     )
-    precomputed_tone = None
+    spatial_ctx = None
+    spatial_chunk = 0
     if _film_spatial_engaged(effective_tone):
-        # §9.3 P5a full-frame spatial path (see scene_render_to_display_linear).
-        from .film_develop import apply_film_core
-
-        rec_full = scene_intent_rec2020(flat_scene[:, :3], bundle)
-        if (
-            clip_masks is not None
-            and color_plan is not None
-            and float(color_plan.raw_clip_retreat_strength) > 0.0
-        ):
-            rec_full = retreat_engine.apply_clip_retreat_rec2020(
-                rec_full, clip_masks, float(color_plan.raw_clip_retreat_strength)
-            )
-        precomputed_tone = apply_film_core(
-            rec_full, effective_tone, spatial_shape=(h, w)
+        # §9.3: pass 1 builds the spread maps band-streamed; the sequential
+        # band branch below replaces the worker pool (band = quantize group,
+        # dither RNG consumed in deterministic call order).
+        spatial_ctx, spatial_chunk = _prepare_spatial_pass1(
+            bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w
         )
-        del rec_full
 
     def render_post_tone_chunk(start: int, end: int) -> Any:
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
@@ -628,15 +693,22 @@ def render_output_u8(
             rec = retreat_engine.apply_clip_retreat_rec2020(
                 rec, sample_masks, float(color_plan.raw_clip_retreat_strength)
             )
-        mapped_rec = precomputed_tone[start:end] if precomputed_tone is not None else apply_tone_core(
-            rec,
-            effective_tone,
-            color_plan,
-            sample_masks,
-            guidance_engine.flatten_raw_guidance(raw_guidance, start, end)
-            if raw_guidance is not None
-            else None,
-        )
+        if spatial_ctx is not None:
+            from .film_develop import apply_film_core
+
+            mapped_rec = apply_film_core(
+                rec, effective_tone, spatial=(spatial_ctx, start // w, end // w)
+            )
+        else:
+            mapped_rec = apply_tone_core(
+                rec,
+                effective_tone,
+                color_plan,
+                sample_masks,
+                guidance_engine.flatten_raw_guidance(raw_guidance, start, end)
+                if raw_guidance is not None
+                else None,
+            )
         if native_rec2020_input:
             return np.ascontiguousarray(mapped_rec, dtype=np.float32)
         if display_filter != "none" and filter_strength > 0.0:
@@ -746,6 +818,14 @@ def render_output_u8(
                 group_start = group_end
                 group_parts = []
 
+    if spatial_ctx is not None:
+        # Sequential band pipeline (§9.3): each band is rendered and
+        # quantized in order; the working set is one band plus the prepared
+        # context, inside the budget tier at any resolution.
+        for s0 in range(0, flat_scene.shape[0], spatial_chunk):
+            e0 = min(s0 + spatial_chunk, flat_scene.shape[0])
+            quantize_chunk(s0, e0, render_post_tone_chunk(s0, e0))
+        return out.reshape(h, w, 3)
     if flat_scene.shape[0] < STREAM_THREAD_MIN_PIXELS or len(ranges) < 2:
         consume_in_quantize_groups(
             (start, end, render_post_tone_chunk(start, end)) for start, end in ranges
