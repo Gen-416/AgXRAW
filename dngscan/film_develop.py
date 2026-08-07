@@ -351,8 +351,97 @@ def _custom_delta_tau(color_head_y: float, color_head_m: float,
     return delta
 
 
+class FilmSpatialContext:
+    """Prepared per-render state for the §9 analog optics.
+
+    Holds the decimated spread maps (halation from the pre-emulsion
+    highlight exposure, bloom from the colorimetric developed image — both
+    DEFINED on the decimated spread grid, see film_optics) plus the engaged
+    amounts. The full-frame oracle and the renderer's sequential row-band
+    path build the identical context, so band seams are exact.
+    """
+
+    __slots__ = (
+        "height", "width", "profile", "grain", "halation", "bloom", "seed",
+        "hal_map", "bloom_map", "h_mm",
+    )
+
+    def __init__(self, height: int, width: int, plan: Any) -> None:
+        from .film_optics import GATE_W_MM, MODELLED_DEFAULT
+
+        self.height = int(height)
+        self.width = int(width)
+        self.profile = MODELLED_DEFAULT
+        self.grain = float(getattr(plan, "film_grain", 0.0) or 0.0)
+        self.halation = float(getattr(plan, "film_halation", 0.0) or 0.0)
+        self.bloom = float(getattr(plan, "film_bloom", 0.0) or 0.0)
+        self.seed = int(getattr(plan, "film_optics_seed", 0) or 0)
+        self.hal_map = None
+        self.bloom_map = None
+        self.h_mm = GATE_W_MM * self.height / max(self.width, 1)
+
+    @property
+    def engaged(self) -> bool:
+        return self.grain > 0.0 or self.halation > 0.0 or self.bloom > 0.0
+
+    def band_geometry(self, y0: int, y1: int):
+        from .film_optics import GATE_W_MM, FilmGeometry
+
+        return FilmGeometry(
+            y1 - y0, self.width,
+            x0_mm=0.0,
+            y0_mm=self.h_mm * y0 / self.height,
+            w_mm=GATE_W_MM,
+            h_mm=self.h_mm * (y1 - y0) / self.height,
+        )
+
+    def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
+        """Build the spread maps from the decimated post-intent scene
+        (linear Rec.2020, area-decimated). The bloom source is the
+        COLORIMETRIC developed image of that decimated scene — the spatial
+        operators themselves never enter the source definition."""
+        from .film_optics import GATE_W_MM, halation_spread_map, bloom_spread_map
+        from .film_v2_math import film_compression_ev
+
+        dh, dw = rgb_dec.shape[:2]
+        if self.halation > 0.0:
+            flat = rgb_dec.reshape(-1, 3).astype(np.float64)
+            compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
+            if compression > 0.0:
+                flat = film_compression_ev(
+                    flat,
+                    impact=compression,
+                    knee_ev=float(getattr(plan, "film_compression_knee", 2.0) or 2.0),
+                    highlight_color_density=float(
+                        getattr(plan, "film_highlight_density", 0.0) or 0.0
+                    ),
+                )
+            exposure_lin = (
+                np.maximum(flat @ REC2020_LUMA, EPS) / 0.18
+            ).reshape(dh, dw)
+            self.hal_map = halation_spread_map(
+                exposure_lin, self.width, GATE_W_MM, self.profile
+            )
+        if self.bloom > 0.0:
+            developed = _apply_film_core_v2(
+                np.maximum(rgb_dec.reshape(-1, 3).astype(np.float32), 0.0),
+                plan, preset, None,
+            )
+            self.bloom_map = bloom_spread_map(
+                developed.reshape(dh, dw, 3), self.profile
+            )
+
+
+def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
+    """Renderer entry: a context when the plan engages any optics amount,
+    else None (chunk-stream fast path). Call finish_maps with the decimated
+    scene before applying bands."""
+    ctx = FilmSpatialContext(height, width, plan)
+    return ctx if ctx.engaged else None
+
+
 def _apply_film_core_v2(
-    rgb: Any, plan: Any, preset: str, spatial_shape: tuple | None = None
+    rgb: Any, plan: Any, preset: str, spatial: tuple | None = None
 ) -> Any:
     from .film_v2_math import (
         amounts_to_unit,
@@ -376,20 +465,15 @@ def _apply_film_core_v2(
                 getattr(plan, "film_highlight_density", 0.0) or 0.0
             ),
         ).astype(np.float32, copy=False)
-    # P5 (§9): analog optics run only on the full-frame spatial path. The
-    # renderer routes here with the image shape whenever any amount is
-    # engaged; flat colorimetric callers (probes, tests) see amounts as off.
-    grain_amt = float(getattr(plan, "film_grain", 0.0) or 0.0)
-    halation_amt = float(getattr(plan, "film_halation", 0.0) or 0.0)
-    bloom_amt = float(getattr(plan, "film_bloom", 0.0) or 0.0)
-    geometry = None
-    optics = None
-    if spatial_shape is not None and (grain_amt or halation_amt or bloom_amt):
-        from .film_optics import MODELLED_DEFAULT, FilmGeometry
-
-        geometry = FilmGeometry(int(spatial_shape[0]), int(spatial_shape[1]))
-        optics = MODELLED_DEFAULT
-    optics_seed = int(getattr(plan, "film_optics_seed", 0) or 0)
+    # P5 (§9): analog optics run through a prepared spatial context. spatial
+    # is (ctx, y0, y1): this call's rows within the full image. Flat
+    # colorimetric callers (probes, decimated map sources, tests) pass None
+    # and see the amounts as inert by contract.
+    ctx = y0 = y1 = None
+    if spatial is not None:
+        ctx, y0, y1 = spatial
+        if ctx is None or not ctx.engaged:
+            ctx = None
     exposure_ev = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
     timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
     medium = str(getattr(plan, "film_print_medium", "") or "") or stock["default_medium"]
@@ -416,20 +500,21 @@ def _apply_film_core_v2(
             color_density=float(getattr(plan, "film_dev_density", 0.0) or 0.0),
         )
     log_e = layer_log_exposure(rgb, stock["observer"])
-    if geometry is not None and halation_amt > 0.0:
-        from .film_optics import halation_reinject
+    if ctx is not None and ctx.halation > 0.0:
+        from .film_optics import halation_reinject_rows
 
-        # §9.2: source is the PRE-emulsion highlight scene exposure, spread
-        # red-heavy, reinjected into layer exposure before the curves.
-        hal_ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
-        log_e = halation_reinject(
-            log_e, hal_ev_y, geometry, optics, halation_amt
+        # §9.2: source is the PRE-emulsion highlight scene exposure (spread
+        # map prepared on the decimated grid), reinjected red-heavy into
+        # layer exposure before the curves.
+        log_e = halation_reinject_rows(
+            log_e, ctx.hal_map, y0, y1, ctx.height, ctx.width,
+            ctx.profile, ctx.halation,
         )
     amounts = characteristic_amounts(
         log_e, stock["char_le"], char_amounts,
         ev_offset=exposure_ev + float(stock["anchor"]),
     )
-    if geometry is not None and grain_amt > 0.0:
+    if ctx is not None and ctx.grain > 0.0:
         from .film_optics import apply_density_grain
 
         # §9.1: grain modulates DENSITY before printing. The span is the
@@ -440,7 +525,8 @@ def _apply_film_core_v2(
             else (media[medium][1]["dye_lo"], media[medium][1]["dye_hi"])
         )
         amounts = apply_density_grain(
-            amounts, _g_lo, _g_hi, geometry, optics, grain_amt, optics_seed
+            amounts, _g_lo, _g_hi, ctx.band_geometry(y0, y1),
+            ctx.profile, ctx.grain, ctx.seed,
         )
     bounded = str(getattr(plan, "film_crossover", "off")) != "datasheet"
     if stock["reversal"]:
@@ -455,10 +541,13 @@ def _apply_film_core_v2(
                     ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
                 )
         developed = np.maximum(developed, 0.0)
-        if geometry is not None and bloom_amt > 0.0:
-            from .film_optics import medium_bloom
+        if ctx is not None and ctx.bloom > 0.0:
+            from .film_optics import bloom_apply_rows
 
-            developed = medium_bloom(developed, geometry, optics, bloom_amt)
+            developed = bloom_apply_rows(
+                developed, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
+                ctx.profile, ctx.bloom,
+            )
         return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
     u1 = amounts_to_unit(amounts, stock["lo"], stock["hi"])
@@ -510,29 +599,50 @@ def _apply_film_core_v2(
         for c in range(3):
             developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
     developed = np.maximum(developed, 0.0)
-    if geometry is not None and bloom_amt > 0.0:
-        from .film_optics import medium_bloom
+    if ctx is not None and ctx.bloom > 0.0:
+        from .film_optics import bloom_apply_rows
 
         # §9.2: the positive medium's intrinsic scatter, after print
         # formation, before delivery gamut fit downstream.
-        developed = medium_bloom(developed, geometry, optics, bloom_amt)
+        developed = bloom_apply_rows(
+            developed, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
+            ctx.profile, ctx.bloom,
+        )
     return developed.astype(np.float32, copy=False)
 
 
 def apply_film_core(
-    rgb_rec2020: Any, plan: Any, spatial_shape: tuple | None = None
+    rgb_rec2020: Any,
+    plan: Any,
+    spatial_shape: tuple | None = None,
+    spatial: tuple | None = None,
 ) -> Any:
     """Film-takeover development. [N,3] -> [N,3]; two-stage v2 by default.
 
-    spatial_shape=(h, w) declares that the flat array is the FULL image in
-    row-major order, unlocking the §9 analog optics (grain/halation/bloom).
-    Without it the plan's optics amounts are inert — chunked or probe callers
-    cannot run spatial operators (the renderer routes full-frame instead).
+    spatial_shape=(h, w) declares the flat array is the FULL image in
+    row-major order — the full-frame oracle path: it builds the same
+    FilmSpatialContext the renderer's row-band path builds (decimated
+    spread maps, film-space grain), then applies it as one band. spatial=
+    (ctx, y0, y1) is the renderer's banded form. Without either, the plan's
+    optics amounts are inert by contract (probes, map sources, tests).
     """
     preset = str(getattr(plan, "curve_preset", "") or "")
     rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float32), 0.0)
     if not _use_legacy_backend():
-        return _apply_film_core_v2(rgb, plan, preset, spatial_shape)
+        if spatial is None and spatial_shape is not None:
+            h, w = int(spatial_shape[0]), int(spatial_shape[1])
+            ctx = prepare_film_spatial(plan, h, w)
+            if ctx is not None:
+                from .film_optics import area_decimate, spread_grid_shape
+
+                if ctx.halation > 0.0 or ctx.bloom > 0.0:
+                    dh, dw = spread_grid_shape(h, w)
+                    ctx.finish_maps(
+                        area_decimate(rgb.reshape(h, w, 3), dh, dw),
+                        plan, preset,
+                    )
+                spatial = (ctx, 0, h)
+        return _apply_film_core_v2(rgb, plan, preset, spatial)
     lut, cast_ev, cast_bounded, ev_min, ev_max, n = _load_lut(preset)
     ev = np.log2(np.maximum(rgb / np.float32(0.18), EPS))
     u = (ev - ev_min) / (ev_max - ev_min)

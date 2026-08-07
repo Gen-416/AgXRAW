@@ -91,8 +91,8 @@ class SpatialOperatorTests(unittest.TestCase):
             FilmGeometry,
             MODELLED_DEFAULT,
             apply_density_grain,
-            halation_reinject,
-            medium_bloom,
+            bloom_apply_rows,
+            halation_reinject_rows,
         )
 
         g = FilmGeometry(20, 30)
@@ -104,40 +104,51 @@ class SpatialOperatorTests(unittest.TestCase):
         )
         le = rng.uniform(-1, 1, (600, 3))
         self.assertIs(
-            halation_reinject(le, np.zeros(600), g, MODELLED_DEFAULT, 0.0), le
+            halation_reinject_rows(le, None, 0, 20, 20, 30, MODELLED_DEFAULT, 0.0),
+            le,
         )
         img = rng.uniform(0, 1, (600, 3))
-        self.assertIs(medium_bloom(img, g, MODELLED_DEFAULT, 0.0), img)
+        self.assertIs(
+            bloom_apply_rows(img, None, 0, 20, 20, 30, MODELLED_DEFAULT, 0.0), img
+        )
 
     def test_halation_is_red_dominant_and_spreads(self) -> None:
-        from dngscan.film_optics import FilmGeometry, MODELLED_DEFAULT, halation_reinject
+        from dngscan.film_optics import (
+            GATE_W_MM,
+            MODELLED_DEFAULT,
+            halation_reinject_rows,
+            halation_spread_map,
+        )
 
         h, w = 64, 96
-        g = FilmGeometry(h, w)
         le = np.full((h * w, 3), -0.5)
-        ev_y = np.full(h * w, -2.0)
-        # one hot highlight in the centre
-        centre = (h // 2) * w + w // 2
-        ev_y[centre] = 5.0
-        out = halation_reinject(le, ev_y, g, MODELLED_DEFAULT, 1.0)
+        exposure_lin = np.full((h, w), float(np.exp2(-2.0)))
+        exposure_lin[h // 2, w // 2] = float(np.exp2(5.0))
+        spread = halation_spread_map(exposure_lin, w, GATE_W_MM, MODELLED_DEFAULT)
+        out = halation_reinject_rows(
+            le, spread, 0, h, h, w, MODELLED_DEFAULT, 1.0
+        )
         delta = (out - le).reshape(h, w, 3)
-        # the neighbourhood (not just the source pixel) gains exposure
         near = delta[h // 2 - 2, w // 2, :]
         self.assertGreater(near[0], 0.0, "halation must spread beyond the source")
-        # red layer gains most, blue least (red-sensitive backscatter)
         self.assertGreater(near[0], near[1])
         self.assertGreater(near[1], near[2])
 
     def test_bloom_spreads_highlights_softly(self) -> None:
-        from dngscan.film_optics import FilmGeometry, MODELLED_DEFAULT, medium_bloom
+        from dngscan.film_optics import (
+            MODELLED_DEFAULT,
+            bloom_apply_rows,
+            bloom_spread_map,
+        )
 
         h, w = 64, 96
-        g = FilmGeometry(h, w)
         img = np.full((h * w, 3), 0.05, dtype=np.float32)
         img[(h // 2) * w + w // 2] = 1.0
-        out = medium_bloom(img, g, MODELLED_DEFAULT, 1.0).reshape(h, w, 3)
+        spread = bloom_spread_map(img.reshape(h, w, 3), MODELLED_DEFAULT)
+        out = bloom_apply_rows(
+            img, spread, 0, h, h, w, MODELLED_DEFAULT, 1.0
+        ).reshape(h, w, 3)
         base = img.reshape(h, w, 3)
-        # neighbourhood brightens; far corner nearly untouched
         self.assertGreater(out[h // 2 + 3, w // 2, 1], base[h // 2 + 3, w // 2, 1])
         self.assertLess(out[2, 2, 1] - base[2, 2, 1], 5e-3)
 
@@ -157,9 +168,44 @@ class SpatialOperatorTests(unittest.TestCase):
         out_toe = apply_density_grain(toe, lo, hi, g, MODELLED_DEFAULT, 1.0, 0)
         self.assertGreater(np.std(out_mid), 1e-3, "grain must act at mid density")
         self.assertLess(np.std(out_toe), 1e-9, "no grain at film base")
-        # deterministic: same seed, same result
         again = apply_density_grain(mid, lo, hi, g, MODELLED_DEFAULT, 1.0, 0)
         np.testing.assert_array_equal(out_mid, again)
+
+
+class RowBandEquivalenceTests(unittest.TestCase):
+    """§9.3: the sequential row-band path must match the full-frame oracle
+    exactly at every band split (shared spread-grid definition, coordinate
+    grain, zero-halo seams)."""
+
+    def test_bands_match_full_frame_for_every_operator_mix(self) -> None:
+        from dngscan.film_develop import (
+            apply_film_core,
+            prepare_film_spatial,
+        )
+        from dngscan.film_optics import area_decimate, spread_grid_shape
+
+        stock = _negative_stock()
+        h, w = 48, 72
+        rng = np.random.default_rng(9)
+        img = rng.uniform(0.02, 0.5, (h, w, 3)).astype(np.float32)
+        img[20:26, 30:38] = 6.0
+        flat = img.reshape(-1, 3)
+        plan = _plan(stock, film_grain=0.6, film_halation=0.7, film_bloom=0.5)
+        full = apply_film_core(flat, plan, spatial_shape=(h, w))
+        ctx = prepare_film_spatial(plan, h, w)
+        dh, dw = spread_grid_shape(h, w)
+        ctx.finish_maps(area_decimate(img, dh, dw), plan, stock)
+        for band_rows in (5, 16, 48):
+            out = np.empty_like(full)
+            for y0 in range(0, h, band_rows):
+                y1 = min(y0 + band_rows, h)
+                out[y0 * w:y1 * w] = apply_film_core(
+                    flat[y0 * w:y1 * w], plan, spatial=(ctx, y0, y1)
+                )
+            np.testing.assert_allclose(
+                out, full, atol=2e-6,
+                err_msg=f"band_rows={band_rows} must match the full-frame oracle",
+            )
 
 
 class SpatialRuntimeTests(unittest.TestCase):
@@ -242,6 +288,61 @@ class SpatialRuntimeTests(unittest.TestCase):
         self.assertFalse(np.array_equal(base, grained))
         grained2 = render(film_grain=0.7)
         np.testing.assert_array_equal(grained, grained2, "fixed seed reproducible")
+
+
+class RendererBandInvarianceTests(unittest.TestCase):
+    def test_band_split_does_not_change_bytes(self) -> None:
+        from unittest import mock
+
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan import render as render_mod
+        from dngscan.tone import build_render_plan
+
+        scene = build_daylight_wide_dr()
+        stock = _negative_stock()
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "srgb",
+            film_curve=stock, film_mode="full", film_crossover="datasheet",
+            film_grain=0.6, film_halation=0.5, film_bloom=0.4,
+        )
+        h, w = scene.bundle.scene_rec2020_render.shape[:2]
+        rng = np.random.default_rng(42)
+        noise = (
+            rng.random((h, w, 3), dtype=np.float32),
+            rng.random((h, w, 3), dtype=np.float32),
+        )
+        one_band = render_mod.render_output_u8(
+            scene.bundle, scene.analysis, "srgb", tone_plan=plan,
+            dither_noise=noise,
+        )
+        with mock.patch.object(render_mod, "_optics_band_rows", return_value=16):
+            banded = render_mod.render_output_u8(
+                scene.bundle, scene.analysis, "srgb", tone_plan=plan,
+                dither_noise=noise,
+            )
+        np.testing.assert_array_equal(
+            one_band, banded,
+            "budget-solved band size must not change output bytes",
+        )
+
+    def test_display_linear_path_runs_banded(self) -> None:
+        from unittest import mock
+
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan import render as render_mod
+        from dngscan.tone import build_render_plan
+
+        scene = build_daylight_wide_dr()
+        stock = _negative_stock()
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "srgb",
+            film_curve=stock, film_mode="full", film_crossover="datasheet",
+            film_grain=0.6,
+        )
+        full = render_mod.scene_render_to_display_linear(scene.bundle, plan)
+        with mock.patch.object(render_mod, "_optics_band_rows", return_value=16):
+            banded = render_mod.scene_render_to_display_linear(scene.bundle, plan)
+        np.testing.assert_array_equal(full, banded)
 
 
 class P5PlanContractTests(unittest.TestCase):
