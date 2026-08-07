@@ -374,15 +374,25 @@ def _grain_ii_for(profile: OpticsProfile, seed: int) -> np.ndarray:
         # float64 during accumulation (the running sums reach ~1e3 x cell
         # values), stored float32: sampling differences carry ~1e-4 relative
         # noise on the unit-RMS field — orders below the grain sigma it
-        # modulates — and the resident cost halves to 72 MB, which is what
-        # lets the 256 MiB tier exist at all (review batch 14).
-        ii = np.zeros((gh + 1, gw + 1, field.shape[2]), dtype=np.float64)
-        np.cumsum(field, axis=0, out=ii[1:, 1:])
+        # modulates. The accumulation runs in COLUMN SLABS with a float64
+        # carry, written straight into the float32 store: the whole-grid
+        # float64 intermediate plus its astype copy peaked ~290 MB and sank
+        # the 256 MiB tier on CI (review batch 14).
+        ii32 = np.zeros((gh + 1, gw + 1, field.shape[2]), dtype=np.float32)
+        carry = np.zeros((gh + 1, 1, field.shape[2]), dtype=np.float64)
+        slab = 256
+        for c0 in range(0, gw, slab):
+            c1 = min(c0 + slab, gw)
+            block = field[:, c0:c1].astype(np.float64)
+            np.cumsum(block, axis=0, out=block)
+            np.cumsum(block, axis=1, out=block)
+            block += carry[1:]
+            ii32[1:, c0 + 1:c1 + 1] = block
+            carry[1:] = block[:, -1:]
+            del block
         del field
-        np.cumsum(ii[1:, 1:], axis=1, out=ii[1:, 1:])
-        got = ii.astype(np.float32)
-        del ii
-        _FIELD_CACHE[key] = got
+        _FIELD_CACHE[key] = ii32
+        got = ii32
     return got
 
 
