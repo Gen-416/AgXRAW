@@ -1416,6 +1416,16 @@ def run_export(params: dict) -> dict:
         color_head_y=float(color_head_y),
         color_head_m=float(color_head_m),
         adjustments=dataclasses.astuple(adjustments),
+        # Encode-affecting parameters (review batch 11): the HDR headroom and
+        # the delivery/encode knobs change the written bytes, so they must
+        # change the name. Headroom only participates when the container is
+        # HDR — an unused slider value must not fork identical SDR exports.
+        hdr_headroom=(
+            float(hdr_headroom) if dg.is_hdr_output_format(output_format) else 0.0
+        ),
+        delivery=delivery_name,
+        quality=int(quality),
+        chroma=str(chroma),
     )
     out_ext = ".heic" if output_format == "ultrahdr-heic" else ".jpg"
     out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
@@ -1515,7 +1525,7 @@ def run_export(params: dict) -> dict:
         saved = [str(out_path)]
 
         if want_png:
-            png_path = outdir / f"{inp.stem}_{suffix}_scan.png"
+            png_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}_scan.png"
             dg.plot_dashboard(bundle, analysis, y, ev_img, png_path, auto_ev=auto_ev_result)
             saved.append(str(png_path))
 

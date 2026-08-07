@@ -81,6 +81,40 @@ class ExportSuffixTests(unittest.TestCase):
                 f"fingerprint must change with {key}",
             )
 
+    def test_export_call_site_fingerprints_every_encode_parameter(self) -> None:
+        """Batch-11: the fingerprint FUNCTION hashes whatever it is given —
+        the overwrite hole was the CALL SITE omitting parameters that change
+        the written bytes (hdr_headroom, delivery, quality, chroma). Pin the
+        actual keyword set with the AST so an omitted key fails here instead
+        of silently colliding filenames."""
+        import ast, inspect
+        import dngscan.gui.service as service
+
+        tree = ast.parse(inspect.getsource(service))
+        keyword_sets = []
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "export_plan_fingerprint"
+            ):
+                keyword_sets.append({k.arg for k in node.keywords if k.arg})
+        self.assertTrue(keyword_sets, "fingerprint call site not found")
+        required = {
+            "wb", "ev", "highlight", "decoder", "coreimage_version", "demosaic",
+            "gamut", "output_format", "grade", "grade_strength",
+            "scene_transform", "scene_transform_strength", "punch_scale",
+            "tone_core", "lum_norm", "agx_primaries", "endpoint_mode",
+            "lens_filter", "film_curve", "film_mode", "film_crossover",
+            "color_head_y", "color_head_m", "adjustments",
+            "hdr_headroom", "delivery", "quality", "chroma",
+        }
+        for kws in keyword_sets:
+            self.assertTrue(
+                required <= kws,
+                f"fingerprint call missing keys: {sorted(required - kws)}",
+            )
+
     def test_nondefault_primaries_path_is_named(self) -> None:
         self.assertEqual(
             export_suffix_parts("clip", "srgb", "sdr", agx_primaries="smooth"),

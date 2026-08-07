@@ -557,11 +557,20 @@ def render_output_u8(
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
+    # Same defence-in-depth as scene_render_to_display_linear (review batch
+    # 11): the parameter sources normalize the transform away under
+    # full+preset, but a hand-built plan reaching this production path must
+    # not feed the takeover LUT prefeed-separated pixels.
+    film_full = (
+        str(getattr(effective_tone, "film_mode", "observe")) == "full"
+        and str(getattr(effective_tone, "curve_preset", "none")) != "none"
+    )
     def render_post_tone_chunk(start: int, end: int) -> Any:
         rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
-        rec = scene_transform_engine.apply_scene_transform_rec2020(
-            rec, scene_transform, scene_transform_strength, wb_adapt
-        )
+        if not film_full:
+            rec = scene_transform_engine.apply_scene_transform_rec2020(
+                rec, scene_transform, scene_transform_strength, wb_adapt
+            )
         sample_masks = clip_masks[start:end] if clip_masks is not None else None
         if (
             sample_masks is not None

@@ -336,6 +336,18 @@ def render_ultrahdr_agx_pair(
     """
     if str(getattr(plan.tone, "tone_core", "agx")) != "agx":
         raise RuntimeError("Ultrahdr AgX pair 仅支持 tone_core=agx")
+    if (
+        str(getattr(plan.tone, "film_mode", "observe")) == "full"
+        and str(getattr(plan.tone, "curve_preset", "none")) != "none"
+    ):
+        # Kernel-level defence (review batch 11): the SDR leg routes through
+        # apply_tone_core, which under full+preset is the takeover LUT, while
+        # the HDR leg below is AgX formation — refusing here keeps the pair
+        # honest even for hand-built plans that bypassed export_jpeg.
+        raise RuntimeError(
+            "Ultrahdr AgX pair 不支持胶片接管显影（film_mode=full）："
+            "SDR 腿是接管 LUT、HDR 腿是 AgX formation，两种显影不能拼进同一个 gain-map"
+        )
 
     effective_plan = plan_with_look_overrides(plan, "none", 1.0)
     effective_tone = effective_plan.tone if isinstance(effective_plan, RenderPlan) else effective_plan

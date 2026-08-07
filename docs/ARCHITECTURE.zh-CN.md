@@ -992,7 +992,8 @@ SDR 输出是带确定性 TPDF 抖动的 8-bit JPEG，默认 quality 100、4:4:4
 
 HDR 输出是可选的 Apple ISO 21496-1 gain-map 封装（JPEG 或 HEIC），目前只在
 macOS/Core Image 后端可用，并且只接 AgX tone core。HEIC 与 JPEG 共用同一套 formation
-masters，只换最后一跳编码（通常更小）。它不是把 SDR 成片直接放大：同一份 scene-linear
+masters，只换最后一跳编码——但本管线实测 HEIC 文件更大、回读误差也更大（见交付档
+说明与使用指南），推荐默认仍是 JPEG 容器。它不是把 SDR 成片直接放大：同一份 scene-linear
 Rec.2020 在 display formation 前分成 SDR AgX 与 HDR AgX 两条独立 DRT。两者共享拍摄曝光
 意图和 RAW 分析，但 HDR 自己持有 tone curve、色彩几何和扩展 P3 投影，不要求任何像素区域
 与 SDR 成片一致。
