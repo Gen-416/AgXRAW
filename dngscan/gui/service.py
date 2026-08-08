@@ -30,7 +30,9 @@ from .preview_cache import PREVIEW_STORE, PreviewEntry
 from .preview_scheduler import PREVIEW_COORDINATOR
 
 
-RENDER_LOCK = threading.Lock()
+# RENDER_LOCK retired (scheduler plan S2): concurrency is owned by the
+# RenderScheduler's per-class slots — see dngscan/gui/scheduler.py.
+from .scheduler import SCHEDULER
 
 
 class PreviewSuperseded(RuntimeError):
@@ -805,8 +807,14 @@ def export_preview_jpeg(
             ensure_current()
             frame["cache_hit"] = True
             return frame
-    with RENDER_LOCK:
-        ensure_current()
+    with SCHEDULER.slot("preview"):
+        try:
+            ensure_current()
+        except PreviewSuperseded:
+            # dropped at the slot boundary: a newer generation arrived while
+            # this request queued (the observable S2 acceptance signal)
+            SCHEDULER.note_dropped()
+            raise
         rgb_u8 = cached.get_pixels(pixel_key) if auto_ev is None else None
         pixel_cache_hit = rgb_u8 is not None
         # The compiled plan is consulted even on a pixel-cache hit: the histogram
@@ -1284,8 +1292,7 @@ def prepare_preview(params: dict) -> dict:
         if film_optics_seed not in (None, "", "auto") else None
     )
     endpoint_mode = parse_endpoint_mode(params)
-    # Do not compete with the full-resolution export worker for memory bandwidth.
-    with RENDER_LOCK:
+    with SCHEDULER.slot("prepare"):
         entry = PREVIEW_STORE.get(
             inp,
             highlight,
@@ -1741,9 +1748,9 @@ def run_export(params: dict) -> dict:
     )
     out_ext = ".heic" if output_format == "ultrahdr-heic" else ".jpg"
     out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
-    with RENDER_LOCK:
+    with SCHEDULER.slot("export"):
         # Intent exposure already applied via with_intent_exposure above; do not
-        # mutate a shared bundle in place under the lock.
+        # mutate a shared bundle in place.
         icc_profile = dg.output_icc_profile_bytes(gamut)
         export_result = dg.export_jpeg(
             path=inp,
@@ -1911,7 +1918,7 @@ def run_export_isolated(params: dict) -> dict:
     # Deadline (review batch 17): a wedged decoder/operator previously hung
     # this request forever WHILE HOLDING RENDER_LOCK, freezing the whole GUI.
     deadline = time.monotonic() + EXPORT_TIMEOUT_SECONDS
-    with RENDER_LOCK:
+    with SCHEDULER.slot("export"):
         process.start()
         while message is None:
             try:
