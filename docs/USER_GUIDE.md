@@ -193,8 +193,11 @@ the reason this film simulation stays stable.
   contrast/fog/colour-density perturbations, honestly labelled in the
   report), `--film-compression` (C1 highlight compression plus highlight
   colour density), and the analog optics `--film-grain` / `--film-halation`
-  / `--film-bloom` (GUI: 模拟光学 tiers; a deterministic film-space grain
-  field shared between preview and full-size export);
+  / `--film-bloom` (GUI: 模拟光学 tiers; grain = a fixed-statistics master
+  field with a per-photo random spatial arrangement, bloom = CONSERVATIVE
+  medium scatter that redistributes energy without adding light; preview
+  and full-size export share one realization, --film-optics-seed auto|N
+  controls randomness/reproduction and the report prints the effective seed);
 - No grain, no vignette — it changes *how the camera saw the world*;
 - **HDR keeps working**: observe mode as always; full-mode Ultra HDR is
   "film print + scene HDR extension" — the SDR base IS the film print

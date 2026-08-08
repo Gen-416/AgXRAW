@@ -476,8 +476,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="A",
         help=(
             "film v2 颗粒 [0,1](仅 full;modelled profile):负片毫米坐标下的"
-            "确定性带限密度颗粒场,先扰动密度再经印相,预览/裁切/全尺寸共享"
-            "同一颗粒实现;0=严格恒等"
+            "带限密度颗粒场——固定统计主场+每张照片随机空间排布(随机只改"
+            "排布,不改粒径/频谱/密度响应/跨层协方差),先扰动密度再经印相,"
+            "预览/裁切/全尺寸共享同一实现;0=严格恒等"
         ),
     )
     parser.add_argument(
@@ -496,16 +497,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0.0,
         metavar="A",
         help=(
-            "film v2 medium bloom [0,1](仅 full;modelled profile):正介质"
-            "自身高光的多尺度低频扩散,印相形成之后、gamut fit 之前;0=严格恒等"
+            "film v2 介质散射 [0,1](仅 full;modelled profile):正介质形成后"
+            "的守恒能量重分布——高光核心变暗、邻域变亮,总光能不增加(非叠加 "
+            "glow;不模拟观看环境 flare);印相之后、gamut fit 之前;0=严格恒等"
         ),
     )
     parser.add_argument(
         "--film-optics-seed",
-        type=int,
-        default=0,
-        metavar="N",
-        help="film v2 模拟光学随机 seed(固定 seed=可复现的同一颗粒实现)",
+        default="auto",
+        metavar="N|auto",
+        help=(
+            "film v2 颗粒 realization:auto(默认)=加载 RAW 时随机取一次相位"
+            "(报告输出实际 effective seed 以便复现);显式整数=永远可复现。"
+            "随机只决定颗粒的空间排布,不改变粒径/频谱/密度响应/跨层协方差"
+        ),
     )
     parser.add_argument(
         "--demosaic",
@@ -677,6 +682,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ):
         if not 0.0 <= _v <= 1.0:
             parser.error(f"{_flag} 域为 [0,1]")
+    # Seed lifecycle (batch 15): resolved ONCE here at load time; every
+    # consumer (plan compile, auto-EV probe, both HDR legs, report) receives
+    # the same effective value — build_render_plan never randomizes.
+    if str(args.film_optics_seed) == "auto":
+        import secrets
+
+        args.film_optics_seed = secrets.randbits(32) | 1
+    else:
+        try:
+            args.film_optics_seed = int(args.film_optics_seed)
+        except ValueError:
+            parser.error("--film-optics-seed 需要整数或 auto")
     if args.jpeg_quality is not None and not 1 <= args.jpeg_quality <= 100:
         parser.error("--jpeg-quality must be between 1 and 100")
     if not 0 <= args.hdr_headroom <= MAX_HDR_HEADROOM_EV + 1e-9:

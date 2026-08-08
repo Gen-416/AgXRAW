@@ -138,8 +138,9 @@ RAW 也不会绕过这个分析前提。
   偏冷，中灰由印相求解锚定）、`--film-development editorial_custom` 显影
   配方（对比/fog/色密度有界扰动，报告如实标注）、`--film-compression`
   （C1 高光压缩+高光色密度）与模拟光学 `--film-grain/--film-halation/
-  --film-bloom`（GUI"模拟光学"档位；负片毫米坐标确定性颗粒场，预览与
-  全尺寸共享同一实现）；
+  --film-bloom`（GUI"模拟光学"档位；颗粒=固定统计主场+每张随机空间排布，
+  bloom=守恒介质散射——能量重分布不加光；预览与全尺寸共享同一实现，
+  `--film-optics-seed auto|N` 控制随机/复现，报告输出 effective seed）；
 - 不加颗粒、不加暗角——改变的是"这台相机看世界的方式"；
 - **HDR 照常工作**：observe 模式一如既往；full 模式的 Ultra HDR 是
   "胶片印相 + scene HDR 扩展"——SDR 底图就是胶片印相（逐字节一致），

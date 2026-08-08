@@ -404,7 +404,7 @@ FILM_CURVE_OPTIONS
     </div>
     <div id="filmOpticsBlock" style="flex:1;min-width:190px;display:none">
       <label>模拟光学</label>
-      <select id="filmOptics" title="胶片的空间成像（modelled profile）：颗粒在负片毫米坐标下调制显影密度（预览/裁切/全尺寸共享同一颗粒实现），halation 把高亮场景曝光经红敏背散射回注层曝光，bloom 是正介质自身高光的低频扩散。关闭=严格恒等。">
+      <select id="filmOptics" title="胶片的空间成像（modelled profile）：颗粒在负片毫米坐标下调制显影密度——固定统计主场+每张照片随机的空间排布（预览/裁切/全尺寸共享同一实现，随机只改排布不改粒径/频谱/密度响应）；halation 把高亮场景曝光经红敏背散射回注层曝光；bloom 是正介质的守恒内在散射——能量在画幅内重新分布，高光核心变暗、邻域变亮，总光能不增加（非叠加 glow；不模拟观看环境 flare）。关闭=严格恒等。">
         <option value="off">关闭 · 默认</option>
         <option value="light">轻 · 颗粒0.25/晕0.20/泛0.15</option>
         <option value="standard">标准 · 颗粒0.50/晕0.40/泛0.30</option>
@@ -422,7 +422,7 @@ FILM_CURVE_OPTIONS
           <input type="range" id="filmHalation" min="0" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="medium bloom：正介质自身高光的多尺度低频扩散，印相形成之后、gamut fit 之前。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
+          <div class="labelRow"><label title="介质散射（medium scatter）：正介质形成后的守恒能量重分布——高光核心失去的正是邻域得到的，总光能不变；印相形成之后、gamut fit 之前。强度是 editorial，散射核 profile 是 modelled。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
           <input type="range" id="filmBloom" min="0" max="1" step="0.05" value="0">
         </div>
       </div>

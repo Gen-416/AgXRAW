@@ -254,6 +254,7 @@ def estimate_ev_headroom(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_optics_seed: int = 0,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
     lens_filter: str | None = None,
@@ -288,6 +289,7 @@ def estimate_ev_headroom(
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
         lens_filter=lens_filter,
@@ -522,6 +524,7 @@ def _cached_render_plan(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_optics_seed: int = 0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     key = (
@@ -544,6 +547,7 @@ def _cached_render_plan(
         _cache_float(film_grain),
         _cache_float(film_halation),
         _cache_float(film_bloom),
+        int(film_optics_seed),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
     )
@@ -570,6 +574,7 @@ def _cached_render_plan(
             film_grain=film_grain,
             film_halation=film_halation,
             film_bloom=film_bloom,
+            film_optics_seed=film_optics_seed,
             adjustments=None,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
@@ -608,6 +613,7 @@ def _preview_pixel_key(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_optics_seed: int = 0,
 ) -> tuple[Any, ...]:
     return (
         gamut,
@@ -635,6 +641,7 @@ def _preview_pixel_key(
         _cache_float(film_grain),
         _cache_float(film_halation),
         _cache_float(film_bloom),
+        int(film_optics_seed),
         endpoint_mode,
         _adjustment_key(adjustments),
         # Exposure is represented by ``ev`` above; the scale contract guards against
@@ -716,6 +723,7 @@ def export_preview_jpeg(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_optics_seed: int | None = None,
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -742,6 +750,9 @@ def export_preview_jpeg(
 
     ensure_current()
 
+    if film_optics_seed is None:
+        # the entry's one realization: preview grain IS export grain
+        film_optics_seed = int(getattr(cached, "realization_id", 0) or 0)
     proxy_bundle = dg.with_intent_exposure(
         cached.bundle, user_ev=ev, tone_core=tone_core
     )
@@ -824,6 +835,7 @@ def export_preview_jpeg(
             film_grain,
             film_halation,
             film_bloom,
+            film_optics_seed,
         )
         if rgb_u8 is None:
             ensure_current()
@@ -1010,6 +1022,20 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, f
             film_grain, film_halation, film_bloom)
 
 
+def effective_optics_seed(params: dict, entry) -> int:
+    """Seed lifecycle (batch 15): an explicit integer in the payload always
+    wins (reproducible); otherwise the loaded entry's one realization_id —
+    the same value serves preview, probes, export and both HDR legs, so the
+    grain a preview shows IS the grain the export carries."""
+    raw = params.get("filmOpticsSeed", params.get("film_optics_seed"))
+    if raw is not None and str(raw) != "" and str(raw) != "auto":
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            raise ValueError("filmOpticsSeed 需要整数或留空(auto)")
+    return int(getattr(entry, "realization_id", 0) or 0)
+
+
 def run_preview(params: dict) -> dict:
     inp, highlight, gamut, output_format, ev, _, quality, _, _, ev_auto = parse_job_params(params)
     try:
@@ -1040,6 +1066,11 @@ def run_preview(params: dict) -> dict:
      color_head_m, film_exposure_ev, film_print_timing,
      film_print_medium, film_print_exposure_ev,
      film_grain, film_halation, film_bloom) = parse_film_params(params)
+    film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
+    film_optics_seed = (
+        int(film_optics_seed)
+        if film_optics_seed not in (None, "", "auto") else None
+    )
     endpoint_mode = parse_endpoint_mode(params)
     try:
         cached = PREVIEW_STORE.get(
@@ -1081,6 +1112,7 @@ def run_preview(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,
@@ -1122,6 +1154,7 @@ def run_preview(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
@@ -1216,6 +1249,11 @@ def prepare_preview(params: dict) -> dict:
      color_head_m, film_exposure_ev, film_print_timing,
      film_print_medium, film_print_exposure_ev,
      film_grain, film_halation, film_bloom) = parse_film_params(params)
+    film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
+    film_optics_seed = (
+        int(film_optics_seed)
+        if film_optics_seed not in (None, "", "auto") else None
+    )
     endpoint_mode = parse_endpoint_mode(params)
     # Do not compete with the full-resolution export worker for memory bandwidth.
     with RENDER_LOCK:
@@ -1229,6 +1267,8 @@ def prepare_preview(params: dict) -> dict:
             demosaic,
         )
         proxy_bundle = entry.bundle
+        if film_optics_seed is None:
+            film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
         if lens_filter != "none":
             import dataclasses as _dc
 
@@ -1259,6 +1299,7 @@ def prepare_preview(params: dict) -> dict:
             film_grain,
             film_halation,
             film_bloom,
+            film_optics_seed,
         )
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
@@ -1488,7 +1529,25 @@ def run_export(params: dict) -> dict:
      color_head_m, film_exposure_ev, film_print_timing,
      film_print_medium, film_print_exposure_ev,
      film_grain, film_halation, film_bloom) = parse_film_params(params)
+    film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
+    film_optics_seed = (
+        int(film_optics_seed)
+        if film_optics_seed not in (None, "", "auto") else None
+    )
     endpoint_mode = parse_endpoint_mode(params)
+    if film_optics_seed is None:
+        # the same realization the preview showed, when its entry is loaded;
+        # a cold export (no preview session) mints its own
+        entry = PREVIEW_STORE.peek(
+            inp, highlight, wb, tone_core == "gated",
+            decoder, coreimage_version, demosaic,
+        ) if hasattr(PREVIEW_STORE, "peek") else None
+        if entry is not None:
+            film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
+        else:
+            import secrets
+
+            film_optics_seed = secrets.randbits(32) | 1
     bundle = dg.load_raw(
         inp,
         highlight,
@@ -1545,6 +1604,7 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             lens_filter=lens_filter,
@@ -1573,6 +1633,7 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -1603,6 +1664,7 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
     )
     fingerprint = export_plan_fingerprint(
         wb=wb,
@@ -1633,6 +1695,7 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
         color_head_y=float(color_head_y),
         color_head_m=float(color_head_m),
         adjustments=dataclasses.astuple(adjustments),
@@ -1724,6 +1787,7 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_optics_seed=film_optics_seed,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,

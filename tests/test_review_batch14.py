@@ -191,8 +191,11 @@ class SpatialSafeEvTests(unittest.TestCase):
             len(spatial_calls), 0,
             "engaged optics must route the probe through the spatial core",
         )
-        # added light can only lower (or keep) the safe headroom
-        self.assertLessEqual(safe_optics, safe_plain + 1e-9)
+        # the operators must CHANGE the answer (batch 15's conservative
+        # scatter redistributes energy, so the direction is scene-dependent:
+        # cores shed light and safe EV may rise — the old "added light only
+        # lowers it" belonged to the additive-bloom era)
+        self.assertNotEqual(safe_optics, safe_plain)
 
 
 class GuiTimingRefreshTests(unittest.TestCase):

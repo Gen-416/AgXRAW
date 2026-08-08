@@ -353,9 +353,38 @@ def _band_limited_field(profile: OpticsProfile, seed: int) -> np.ndarray:
 _FIELD_CACHE: dict[tuple, np.ndarray] = {}
 
 
+# The ONE master realization per profile (P2, review batch 15): the
+# expensive band-limited field and its integral image are built for
+# MASTER_SEED only and reused process-wide; per-RAW "randomness" is a cheap
+# spatial PHASE on the periodic master (SplitMix64 below) — it changes the
+# grain ARRANGEMENT a photo sees, never the size, spectrum, density
+# response or cross-layer covariance. MASTER_SEED = 0 keeps the historical
+# seed-0 output byte-identical (phase (0, 0)).
+MASTER_SEED = 0
+
+
+def _splitmix64(z: int) -> int:
+    z = (z + 0x9E3779B97F4A7C15) & 0xFFFFFFFFFFFFFFFF
+    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF
+    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF
+    return z ^ (z >> 31)
+
+
+def realization_phases(seed: int, gh: int, gw: int) -> tuple[int, int]:
+    """Per-RAW spatial phase on the periodic master grid. Seed 0 is the
+    master realization itself (historical output); any other seed mixes
+    through SplitMix64 into integer cell offsets. Creation is O(1)."""
+    seed = int(seed)
+    if seed == 0:
+        return (0, 0)
+    a = _splitmix64(seed)
+    b = _splitmix64(a)
+    return (a % max(gh, 1), b % max(gw, 1))
+
+
 def grain_field_for(profile: OpticsProfile, seed: int) -> np.ndarray:
     """The deterministic film-space field (kept for tests/inspection; the
-    sampling path uses the cached integral image below)."""
+    sampling path uses the cached MASTER integral image below)."""
     return _band_limited_field(profile, seed)
 
 
@@ -411,7 +440,11 @@ def _as_integral(arr: np.ndarray) -> np.ndarray:
     return ii
 
 
-def sample_field(field: np.ndarray, geometry: FilmGeometry) -> np.ndarray:
+def sample_field(
+    field: np.ndarray,
+    geometry: FilmGeometry,
+    phase: tuple[int, int] = (0, 0),
+) -> np.ndarray:
     """Area-integrated sampling of the film-space field onto the pixel grid.
 
     Each output pixel averages the field over its exact mm footprint via a
@@ -420,19 +453,20 @@ def sample_field(field: np.ndarray, geometry: FilmGeometry) -> np.ndarray:
     preview therefore equals the block mean of the full-resolution sampling
     by construction, and a crop equals the corresponding region of the full
     frame — the §9.1 shared-coordinate contract. Rotated (portrait)
-    geometries sample the one landscape grid transposed, so the same
-    emulsion position keeps the same realization in either orientation.
-    Output rows are processed in slabs so the query temporaries stay bounded
-    (review batch 13: the unslabbed path peaked at several output-sized
-    float64 arrays); the integral image itself (~144 MB at the default
-    grain grid) is accounted in the renderer's budget.
+    geometries sample the one landscape grid transposed.
+
+    `phase` shifts the query onto the PERIODIC extension of the master grid
+    (P2, review batch 15): the summed-area table is extended analytically —
+    Ĩ(y, x) = I(y%G, x%G) + ky·I(G, x%G) + kx·I(y%G, G) + ky·kx·I(G, G) —
+    so no np.roll copy of the field ever exists, wrap seams cancel exactly,
+    and phase (0, 0) takes the original single-lookup path unchanged.
+    Output rows are processed in slabs so query temporaries stay bounded.
     """
     ii = _as_integral(field)
     if geometry.rotated:
-        # querying the SAME integral with swapped axes samples the
-        # transposed field — no data movement
         ii = ii.transpose(1, 0, 2)
         gate_w_mm, gate_h_mm = GATE_H_MM, GATE_W_MM
+        phase = (phase[1], phase[0])
     else:
         gate_w_mm, gate_h_mm = GATE_W_MM, GATE_H_MM
     gh, gw = ii.shape[0] - 1, ii.shape[1] - 1
@@ -441,11 +475,11 @@ def sample_field(field: np.ndarray, geometry: FilmGeometry) -> np.ndarray:
     ye = np.clip(
         (y0 + h_mm * np.arange(geometry.height + 1) / geometry.height)
         / gate_h_mm * gh, 0.0, gh,
-    )
+    ) + float(phase[0])
     xe = np.clip(
         (x0 + w_mm * np.arange(geometry.width + 1) / geometry.width)
         / gate_w_mm * gw, 0.0, gw,
-    )
+    ) + float(phase[1])
 
     def _ii_at(yq: np.ndarray, xq: np.ndarray) -> np.ndarray:
         yi = np.clip(np.floor(yq).astype(int), 0, gh - 1)
@@ -456,15 +490,42 @@ def sample_field(field: np.ndarray, geometry: FilmGeometry) -> np.ndarray:
         bot = ii[yi + 1][:, xi] * (1 - xf) + ii[yi + 1][:, xi + 1] * xf
         return top * (1 - yf) + bot * yf
 
-    out = np.empty((geometry.height, geometry.width, field.shape[2]), dtype=np.float32)
+    if phase == (0, 0):
+        ii_at = _ii_at
+    else:
+        total = ii[gh, gw].astype(np.float64)
+        row_tot = ii[gh]      # I(G, x)
+        col_tot = ii[:, gw]   # I(y, G)
+
+        def _interp1(table: np.ndarray, q: np.ndarray, n: int) -> np.ndarray:
+            qi = np.clip(np.floor(q).astype(int), 0, n - 1)
+            qf = (q - qi)[:, None]
+            return table[qi] * (1 - qf) + table[qi + 1] * qf
+
+        def ii_at(yq: np.ndarray, xq: np.ndarray) -> np.ndarray:
+            ky = np.floor(yq / gh).astype(np.float64)
+            kx = np.floor(xq / gw).astype(np.float64)
+            ry = yq - ky * gh
+            rx = xq - kx * gw
+            base = _ii_at(ry, rx)
+            wrap_y = _interp1(row_tot, rx, gw)[None, :, :]
+            wrap_x = _interp1(col_tot, ry, gh)[:, None, :]
+            return (
+                base
+                + ky[:, None, None] * wrap_y
+                + kx[None, :, None] * wrap_x
+                + (ky[:, None, None] * kx[None, :, None]) * total[None, None, :]
+            )
+
+    out = np.empty((geometry.height, geometry.width, ii.shape[2]), dtype=np.float32)
     area_x = np.maximum(xe[1:] - xe[:-1], 1e-12)[None, :, None]
     slab = max(1, 8_000_000 // max(geometry.width, 1))
     for r0 in range(0, geometry.height, slab):
         r1 = min(r0 + slab, geometry.height)
-        s00 = _ii_at(ye[r0:r1], xe[:-1])
-        s01 = _ii_at(ye[r0:r1], xe[1:])
-        s10 = _ii_at(ye[r0 + 1:r1 + 1], xe[:-1])
-        s11 = _ii_at(ye[r0 + 1:r1 + 1], xe[1:])
+        s00 = ii_at(ye[r0:r1], xe[:-1])
+        s01 = ii_at(ye[r0:r1], xe[1:])
+        s10 = ii_at(ye[r0 + 1:r1 + 1], xe[:-1])
+        s11 = ii_at(ye[r0 + 1:r1 + 1], xe[1:])
         area = (ye[r0 + 1:r1 + 1] - ye[r0:r1])[:, None, None] * area_x
         out[r0:r1] = (s11 - s10 - s01 + s00) / np.maximum(area, 1e-12)
     return out
@@ -490,7 +551,11 @@ def apply_density_grain(
     if amount <= 0.0:
         return amounts
     h, w = geometry.height, geometry.width
-    field = sample_field(_grain_ii_for(profile, seed), geometry)
+    master = _grain_ii_for(profile, MASTER_SEED)
+    gh, gw = master.shape[0] - 1, master.shape[1] - 1
+    field = sample_field(
+        master, geometry, phase=realization_phases(seed, gh, gw)
+    )
     a = np.asarray(amounts, dtype=np.float64).reshape(h, w, 3)
     lo64 = np.asarray(lo, dtype=np.float64)
     span = np.maximum(np.asarray(hi, dtype=np.float64) - lo64, 1e-9)
@@ -547,24 +612,37 @@ def halation_reinject_rows(
     return np.log10(np.maximum(lin, 1e-12)).reshape(-1, 3)
 
 
-def bloom_spread_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.ndarray:
-    """Medium bloom spread on the decimated grid (§9.2): multi-scale
-    low-frequency pyramid over the positive medium's own highlights
-    (area-decimated developed image, display-linear). (dh, dw, 3)."""
-    level = np.maximum(
-        np.asarray(developed_dec, dtype=np.float32) - profile.bloom_threshold, 0.0
-    )
-    dh, dw = level.shape[:2]
-    spread = np.zeros_like(level)
+def bloom_delta_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.ndarray:
+    """CONSERVATIVE medium scatter on the decimated grid (P1, review batch
+    15): the positive medium REDISTRIBUTES energy, it never adds light.
+
+        Y      = dot(rgb, luma)
+        excess = max(Y - threshold, 0)
+        source = rgb * excess / max(Y, eps)      # luminance-gated, RGB-
+                                                 # proportional: hue intact
+        spread = K(source)                       # non-negative multi-scale
+        delta  = spread - source                 # signed, sums to ZERO
+
+    K is the same multi-scale pyramid, per-channel renormalized to the
+    source's exact energy (float64 sums), so sum(delta) == 0 per channel to
+    float precision: highlight cores LOSE what their neighbourhoods gain.
+    The frame is a declared closed system — scatter neither appears from
+    nowhere nor models losses past the frame edge. A uniform field yields
+    delta == 0 (blur and pyramid preserve uniformity), so flat scenes pass
+    through untouched.
+    """
+    rgb = np.asarray(developed_dec, dtype=np.float32)
+    dh, dw = rgb.shape[:2]
+    luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    y = rgb @ luma
+    excess = np.maximum(y - profile.bloom_threshold, 0.0)
+    source = rgb * (excess / np.maximum(y, 1e-9))[..., None]
+    level = source
+    spread = np.zeros_like(source)
     total = 0.0
     for lvl in range(profile.bloom_levels):
         if min(level.shape[0], level.shape[1]) <= 1:
-            # nothing left to spread at this scale (tiny inputs / deep grids)
             break
-        # Odd edges are edge-padded to even BEFORE the 2x2 block mean: the
-        # bare truncation dropped the last row/column each level, so a
-        # highlight on the odd edge lost its bloom entirely and sizes like
-        # 5x5 crashed the reshape (review batch 13).
         pad_h = level.shape[0] % 2
         pad_w = level.shape[1] % 2
         if pad_h or pad_w:
@@ -573,8 +651,6 @@ def bloom_spread_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.nd
         level = level.reshape(sh, 2, sw, 2, 3).mean(axis=(1, 3))
         blurred = _gaussian_blur(level, 2.0)
         factor = 2 ** (lvl + 1)
-        # slab-wise nearest-neighbour accumulate: the double np.repeat held
-        # two dec-grid-sized copies per level (review batch 13)
         col_idx = np.minimum(np.arange(dw) // factor, blurred.shape[1] - 1)
         wgt = 1.0 / (lvl + 1.0)
         total += wgt
@@ -584,12 +660,19 @@ def bloom_spread_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.nd
                 np.arange(r0, r1) // factor, blurred.shape[0] - 1
             )
             spread[r0:r1] += wgt * blurred[row_idx][:, col_idx]
-    return spread / max(total, 1e-9)
+    spread /= max(total, 1e-9)
+    # exact per-channel energy renormalization (edge padding and the
+    # pyramid's odd-size handling would otherwise leak a little energy)
+    src_sum = np.sum(source, axis=(0, 1), dtype=np.float64)
+    spr_sum = np.sum(spread, axis=(0, 1), dtype=np.float64)
+    scale = np.where(spr_sum > 0.0, src_sum / np.maximum(spr_sum, 1e-30), 0.0)
+    spread *= scale.astype(np.float32)[None, None, :]
+    return spread - source
 
 
 def bloom_apply_rows(
     display_linear: np.ndarray,
-    spread_map: np.ndarray,
+    delta_ii: np.ndarray,
     y0: int,
     y1: int,
     height: int,
@@ -597,10 +680,39 @@ def bloom_apply_rows(
     profile: OpticsProfile,
     amount: float,
 ) -> np.ndarray:
-    """Add the upsampled bloom spread to output rows [y0, y1) — after print
-    formation, before delivery gamut fit."""
+    """Add the AREA-PRESERVING upsample of the conservative delta to output
+    rows [y0, y1): each output pixel takes the exact area MEAN of the delta
+    over its fractional footprint (the same integral-image sampler as the
+    grain path — never plain bilinear passed off as conservative), so equal
+    footprints make the full-resolution sum of the applied delta zero
+    whenever the map's own sum is zero. Signed delta, so highlight cores
+    darken while neighbourhoods brighten; output stays non-negative because
+    a * |negative delta| <= a * source <= bloom_strength * image."""
     if amount <= 0.0:
         return display_linear
     img = np.asarray(display_linear, dtype=np.float32).reshape(y1 - y0, width, 3)
-    spread = upsample_rows(spread_map, y0, y1, height, width)
-    return (img + float(amount) * profile.bloom_strength * spread).reshape(-1, 3)
+    up = _sample_plain(delta_ii, y0, y1, height, width)
+    return (img + float(amount) * profile.bloom_strength * up).reshape(-1, 3)
+
+
+def _sample_plain(
+    ii: np.ndarray, y0: int, y1: int, height: int, width: int
+) -> np.ndarray:
+    """Fractional-footprint area means of a decimated map for output rows
+    [y0, y1) — the area-preserving resampler behind bloom_apply_rows."""
+    gh, gw = ii.shape[0] - 1, ii.shape[1] - 1
+    ye = np.arange(y0, y1 + 1) * (gh / height)
+    xe = np.arange(width + 1) * (gw / width)
+
+    def _at(yq, xq):
+        yi = np.clip(np.floor(yq).astype(int), 0, gh - 1)
+        xi = np.clip(np.floor(xq).astype(int), 0, gw - 1)
+        yf = (yq - yi)[:, None, None]
+        xf = (xq - xi)[None, :, None]
+        top = ii[yi][:, xi] * (1 - xf) + ii[yi][:, xi + 1] * xf
+        bot = ii[yi + 1][:, xi] * (1 - xf) + ii[yi + 1][:, xi + 1] * xf
+        return top * (1 - yf) + bot * yf
+
+    s = _at(ye[1:], xe[1:]) - _at(ye[1:], xe[:-1]) - _at(ye[:-1], xe[1:]) + _at(ye[:-1], xe[:-1])
+    area = (ye[1:] - ye[:-1])[:, None, None] * (xe[1:] - xe[:-1])[None, :, None]
+    return (s / np.maximum(area, 1e-12)).astype(np.float32)

@@ -136,23 +136,29 @@ class SpatialOperatorTests(unittest.TestCase):
         self.assertGreater(near[0], near[1])
         self.assertGreater(near[1], near[2])
 
-    def test_bloom_spreads_highlights_softly(self) -> None:
+    def test_bloom_redistributes_highlights_conservatively(self) -> None:
         from dngscan.film_optics import (
             MODELLED_DEFAULT,
+            _as_integral,
             bloom_apply_rows,
-            bloom_spread_map,
+            bloom_delta_map,
         )
 
         h, w = 64, 96
         img = np.full((h * w, 3), 0.05, dtype=np.float32)
         img[(h // 2) * w + w // 2] = 1.0
-        spread = bloom_spread_map(img.reshape(h, w, 3), MODELLED_DEFAULT)
+        delta = bloom_delta_map(img.reshape(h, w, 3), MODELLED_DEFAULT)
+        ii = _as_integral(delta).astype(np.float32)
         out = bloom_apply_rows(
-            img, spread, 0, h, h, w, MODELLED_DEFAULT, 1.0
+            img, ii, 0, h, h, w, MODELLED_DEFAULT, 1.0
         ).reshape(h, w, 3)
         base = img.reshape(h, w, 3)
+        # neighbourhood brightens, the CORE darkens (energy redistribution),
+        # far corner nearly untouched, nothing negative
         self.assertGreater(out[h // 2 + 3, w // 2, 1], base[h // 2 + 3, w // 2, 1])
-        self.assertLess(out[2, 2, 1] - base[2, 2, 1], 5e-3)
+        self.assertLess(out[h // 2, w // 2, 1], base[h // 2, w // 2, 1])
+        self.assertLess(abs(out[2, 2, 1] - base[2, 2, 1]), 5e-3)
+        self.assertGreaterEqual(float(out.min()), 0.0)
 
     def test_grain_modulates_density_at_mid_not_extremes(self) -> None:
         from dngscan.film_optics import (
