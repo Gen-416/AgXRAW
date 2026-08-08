@@ -141,14 +141,17 @@ class SpatialOperatorTests(unittest.TestCase):
             MODELLED_DEFAULT,
             _as_integral,
             bloom_apply_rows,
-            bloom_delta_map,
         )
 
         h, w = 64, 96
         img = np.full((h * w, 3), 0.05, dtype=np.float32)
         img[(h // 2) * w + w // 2] = 1.0
-        delta = bloom_delta_map(img.reshape(h, w, 3), MODELLED_DEFAULT)
-        ii = _as_integral(delta).astype(np.float32)
+        from dngscan.film_optics import scatter_source, scatter_spread
+
+        spread = scatter_spread(
+            scatter_source(img.reshape(h, w, 3), MODELLED_DEFAULT), MODELLED_DEFAULT
+        )
+        ii = _as_integral(spread).astype(np.float32)
         out = bloom_apply_rows(
             img, ii, 0, h, h, w, MODELLED_DEFAULT, 1.0
         ).reshape(h, w, 3)

@@ -350,7 +350,11 @@ class FilmSpatialContext:
         (linear Rec.2020, area-decimated). The bloom source is the
         COLORIMETRIC developed image of that decimated scene — the spatial
         operators themselves never enter the source definition."""
-        from .film_optics import halation_spread_map, bloom_delta_map
+        from .film_optics import (
+            halation_spread_map,
+            scatter_source,
+            scatter_spread,
+        )
         from .film_v2_math import film_compression_ev
 
         dh, dw = rgb_dec.shape[:2]
@@ -387,10 +391,14 @@ class FilmSpatialContext:
                 )
             from .film_optics import _as_integral
 
-            delta = bloom_delta_map(developed.reshape(dh, dw, 3), self.profile)
-            # store the delta's integral image (float32) — the band applier
-            # takes exact fractional-footprint area means from it
-            self.bloom_map = _as_integral(delta).astype(np.float32)
+            # two-term conservative scatter (review batch 16): only the
+            # NON-NEGATIVE spread rides the context; the subtraction side is
+            # evaluated pointwise on each full-resolution band at apply time
+            spread = scatter_spread(
+                scatter_source(developed.reshape(dh, dw, 3), self.profile),
+                self.profile,
+            )
+            self.bloom_map = _as_integral(spread).astype(np.float32)
 
 
 def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
