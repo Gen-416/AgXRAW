@@ -272,3 +272,13 @@ def finalize_output_u8_noise_f32(
     return _finalize_output_u8_noise_f32(
         "finalize_output_u8_noise_f32", rgb, noise, plan
     )
+
+
+def set_thread_budget(budget: int) -> None:
+    """Publish the native kernels' per-worker thread budget (scheduler S3).
+
+    0 restores "hardware concurrency". A missing/old extension is a no-op —
+    the NumPy reference path has no internal threads to budget."""
+    ext = _load_extension()
+    if ext is not None and hasattr(ext, "set_thread_budget"):
+        ext.set_thread_budget(max(0, int(budget)))

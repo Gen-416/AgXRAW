@@ -15,6 +15,7 @@
 #include <cmath>
 #include <limits>
 #include <thread>
+#include "thread_budget.h"
 #include <vector>
 
 namespace dngscan_fast {
@@ -242,9 +243,8 @@ void apply_hdr_formation_f32(
   // Same bounded fan-out as the SDR kernels: the caller may already run several
   // chunk workers, so the per-call parallelism stays capped at 8 threads.
   constexpr std::size_t kParallelThreshold = 128 * 1024;
-  const unsigned available = std::max(1u, std::thread::hardware_concurrency());
   const unsigned worker_count =
-      pixel_count >= kParallelThreshold ? std::min(available, 8u) : 1u;
+      pixel_count >= kParallelThreshold ? budgeted_workers(8u) : 1u;
   if (worker_count <= 1) {
     process_range(0, pixel_count);
     return;

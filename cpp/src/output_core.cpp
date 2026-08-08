@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <thread>
+#include "thread_budget.h"
 #include <vector>
 
 namespace dngscan_fast {
@@ -129,9 +130,8 @@ inline std::uint8_t quantize_noise(float encoded, float noise) {
 template <typename Function>
 void parallel_for(std::size_t pixel_count, const Function& function) {
   constexpr std::size_t kParallelThreshold = 128 * 1024;
-  const unsigned available = std::max(1u, std::thread::hardware_concurrency());
   const unsigned worker_count =
-      pixel_count >= kParallelThreshold ? std::min(available, 8u) : 1u;
+      pixel_count >= kParallelThreshold ? budgeted_workers(8u) : 1u;
   if (worker_count <= 1) {
     function(0, pixel_count);
     return;
