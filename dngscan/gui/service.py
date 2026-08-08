@@ -1753,14 +1753,20 @@ def run_export(params: dict) -> dict:
     )
     out_ext = ".heic" if output_format == "ultrahdr-heic" else ".jpg"
     out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
-    if not want_png:
-        # Staged ownership (plan S4, extended to the GUI in review batch 18):
-        # the plan is compiled and no dashboard will run, so the analysis
-        # buffers are released BEFORE the export allocates its own
-        # full-frame work. With want_png the dashboard still needs
-        # xyz_render / y / ev_img, so they are kept for it.
-        bundle = dg.release_analysis_buffers(bundle)
-        y = ev_img = None
+    # Staged ownership (plan S4; GUI in batch 18, unconditional in batch 19):
+    # the diagnostic dashboard is the LAST consumer of the analysis buffers,
+    # so it runs FIRST and they are released for every path — previously a
+    # png=1 export encoded its JPEG/HDR with xyz_render, y and ev_img still
+    # resident.
+    png_path = None
+    if want_png:
+        png_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}_scan.png"
+        with SCHEDULER.slot("export"):
+            dg.plot_dashboard(
+                bundle, analysis, y, ev_img, png_path, auto_ev=auto_ev_result
+            )
+    bundle = dg.release_analysis_buffers(bundle)
+    y = ev_img = None
     with SCHEDULER.slot("export"):
         # Intent exposure already applied via with_intent_exposure above; do not
         # mutate a shared bundle in place.
@@ -1863,10 +1869,7 @@ def run_export(params: dict) -> dict:
                 annotated, icc_profile=icc_profile, width=PROXY_LONG_EDGE
             )
         saved = [str(out_path)]
-
-        if want_png:
-            png_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}_scan.png"
-            dg.plot_dashboard(bundle, analysis, y, ev_img, png_path, auto_ev=auto_ev_result)
+        if png_path is not None:
             saved.append(str(png_path))
 
     return {

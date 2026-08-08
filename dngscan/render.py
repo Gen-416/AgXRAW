@@ -276,12 +276,20 @@ def apply_agx_core(rgb_rec2020: Any, plan: ToneCompressionPlan) -> Any:
     return punch_engine.apply_punch_rec2020(mapped, float(getattr(plan, "punch_strength", 0.0)))
 
 
-OPTICS_BUDGET_TIERS_MIB = (256, 512, 1024)
+# The 256 MiB tier was REMOVED (review batch 19): measured with the real
+# production path (pass A + pass B + banded render, baseline and spatial
+# sampled at the SAME tier), a 6 MP frame with all three operators needs
+# ~466 MiB extra — the fixed context alone (72 MiB grain integral + the
+# float64 bloom-source accumulator, its spread, the integral transient and
+# the stored map on a 2048-wide grid) exceeds 256 MiB before a single band
+# exists. Advertising a tier the implementation cannot honour is worse than
+# offering fewer tiers.
+OPTICS_BUDGET_TIERS_MIB = (512, 1024)
 
 
 def _optics_budget_mib() -> int:
     """§9.3 memory tiers for the analog-optics band path. Default 512 MiB;
-    DNGSCAN_OPTICS_BUDGET_MIB selects 256/512/1024 (invalid values fail
+    DNGSCAN_OPTICS_BUDGET_MIB selects 512/1024 (invalid values fail
     closed to the default rather than silently exceeding the contract)."""
     import os
 
@@ -299,7 +307,11 @@ def _optics_budget_mib() -> int:
 # integral image dominated the real peak): the resident float32 grain field
 # (2000x3000x3), its float64 integral image during sampling, plus the
 # decimated spread maps and blur temporaries.
-_OPTICS_FIXED_MIB = 72 + 48  # float32 integral image + spread maps/blur
+# Measured fixed context (review batch 19): the float32 grain integral
+# (72 MiB), the float64 bloom-source accumulator on the spread grid plus its
+# spread, integral transient and stored map (~200 MiB at 2048 wide), and the
+# blur temporaries. Charged before bands are sized.
+_OPTICS_FIXED_MIB = 72 + 200 + 48
 
 
 def _optics_band_rows(width: int) -> int:
@@ -383,7 +395,10 @@ def _prepare_spatial_pass1(
     band_rows = _optics_band_rows(w)
     if ctx is None:
         raise RuntimeError("spatial pass-1 called without engaged optics")
-    if ctx.halation > 0.0 or ctx.bloom > 0.0:
+    # Pass A exists ONLY for halation (review batch 19): since the bloom
+    # source moved to the full-resolution pass B, decimating the scene for a
+    # bloom-only render walked the whole frame and threw the result away.
+    if ctx.halation > 0.0:
         dh, dw = spread_grid_shape(h, w)
         acc = np.zeros((dh, dw, 3), dtype=np.float64)
         retreat_strength = (
@@ -406,6 +421,7 @@ def _prepare_spatial_pass1(
         )
         del acc
     if ctx.bloom > 0.0:
+        ctx.begin_bloom_source()
         # Pass B (review batch 18): stream the PRE-BLOOM print at full
         # resolution and accumulate its decimated scatter source. Threshold,
         # develop and decimation do not commute, so the source cannot come

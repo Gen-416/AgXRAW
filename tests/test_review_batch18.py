@@ -201,19 +201,26 @@ class NestedBudgetTests(unittest.TestCase):
 
 
 class GuiStagedReleaseTests(unittest.TestCase):
-    def test_gui_export_releases_when_no_dashboard_follows(self) -> None:
+    def test_gui_export_releases_before_encoding(self) -> None:
         from dngscan.gui import service
 
         src = inspect.getsource(service.run_export)
         release = src.find("release_analysis_buffers")
-        slot = src.find('SCHEDULER.slot("export")')
+        encode = src.find("export_result = dg.export_jpeg")
         self.assertGreater(release, 0, "the GUI export must stage the release")
-        self.assertLess(release, slot, "release must precede the export slot")
-        window = src[max(0, release - 400):release]
-        self.assertIn(
-            "if not want_png", window,
-            "the dashboard still needs xyz_render / y / ev_img, so the "
-            "release must be conditional",
+        self.assertLess(
+            release, encode,
+            "release must precede the JPEG/HDR encode (the dashboard holds "
+            "its own export slot earlier, which is not the anchor here)",
+        )
+        # batch 19: the dashboard now runs BEFORE the export, so the
+        # release is unconditional — a png=1 export used to encode with
+        # xyz_render / y / ev_img still resident.
+        dashboard = src.find("plot_dashboard")
+        self.assertGreater(dashboard, 0)
+        self.assertLess(
+            dashboard, release,
+            "the dashboard (the last consumer) must run before the release",
         )
 
 

@@ -366,28 +366,36 @@ class FilmSpatialContext:
         from .film_v2_math import film_compression_ev
 
         dh, dw = rgb_dec.shape[:2]
-        if self.halation > 0.0:
-            flat = rgb_dec.reshape(-1, 3).astype(np.float64)
-            compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
-            if compression > 0.0:
-                flat = film_compression_ev(
-                    flat,
-                    impact=compression,
-                    knee_ev=float(getattr(plan, "film_compression_knee", 2.0) or 2.0),
-                    highlight_color_density=float(
-                        getattr(plan, "film_highlight_density", 0.0) or 0.0
-                    ),
-                )
-            exposure_lin = (
-                np.maximum(flat @ REC2020_LUMA, EPS) / 0.18
-            ).reshape(dh, dw)
-            _, _, geo_w_mm, _ = self.geometry.region()
-            self.hal_map = halation_spread_map(
-                exposure_lin, self.width, geo_w_mm, self.profile
+        if self.halation <= 0.0:
+            return
+        flat = rgb_dec.reshape(-1, 3).astype(np.float64)
+        compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
+        if compression > 0.0:
+            flat = film_compression_ev(
+                flat,
+                impact=compression,
+                knee_ev=float(getattr(plan, "film_compression_knee", 2.0) or 2.0),
+                highlight_color_density=float(
+                    getattr(plan, "film_highlight_density", 0.0) or 0.0
+                ),
             )
-        if self.bloom > 0.0:
-            self.bloom_source = np.zeros((dh, dw, 3), dtype=np.float64)
-            self.spread_shape = (dh, dw)
+        exposure_lin = (
+            np.maximum(flat @ REC2020_LUMA, EPS) / 0.18
+        ).reshape(dh, dw)
+        _, _, geo_w_mm, _ = self.geometry.region()
+        self.hal_map = halation_spread_map(
+            exposure_lin, self.width, geo_w_mm, self.profile
+        )
+
+    def begin_bloom_source(self) -> None:
+        """Allocate the pass-B accumulator on the declared spread grid — it
+        no longer depends on pass A having run (review batch 19)."""
+        if self.bloom <= 0.0:
+            return
+        from .film_optics import spread_grid_shape
+
+        self.spread_shape = spread_grid_shape(self.height, self.width)
+        self.bloom_source = np.zeros(self.spread_shape + (3,), dtype=np.float64)
 
     def accumulate_bloom_source(self, developed_rows: Any, y0: int, y1: int) -> None:
         """Pass B: area-decimate the FULL-RESOLUTION pre-bloom print's
@@ -410,12 +418,12 @@ class FilmSpatialContext:
         the integral image of the result rides the context."""
         if self.bloom <= 0.0 or self.bloom_source is None:
             return
-        from .film_optics import _as_integral, scatter_spread
+        from .film_optics import integral_from_field, scatter_spread
 
         spread = scatter_spread(
             self.bloom_source.astype(np.float32), self.profile
         )
-        self.bloom_map = _as_integral(spread).astype(np.float32)
+        self.bloom_map = integral_from_field(spread).astype(np.float32)
         self.bloom_source = None
 
 
@@ -630,6 +638,7 @@ def apply_film_core(
                     plan, preset,
                 )
             if ctx.bloom > 0.0:
+                ctx.begin_bloom_source()
                 # Pass B (review batch 18): the PRE-BLOOM print at full
                 # resolution supplies the scatter source. bloom_map is still
                 # None here, so this pass carries grain/halation but no

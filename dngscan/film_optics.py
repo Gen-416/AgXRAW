@@ -430,15 +430,19 @@ def _grain_ii_for(profile: OpticsProfile, seed: int) -> np.ndarray:
     return got
 
 
-def _as_integral(arr: np.ndarray) -> np.ndarray:
-    """Accept a raw field [gh,gw,c] or a prebuilt integral image
-    [gh+1,gw+1,c] (recognized by the zero first row/column of the latter)."""
-    if (
-        arr.dtype in (np.float32, np.float64)
-        and arr.shape[0] > 1 and arr.shape[1] > 1
-        and not arr[0].any() and not arr[:, 0].any()
-    ):
-        return arr
+def integral_from_field(field: np.ndarray) -> np.ndarray:
+    """Build the 2-D summed-area table of a field: [h,w,c] -> [h+1,w+1,c].
+
+    EXPLICIT by contract (review batch 19): the previous helper guessed
+    whether its argument was already an integral image by testing for a zero
+    first row and column. A localized light source in a large frame leaves
+    exactly that pattern in its spread map, so a plain map was taken for an
+    integral and the bloom energy silently vanished (measured: 0.087 per
+    channel lost at 640x960 and 2160x3840, with the neighbourhood gaining
+    nothing, while the 64x96 test frame happened to pass). Never infer a
+    data type from pixel content — callers say which one they hold.
+    """
+    arr = np.asarray(field)
     ii = np.zeros((arr.shape[0] + 1, arr.shape[1] + 1, arr.shape[2]), dtype=np.float64)
     np.cumsum(arr, axis=0, out=ii[1:, 1:])
     np.cumsum(ii[1:, 1:], axis=1, out=ii[1:, 1:])
@@ -467,7 +471,9 @@ def sample_field(
     and phase (0, 0) takes the original single-lookup path unchanged.
     Output rows are processed in slabs so query temporaries stay bounded.
     """
-    ii = _as_integral(field)
+    # `field` IS the integral image (grain callers pass the cached master;
+    # tests pass integral_from_field(raw_field)) — no content sniffing.
+    ii = np.asarray(field)
     if geometry.rotated:
         ii = ii.transpose(1, 0, 2)
         gate_w_mm, gate_h_mm = GATE_H_MM, GATE_W_MM
