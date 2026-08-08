@@ -114,16 +114,19 @@ class ExportAtomicityTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     service.run_export(params)
             self.assertEqual(len(wrote), 1, "the dashboard should have run")
-            self.assertFalse(
-                wrote[0].endswith(".png"),
-                f"the dashboard wrote its FINAL name {wrote[0]} before the "
-                "main export succeeded",
+            self.assertNotEqual(
+                wrote[0], f"{sample.stem}_scan.png",
+                "the dashboard must not claim its FINAL name before the "
+                "main export succeeds",
             )
-            self.assertIn(".part", wrote[0])
+            self.assertIn(
+                ".part", wrote[0],
+                f"expected a temp name, got {wrote[0]}",
+            )
             self.assertTrue(
-                wrote[0].endswith(png_suffix := ".png"),
-                f"the temp must keep its {png_suffix} extension — matplotlib "
-                "picks its writer from it (a '.part1234' tail raised)",
+                wrote[0].endswith(".png"),
+                "the temp must keep its .png extension — matplotlib picks "
+                "its writer from it (a '.part1234' tail made savefig raise)",
             )
             self.assertEqual(
                 sorted(p.name for p in outdir.iterdir()), [],
