@@ -616,12 +616,20 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
 class PreviewCache:
     """A small in-memory proxy LRU plus a bounded, validated on-disk cache."""
 
+    # How many cold builds (decode + full analysis + proxy) may run at the
+    # same time. Each holds roughly one full decode's working set, so the
+    # quota is the memory contract for concurrent cold starts (scheduler
+    # plan S1); further keys queue on the semaphore, and REQUESTS FOR THE
+    # SAME KEY never build twice — they wait on that key's in-flight event.
+    MAX_CONCURRENT_BUILDS = 2
+
     def __init__(self) -> None:
         self.entries: OrderedDict[
             tuple, PreviewEntry
         ] = OrderedDict()
         self.lock = threading.Lock()
-        self.build_lock = threading.Lock()
+        self._inflight: dict[tuple, threading.Event] = {}
+        self._build_slots = threading.BoundedSemaphore(self.MAX_CONCURRENT_BUILDS)
 
     def clear_memory(self) -> None:
         with self.lock:
@@ -678,52 +686,78 @@ class PreviewCache:
                 lambda: self._build_balance(cached, wb),
             )
 
-        with self.build_lock:
+        # Single-flight per key (scheduler plan S1): the FIRST requester of
+        # a key becomes its builder; concurrent requesters of the SAME key
+        # wait on the key's event and reuse the result; DIFFERENT keys build
+        # in parallel up to MAX_CONCURRENT_BUILDS (the old global build_lock
+        # made every cold start queue behind every other file's cold start).
+        while True:
             with self.lock:
                 cached = self.entries.get(key)
-                if cached is not None and (not require_guidance or cached.bundle.raw_guidance is not None):
+                if cached is not None and (
+                    not require_guidance or cached.bundle.raw_guidance is not None
+                ):
                     self.entries.move_to_end(key)
+                    winner = cached
+                    break
+                waiter = self._inflight.get(key)
+                if waiter is None:
+                    waiter = threading.Event()
+                    self._inflight[key] = waiter
+                    builder = True
                 else:
-                    cached = None
-
-            if cached is not None:
-                return cached.get_or_build_balance(
-                    wb,
-                    lambda: self._build_balance(cached, wb),
-                )
-
-            cache_path = _cache_dir() / f"{digest}.npz"
-            cached = _read_disk_entry(
-                cache_path,
-                path,
-                require_guidance,
-                expected_runtime=_scene_decoder_runtime_id(decoder) or None,
-            )
-            if cached is None:
-                # The cold entry is always the one fixed as-shot DecodeContext.  WB no
-                # longer participates in the disk/memory identity or decoder call.
-                source = dg.load_raw(
-                    path,
-                    highlight,
-                    scene_half_size=False,
-                    demosaic=demosaic,
-                    wb_mode="camera",
-                    decoder=decoder,
-                    coreimage_version=coreimage_version,
-                )
-                analysis, _, _ = dg.analyze(source, 4, diagnostics=False)
-                cached = build_proxy_entry(source, analysis, require_guidance)
-                _write_disk_entry(cache_path, cached)
-
-            with self.lock:
-                self.entries[key] = cached
-                self.entries.move_to_end(key)
-                while len(self.entries) > MAX_MEMORY_PROXY_ITEMS:
-                    self.entries.popitem(last=False)
-            return cached.get_or_build_balance(
-                wb,
-                lambda: self._build_balance(cached, wb),
-            )
+                    builder = False
+            if not builder:
+                waiter.wait()
+                err = getattr(waiter, "error", None)
+                if err is not None:
+                    # the error rides THIS flight's event object, so a later
+                    # flight on the same key can never serve a stale failure
+                    raise err
+                continue  # re-check the memory entry the builder installed
+            try:
+                with self._build_slots:
+                    cache_path = _cache_dir() / f"{digest}.npz"
+                    built = _read_disk_entry(
+                        cache_path,
+                        path,
+                        require_guidance,
+                        expected_runtime=_scene_decoder_runtime_id(decoder) or None,
+                    )
+                    if built is None:
+                        # The cold entry is always the one fixed as-shot
+                        # DecodeContext. WB no longer participates in the
+                        # disk/memory identity or decoder call.
+                        source = dg.load_raw(
+                            path,
+                            highlight,
+                            scene_half_size=False,
+                            demosaic=demosaic,
+                            wb_mode="camera",
+                            decoder=decoder,
+                            coreimage_version=coreimage_version,
+                        )
+                        analysis, _, _ = dg.analyze(source, 4, diagnostics=False)
+                        built = build_proxy_entry(source, analysis, require_guidance)
+                        _write_disk_entry(cache_path, built)
+                with self.lock:
+                    self.entries[key] = built
+                    self.entries.move_to_end(key)
+                    while len(self.entries) > MAX_MEMORY_PROXY_ITEMS:
+                        self.entries.popitem(last=False)
+                winner = built
+                break
+            except BaseException as exc:
+                waiter.error = exc
+                raise
+            finally:
+                with self.lock:
+                    self._inflight.pop(key, None)
+                waiter.set()
+        return winner.get_or_build_balance(
+            wb,
+            lambda: self._build_balance(winner, wb),
+        )
 
     @staticmethod
     def _build_balance(base: PreviewEntry, wb: str) -> PreviewEntry:
