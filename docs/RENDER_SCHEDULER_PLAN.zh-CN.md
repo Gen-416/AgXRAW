@@ -1,0 +1,40 @@
+# 执行模型重构计划:RenderScheduler(草案,待批准)
+
+状态:**草案**——回应全量代码审查(2026-08-08)的三条架构级发现(#2 线程池多层嵌套、#3 全局 RENDER_LOCK 单队列化、#4 build_lock 串行化所有缓存 miss)。这三条不宜作为修复批 silent 落地:它们共同指向同一个缺失物——**统一的执行资源所有权**——需要一次有验收门的定向重构。本文按项目惯例先立合同,批准后分批实施。
+
+## 1. 现状诊断(审查确认)
+
+- 完整导出:外层最多 6 个 render worker;`gated_drt`/`look`/`scene_transform` 各有独立池;C++ kernel 每 chunk 再起最多 8 线程。8 核机器上一个导出可能同时存在数十个工作线程,调度/缓存/内存带宽互相踩踏。
+- GUI:预览、prepare、导出全部串在一把 `RENDER_LOCK` 上;`run_export_isolated()` 持锁等子进程(本批已加超时,但持锁模型未变)。一张慢 RAW 阻塞所有请求;被取消的旧预览仍占用唯一渲染槽。
+- 缓存:`build_lock` 覆盖磁盘读、解码、全量分析、代理构建、磁盘写;不同文件的冷启动互相排队。
+
+各处优化都是局部正确的,叠加后没有一个所有者回答"现在允许多少并行、谁先谁后、超时谁管、内存归谁"。
+
+## 2. 目标合同
+
+一个进程内唯一的 `RenderScheduler`,拥有:
+
+- **CPU 预算**:总 worker 数 = 物理核数的声明函数(默认 `cores`,上限声明)。任何算子(Python 池、NumPy 分块、C++ kernel)从调度器**租用**并行度;外层 chunk worker 运行时,内部算子拿到的预算 = 剩余配额,预算 1 即串行。C++ 侧经现有 plan 结构接收 `thread_budget` 参数,不再自定 8。
+- **任务类别与配额**:`preview`(抢占友好,最多 1-2 并发)、`prepare/cache-build`(按 key 单飞,不同 key 并行至内存预算)、`export`(独立进程,最多 1,持有自己的 CPU 预算而非全局锁)。类别间用有界队列,不共享一把互斥。
+- **取消**:预览请求携带 generation(现有 PREVIEW_COORDINATOR 语义并入调度器);过期任务在**队列内被移除**,运行中的任务在带边界检查取消标志(band 循环已天然分段,插桩点现成)。
+- **超时**:每类任务声明 deadline(导出沿用本批的 DNGSCAN_EXPORT_TIMEOUT;预览短得多);超时→取消/终止→释放槽,错误分类(timeout/crash/failure)沿用本批导出侧的三分。
+- **内存配额**:沿用 §9.3 空间预算的思路扩展到缓存构建——同时在建的 PreviewEntry 数 × 单 entry 峰值 ≤ 声明档;不足时排队而非 OOM。
+
+## 3. 实施顺序(每步独立验收)
+
+1. **S1 缓存单飞**:`build_lock` → 按 cache-key 的 single-flight(Future 合并同 key,不同 key 并行,内存配额把门)。验收:两个不同 RAW 的冷启动并行完成;同一 RAW 的并发请求只解码一次;RSS 峰值 ≤ 单 entry 峰值 × 配额数。
+2. **S2 调度器骨架 + RENDER_LOCK 退役**:preview/prepare/export 三类队列接入;RENDER_LOCK 删除,export 独立进程改为槽位持有。验收:慢导出期间预览仍响应;旧 generation 预览在队列中被丢弃的计数可观测。
+3. **S3 CPU 预算贯通**:外层 worker 数由调度器发放;`_stream_render_workers`/`_hdr_render_workers`/look/scene_transform 池全部改租用;C++ `agx_core` 接收 thread_budget。验收:导出期间总活跃线程数 ≤ 预算+常数;24MP/60MP benchmark 不劣于现状(项目性能记录为基线)。
+4. **S4 中间帧生命周期**(审查 #5 内存项的架构面):RawBundle 拆阶段资源,分析后释放 XYZ/CFA 临时,y/ev 按需。验收:HDR 导出峰值 RSS 相对 3.7GB 基线的下降入性能记录。
+
+## 4. 不做的事
+
+- 不引入异步框架/事件循环——现有代码是同步分块流,调度器是线程+队列层,不改算子内部结构。
+- 不在 S1–S3 完成前继续加任何新的内部并行(审查建议的顺序原文)。
+- GUI 协议不变;取消/超时语义只加强不放宽。
+
+## 5. 与已完成工作的边界
+
+本批(批十七)已落地的导出超时、上传配额、token 认证、缓存身份、SNR/噪声底局部化、film pair 单遍融合都是**调度器外的独立正确性/安全修复**,不依赖本计划;S2 会吸收导出超时逻辑为通用任务 deadline。
+
+—— 待业主批注后按 S1→S4 推进。

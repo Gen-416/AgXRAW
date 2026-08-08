@@ -349,8 +349,15 @@ def render_ultrahdr_film_pair(
         or str(getattr(tone, "curve_preset", "none")) == "none"
     ):
         raise RuntimeError("render_ultrahdr_film_pair 只服务 film full 计划")
-    base_u8 = render_output_u8(bundle, analysis, output_gamut, plan)
-    h, w = base_u8.shape[:2]
+    scene = bundle.scene_rec2020_render
+    h, w = scene.shape[:2]
+    # ONE walk (review batch 17): the base render captures its post-film
+    # Rec.2020 pixels as it quantizes, so the film chain, scene intent and
+    # spatial operators run once instead of twice.
+    mapped = np.empty((h * w, 3), dtype=np.float32)
+    base_u8 = render_output_u8(
+        bundle, analysis, output_gamut, plan, capture_mapped=mapped
+    )
     # The HDR alternate (review batch 14):
     #     hdr = decoded_base + float_print * (gain - 1)
     # Below the join gain == 1, so the body IS the decoded real base (the
@@ -364,9 +371,7 @@ def render_ultrahdr_film_pair(
     from .color import srgb_decode
     from .film_develop import film_reference_white_ev
     from .film_v2_math import film_hdr_gain_log2
-    from .render import scene_render_to_display_linear
 
-    sdr_linear = scene_render_to_display_linear(bundle, plan, output_gamut)
     color_plan = plan.color
     gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05
     join_ev = film_reference_white_ev(tone)
@@ -379,9 +384,7 @@ def render_ultrahdr_film_pair(
         max(float(hdr_plan.tone.reliable_tail_ev) - join_ev, 0.0),
     )
     span_ev = max(headroom_ev, 1.0) * 1.5
-    scene = bundle.scene_rec2020_render
     flat_scene = scene.reshape(-1, scene.shape[-1])
-    flat_sdr = sdr_linear.reshape(-1, 3)
     flat_u8 = base_u8.reshape(-1, 3)
     luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
     hdr_out = np.empty((flat_u8.shape[0], 3), dtype=np.float32)
@@ -389,8 +392,12 @@ def render_ultrahdr_film_pair(
     for s0 in range(0, flat_u8.shape[0], band):
         e0 = min(s0 + band, flat_u8.shape[0])
         decoded = srgb_decode(flat_u8[s0:e0].astype(np.float32) / 255.0)
+        band_linear = np.nan_to_num(
+            rec2020_to_output(mapped[s0:e0], output_gamut),
+            nan=0.0, posinf=1e6, neginf=-1e6,
+        )
         fitted = fit_to_output_gamut(
-            flat_sdr[s0:e0], output_gamut, alpha=gamut_alpha
+            band_linear, output_gamut, alpha=gamut_alpha
         ).astype(np.float32, copy=False)
         rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
         ev = np.log2(
