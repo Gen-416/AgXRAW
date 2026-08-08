@@ -54,13 +54,16 @@ from .render import (
 
 
 def _hdr_render_workers() -> int:
-    """Render-pipeline width: NumPy releases the GIL on large array ops, so the chunk
-    pipeline scales past the historical 2 workers. Capped at 6 — beyond the performance
-    cores the marginal chunk mostly contends for memory bandwidth, and each in-flight
+    """Render-pipeline width, rented from the S3 CPU budget: NumPy releases
+    the GIL on large array ops, so the chunk pipeline scales past the
+    historical 2 workers. Capped at 6 — beyond the performance cores the
+    marginal chunk mostly contends for memory bandwidth, and each in-flight
     chunk holds its formation temporaries (~tens of MB) alive."""
     import os
 
-    return min(6, max(2, (os.cpu_count() or 4) - 2))
+    from .cpu_budget import outer_workers
+
+    return outer_workers(min(6, max(2, (os.cpu_count() or 4) - 2)))
 
 
 def _hdr_tone_plan(hdr_plan: HdrAgxPlan) -> ToneCompressionPlan:
@@ -311,8 +314,15 @@ def scene_render_to_hdr_display_linear(
         # Chunks write disjoint slices of one preallocated buffer, so completion
         # order is irrelevant here (unlike the dithered pair path).
         workers = min(_hdr_render_workers(), len(ranges))
-        with ThreadPoolExecutor(
-            max_workers=workers, thread_name_prefix="dngscan-hdr"
+        from .cpu_budget import claim, split_for, set_inner
+
+        # S3: the HDR formation is native-kernel heavy, so it takes the
+        # native-core split (few outer workers, wide native budget).
+        _outer, _inner = split_for(True)
+        workers = min(workers, _outer)
+        with claim(_inner), ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="dngscan-hdr",
+            initializer=set_inner, initargs=(_inner,),
         ) as pool:
             list(pool.map(lambda r: render_hdr_chunk(*r), ranges))
     return out.reshape(h, w, 3)
@@ -612,8 +622,15 @@ def render_ultrahdr_agx_pair(
         )
     else:
         workers = min(_hdr_render_workers(), len(ranges))
-        with ThreadPoolExecutor(
-            max_workers=workers, thread_name_prefix="dngscan-ultrahdr"
+        from .cpu_budget import claim, split_for, set_inner
+
+        # S3: the HDR formation is native-kernel heavy, so it takes the
+        # native-core split (few outer workers, wide native budget).
+        _outer, _inner = split_for(True)
+        workers = min(workers, _outer)
+        with claim(_inner), ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="dngscan-ultrahdr",
+            initializer=set_inner, initargs=(_inner,),
         ) as pool:
             pending: dict[int, Any] = {}
             submit_idx = 0

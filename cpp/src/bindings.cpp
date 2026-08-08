@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "dngscan_fast/agx_core.h"
+#include "thread_budget.h"
 #include "dngscan_fast/hdr_core.h"
 #include "dngscan_fast/output_core.h"
 
@@ -161,6 +162,10 @@ void require_same_shape(
 }  // namespace
 
 PYBIND11_MODULE(_dngscan_fast, m) {
+  m.def("set_thread_budget", [](unsigned budget) {
+    dngscan_fast::g_thread_budget.store(budget, std::memory_order_relaxed);
+  }, "Per-process native thread budget; 0 = hardware concurrency (S3).");
+
   m.doc() = "dngscan optional C++ AgX core";
 
   m.def("native_abi_version", []() { return dngscan_fast::NATIVE_ABI_VERSION; });

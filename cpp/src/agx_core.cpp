@@ -15,6 +15,7 @@
 #include <cstring>
 #include <limits>
 #include <thread>
+#include "thread_budget.h"
 #include <vector>
 
 namespace dngscan_fast {
@@ -151,9 +152,8 @@ void apply_agx_core_f32(
   // from bounded row-independent parallelism, but small buffers should avoid thread
   // startup overhead. Cap workers so preview never monopolizes the machine.
   constexpr std::size_t kParallelThreshold = 128 * 1024;
-  const unsigned available = std::max(1u, std::thread::hardware_concurrency());
   const unsigned worker_count =
-      pixel_count >= kParallelThreshold ? std::min(available, 8u) : 1u;
+      pixel_count >= kParallelThreshold ? budgeted_workers(8u) : 1u;
   if (worker_count <= 1) {
     process_range(0, pixel_count);
     return;

@@ -74,7 +74,9 @@ def _apply_gated_core(
             mapped, float(getattr(plan, "punch_strength", 0.0))
         )
 
-    if parallel_formation and rgb.shape[0] >= 64 * 1024:
+    from .cpu_budget import current_inner
+
+    if parallel_formation and rgb.shape[0] >= 64 * 1024 and current_inner() > 1:
         lum_future = _GATED_POOL.submit(lum_engine.apply_lum_core, rgb, plan)
         agx_mapped = agx_branch()
         lum_mapped = lum_future.result()

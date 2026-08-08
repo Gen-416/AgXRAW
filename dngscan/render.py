@@ -36,10 +36,14 @@ STREAM_THREAD_MIN_PIXELS = 2_000_000
 
 
 def _stream_render_workers() -> int:
-    """Bounded worker count shared by the full-res streaming pools."""
-    import os
+    """Bounded worker count shared by the full-res streaming pools (rented
+    from the S3 CPU budget)."""
+    from .cpu_budget import outer_workers
 
-    return min(6, max(2, (os.cpu_count() or 4) - 2))
+    return outer_workers(min(6, max(2, (TOTAL_CPUS) - 2)))
+
+
+from .cpu_budget import TOTAL as TOTAL_CPUS  # noqa: E402
 
 
 def dither_quantize_u8(encoded: Any, rng: Any) -> Any:
@@ -652,6 +656,17 @@ def render_output_u8(
                     f"dither noise shape {noise.shape} does not match render {(h, w, 3)}"
                 )
             flat_dither_noise = np.ascontiguousarray(noise).reshape(-1, 3)
+    # S3: the split follows who does the heavy lifting for THIS plan (see
+    # cpu_budget.split_for); the native tone core changes the answer.
+    from .cpu_budget import split_for
+
+    _native_core = (
+        fast_backend.available()
+        and str(getattr(effective_tone, "tone_core", "agx")) == "agx"
+        and str(getattr(effective_tone, "film_mode", "observe")) != "full"
+        and fast_backend.supports_agx(effective_tone)
+    )
+    stream_outer, stream_inner = split_for(_native_core)
     quantize_chunk_size = STREAM_QUANTIZE_CHUNK
     if flat_scene.shape[0] < STREAM_THREAD_MIN_PIXELS:
         render_chunk_size = quantize_chunk_size
@@ -856,8 +871,17 @@ def render_output_u8(
         # NumPy pre-tone stages under-parallelized. Worker count cannot change
         # output bytes — chunks are independent and the consumer quantizes in
         # group order with the same serial RNG sequence.
-        workers = min(_stream_render_workers(), len(ranges))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dngscan-render") as pool:
+        workers = min(stream_outer, len(ranges))
+        from .cpu_budget import claim, set_inner
+
+        # S3: publish this section's inner budget so the native kernels and
+        # the inner operator pools stop stacking their own full-width pools
+        # on top of this one (the review measured 49 threads from that
+        # nesting; the bound is now TOTAL + a small constant).
+        with claim(stream_inner), ThreadPoolExecutor(
+            max_workers=workers, thread_name_prefix="dngscan-render",
+            initializer=set_inner, initargs=(stream_inner,),
+        ) as pool:
             pending: dict[int, Any] = {}
             submit_idx = 0
             while submit_idx < min(workers, len(ranges)):

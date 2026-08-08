@@ -515,6 +515,9 @@ def _apply_scene_transform_rec2020(
         parallel
         and rgb32.shape[0] >= SCENE_TRANSFORM_REGION_PARALLEL_MIN_PIXELS
         and len(preset.regions) > 1
+        # S3: inside an outer chunk worker the fair share is 1 — run the
+        # serial oracle instead of stacking the region pool on the render pool
+        and __import__("dngscan.cpu_budget", fromlist=["current_inner"]).current_inner() > 1
     ):
         futures = [_REGION_POOL.submit(region_weight, region) for region in preset.regions]
         # Collect in declaration order; the accumulation below therefore retains the

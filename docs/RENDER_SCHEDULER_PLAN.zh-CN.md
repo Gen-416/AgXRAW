@@ -24,7 +24,23 @@
 
 1. **S1 缓存单飞**:`build_lock` → 按 cache-key 的 single-flight(Future 合并同 key,不同 key 并行,内存配额把门)。验收:两个不同 RAW 的冷启动并行完成;同一 RAW 的并发请求只解码一次;RSS 峰值 ≤ 单 entry 峰值 × 配额数。
 2. **S2 调度器骨架 + RENDER_LOCK 退役**:preview/prepare/export 三类队列接入;RENDER_LOCK 删除,export 独立进程改为槽位持有。验收:慢导出期间预览仍响应;旧 generation 预览在队列中被丢弃的计数可观测。
-3. **S3 CPU 预算贯通**:外层 worker 数由调度器发放;`_stream_render_workers`/`_hdr_render_workers`/look/scene_transform 池全部改租用;C++ `agx_core` 接收 thread_budget。验收:导出期间总活跃线程数 ≤ 预算+常数;24MP/60MP benchmark 不劣于现状(项目性能记录为基线)。
+3. **S3 CPU 预算贯通(已完成)**:外层 worker 数与内层预算由 `dngscan/cpu_budget.py` 统一发放;三只 C++ 内核经 `thread_budget.h` 的进程原子读取预算(不再各自 `min(hw, 8)`);gated/scene_transform 在份额为 1 时走串行 oracle。
+
+   **实测(10 核 M 系,16MP 帧,线程峰值由父进程采样——同进程采样器会被 GIL 饿死而误报低值)**:
+
+   | 路径 | 无预算 | S3 |
+   |---|---|---|
+   | AgX(native 核) | 49 线程 / 1.43 s | 15 线程 / 1.53 s |
+   | film full(NumPy 核) | 14 线程 / 2.99 s | 8 线程 / 2.99 s |
+   | AgX × 2 并发 | 88 线程 / 2.56 s | 28 线程 / 2.54 s |
+
+   **两点如实修正原计划的假设**:
+
+   - 审查推断"线程爆炸导致实际吞吐下降"在本机**未被证实**——单渲染下超订反而略快;S3 在 AgX 路径付出 **+7%** 壁钟换取线程数 3.3× 下降,film 路径持平。
+   - 真正的收益在**并发**:S2 打开并发后,两个渲染无预算会到 88 线程(10 核机器上属病态),S3 压到 28 且壁钟持平。这才是"统一资源所有权"的兑现处。
+   - 因此 split 不做均分(`TOTAL // outer` 即最差的 6×1:AgX 2.63 s),而是**按谁扛重活分流**:native 核 → 少外层宽内层;NumPy 核 → 宽外层窄内层。两条路径实测要求相反,单一静态划分无法兼顾。
+
+   验收门:`tests/test_scheduler_s3.py` 用子进程渲染+父进程采样断言峰值 ≤ `TOTAL + 8`(该门对无预算版本实测 32 线程会失败,确有牙齿);另有 split 契约、thread-local 作用域、native 声明嵌套(最紧者胜)与算子串行旁路门。全量 803 测试在 NumPy 参考路径与严格 native 路径下均逐字节不变。
 4. **S4 中间帧生命周期**(审查 #5 内存项的架构面):RawBundle 拆阶段资源,分析后释放 XYZ/CFA 临时,y/ev 按需。验收:HDR 导出峰值 RSS 相对 3.7GB 基线的下降入性能记录。
 
 ## 4. 不做的事
