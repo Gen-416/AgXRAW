@@ -891,13 +891,23 @@ def apply_core_parallel(
     hue_restore = _plan_hue_restore(plan)
     rgb = compress_into_gamut(rgb_rec2020.astype(np.float32, copy=False))
     inset = _apply_matrix3(rgb, inset_matrix)
+    from .cpu_budget import current_inner
+
     pre_hue_future = None
+    pre_hue_serial = None
     if hue_restore > 1e-6:
         nonnegative = np.maximum(inset, 0.0)
-        pre_hue_future = _FORMATION_POOL.submit(_rgb_to_hsv, nonnegative)
+        if current_inner() > 1:
+            pre_hue_future = _FORMATION_POOL.submit(_rgb_to_hsv, nonnegative)
+        else:
+            # S3 budget (review batch 18): inside an outer chunk worker the
+            # fair share is 1, so the formation pool must not stack another
+            # thread on top of it.
+            pre_hue_serial = _rgb_to_hsv(nonnegative)
     linear = apply_formation_curve(inset, plan)
     pre_hue = (
-        pre_hue_future.result()[:, 0] if pre_hue_future is not None else None
+        pre_hue_future.result()[:, 0] if pre_hue_future is not None
+        else (pre_hue_serial[:, 0] if pre_hue_serial is not None else None)
     )
     mapped = finish_formation(linear, pre_hue, plan, outset_matrix)
     return apply_film_color_rec2020(mapped, rgb_rec2020, plan)

@@ -404,6 +404,32 @@ def _prepare_spatial_pass1(
             tone_plan,
             str(getattr(tone_plan, "curve_preset", "") or ""),
         )
+        del acc
+    if ctx.bloom > 0.0:
+        # Pass B (review batch 18): stream the PRE-BLOOM print at full
+        # resolution and accumulate its decimated scatter source. Threshold,
+        # develop and decimation do not commute, so the source cannot come
+        # from a decimated proxy — the apply side subtracts this very
+        # quantity, which is what makes the balance conserve energy. Costs
+        # one extra colorimetric+grain+halation pass, only when bloom is on.
+        from .film_develop import apply_film_core
+
+        retreat_strength = (
+            float(color_plan.raw_clip_retreat_strength)
+            if color_plan is not None else 0.0
+        )
+        for y0 in range(0, h, band_rows):
+            y1 = min(y0 + band_rows, h)
+            s0, e0 = y0 * w, y1 * w
+            rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
+            if clip_masks is not None and retreat_strength > 0.0:
+                rec = retreat_engine.apply_clip_retreat_rec2020(
+                    rec, clip_masks[s0:e0], retreat_strength
+                )
+            ctx.accumulate_bloom_source(
+                apply_film_core(rec, tone_plan, spatial=(ctx, y0, y1)), y0, y1
+            )
+        ctx.finish_bloom_map()
     return ctx, band_rows * w
 
 
