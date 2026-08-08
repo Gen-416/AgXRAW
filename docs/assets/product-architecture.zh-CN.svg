@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="architecture-svg" viewBox="0 0 1120 1450" role="img" aria-labelledby="title desc">
+  <title id="title">AgXRAW 四层产品架构与并列领域上下文</title>
+  <desc id="desc">表现层、应用层、领域层、基础设施层四层架构。采集证据、显影、交付三个领域上下文并列放置在同一个领域层中。显影计划内部包含影调计划与色调计划。</desc>
+  <style>
+    .architecture-svg { --foreground:#172033; --muted-foreground:#667085; --background:#fff; --card:#fbfcfe; --canvas:#f7f8fb; --border:#d8dee9; --blue:#3578e5; --green:#2e9b68; --purple:#7a55c7; --orange:#dc7a27; font-family:ui-sans-serif,system-ui,sans-serif; shape-rendering:geometricPrecision; text-rendering:optimizeLegibility; }
+    @media (prefers-color-scheme: dark) { .architecture-svg { --foreground:#edf1f7; --muted-foreground:#9da7b8; --background:#11151d; --card:#171c26; --canvas:#0d1118; --border:#343c4c; --blue:#68a0ff; --green:#52c88a; --purple:#a98af0; --orange:#f0a15c; } }
+    .canvas { fill:var(--canvas); }
+    .title { fill:var(--foreground); font-size:24px; font-weight:500; letter-spacing:.2px; }
+    .subtitle { fill:var(--muted-foreground); font-size:13px; }
+    .legend { fill:var(--muted-foreground); font-size:12px; }
+    .layer&gt;.layer-shell { fill:color-mix(in srgb,var(--card) 92%,transparent); stroke:color-mix(in srgb,var(--border) 88%,transparent); stroke-width:1px; }
+    .presentation&gt;.layer-shell { fill:color-mix(in srgb,var(--blue) 4%,var(--card)); }
+    .application&gt;.layer-shell { fill:color-mix(in srgb,var(--purple) 4%,var(--card)); }
+    .domain-layer&gt;.layer-shell { fill:color-mix(in srgb,var(--green) 5%,var(--card)); stroke:color-mix(in srgb,var(--green) 48%,var(--border)); stroke-width:1.25px; }
+    .infrastructure&gt;.layer-shell { fill:color-mix(in srgb,var(--orange) 4%,var(--card)); }
+    .layer-accent { fill:none; stroke-width:4px; stroke-linecap:round; opacity:.9; }
+    .presentation .layer-accent { stroke:var(--blue); } .application .layer-accent { stroke:var(--purple); } .domain-layer .layer-accent { stroke:var(--green); } .infrastructure .layer-accent { stroke:var(--orange); }
+    .layer-divider { fill:none; stroke:color-mix(in srgb,var(--border) 76%,transparent); stroke-width:1px; }
+    .layer-title { fill:var(--foreground); font-size:16px; font-weight:500; }
+    .layer-note,.behavior,.kind,.context-subtitle { fill:var(--muted-foreground); font-size:12px; }
+    .peer rect,.usecase rect,.capability rect,.object&gt;.object-shell { fill:color-mix(in srgb,var(--background) 82%,transparent); stroke:color-mix(in srgb,var(--border) 90%,transparent); stroke-width:1px; }
+    .peer rect { fill:color-mix(in srgb,var(--blue) 6%,var(--background)); stroke:color-mix(in srgb,var(--blue) 28%,var(--border)); }
+    .usecase rect { fill:color-mix(in srgb,var(--purple) 6%,var(--background)); stroke:color-mix(in srgb,var(--purple) 28%,var(--border)); }
+    .capability rect { fill:color-mix(in srgb,var(--orange) 6%,var(--background)); stroke:color-mix(in srgb,var(--orange) 28%,var(--border)); }
+    .peer text,.usecase text,.capability&gt;text:first-of-type { fill:var(--foreground); font-size:13px; font-weight:500; }
+    .context&gt;.context-shell { stroke-width:1.2px; }
+    .capture-context&gt;.context-shell { fill:color-mix(in srgb,var(--blue) 5%,var(--background)); stroke:color-mix(in srgb,var(--blue) 62%,var(--border)); }
+    .development-context&gt;.context-shell { fill:color-mix(in srgb,var(--green) 5%,var(--background)); stroke:color-mix(in srgb,var(--green) 62%,var(--border)); }
+    .delivery-context&gt;.context-shell { fill:color-mix(in srgb,var(--purple) 5%,var(--background)); stroke:color-mix(in srgb,var(--purple) 62%,var(--border)); }
+    .context-divider { fill:none; stroke-width:1px; opacity:.42; }
+    .capture-context .context-divider { stroke:var(--blue); } .development-context .context-divider { stroke:var(--green); } .delivery-context .context-divider { stroke:var(--purple); }
+    .context-title,.object-title { fill:var(--foreground); font-size:15px; font-weight:500; }
+    .context-rule,.invariant { fill:var(--foreground); font-size:12px; font-weight:500; }
+    .aggregate&gt;.object-shell { stroke-width:2px; }
+    .capture-context .aggregate&gt;.object-shell { fill:color-mix(in srgb,var(--blue) 9%,var(--background)); stroke:var(--blue); }
+    .development-context .aggregate&gt;.object-shell { fill:color-mix(in srgb,var(--green) 9%,var(--background)); stroke:var(--green); }
+    .delivery-context .aggregate&gt;.object-shell { fill:color-mix(in srgb,var(--purple) 9%,var(--background)); stroke:var(--purple); }
+    .kind-pill { stroke:none; } .capture-context .kind-pill { fill:color-mix(in srgb,var(--blue) 16%,transparent); } .development-context .kind-pill { fill:color-mix(in srgb,var(--green) 16%,transparent); } .delivery-context .kind-pill { fill:color-mix(in srgb,var(--purple) 16%,transparent); }
+    .kind { font-size:11px; font-weight:500; }
+    .plan-part rect { stroke-width:1px; } .tone-part rect { fill:color-mix(in srgb,var(--orange) 8%,var(--background)); stroke:color-mix(in srgb,var(--orange) 48%,var(--border)); } .color-part rect { fill:color-mix(in srgb,var(--purple) 8%,var(--background)); stroke:color-mix(in srgb,var(--purple) 48%,var(--border)); }
+    .plan-part-title { fill:var(--foreground); font-size:12px; font-weight:500; } .plan-part-en,.plan-part-note { fill:var(--muted-foreground); font-size:10px; } .plan-invariant { font-size:11px; }
+    .layer-flow,.object-flow,.context-flow { fill:none; stroke-linecap:round; } .layer-flow { stroke:var(--muted-foreground); stroke-width:1.7px; opacity:.82; } .object-flow { stroke:color-mix(in srgb,var(--muted-foreground) 72%,transparent); stroke-width:1.25px; } .context-flow { stroke:var(--foreground); stroke-width:1.7px; opacity:.78; }
+    .contract-label-bg { stroke-width:1px; } .capture-contract { fill:color-mix(in srgb,var(--blue) 12%,var(--card)); stroke:color-mix(in srgb,var(--blue) 42%,var(--border)); } .delivery-contract { fill:color-mix(in srgb,var(--purple) 12%,var(--card)); stroke:color-mix(in srgb,var(--purple) 42%,var(--border)); }
+    .context-contract { fill:var(--foreground); font-size:10px; font-weight:500; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L8,3 z" fill="var(--muted-foreground)"/></marker>
+    <marker id="contract-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L8,3 z" fill="var(--foreground)"/></marker>
+  </defs>
+  <rect class="canvas" width="1120" height="1450"/>
+  <text class="title" x="560" y="34" text-anchor="middle">AgXRAW 四层产品架构</text>
+  <text class="subtitle" x="560" y="58" text-anchor="middle">三个领域上下文并列存在于同一个领域层；上下文不是架构层。</text>
+  <text class="legend" x="560" y="80" text-anchor="middle">粗边框＝聚合根　·　普通框＝领域对象 / 策略 / 政策　·　箭头＝层调用或领域契约</text>
+
+  <g class="layer presentation">
+    <rect class="layer-shell" x="24" y="104" width="1072" height="126" rx="14"/><path class="layer-accent" d="M31 120 L31 214"/><path class="layer-divider" d="M48 164 L1072 164"/>
+    <text class="layer-title" x="48" y="134">01　表现层 · Presentation</text><text class="layer-note" x="48" y="156">接收人的操作或程序请求，呈现结果、进度、解释与错误。</text>
+    <g class="peer"><rect x="48" y="174" width="238" height="38" rx="8"/><text x="167" y="198" text-anchor="middle">本地可视化界面</text></g>
+    <g class="peer"><rect x="308" y="174" width="238" height="38" rx="8"/><text x="427" y="198" text-anchor="middle">命令行批处理</text></g>
+    <g class="peer"><rect x="568" y="174" width="238" height="38" rx="8"/><text x="687" y="198" text-anchor="middle">程序化调用接口</text></g>
+    <g class="peer"><rect x="828" y="174" width="244" height="38" rx="8"/><text x="950" y="198" text-anchor="middle">报告与诊断呈现</text></g>
+  </g>
+  <path class="layer-flow" d="M560 230 L560 254" marker-end="url(#arrow)"/>
+
+  <g class="layer application">
+    <rect class="layer-shell" x="24" y="266" width="1072" height="180" rx="14"/><path class="layer-accent" d="M31 282 L31 430"/><path class="layer-divider" d="M48 328 L1072 328"/>
+    <text class="layer-title" x="48" y="296">02　应用层 · Use Cases</text><text class="layer-note" x="48" y="318">组织一次工作会话，不定义“可靠证据、合法显影、合格交付”的规则。</text>
+    <g class="usecase"><rect x="48" y="340" width="238" height="38" rx="7"/><text x="167" y="364" text-anchor="middle">导入并准备采集</text></g>
+    <g class="usecase"><rect x="308" y="340" width="238" height="38" rx="7"/><text x="427" y="364" text-anchor="middle">分析采集证据</text></g>
+    <g class="usecase"><rect x="568" y="340" width="238" height="38" rx="7"/><text x="687" y="364" text-anchor="middle">设定观看与显影意图</text></g>
+    <g class="usecase"><rect x="828" y="340" width="244" height="38" rx="7"/><text x="950" y="364" text-anchor="middle">编译显影计划</text></g>
+    <g class="usecase"><rect x="178" y="392" width="238" height="38" rx="7"/><text x="297" y="416" text-anchor="middle">实时预览与受限调节</text></g>
+    <g class="usecase"><rect x="438" y="392" width="238" height="38" rx="7"/><text x="557" y="416" text-anchor="middle">导出 SDR / HDR 成片</text></g>
+    <g class="usecase"><rect x="698" y="392" width="238" height="38" rx="7"/><text x="817" y="416" text-anchor="middle">生成解释与诊断</text></g>
+  </g>
+  <path class="layer-flow" d="M560 446 L560 470" marker-end="url(#arrow)"/>
+
+  <g class="layer domain-layer">
+    <rect class="layer-shell" x="24" y="482" width="1072" height="714" rx="14"/><path class="layer-accent" d="M31 498 L31 1180"/><path class="layer-divider" d="M48 546 L1072 546"/>
+    <text class="layer-title" x="48" y="512">03　领域层 · Domain</text><text class="layer-note" x="48" y="534">统一语言和业务不变量的唯一归属。三个边界上下文并列协作，均属于这一层。</text>
+
+    <g class="context capture-context">
+      <rect class="context-shell" x="48" y="558" width="320" height="602" rx="12"/><path class="context-divider" d="M68 646 L348 646"/>
+      <text class="context-title" x="68" y="588">采集证据上下文</text><text class="context-subtitle" x="68" y="610">Capture Evidence</text><text class="context-rule" x="68" y="634">事实描述传感器记录，不决定审美。</text>
+      <g class="object aggregate"><rect class="object-shell" x="68" y="658" width="280" height="148" rx="9"/><text class="object-title" x="84" y="684">采集 · Capture</text><rect class="kind-pill" x="82" y="691" width="54" height="20" rx="10"/><text class="kind" x="109" y="705" text-anchor="middle">聚合根</text><text class="behavior" x="84" y="730">• 持有传感器证据与场景帧</text><text class="behavior" x="84" y="752">• 保留解码器、标定与几何来源</text><text class="behavior" x="84" y="774">• 复用重建切换声明白平衡</text><text class="invariant" x="84" y="794">证据来源不随解码器选择改变</text></g>
+      <path class="object-flow" d="M208 806 L208 830" marker-end="url(#arrow)"/>
+      <g class="object"><rect class="object-shell" x="68" y="842" width="280" height="128" rx="9"/><text class="object-title" x="84" y="868">采集分析 · Capture Analysis</text><text class="behavior" x="84" y="894">• 解析满阱、剪切与动态范围</text><text class="behavior" x="84" y="916">• 估计噪声与可靠高光尾部</text><text class="invariant" x="84" y="948">重建高光不能反向成为证据</text></g>
+      <path class="object-flow" d="M208 970 L208 994" marker-end="url(#arrow)"/>
+      <g class="object"><rect class="object-shell" x="68" y="1006" width="280" height="126" rx="9"/><text class="object-title" x="84" y="1032">空间颜色许可 · Spatial Permission</text><text class="behavior" x="84" y="1058">• 编译头部余量、剪切类别与 SNR</text><text class="behavior" x="84" y="1080">• 决定颜色路径可使用的自由度</text><text class="invariant" x="84" y="1110">无空间证据时不得伪造 mask</text></g>
+    </g>
+
+    <g class="context development-context">
+      <rect class="context-shell" x="400" y="558" width="320" height="602" rx="12"/><path class="context-divider" d="M420 646 L700 646"/>
+      <text class="context-title" x="420" y="588">显影上下文</text><text class="context-subtitle" x="420" y="610">Development</text><text class="context-rule" x="420" y="634">意图由用户声明，计划由系统裁决。</text>
+      <g class="object"><rect class="object-shell" x="420" y="658" width="280" height="112" rx="9"/><text class="object-title" x="436" y="684">显影意图 · Development Intent</text><text class="behavior" x="436" y="708">• 声明白平衡、EV、胶片与显示目标</text><text class="behavior" x="436" y="730">• 分离自动结果与用户偏置</text><text class="invariant" x="436" y="756">用户偏置不能改写采集事实</text></g>
+      <path class="object-flow" d="M560 770 L560 792" marker-end="url(#arrow)"/>
+      <g class="object aggregate"><rect class="object-shell" x="420" y="804" width="280" height="188" rx="9"/><text class="object-title" x="436" y="830">显影计划 · Development Plan</text><rect class="kind-pill" x="434" y="837" width="126" height="20" rx="10"/><text class="kind" x="497" y="851" text-anchor="middle">聚合根 / 编译后只读</text><g class="plan-part tone-part"><rect x="436" y="870" width="122" height="80" rx="8"/><text class="plan-part-title" x="497" y="891" text-anchor="middle">影调计划</text><text class="plan-part-en" x="497" y="908" text-anchor="middle">Tone Plan</text><text class="plan-part-note" x="497" y="931" text-anchor="middle">锚点 · 端点 · HDR 肩部</text></g><g class="plan-part color-part"><rect x="562" y="870" width="122" height="80" rx="8"/><text class="plan-part-title" x="623" y="891" text-anchor="middle">色调计划</text><text class="plan-part-en" x="623" y="908" text-anchor="middle">Color Plan</text><text class="plan-part-note" x="623" y="931" text-anchor="middle">色相 · 色度 · HDR 色容积</text></g><text class="invariant plan-invariant" x="436" y="978">色彩不重编译影调；HDR 容量只限峰值</text></g>
+      <path class="object-flow" d="M560 992 L560 1014" marker-end="url(#arrow)"/>
+      <g class="object"><rect class="object-shell" x="420" y="1026" width="280" height="106" rx="9"/><text class="object-title" x="436" y="1052">显影执行 · Display Formation</text><text class="behavior" x="436" y="1076">• 合成影调与色调；支持胶片接管</text><text class="behavior" x="436" y="1098">• 执行 AgX / gated / lum / neutral</text><text class="invariant" x="436" y="1122">AgX HDR 独立形成；胶片 HDR 只扩展高光</text></g>
+    </g>
+
+    <g class="context delivery-context">
+      <rect class="context-shell" x="752" y="558" width="320" height="602" rx="12"/><path class="context-divider" d="M772 646 L1052 646"/>
+      <text class="context-title" x="772" y="588">交付上下文</text><text class="context-subtitle" x="772" y="610">Delivery</text><text class="context-rule" x="772" y="634">形成决定像素，交付决定封装。</text>
+      <g class="object aggregate"><rect class="object-shell" x="772" y="686" width="280" height="184" rx="9"/><text class="object-title" x="788" y="712">完成成片集 · Finished Rendition Set</text><rect class="kind-pill" x="786" y="719" width="78" height="20" rx="10"/><text class="kind" x="825" y="733" text-anchor="middle">交付聚合根</text><text class="behavior" x="788" y="762">• 持有 SDR，或 SDR 基图 + HDR alternate</text><text class="behavior" x="788" y="786">• 声明显示余量与输出色域</text><text class="behavior" x="788" y="810">• 像素形成在编码前完成</text><text class="invariant" x="788" y="850">交付只读取完成成片</text></g>
+      <path class="object-flow" d="M912 870 L912 904" marker-end="url(#arrow)"/>
+      <g class="object"><rect class="object-shell" x="772" y="916" width="280" height="190" rx="9"/><text class="object-title" x="788" y="942">交付政策 · Delivery Policy</text><text class="behavior" x="788" y="970">• 选择容器、质量与色度采样</text><text class="behavior" x="788" y="994">• 编码 SDR 或 Gain Map 封装</text><text class="behavior" x="788" y="1018">• 回读并接收基础设施测量</text><text class="behavior" x="788" y="1042">• 执行配置、余量与往返容差门禁</text><text class="invariant" x="788" y="1084">编码参数不得反馈改变形成</text></g>
+    </g>
+
+    <path class="context-flow" d="M368 858 L400 858" marker-end="url(#contract-arrow)"/><path class="context-flow" d="M720 858 L752 858" marker-end="url(#contract-arrow)"/>
+    <rect class="contract-label-bg capture-contract" x="371" y="832" width="26" height="19" rx="9.5"/><rect class="contract-label-bg delivery-contract" x="723" y="832" width="26" height="19" rx="9.5"/>
+    <text class="context-contract" x="384" y="848" text-anchor="middle">证据</text><text class="context-contract" x="736" y="848" text-anchor="middle">成片</text>
+  </g>
+
+  <path class="layer-flow" d="M560 1196 L560 1220" marker-end="url(#arrow)"/>
+  <g class="layer infrastructure">
+    <rect class="layer-shell" x="24" y="1232" width="1072" height="176" rx="14"/><path class="layer-accent" d="M31 1248 L31 1392"/><path class="layer-divider" d="M48 1296 L1072 1296"/>
+    <text class="layer-title" x="48" y="1262">04　基础设施层 · Infrastructure</text><text class="layer-note" x="48" y="1284">实现领域要求的技术能力，但不拥有证据、显影与交付规则。</text>
+    <g class="capability"><rect x="48" y="1310" width="190" height="62" rx="8"/><text x="143" y="1334" text-anchor="middle">传感器证据提供者</text><text class="behavior" x="143" y="1354" text-anchor="middle">读取马赛克、CFA 与电平</text></g>
+    <g class="capability"><rect x="258" y="1310" width="190" height="62" rx="8"/><text x="353" y="1334" text-anchor="middle">场景解码器</text><text class="behavior" x="353" y="1354" text-anchor="middle">生成场景线性 Rec.2020</text></g>
+    <g class="capability"><rect x="468" y="1310" width="190" height="62" rx="8"/><text x="563" y="1334" text-anchor="middle">原生计算后端</text><text class="behavior" x="563" y="1354" text-anchor="middle">加速形成与输出处理</text></g>
+    <g class="capability"><rect x="678" y="1310" width="190" height="62" rx="8"/><text x="773" y="1334" text-anchor="middle">图像与 Gain Map 编码器</text><text class="behavior" x="773" y="1354" text-anchor="middle">编码、回读并报告测量</text></g>
+    <g class="capability"><rect x="888" y="1310" width="184" height="62" rx="8"/><text x="980" y="1334" text-anchor="middle">标定资产提供者</text><text class="behavior" x="980" y="1354" text-anchor="middle">传感器、相机与胶片数据</text></g>
+    <text class="layer-note" x="48" y="1392">外部资源：DNG / RAW 文件 · LibRaw · 系统 RAW 解码服务 · 图像容器 · 本地文件系统</text>
+  </g>
+</svg>
