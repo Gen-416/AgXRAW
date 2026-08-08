@@ -40,6 +40,14 @@ class PreviewEntry:
 
     bundle: RawBundle
     analysis: Analysis
+    # P3 seed lifecycle (review batch 15): one grain realization per loaded
+    # RAW, minted here and reused by every preview, probe and export this
+    # entry serves. A re-loaded entry (cache eviction) mints a new one —
+    # "fully random per photo" — while an explicit seed always wins.
+    realization_id: int = field(
+        default_factory=lambda: __import__("secrets").randbits(32) | 1,
+        init=False, repr=False,
+    )
     _plan_cache: OrderedDict[Hashable, Any] = field(
         default_factory=OrderedDict, init=False, repr=False
     )
@@ -608,6 +616,28 @@ class PreviewCache:
     def clear_memory(self) -> None:
         with self.lock:
             self.entries.clear()
+
+    def peek(
+        self,
+        path: Path,
+        highlight: str,
+        wb: str,
+        require_guidance: bool = False,
+        decoder: str = "libraw",
+        coreimage_version: str = "auto",
+        demosaic: str = "auto",
+    ) -> PreviewEntry | None:
+        """The loaded entry for this identity WITHOUT building one — the
+        export path uses it to reuse the preview's grain realization (batch
+        15 seed lifecycle); a cold export mints its own instead."""
+        if decoder == "coreimage":
+            highlight = "reconstruct"
+            demosaic = "auto"
+        key, _ = _cache_identity(
+            path, highlight, wb, decoder, coreimage_version, demosaic
+        )
+        with self.lock:
+            return self.entries.get(key)
 
     def get(
         self,

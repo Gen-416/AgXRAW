@@ -435,7 +435,10 @@ def jpeg_tone_plan_cn(
             if val > 0.0
         ]
         if optics:
-            state += "模拟光学(modelled) " + "·".join(optics) + "；"
+            state += (
+                "模拟光学(modelled) " + "·".join(optics)
+                + f"·seed={int(getattr(plan, 'film_optics_seed', 0) or 0)}；"
+            )
         return (
             f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
             f"→B1→τ→相纸曲线→B2)，{state}"
