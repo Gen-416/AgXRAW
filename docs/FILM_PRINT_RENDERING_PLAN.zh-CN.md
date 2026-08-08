@@ -333,7 +333,7 @@ halation 和 medium bloom 是空间卷积，不能破坏现行 chunk-stream rend
 - 有限支撑核使用 `tile + overlap/halo`，halo 至少覆盖该层最大有效半径；tile 核心区只写一次，接缝对全帧 oracle 必须在 float 容差内；
 - 大半径 medium bloom 使用多尺度降采样金字塔，不允许为 60 MP 图像额外常驻一份全分辨率 float32 RGB；
 - grain 由 film-space 确定性场按 tile 采样，滤波所需 halo 由其最大频谱核声明；tile 调度顺序不能改变随机结果；
-- 60 MP 输入下，空间层**额外峰值 working set 默认不得超过 512 MiB**，并提供 256/512/1024 MiB 预算档；tile 大小、并发数、halo 和金字塔层数由预算共同求解，超出预算时降并发而不是退化算法；
+- 60 MP 输入下，空间层**额外峰值 working set 默认不得超过 512 MiB**，并提供 **512/1024 MiB** 预算档（原计划的 256 MiB 档经实测无法兑现：bloom 启用后仅固定上下文——颗粒积分图、spread 网格上的 float64 源累加器、其 spread、积分转换瞬态与常驻 map——就已越过 256 MiB，全效果实测额外峰值 466 MiB，故于 2026-08-08 移除该档而非继续宣传；见 RENDER_SCHEDULER_PLAN S3/S4 的实测记录）；tile 大小、并发数、halo 和金字塔层数由预算共同求解，超出预算时降并发而不是退化算法；
 - 小图建立非分块全帧 oracle；测试覆盖 tile 边界、任意 crop、旋转、不同线程数和预览比例，验证无接缝且结果/统计与 oracle 一致。
 
 ## 10. SDR 与 HDR 分工
