@@ -223,6 +223,7 @@ AgXRAW 目前不管理图库，也不做局部调整。这是现阶段产品的�
 
 ## 面向开发者的技术文档
 
+[产品架构与领域模型](docs/PRODUCT_ARCHITECTURE.zh-CN.md)（软件分层、用例、边界上下文与不变量）·
 [架构与技术细节](docs/ARCHITECTURE.zh-CN.md)（完整管线与每个环节的设计理由）·
 [工程决策记录](docs/ENGINEERING_NOTES.zh-CN.md)（问题、证据与解法的推理过程）·
 [设计合同](docs/FILM_OBSERVATION_PLAN.zh-CN.md)（胶片观察的生产合同与计算边界）·
