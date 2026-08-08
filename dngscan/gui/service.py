@@ -1759,118 +1759,141 @@ def run_export(params: dict) -> dict:
     # png=1 export encoded its JPEG/HDR with xyz_render, y and ev_img still
     # resident.
     png_path = None
+    png_temp = None
     if want_png:
         png_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}_scan.png"
+        # The dashboard runs FIRST (it is the analysis buffers' last
+        # consumer) but must not claim its final name until the main export
+        # succeeds: a later ICC/HDR/write failure would otherwise leave a
+        # PNG that looks finished — possibly pairing with an older JPEG from
+        # a different render (review batch 20). Write a temp beside it and
+        # rename atomically once the export is done.
+        # Keep the .png suffix: matplotlib picks its writer from the
+        # extension, so a ".part1234" tail made savefig raise (caught by a
+        # real run — the mocked failure test could not see it).
+        png_temp = png_path.with_name(
+            f"{png_path.stem}.part{os.getpid()}{png_path.suffix}"
+        )
         with SCHEDULER.slot("export"):
             dg.plot_dashboard(
-                bundle, analysis, y, ev_img, png_path, auto_ev=auto_ev_result
+                bundle, analysis, y, ev_img, png_temp, auto_ev=auto_ev_result
             )
     bundle = dg.release_analysis_buffers(bundle)
     y = ev_img = None
-    with SCHEDULER.slot("export"):
-        # Intent exposure already applied via with_intent_exposure above; do not
-        # mutate a shared bundle in place.
-        icc_profile = dg.output_icc_profile_bytes(gamut)
-        export_result = dg.export_jpeg(
-            path=inp,
-            out_path=out_path,
-            quality=quality,
-            bundle=bundle,
-            analysis=analysis,
-            tone_plan=render_plan,
-            output_gamut=gamut,
-            output_format=output_format,
-            hdr_headroom=hdr_headroom,
-            subsampling=dg.chroma_to_subsampling(chroma),
-            look=look,
-            look_strength=look_strength,
-            display_filter=display_filter,
-            filter_strength=filter_strength,
-            scene_transform=scene_transform,
-            scene_transform_strength=scene_transform_strength,
-            tone_core=tone_core,
-            lum_norm=lum_norm,
-            agx_primaries=agx_primaries,
-            punch_scale=punch_scale,
-            return_rgb=output_format == "sdr",
-            delivery=delivery,
-            chroma=chroma,
-        )
-        hdr_export_info = export_result if isinstance(export_result, dict) else None
-        if hdr_export_info is not None and hdr_export_info.get("output_path"):
-            # The writer corrects a container/suffix mismatch; report the real file.
-            out_path = Path(str(hdr_export_info["output_path"]))
-        if hdr_export_info is not None and out_path.is_file():
-            hdr_export_info["file_size_bytes"] = out_path.stat().st_size
-        rendered_u8 = export_result[1] if isinstance(export_result, tuple) else None
-        if rendered_u8 is None and output_format == "ultrahdr-heic":
-            from dngscan.gainmap import read_primary_rgb_u8
-
-            rendered_u8 = read_primary_rgb_u8(out_path)
-        if rendered_u8 is not None:
-            metrics = output_luminance_metrics_u8(rendered_u8, gamut, ev)
-        else:
-            metrics = output_luminance_metrics(out_path, gamut, ev)
-        metrics.update(
-            estimate_ev_headroom(
-                bundle,
-                analysis,
-                gamut,
-                ev,
-                # B5: the probe's own bisection quantum is 1/128 EV; measured,
-                # 220k vs 600k samples land within one quantum of each other,
-                # so the function default (220k) is the declared operating point.
+    try:
+        with SCHEDULER.slot("export"):
+            # Intent exposure already applied via with_intent_exposure above; do not
+            # mutate a shared bundle in place.
+            icc_profile = dg.output_icc_profile_bytes(gamut)
+            export_result = dg.export_jpeg(
+                path=inp,
+                out_path=out_path,
+                quality=quality,
+                bundle=bundle,
+                analysis=analysis,
+                tone_plan=render_plan,
+                output_gamut=gamut,
+                output_format=output_format,
+                hdr_headroom=hdr_headroom,
+                subsampling=dg.chroma_to_subsampling(chroma),
                 look=look,
                 look_strength=look_strength,
                 display_filter=display_filter,
                 filter_strength=filter_strength,
                 scene_transform=scene_transform,
                 scene_transform_strength=scene_transform_strength,
-                punch_scale=punch_scale,
                 tone_core=tone_core,
                 lum_norm=lum_norm,
                 agx_primaries=agx_primaries,
-                adjustments=adjustments,
-                endpoint_mode=endpoint_mode,
-                film_curve=film_curve,
-                film_mode=film_mode,
-                film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_optics_seed=film_optics_seed,
-                color_head_y=color_head_y,
-                color_head_m=color_head_m,
-                lens_filter=lens_filter,
+                punch_scale=punch_scale,
+                return_rgb=output_format == "sdr",
+                delivery=delivery,
+                chroma=chroma,
             )
-        )
-        preview = (
-            preview_b64_from_u8(
-                rendered_u8, icc_profile=icc_profile, width=PROXY_LONG_EDGE
-            )
-            if rendered_u8 is not None
-            else make_preview_b64(out_path, icc_profile=icc_profile)
-        )
-        if auto_ev_result is not None:
-            np = dg.np
-            if rendered_u8 is None:
-                from PIL import Image
+            hdr_export_info = export_result if isinstance(export_result, dict) else None
+            if hdr_export_info is not None and hdr_export_info.get("output_path"):
+                # The writer corrects a container/suffix mismatch; report the real file.
+                out_path = Path(str(hdr_export_info["output_path"]))
+            if hdr_export_info is not None and out_path.is_file():
+                hdr_export_info["file_size_bytes"] = out_path.stat().st_size
+            rendered_u8 = export_result[1] if isinstance(export_result, tuple) else None
+            if rendered_u8 is None and output_format == "ultrahdr-heic":
+                from dngscan.gainmap import read_primary_rgb_u8
 
-                with Image.open(out_path) as im:
-                    rendered_u8 = np.asarray(im.convert("RGB"), dtype=np.uint8)
-            annotated = annotate_preview_rgb_u8(
-                rendered_u8, dg.auto_ev_overlay_lines(auto_ev_result)
+                rendered_u8 = read_primary_rgb_u8(out_path)
+            if rendered_u8 is not None:
+                metrics = output_luminance_metrics_u8(rendered_u8, gamut, ev)
+            else:
+                metrics = output_luminance_metrics(out_path, gamut, ev)
+            metrics.update(
+                estimate_ev_headroom(
+                    bundle,
+                    analysis,
+                    gamut,
+                    ev,
+                    # B5: the probe's own bisection quantum is 1/128 EV; measured,
+                    # 220k vs 600k samples land within one quantum of each other,
+                    # so the function default (220k) is the declared operating point.
+                    look=look,
+                    look_strength=look_strength,
+                    display_filter=display_filter,
+                    filter_strength=filter_strength,
+                    scene_transform=scene_transform,
+                    scene_transform_strength=scene_transform_strength,
+                    punch_scale=punch_scale,
+                    tone_core=tone_core,
+                    lum_norm=lum_norm,
+                    agx_primaries=agx_primaries,
+                    adjustments=adjustments,
+                    endpoint_mode=endpoint_mode,
+                    film_curve=film_curve,
+                    film_mode=film_mode,
+                    film_crossover=film_crossover,
+            film_exposure_ev=film_exposure_ev,
+            film_print_timing=film_print_timing,
+            film_print_medium=film_print_medium,
+            film_print_exposure_ev=film_print_exposure_ev,
+            film_grain=film_grain,
+            film_halation=film_halation,
+            film_bloom=film_bloom,
+            film_optics_seed=film_optics_seed,
+                    color_head_y=color_head_y,
+                    color_head_m=color_head_m,
+                    lens_filter=lens_filter,
+                )
             )
-            preview = preview_b64_from_u8(
-                annotated, icc_profile=icc_profile, width=PROXY_LONG_EDGE
+            preview = (
+                preview_b64_from_u8(
+                    rendered_u8, icc_profile=icc_profile, width=PROXY_LONG_EDGE
+                )
+                if rendered_u8 is not None
+                else make_preview_b64(out_path, icc_profile=icc_profile)
             )
-        saved = [str(out_path)]
-        if png_path is not None:
-            saved.append(str(png_path))
+            if auto_ev_result is not None:
+                np = dg.np
+                if rendered_u8 is None:
+                    from PIL import Image
+
+                    with Image.open(out_path) as im:
+                        rendered_u8 = np.asarray(im.convert("RGB"), dtype=np.uint8)
+                annotated = annotate_preview_rgb_u8(
+                    rendered_u8, dg.auto_ev_overlay_lines(auto_ev_result)
+                )
+                preview = preview_b64_from_u8(
+                    annotated, icc_profile=icc_profile, width=PROXY_LONG_EDGE
+                )
+            saved = [str(out_path)]
+            if png_temp is not None:
+                # the main output is written: the dashboard may take its name
+                os.replace(png_temp, png_path)
+                png_temp = None
+                saved.append(str(png_path))
+    finally:
+        # A half-finished dashboard temp must never survive a failed main
+        # export (review batch 20); after a successful rename it is already
+        # gone, so this is idempotent.
+        if png_temp is not None:
+            png_temp.unlink(missing_ok=True)
 
     return {
         "ok": True,

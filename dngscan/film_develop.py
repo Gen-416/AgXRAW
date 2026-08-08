@@ -307,11 +307,24 @@ def _custom_delta_tau(color_head_y: float, color_head_m: float,
 class FilmSpatialContext:
     """Prepared per-render state for the §9 analog optics.
 
-    Holds the decimated spread maps (halation from the pre-emulsion
-    highlight exposure, bloom from the colorimetric developed image — both
-    DEFINED on the decimated spread grid, see film_optics) plus the engaged
-    amounts. The full-frame oracle and the renderer's sequential row-band
-    path build the identical context, so band seams are exact.
+    THREE-PHASE LIFECYCLE (each operator enters at a different point; the
+    full-frame oracle and the renderer's row-band path drive the identical
+    sequence, so band seams stay exact):
+
+    1. construction — the engaged amounts, the fitted film-space geometry
+       and the grain realization. GRAIN needs nothing further: it samples
+       the cached master integral by phase at apply time.
+    2. ``finish_maps(decimated_scene, ...)`` — PASS A, and it now serves
+       HALATION ONLY. Its source is pre-emulsion scene exposure, genuinely
+       low-frequency, so the decimated proxy is the right domain. A
+       bloom-only render skips this phase entirely.
+    3. ``begin_bloom_source()`` -> ``accumulate_bloom_source(rows, y0, y1)``
+       per band -> ``finish_bloom_map()`` — PASS B for BLOOM. Its source is
+       a THRESHOLDED function of the developed print, and threshold,
+       develop and decimation do not commute, so it must be accumulated
+       from the FULL-RESOLUTION PRE-BLOOM render. ``bloom_map`` stays None
+       until the last call, which is also what makes bloom apply exactly
+       once: the pass-B render sees this same context with no map yet.
     """
 
     __slots__ = (
@@ -429,8 +442,12 @@ class FilmSpatialContext:
 
 def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
     """Renderer entry: a context when the plan engages any optics amount,
-    else None (chunk-stream fast path). Call finish_maps with the decimated
-    scene before applying bands."""
+    else None (the chunk-stream fast path stays byte-identical).
+
+    The caller then drives whichever phases its amounts require — pass A
+    (``finish_maps``) for halation, pass B (``begin_bloom_source`` /
+    ``accumulate_bloom_source`` / ``finish_bloom_map``) for bloom, nothing
+    extra for grain. See FilmSpatialContext for the full lifecycle."""
     ctx = FilmSpatialContext(height, width, plan)
     return ctx if ctx.engaged else None
 

@@ -69,10 +69,15 @@ class GrainFieldContractTests(unittest.TestCase):
             FilmGeometry,
             MODELLED_DEFAULT,
             grain_field_for,
+            integral_from_field,
             sample_field,
         )
 
-        field = grain_field_for(MODELLED_DEFAULT, 0)
+        # sample_field takes an INTEGRAL image by contract (batch 19): a raw
+        # field silently produced different values (RMS 0.425 apart), and a
+        # test that only compares scale/crop RELATIONS could not see it —
+        # both sides were equally wrong (review batch 20).
+        field = integral_from_field(grain_field_for(MODELLED_DEFAULT, 0))
         full = sample_field(field, FilmGeometry(400, 600))
         # half-resolution preview == block mean of the full sampling
         half = sample_field(field, FilmGeometry(200, 300))
@@ -85,6 +90,30 @@ class GrainFieldContractTests(unittest.TestCase):
             field, FilmGeometry(200, 300, x0_mm=9.0, y0_mm=6.0, w_mm=18.0)
         )
         np.testing.assert_allclose(crop, full[100:300, 150:450], atol=2e-4)
+
+    def test_sampling_matches_a_direct_area_mean(self) -> None:
+        """Absolute truth, not just internal consistency: sampling a whole
+        landscape frame at the grid's own resolution must reproduce the
+        field itself. A raw field passed where an integral belongs fails
+        this immediately (review batch 20 — the relation-only test above
+        passed with both sides equally wrong)."""
+        from dngscan.film_optics import (
+            GATE_H_MM,
+            GATE_W_MM,
+            FilmGeometry,
+            MODELLED_DEFAULT,
+            grain_field_for,
+            integral_from_field,
+            sample_field,
+        )
+
+        field = grain_field_for(MODELLED_DEFAULT, 0)
+        gh, gw = field.shape[:2]
+        got = sample_field(
+            integral_from_field(field),
+            FilmGeometry(gh, gw, w_mm=GATE_W_MM, h_mm=GATE_H_MM),
+        )
+        np.testing.assert_allclose(got, field, atol=2e-4)
 
 
 class SpatialOperatorTests(unittest.TestCase):
