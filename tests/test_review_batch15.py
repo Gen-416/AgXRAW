@@ -87,32 +87,45 @@ class ConservativeScatterTests(unittest.TestCase):
         want = np.array([0.9, 0.6, 0.3]) / 0.9
         np.testing.assert_allclose(ratio, want, rtol=0.02)
 
+    @staticmethod
+    def _spread_ii(img):
+        from dngscan.film_optics import (
+            MODELLED_DEFAULT,
+            _as_integral,
+            scatter_source,
+            scatter_spread,
+        )
+
+        return _as_integral(
+            scatter_spread(scatter_source(img, MODELLED_DEFAULT), MODELLED_DEFAULT)
+        ).astype(np.float32)
+
     def test_band_split_matches_full_frame_bytes(self) -> None:
-        from dngscan.film_optics import MODELLED_DEFAULT, _as_integral, bloom_apply_rows
+        from dngscan.film_optics import MODELLED_DEFAULT, bloom_apply_rows
 
         h, w = 64, 96
         rng = np.random.default_rng(2)
         img = rng.uniform(0.0, 1.0, (h, w, 3)).astype(np.float32)
-        delta_ii = _as_integral(self._delta(img)).astype(np.float32)
+        spread_ii = self._spread_ii(img)
         flat = img.reshape(-1, 3)
-        full = bloom_apply_rows(flat, delta_ii, 0, h, h, w, MODELLED_DEFAULT, 0.8)
+        full = bloom_apply_rows(flat, spread_ii, 0, h, h, w, MODELLED_DEFAULT, 0.8)
         banded = np.empty_like(full)
         for y0 in range(0, h, 11):
             y1 = min(y0 + 11, h)
             banded[y0 * w:y1 * w] = bloom_apply_rows(
-                flat[y0 * w:y1 * w], delta_ii, y0, y1, h, w, MODELLED_DEFAULT, 0.8
+                flat[y0 * w:y1 * w], spread_ii, y0, y1, h, w, MODELLED_DEFAULT, 0.8
             )
         np.testing.assert_array_equal(full, banded)
 
     def test_output_sum_conserved_and_clean(self) -> None:
-        from dngscan.film_optics import MODELLED_DEFAULT, _as_integral, bloom_apply_rows
+        from dngscan.film_optics import MODELLED_DEFAULT, bloom_apply_rows
 
         h, w = 64, 96
         rng = np.random.default_rng(3)
         img = rng.uniform(0.0, 1.1, (h, w, 3)).astype(np.float32)
-        delta_ii = _as_integral(self._delta(img)).astype(np.float32)
+        spread_ii = self._spread_ii(img)
         out = bloom_apply_rows(
-            img.reshape(-1, 3), delta_ii, 0, h, h, w, MODELLED_DEFAULT, 1.0
+            img.reshape(-1, 3), spread_ii, 0, h, h, w, MODELLED_DEFAULT, 1.0
         )
         self.assertTrue(np.isfinite(out).all())
         self.assertGreaterEqual(float(out.min()), 0.0)

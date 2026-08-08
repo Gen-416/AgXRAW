@@ -726,9 +726,17 @@ class PreviewCache:
             # reanalysis is both impossible and unnecessary here.  Keep the degraded
             # bundle (it carries the wb_degradation note the UI must surface) and
             # reuse the base analysis instead of recomputing it.
-            return PreviewEntry(bundle=bundle, analysis=base.analysis)
+            child = PreviewEntry(bundle=bundle, analysis=base.analysis)
+            # inherit the grain realization (review batch 16): the preview
+            # renders through this balanced entry while export peeks the
+            # BASE entry — a freshly minted id here silently changed the
+            # exported grain under any non-AsShot white balance
+            child.realization_id = base.realization_id
+            return child
         analysis = dg.reanalyze_balanced_scene(base.analysis, bundle)
-        return PreviewEntry(bundle=bundle, analysis=analysis)
+        child = PreviewEntry(bundle=bundle, analysis=analysis)
+        child.realization_id = base.realization_id
+        return child
 
 
 PREVIEW_STORE = PreviewCache()

@@ -791,6 +791,7 @@ def export_preview_jpeg(
         film_grain,
         film_halation,
         film_bloom,
+        film_optics_seed,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
     if auto_ev is None:
@@ -1084,6 +1085,11 @@ def run_preview(params: dict) -> dict:
         )
         if not is_current():
             raise PreviewSuperseded()
+        if film_optics_seed is None:
+            # resolve ONCE against the loaded entry (review batch 16: the
+            # auto-EV branch received None and film plan compilation crashed
+            # on int(None) whenever any film preset was active)
+            film_optics_seed = int(getattr(cached, "realization_id", 0) or 0)
         auto_ev_result = None
         if ev_auto:
             auto_ev_result = dg.compute_auto_ev(

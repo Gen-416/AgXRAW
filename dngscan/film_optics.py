@@ -263,11 +263,15 @@ def _sep_axis(padded: np.ndarray, kernel: np.ndarray, n: int, axis: int) -> np.n
     return acc.astype(np.float32)
 
 
-def _gaussian_blur_slabbed(img: np.ndarray, sigma: float, slab: int = 256) -> np.ndarray:
+def _gaussian_blur_slabbed(
+    img: np.ndarray, sigma: float, slab: int = 256, periodic: bool = False
+) -> np.ndarray:
     """Separable Gaussian for LARGE arrays, processed in halo slabs so the
-    transient working set stays at slab scale (review batch 13: the whole-
-    array pad/accumulate chain alone spent ~390 MiB on the grain grid).
-    Reflect-padded, float32, identical taps to _gaussian_blur."""
+    transient working set stays at slab scale (review batch 13). float32,
+    identical taps to _gaussian_blur. periodic=True wrap-pads both passes —
+    the master grain field must be GENUINELY periodic for the phase
+    realizations: reflect padding left a ~20-sigma first-difference seam at
+    the wrap line (review batch 16)."""
     if sigma <= 0.0:
         return np.asarray(img, dtype=np.float32)
     radius = max(int(np.ceil(3.0 * sigma)), 1)
@@ -279,10 +283,11 @@ def _gaussian_blur_slabbed(img: np.ndarray, sigma: float, slab: int = 256) -> np
     h, w = src.shape[:2]
     # Both passes write back IN PLACE per slab (the pad copy already holds
     # the slab's context), so the whole-array footprint stays at one buffer.
+    edge_mode = "wrap" if periodic else "reflect"
     for c0 in range(0, w, slab):     # vertical pass, column slabs
         c1 = min(c0 + slab, w)
         pad = np.pad(src[:, c0:c1], ((radius, radius), (0, 0), (0, 0)),
-                     mode="reflect")
+                     mode=edge_mode)
         acc = np.zeros((h, c1 - c0, src.shape[2]), dtype=np.float32)
         for i in range(k32.size):
             acc += k32[i] * pad[i:i + h]
@@ -290,7 +295,7 @@ def _gaussian_blur_slabbed(img: np.ndarray, sigma: float, slab: int = 256) -> np
     for r0 in range(0, h, slab):     # horizontal pass, row slabs
         r1 = min(r0 + slab, h)
         pad = np.pad(src[r0:r1], ((0, 0), (radius, radius), (0, 0)),
-                     mode="reflect")
+                     mode=edge_mode)
         acc = np.zeros((r1 - r0, w, src.shape[2]), dtype=np.float32)
         for i in range(k32.size):
             acc += k32[i] * pad[:, i:i + w]
@@ -339,7 +344,7 @@ def _band_limited_field(profile: OpticsProfile, seed: int) -> np.ndarray:
         white[..., ch] += np.float32(np.sqrt(c)) * shared[..., 0]
     del shared
     field = _gaussian_blur_slabbed(
-        white, profile.grain_size_um / profile.grain_pitch_um
+        white, profile.grain_size_um / profile.grain_pitch_um, periodic=True
     )
     del white
     n = field.shape[0] * field.shape[1]
@@ -490,19 +495,41 @@ def sample_field(
         bot = ii[yi + 1][:, xi] * (1 - xf) + ii[yi + 1][:, xi + 1] * xf
         return top * (1 - yf) + bot * yf
 
+    # Periodic phase (review batch 16): for any pixel whose footprint does
+    # NOT straddle a wrap line, the analytic periodic extension's ky/kx/total
+    # terms CANCEL in the four-corner rectangle difference — so simply
+    # mapping every edge by mod G and using the original single-lookup query
+    # is EXACT for those pixels, at zero extra cost. Only the (at most one)
+    # straddling pixel row and column need the explicit two-piece periodic
+    # sum, computed on thin strips afterwards. The master is genuinely
+    # periodic (wrap-blurred), so the wrap line carries no seam.
     if phase == (0, 0):
-        ii_at = _ii_at
+        ye_q, xe_q = ye, xe
+        straddle_row = straddle_col = None
+        periodic_at = None
     else:
+        ye_q = ye - gh * np.floor(ye / gh)
+        xe_q = xe - gw * np.floor(xe / gw)
+
+        def _straddler(edges: np.ndarray, G: int):
+            over = np.nonzero(
+                (edges[:-1] - G * np.floor(edges[:-1] / G))
+                > (edges[1:] - G * np.floor(edges[1:] / G))
+            )[0]
+            return int(over[0]) if over.size else None
+
+        straddle_row = _straddler(ye, gh)
+        straddle_col = _straddler(xe, gw)
         total = ii[gh, gw].astype(np.float64)
-        row_tot = ii[gh]      # I(G, x)
-        col_tot = ii[:, gw]   # I(y, G)
+        row_tot = ii[gh]
+        col_tot = ii[:, gw]
 
         def _interp1(table: np.ndarray, q: np.ndarray, n: int) -> np.ndarray:
             qi = np.clip(np.floor(q).astype(int), 0, n - 1)
             qf = (q - qi)[:, None]
             return table[qi] * (1 - qf) + table[qi + 1] * qf
 
-        def ii_at(yq: np.ndarray, xq: np.ndarray) -> np.ndarray:
+        def periodic_at(yq: np.ndarray, xq: np.ndarray) -> np.ndarray:
             ky = np.floor(yq / gh).astype(np.float64)
             kx = np.floor(xq / gw).astype(np.float64)
             ry = yq - ky * gh
@@ -518,16 +545,40 @@ def sample_field(
             )
 
     out = np.empty((geometry.height, geometry.width, ii.shape[2]), dtype=np.float32)
-    area_x = np.maximum(xe[1:] - xe[:-1], 1e-12)[None, :, None]
-    slab = max(1, 8_000_000 // max(geometry.width, 1))
-    for r0 in range(0, geometry.height, slab):
-        r1 = min(r0 + slab, geometry.height)
-        s00 = ii_at(ye[r0:r1], xe[:-1])
-        s01 = ii_at(ye[r0:r1], xe[1:])
-        s10 = ii_at(ye[r0 + 1:r1 + 1], xe[:-1])
-        s11 = ii_at(ye[r0 + 1:r1 + 1], xe[1:])
-        area = (ye[r0 + 1:r1 + 1] - ye[r0:r1])[:, None, None] * area_x
-        out[r0:r1] = (s11 - s10 - s01 + s00) / np.maximum(area, 1e-12)
+
+    def _fill(rows: slice, yq_e: np.ndarray, ya_e: np.ndarray,
+              cols: slice, xq_e: np.ndarray, xa_e: np.ndarray, query) -> None:
+        n_rows = rows.stop - rows.start
+        n_cols = cols.stop - cols.start
+        if n_rows <= 0 or n_cols <= 0:
+            return
+        area_x = np.maximum(xa_e[1:] - xa_e[:-1], 1e-12)[None, :, None]
+        slab = max(1, 8_000_000 // max(n_cols, 1))
+        for r0 in range(0, n_rows, slab):
+            r1 = min(r0 + slab, n_rows)
+            s00 = query(yq_e[r0:r1], xq_e[:-1])
+            s01 = query(yq_e[r0:r1], xq_e[1:])
+            s10 = query(yq_e[r0 + 1:r1 + 1], xq_e[:-1])
+            s11 = query(yq_e[r0 + 1:r1 + 1], xq_e[1:])
+            area = (ya_e[r0 + 1:r1 + 1] - ya_e[r0:r1])[:, None, None] * area_x
+            out[rows.start + r0:rows.start + r1, cols] = (
+                (s11 - s10 - s01 + s00) / np.maximum(area, 1e-12)
+            )
+
+    _fill(slice(0, geometry.height), ye_q, ye,
+          slice(0, geometry.width), xe_q, xe, _ii_at)
+    if periodic_at is not None:
+        ph_ye = ye - gh * np.floor(ye[:1] / gh)  # shift into [0, 2G) once
+        ph_xe = xe - gw * np.floor(xe[:1] / gw)
+        if straddle_row is not None:
+            _fill(slice(straddle_row, straddle_row + 1),
+                  ph_ye[straddle_row:straddle_row + 2], ye[straddle_row:straddle_row + 2],
+                  slice(0, geometry.width), ph_xe, xe, periodic_at)
+        if straddle_col is not None:
+            _fill(slice(0, geometry.height), ph_ye, ye,
+                  slice(straddle_col, straddle_col + 1),
+                  ph_xe[straddle_col:straddle_col + 2], xe[straddle_col:straddle_col + 2],
+                  periodic_at)
     return out
 
 
@@ -612,31 +663,24 @@ def halation_reinject_rows(
     return np.log10(np.maximum(lin, 1e-12)).reshape(-1, 3)
 
 
-def bloom_delta_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.ndarray:
-    """CONSERVATIVE medium scatter on the decimated grid (P1, review batch
-    15): the positive medium REDISTRIBUTES energy, it never adds light.
-
-        Y      = dot(rgb, luma)
-        excess = max(Y - threshold, 0)
-        source = rgb * excess / max(Y, eps)      # luminance-gated, RGB-
-                                                 # proportional: hue intact
-        spread = K(source)                       # non-negative multi-scale
-        delta  = spread - source                 # signed, sums to ZERO
-
-    K is the same multi-scale pyramid, per-channel renormalized to the
-    source's exact energy (float64 sums), so sum(delta) == 0 per channel to
-    float precision: highlight cores LOSE what their neighbourhoods gain.
-    The frame is a declared closed system — scatter neither appears from
-    nowhere nor models losses past the frame edge. A uniform field yields
-    delta == 0 (blur and pyramid preserve uniformity), so flat scenes pass
-    through untouched.
-    """
-    rgb = np.asarray(developed_dec, dtype=np.float32)
-    dh, dw = rgb.shape[:2]
+def scatter_source(rgb: np.ndarray, profile: OpticsProfile) -> np.ndarray:
+    """The luminance-gated, RGB-proportional removable energy at a pixel:
+    source = rgb * max(Y - threshold, 0) / max(Y, eps). Pointwise, so it can
+    be evaluated at ANY resolution — the production path evaluates it on the
+    actual full-resolution developed band (review batch 16: subtracting a
+    proxy-derived source at full resolution stole light from dark pixels
+    that never had any)."""
+    rgb = np.asarray(rgb, dtype=np.float32)
     luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
     y = rgb @ luma
     excess = np.maximum(y - profile.bloom_threshold, 0.0)
-    source = rgb * (excess / np.maximum(y, 1e-9))[..., None]
+    return rgb * (excess / np.maximum(y, 1e-9))[..., None]
+
+
+def scatter_spread(source: np.ndarray, profile: OpticsProfile) -> np.ndarray:
+    """The non-negative multi-scale scatter of a source map, per-channel
+    renormalized (float64 sums) to the source's exact energy."""
+    dh, dw = source.shape[:2]
     level = source
     spread = np.zeros_like(source)
     total = 0.0
@@ -661,18 +705,41 @@ def bloom_delta_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.nda
             )
             spread[r0:r1] += wgt * blurred[row_idx][:, col_idx]
     spread /= max(total, 1e-9)
-    # exact per-channel energy renormalization (edge padding and the
-    # pyramid's odd-size handling would otherwise leak a little energy)
     src_sum = np.sum(source, axis=(0, 1), dtype=np.float64)
     spr_sum = np.sum(spread, axis=(0, 1), dtype=np.float64)
     scale = np.where(spr_sum > 0.0, src_sum / np.maximum(spr_sum, 1e-30), 0.0)
     spread *= scale.astype(np.float32)[None, None, :]
-    return spread - source
+    return spread
+
+
+def bloom_delta_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.ndarray:
+    """CONSERVATIVE medium scatter on the decimated grid (P1, review batch
+    15): the positive medium REDISTRIBUTES energy, it never adds light.
+
+        Y      = dot(rgb, luma)
+        excess = max(Y - threshold, 0)
+        source = rgb * excess / max(Y, eps)      # luminance-gated, RGB-
+                                                 # proportional: hue intact
+        spread = K(source)                       # non-negative multi-scale
+        delta  = spread - source                 # signed, sums to ZERO
+
+    K is the same multi-scale pyramid, per-channel renormalized to the
+    source's exact energy (float64 sums), so sum(delta) == 0 per channel to
+    float precision: highlight cores LOSE what their neighbourhoods gain.
+    The frame is a declared closed system — scatter neither appears from
+    nowhere nor models losses past the frame edge. A uniform field yields
+    delta == 0 (blur and pyramid preserve uniformity), so flat scenes pass
+    through untouched.
+    """
+    rgb = np.asarray(developed_dec, dtype=np.float32)
+    source = scatter_source(rgb, profile)
+    return scatter_spread(source, profile) - source
+
 
 
 def bloom_apply_rows(
     display_linear: np.ndarray,
-    delta_ii: np.ndarray,
+    spread_ii: np.ndarray,
     y0: int,
     y1: int,
     height: int,
@@ -680,19 +747,26 @@ def bloom_apply_rows(
     profile: OpticsProfile,
     amount: float,
 ) -> np.ndarray:
-    """Add the AREA-PRESERVING upsample of the conservative delta to output
-    rows [y0, y1): each output pixel takes the exact area MEAN of the delta
-    over its fractional footprint (the same integral-image sampler as the
-    grain path — never plain bilinear passed off as conservative), so equal
-    footprints make the full-resolution sum of the applied delta zero
-    whenever the map's own sum is zero. Signed delta, so highlight cores
-    darken while neighbourhoods brighten; output stays non-negative because
-    a * |negative delta| <= a * source <= bloom_strength * image."""
+    """Conservative scatter for output rows [y0, y1), two-term form (review
+    batch 16):
+
+        out = img - a * source_full + a * upsample(spread)
+
+    source_full is evaluated POINTWISE on this very band of the developed
+    full-resolution image — the subtraction can never remove light a pixel
+    does not carry, so a bright point inside a dark decimated cell no longer
+    drives its neighbours negative (a * source_full <= strength * img keeps
+    the output non-negative by construction). spread comes from the
+    decimated proxy, renormalized to its own source's energy; the applied
+    balance therefore conserves total light to proxy accuracy — exactly, on
+    a uniform field, where the two terms cancel pointwise."""
     if amount <= 0.0:
         return display_linear
     img = np.asarray(display_linear, dtype=np.float32).reshape(y1 - y0, width, 3)
-    up = _sample_plain(delta_ii, y0, y1, height, width)
-    return (img + float(amount) * profile.bloom_strength * up).reshape(-1, 3)
+    a = float(amount) * profile.bloom_strength
+    up = _sample_plain(spread_ii, y0, y1, height, width)
+    source_full = scatter_source(img, profile)
+    return (img + a * (up - source_full)).reshape(-1, 3)
 
 
 def _sample_plain(
