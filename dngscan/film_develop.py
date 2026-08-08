@@ -316,7 +316,7 @@ class FilmSpatialContext:
 
     __slots__ = (
         "height", "width", "profile", "grain", "halation", "bloom", "seed",
-        "hal_map", "bloom_map", "geometry",
+        "hal_map", "bloom_map", "geometry", "bloom_source", "spread_shape",
     )
 
     def __init__(self, height: int, width: int, plan: Any) -> None:
@@ -331,6 +331,8 @@ class FilmSpatialContext:
         self.seed = int(getattr(plan, "film_optics_seed", 0) or 0)
         self.hal_map = None
         self.bloom_map = None
+        self.bloom_source = None
+        self.spread_shape = (0, 0)
         # Orientation-aware centered gate mapping (review batch 13): portrait
         # images use the 24x36 rotated gate and non-3:2 aspects letterbox
         # inside it, so no row band ever samples outside the field.
@@ -346,15 +348,21 @@ class FilmSpatialContext:
         return self.geometry.rows(y0, y1)
 
     def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
-        """Build the spread maps from the decimated post-intent scene
-        (linear Rec.2020, area-decimated). The bloom source is the
-        COLORIMETRIC developed image of that decimated scene — the spatial
-        operators themselves never enter the source definition."""
-        from .film_optics import (
-            halation_spread_map,
-            scatter_source,
-            scatter_spread,
-        )
+        """Pass A: build the halation spread from the decimated post-intent
+        scene. Halation's source is PRE-emulsion scene exposure, a genuinely
+        low-frequency quantity, so the decimated proxy is the right domain.
+
+        Bloom is NOT built here (review batch 18): its source is a
+        THRESHOLDED function of the developed print, and threshold, develop
+        and decimation do not commute — a single-pixel highlight averaged
+        into a decimated cell falls under the threshold, so the proxy
+        produced no spread while the full-resolution apply still subtracted
+        that pixel's real source (measured: a 1.0 highlight fell to 0.912
+        with nothing gained anywhere). The bloom source is accumulated from
+        the FULL-RESOLUTION pre-bloom render instead — see
+        accumulate_bloom_source / finish_bloom_map.
+        """
+        from .film_optics import halation_spread_map
         from .film_v2_math import film_compression_ev
 
         dh, dw = rgb_dec.shape[:2]
@@ -378,27 +386,37 @@ class FilmSpatialContext:
                 exposure_lin, self.width, geo_w_mm, self.profile
             )
         if self.bloom > 0.0:
-            flat_dec = np.maximum(rgb_dec.reshape(-1, 3).astype(np.float32), 0.0)
-            developed = np.empty_like(flat_dec)
-            # Chunked colorimetric develop of the decimated source: one shot
-            # through the tetra gathers materialized ~550 MiB of transients
-            # at the 2048-wide spread grid (review batch 13).
-            step = 262_144
-            for c0 in range(0, flat_dec.shape[0], step):
-                c1 = min(c0 + step, flat_dec.shape[0])
-                developed[c0:c1] = _apply_film_core_v2(
-                    flat_dec[c0:c1], plan, preset, None
-                )
-            from .film_optics import _as_integral
+            self.bloom_source = np.zeros((dh, dw, 3), dtype=np.float64)
+            self.spread_shape = (dh, dw)
 
-            # two-term conservative scatter (review batch 16): only the
-            # NON-NEGATIVE spread rides the context; the subtraction side is
-            # evaluated pointwise on each full-resolution band at apply time
-            spread = scatter_spread(
-                scatter_source(developed.reshape(dh, dw, 3), self.profile),
-                self.profile,
-            )
-            self.bloom_map = _as_integral(spread).astype(np.float32)
+    def accumulate_bloom_source(self, developed_rows: Any, y0: int, y1: int) -> None:
+        """Pass B: area-decimate the FULL-RESOLUTION pre-bloom print's
+        scatter source. The same pointwise source is subtracted at apply
+        time, so the two terms are the identical quantity and the balance
+        conserves energy exactly."""
+        if self.bloom <= 0.0 or self.bloom_source is None:
+            return
+        from .film_optics import area_decimate_rows, scatter_source
+
+        rows = np.asarray(developed_rows, dtype=np.float32).reshape(
+            y1 - y0, self.width, 3
+        )
+        src = scatter_source(rows, self.profile)
+        dh, dw = self.spread_shape
+        area_decimate_rows(src, y0, self.height, self.width, dh, dw, self.bloom_source)
+
+    def finish_bloom_map(self) -> None:
+        """Close pass B: the scatter kernel runs on the decimated source and
+        the integral image of the result rides the context."""
+        if self.bloom <= 0.0 or self.bloom_source is None:
+            return
+        from .film_optics import _as_integral, scatter_spread
+
+        spread = scatter_spread(
+            self.bloom_source.astype(np.float32), self.profile
+        )
+        self.bloom_map = _as_integral(spread).astype(np.float32)
+        self.bloom_source = None
 
 
 def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
@@ -510,7 +528,7 @@ def _apply_film_core_v2(
                     ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
                 )
         developed = np.maximum(developed, 0.0)
-        if ctx is not None and ctx.bloom > 0.0:
+        if ctx is not None and ctx.bloom > 0.0 and ctx.bloom_map is not None:
             from .film_optics import bloom_apply_rows
 
             developed = bloom_apply_rows(
@@ -568,11 +586,13 @@ def _apply_film_core_v2(
         for c in range(3):
             developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
     developed = np.maximum(developed, 0.0)
-    if ctx is not None and ctx.bloom > 0.0:
+    if ctx is not None and ctx.bloom > 0.0 and ctx.bloom_map is not None:
         from .film_optics import bloom_apply_rows
 
         # §9.2: the positive medium's intrinsic scatter, after print
-        # formation, before delivery gamut fit downstream.
+        # formation, before delivery gamut fit downstream. bloom_map is None
+        # during pass B (the source accumulation), so bloom applies exactly
+        # once, on the final pass.
         developed = bloom_apply_rows(
             developed, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
             ctx.profile, ctx.bloom,
@@ -609,6 +629,15 @@ def apply_film_core(
                     area_decimate(rgb.reshape(h, w, 3), dh, dw),
                     plan, preset,
                 )
+            if ctx.bloom > 0.0:
+                # Pass B (review batch 18): the PRE-BLOOM print at full
+                # resolution supplies the scatter source. bloom_map is still
+                # None here, so this pass carries grain/halation but no
+                # bloom — exactly the image the final pass subtracts from.
+                pre = _apply_film_core_v2(rgb, plan, preset, (ctx, 0, h))
+                ctx.accumulate_bloom_source(pre, 0, h)
+                del pre
+                ctx.finish_bloom_map()
             spatial = (ctx, 0, h)
     return _apply_film_core_v2(rgb, plan, preset, spatial)
 

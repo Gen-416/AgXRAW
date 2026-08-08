@@ -277,7 +277,15 @@ def _apply_look_oklab(
     """
     field = LOOK_FIELDS[look]
     s = np.float32(max(0.0, strength))
-    use_parallel = parallel and np.asarray(lab_l).size >= _LOOK_PARALLEL_MIN_PIXELS
+    from .cpu_budget import current_inner
+
+    # S3 budget (review batch 18): the look pool used to ignore the budget
+    # entirely and stack its own submits inside every outer chunk worker.
+    use_parallel = (
+        parallel
+        and np.asarray(lab_l).size >= _LOOK_PARALLEL_MIN_PIXELS
+        and current_inner() > 1
+    )
     if use_parallel:
         chroma_future = _LOOK_POOL.submit(np.hypot, lab_a, lab_b)
         hue = np.degrees(np.arctan2(lab_b, lab_a)) % 360.0

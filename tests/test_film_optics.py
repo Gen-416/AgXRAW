@@ -206,6 +206,14 @@ class RowBandEquivalenceTests(unittest.TestCase):
         ctx = prepare_film_spatial(plan, h, w)
         dh, dw = spread_grid_shape(h, w)
         ctx.finish_maps(area_decimate(img, dh, dw), plan, stock)
+        if ctx.bloom > 0.0:
+            # pass B (review batch 18): the bloom source comes from the
+            # FULL-RESOLUTION pre-bloom print, so a hand-built context must
+            # run it too before the map exists
+            ctx.accumulate_bloom_source(
+                apply_film_core(flat, plan, spatial=(ctx, 0, h)), 0, h
+            )
+            ctx.finish_bloom_map()
         for band_rows in (5, 16, 48):
             out = np.empty_like(full)
             for y0 in range(0, h, band_rows):

@@ -11,6 +11,7 @@ import multiprocessing as mp
 import threading
 from queue import Empty
 import os
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -1700,7 +1701,11 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
-        film_optics_seed=film_optics_seed,
+        # NOT the seed: the readable stem names the headline choices, and a
+        # random realization id would make every export a new filename. The
+        # seed rides the fingerprint below, which is what prevents two
+        # different renders from sharing a path (review batch 18 P0: passing
+        # it here raised TypeError on EVERY GUI export).
     )
     fingerprint = export_plan_fingerprint(
         wb=wb,
@@ -1748,6 +1753,14 @@ def run_export(params: dict) -> dict:
     )
     out_ext = ".heic" if output_format == "ultrahdr-heic" else ".jpg"
     out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
+    if not want_png:
+        # Staged ownership (plan S4, extended to the GUI in review batch 18):
+        # the plan is compiled and no dashboard will run, so the analysis
+        # buffers are released BEFORE the export allocates its own
+        # full-frame work. With want_png the dashboard still needs
+        # xyz_render / y / ev_img, so they are kept for it.
+        bundle = dg.release_analysis_buffers(bundle)
+        y = ev_img = None
     with SCHEDULER.slot("export"):
         # Intent exposure already applied via with_intent_exposure above; do not
         # mutate a shared bundle in place.
@@ -1906,6 +1919,30 @@ def run_export_isolated(params: dict) -> dict:
     The process is deliberately short-lived: NumPy/libraw allocations then return to the
     OS after every export instead of accumulating in the long-running GUI process.
     """
+    # Resolve the grain realization IN THE PARENT (review batch 18): the
+    # spawned child gets a FRESH PREVIEW_STORE, so a child-side "auto" would
+    # mint a brand-new seed and export grain the preview never showed. The
+    # resolved integer travels in the payload; an explicit seed passes
+    # through unchanged.
+    params = dict(params)
+    raw_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
+    if raw_seed in (None, "", "auto"):
+        try:
+            inp, highlight, _, _, _, _, _, _, _, _ = parse_job_params(params)
+            wb = str(params.get("wb", "camera"))
+            decoder, coreimage_version = parse_decoder(params)
+            demosaic = parse_demosaic(params, decoder)
+            tone_core, _ = parse_tone_core(params)
+            entry = PREVIEW_STORE.peek(
+                inp, "reconstruct" if decoder == "coreimage" else highlight,
+                wb, tone_core == "gated", decoder, coreimage_version, demosaic,
+            )
+        except Exception:
+            entry = None
+        params["filmOpticsSeed"] = int(
+            getattr(entry, "realization_id", 0) or secrets.randbits(32) | 1
+        )
+        params.pop("film_optics_seed", None)
     context = mp.get_context("spawn")
     result_queue = context.Queue(maxsize=1)
     process = context.Process(

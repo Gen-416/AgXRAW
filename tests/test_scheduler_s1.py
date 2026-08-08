@@ -103,18 +103,97 @@ class SingleFlightTests(unittest.TestCase):
         )
 
     def test_failure_propagates_and_next_request_retries(self) -> None:
+        """Deterministic by construction (review batch 18): the racy version
+        launched three threads at once, so a late thread could either join
+        the failing flight OR start the retry and the build count was
+        nondeterministic. Sequential phases test the same two contracts —
+        a failed flight raises, and the NEXT request rebuilds — without a
+        schedule dependency."""
         from pathlib import Path
 
         cache = self._cache()
         log: list[str] = []
-        results, errors = self._run(
-            cache, 3, [Path("/tmp/c.dng")], log, fail_first=True,
+
+        # phase 1: the flight fails and the failure reaches its caller
+        _, errors = self._run(
+            cache, 1, [Path("/tmp/c.dng")], log, build_time=0.0, fail_first=True
         )
-        # every request eventually resolves: the failed flight surfaces its
-        # error to at most its own waiters, and retries rebuild
-        self.assertGreaterEqual(len(log), 2, "a retry build must happen")
-        self.assertEqual(len(results) + len(errors), 3)
-        self.assertGreaterEqual(len(results), 1)
+        self.assertEqual(len(errors), 1, "the failing flight must raise")
+        self.assertEqual(len(log), 1)
+
+        # phase 2: a fresh request rebuilds (no stale failure is cached)
+        results, errors = self._run(
+            cache, 1, [Path("/tmp/c.dng")], log, build_time=0.0
+        )
+        self.assertEqual(errors, [], "a retry must not inherit the failure")
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(log), 2, "the retry must actually rebuild")
+
+    def test_concurrent_waiters_on_a_failing_flight_all_see_it(self) -> None:
+        """The concurrency half of the contract, synchronized on the REAL
+        join point: the builder is released only once both waiters are
+        parked inside the flight's event (the earlier barrier only proved
+        they had entered the thread body, so a waiter could still arrive
+        after the flight closed and legitimately start its own build)."""
+        import threading
+        from pathlib import Path
+        from unittest import mock
+
+        import dngscan.gui.preview_cache as pc
+
+        cache = self._cache()
+        builds: list[str] = []
+        release_builder = threading.Event()
+        counter_lock = threading.Lock()
+        parked = {"n": 0}
+
+        class CountingEvent(threading.Event):
+            def wait(self, timeout=None):  # type: ignore[override]
+                with counter_lock:
+                    parked["n"] += 1
+                try:
+                    return super().wait(timeout)
+                finally:
+                    with counter_lock:
+                        parked["n"] -= 1
+
+        def fake_load_raw(path, *a, **k):
+            builds.append(str(path))
+            release_builder.wait(timeout=10)
+            raise RuntimeError("injected decode failure")
+
+        errors: list[Exception] = []
+
+        def worker() -> None:
+            try:
+                cache.get(Path("/tmp/f.dng"), "clip", "camera")
+            except Exception as exc:
+                errors.append(exc)
+
+        with mock.patch.object(pc.threading, "Event", CountingEvent), \
+                mock.patch.object(pc, "_read_disk_entry", lambda *a, **k: None), \
+                mock.patch.object(pc, "_write_disk_entry", lambda *a: None), \
+                mock.patch.object(
+                    pc, "_cache_identity",
+                    lambda path, *a, **k: ((str(path),), "f")), \
+                mock.patch.object(pc.dg, "load_raw", fake_load_raw):
+            builder = threading.Thread(target=worker)
+            builder.start()
+            deadline = time.time() + 10
+            while not builds and time.time() < deadline:
+                time.sleep(0.005)
+            waiters = [threading.Thread(target=worker) for _ in range(2)]
+            for t in waiters:
+                t.start()
+            while parked["n"] < 2 and time.time() < deadline:
+                time.sleep(0.005)
+            self.assertEqual(parked["n"], 2, "waiters never joined the flight")
+            release_builder.set()
+            builder.join(timeout=10)
+            for t in waiters:
+                t.join(timeout=10)
+        self.assertEqual(len(builds), 1, "waiters must not start their own build")
+        self.assertEqual(len(errors), 3, "every participant must see the failure")
 
     def test_build_quota_bounds_concurrency(self) -> None:
         from pathlib import Path
