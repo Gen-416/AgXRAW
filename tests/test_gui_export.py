@@ -40,7 +40,7 @@ class ExportSuffixTests(unittest.TestCase):
         self.assertIn("此文件不支持 RAW 9", html)
         self.assertIn('type="file" id="filePicker"', html)
         self.assertIn('accept=".3fr,.arw,.cr2,.cr3,.dcr,.dng', html)
-        self.assertIn('fetch("/upload?name="', html)
+        self.assertIn('apiFetch("/upload?name="', html)
         self.assertNotIn("文件只传给本机", html)
         self.assertNotIn("filePickerHint", html)
         self.assertNotIn('id="browseBtn"', html)

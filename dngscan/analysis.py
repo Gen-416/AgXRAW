@@ -318,8 +318,56 @@ def normalized_raw_signal(
 
 
 def estimate_raw_noise_floor(bundle: RawBundle, fullwell_by_channel: dict[int, int]) -> float:
-    signal = normalized_raw_signal(bundle.raw_image, bundle.raw_colors, bundle.black_levels, fullwell_by_channel)
-    return estimate_noise_floor(signal)
+    """Tile-local port of estimate_noise_floor over the NORMALIZED raw
+    signal. The old path materialized full-frame black/fullwell maps and a
+    normalized copy (three frame-sized float arrays) only to reduce them to
+    32x48 tile means/stds (review batch 17); normalization is pointwise, so
+    doing it per tile yields the identical statistic with tile-sized
+    temporaries only."""
+    raw = bundle.raw_image
+    colors = bundle.raw_colors
+    h = min(raw.shape[0], colors.shape[0])
+    w = min(raw.shape[1], colors.shape[1])
+    rows, cols = min(32, h), min(48, w)
+    if rows <= 0 or cols <= 0:
+        return 0.0
+    fallback = max(fullwell_by_channel.values()) if fullwell_by_channel else 1
+    max_color = int(np.max(colors)) if colors.size else -1
+    levels = np.zeros(max_color + 1, dtype=np.float32)
+    denoms = np.ones(max_color + 1, dtype=np.float32)
+    for cid in range(max_color + 1):
+        black = float(bundle.black_levels[cid]) if cid < len(bundle.black_levels) else 0.0
+        levels[cid] = black
+        denoms[cid] = max(float(fullwell_by_channel.get(cid, fallback)) - black, 1.0)
+    y_edges = np.linspace(0, h, rows + 1, dtype=int)
+    x_edges = np.linspace(0, w, cols + 1, dtype=int)
+    means: list[float] = []
+    stds: list[float] = []
+    for r in range(rows):
+        y0, y1 = int(y_edges[r]), int(y_edges[r + 1])
+        if y1 <= y0:
+            continue
+        for c in range(cols):
+            x0, x1 = int(x_edges[c]), int(x_edges[c + 1])
+            if x1 <= x0:
+                continue
+            cid_tile = colors[y0:y1, x0:x1]
+            tile = (
+                raw[y0:y1, x0:x1].astype(np.float32) - levels[cid_tile]
+            )
+            np.clip(tile, 0.0, None, out=tile)
+            tile /= denoms[cid_tile]
+            np.nan_to_num(tile, copy=False, nan=0.0, posinf=1.0, neginf=0.0)
+            if tile.size:
+                means.append(float(np.mean(tile, dtype=np.float64)))
+                stds.append(float(np.std(tile, dtype=np.float64)))
+    if not means:
+        return 0.0
+    means_arr = np.asarray(means)
+    stds_arr = np.asarray(stds)
+    count = max(1, int(math.ceil(len(means) * 0.10)))
+    darkest = np.argsort(means_arr)[:count]
+    return float(np.median(stds_arr[darkest]))
 
 
 def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
@@ -471,14 +519,21 @@ def compute_snr_curves(
             noise_valid = noise[valid]
             snr_db = np.full(centers.shape, np.nan, dtype=np.float32)
             counts = np.zeros(centers.shape, dtype=np.int32)
+            # single sort + boundary slices instead of 84 whole-array boolean
+            # scans (review batch 17): identical per-bin members, one pass
+            order = np.argsort(stops, kind="stable")
+            stops_sorted = stops[order]
+            sig_sorted = sig_valid[order]
+            noise_sorted = noise_valid[order]
+            bounds = np.searchsorted(stops_sorted, bins)
             for i in range(len(centers)):
-                in_bin = (stops >= bins[i]) & (stops < bins[i + 1])
-                n = int(np.count_nonzero(in_bin))
+                lo, hi = int(bounds[i]), int(bounds[i + 1])
+                n = hi - lo
                 counts[i] = n
                 if n < 8:
                     continue
-                noise_est = float(np.percentile(noise_valid[in_bin], SNR_LOW_PERCENTILE))
-                signal_med = float(np.median(sig_valid[in_bin]))
+                noise_est = float(np.percentile(noise_sorted[lo:hi], SNR_LOW_PERCENTILE))
+                signal_med = float(np.median(sig_sorted[lo:hi]))
                 if noise_est <= 0.0 or signal_med <= 0.0:
                     continue
                 snr_db[i] = np.float32(20.0 * math.log10(signal_med / max(noise_est, 1e-9)))

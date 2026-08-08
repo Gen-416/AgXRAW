@@ -10,6 +10,8 @@ import math
 import multiprocessing as mp
 import threading
 from queue import Empty
+import os
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -376,8 +378,11 @@ def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, i
         raise ValueError(f"未知输出格式：{output_format}")
     if dg.is_hdr_output_format(output_format):
         gamut = "p3"
-    ev = float(params.get("ev", 0.0))
-    hdr_headroom = float(params.get("hdrHeadroom", dg.DEFAULT_HDR_HEADROOM_EV))
+    ev = _finite_number(params.get("ev", 0.0), "ev", -20.0, 20.0)
+    hdr_headroom = _finite_number(
+        params.get("hdrHeadroom", dg.DEFAULT_HDR_HEADROOM_EV), "hdrHeadroom",
+        0.0, float(dg.MAX_HDR_HEADROOM_EV) + 1e-9,
+    )
     if not 0.0 <= hdr_headroom <= float(dg.MAX_HDR_HEADROOM_EV) + 1e-9:
         raise ValueError(
             f"HDR capacity 必须在 0–{dg.MAX_HDR_HEADROOM_EV:.6f} EV "
@@ -905,6 +910,23 @@ def parse_grade(params: dict) -> tuple[str, float, str, float]:
     return resolve_grade_params(params)
 
 
+def _finite_number(raw, name: str, lo: float, hi: float) -> float:
+    """Range-checked FINITE float (review batch 17): Python's JSON decoder
+    happily accepts NaN/Infinity literals, which would ride into exposure,
+    auto-EV and plan compilation as silent poison."""
+    import math
+
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} 必须是数值")
+    if not math.isfinite(v):
+        raise ValueError(f"{name} 必须是有限数值")
+    if not lo <= v <= hi:
+        raise ValueError(f"{name} 须在 [{lo:g}, {hi:g}] 内")
+    return v
+
+
 def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, float, str]:
     """(lens_filter, film_curve, film_mode, film_crossover, color_head_y,
     color_head_m, film_exposure_ev, film_print_timing)."""
@@ -961,20 +983,18 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, f
         film_crossover = str(crossover_req if crossover_req is not None else "off")
         if film_crossover not in ("off", "datasheet"):
             raise ValueError(f"未知层间漂移开关：{film_crossover}")
-    try:
-        film_exposure_ev = float(params.get("filmExposure", params.get("film_exposure_ev", 0.0)) or 0.0)
-    except (TypeError, ValueError):
-        raise ValueError("胶片曝光必须是数值(EV)")
+    film_exposure_ev = _finite_number(
+        params.get("filmExposure", params.get("film_exposure_ev", 0.0)) or 0.0,
+        "胶片曝光", -8.0, 8.0,
+    )
     film_print_timing = str(params.get("filmPrintTiming", params.get("film_print_timing", "fixed")) or "fixed")
     if film_print_timing not in ("fixed", "retimed", "custom"):
         raise ValueError(f"未知印相 timing:{film_print_timing}")
     film_print_medium = str(params.get("filmPrintMedium", params.get("film_print_medium", "")) or "")
-    try:
-        film_print_exposure_ev = float(
-            params.get("filmPrintExposure", params.get("film_print_exposure_ev", 0.0)) or 0.0
-        )
-    except (TypeError, ValueError):
-        raise ValueError("印相曝光必须是数值(EV)")
+    film_print_exposure_ev = _finite_number(
+        params.get("filmPrintExposure", params.get("film_print_exposure_ev", 0.0)) or 0.0,
+        "印相曝光", -8.0, 8.0,
+    )
     if film_mode != "full" and (
         film_exposure_ev != 0.0 or film_print_timing != "fixed"
         or film_print_medium != "" or film_print_exposure_ev != 0.0
@@ -1001,15 +1021,18 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, f
     if optics_tier in tiers:
         film_grain, film_halation, film_bloom = tiers[optics_tier]
     elif optics_tier == "custom":
-        try:
-            film_grain = float(params.get("filmGrain", params.get("film_grain", 0.0)) or 0.0)
-            film_halation = float(params.get("filmHalation", params.get("film_halation", 0.0)) or 0.0)
-            film_bloom = float(params.get("filmBloom", params.get("film_bloom", 0.0)) or 0.0)
-        except (TypeError, ValueError):
-            raise ValueError("模拟光学强度必须是数值")
-        for label, v in (("颗粒", film_grain), ("halation", film_halation), ("bloom", film_bloom)):
-            if not 0.0 <= v <= 1.0:
-                raise ValueError(f"模拟光学{label}强度域为 [0,1]")
+        film_grain = _finite_number(
+            params.get("filmGrain", params.get("film_grain", 0.0)) or 0.0,
+            "模拟光学颗粒", 0.0, 1.0,
+        )
+        film_halation = _finite_number(
+            params.get("filmHalation", params.get("film_halation", 0.0)) or 0.0,
+            "模拟光学halation", 0.0, 1.0,
+        )
+        film_bloom = _finite_number(
+            params.get("filmBloom", params.get("film_bloom", 0.0)) or 0.0,
+            "模拟光学bloom", 0.0, 1.0,
+        )
     else:
         raise ValueError(f"未知模拟光学档位:{optics_tier}(可选 off/light/standard/custom)")
     if film_mode != "full" and (film_grain or film_halation or film_bloom):
@@ -1867,6 +1890,9 @@ def _export_worker(params: dict, result_queue: Any) -> None:
         result_queue.put(("error", str(exc)))
 
 
+EXPORT_TIMEOUT_SECONDS = float(os.environ.get("DNGSCAN_EXPORT_TIMEOUT", "600"))
+
+
 def run_export_isolated(params: dict) -> dict:
     """Run one full export in a disposable process and return its small result payload.
 
@@ -1881,6 +1907,10 @@ def run_export_isolated(params: dict) -> dict:
         name="dngscan-export",
     )
     message: tuple[str, Any] | None = None
+    timed_out = False
+    # Deadline (review batch 17): a wedged decoder/operator previously hung
+    # this request forever WHILE HOLDING RENDER_LOCK, freezing the whole GUI.
+    deadline = time.monotonic() + EXPORT_TIMEOUT_SECONDS
     with RENDER_LOCK:
         process.start()
         while message is None:
@@ -1889,14 +1919,26 @@ def run_export_isolated(params: dict) -> dict:
             except Empty:
                 if not process.is_alive():
                     break
+                if time.monotonic() > deadline:
+                    timed_out = True
+                    process.terminate()
+                    process.join(timeout=5.0)
+                    if process.is_alive():
+                        process.kill()
+                    break
         process.join()
     try:
         result_queue.close()
         result_queue.join_thread()
     except (OSError, ValueError):
         pass
+    if timed_out:
+        raise RuntimeError(
+            f"导出超时（>{EXPORT_TIMEOUT_SECONDS:.0f}s），工作进程已终止；"
+            "若为超大文件可设 DNGSCAN_EXPORT_TIMEOUT 提高上限"
+        )
     if message is None:
-        raise RuntimeError(f"导出工作进程异常退出（exit code {process.exitcode}）")
+        raise RuntimeError(f"导出工作进程崩溃（exit code {process.exitcode}）")
     status, payload = message
     if status != "ok":
         raise RuntimeError(str(payload))

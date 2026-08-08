@@ -209,15 +209,25 @@ def _cache_dir() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "dngscan" / "preview-v9"
 
 
-def _evidence_cache_identity(path: Path) -> tuple[str, int, int, str]:
-    """Decoder-independent identity for the Evidence input and provider."""
+def _evidence_cache_identity(path: Path) -> tuple[str, int, int, int, str, str]:
+    """Decoder-independent identity for the Evidence input and provider.
+
+    Beyond path/mtime/size, the identity carries the inode and a hash of the
+    file's first 64 KiB (review batch 17): sync tools and batch converters
+    can replace a RAW in place while preserving size and timestamps, and the
+    header hash catches a different capture wearing the same clothes at the
+    cost of one small read."""
     from dngscan.evidence import libraw_runtime_id
 
     stat = path.stat()
+    with path.open("rb") as fh:
+        head = fh.read(65536)
     return (
         str(path.resolve()),
         int(stat.st_mtime_ns),
         int(stat.st_size),
+        int(getattr(stat, "st_ino", 0)),
+        hashlib.sha256(head).hexdigest()[:16],
         str(libraw_runtime_id() or "libraw-unknown"),
     )
 
@@ -243,7 +253,7 @@ def _cache_identity(
     decoder: str = "libraw",
     coreimage_version: str = "auto",
     demosaic: str = "auto",
-) -> tuple[tuple[str, int, int, str, str, str, str, str, str], str]:
+) -> tuple[tuple, str]:
     evidence_key = _evidence_cache_identity(path)
     key = (
         *evidence_key,
@@ -608,7 +618,7 @@ class PreviewCache:
 
     def __init__(self) -> None:
         self.entries: OrderedDict[
-            tuple[str, int, int, str, str, str, str, str, str], PreviewEntry
+            tuple, PreviewEntry
         ] = OrderedDict()
         self.lock = threading.Lock()
         self.build_lock = threading.Lock()

@@ -32,4 +32,6 @@ wheel.packages = ["dngscan"]
 build-dir = "build/{wheel_tag}"
 
 [tool.scikit-build.cmake.define]
-DNGSCAN_BUILD_NATIVE = "OFF"
+# Native ON by default (review batch 17); export DNGSCAN_BUILD_NATIVE=OFF
+# through SKBUILD_CMAKE_DEFINE for a pure-Python build.
+DNGSCAN_BUILD_NATIVE = "ON"

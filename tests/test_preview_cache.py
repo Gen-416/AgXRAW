@@ -232,8 +232,8 @@ class PreviewCacheTest(unittest.TestCase):
             apple_key, _ = _cache_identity(
                 path, "reconstruct", "camera", "coreimage", "9"
             )
-        self.assertEqual(libraw_key[:4], evidence_key)
-        self.assertEqual(apple_key[:4], evidence_key)
+        self.assertEqual(libraw_key[:6], evidence_key)  # 6-tuple since batch 17 (inode+header hash)
+        self.assertEqual(apple_key[:6], evidence_key)
         self.assertNotEqual(libraw_key, apple_key)
 
     def test_cache_identity_includes_demosaic_recipe(self) -> None:

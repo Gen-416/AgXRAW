@@ -1233,6 +1233,11 @@ checkHdrBackend();
 document.querySelectorAll("button[data-ev]").forEach(b=>b.onclick=()=>{$("#ev").value=b.dataset.ev;setEvLabel();saveSettings();scheduleLivePreview();});
 let lastSavedPath="";
 
+const SESSION_TOKEN=SESSION_TOKEN_VALUE;
+function apiFetch(url,opts){
+  opts=opts||{};opts.headers=Object.assign({},opts.headers||{},{"X-DngScan-Token":SESSION_TOKEN});
+  return fetch(url,opts);
+}
 let curDir=INIT_DIR;
 $("#filePicker").addEventListener("change",async()=>{
   const picker=$("#filePicker");const file=picker.files&&picker.files[0];
@@ -1243,7 +1248,7 @@ $("#filePicker").addEventListener("change",async()=>{
   picker.disabled=true;$("#input").value="";lastSavedPath="";$("#revealBtn").style.display="none";
   setStatus("正在读取 "+file.name+"…","");
   try{
-    const response=await fetch("/upload?name="+encodeURIComponent(file.name),{
+    const response=await apiFetch("/upload?name="+encodeURIComponent(file.name),{
       method:"POST",headers:{"Content-Type":"application/octet-stream"},body:file
     });
     const result=await response.json();
@@ -1264,7 +1269,7 @@ $("#filePicker").addEventListener("change",async()=>{
 });
 
 async function listOutDir(d){
-  const r=await fetch("/list?dir="+encodeURIComponent(d));const j=await r.json();
+  const r=await apiFetch("/list?dir="+encodeURIComponent(d));const j=await r.json();
   const b=$("#outdirBrowser");b.innerHTML="";
   const mk=(t,fn,cls)=>{const e=document.createElement("div");e.textContent=t;e.onclick=fn;if(cls)e.className=cls;b.appendChild(e);};
   mk("✓ 就用这里："+j.cwd,()=>{$("#outdir").value=j.cwd;b.style.display="none";saveSettings();},"pick");
@@ -1311,7 +1316,7 @@ function payload(){
 }
 
 async function postJob(path, body, signal){
-  const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal});
+  const r=await apiFetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal});
   return await r.json();
 }
 const RAW9_PROBES=new Map();
@@ -1819,7 +1824,7 @@ def _film_options_html() -> tuple[str, str, str, str]:
     )
 
 
-def render_page(init_dir: str) -> bytes:
+def render_page(init_dir: str, session_token: str = "") -> bytes:
     from dngscan import coreimage_decode
     from dngscan.constants import MAX_HDR_HEADROOM_EV
     from dngscan.gui.constants import RAW_EXTS, REALTIME_PREVIEW_LONG_EDGE
@@ -1828,6 +1833,7 @@ def render_page(init_dir: str) -> bytes:
 
     html = (
         PAGE.replace("INIT_DIR", json.dumps(init_dir))
+        .replace("SESSION_TOKEN_VALUE", json.dumps(session_token))
         .replace("RAW_ACCEPT", ",".join(sorted(RAW_EXTS)))
         .replace("PREVIEW_LONG_EDGE", str(REALTIME_PREVIEW_LONG_EDGE))
         .replace("GRADE_OPTIONS", _grade_options_html())

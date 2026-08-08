@@ -582,7 +582,13 @@ def render_output_u8(
     lum_norm: str = "y",
     agx_primaries: str = "base",
     dither_noise: Any | None = None,
+    capture_mapped: Any | None = None,
 ) -> Any:
+    """capture_mapped: optional preallocated [h*w, 3] float32 buffer; when
+    given, every chunk's post-tone-core Rec.2020 pixels are copied into it
+    as they are produced. The Ultra HDR film pair uses this to obtain the
+    high-precision print in the SAME walk that quantizes the SDR base
+    (review batch 17: the pair previously ran the whole film chain twice)."""
     if look != "none" and display_filter != "none":
         raise ValueError("色度 look 与输出滤镜不能同时启用")
     if analysis is None:
@@ -721,6 +727,8 @@ def render_output_u8(
                 if raw_guidance is not None
                 else None,
             )
+        if capture_mapped is not None:
+            capture_mapped[start:end] = mapped_rec
         if native_rec2020_input:
             return np.ascontiguousarray(mapped_rec, dtype=np.float32)
         if display_filter != "none" and filter_strength > 0.0:
