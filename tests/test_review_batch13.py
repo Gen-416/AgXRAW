@@ -49,10 +49,13 @@ class GateGeometryTests(unittest.TestCase):
             MODELLED_DEFAULT,
             FilmGeometry,
             grain_field_for,
+            integral_from_field,
             sample_field,
         )
 
-        field = grain_field_for(MODELLED_DEFAULT, 0)
+        # sample_field takes an INTEGRAL image by contract (batch 19): the
+        # caller declares which one it holds instead of it being sniffed.
+        field = integral_from_field(grain_field_for(MODELLED_DEFAULT, 0))
         for h, w in ((600, 400), (300, 400), (400, 300)):
             got = sample_field(field, FilmGeometry.fit(h, w))
             row_rms = np.sqrt(np.mean(np.square(got, dtype=np.float64), axis=(1, 2)))
@@ -94,6 +97,7 @@ class GateGeometryTests(unittest.TestCase):
         dh, dw = spread_grid_shape(h, w)
         ctx.finish_maps(area_decimate(img, dh, dw), plan, stock)
         if ctx.bloom > 0.0:
+            ctx.begin_bloom_source()
             # pass B (review batch 18): the bloom source comes from the
             # FULL-RESOLUTION pre-bloom print, so a hand-built context must
             # run it too before the map exists
@@ -272,6 +276,17 @@ if ctx is not None:
         y1 = min(y0 + band_rows, h)
         area_decimate_rows(flat[y0*w:y1*w].reshape(-1, w, 3), y0, h, w, dh, dw, acc)
     ctx.finish_maps(acc.astype(np.float32), plan, "portra400")
+    del acc
+if ctx is not None and ctx.bloom > 0.0:
+    # Pass B is production (review batch 18/19): without it the probe never
+    # exercised bloom at all and the budget gate was a false green.
+    ctx.begin_bloom_source()
+    for y0 in range(0, h, band_rows):
+        y1 = min(y0 + band_rows, h)
+        ctx.accumulate_bloom_source(
+            apply_film_core(flat[y0*w:y1*w], plan, spatial=(ctx, y0, y1)), y0, y1
+        )
+    ctx.finish_bloom_map()
 for y0 in range(0, h, band_rows):
     y1 = min(y0 + band_rows, h)
     out = apply_film_core(
@@ -295,10 +310,15 @@ print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
             self.assertEqual(proc.returncode, 0, proc.stderr[-2000:])
             return int(proc.stdout.strip().splitlines()[-1])
 
-        baseline = run(0.0, 0.0, 0.0)
-        # EVERY public tier gets its own measured gate (review batch 14: the
-        # 256 tier was mathematically unreachable while advertised).
-        for tier in (256, 512):
+        # EVERY advertised tier gets its own measured gate, with the
+        # BASELINE AND SPATIAL RUNS SAMPLED AT THE SAME TIER (review batch
+        # 19: comparing a 512-tier baseline against a 256-tier spatial run
+        # made the gate meaningless — the tier also sizes the colorimetric
+        # bands, so the baseline moves with it).
+        from dngscan.render import OPTICS_BUDGET_TIERS_MIB
+
+        for tier in OPTICS_BUDGET_TIERS_MIB:
+            baseline = run(0.0, 0.0, 0.0, tier=tier)
             spatial = run(0.7, 0.5, 0.4, tier=tier)
             extra_mib = (spatial - baseline) / (1 << 20)
             self.assertLess(

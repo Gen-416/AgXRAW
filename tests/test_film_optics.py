@@ -139,7 +139,7 @@ class SpatialOperatorTests(unittest.TestCase):
     def test_bloom_redistributes_highlights_conservatively(self) -> None:
         from dngscan.film_optics import (
             MODELLED_DEFAULT,
-            _as_integral,
+            integral_from_field,
             bloom_apply_rows,
         )
 
@@ -151,7 +151,7 @@ class SpatialOperatorTests(unittest.TestCase):
         spread = scatter_spread(
             scatter_source(img.reshape(h, w, 3), MODELLED_DEFAULT), MODELLED_DEFAULT
         )
-        ii = _as_integral(spread).astype(np.float32)
+        ii = integral_from_field(spread).astype(np.float32)
         out = bloom_apply_rows(
             img, ii, 0, h, h, w, MODELLED_DEFAULT, 1.0
         ).reshape(h, w, 3)
@@ -207,6 +207,7 @@ class RowBandEquivalenceTests(unittest.TestCase):
         dh, dw = spread_grid_shape(h, w)
         ctx.finish_maps(area_decimate(img, dh, dw), plan, stock)
         if ctx.bloom > 0.0:
+            ctx.begin_bloom_source()
             # pass B (review batch 18): the bloom source comes from the
             # FULL-RESOLUTION pre-bloom print, so a hand-built context must
             # run it too before the map exists

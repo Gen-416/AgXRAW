@@ -91,12 +91,12 @@ class ConservativeScatterTests(unittest.TestCase):
     def _spread_ii(img):
         from dngscan.film_optics import (
             MODELLED_DEFAULT,
-            _as_integral,
+            integral_from_field,
             scatter_source,
             scatter_spread,
         )
 
-        return _as_integral(
+        return integral_from_field(
             scatter_spread(scatter_source(img, MODELLED_DEFAULT), MODELLED_DEFAULT)
         ).astype(np.float32)
 

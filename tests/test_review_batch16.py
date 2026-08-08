@@ -110,6 +110,7 @@ class PeriodicMasterTests(unittest.TestCase):
             FilmGeometry,
             _band_limited_field,
             _grain_ii_for,
+            integral_from_field,
             sample_field,
         )
 
@@ -119,7 +120,7 @@ class PeriodicMasterTests(unittest.TestCase):
         for phase in ((1234, 2345), (1999, 2999), (0, 1500), (500, 0)):
             got = sample_field(master, geo, phase=phase)
             rolled = np.roll(np.roll(field, -phase[0], axis=0), -phase[1], axis=1)
-            want = sample_field(rolled, geo)
+            want = sample_field(integral_from_field(rolled), geo)
             np.testing.assert_allclose(
                 got, want, atol=1e-4,
                 err_msg=f"phase {phase} diverges from the rolled ground truth",
