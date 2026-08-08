@@ -35,7 +35,7 @@ from .scene_transform import SCENE_TRANSFORMS
 from .lens_filter import LENS_FILTER_CHOICES, validate_lens_filter
 from .grade import RENDER_MODE, grade_choices, resolve_grade
 from .plot import default_png_path, plot_dashboard
-from .raw_io import load_raw
+from .raw_io import load_raw, release_analysis_buffers
 from .report import csv_row, print_report, write_csv
 from .scene_transform import SCENE_TRANSFORM_CHOICES
 from .models import RenderAdjustments
@@ -985,6 +985,10 @@ def main(argv: list[str]) -> int:
         if render_plan is not None:
             render_plan = apply_render_adjustments(render_plan, cli_adjustments)
         if jpeg_path is not None:
+            # Staged ownership (scheduler plan S4): analysis and the optional
+            # dashboard are done, so the XYZ analysis buffer they owned is
+            # released for the export stage to reuse.
+            bundle = release_analysis_buffers(bundle)
             export_result = export_jpeg(
                 path=args.path,
                 out_path=jpeg_path,

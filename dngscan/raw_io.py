@@ -86,22 +86,35 @@ def _apply_gain_maps_mosaic(raw: Any, maps: list, black_levels: list[float], whi
         # order — every element is bit-identical to the historical fancy-indexed
         # version, without the np.ix_ gather/scatter copies.
         h1 = np.minimum(h0 + 1, m.points_h - 1)
-        rows_lo = gains_grid[v0]
-        rows_hi = gains_grid[np.minimum(v0 + 1, m.points_v - 1)]
-        g00 = rows_lo[:, h0]
-        g01 = rows_lo[:, h1]
-        g10 = rows_hi[:, h0]
-        g11 = rows_hi[:, h1]
-        gains = (g00 * (1 - fv) * (1 - fh) + g01 * (1 - fv) * fh
-                 + g10 * fv * (1 - fh) + g11 * fv * fh)
+        v1 = np.minimum(v0 + 1, m.points_v - 1)
         img_view = img[m.top : min(m.bottom, h) : m.row_pitch,
                        m.left : min(m.right, w) : m.col_pitch]
         cidx = colors[m.top : min(m.bottom, h) : m.row_pitch,
                       m.left : min(m.right, w) : m.col_pitch]
-        sub = img_view.astype(np.float32)
-        b = blacks[np.clip(cidx, 0, blacks.size - 1)] if blacks.size > 1 else np.float32(blacks[0])
-        corrected = np.clip(b + (sub - b) * gains, 0.0, float(white_level))
-        img_view[...] = corrected.astype(img.dtype)
+        # ROW BANDS (scheduler plan S4): a 1x1-pitch GainMap samples every
+        # sensel, so the bilinear expression below held about ten FULL-FRAME
+        # float64 temporaries at once — 1.77 GB of the measured 3.3 GB decode
+        # peak for a 24 MP file. Every operation here is elementwise, so
+        # banding changes no result bit; it only bounds the transients.
+        band = max(1, 8_000_000 // max(int(cols.size), 1))
+        for r0 in range(0, int(rows.size), band):
+            r1 = min(r0 + band, int(rows.size))
+            rows_lo = gains_grid[v0[r0:r1]]
+            rows_hi = gains_grid[v1[r0:r1]]
+            g00 = rows_lo[:, h0]
+            g01 = rows_lo[:, h1]
+            g10 = rows_hi[:, h0]
+            g11 = rows_hi[:, h1]
+            fv_band = fv[r0:r1]
+            gains = (g00 * (1 - fv_band) * (1 - fh) + g01 * (1 - fv_band) * fh
+                     + g10 * fv_band * (1 - fh) + g11 * fv_band * fh)
+            sub = img_view[r0:r1].astype(np.float32)
+            b = (
+                blacks[np.clip(cidx[r0:r1], 0, blacks.size - 1)]
+                if blacks.size > 1 else np.float32(blacks[0])
+            )
+            corrected = np.clip(b + (sub - b) * gains, 0.0, float(white_level))
+            img_view[r0:r1] = corrected.astype(img.dtype)
 
 
 def _apply_vignette_render(render: Any, vignette: Any) -> Any:
@@ -846,6 +859,40 @@ def _resize_mask_to_shape(mask: Any, shape: tuple[int, int]) -> Any:
     return out
 
 
+def _feather_masks_f16(mask: Any) -> Any:
+    """Row-banded feather that writes the float16 result directly.
+
+    Scheduler plan S4: the whole-frame version held the aligned float32
+    mask, a float32 output, a clipped copy and four per-channel temporaries
+    at full resolution — 1.37 GB of the measured decode peak at 24 MP. The
+    filter is separable and local (radius 2), so a band that gathers its own
+    two-row halo (edge-clamped at the true frame boundary, exactly as the
+    whole-frame pad did) reproduces every element bit for bit.
+    """
+    kernel = np.asarray([1, 4, 6, 4, 1], dtype=np.float32) / np.float32(16.0)
+    radius = len(kernel) // 2
+    h, w, channels = mask.shape
+    out = np.empty((h, w, channels), dtype=np.float16)
+    band = max(1, 8_000_000 // max(w, 1))
+    for y0 in range(0, h, band):
+        y1 = min(y0 + band, h)
+        rows = np.clip(np.arange(y0 - radius, y1 + radius), 0, h - 1)
+        for channel in range(channels):
+            plane = mask[rows, :, channel].astype(np.float32, copy=False)
+            acc = np.zeros((y1 - y0, w), dtype=np.float32)
+            scratch = np.empty_like(acc)
+            for i, weight in enumerate(kernel):
+                np.multiply(plane[i:i + (y1 - y0)], np.float32(weight), out=scratch)
+                np.add(acc, scratch, out=acc)
+            padded = np.pad(acc, ((0, 0), (radius, radius)), mode="edge")
+            band_out = np.zeros_like(acc)
+            for i, weight in enumerate(kernel):
+                np.multiply(padded[:, i:i + w], np.float32(weight), out=scratch)
+                np.add(band_out, scratch, out=band_out)
+            out[y0:y1, :, channel] = np.clip(band_out, 0.0, 1.0).astype(np.float16)
+    return out
+
+
 def _feather_masks(mask: Any) -> Any:
     # Small separable Gaussian-like kernel, enough to hide demosaic/half-size seams.
     kernel = np.asarray([1, 4, 6, 4, 1], dtype=np.float32) / np.float32(16.0)
@@ -961,7 +1008,28 @@ def build_clip_masks(
         binned = _bin_2x2_max(soft)
     oriented = _orient_like_libraw(binned, orientation_flip)
     aligned = _resize_mask_to_shape(oriented, scene_shape)
-    return _feather_masks(aligned).astype(np.float16, copy=False)
+    return _feather_masks_f16(aligned)
+
+
+def release_analysis_buffers(bundle: RawBundle) -> RawBundle:
+    """Drop the analysis-stage buffer a render never reads (plan S4).
+
+    Ownership boundary: ``xyz_render`` exists for ``analyze`` /
+    ``reanalyze_balanced_scene`` / the diagnostic dashboard, and nothing in
+    the render or export path reads it. Releasing it after those have run
+    returns its pages to the allocator for the export stage to reuse
+    (140 MB at 12 MP, ~290 MB at 24 MP). MEASURED HONESTLY: the process
+    RSS high-water mark does NOT fall, because it is set later by the HDR
+    encode stage — this bounds the live heap, it does not lower the peak.
+
+    The CFA mosaic is deliberately NOT released here: ``RawEvidence``
+    retains the same arrays, so clearing the bundle's reference was
+    measured to free exactly nothing (and the gated core reads them at
+    render time anyway).
+    """
+    from dataclasses import replace
+
+    return replace(bundle, xyz_render=None)
 
 
 def refresh_clip_masks_from_fullwell(
