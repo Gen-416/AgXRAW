@@ -581,6 +581,27 @@ def interimage_beta(preset: str) -> float:
     return float(INTERIMAGE_BETA.get(str(preset), 0.0))
 
 
+def _appearance_for(plan) -> "object | None":
+    """The compiled appearance plan the runtime consumes, fail-closed.
+
+    technical (or absent, for every hand-built test plan) is the strict fast
+    path. A plan CLAIMING reference without a compiled object is the same
+    contradiction class as off+nonzero beta (A4): refuse, do not improvise.
+    """
+    mode = str(getattr(plan, "film_appearance", "technical") or "technical")
+    if mode == "technical":
+        return None
+    if mode != "reference":
+        raise ValueError(f"film_appearance={mode!r} 未知(可选 technical/reference)")
+    compiled = getattr(plan, "film_appearance_compiled", None)
+    if compiled is None:
+        raise ValueError(
+            "film_appearance=reference 但 plan 未携带编译后的外观对象——"
+            "请经 build_render_plan 编译,运行时不做现场解析"
+        )
+    return compiled
+
+
 def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
     """Renderer entry: a context when the plan engages any optics amount,
     else None (the chunk-stream fast path stays byte-identical).
@@ -794,6 +815,11 @@ def _apply_film_core_v2(
                     ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
                 )
         developed = np.maximum(developed, 0.0)
+        _app = _appearance_for(plan)
+        if _app is not None:
+            from .film_appearance import apply_film_appearance
+
+            developed = apply_film_appearance(developed, _app)
         return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
     u1 = amounts_to_unit(amounts, stock["lo"], stock["hi"])
@@ -845,6 +871,12 @@ def _apply_film_core_v2(
         for c in range(3):
             developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
     developed = np.maximum(developed, 0.0)
+    # Appearance slot (plan §11): after B2 + neutral policy, before delivery.
+    _app = _appearance_for(plan)
+    if _app is not None:
+        from .film_appearance import apply_film_appearance
+
+        developed = apply_film_appearance(developed, _app)
     return developed.astype(np.float32, copy=False)
 
 

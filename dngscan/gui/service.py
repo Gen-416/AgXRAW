@@ -259,6 +259,9 @@ def estimate_ev_headroom(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_interimage: str = "declared",
+    film_appearance: str = "technical",
+    film_appearance_strength: float = 1.0,
     film_optics_seed: int = 0,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -294,6 +297,9 @@ def estimate_ev_headroom(
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
         film_optics_seed=film_optics_seed,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -532,6 +538,9 @@ def _cached_render_plan(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_interimage: str = "declared",
+    film_appearance: str = "technical",
+    film_appearance_strength: float = 1.0,
     film_optics_seed: int = 0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
@@ -582,6 +591,9 @@ def _cached_render_plan(
             film_grain=film_grain,
             film_halation=film_halation,
             film_bloom=film_bloom,
+            film_interimage=film_interimage,
+            film_appearance=film_appearance,
+            film_appearance_strength=film_appearance_strength,
             film_optics_seed=film_optics_seed,
             adjustments=None,
             endpoint_mode=endpoint_mode,
@@ -621,6 +633,9 @@ def _preview_pixel_key(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_interimage: str = "declared",
+    film_appearance: str = "technical",
+    film_appearance_strength: float = 1.0,
     film_optics_seed: int = 0,
 ) -> tuple[Any, ...]:
     return (
@@ -731,6 +746,9 @@ def export_preview_jpeg(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_interimage: str = "declared",
+    film_appearance: str = "technical",
+    film_appearance_strength: float = 1.0,
     film_optics_seed: int | None = None,
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
@@ -936,7 +954,7 @@ def _finite_number(raw, name: str, lo: float, hi: float) -> float:
     return v
 
 
-def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, float, str]:
+def parse_film_params(params: dict) -> tuple:
     """(lens_filter, film_curve, film_mode, film_crossover, color_head_y,
     color_head_m, film_exposure_ev, film_print_timing)."""
     lens_filter = dg.validate_lens_filter(str(params.get("lensFilter", params.get("lens_filter", "none"))))
@@ -1049,10 +1067,37 @@ def parse_film_params(params: dict) -> tuple[str, str, str, str, float, float, f
             "模拟光学属于接管显影(full 模式);GUI 在其他状态隐藏该控件,"
             "非零载荷是直接 API 合同违规"
         )
+    # 胶片解释控件组 (appearance P1): interimage 底座开关与外观层模式。
+    film_interimage = str(
+        params.get("filmInterimage", params.get("film_interimage", "declared"))
+        or "declared"
+    )
+    if film_interimage not in ("declared", "off"):
+        raise ValueError(f"未知层间放大档:{film_interimage}(可选 declared/off)")
+    film_appearance = str(
+        params.get("filmAppearance", params.get("film_appearance", "technical"))
+        or "technical"
+    )
+    if film_appearance not in ("technical", "reference"):
+        raise ValueError(
+            f"未知胶片解释:{film_appearance}(可选 technical/reference)"
+        )
+    film_appearance_strength = _finite_number(
+        params.get(
+            "filmAppearanceStrength",
+            params.get("film_appearance_strength", 1.0),
+        ) or 0.0,
+        "参考印相强度", 0.0, 1.5,
+    )
+    if film_mode != "full" and (
+        film_interimage != "declared" or film_appearance != "technical"
+    ):
+        raise ValueError("胶片解释控件属于接管显影(full 模式)")
     return (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
             color_head_m, film_exposure_ev, film_print_timing,
             film_print_medium, film_print_exposure_ev,
-            film_grain, film_halation, film_bloom)
+            film_grain, film_halation, film_bloom,
+            film_interimage, film_appearance, film_appearance_strength)
 
 
 def effective_optics_seed(params: dict, entry) -> int:
@@ -1098,7 +1143,9 @@ def run_preview(params: dict) -> dict:
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
      color_head_m, film_exposure_ev, film_print_timing,
      film_print_medium, film_print_exposure_ev,
-     film_grain, film_halation, film_bloom) = parse_film_params(params)
+     film_grain, film_halation, film_bloom,
+     film_interimage, film_appearance, film_appearance_strength,
+     ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
         int(film_optics_seed)
@@ -1150,6 +1197,9 @@ def run_preview(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
         film_optics_seed=film_optics_seed,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
@@ -1192,6 +1242,9 @@ def run_preview(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
         film_optics_seed=film_optics_seed,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
@@ -1286,7 +1339,9 @@ def prepare_preview(params: dict) -> dict:
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
      color_head_m, film_exposure_ev, film_print_timing,
      film_print_medium, film_print_exposure_ev,
-     film_grain, film_halation, film_bloom) = parse_film_params(params)
+     film_grain, film_halation, film_bloom,
+     film_interimage, film_appearance, film_appearance_strength,
+     ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
         int(film_optics_seed)
@@ -1379,6 +1434,9 @@ def export_suffix_parts(
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
+    film_interimage: str = "declared",
+    film_appearance: str = "technical",
+    film_appearance_strength: float = 1.0,
 ) -> str:
     """Build the filename stem suffix for GUI JPEG/PNG exports."""
     parts = [tone_core]
@@ -1571,7 +1629,9 @@ def run_export(params: dict) -> dict:
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
      color_head_m, film_exposure_ev, film_print_timing,
      film_print_medium, film_print_exposure_ev,
-     film_grain, film_halation, film_bloom) = parse_film_params(params)
+     film_grain, film_halation, film_bloom,
+     film_interimage, film_appearance, film_appearance_strength,
+     ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
         int(film_optics_seed)
@@ -1647,6 +1707,9 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
         film_optics_seed=film_optics_seed,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
@@ -1676,6 +1739,9 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
         film_optics_seed=film_optics_seed,
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
@@ -1707,6 +1773,9 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
         # NOT the seed: the readable stem names the headline choices, and a
         # random realization id would make every export a new filename. The
         # seed rides the fingerprint below, which is what prevents two
@@ -1742,6 +1811,9 @@ def run_export(params: dict) -> dict:
         film_grain=film_grain,
         film_halation=film_halation,
         film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
         film_optics_seed=film_optics_seed,
         # The optics budget tier picks the spread-grid size since P3, so it
         # changes rendered bytes whenever any spatial amount is engaged. It
@@ -1870,6 +1942,9 @@ def run_export(params: dict) -> dict:
             film_grain=film_grain,
             film_halation=film_halation,
             film_bloom=film_bloom,
+            film_interimage=film_interimage,
+            film_appearance=film_appearance,
+            film_appearance_strength=film_appearance_strength,
             film_optics_seed=film_optics_seed,
                     color_head_y=color_head_y,
                     color_head_m=color_head_m,
