@@ -113,9 +113,14 @@ def measure_spread(
     The source sits on a -6 EV field so the profile that comes back is the
     operator's kernel and not the neighbours' overlap.
     """
+    # A 0.04 mm source: small against the 0.065-0.32 mm component radii, so
+    # the profile that comes back is the KERNEL and not the source's own
+    # footprint. The first version used a 1 mm disc, which was fine against a
+    # 0.55 mm kernel and became the dominant term once P2 brought the halo
+    # down to physical size.
     scene, (cy, cx) = charts.single_emitter(
-        CHART_H, CHART_W, diameter_mm=1.0, exposure_ev=6.0,
-        background_ev=-6.0, color=color,
+        CHART_H, CHART_W, diameter_mm=0.04, exposure_ev=7.0,
+        background_ev=-4.0, color=color,
     )
     base = develop(scene, make_plan(stock))
     got = develop(scene, make_plan(stock, **{amount_key: amount}))
@@ -128,7 +133,10 @@ def measure_spread(
         "encircled_at_declared_radius": [],
         "peak_delta": [],
     }
-    declared_px = HALATION.radius_mm / scale
+    # The widest component's radius: what "the declared radius" means once
+    # halation is a component set rather than one kernel.
+    declared_mm = max(c.radius_mm for c in HALATION.components)
+    declared_px = declared_mm / scale
     for c in range(3):
         out["half_energy_radius_mm"].append(
             float(diag.half_energy_radius(radii, prof[:, c], baseline=0.0) * scale)
@@ -146,12 +154,19 @@ def measure_spread(
     # source must not hand back the same red halo a white one does. If this
     # vector is identical for every source colour, the operator has thrown the
     # source's spectrum away before spreading it.
-    ring = (radii > declared_px * 0.5) & (radii < declared_px * 2.0)
-    ring_energy = (prof[ring] * radii[ring, None]).sum(axis=0)
-    peak = float(np.max(np.abs(ring_energy)))
-    out["halo_channel_ratio"] = [
-        float(v / peak) if peak > 0 else float("nan") for v in ring_energy
-    ]
+    def _ring(lo_mm: float, hi_mm: float) -> list[float]:
+        mm = radii * scale
+        m = (mm > lo_mm) & (mm < hi_mm)
+        e = (np.clip(prof[m], 0.0, None) * radii[m, None]).sum(axis=0)
+        peak = float(np.max(np.abs(e)))
+        return [float(v / peak) if peak > 0 else float("nan") for v in e]
+
+    # Inner vs outer colour, which is the whole point of a component set:
+    # a single kernel with a fixed weight vector returns the same hue at
+    # every radius, so these two rows would be identical.
+    out["halo_inner_ratio"] = _ring(0.03, 0.10)
+    out["halo_outer_ratio"] = _ring(0.30, 1.00)
+    out["halo_channel_ratio"] = out["halo_inner_ratio"]
     return out
 
 
@@ -305,8 +320,19 @@ def build_report(stock: str = DEFAULT_STOCK, *, perf: bool = False) -> dict:
             "print": PRINT_OPTICS.asset_id,
             "grain": {k: (list(v) if isinstance(v, tuple) else v)
                       for k, v in vars(GRAIN).items()},
-            "halation": {k: (list(v) if isinstance(v, tuple) else v)
-                         for k, v in vars(HALATION).items()},
+            "halation": {
+                "provenance": HALATION.provenance,
+                "model": HALATION.model,
+                "dc_mode": HALATION.dc_mode,
+                "anti_halation_class": HALATION.anti_halation_class,
+                "components": [
+                    {"name": c.name, "radius_mm": c.radius_mm,
+                     "gate_ev": c.gate_ev.tolist(),
+                     "transfer": c.transfer.tolist()}
+                    for c in HALATION.components
+                ],
+                "total_return": HALATION.total_return().tolist(),
+            },
             "print_scatter": {k: (list(v) if isinstance(v, tuple) else v)
                               for k, v in vars(PRINT_SCATTER).items()},
         },

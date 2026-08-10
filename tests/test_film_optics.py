@@ -146,7 +146,9 @@ class SpatialOperatorTests(unittest.TestCase):
         )
         le = rng.uniform(-1, 1, (600, 3))
         self.assertIs(
-            halation_reinject_rows(le, None, 0, 20, 20, 30, _HALATION, 0.0),
+            halation_reinject_rows(
+                le, None, np.full(3, 0.18), 0, 20, 20, 30, _HALATION, 0.0
+            ),
             le,
         )
         img = rng.uniform(0, 1, (600, 3))
@@ -162,18 +164,24 @@ class SpatialOperatorTests(unittest.TestCase):
         )
 
         h, w = 64, 96
-        le = np.full((h * w, 3), -0.5)
-        exposure_lin = np.full((h, w), float(np.exp2(-2.0)))
-        exposure_lin[h // 2, w // 2] = float(np.exp2(5.0))
-        spread = halation_spread_map(exposure_lin, w, GATE_W_MM, _HALATION)
+        # Layer exposure now, not one photometric luminance (R1 §5.2): the
+        # source gate is per layer and the transfer matrix decides the colour.
+        e_ref = np.full(3, 0.18, dtype=np.float32)
+        e_lin = np.full((h, w, 3), np.float32(0.18 * 2 ** -2.0))
+        e_lin[h // 2, w // 2] = np.float32(0.18 * 2 ** 6.0)
+        le = np.log10(np.maximum(e_lin, 1e-12)).reshape(-1, 3)
+        spread = halation_spread_map(e_lin, e_ref, GATE_W_MM, _HALATION)
         out = halation_reinject_rows(
-            le, spread, 0, h, h, w, _HALATION, 1.0
+            le, spread, e_ref, 0, h, h, w, _HALATION, 1.0
         )
         delta = (out - le).reshape(h, w, 3)
         near = delta[h // 2 - 2, w // 2, :]
         self.assertGreater(near[0], 0.0, "halation must spread beyond the source")
         self.assertGreater(near[0], near[1])
         self.assertGreater(near[1], near[2])
+        # The residual form takes what it gives: the core loses light.
+        core = delta[h // 2, w // 2, :]
+        self.assertLess(float(core[0]), 0.0)
 
     def test_bloom_redistributes_highlights_conservatively(self) -> None:
         from dngscan.film_optics import (
