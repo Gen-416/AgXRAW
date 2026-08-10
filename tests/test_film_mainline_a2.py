@@ -103,7 +103,9 @@ class DomainMatrixTests(unittest.TestCase):
     def test_exposure_envelope_and_developer_corners_stay_in_domain(self) -> None:
         """The A1 review measured near-80% overflow depth at a legal
         editorial extreme. The bounded map must hold the whole declared
-        envelope, not just defaults."""
+        envelope — EVERY beta stock x its exposure bounds x the developer
+        corners (A3 item 5: the first cut claimed this scope but ran three
+        stocks; now the claim and the loop match)."""
         from types import SimpleNamespace
 
         from dngscan.film_develop import _load_v2, apply_film_core
@@ -112,7 +114,7 @@ class DomainMatrixTests(unittest.TestCase):
         flat = np.asarray(volume, dtype=np.float32)
         counter, restore = _overflow_spy()
         try:
-            for stock in ("portra400", "ektar100", "vision3250d"):
+            for stock in sorted(INTERIMAGE_BETA):
                 st, _media = _load_v2(stock)
                 for ev in (st["exp_lo"], 0.0, st["exp_hi"]):
                     for corner in DEV_CORNERS:

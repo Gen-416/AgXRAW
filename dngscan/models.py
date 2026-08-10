@@ -282,6 +282,13 @@ class ToneCompressionPlan:
     # base — what the oracle gates certify). Compiled into
     # FilmDevelopmentPlan.interimage_beta; fail-closed on unknown values.
     film_interimage: str = "declared"
+    # The EFFECTIVE beta, resolved by the compiler from the declared table.
+    # None means "not compiled" (hand-built test plans): the runtime falls
+    # back to the table for those, but a COMPILED plan always carries the
+    # value, which is what makes it immutable — A3 measured a 0.0726 max
+    # pixel difference from mutating the module table after compile when the
+    # runtime still consulted it.
+    film_interimage_beta: float | None = None
     # Two-mode film contract: "observe" (default) = the film declares what the
     # observer saw (WB/separation/tone signature), AgX develops — colour stays with
     # the pipeline's validated rendering. "full" = the film v2 factorized chain

@@ -697,7 +697,18 @@ def _apply_film_core_v2(
         raise ValueError(
             f"film_interimage={interimage_mode!r} 未知（可选 declared/off）"
         )
-    beta = interimage_beta(preset) if interimage_mode == "declared" else 0.0
+    # A COMPILED plan carries the effective beta; the table is only the
+    # fallback for hand-built plans that never went through the compiler
+    # (probes, tests). This is what makes the compiled plan immutable: A3
+    # measured 0.0726 max pixel drift from editing the module table after
+    # compile while the runtime still consulted it.
+    if interimage_mode != "declared":
+        beta = 0.0
+    else:
+        compiled = getattr(plan, "film_interimage_beta", None)
+        beta = float(compiled) if compiled is not None else interimage_beta(preset)
+        if not np.isfinite(beta) or beta < 0.0:
+            raise ValueError(f"film_interimage_beta={beta!r} 非法（需有限且 >= 0）")
     if beta > 0.0:
         # Mainline A2: RAIL-PRESERVING inter-image amplification, BEFORE
         # grain (both are development effects; grain modulates the final
