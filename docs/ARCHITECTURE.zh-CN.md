@@ -892,9 +892,9 @@ RGB 启发式的伪影；两条独立路径互为印证。
 ### 风格配对——observe 模式的 look 层
 
 observe 模式的完整结构正是 FilmLight 的原型：**稳定的自家 DRT（AgX）坐镇渲染槽，
-风格作为分离的 look 层叠加**——look 不改 DRT，DRT 不含 look。观感评估的结论是
-"observe 稳而淡、full 浓而坏"，缺的味道由 look 层补足，且只用两个**已验证机制**
-做词汇：
+风格作为分离的 look 层叠加**——look 不改 DRT，DRT 不含 look。2026-07-30 的观感
+评估结论是 "observe 稳而淡、full 浓而坏"，缺的味道由 look 层补足，且只用两个
+**已验证机制**做词汇：
 
 - **前馈分离超驱动**（`--scene-transform-strength` >1）：把胶片感色分离（二手
   datasheet 数据、有界矩阵、中性保持）推过校准强度——加的是"这卷胶片怎么分
@@ -911,6 +911,16 @@ theatrical 系→(×1.4, punchy)、Portra 系→(×1.3, base) 等。三条属性
 配对（胶片显影模型自带性格）。`--punch`（场景自适应纯度补偿）暂不在配对
 词汇内，保持为独立控制。三管线对照与原型对应（observe≈FilmLight、
 full≈Kelly）的完整论证见[设计合同](FILM_OBSERVATION_PLAN.zh-CN.md)。
+
+> **2026-08-10 实测修正**：上面 "full 浓而坏" 的一半已经不成立。在公共 Rec.2020
+> 参考空间（gamut fit 之前）用 743 样本的 palette probe 测得，C-41 负片在 full 下
+> 的 Oklab chroma 只有 observe 的 **0.65 倍**（Portra 400，log2 比 −0.62；Ektar 100
+> 为 0.60 倍），越域样本比例也只有 observe 的三分之一（0.106 vs 0.374）。反转片与
+> 电影负片没有这个现象（Velvia +0.23、Vision3 +0.06）。另一半 "淡" 的判断则指向了
+> 一个当时没看到的问题：**Portra 400 与 Ektar 100 在 full 与 observe 下的 dE00 中位
+> 都只有 0.7**，两卷 C-41 负片彼此无法区分，`FILM_STYLE_PAIRINGS` 的两个自由度也没
+> 能分开它们。完整数据见
+> [胶片外观层 P0 基线](FILM_APPEARANCE_P0_BASELINE.zh-CN.md)。
 
 两个杠杆的量感先说结论：**这是精修级不是风格再造级**——全幅缩略图上不可辨认
 是量级的事实，不是展示的失败。因此文档采用两级仪器：全幅图看构图语境，
