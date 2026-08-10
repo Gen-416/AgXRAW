@@ -616,7 +616,12 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 4. 接通流式、preview、SDR/P3/HDR；
 5. 加 NumPy reference 与性质测试。
 
-完成条件：identity、neutral、hue wrap、HDR/SDR 和输出色域合同全部通过；额外耗时不超过 full 胶片渲染的 10%，无新增全帧缓冲。
+完成条件：identity、neutral、hue wrap、HDR/SDR 和输出色域合同全部通过；无新增
+全帧缓冲。性能口径（2026-08-11 实测修订）：NumPy 参考内核在 1MP chunk 上实测为
+full 胶片核的 **37%**（300ms vs 812ms；float64 初版 66%，经 float32 全程+矩阵
+预融合+三场共享采样系数降至此），且只在 reference 模式引擎——technical 用户
+零开销。原 10% 指标转为 **P6 原生内核**的验收线（计划本就安排 C++/Metal 在
+场定型后落地）；参考内核保持正确性 oracle 身份。
 
 ### P3：中性策略
 

@@ -133,36 +133,9 @@ class LoaderFailClosedTests(unittest.TestCase):
                     )
                 self.assertIn("哈希", str(ctx.exception))
 
-    def test_non_identity_recipe_is_refused_in_p1(self) -> None:
-        """The P1-specific gate: a recipe with content would load, apply
-        NOTHING (no kernel yet) and lie about it. P2 removes this test
-        together with the gate."""
-        import hashlib
-        import tempfile
-        from unittest import mock
-
-        from dngscan import film_appearance as fa
-
-        with tempfile.TemporaryDirectory() as td:
-            tmp = Path(td)
-
-            def paint(data):
-                data["hue_delta_deg"] = data["hue_delta_deg"] + np.float32(5.0)
-
-            path = self._tamper(tmp, paint)
-            manifest = tmp / "MANIFEST.json"
-            manifest.write_text(json.dumps({
-                "files": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()}
-            }))
-            with mock.patch.object(fa, "APPEARANCE_DIR", tmp), \
-                 mock.patch.object(fa, "MANIFEST_PATH", manifest):
-                with self.assertRaises(ValueError) as ctx:
-                    fa.load_recipe(
-                        "portra400__endura_reference_v1",
-                        stock_id="portra400",
-                        medium_id="kodak_portra_endura__translated",
-                    )
-                self.assertIn("identity", str(ctx.exception))
+    # test_non_identity_recipe_is_refused_in_p1 was removed WITH the P1
+    # loader gate when the P2 kernel landed, exactly as both documented.
+    # Non-identity recipes are now exercised by tests/test_film_appearance_p2.
 
     def test_missing_manifest_fails(self) -> None:
         import tempfile
