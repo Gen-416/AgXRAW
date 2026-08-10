@@ -312,13 +312,13 @@ def _optics_budget_mib() -> int:
 # the spread grid plus the stored glow and halation maps (~300 MiB at 2048
 # wide), and the blur temporaries. Charged before bands are sized.
 #
-# P3 raised this by 100 MiB. The capture bloom's fine accumulator lives
-# alongside the scene decimation for the whole of pass A, where the old bloom
-# built nothing until its own separate pass. The independent-process RSS gate
-# measured 664 MiB against a 608 MiB allowance before the charge was
-# corrected — the classic failure this constant exists to prevent is exactly
-# that: budgeting the bands while the context quietly outgrows the tier.
-_OPTICS_FIXED_MIB = 72 + 300 + 48
+# P3 put a second spread operator on the grid, so the tier now also picks the
+# spread grid size (film_optics.spread_max_dim) — at 512 MiB the maps render
+# on a 1408-long grid, which is what makes the charge below fit. Sizing bands
+# against a context that had quietly outgrown the tier is the exact failure
+# this constant exists to prevent, and the independent-process RSS gate is
+# what caught it, at 810 MiB against a 608 MiB allowance.
+_OPTICS_FIXED_MIB = 72 + 160 + 48
 
 
 def _optics_band_rows(width: int) -> int:

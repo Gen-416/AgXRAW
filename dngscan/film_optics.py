@@ -118,12 +118,35 @@ class FilmGeometry:
 # and no full-resolution convolution (or halo) ever exists (§9.3).
 SPREAD_MAX_DIM = 2048
 
+# The memory tier now GOVERNS the spread grid instead of only sizing bands.
+# P3 put a second spread operator on this grid, and two operators' maps plus
+# their construction temporaries do not fit a 512 MiB budget at 2048 — CI's
+# independent-process gate measured 810 MiB against a 608 MiB allowance.
+# Shaving buffers got it to ~620 and no further, so the choice was between
+# advertising a tier the implementation cannot honour (which review batch 19
+# explicitly refused) and letting the tier mean something. It now means
+# something: 512 MiB renders the spread on a 1408-long grid, 1024 on 2048.
+#
+# What that costs: at 1408 on a 36 mm gate a cell is 25.6 um against 17.6.
+# Halation's tightest component (65 um) is still 2.5 cells across and the
+# capture bloom's finest diffusion (40 um) 1.6 — both above the Nyquist of
+# their own kernels, which is why this is a resolution trade and not a
+# different operator.
+_SPREAD_DIM_BY_TIER = {512: 1408, 1024: SPREAD_MAX_DIM}
+
+
+def spread_max_dim() -> int:
+    from .render import _optics_budget_mib
+
+    return _SPREAD_DIM_BY_TIER.get(_optics_budget_mib(), 1408)
+
 
 def spread_grid_shape(height: int, width: int) -> tuple[int, int]:
     long_side = max(height, width)
-    if long_side <= SPREAD_MAX_DIM:
+    limit = spread_max_dim()
+    if long_side <= limit:
         return (height, width)
-    scale = SPREAD_MAX_DIM / long_side
+    scale = limit / long_side
     return (max(int(round(height * scale)), 1), max(int(round(width * scale)), 1))
 
 
@@ -709,16 +732,19 @@ def halation_spread_map(
         u = halation_layer_gate(e, e_ref, comp.gate_ev)
         u *= e
         r0 = max(comp.radius_mm * px_per_mm, 0.35)
-        mat = comp.transfer.astype(np.float32)
+        # Transfer FIRST, then blur. The same kernel is applied to every
+        # channel, so the channel mix and the convolution commute — and doing
+        # the mix on the source costs one buffer instead of one per scale.
+        u = (u.reshape(-1, 3) @ comp.transfer.astype(np.float32).T).reshape(
+            dh, dw, 3
+        )
         # Exponential-tail cascade approximated by three Gaussians whose
         # weights sum to 1, so a uniform source spreads to itself and the
-        # residual is exactly zero on a flat field. Each scale is folded
-        # straight into `out`: holding the per-component spread as its own
-        # buffer cost a third full grid for nothing.
+        # residual is exactly zero on a flat field.
         for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
             blurred = _blur_bounded(u, r0 * scale)
             blurred *= np.float32(wgt)
-            out += np.einsum("cj,...j->...c", mat, blurred)
+            out += blurred
             del blurred
         del u
     return out
@@ -988,8 +1014,11 @@ def capture_bloom_map(
             src = scene * capture_bloom_gate(y_lp, *scale.gate_ev)[..., None]
             del y_lp
         r_px = max(scale.diffuse_um * 1e-3 * px_per_mm, 0.35)
-        out += np.float32(scale.weight) * _blur_bounded(src, r_px)
+        blurred = _blur_bounded(src, r_px)
         del src
+        blurred *= np.float32(scale.weight)
+        out += blurred
+        del blurred
     return out
 
 
