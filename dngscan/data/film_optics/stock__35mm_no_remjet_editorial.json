@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "kind": "stock_optics",
-  "asset_id": "modelled_default",
-  "provenance": "modelled",
+  "asset_id": "35mm_no_remjet_editorial",
+  "provenance": "editorial",
   "gate_reference_mm": [
     36.0,
     24.0
   ],
-  "anti_halation": "strong",
+  "anti_halation": "none",
   "grain": {
     "provenance": "modelled",
     "medium": "negative",
@@ -19,15 +19,19 @@
   },
   "emulsion_scatter": null,
   "halation": {
-    "provenance": "modelled",
+    "provenance": "editorial",
     "model": "layer_components_v1",
     "dc_mode": "residual",
-    "anti_halation_class": "strong",
+    "anti_halation_class": "none",
     "components": [
       {
         "name": "local",
-        "radius_mm": 0.065,
+        "radius_mm": 0.075,
         "gate_ev": [
+          [
+            0.6,
+            1.8
+          ],
           [
             1.0,
             2.2
@@ -35,34 +39,34 @@
           [
             1.4,
             2.6
-          ],
-          [
-            1.8,
-            3.0
           ]
         ],
         "transfer": [
           [
-            0.05,
-            0.01,
-            0.002
-          ],
-          [
-            0.006,
+            0.11,
             0.022,
-            0.001
+            0.004
           ],
           [
-            0.0,
-            0.0,
-            0.0
+            0.014,
+            0.05,
+            0.003
+          ],
+          [
+            0.001,
+            0.001,
+            0.002
           ]
         ]
       },
       {
         "name": "global",
-        "radius_mm": 0.26,
+        "radius_mm": 0.32,
         "gate_ev": [
+          [
+            1.6,
+            3.0
+          ],
           [
             2.0,
             3.4
@@ -70,21 +74,17 @@
           [
             2.4,
             3.8
-          ],
-          [
-            2.8,
-            4.2
           ]
         ],
         "transfer": [
           [
-            0.014,
-            0.001,
-            0.0
+            0.036,
+            0.003,
+            0.001
           ],
           [
-            0.0,
-            0.0005,
+            0.001,
+            0.002,
             0.0
           ],
           [
@@ -96,30 +96,30 @@
       },
       {
         "name": "aura",
-        "radius_mm": 1.1,
+        "radius_mm": 1.25,
         "gate_ev": [
           [
-            4.0,
-            5.4
+            3.0,
+            4.4
           ],
           [
-            4.4,
-            5.8
+            3.4,
+            4.8
           ],
           [
-            4.8,
-            6.2
+            3.8,
+            5.2
           ]
         ],
         "transfer": [
           [
-            0.0,
-            0.0,
+            0.022,
+            0.001,
             0.0
           ],
           [
             0.0,
-            0.0,
+            0.001,
             0.0
           ],
           [
@@ -132,8 +132,8 @@
     ]
   },
   "source_notes": [
-    "The default stock optics. Its halation block is the 35mm_strong_ah_modelled profile: P0 measured the first version's single-radius additive kernel at a 0.66-0.72 mm half-energy radius against its own declared 0.55 mm, a red-dominant halo even from a blue source, and +0.95% frame-wide red energy.",
-    "Grain constants are unchanged from the first version and are still known bad: 60 um blobs, Selwyn slope -0.44, 48 um RMS granularity 87 against ~4 for a real 400-speed stock. P4 replaces the model.",
-    "dc_mode is residual: the characteristic curve already contains the uniform-field reflection, so only the spatial part is reinjected."
+    "EDITORIAL. This is the removed-remjet look people shoot cine negative for, authored to the described behaviour and explicitly not claimed as any stock's measurement.",
+    "The aura component is what distinguishes it: with no anti-halation backing, a large-radius red return exists at all. The strong-AH profile keeps the same component at zero transfer so the two assets are directly comparable.",
+    "Provenance is editorial at the asset level even though the grain block is modelled, because the halation numbers were chosen for look."
   ]
 }

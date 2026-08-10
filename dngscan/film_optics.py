@@ -604,34 +604,92 @@ def apply_density_grain(
     return (a + sigma * span * field.astype(np.float64)).reshape(-1, 3)
 
 
+def halation_layer_gate(
+    e_lin: np.ndarray, e_ref: np.ndarray, gate_ev: np.ndarray
+) -> np.ndarray:
+    """Per-layer C1 source gate on LINEAR layer exposure.
+
+    R1 §5.2. The old gate collapsed the scene to one photometric luminance
+    and thresholded that, so a saturated blue LED — low Y, enormous blue-layer
+    exposure — could not produce halation at all. Each layer now opens on its
+    own exposure relative to that layer's own 18% reference, and the transfer
+    matrix decides what colour comes back. Whether a source triggers belongs
+    to the layers; what colour returns belongs to the matrix; one luminance
+    scalar cannot do both jobs.
+
+    smootherstep, not a step: §10.1 gate 4 requires the source gate to be at
+    least C1, and a hard threshold draws a visible contour around the onset.
+    """
+    e = np.asarray(e_lin, dtype=np.float32)
+    ref = np.asarray(e_ref, dtype=np.float32).reshape(1, 1, 3)
+    ev = np.log2(np.maximum(e, 1e-20) / np.maximum(ref, 1e-20))
+    t0 = np.asarray(gate_ev, dtype=np.float32)[None, None, :, 0]
+    t1 = np.asarray(gate_ev, dtype=np.float32)[None, None, :, 1]
+    t = np.clip((ev - t0) / np.maximum(t1 - t0, 1e-6), 0.0, 1.0)
+    return (t * t * t * (t * (t * 6.0 - 15.0) + 10.0)).astype(np.float32)
+
+
+def halation_pointwise_return(
+    e_lin: np.ndarray, e_ref: np.ndarray, halation: HalationAsset
+) -> np.ndarray:
+    """Sum over components of A_i @ U_i, evaluated POINTWISE.
+
+    This is the DC term of the residual form, and it is also what the apply
+    side subtracts at full resolution. Evaluating it pointwise rather than
+    from the decimated proxy is the same lesson review batch 16 learned on
+    bloom: a bright point inside a large decimated cell contributes a real
+    source at full resolution that the proxy never saw, and subtracting the
+    proxy's version instead steals light from pixels that never had any.
+    """
+    e = np.asarray(e_lin, dtype=np.float32)
+    shape = e.shape[:-1]
+    out = np.zeros(shape + (3,), dtype=np.float32)
+    for comp in halation.components:
+        u = e * halation_layer_gate(e, e_ref, comp.gate_ev)
+        out += np.einsum("cj,...j->...c", comp.transfer.astype(np.float32), u)
+    return out
+
+
 def halation_spread_map(
-    ev_y_dec: np.ndarray,
-    full_width: int,
+    e_lin_dec: np.ndarray,
+    e_ref: np.ndarray,
     geometry_w_mm: float,
     halation: HalationAsset,
 ) -> np.ndarray:
-    """Halation spread on the decimated grid (§9.2, spread-grid contract):
-    source is the pre-emulsion highlight LINEAR scene exposure above the
-    declared threshold (area-decimated in the linear domain upstream),
-    spread by the exponential-tail kernel approximated as a Gaussian
-    cascade. Returned map is (dh, dw, 1), luminance-exposure units."""
-    dh, dw = ev_y_dec.shape[:2]
-    src = np.maximum(
-        np.asarray(ev_y_dec, dtype=np.float32)
-        - np.float32(np.exp2(halation.threshold_ev)),
-        0.0,
-    ).reshape(dh, dw, 1)
-    px_per_mm_dec = dw / max(geometry_w_mm, 1e-9)
-    r0_px = max(halation.radius_mm * px_per_mm_dec, 0.5)
-    spread = np.zeros_like(src)
-    for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
-        spread += wgt * _gaussian_blur(src, r0_px * scale)
-    return spread
+    """Per-component spread of the gated LAYER exposure, on the decimated grid.
+
+    Returns (dh, dw, 3) in linear layer-exposure units: the sum over
+    components of A_i @ (K_i * U_i). The apply side subtracts its own
+    pointwise A @ U, so this map is only ever the SPREAD half of the residual
+    — see halation_reinject_rows.
+
+    Each component carries its own radius and its own non-negative layer
+    transfer matrix. That is what produces a warm inner ring and a red outer
+    one from a white source: the tight component returns red AND green, the
+    wide one returns almost only red. A single radius with a fixed weight
+    vector can only make the same colour at every distance.
+    """
+    e = np.asarray(e_lin_dec, dtype=np.float32)
+    dh, dw = e.shape[:2]
+    px_per_mm = dw / max(geometry_w_mm, 1e-9)
+    out = np.zeros((dh, dw, 3), dtype=np.float32)
+    for comp in halation.components:
+        u = e * halation_layer_gate(e, e_ref, comp.gate_ev)
+        r0 = max(comp.radius_mm * px_per_mm, 0.35)
+        spread = np.zeros_like(u)
+        # Exponential-tail cascade approximated by three Gaussians. The
+        # weights sum to 1, so a uniform source spreads to itself and the
+        # residual is exactly zero on a flat field.
+        for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
+            spread += np.float32(wgt) * _gaussian_blur(u, r0 * scale)
+        out += np.einsum("cj,...j->...c", comp.transfer.astype(np.float32), spread)
+    return out
 
 
 def halation_reinject_rows(
     log_e: np.ndarray,
     spread_map: np.ndarray,
+    e_ref: np.ndarray,
     y0: int,
     y1: int,
     height: int,
@@ -639,17 +697,53 @@ def halation_reinject_rows(
     halation: HalationAsset,
     amount: float,
 ) -> np.ndarray:
-    """Reinject the upsampled spread into the LAYER EXPOSURE for output rows
-    [y0, y1), in LINEAR exposure per layer with the red-heavy weights,
-    before the characteristic curves."""
+    """Reinject the SPATIAL RESIDUAL into layer exposure for rows [y0, y1).
+
+        E' = E + amount * (upsample(spread) - A @ U(E))
+
+    R1 §5.3, and the reason is calibration, not taste. The characteristic
+    curves come from sensitometric exposure of large uniform patches, where
+    the light scattered out of a patch is replaced by light scattered in from
+    its neighbours. That DC gain is already inside the curve. The additive
+    form added it a second time — measured at +0.95% frame-wide red energy in
+    the P0 baseline, which is a warm cast and a general veiling, not a halo.
+
+    Under the residual form a uniform field is an exact identity (the spread
+    of a constant is that constant), so only contrast boundaries reinject.
+
+    The subtraction is capped at the pixel's own exposure per layer, which
+    makes non-negativity structural rather than a clamp applied afterwards:
+    a highlight core can give away all of its light but not more.
+    """
     if amount <= 0.0:
         return log_e
-    spread = upsample_rows(spread_map, y0, y1, height, width)[..., 0]
-    lin = np.power(10.0, np.asarray(log_e, dtype=np.float64).reshape(y1 - y0, width, 3))
-    gain = float(amount) * halation.strength
-    for c, wc in enumerate(halation.layer_weights):
-        lin[..., c] += gain * wc * spread.astype(np.float64)
-    return np.log10(np.maximum(lin, 1e-12)).reshape(-1, 3)
+    n = y1 - y0
+    lin = np.power(
+        10.0, np.asarray(log_e, dtype=np.float64).reshape(n, width, 3)
+    ).astype(np.float32)
+    if halation.dc_mode == "residual":
+        give = halation_pointwise_return(lin, e_ref, halation)
+        give = np.minimum(np.float32(amount) * give, lin)
+    else:
+        # legacy additive branch, kept so an asset that still declares it
+        # renders what it declares instead of silently getting the new maths
+        give = np.zeros_like(lin)
+    take = np.float32(amount) * upsample_rows(spread_map, y0, y1, height, width)
+    lin = np.maximum(lin + take - give, 0.0)
+    return np.log10(np.maximum(lin.astype(np.float64), 1e-12)).reshape(-1, 3)
+
+
+def layer_reference_exposure(observer: np.ndarray, grey: float = 0.18) -> np.ndarray:
+    """Layer exposure produced by a neutral 18% scene — the per-layer anchor
+    the source gate measures EV against.
+
+    Derived from the stock's own observer rather than declared in the asset:
+    the reference has to move with the observer, or a stock whose blue layer
+    is twice as sensitive would appear to trigger a stop earlier for no
+    physical reason.
+    """
+    grey_rgb = np.full((1, 3), float(grey), dtype=np.float64)
+    return (grey_rgb @ np.asarray(observer, dtype=np.float64).T).reshape(3)
 
 
 def scatter_source(rgb: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:

@@ -329,7 +329,8 @@ class FilmSpatialContext:
 
     __slots__ = (
         "height", "width", "optics", "grain", "halation", "bloom", "seed",
-        "hal_map", "bloom_map", "geometry", "bloom_source", "spread_shape",
+        "hal_map", "hal_ref", "bloom_map", "geometry", "bloom_source",
+        "spread_shape",
     )
 
     def __init__(self, height: int, width: int, plan: Any) -> None:
@@ -347,6 +348,7 @@ class FilmSpatialContext:
         self.bloom = 0.0 if self.optics is None else self.optics.print_scatter_amount
         self.seed = 0 if self.optics is None else self.optics.seed
         self.hal_map = None
+        self.hal_ref = None
         self.bloom_map = None
         self.bloom_source = None
         self.spread_shape = (0, 0)
@@ -366,8 +368,14 @@ class FilmSpatialContext:
 
     def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
         """Pass A: build the halation spread from the decimated post-intent
-        scene. Halation's source is PRE-emulsion scene exposure, a genuinely
+        scene. Halation's source is PRE-emulsion LAYER exposure, a genuinely
         low-frequency quantity, so the decimated proxy is the right domain.
+
+        The scene is carried all the way to layer exposure here — compression,
+        observer, film exposure state and anchor — rather than collapsed to
+        one photometric luminance. R1 §5.2: a saturated blue source has a low
+        Y and an enormous blue-layer exposure, and a luminance gate simply
+        cannot see it.
 
         Bloom is NOT built here (review batch 18): its source is a
         THRESHOLDED function of the developed print, and threshold, develop
@@ -379,29 +387,51 @@ class FilmSpatialContext:
         the FULL-RESOLUTION pre-bloom render instead — see
         accumulate_bloom_source / finish_bloom_map.
         """
-        from .film_optics import halation_spread_map
-        from .film_v2_math import film_compression_ev
+        from .film_optics import halation_spread_map, layer_reference_exposure
+        from .film_v2_math import (
+            film_compression_ev,
+            layer_log_exposure,
+        )
 
         dh, dw = rgb_dec.shape[:2]
         if self.halation <= 0.0:
             return
-        flat = rgb_dec.reshape(-1, 3).astype(np.float64)
+        stock, _media = _load_v2(preset)
+        ev_offset = (
+            float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
+            + float(stock["anchor"])
+        )
         compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
-        if compression > 0.0:
-            flat = film_compression_ev(
-                flat,
-                impact=compression,
-                knee_ev=float(getattr(plan, "film_compression_knee", 2.0) or 2.0),
-                highlight_color_density=float(
-                    getattr(plan, "film_highlight_density", 0.0) or 0.0
-                ),
-            )
-        exposure_lin = (
-            np.maximum(flat @ REC2020_LUMA, EPS) / 0.18
-        ).reshape(dh, dw)
+        knee = float(getattr(plan, "film_compression_knee", 2.0) or 2.0)
+        rho = float(getattr(plan, "film_highlight_density", 0.0) or 0.0)
+        # Row slabs, and the result kept in float32. The whole-grid float64
+        # chain (decimated scene, its logE and its linearisation) is three
+        # 67 MiB buffers alive at once on a 2048-wide spread grid, which is
+        # the same shape of peak review batch 13 charged against the tier —
+        # and the float64 precision buys nothing for a quantity that goes
+        # straight into a gate and a blur.
+        e_lin = np.empty((dh, dw, 3), dtype=np.float32)
+        slab = max(1, 2_000_000 // max(dw, 1))
+        for r0 in range(0, dh, slab):
+            r1 = min(r0 + slab, dh)
+            part = rgb_dec[r0:r1].reshape(-1, 3).astype(np.float64)
+            if compression > 0.0:
+                part = film_compression_ev(
+                    part, impact=compression, knee_ev=knee,
+                    highlight_color_density=rho,
+                )
+            # Same layer-exposure coordinate the emulsion sees (R1 §3.1), so
+            # the spatial source moves with the film exposure exactly as the
+            # density does. The two must not be able to disagree.
+            log_e = layer_log_exposure(part, stock["observer"]) + ev_offset * _LOG10_2
+            e_lin[r0:r1] = np.power(10.0, log_e).reshape(r1 - r0, dw, 3)
+            del part, log_e
+        self.hal_ref = (
+            layer_reference_exposure(stock["observer"]) * (10.0 ** (ev_offset))
+        ).astype(np.float32)
         _, _, geo_w_mm, _ = self.geometry.region()
         self.hal_map = halation_spread_map(
-            exposure_lin, self.width, geo_w_mm, self.optics.stock.halation
+            e_lin, self.hal_ref, geo_w_mm, self.optics.stock.halation
         )
 
     def begin_bloom_source(self) -> None:
@@ -533,7 +563,7 @@ def _apply_film_core_v2(
         # map prepared on the decimated grid), reinjected red-heavy into
         # layer exposure before the curves.
         log_e = halation_reinject_rows(
-            log_e, ctx.hal_map, y0, y1, ctx.height, ctx.width,
+            log_e, ctx.hal_map, ctx.hal_ref, y0, y1, ctx.height, ctx.width,
             ctx.optics.stock.halation, ctx.halation,
         )
     amounts = characteristic_amounts(log_e, stock["char_le"], char_amounts)

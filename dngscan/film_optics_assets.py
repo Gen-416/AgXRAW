@@ -117,46 +117,93 @@ class GrainAsset:
 
 
 @dataclass(frozen=True)
+class HalationComponent:
+    """One radial component of the backing reflection (§5.3).
+
+    Three exist in practice and they are not the same effect at three
+    strengths: `local` is the main halo hugging a high-contrast edge, `global`
+    is a low-amplitude wide red glare, and `aura` is the very large return a
+    stock without remjet or with a weak anti-halation layer produces. Each
+    carries its own radius, its own per-layer trigger and its own non-negative
+    transfer matrix, which is what lets a white source come back warm at the
+    inner ring and red at the outer one.
+    """
+
+    name: str
+    radius_mm: float
+    gate_ev: Any                 # [3, 2] per-layer smootherstep (t0, t1) in EV
+    transfer: Any                # [3, 3] non-negative, rows = destination layer
+
+    @classmethod
+    def from_json(cls, raw: dict, where: str) -> "HalationComponent":
+        radius = _finite(raw["radius_mm"], f"{where}.radius_mm")
+        _require(radius > 0.0, f"{where}: radius must be positive")
+        gate = np.asarray(raw["gate_ev"], dtype=np.float64)
+        _require(gate.shape == (3, 2), f"{where}.gate_ev must be [3, 2]")
+        _require(bool(np.isfinite(gate).all()), f"{where}.gate_ev is not finite")
+        # A zero-width gate is a hard threshold, which §10.1 gate 4 forbids:
+        # the source mask has to stay C1 or the halo grows a visible contour.
+        _require(bool(np.all(gate[:, 1] - gate[:, 0] >= 0.5)),
+                 f"{where}.gate_ev needs at least 0.5 EV of smootherstep width")
+        transfer = np.asarray(raw["transfer"], dtype=np.float64)
+        _require(transfer.shape == (3, 3), f"{where}.transfer must be [3, 3]")
+        _require(bool(np.isfinite(transfer).all()),
+                 f"{where}.transfer is not finite")
+        _require(bool((transfer >= 0.0).all()),
+                 f"{where}.transfer must be non-negative")
+        return cls(
+            name=str(raw["name"]), radius_mm=radius,
+            gate_ev=gate, transfer=transfer,
+        )
+
+
+@dataclass(frozen=True)
 class HalationAsset:
     """Backing-reflection halation.
 
     `dc_mode` is the field R1 exists for. `additive` reinjects the spread
     itself, which double-counts the uniform-field response already baked into
-    the characteristic curve; `residual` reinjects only the spatial part. The
-    first version ships `additive` so P1 can prove byte-identity, and P2
-    switches it — which is exactly why it is a declared mode and not an
-    implicit property of the code.
+    the characteristic curve (measured at +0.95% frame-wide red in P0);
+    `residual` reinjects only the spatial part. It stays a declared mode
+    rather than an implicit property of the code so an asset says which
+    physics it was authored against.
     """
 
     provenance: str
-    model: str                   # legacy_threshold_cascade_v1
-    radius_mm: float
-    layer_weights: tuple[float, float, float]
-    threshold_ev: float
-    strength: float
+    model: str                   # layer_components_v1
     dc_mode: str                 # additive | residual
+    anti_halation_class: str
+    components: tuple[HalationComponent, ...]
 
     @classmethod
     def from_json(cls, raw: dict, where: str) -> "HalationAsset":
         model = str(raw.get("model", ""))
-        _require(model == "legacy_threshold_cascade_v1",
+        _require(model == "layer_components_v1",
                  f"{where}: unknown halation model {model!r}")
         dc_mode = str(raw.get("dc_mode", ""))
         _require(dc_mode in ("additive", "residual"),
                  f"{where}: unknown dc_mode {dc_mode!r}")
-        radius = _finite(raw["radius_mm"], f"{where}.radius_mm")
-        _require(radius > 0.0, f"{where}: radius must be positive")
-        weights = _finite_triple(raw["layer_weights"], f"{where}.layer_weights")
-        _require(all(w >= 0.0 for w in weights),
-                 f"{where}: layer weights must be non-negative")
-        strength = _finite(raw["strength"], f"{where}.strength")
-        _require(strength >= 0.0, f"{where}: strength must be non-negative")
+        comps = raw.get("components") or ()
+        _require(len(comps) >= 1, f"{where}: needs at least one component")
+        parsed = tuple(
+            HalationComponent.from_json(c, f"{where}.components[{i}]")
+            for i, c in enumerate(comps)
+        )
+        names = [c.name for c in parsed]
+        _require(len(set(names)) == len(names),
+                 f"{where}: duplicate component names {names}")
         return cls(
             provenance=_provenance(raw["provenance"], where),
-            model=model, radius_mm=radius, layer_weights=weights,
-            threshold_ev=_finite(raw["threshold_ev"], f"{where}.threshold_ev"),
-            strength=strength, dc_mode=dc_mode,
+            model=model, dc_mode=dc_mode,
+            anti_halation_class=str(raw["anti_halation_class"]),
+            components=parsed,
         )
+
+    def total_return(self) -> np.ndarray:
+        """Summed transfer over components — the per-layer energy a fully
+        gated source hands back. The number a report should quote when it
+        claims a profile is 'strong' or 'weak'."""
+        return np.sum([c.transfer for c in self.components], axis=0)
 
 
 @dataclass(frozen=True)

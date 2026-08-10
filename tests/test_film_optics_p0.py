@@ -304,13 +304,25 @@ class MeasuredBaselineTests(unittest.TestCase):
         # 48 um RMS granularity sits near 4.
         self.assertGreater(min(grain["rms_granularity_48um_at_span2"]), 40.0)
 
+        # Halation was fixed in P2, so its assertions are INVERTED here rather
+        # than deleted: the baseline is where a phase says what it changed.
         halation = self.live["halation"]["standard"]
-        # A halo whose half-energy radius exceeds its own declared radius.
-        self.assertGreater(min(halation["half_energy_radius_mm"]), 0.55)
-        # And a blue source that hands back the same red-dominant halo a white
-        # one does: the source spectrum is discarded before spreading.
-        blue = self.live["halation"]["blue_source"]["halo_channel_ratio"]
-        self.assertEqual(int(np.argmax(blue)), 0)
+        self.assertLess(
+            max(halation["half_energy_radius_mm"]), 0.20,
+            "P2 brought the halo back to a physical radius",
+        )
+        white = halation["halo_inner_ratio"]
+        blue = self.live["halation"]["blue_source"]["halo_inner_ratio"]
+        self.assertGreater(
+            abs(blue[1] / blue[0] - white[1] / white[0]), 0.1,
+            "P2 gates per layer, so a blue source no longer returns the "
+            "white source's halo",
+        )
+        self.assertGreater(
+            white[1] / white[0],
+            halation["halo_outer_ratio"][1] / halation["halo_outer_ratio"][0] + 0.1,
+            "P2's component set makes the inner ring warmer than the outer",
+        )
 
         gate = self.live["bloom"]["source_gate"]
         # The domain error, as a number: the operator runs where less than a

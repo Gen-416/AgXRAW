@@ -101,15 +101,19 @@ class AssetLoadingTests(unittest.TestCase):
                 self.assertIn(needle, str(ctx.exception))
 
         good_hal = {
-            "provenance": "modelled", "model": "legacy_threshold_cascade_v1",
-            "radius_mm": 0.55, "layer_weights": [1.0, 0.22, 0.06],
-            "threshold_ev": 1.5, "strength": 0.12, "dc_mode": "additive",
+            "provenance": "modelled", "model": "layer_components_v1",
+            "dc_mode": "residual", "anti_halation_class": "strong",
+            "components": [{
+                "name": "local", "radius_mm": 0.065,
+                "gate_ev": [[1.0, 2.2], [1.4, 2.6], [1.8, 3.0]],
+                "transfer": [[0.05, 0.01, 0.0], [0.006, 0.022, 0.0],
+                             [0.0, 0.0, 0.0]],
+            }],
         }
         for mutation, needle in (
             ({"dc_mode": "whatever"}, "unknown dc_mode"),
-            ({"layer_weights": [1.0, -0.2, 0.06]}, "non-negative"),
-            ({"layer_weights": [1.0, 0.2]}, "three components"),
-            ({"radius_mm": -1.0}, "must be positive"),
+            ({"model": "legacy_threshold_cascade_v1"}, "unknown halation model"),
+            ({"components": []}, "at least one component"),
         ):
             with self.subTest(mutation=mutation):
                 with self.assertRaises(fa.OpticsAssetError) as ctx:
@@ -167,7 +171,7 @@ class CompilerTests(unittest.TestCase):
         rep = fa.compile_film_optics_plan(_plan(film_halation=0.4)).report()
         self.assertEqual(rep["stock_optics"], fa.DEFAULT_STOCK_OPTICS)
         self.assertEqual(rep["provenance"]["halation"], "modelled")
-        self.assertEqual(rep["halation_dc_mode"], "additive")
+        self.assertEqual(rep["halation_dc_mode"], "residual")
         self.assertEqual(set(rep["asset_sha256"]), set(rep["asset_sha256"]))
 
     def test_the_render_report_states_asset_and_dc_mode(self) -> None:
@@ -182,7 +186,7 @@ class CompilerTests(unittest.TestCase):
         )
         self.assertIn("模拟光学", note)
         self.assertIn(fa.DEFAULT_STOCK_OPTICS, note)
-        self.assertIn("halation DC=additive", note)
+        self.assertIn("halation DC=residual", note)
 
 
 class ExposureTopologyTests(unittest.TestCase):
