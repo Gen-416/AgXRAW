@@ -154,43 +154,59 @@ flowchart LR
 
 ### 6.1 输入坐标
 
-输入为 B2 后、输出 gamut fit 前的 `rgb_rec2020 >= 0`。对每个像素计算：
+色彩输入为 B2 后、输出 gamut fit 前的 `rgb_mapped_rec2020`。曝光坐标不能从
+这份 B2 输出反推：它已经经过负片、印相纸和 tone 压缩，得到的是 **output EV**，
+不是 scene EV。运行时必须从 Stage A 实际接收的 scene-linear 缓冲显式传入胶片
+曝光坐标：
 
 ```text
-Y = dot(rgb, [0.2627, 0.6780, 0.0593])
-e = log2(max(Y, eps) / 0.18)
-(L, a, b) = Oklab(rgb_rec2020)
+Y_film = dot(rgb_entering_stage_a, [0.2627, 0.6780, 0.0593])
+e_film = log2(max(Y_film, eps) / 0.18) + film_exposure_ev
+(L, a, b) = Oklab(rgb_mapped_rec2020)
 C = sqrt(a^2 + b^2)
+S = C / max(L, eps)
 h = atan2(b, a) mod 2pi
 ```
 
-这里 Oklab 只承担局部均匀的对手色坐标，`e` 才是 recipe 的明暗坐标。不能直接用 Oklab `L` 作为曝光轴，否则 SDR/HDR 和不同白点下的同一场景位置会漂移。
+`rgb_entering_stage_a` 指经过可选 Film Compression、但尚未进入 observer/layer
+分解的实际胶片入射值；`film_exposure_ev` 与 Stage A 使用同一个偏移。这样改变胶片
+曝光会沿 recipe 的曝光轴移动，而 SDR/HDR、相纸和输出色域不会反过来改变索引。
+P0 probe 的 `ProbeIndex.ev` 就是这个坐标；`decompose()["ev"]` 只是输出 EV，必须
+单独报告，禁止混用。
+
+Oklab 的 `C` 是绝对 colorfulness，不是曝光不变的纯度：线性 RGB 乘 `k` 时，
+`L` 与 `C` 都乘 `k^(1/3)`。recipe 的 purity/richness 门控必须使用 `S=C/L`，否则
+同一色度在阴影会被误判为低纯度，在亮部会被误判为高纯度。
 
 ### 6.2 三个正交色彩场
 
 每个 recipe 发布三个二维周期场，横轴 hue、纵轴 exposure EV：
 
 ```text
-delta_h = F_h(e, h)                         # hue path，弧度
-g_c     = exp(F_c(e, h) * w_c(C))          # chroma gain
-delta_L = F_d(e, h) * w_c(C)                # color density/lightness
+delta_h = F_h(e_film, h) * w_s(S)           # hue path，弧度
+g_s     = exp(F_s(e_film, h) * r(S))        # saturation/richness gain
+d_ev    = F_d(e_film, h) * w_s(S)           # color density，线性曝光档
 ```
 
 应用：
 
 ```text
-h' = h + strength * delta_h
-C' = C * exp(strength * log(g_c))
-L' = L + strength * delta_L
+h1 = h + strength * delta_h
+S1 = S * exp(strength * log(g_s))
+k  = 2^(-strength * d_ev / 3)
+L' = k * L
+C' = k * L * S1
+a' = C' * cos(h1)
+b' = C' * sin(h1)
 ```
 
-`w_c(C)` 在中性轴趋近 0，保证无彩色严格不被 hue/chroma/density 场污染。建议：
+`w_s(S)` 在中性轴趋近 0，保证无彩色严格不被 hue/richness/density 场污染。建议：
 
 ```text
-w_c(C) = C^2 / (C^2 + C0^2)
+w_s(S) = S^2 / (S^2 + S0^2)
 ```
 
-`C0` 由 recipe 声明，但全局限制在小范围内，避免木头、肤色等低纯度颜色因阈值突变。
+`S0` 由 recipe 声明，但全局限制在小范围内，避免木头、肤色等低纯度颜色因阈值突变。
 
 三个场必须分开，原因是：
 
@@ -200,34 +216,36 @@ w_c(C) = C^2 / (C^2 + C0^2)
 
 ### 6.3 Richness 与高纯度软肩
 
-为避免普通 saturation 的霓虹感，在基本 `F_c` 外加饱和度维软肩：
+为避免普通 saturation 的霓虹感，在基本 `F_s` 外加饱和度维软肩：
 
 ```text
-r(C) = 1 / (1 + (C / Ck)^p)
-log(C'/C) = strength * F_c(e,h) * r(C)
+r(S) = 1 / (1 + (S / Sk)^p)
+log(S1/S) = strength * F_s(e_film,h) * r(S)
 ```
 
-这使增益主要落在低到中等 chroma；已经很饱和的像素只移动少量。`Ck` 与 `p` 是 recipe 资产，不先暴露到 GUI。
+这使增益主要落在低到中等 saturation；已经很饱和的像素只移动少量。`Sk` 与 `p` 是 recipe 资产，不先暴露到 GUI。
 
 首版不再额外实现一个含义重叠的 Vibrance。若实拍验证表明需要“暗色更浓、肤色更弱”的独立控制，再增加：
 
 ```text
-v(e,h,C) = dark_weight(e) * skin_protect(h,e) * gamut_headroom(rgb)
+v(e,h,S) = dark_weight(e) * skin_protect(h,e,S) * gamut_headroom(rgb)
 ```
 
-不能只按 hue 定义肤色，因为木头、砖墙和皮肤会重叠；至少还要结合 chroma 与曝光范围。
+不能只按 hue 定义肤色，因为木头、砖墙和皮肤会重叠；至少还要结合 saturation 与曝光范围。
 
 ### 6.4 Color Density
 
-Color Density 只对有彩色像素改变明度，不直接改变 `C` 或 `h`：
+Color Density 改变有彩色像素的线性能量，但不改变已经求得的 `S1=C/L` 和 `h1`。
+若资产中的正 `density_ev` 表示“更密、更暗”，Oklab 的三分之一次齐次性给出精确变换：
 
 ```text
-L_density = L + strength * F_d(e,h) * w_c(C)
+k = 2^(-strength * density_ev(e_film,h) * w_s(S) / 3)
+(L',a',b') = k * (L1,a1,b1)
 ```
 
-符号合同必须固定：正值表示颜色更“密”，即适度降低对应 `L`；资产中可存 `density_ev`，运行时统一转换，避免不同 recipe 对正负号理解相反。
-
-实施时要验证 Oklab `L` 变化是否保持目标色度；若重建 RGB 后实际 chroma 偏移超门槛，应改为固定 Oklab `a,b`、仅变 `L` 后再做一次有界色度补偿，而不是接受隐式饱和变化。
+这里必须同时缩放 `L/a/b`。旧草案“只改 L、固定 a/b”会改变 `C/L`，与“不改变
+saturation”的 Color Density 语义自相矛盾。重建 RGB 后应只有线性能量变化；任何
+hue 或 `S` 漂移都属于实现错误。
 
 ### 6.5 灰阶 tone bias 独立
 
@@ -287,22 +305,27 @@ Dehancer 的明显成片感还来自把 profile 的低对比范围解释到显�
 
 ### 7.2 参考印相 tone-fit 的建议位置
 
-负片 exposure 不应被 reference-print tone-fit 偷改，否则 grain/halation 会像重新曝光。建议在 B1 后、相纸 1D 曲线前，对公共 paper exposure 坐标施加一个中灰锚定、C1、单调的标量 warp：
+负片 exposure 不应被 reference-print tone-fit 偷改，否则 grain/halation 会像重新曝光。
+建议在 B1 后、相纸 1D 曲线前，沿**实测/建模的中性纸曝光轨迹**做中灰锚定、C1、
+单调的标量 warp。不能把三个 paper-layer log exposure 用任意亮度权重压成 `u_bar`：
+三层的感度与曲线不同，那样不能保证中性输入仍在中性轨迹上。
 
 ```text
-u_j = ell_j(D_neg) + tau_j
-u_bar = sum_j w_j * u_j
-delta_j = u_j - u_bar
-u_bar' = f_print(u_bar)
-u_j' = u_bar' + delta_j
+u = ell(D_neg) + tau                       # 三层 paper log exposure
+n(t) = neutral_paper_exposure_locus(t)     # 中性 ramp 的三维轨迹
+t* = argmin_t ||W * (u - n(t))||^2
+r = u - n(t*)
+t' = f_print(t*)
+u' = n(t') + transport(r, t* -> t')
 D_print,j = H_paper,j(u_j')
 ```
 
 要求：
 
-- `f_print(u_mid)=u_mid`；
+- `f_print(t_mid)=t_mid`；
 - 一阶导数正；
-- 通道差 `delta_j` 默认保持，避免 tone-fit 变成隐性白平衡；
+- 对中性输入 `r=0`，输出按构造仍在 `n(t')` 上；
+- `transport` 首版可保持 paper-log-exposure 残差，但必须以彩色 oracle 验证；若色相漂移超门槛，改用中性轨迹局部基底运输，不能用事后白平衡补救；
 - toe/shoulder 端点平滑进入相纸可用域；
 - 变化发生在相纸曲线输入，保留介质自己的非线性和色彩耦合。
 
@@ -346,17 +369,17 @@ dngscan_assets/film_appearance/
   "recipe_id": "portra400__endura_reference_v1",
   "stock_id": "portra400",
   "medium_id": "endura",
-  "process_space": "display-linear-rec2020/oklab + luminance-scene-ev",
+  "process_space": "display-linear-rec2020/oklab + explicit-film-scene-ev",
   "provenance": "editorial-authored",
   "neutralization_policy": "print-balanced",
   "ev_knots": [-6, -3, 0, 3, 6],
   "hue_knots_deg": [0, 15, "...", 345],
   "hue_delta_deg": "[5,24]",
-  "log_chroma_gain": "[5,24]",
+  "log_saturation_gain": "[5,24]",
   "density_ev": "[5,24]",
   "neutral_bias_ab": "[5,2]",
-  "chroma_knee": 0.0,
-  "chroma_power": 2.0,
+  "saturation_knee": 0.0,
+  "saturation_power": 2.0,
   "source_notes": [],
   "builder_commit": "...",
   "sha256": "..."
@@ -374,12 +397,13 @@ dngscan_assets/film_appearance/
 
 ## 10. 首批 recipe 的目标，不冒充测量
 
-先做四个组合，覆盖差异最大的家族：
+先用一对同工艺家族完成首个纵向切片，再覆盖差异最大的其他家族：
 
 1. `Portra 400 + Endura`：低/中纯度肤色略更红暖，黄绿温和偏黄，高纯度颜色软限制，蓝青不过亮；
-2. `Velvia 100 direct`：绿/青/洋红分离更明确，彩色区域有更高 color density，高纯度仍受软肩，肤色保护更强；
-3. `Vision3 250D + 2383`：暗色更密，肤色温暖，青蓝阴影有轻微冷向，亮部向暖/绿后平滑回中性；
-4. `Vision3 250D extended`：保留电影负片家族方向，但降低灰轴偏色、放宽 gamut、压低黑位，作为 scan/telecine 解释对照。
+2. `Ektar 100 + Endura`：与 Portra 同属 C-41，但红/青分离和色密度更明确；它与 Portra 必须首先跨过同家族 identity 门；
+3. `Velvia 100 direct`：绿/青/洋红分离更明确，彩色区域有更高 color density，高纯度仍受软肩，肤色保护更强；
+4. `Vision3 250D + 2383`：暗色更密，肤色温暖，青蓝阴影有轻微冷向，亮部向暖/绿后平滑回中性；
+5. `Vision3 250D extended`：保留电影负片家族方向，但降低灰轴偏色、放宽 gamut、压低黑位，作为 scan/telecine 解释对照。
 
 这些是可检验的 editorial targets，不写成“严格复现 Portra/2383”。每个 recipe 先在合成 chart 上定义，再由真实场景微调；禁止只凭单张照片手调。
 
@@ -486,11 +510,11 @@ CLI 建议：
 输出：
 
 - `delta hue(e,h,C)`；
-- `log2 chroma ratio`；
-- `delta L / delta Y`；
+- `log2 colorfulness ratio`（绝对 Oklab C）与 `log2 saturation ratio`（C/L）分列；
+- `delta L` 与 mapped output EV 分列；
 - neutral drift；
 - gamut fit 前负值与超域比例；
-- technical/reference 的 DeltaE00 图。
+- technical/reference 的 DeltaE00 图；负 XYZ 样本不声称 dE00，改报 dEOK 与 CIE 有效覆盖率。
 
 ### 14.2 真实场景矩阵
 
@@ -520,7 +544,7 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 
 ### 15.1 数学与回归
 
-- `technical` 对当前 main 全部 golden 逐字节一致；
+- `technical` 对 P0 专用 probe 与真实/合成场景冻结保持 float32 容差和 u8 逐字节一致；不哈希无关的全仓 golden 树；
 - strength 0 严格恒等，无额外 gamut fit 变化；
 - 中性输入在关闭 neutral bias 时保持 `a=b=0`，EV0 DeltaE00 `< 0.1`；
 - hue 周期边界值和一阶导连续；
@@ -535,8 +559,8 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 
 - reference 对 technical 的中位 DeltaE00 目标 `3..6`；
 - 重点 hue 区 p75 DeltaE00 至少 `4`；
-- 非目标中性和低 chroma 区 DeltaE00 保持 `<1`；
-- 两个不同 stock reference 在各自目标色区的 DeltaE00 至少 `2`；
+- 非目标中性和低 saturation 区 DeltaE00 保持 `<1`；
+- 两个不同 stock reference 在各自目标色区的 DeltaE00 至少 `2`，且至少一组必须是同工艺家族（首门为 Portra 400 vs Ektar 100）；
 - 任何单 patch hue 旋转初始上限 `12 degrees`，超过必须单独审查；
 - gamut fit 前超域比例不得比 technical 无上限增长，报告新增压力及位置。
 
@@ -557,12 +581,12 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 
 ### P0：冻结与仪器
 
-1. 冻结当前 full technical 的合成 chart、四张真实 RAW 和 HDR golden；
-2. 实现 `film_palette_probe.py`，导出 hue/EV/chroma/DeltaE/gamut 压力；
+1. 冻结当前默认 `bounded` full technical 的 probe、两张真实 RAW 裁切和两组合成场景；HDR 由既有专项 golden 负责；
+2. 实现 `film_palette_probe.py`，分列 hue、scene EV、output EV、colorfulness、saturation、DeltaE 与 gamut 压力；
 3. 记录当前 observe pairing 与 full technical 的真实差异；
 4. 修正文档中已经不符合当前代码的“observe 淡、full 浓而坏”等历史描述。
 
-完成条件：能量化证明“差异弱”发生在哪些 hue/EV/chroma 区，而不是只看缩略图。
+完成条件：能量化证明“差异弱”发生在哪些 hue/EV/saturation 区，而不是只看缩略图。
 
 ### P1：计划与资产合同
 
@@ -575,7 +599,7 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 
 ### P2：共同空间 appearance 内核
 
-1. 实现 Rec.2020/Oklab + scene EV 坐标；
+1. 实现 Rec.2020/Oklab，并从 Stage A 显式传入 film scene EV；禁止从 B2 输出反推；
 2. 实现周期 C1 hue 场、chroma richness、color density；
 3. 插入 B2 后、bloom 前；
 4. 接通流式、preview、SDR/P3/HDR；
@@ -592,13 +616,13 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 
 完成条件：EV0 中性精确，灰阶两端的 native crossover 可见且连续。
 
-### P4：四个 reference recipe
+### P4：reference recipe 纵向切片
 
 按 §10 顺序逐个 author，禁止一次生成 25 卷：
 
-1. Vision3 250D + 2383；
-2. Portra 400 + Endura；
-3. Velvia 100 direct；
+1. Portra 400 + Endura 与 Ektar 100 + Endura 成对完成，先证明同家族身份可分；
+2. Velvia 100 direct；
+3. Vision3 250D + 2383；
 4. Vision3 extended。
 
 每个 recipe 必须有合成图、真实场景矩阵、盲选记录、版本说明。通过后才扩到同家族其他卷。

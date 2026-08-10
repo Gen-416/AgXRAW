@@ -9,15 +9,18 @@ be decomposed. Both live here; nothing in the render path imports this module.
 
 Two deliberate choices:
 
-- **The exposure axis is scene EV, not lightness.** A recipe indexed by Oklab
-  L would move under a different white point or dynamic range, so the same
-  scene position would land in a different row of the table. `log2(Y / 0.18)`
-  is stable across SDR, HDR and output gamut.
+- **The input exposure axis is scene EV, not mapped lightness.** The probe
+  records `log2(Y / 0.18)` before rendering in `ProbeIndex.ev`; that coordinate
+  therefore does not move when SDR/HDR or the output gamut changes. A recipe
+  indexed by mapped Oklab L would move with the rendering instead. Mapped
+  output EV is a separate diagnostic below and must not be used as scene EV.
 - **Differences are reported decomposed AND as dE00.** A single dE00 cannot
   tell a hue path from a saturation boost, and telling those apart is the
   stated failure criterion for the whole feature (plan §17 risk 2). So every
-  comparison also returns hue rotation in degrees, log2 chroma ratio and
-  lightness delta.
+  comparison also returns hue rotation, absolute colourfulness, exposure-
+  invariant Oklab saturation (C/L), lightness and output exposure.  Absolute
+  Oklab C alone is not purity: linear-light exposure scaling changes L and C
+  together by the cube root of the scale.
 """
 from __future__ import annotations
 
@@ -36,6 +39,8 @@ from .constants import (
 
 MID_GREY = 0.18
 LUMA_REC2020 = np.array([0.2627, 0.6780, 0.0593], dtype=np.float64)
+CHROMA_EPS = 1e-3
+LIGHTNESS_EPS = 1e-6
 
 # §14.1 axes.
 HUE_COUNT = 24
@@ -102,6 +107,19 @@ def rec2020_to_lab(rgb: np.ndarray, white: np.ndarray | None = None) -> np.ndarr
          200.0 * (f[..., 1] - f[..., 2])],
         axis=-1,
     )
+
+
+def cie_lab_valid(rgb: np.ndarray) -> np.ndarray:
+    """Whether CIELAB/CIEDE2000 has a physical non-negative XYZ input.
+
+    The probe intentionally stops before gamut fit, so some aggressive AgX
+    colours carry negative tristimulus components.  The analytic CIELAB branch
+    can produce a number for them, but CIEDE2000 has no defined colour-
+    difference meaning there.  Keep those samples in the Oklab diagnostics and
+    gamut-pressure count while excluding them from dE00 summaries.
+    """
+    xyz = _mat(np.asarray(rgb, dtype=np.float64), RGB_TO_XYZ["Rec2020"])
+    return np.all(np.isfinite(xyz) & (xyz >= 0.0), axis=-1)
 
 
 def delta_e00(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
@@ -265,14 +283,23 @@ def palette_volume() -> tuple[np.ndarray, ProbeIndex]:
 # --------------------------------------------------------------------------
 
 def decompose(rgb: np.ndarray) -> dict[str, np.ndarray]:
-    """Oklab lightness / chroma / hue plus the scene-EV coordinate."""
+    """Oklab lightness/colourfulness/saturation/hue and output EV.
+
+    ``C`` is absolute Oklab colourfulness. ``S = C/L`` is invariant when the
+    same chromaticity is scaled in linear light and is therefore the useful
+    purity coordinate. ``ev`` is explicitly the mapped OUTPUT luminance EV;
+    the probe's scene exposure remains ``ProbeIndex.ev``.
+    """
     lab = rec2020_to_oklab(np.asarray(rgb, dtype=np.float64))
     c = np.hypot(lab[..., 1], lab[..., 2])
     h = np.degrees(np.arctan2(lab[..., 2], lab[..., 1])) % 360.0
     y = np.asarray(rgb, dtype=np.float64) @ LUMA_REC2020
+    saturation = np.full_like(c, np.nan)
+    np.divide(c, lab[..., 0], out=saturation, where=lab[..., 0] > LIGHTNESS_EPS)
     return {
         "L": lab[..., 0],
         "C": c,
+        "S": saturation,
         "h_deg": h,
         "ev": np.log2(np.maximum(y, 1e-12) / MID_GREY),
         "lab": lab,
@@ -282,9 +309,10 @@ def decompose(rgb: np.ndarray) -> dict[str, np.ndarray]:
 def compare(a: np.ndarray, b: np.ndarray) -> dict[str, np.ndarray]:
     """b relative to a, decomposed AND as dE00.
 
-    `d_hue_deg` is wrapped to (-180, 180]; `log2_chroma_ratio` is undefined
-    where the reference chroma is ~0, and is returned as NaN there rather than
-    as a huge finite number that would poison any percentile taken over it.
+    ``d_hue_deg`` is wrapped to (-180, 180]. Ratios are undefined where the
+    reference is effectively neutral and are returned as NaN. CIEDE2000 is
+    likewise NaN where either pre-gamut RGB maps to a negative XYZ; dEOK stays
+    available there as the explicitly project-local diagnostic.
     """
     da, db = decompose(a), decompose(b)
     dh = (db["h_deg"] - da["h_deg"] + 180.0) % 360.0 - 180.0
@@ -293,17 +321,28 @@ def compare(a: np.ndarray, b: np.ndarray) -> dict[str, np.ndarray]:
     # chromatic and hand back hue rotations computed from rounding noise. The
     # threshold sits an order of magnitude above that and two below the least
     # saturated wheel sample (C ~ 0.03).
-    neutral = da["C"] < 1e-3
-    ratio = np.where(
-        neutral, np.nan,
+    neutral_a = da["C"] < CHROMA_EPS
+    hue_invalid = neutral_a | (db["C"] < CHROMA_EPS)
+    colorfulness_ratio = np.where(
+        neutral_a, np.nan,
         np.log2(np.maximum(db["C"], 1e-12) / np.maximum(da["C"], 1e-12)),
     )
+    saturation_ratio = np.where(
+        neutral_a | ~np.isfinite(da["S"]) | ~np.isfinite(db["S"]), np.nan,
+        np.log2(np.maximum(db["S"], 1e-12) / np.maximum(da["S"], 1e-12)),
+    )
+    cie_valid = cie_lab_valid(a) & cie_lab_valid(b)
+    de00 = delta_e00(rec2020_to_lab(a), rec2020_to_lab(b))
+    de_ok = 100.0 * np.linalg.norm(db["lab"] - da["lab"], axis=-1)
     return {
-        "d_hue_deg": np.where(neutral, np.nan, dh),
-        "log2_chroma_ratio": ratio,
+        "d_hue_deg": np.where(hue_invalid, np.nan, dh),
+        "log2_colorfulness_ratio": colorfulness_ratio,
+        "log2_saturation_ratio": saturation_ratio,
         "d_L": db["L"] - da["L"],
-        "d_ev": db["ev"] - da["ev"],
-        "delta_e00": delta_e00(rec2020_to_lab(a), rec2020_to_lab(b)),
+        "d_output_ev": db["ev"] - da["ev"],
+        "delta_e00": np.where(cie_valid, de00, np.nan),
+        "delta_e_ok": de_ok,
+        "cie_valid": cie_valid,
     }
 
 
@@ -313,7 +352,7 @@ def gamut_pressure(rgb: np.ndarray, gamut: str = "srgb") -> dict[str, float]:
     will push harder — but it must be reported, because a recipe that buys its
     look purely by driving colours out of gamut has moved the work to the
     gamut fitter rather than done it."""
-    space = {"srgb": "sRGB", "p3": "P3D65", "rec2020": "Rec2020"}[gamut]
+    space = {"srgb": "sRGB", "p3": "P3", "rec2020": "Rec2020"}[gamut]
     out = _mat(_mat(np.asarray(rgb, dtype=np.float64), RGB_TO_XYZ["Rec2020"]),
                XYZ_TO_RGB[space])
     below = np.minimum(out, 0.0)

@@ -1,20 +1,18 @@
 {
   "fixture_sha256": {
-    "probe__ektar100__full.npz": "ddeccd9bcf208ca4baf599e4452d1f86917763dda6ba4b0695084c977be0672e",
+    "probe__ektar100__full.npz": "190ec9944977181a128792229bb0e12632d3cfb04de61e644de0777586671a0a",
     "probe__ektar100__observe.npz": "16d3223cd8cca2e4e5b638f0d77a4bd17a4f86087cb45f6cf6c99b05b40e92dd",
-    "probe__portra400__full.npz": "abe180419e5e9d970cafa965b19fbb7eaef6e68cbe0090131908ff9f0be92cd6",
+    "probe__portra400__full.npz": "70b1fe4597947eb2cb60ca6a9078cfca50ac1e265dabbb0460a4581347f82ec7",
     "probe__portra400__observe.npz": "216f738b5f70f48057544a6e9e3183fce077acb6faeecd54a6fc905150c8842d",
-    "probe__velvia100__full.npz": "6f5a563bb645421eaf511c7cef8b53a3e7c67230905b8029589a126e400a7f92",
+    "probe__velvia100__full.npz": "7f41d3159fcade88413bfd0da2b82338b34ea9dfb9c294ea12ba2138d486b618",
     "probe__velvia100__observe.npz": "d03be29ca528aac8d94613d996a351b7937bae66f5decc305e2a643095061a11",
-    "probe__vision3250d__full.npz": "0feb845a98866fb9df358c57a9669e5c34e2b7be83b0307043466d21968c6fcd",
+    "probe__vision3250d__full.npz": "b78e4e6523f1506bbaddc42322d12d73b52ecb8da541f45b44859d516b7658cc",
     "probe__vision3250d__observe.npz": "ef54dcee50c67cd83a3b662e001898ba7f5554f481cf9d612842bc340f315d7d",
-    "render__crop__SDI0150__portra400__technical.npz": "8cc36f89c830da1d7e6cfc10e907b9f7b04184d251656c428596b2a40a41ebbb",
-    "render__crop__SDI0238__portra400__technical.npz": "ad1f6df1e7c5c29966ae7abddae817f614687c826be70cef7edddee8c4094ccd",
-    "render__high_key__portra400__technical.npz": "8efc3f2a6668090783ed4d62a90a52d7d5e226a6c4aee4c8f3ec7c2c4f846482",
-    "render__night_sparse_lamps__portra400__technical.npz": "d9fb833d071a8eb67b8ce515803a9d2242885431b3635674616477a317e4a3ed"
+    "render__crop__SDI0150__portra400__technical.npz": "12e4fa20bf626cd0b08733e70117f869edc14afe9372ed5c8be624af09117d0e",
+    "render__crop__SDI0238__portra400__technical.npz": "e6d67ea8c1970204d6fe097939638c3488d9644bdf67e12be5c6fd9eb541e5f3",
+    "render__high_key__portra400__technical.npz": "b651a7e80f5135ae5857b1f0225ab4eca16864f1b07c09127ce44e6774e31e9e",
+    "render__night_sparse_lamps__portra400__technical.npz": "e66d478564f4144d7fbb6d93fea67db71e4abdc9d9327a12aecdb58ce782020d"
   },
-  "golden_npz_count": 114,
-  "golden_tree_sha256": "ef67497135c4e3a6b5fd3a2d2d57de4813ffe1213163933c3a2f6fa47ec77be1",
   "phase": "appearance_p0",
   "policy": "The appearance layer must leave `technical` unchanged. Regenerate only with a recorded decision.",
   "probe_stocks": [
@@ -30,5 +28,11 @@
     "night_sparse_lamps",
     "high_key"
   ],
-  "render_stock": "portra400"
+  "render_stock": "portra400",
+  "technical_definition": {
+    "film_mode": "full",
+    "legacy_film_crossover": "off",
+    "neutralization": "bounded",
+    "tone_core": "agx"
+  }
 }

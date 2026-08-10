@@ -913,13 +913,13 @@ theatrical 系→(×1.4, punchy)、Portra 系→(×1.3, base) 等。三条属性
 full≈Kelly）的完整论证见[设计合同](FILM_OBSERVATION_PLAN.zh-CN.md)。
 
 > **2026-08-10 实测修正**：上面 "full 浓而坏" 的一半已经不成立。在公共 Rec.2020
-> 参考空间（gamut fit 之前）用 743 样本的 palette probe 测得，C-41 负片在 full 下
-> 的 Oklab chroma 只有 observe 的 **0.65 倍**（Portra 400，log2 比 −0.62；Ektar 100
-> 为 0.60 倍），越域样本比例也只有 observe 的三分之一（0.106 vs 0.374）。反转片与
-> 电影负片没有这个现象（Velvia +0.23、Vision3 +0.06）。另一半 "淡" 的判断则指向了
-> 一个当时没看到的问题：**Portra 400 与 Ektar 100 在 full 与 observe 下的 dE00 中位
-> 都只有 0.7**，两卷 C-41 负片彼此无法区分，`FILM_STYLE_PAIRINGS` 的两个自由度也没
-> 能分开它们。完整数据见
+> 参考空间（gamut fit 之前）用 743 样本的 palette probe 测得，默认 bounded full 下
+> C-41 负片的曝光不变 Oklab saturation `S=C/L` 只有 observe 的 **0.58 倍**
+>（Portra 400，log2 比 -0.78；Ektar 100 为 0.53 倍），sRGB 越域比例也明显更低
+>（Portra 0.153 vs 0.374）。反转片与电影负片总体接近不变（Velvia -0.05、Vision3
+> -0.04）。另一半 "淡" 的判断则指向了一个当时没看到的问题：**Portra 400 与
+> Ektar 100 在 full 与 observe 下的 dE00 中位分别只有 0.46/0.61**，两卷 C-41 负片
+> 彼此无法区分，`FILM_STYLE_PAIRINGS` 的两个自由度也没能分开它们。完整数据见
 > [胶片外观层 P0 基线](FILM_APPEARANCE_P0_BASELINE.zh-CN.md)。
 
 两个杠杆的量感先说结论：**这是精修级不是风格再造级**——全幅缩略图上不可辨认
