@@ -200,6 +200,45 @@ class PlanCompilationTests(unittest.TestCase):
         self.assertEqual(development.interimage_beta, INTERIMAGE_BETA["portra400"])
         self.assertEqual(plan.tone.film_interimage, "declared")
 
+    def test_the_two_compiled_copies_cannot_diverge(self) -> None:
+        """A4 item 2: the compiler resolves beta ONCE and stamps both the
+        tone plan (runtime) and FilmDevelopmentPlan (audit); the two must be
+        the same object-level value, or the audit surface lies."""
+        plan = self._compile()
+        self.assertEqual(
+            plan.tone.film_interimage_beta, plan.film[1].interimage_beta
+        )
+        off = self._compile(film_interimage="off")
+        self.assertEqual(off.tone.film_interimage_beta, 0.0)
+        self.assertEqual(off.film[1].interimage_beta, 0.0)
+
+    def test_handwritten_off_with_stray_beta_fails_closed(self) -> None:
+        """A4 item 3: the runtime must reject the same contradiction the
+        validator rejects — "off" with a nonzero compiled beta — instead of
+        silently zeroing it, or the two entry points disagree about what
+        off means."""
+        from types import SimpleNamespace
+
+        import numpy as np
+
+        from dngscan.film_develop import apply_film_core
+
+        plan = SimpleNamespace(
+            curve_preset="portra400", film_mode="full", film_crossover="off",
+            film_exposure_ev=0.0, film_print_timing="fixed",
+            film_print_medium="", film_print_exposure_ev=0.0,
+            color_head_y=0.0, color_head_m=0.0,
+            film_development="measured_default",
+            film_dev_contrast=0.0, film_dev_fog=0.0, film_dev_density=0.0,
+            film_compression=0.0, film_compression_knee=2.0,
+            film_highlight_density=0.0,
+            film_grain=0.0, film_halation=0.0, film_bloom=0.0,
+            film_optics_seed=0,
+            film_interimage="off", film_interimage_beta=0.62,
+        )
+        with self.assertRaises(ValueError):
+            apply_film_core(np.full((4, 3), 0.18, dtype=np.float32), plan)
+
     def test_off_compiles_to_zero_beta(self) -> None:
         plan = self._compile(film_interimage="off")
         self.assertEqual(plan.film[1].interimage_mode, "off")
