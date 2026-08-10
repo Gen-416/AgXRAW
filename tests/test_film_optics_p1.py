@@ -55,7 +55,8 @@ class AssetLoadingTests(unittest.TestCase):
         self.assertEqual(stock.grain.provenance, "modelled")
         self.assertEqual(stock.halation.provenance, "modelled")
         self.assertEqual(medium.print_scatter.provenance, "modelled")
-        self.assertFalse(bloom.active, "capture bloom has no P1 implementation")
+        self.assertTrue(bloom.active, "P3 ships an editorial capture bloom")
+        self.assertEqual(bloom.provenance, "editorial")
 
     def test_manifest_pins_every_shipped_asset(self) -> None:
         from tools.gen_film_optics_manifest import build
@@ -154,7 +155,7 @@ class CompilerTests(unittest.TestCase):
         self.assertTrue(got.engaged)
         self.assertEqual(got.seed, 7)
         self.assertEqual(
-            (got.grain_amount, got.halation_amount, got.print_scatter_amount),
+            (got.grain_amount, got.halation_amount, got.capture_bloom_amount),
             (0.5, 0.4, 0.3),
         )
         self.assertEqual(len(got.asset_hashes), 3)

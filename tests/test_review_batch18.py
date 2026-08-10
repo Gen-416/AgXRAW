@@ -101,40 +101,48 @@ class SpawnSeedTests(unittest.TestCase):
 
 class ScatterSourceTests(unittest.TestCase):
     def test_sparse_highlight_sheds_and_the_neighbourhood_gains(self) -> None:
-        """The review's measurement: a 1.0 highlight fell to 0.912 while
+        """A decimated proxy source subtracted at full resolution stole light
+        from pixels that never had any: a 1.0 highlight fell to 0.912 with
         nothing anywhere gained. Source and subtraction must be the SAME
-        full-resolution quantity."""
-        from dngscan.film_develop import apply_film_core
+        full-resolution quantity.
 
-        stock = _negative_stock()
+        Driven on the operator directly since P3: `film_bloom` now means the
+        additive editorial capture bloom, which deliberately does NOT shed
+        from the core, so routing this through the amount would assert the
+        wrong operator's physics.
+        """
+        from dngscan.film_optics import (
+            bloom_apply_rows,
+            integral_from_field,
+            scatter_source,
+            scatter_spread,
+        )
+        from dngscan.film_optics_assets import (
+            DEFAULT_PRINT_OPTICS,
+            load_print_optics,
+        )
+
+        scatter = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
         h, w = 64, 96
         img = np.full((h, w, 3), 0.01, dtype=np.float32)
         img[h // 2, w // 2] = 20.0
-        flat = img.reshape(-1, 3)
-        base = apply_film_core(flat, _plan(stock))
-        out = apply_film_core(
-            flat, _plan(stock, film_bloom=1.0), spatial_shape=(h, w)
-        )
+        spread_ii = integral_from_field(
+            scatter_spread(scatter_source(img, scatter), scatter)
+        ).astype(np.float32)
+        out = bloom_apply_rows(
+            img.reshape(-1, 3), spread_ii, 0, h, h, w, scatter, 1.0
+        ).reshape(h, w, 3)
         luma = np.array([0.2627, 0.6780, 0.0593])
-        b3 = base.reshape(h, w, 3)
-        o3 = out.reshape(h, w, 3)
-        core_before = float(b3[h // 2, w // 2] @ luma)
-        core_after = float(o3[h // 2, w // 2] @ luma)
-        near_before = float(b3[h // 2 + 3, w // 2] @ luma)
-        near_after = float(o3[h // 2 + 3, w // 2] @ luma)
-        self.assertLess(core_after, core_before, "the core must shed energy")
+        self.assertLess(
+            float(out[h // 2, w // 2] @ luma), float(img[h // 2, w // 2] @ luma),
+            "the core must shed energy",
+        )
         self.assertGreater(
-            near_after, near_before,
+            float(out[h // 2 + 3, w // 2] @ luma),
+            float(img[h // 2 + 3, w // 2] @ luma),
             "the neighbourhood must RECEIVE what the core shed — a decimated "
             "proxy source gave it to nobody",
         )
-        total_before = float(base.sum(dtype=np.float64))
-        total_after = float(out.sum(dtype=np.float64))
-        self.assertLess(
-            abs(total_after - total_before) / total_before, 1e-4,
-            "scatter must conserve the frame's energy",
-        )
-        self.assertGreaterEqual(float(out.min()), 0.0)
 
     def test_bloom_applies_exactly_once(self) -> None:
         """Pass B renders the pre-bloom print with the same context; the

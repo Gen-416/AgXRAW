@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "kind": "capture_bloom",
+  "asset_id": "modelled_default",
+  "provenance": "editorial",
+  "active": true,
+  "scales": [
+    {"detect_um": 0.0,   "diffuse_um": 40.0,   "gate_ev": [2.0, 3.4], "weight": 0.55},
+    {"detect_um": 60.0,  "diffuse_um": 260.0,  "gate_ev": [2.4, 3.8], "weight": 0.30},
+    {"detect_um": 400.0, "diffuse_um": 1400.0, "gate_ev": [2.8, 4.2], "weight": 0.15}
+  ],
+  "save_lights": 0.35,
+  "core_ratio": [0.15, 0.75],
+  "saturation": 1.0,
+  "source_notes": [
+    "EDITORIAL. The combined impression of lens stray light and in-emulsion spreading, authored for look and explicitly not a measured property of any medium.",
+    "Runs on the SCENE, before the observer. P0 measured the old post-B2 operator seeing 0.73 EV of overrange where the scene offered 6.00 — the effect it was named for cannot be produced in the display domain at any strength.",
+    "Three detection rungs, each with its own diffusion radius: a filament (finest rung, full-resolution detection), a neon tube or window mullion (60 um), a blown window or sky (400 um). Weights fall with scale so the frame-wide veil stays subordinate to the local glow.",
+    "save_lights 0.35 with a 0.15-0.75 core ratio: enough to keep a source core from washing out, well short of the hollow ring a hard max() produces."
+  ]
+}

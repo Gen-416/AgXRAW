@@ -312,28 +312,95 @@ class PrintOpticsAsset:
 
 
 @dataclass(frozen=True)
-class CaptureBloomAsset:
-    """Editorial lens-and-emulsion glow. Inert until P3.
+class BloomScale:
+    """One rung of the source-detection ladder (§6.1, R1).
 
-    Present as an explicitly inactive asset rather than as a missing one, so
-    the compiled plan's shape does not change when P3 lands and so a reader
-    can see that the slot exists and is deliberately empty.
+    `detect_um` is the low-pass the LUMINANCE is seen through before the gate,
+    i.e. the smallest source this rung can still find; `diffuse_um` is how far
+    that rung's light then travels. Keeping them separate is the whole point:
+    a filament and a blown window should not receive the same halo, and one
+    detector radius cannot tell them apart however its threshold is set.
+    """
+
+    detect_um: float
+    diffuse_um: float
+    gate_ev: tuple[float, float]
+    weight: float
+
+    @classmethod
+    def from_json(cls, raw: dict, where: str) -> "BloomScale":
+        detect = _finite(raw["detect_um"], f"{where}.detect_um")
+        diffuse = _finite(raw["diffuse_um"], f"{where}.diffuse_um")
+        _require(detect >= 0.0, f"{where}: detect_um must be non-negative")
+        _require(diffuse > 0.0, f"{where}: diffuse_um must be positive")
+        gate = np.asarray(raw["gate_ev"], dtype=np.float64)
+        _require(gate.shape == (2,), f"{where}.gate_ev must be (t0, t1)")
+        _require(bool(np.isfinite(gate).all()), f"{where}.gate_ev is not finite")
+        _require(gate[1] - gate[0] >= 0.5,
+                 f"{where}.gate_ev needs at least 0.5 EV of smootherstep width")
+        weight = _finite(raw["weight"], f"{where}.weight")
+        _require(weight >= 0.0, f"{where}: weight must be non-negative")
+        return cls(detect, diffuse, (float(gate[0]), float(gate[1])), weight)
+
+
+@dataclass(frozen=True)
+class CaptureBloomAsset:
+    """Editorial lens-and-emulsion glow, applied to the SCENE (§6.1).
+
+    Declared editorial and meant to be: it is the combined impression of lens
+    flare and in-emulsion spreading, authored for look. What it is NOT is a
+    measured property of any print medium — which is exactly what the old
+    post-B2 operator was mistaken for.
+
+    `active=False` keeps the slot legible when a configuration deliberately
+    has no glow, so the compiled plan's shape never changes.
     """
 
     asset_id: str
     provenance: str
     active: bool
+    scales: tuple[BloomScale, ...] = ()
+    save_lights: float = 0.0
+    core_ratio: tuple[float, float] = (0.2, 0.8)
+    saturation: float = 1.0
 
     @classmethod
     def from_json(cls, raw: dict, where: str) -> "CaptureBloomAsset":
         _require(str(raw.get("kind")) == "capture_bloom",
                  f"{where}: not a capture_bloom asset")
         active = bool(raw["active"])
-        _require(not active, f"{where}: capture bloom has no P1 implementation")
+        if not active:
+            return cls(
+                asset_id=str(raw["asset_id"]),
+                provenance=_provenance(raw["provenance"], where),
+                active=False,
+            )
+        scales = raw.get("scales") or ()
+        _require(len(scales) >= 2,
+                 f"{where}: a scale space needs at least two rungs")
+        parsed = tuple(
+            BloomScale.from_json(sc, f"{where}.scales[{i}]")
+            for i, sc in enumerate(scales)
+        )
+        _require(parsed[0].detect_um == 0.0,
+                 f"{where}: the finest rung must detect at full resolution "
+                 "(detect_um 0), or point sources are averaged away")
+        _require(all(b.detect_um > a.detect_um for a, b in zip(parsed, parsed[1:])),
+                 f"{where}: detection scales must increase")
+        _require(all(b.diffuse_um > a.diffuse_um for a, b in zip(parsed, parsed[1:])),
+                 f"{where}: diffusion radii must increase with the source size")
+        save = _finite(raw.get("save_lights", 0.0), f"{where}.save_lights")
+        _require(0.0 <= save <= 1.0, f"{where}: save_lights outside [0,1]")
+        ratio = np.asarray(raw.get("core_ratio", [0.2, 0.8]), dtype=np.float64)
+        _require(ratio.shape == (2,) and ratio[1] - ratio[0] >= 0.1,
+                 f"{where}.core_ratio must be a widening pair")
+        sat = _finite(raw.get("saturation", 1.0), f"{where}.saturation")
+        _require(sat >= 0.0, f"{where}: saturation must be non-negative")
         return cls(
             asset_id=str(raw["asset_id"]),
             provenance=_provenance(raw["provenance"], where),
-            active=active,
+            active=True, scales=parsed, save_lights=save,
+            core_ratio=(float(ratio[0]), float(ratio[1])), saturation=sat,
         )
 
 
@@ -417,7 +484,7 @@ def asset_digest(name: str) -> str:
 # stock's" is exactly the claim the provenance rules forbid.
 DEFAULT_STOCK_OPTICS = "modelled_default"
 DEFAULT_PRINT_OPTICS = "modelled_default"
-DEFAULT_CAPTURE_BLOOM = "none"
+DEFAULT_CAPTURE_BLOOM = "modelled_default"
 
 
 @dataclass(frozen=True)
@@ -437,7 +504,7 @@ class FilmOpticsPlan:
     capture_bloom: CaptureBloomAsset
     grain_amount: float
     halation_amount: float
-    print_scatter_amount: float
+    capture_bloom_amount: float
     seed: int
     asset_ids: tuple[str, ...] = ()
     asset_hashes: tuple[str, ...] = ()
@@ -448,7 +515,7 @@ class FilmOpticsPlan:
         return (
             self.grain_amount > 0.0
             or self.halation_amount > 0.0
-            or self.print_scatter_amount > 0.0
+            or self.capture_bloom_amount > 0.0
         )
 
     def report(self) -> dict:
@@ -465,7 +532,7 @@ class FilmOpticsPlan:
             "amounts": {
                 "grain": self.grain_amount,
                 "halation": self.halation_amount,
-                "print_scatter": self.print_scatter_amount,
+                "capture_bloom": self.capture_bloom_amount,
             },
             "seed": self.seed,
             "provenance": {
@@ -473,10 +540,7 @@ class FilmOpticsPlan:
                 "halation": (
                     self.stock.halation.provenance if self.stock.halation else None
                 ),
-                "print_scatter": (
-                    self.print_medium.print_scatter.provenance
-                    if self.print_medium.print_scatter else None
-                ),
+                "capture_bloom": self.capture_bloom.provenance,
             },
             "halation_dc_mode": (
                 self.stock.halation.dc_mode if self.stock.halation else None
@@ -499,13 +563,18 @@ def compile_film_optics_plan(tone_plan: Any) -> FilmOpticsPlan | None:
     """
     grain = _amount(tone_plan, "film_grain")
     halation = _amount(tone_plan, "film_halation")
-    scatter = _amount(tone_plan, "film_bloom")
-    if grain <= 0.0 and halation <= 0.0 and scatter <= 0.0:
+    # §12.2: `film_bloom` now drives the EDITORIAL CAPTURE BLOOM. The old
+    # post-B2 conservative operator it used to drive is `legacy_print_scatter`
+    # and is no longer reachable from a user amount — a medium property must
+    # not ride a look slider, and the two must never share a field or the
+    # rename buys nothing.
+    bloom = _amount(tone_plan, "film_bloom")
+    if grain <= 0.0 and halation <= 0.0 and bloom <= 0.0:
         return None
 
     stock = load_stock_optics(DEFAULT_STOCK_OPTICS)
     medium = load_print_optics(DEFAULT_PRINT_OPTICS)
-    bloom = load_capture_bloom(DEFAULT_CAPTURE_BLOOM)
+    bloom_asset = load_capture_bloom(DEFAULT_CAPTURE_BLOOM)
 
     # An engaged amount with no asset behind it is a configuration error, not
     # a silent no-op: the user asked for an effect this material does not
@@ -515,23 +584,24 @@ def compile_film_optics_plan(tone_plan: Any) -> FilmOpticsPlan | None:
              f"stock optics '{stock.asset_id}' declares no grain")
     _require(halation <= 0.0 or stock.halation is not None,
              f"stock optics '{stock.asset_id}' declares no halation")
-    _require(scatter <= 0.0 or medium.print_scatter is not None,
-             f"print optics '{medium.asset_id}' declares no print scatter")
+    _require(bloom <= 0.0 or bloom_asset.active,
+             f"capture bloom '{bloom_asset.asset_id}' is inactive")
 
     names = (
         f"stock__{stock.asset_id}",
         f"print__{medium.asset_id}",
-        f"bloom__{bloom.asset_id}",
+        f"bloom__{bloom_asset.asset_id}",
     )
     return FilmOpticsPlan(
         stock=stock,
         print_medium=medium,
-        capture_bloom=bloom,
+        capture_bloom=bloom_asset,
         grain_amount=grain,
         halation_amount=halation,
-        print_scatter_amount=scatter,
+        capture_bloom_amount=bloom,
         seed=int(getattr(tone_plan, "film_optics_seed", 0) or 0),
         asset_ids=names,
         asset_hashes=tuple(asset_digest(n) for n in names),
-        provenance=(stock.provenance, medium.provenance, bloom.provenance),
+        provenance=(stock.provenance, medium.provenance,
+                    bloom_asset.provenance),
     )

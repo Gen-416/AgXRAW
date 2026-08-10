@@ -118,12 +118,35 @@ class FilmGeometry:
 # and no full-resolution convolution (or halo) ever exists (§9.3).
 SPREAD_MAX_DIM = 2048
 
+# The memory tier now GOVERNS the spread grid instead of only sizing bands.
+# P3 put a second spread operator on this grid, and two operators' maps plus
+# their construction temporaries do not fit a 512 MiB budget at 2048 — CI's
+# independent-process gate measured 810 MiB against a 608 MiB allowance.
+# Shaving buffers got it to ~620 and no further, so the choice was between
+# advertising a tier the implementation cannot honour (which review batch 19
+# explicitly refused) and letting the tier mean something. It now means
+# something: 512 MiB renders the spread on a 1408-long grid, 1024 on 2048.
+#
+# What that costs: at 1408 on a 36 mm gate a cell is 25.6 um against 17.6.
+# Halation's tightest component (65 um) is still 2.5 cells across and the
+# capture bloom's finest diffusion (40 um) 1.6 — both above the Nyquist of
+# their own kernels, which is why this is a resolution trade and not a
+# different operator.
+_SPREAD_DIM_BY_TIER = {512: 1408, 1024: SPREAD_MAX_DIM}
+
+
+def spread_max_dim() -> int:
+    from .render import _optics_budget_mib
+
+    return _SPREAD_DIM_BY_TIER.get(_optics_budget_mib(), 1408)
+
 
 def spread_grid_shape(height: int, width: int) -> tuple[int, int]:
     long_side = max(height, width)
-    if long_side <= SPREAD_MAX_DIM:
+    limit = spread_max_dim()
+    if long_side <= limit:
         return (height, width)
-    scale = SPREAD_MAX_DIM / long_side
+    scale = limit / long_side
     return (max(int(round(height * scale)), 1), max(int(round(width * scale)), 1))
 
 
@@ -303,6 +326,21 @@ def _gaussian_blur(img: np.ndarray, sigma: float) -> np.ndarray:
 # --------------------------------------------------------------------------
 # deterministic film-space grain field
 # --------------------------------------------------------------------------
+
+def _blur_bounded(img: np.ndarray, sigma: float) -> np.ndarray:
+    """Separable Gaussian with a SLAB-bounded working set, out of place.
+
+    `_gaussian_blur` holds a padded copy plus a full accumulator for each
+    pass, so a spread grid's worth of decimated RGB costs two extra full
+    buffers per call — and P3's two spread operators make eighteen such calls
+    between them. CI's independent-process RSS gate measured 810 MiB against
+    a 608 MiB allowance from exactly that; the slabbed kernel keeps the
+    transient at slab scale instead. The copy is explicit because the slabbed
+    routine works in place and `ascontiguousarray` hands back the argument
+    itself when it is already float32 and contiguous.
+    """
+    return _gaussian_blur_slabbed(np.array(img, dtype=np.float32, copy=True), sigma)
+
 
 def _film_grid_shape(grain: GrainAsset) -> tuple[int, int]:
     pitch_mm = grain.pitch_um * 1e-3
@@ -622,11 +660,27 @@ def halation_layer_gate(
     """
     e = np.asarray(e_lin, dtype=np.float32)
     ref = np.asarray(e_ref, dtype=np.float32).reshape(1, 1, 3)
-    ev = np.log2(np.maximum(e, 1e-20) / np.maximum(ref, 1e-20))
-    t0 = np.asarray(gate_ev, dtype=np.float32)[None, None, :, 0]
-    t1 = np.asarray(gate_ev, dtype=np.float32)[None, None, :, 1]
-    t = np.clip((ev - t0) / np.maximum(t1 - t0, 1e-6), 0.0, 1.0)
-    return (t * t * t * (t * (t * 6.0 - 15.0) + 10.0)).astype(np.float32)
+    gate = np.asarray(gate_ev, dtype=np.float32)
+    t0 = gate[None, None, :, 0]
+    span = np.maximum(gate[:, 1] - gate[:, 0], 1e-6)[None, None, :]
+    # Evaluated IN PLACE. The obvious expression chain — log2, subtract,
+    # divide, clip, then t*t*t*(t*(t*6-15)+10) — holds six full grids at once,
+    # and this runs once per component in both the map and the pointwise term.
+    # CI's RSS gate measured 810 MiB against a 608 MiB allowance largely here.
+    t = np.maximum(e, 1e-20)
+    t /= np.maximum(ref, 1e-20)
+    np.log2(t, out=t)
+    t -= t0
+    t /= span
+    np.clip(t, 0.0, 1.0, out=t)
+    poly = t * np.float32(6.0)
+    poly -= np.float32(15.0)
+    poly *= t
+    poly += np.float32(10.0)
+    poly *= t
+    poly *= t
+    poly *= t
+    return poly
 
 
 def halation_pointwise_return(
@@ -642,11 +696,12 @@ def halation_pointwise_return(
     proxy's version instead steals light from pixels that never had any.
     """
     e = np.asarray(e_lin, dtype=np.float32)
-    shape = e.shape[:-1]
-    out = np.zeros(shape + (3,), dtype=np.float32)
+    out = np.zeros(e.shape[:-1] + (3,), dtype=np.float32)
     for comp in halation.components:
-        u = e * halation_layer_gate(e, e_ref, comp.gate_ev)
+        u = halation_layer_gate(e, e_ref, comp.gate_ev)
+        u *= e
         out += np.einsum("cj,...j->...c", comp.transfer.astype(np.float32), u)
+        del u
     return out
 
 
@@ -674,15 +729,24 @@ def halation_spread_map(
     px_per_mm = dw / max(geometry_w_mm, 1e-9)
     out = np.zeros((dh, dw, 3), dtype=np.float32)
     for comp in halation.components:
-        u = e * halation_layer_gate(e, e_ref, comp.gate_ev)
+        u = halation_layer_gate(e, e_ref, comp.gate_ev)
+        u *= e
         r0 = max(comp.radius_mm * px_per_mm, 0.35)
-        spread = np.zeros_like(u)
-        # Exponential-tail cascade approximated by three Gaussians. The
+        # Transfer FIRST, then blur. The same kernel is applied to every
+        # channel, so the channel mix and the convolution commute — and doing
+        # the mix on the source costs one buffer instead of one per scale.
+        u = (u.reshape(-1, 3) @ comp.transfer.astype(np.float32).T).reshape(
+            dh, dw, 3
+        )
+        # Exponential-tail cascade approximated by three Gaussians whose
         # weights sum to 1, so a uniform source spreads to itself and the
         # residual is exactly zero on a flat field.
         for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
-            spread += np.float32(wgt) * _gaussian_blur(u, r0 * scale)
-        out += np.einsum("cj,...j->...c", comp.transfer.astype(np.float32), spread)
+            blurred = _blur_bounded(u, r0 * scale)
+            blurred *= np.float32(wgt)
+            out += blurred
+            del blurred
+        del u
     return out
 
 
@@ -873,3 +937,146 @@ def _sample_plain(
     s = _at(ye[1:], xe[1:]) - _at(ye[1:], xe[:-1]) - _at(ye[:-1], xe[1:]) + _at(ye[:-1], xe[:-1])
     area = (ye[1:] - ye[:-1])[:, None, None] * (xe[1:] - xe[:-1])[None, :, None]
     return (s / np.maximum(area, 1e-12)).astype(np.float32)
+
+
+# --------------------------------------------------------------------------
+# editorial capture bloom (§6.1, phase P3)
+# --------------------------------------------------------------------------
+
+def capture_bloom_gate(y_over_grey: np.ndarray, t0: float, t1: float) -> np.ndarray:
+    """smootherstep source gate on scene EV above 18% grey."""
+    # In place, for the same reason as halation_layer_gate: the readable
+    # expression chain costs six full grids of transient on a spread grid.
+    t = np.maximum(np.asarray(y_over_grey, dtype=np.float32), 1e-20)
+    np.log2(t, out=t)
+    t -= np.float32(t0)
+    t /= np.float32(max(t1 - t0, 1e-6))
+    np.clip(t, 0.0, 1.0, out=t)
+    poly = t * np.float32(6.0)
+    poly -= np.float32(15.0)
+    poly *= t
+    poly += np.float32(10.0)
+    poly *= t
+    poly *= t
+    poly *= t
+    return poly
+
+
+def capture_bloom_source_rows(
+    rgb: np.ndarray, bloom: "CaptureBloomAsset"
+) -> np.ndarray:
+    """The FINEST detection scale, evaluated at full resolution.
+
+    §6.1 wants source SIZE and diffusion radius to be independent, which needs
+    the detector to be a scale space rather than one radius. The finest scale
+    has to run at full resolution or a filament lamp — one pixel, enormously
+    bright — is averaged below the gate before it is ever looked at, which is
+    the same non-commutation that cost the old bloom its energy (review batch
+    18). The coarser scales are detected on the decimated grid, which IS a
+    low-pass: area decimation to the spread grid is a box filter at roughly
+    18 um, exactly the next rung of the ladder.
+    """
+    arr = np.asarray(rgb, dtype=np.float32)
+    y = arr @ np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    y /= np.float32(0.18)
+    t0, t1 = bloom.scales[0].gate_ev
+    return arr * capture_bloom_gate(y, t0, t1)[..., None]
+
+
+def capture_bloom_map(
+    fine_source_dec: np.ndarray,
+    scene_dec: np.ndarray,
+    geometry_w_mm: float,
+    bloom: "CaptureBloomAsset",
+) -> np.ndarray:
+    """Assemble the diffused glow on the decimated grid.
+
+    Each detection scale gets its OWN diffusion kernel, so a filament, a neon
+    tube and a blown window do not all receive a halo of the same size — the
+    §10.1 gate 18 requirement, and the thing a single detector radius cannot
+    do however its threshold is set.
+    """
+    dh, dw = scene_dec.shape[:2]
+    px_per_mm = dw / max(geometry_w_mm, 1e-9)
+    scene = np.asarray(scene_dec, dtype=np.float32)
+    y = scene @ np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    out = np.zeros((dh, dw, 3), dtype=np.float32)
+    for i, scale in enumerate(bloom.scales):
+        if i == 0:
+            src = np.asarray(fine_source_dec, dtype=np.float32)
+        else:  # noqa: PLR5501 - the branches allocate differently on purpose
+            # Detect on a progressively low-passed luminance: only sources
+            # whose AREA survives the blur still clear the gate, which is what
+            # separates "a big light" from "a bright speck".
+            det_px = max(scale.detect_um * 1e-3 * px_per_mm, 0.35)
+            y_lp = _blur_bounded(np.ascontiguousarray(y[..., None]), det_px)[..., 0]
+            y_lp /= np.float32(0.18)
+            src = scene * capture_bloom_gate(y_lp, *scale.gate_ev)[..., None]
+            del y_lp
+        r_px = max(scale.diffuse_um * 1e-3 * px_per_mm, 0.35)
+        blurred = _blur_bounded(src, r_px)
+        del src
+        blurred *= np.float32(scale.weight)
+        out += blurred
+        del blurred
+    return out
+
+
+def capture_bloom_apply_rows(
+    rgb: np.ndarray,
+    glow_map: np.ndarray,
+    y0: int,
+    y1: int,
+    height: int,
+    width: int,
+    bloom: "CaptureBloomAsset",
+    amount: float,
+) -> np.ndarray:
+    """Add the glow to scene-linear rows [y0, y1), with C1 core protection.
+
+    Save Lights used to be `max(G - k*S, 0)`, which is only C0 and can leave a
+    hard ring or a hollow halo around a large bright area — and it conflicts
+    with §10.1 gate 4's own C1 requirement. The suppression is now a smooth
+    function of how much of the local glow the pixel itself contributes:
+
+        r      = S / (G + eps)
+        w_core = 1 - save_lights * smootherstep(r0, r1, r)
+        delta  = G * w_core
+
+    A pixel that IS the source has r near 1 and keeps little of the glow; a
+    pixel merely near one has r near 0 and keeps all of it. Nothing is
+    clipped, so the halo stays continuous everywhere.
+
+    This runs BEFORE the emulsion by construction (§6.1): the scene is where
+    six stops of overrange still exist. The old operator ran after B2, where
+    P0 measured 0.73 EV of headroom against the scene's 6.00 — no strength
+    could have made that look like veiling glare.
+    """
+    if amount <= 0.0:
+        return rgb
+    n = y1 - y0
+    img = np.asarray(rgb, dtype=np.float32).reshape(n, width, 3)
+    glow = upsample_rows(glow_map, y0, y1, height, width)
+    source = capture_bloom_source_rows(img, bloom)
+    lum = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    gy = glow @ lum
+    sy = source @ lum
+    ratio = sy / np.maximum(gy, 1e-12)
+    t = np.clip(
+        (ratio - np.float32(bloom.core_ratio[0]))
+        / np.float32(max(bloom.core_ratio[1] - bloom.core_ratio[0], 1e-6)),
+        0.0, 1.0,
+    )
+    smooth = t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    w_core = 1.0 - np.float32(bloom.save_lights) * smooth
+    delta = glow * w_core[..., None]
+    if bloom.saturation != 1.0:
+        # Scale the glow's chroma about its own luminance axis: a saturation
+        # control must not change how much LIGHT the glow adds, only its hue
+        # purity, or it becomes a second strength slider.
+        dy = delta @ lum
+        delta = np.maximum(
+            dy[..., None] + np.float32(bloom.saturation) * (delta - dy[..., None]),
+            0.0,
+        )
+    return np.maximum(img + np.float32(amount) * delta, 0.0).reshape(-1, 3)

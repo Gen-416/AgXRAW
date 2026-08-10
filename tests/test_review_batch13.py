@@ -108,16 +108,14 @@ class GateGeometryTests(unittest.TestCase):
 
         ctx = prepare_film_spatial(plan, h, w)
         dh, dw = spread_grid_shape(h, w)
-        ctx.finish_maps(area_decimate(img, dh, dw), plan, stock)
+        scene_dec = area_decimate(img, dh, dw)
+        # P3 lifecycle: one scene pass, bloom before halation.
         if ctx.bloom > 0.0:
             ctx.begin_bloom_source()
-            # pass B (review batch 18): the bloom source comes from the
-            # FULL-RESOLUTION pre-bloom print, so a hand-built context must
-            # run it too before the map exists
-            ctx.accumulate_bloom_source(
-                apply_film_core(flat, plan, spatial=(ctx, 0, h)), 0, h
-            )
-            ctx.finish_bloom_map()
+            ctx.accumulate_bloom_source(flat, 0, h)
+            ctx.finish_bloom_map(scene_dec)
+        if ctx.halation > 0.0:
+            ctx.finish_maps(scene_dec, plan, stock)
         out = np.empty_like(full)
         for y0 in range(0, h, 13):
             y1 = min(y0 + 13, h)
@@ -285,21 +283,21 @@ band_rows = _optics_band_rows(w)
 if ctx is not None:
     dh, dw = spread_grid_shape(h, w)
     acc = np.zeros((dh, dw, 3), dtype=np.float64)
-    for y0 in range(0, h, band_rows):
-        y1 = min(y0 + band_rows, h)
-        area_decimate_rows(flat[y0*w:y1*w].reshape(-1, w, 3), y0, h, w, dh, dw, acc)
-    ctx.finish_maps(acc.astype(np.float32), plan, "portra400")
-    del acc
-if ctx is not None and ctx.bloom > 0.0:
-    # Pass B is production (review batch 18/19): without it the probe never
-    # exercised bloom at all and the budget gate was a false green.
+    # P3: ONE scene pass feeds both operators — the capture bloom's finest
+    # rung at full resolution, the halation source from the decimated result.
     ctx.begin_bloom_source()
     for y0 in range(0, h, band_rows):
         y1 = min(y0 + band_rows, h)
-        ctx.accumulate_bloom_source(
-            apply_film_core(flat[y0*w:y1*w], plan, spatial=(ctx, y0, y1)), y0, y1
-        )
-    ctx.finish_bloom_map()
+        rows = flat[y0*w:y1*w]
+        ctx.accumulate_bloom_source(rows, y0, y1)
+        area_decimate_rows(rows.reshape(-1, w, 3), y0, h, w, dh, dw, acc)
+    scene_dec = acc.astype(np.float32)
+    del acc
+    if ctx.bloom > 0.0:
+        ctx.finish_bloom_map(scene_dec)
+    if ctx.halation > 0.0:
+        ctx.finish_maps(scene_dec, plan, "portra400")
+    del scene_dec
 for y0 in range(0, h, band_rows):
     y1 = min(y0 + band_rows, h)
     out = apply_film_core(
