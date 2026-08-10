@@ -683,6 +683,13 @@ def apply_render_adjustments(
     return replace(plan, tone=tone, color=color)
 
 
+def _default_medium_for(stock: str) -> str:
+    from .film_develop import _load_v2
+
+    st, _media = _load_v2(stock)
+    return str(st["default_medium"])
+
+
 def _interimage_beta_for(stock: str) -> float:
     from .film_develop import interimage_beta
 
@@ -713,6 +720,8 @@ def build_render_plan(
     film_print_exposure_ev: float = 0.0,
     film_development: str = "measured_default",
     film_interimage: str = "declared",
+    film_appearance: str = "technical",
+    film_appearance_strength: float = 1.0,
     film_dev_contrast: float = 0.0,
     film_dev_fog: float = 0.0,
     film_dev_density: float = 0.0,
@@ -880,6 +889,8 @@ def build_render_plan(
             film_print_exposure_ev=print_exposure_value,
             film_development=development_value,
             film_interimage=str(film_interimage or "declared"),
+            film_appearance=str(film_appearance or "technical"),
+            film_appearance_strength=float(film_appearance_strength),
             film_interimage_beta=_effective_interimage_beta,
             film_dev_contrast=float(film_dev_contrast),
             film_dev_fog=float(film_dev_fog),
@@ -1004,7 +1015,35 @@ def build_render_plan(
                 seed=int(getattr(tone, "film_optics_seed", 0)),
             ),
         )
+        # Appearance layer compiles fail-closed here too: reference mode
+        # resolves and hash-verifies the recipe at plan time or raises. The
+        # compiled object rides RenderPlan.film as the fifth element AND the
+        # tone plan (the runtime consumes the latter — A3 doctrine).
+        from .film_appearance import compile_appearance_plan
+
+        _appearance_mode = str(film_appearance or "technical")
+        if _appearance_mode != "technical" and mode_value != "full":
+            raise ValueError(
+                "film_appearance=reference 属于接管显影(full 模式);"
+                "observe 的风格层是 FILM_STYLE_PAIRINGS"
+            )
+        _appearance_plan = compile_appearance_plan(
+            _appearance_mode,
+            float(film_appearance_strength),
+            stock_id=film_curve,
+            medium_id=(
+                (
+                    str(getattr(tone, "film_print_medium", "") or "")
+                    or _default_medium_for(film_curve)
+                )
+                if _appearance_mode != "technical" else ""
+            ),
+        )
+        tone = _replace(tone, film_appearance_compiled=_appearance_plan)
         validate_film_plans(*film_plans)
+        # The compiled appearance plan rides as the fifth element — appended
+        # INSIDE the film branch: non-film plans keep film=None.
+        film_plans = (*film_plans, _appearance_plan)
     plan = RenderPlan(
         tone=tone,
         color=build_color_geometry_plan(analysis, output_gamut, tone_core),

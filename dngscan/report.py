@@ -446,6 +446,16 @@ def jpeg_tone_plan_cn(
                 beta = interimage_beta(str(plan.curve_preset))
         if beta > 0.0:
             state += f"层间放大β={beta:.2f}(modelled)；"
+        else:
+            state += "层间放大=off(光谱底座)；"
+        _app_mode = str(getattr(plan, "film_appearance", "technical") or "technical")
+        if _app_mode == "reference":
+            _app = getattr(plan, "film_appearance_compiled", None)
+            state += (
+                f"外观层=reference({getattr(_app, 'recipe_id', '?')}"
+                f"×{float(getattr(plan, 'film_appearance_strength', 1.0)):.2f},"
+                f"{getattr(_app, 'provenance', '?')})；"
+            )
         optics = [
             f"{label}{val:.2f}"
             for label, val in (

@@ -402,6 +402,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="film v2 手动印相曝光(log2;仅 timing=custom)",
     )
     parser.add_argument(
+        "--film-interimage",
+        choices=("declared", "off"),
+        default="declared",
+        help=(
+            "film v2 层间放大(仅 full):declared=该卷声明的 modelled beta(默认);"
+            "off=纯光谱底座(oracle 认证口径,调试用)"
+        ),
+    )
+    parser.add_argument(
+        "--film-appearance",
+        choices=("technical", "reference"),
+        default="technical",
+        help=(
+            "胶片解释(仅 full):technical=光谱链本体(默认);reference=参考印相"
+            "外观层(P1 仅 identity recipe,P4 起有内容;缺 recipe 的卷硬失败)"
+        ),
+    )
+    parser.add_argument(
+        "--film-appearance-strength",
+        type=float,
+        default=1.0,
+        metavar="S",
+        help="参考印相强度 0..1.5(仅 reference;0=严格恒等)",
+    )
+    parser.add_argument(
         "--film-development",
         choices=("measured_default", "editorial_custom"),
         default="measured_default",
@@ -918,6 +943,9 @@ def main(argv: list[str]) -> int:
                 film_print_medium=args.film_print_medium,
                 film_print_exposure_ev=args.film_print_exposure,
                 film_development=args.film_development,
+                film_interimage=args.film_interimage,
+                film_appearance=args.film_appearance,
+                film_appearance_strength=args.film_appearance_strength,
                 film_dev_contrast=args.film_dev_contrast,
                 film_dev_fog=args.film_dev_fog,
                 film_dev_density=args.film_dev_density,
@@ -965,6 +993,9 @@ def main(argv: list[str]) -> int:
                 film_print_medium=args.film_print_medium,
                 film_print_exposure_ev=args.film_print_exposure,
                 film_development=args.film_development,
+                film_interimage=args.film_interimage,
+                film_appearance=args.film_appearance,
+                film_appearance_strength=args.film_appearance_strength,
                 film_dev_contrast=args.film_dev_contrast,
                 film_dev_fog=args.film_dev_fog,
                 film_dev_density=args.film_dev_density,

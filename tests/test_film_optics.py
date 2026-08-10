@@ -466,11 +466,13 @@ class P5cServiceTests(unittest.TestCase):
             ("light", (0.25, 0.2, 0.15)),
             ("standard", (0.5, 0.4, 0.3)),
         ):
-            got = self._parse(filmOptics=tier)[-3:]
+            # optics amounts live at 10:13; the tail grew the
+            # interpretation trio (interimage/appearance/strength) in P1
+            got = self._parse(filmOptics=tier)[10:13]
             self.assertEqual(got, expect, tier)
         got = self._parse(
             filmOptics="custom", filmGrain=0.7, filmHalation=0.1, filmBloom=0.0
-        )[-3:]
+        )[10:13]
         self.assertEqual(got, (0.7, 0.1, 0.0))
 
     def test_service_contract_failures(self) -> None:

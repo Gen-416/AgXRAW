@@ -281,6 +281,16 @@ class ToneCompressionPlan:
     # applies in full mode. "declared" (default) or "off" (the pure spectral
     # base — what the oracle gates certify). Compiled into
     # FilmDevelopmentPlan.interimage_beta; fail-closed on unknown values.
+    # Appearance layer (FILM_APPEARANCE_RECIPE_PLAN P1): "technical" is the
+    # strict fast path (no asset touched, frozen bytes unchanged);
+    # "reference" resolves the stock x medium recipe at compile, fail-closed.
+    film_appearance: str = "technical"
+    film_appearance_strength: float = 1.0
+    # The COMPILED FilmAppearancePlan (A3 doctrine: the runtime consumes the
+    # compiled object, never re-resolves from disk or a registry). None on
+    # hand-built plans; a hand-built plan claiming "reference" without it
+    # fails closed at runtime.
+    film_appearance_compiled: object = None
     film_interimage: str = "declared"
     # The EFFECTIVE beta, resolved by the compiler from the declared table.
     # None means "not compiled" (hand-built test plans): the runtime falls
