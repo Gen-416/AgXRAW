@@ -2,9 +2,11 @@
 """Film-takeover development core (film_mode="full") — the film v2
 factorized chain (FILM_PRINT_RENDERING_PLAN §3/§5.4/§7.1).
 
-Stage A runs ANALYTICALLY per pixel: optional Film Compression on the scene
-(§8, before the emulsion), observer inverse -> per-layer log exposure ->
-optional halation reinjection (§9.2, spatial context) -> three 1-D
+Stage A runs ANALYTICALLY per pixel: optional editorial capture bloom on the
+scene (FILM_OPTICS_V2 §6.1, before everything — it is capture-side optics),
+optional Film Compression (§8, before the emulsion), observer inverse ->
+per-layer log exposure -> optional halation reinjection (§5.3, spatial
+context, reinjected as the spatial RESIDUAL) -> three 1-D
 characteristic curves (the film exposure state and the reversal anchor share
 the layer-exposure slot; editorial developer recipes perturb the tables here,
 §6) -> negative dye density -> optional density grain (§9.1).
@@ -16,8 +18,12 @@ declared reachable span; custom = tau(0) + manual print exposure + the
 modelled colour-head delta-tau, datasheet neutralization required) -> the
 paper's 1-D development curves on the log2 axis -> B2 (positive-medium
 density -> viewed Rec.2020, 65^3, keyed by print medium x viewing and reused
-across stocks). Reversals skip B1/tau/paper into their direct B2. Medium
-bloom (§9.2) applies after B2, before delivery gamut fit. Beyond SDR, the
+across stocks). Reversals skip B1/tau/paper into their direct B2. Nothing
+spatial happens after B2 any more: the operator that used to (the positive
+medium's conservative scatter) is `legacy_print_scatter`, retained as an
+asset for the acceptance comparison and reachable from no user amount, since
+P0 measured it seeing 0.73 EV of overrange where the scene offered 6.00.
+Beyond SDR, the
 Ultra HDR export runs this chain as "film print + scene HDR extension"
 (hdr_agx.render_ultrahdr_film_pair).
 
@@ -319,17 +325,18 @@ class FilmSpatialContext:
        low-frequency, so the decimated proxy is the right domain. A
        bloom-only render skips this phase entirely.
     3. ``begin_bloom_source()`` -> ``accumulate_bloom_source(rows, y0, y1)``
-       per band -> ``finish_bloom_map()`` — PASS B for BLOOM. Its source is
-       a THRESHOLDED function of the developed print, and threshold,
-       develop and decimation do not commute, so it must be accumulated
-       from the FULL-RESOLUTION PRE-BLOOM render. ``bloom_map`` stays None
-       until the last call, which is also what makes bloom apply exactly
-       once: the pass-B render sees this same context with no map yet.
+       per band -> ``finish_bloom_map(scene_dec)`` — the CAPTURE BLOOM's
+       scale space. Its finest rung is gated at FULL resolution inside pass
+       A's own band loop (a point source averaged into a decimated cell
+       falls under the gate before anything looks at it); the coarser rungs
+       are detected on the decimated scene, which is already a box low-pass
+       at roughly 18 um. Since both operators now read the SCENE, pass A
+       serves both and the separate full render pass B needed is gone.
     """
 
     __slots__ = (
         "height", "width", "optics", "grain", "halation", "bloom", "seed",
-        "hal_map", "hal_ref", "bloom_map", "geometry", "bloom_source",
+        "hal_map", "hal_ref", "bloom_map", "geometry", "bloom_fine",
         "spread_shape",
     )
 
@@ -345,12 +352,12 @@ class FilmSpatialContext:
         self.optics = compile_film_optics_plan(plan)
         self.grain = 0.0 if self.optics is None else self.optics.grain_amount
         self.halation = 0.0 if self.optics is None else self.optics.halation_amount
-        self.bloom = 0.0 if self.optics is None else self.optics.print_scatter_amount
+        self.bloom = 0.0 if self.optics is None else self.optics.capture_bloom_amount
         self.seed = 0 if self.optics is None else self.optics.seed
         self.hal_map = None
         self.hal_ref = None
         self.bloom_map = None
-        self.bloom_source = None
+        self.bloom_fine = None
         self.spread_shape = (0, 0)
         # Orientation-aware centered gate mapping (review batch 13): portrait
         # images use the 24x36 rotated gate and non-3:2 aspects letterbox
@@ -377,15 +384,10 @@ class FilmSpatialContext:
         Y and an enormous blue-layer exposure, and a luminance gate simply
         cannot see it.
 
-        Bloom is NOT built here (review batch 18): its source is a
-        THRESHOLDED function of the developed print, and threshold, develop
-        and decimation do not commute — a single-pixel highlight averaged
-        into a decimated cell falls under the threshold, so the proxy
-        produced no spread while the full-resolution apply still subtracted
-        that pixel's real source (measured: a 1.0 highlight fell to 0.912
-        with nothing gained anywhere). The bloom source is accumulated from
-        the FULL-RESOLUTION pre-bloom render instead — see
-        accumulate_bloom_source / finish_bloom_map.
+        Called AFTER ``finish_bloom_map`` when both are engaged: the glow is
+        part of the light the emulsion receives, so the halation source has to
+        read the bloomed scene or the two operators disagree about the same
+        photograph.
         """
         from .film_optics import halation_spread_map, layer_reference_exposure
         from .film_v2_math import (
@@ -396,6 +398,19 @@ class FilmSpatialContext:
         dh, dw = rgb_dec.shape[:2]
         if self.halation <= 0.0:
             return
+        if self.bloom > 0.0 and self.bloom_map is not None:
+            # The halation source must read the scene the emulsion actually
+            # gets, which by P3's ordering already carries the glow. Reading
+            # the raw scene here would let a source bright enough to bloom
+            # fail to halate — the two operators disagreeing about the same
+            # photograph.
+            from .film_optics import capture_bloom_apply_rows
+
+            dhh, dww = rgb_dec.shape[:2]
+            rgb_dec = capture_bloom_apply_rows(
+                rgb_dec.reshape(-1, 3), self.bloom_map, 0, dhh, dhh, dww,
+                self.optics.capture_bloom, self.bloom,
+            ).reshape(dhh, dww, 3)
         stock, _media = _load_v2(preset)
         ev_offset = (
             float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
@@ -435,54 +450,65 @@ class FilmSpatialContext:
         )
 
     def begin_bloom_source(self) -> None:
-        """Allocate the pass-B accumulator on the declared spread grid — it
-        no longer depends on pass A having run (review batch 19)."""
+        """Open the capture bloom's finest detection scale.
+
+        §6.1's scale space needs its first rung evaluated at FULL resolution:
+        a filament lamp is one enormously bright pixel, and averaging it into
+        a decimated cell puts it under the gate before anything looks at it.
+        The coarser rungs are detected on the decimated scene, which is itself
+        a box low-pass at roughly 18 um — the next rung of the same ladder,
+        for free.
+        """
         if self.bloom <= 0.0:
             return
         from .film_optics import spread_grid_shape
 
         self.spread_shape = spread_grid_shape(self.height, self.width)
-        self.bloom_source = np.zeros(self.spread_shape + (3,), dtype=np.float64)
+        self.bloom_fine = np.zeros(self.spread_shape + (3,), dtype=np.float64)
 
-    def accumulate_bloom_source(self, developed_rows: Any, y0: int, y1: int) -> None:
-        """Pass B: area-decimate the FULL-RESOLUTION pre-bloom print's
-        scatter source. The same pointwise source is subtracted at apply
-        time, so the two terms are the identical quantity and the balance
-        conserves energy exactly."""
-        if self.bloom <= 0.0 or self.bloom_source is None:
+    def accumulate_bloom_source(self, scene_rows: Any, y0: int, y1: int) -> None:
+        """Area-decimate the finest rung's gated SCENE source for rows
+        [y0, y1). This runs inside pass A's own band loop — the capture bloom
+        reads the scene, which pass A already streams, so the extra
+        full-resolution render pass B needed is gone with the operator that
+        needed it."""
+        if self.bloom <= 0.0 or self.bloom_fine is None:
             return
-        from .film_optics import area_decimate_rows, scatter_source
+        from .film_optics import area_decimate_rows, capture_bloom_source_rows
 
-        rows = np.asarray(developed_rows, dtype=np.float32).reshape(
+        rows = np.asarray(scene_rows, dtype=np.float32).reshape(
             y1 - y0, self.width, 3
         )
-        src = scatter_source(rows, self.optics.print_medium.print_scatter)
+        src = capture_bloom_source_rows(rows, self.optics.capture_bloom)
         dh, dw = self.spread_shape
-        area_decimate_rows(src, y0, self.height, self.width, dh, dw, self.bloom_source)
+        area_decimate_rows(src, y0, self.height, self.width, dh, dw, self.bloom_fine)
 
-    def finish_bloom_map(self) -> None:
-        """Close pass B: the scatter kernel runs on the decimated source and
-        the integral image of the result rides the context."""
-        if self.bloom <= 0.0 or self.bloom_source is None:
+    def finish_bloom_map(self, scene_dec: Any) -> None:
+        """Assemble the glow: the fine accumulator plus the coarser rungs
+        detected on the decimated scene."""
+        if self.bloom <= 0.0 or self.bloom_fine is None:
             return
-        from .film_optics import integral_from_field, scatter_spread
+        from .film_optics import capture_bloom_map
 
-        spread = scatter_spread(
-            self.bloom_source.astype(np.float32),
-            self.optics.print_medium.print_scatter,
+        _, _, geo_w_mm, _ = self.geometry.region()
+        self.bloom_map = capture_bloom_map(
+            self.bloom_fine.astype(np.float32),
+            np.asarray(scene_dec, dtype=np.float32),
+            geo_w_mm,
+            self.optics.capture_bloom,
         )
-        self.bloom_map = integral_from_field(spread).astype(np.float32)
-        self.bloom_source = None
+        self.bloom_fine = None
 
 
 def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
     """Renderer entry: a context when the plan engages any optics amount,
     else None (the chunk-stream fast path stays byte-identical).
 
-    The caller then drives whichever phases its amounts require — pass A
-    (``finish_maps``) for halation, pass B (``begin_bloom_source`` /
-    ``accumulate_bloom_source`` / ``finish_bloom_map``) for bloom, nothing
-    extra for grain. See FilmSpatialContext for the full lifecycle."""
+    The caller then drives whichever phases its amounts require — one scene
+    pass serving ``begin_bloom_source`` / ``accumulate_bloom_source`` /
+    ``finish_bloom_map`` for the capture bloom and ``finish_maps`` for
+    halation, nothing extra for grain. See FilmSpatialContext for the full
+    lifecycle."""
     ctx = FilmSpatialContext(height, width, plan)
     return ctx if ctx.engaged else None
 
@@ -499,6 +525,26 @@ def _apply_film_core_v2(
     )
 
     stock, media = _load_v2(preset)
+    # P5 (§9): analog optics run through a prepared spatial context. spatial
+    # is (ctx, y0, y1): this call's rows within the full image. Flat
+    # colorimetric callers (probes, decimated map sources, tests) pass None
+    # and see the amounts as inert by contract.
+    ctx = y0 = y1 = None
+    if spatial is not None:
+        ctx, y0, y1 = spatial
+        if ctx is None or not ctx.engaged:
+            ctx = None
+    # P3 §6.1: the editorial capture bloom is the FIRST thing to touch the
+    # scene — before compression, before the observer. That ordering IS the
+    # phase: the scene still carries six stops of overrange here, where the
+    # old post-B2 operator had 0.73 (P0 baseline).
+    if ctx is not None and ctx.bloom > 0.0 and ctx.bloom_map is not None:
+        from .film_optics import capture_bloom_apply_rows
+
+        rgb = capture_bloom_apply_rows(
+            rgb, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
+            ctx.optics.capture_bloom, ctx.bloom,
+        ).astype(np.float32, copy=False)
     # P4 §8: Film Compression happens BEFORE the emulsion — the film (and the
     # neutralization casts, which key on the emulsion's input luminance) sees
     # the compressed scene. impact 0 keeps the strict identity fast path.
@@ -512,15 +558,6 @@ def _apply_film_core_v2(
                 getattr(plan, "film_highlight_density", 0.0) or 0.0
             ),
         ).astype(np.float32, copy=False)
-    # P5 (§9): analog optics run through a prepared spatial context. spatial
-    # is (ctx, y0, y1): this call's rows within the full image. Flat
-    # colorimetric callers (probes, decimated map sources, tests) pass None
-    # and see the amounts as inert by contract.
-    ctx = y0 = y1 = None
-    if spatial is not None:
-        ctx, y0, y1 = spatial
-        if ctx is None or not ctx.engaged:
-            ctx = None
     exposure_ev = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
     timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
     medium = str(getattr(plan, "film_print_medium", "") or "") or stock["default_medium"]
@@ -594,13 +631,6 @@ def _apply_film_core_v2(
                     ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
                 )
         developed = np.maximum(developed, 0.0)
-        if ctx is not None and ctx.bloom > 0.0 and ctx.bloom_map is not None:
-            from .film_optics import bloom_apply_rows
-
-            developed = bloom_apply_rows(
-                developed, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
-                ctx.optics.print_medium.print_scatter, ctx.bloom,
-            )
         return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
     u1 = amounts_to_unit(amounts, stock["lo"], stock["hi"])
@@ -652,17 +682,6 @@ def _apply_film_core_v2(
         for c in range(3):
             developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
     developed = np.maximum(developed, 0.0)
-    if ctx is not None and ctx.bloom > 0.0 and ctx.bloom_map is not None:
-        from .film_optics import bloom_apply_rows
-
-        # §9.2: the positive medium's intrinsic scatter, after print
-        # formation, before delivery gamut fit downstream. bloom_map is None
-        # during pass B (the source accumulation), so bloom applies exactly
-        # once, on the final pass.
-        developed = bloom_apply_rows(
-            developed, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
-            ctx.optics.print_medium.print_scatter, ctx.bloom,
-        )
     return developed.astype(np.float32, copy=False)
 
 
@@ -691,20 +710,16 @@ def apply_film_core(
 
             if ctx.halation > 0.0 or ctx.bloom > 0.0:
                 dh, dw = spread_grid_shape(h, w)
-                ctx.finish_maps(
-                    area_decimate(rgb.reshape(h, w, 3), dh, dw),
-                    plan, preset,
-                )
-            if ctx.bloom > 0.0:
-                ctx.begin_bloom_source()
-                # Pass B (review batch 18): the PRE-BLOOM print at full
-                # resolution supplies the scatter source. bloom_map is still
-                # None here, so this pass carries grain/halation but no
-                # bloom — exactly the image the final pass subtracts from.
-                pre = _apply_film_core_v2(rgb, plan, preset, (ctx, 0, h))
-                ctx.accumulate_bloom_source(pre, 0, h)
-                del pre
-                ctx.finish_bloom_map()
+                scene_dec = area_decimate(rgb.reshape(h, w, 3), dh, dw)
+                # Bloom first: it changes the scene the halation source is
+                # then read from, exactly as it does per band.
+                if ctx.bloom > 0.0:
+                    ctx.begin_bloom_source()
+                    ctx.accumulate_bloom_source(rgb, 0, h)
+                    ctx.finish_bloom_map(scene_dec)
+                if ctx.halation > 0.0:
+                    ctx.finish_maps(scene_dec, plan, preset)
+                del scene_dec
             spatial = (ctx, 0, h)
     return _apply_film_core_v2(rgb, plan, preset, spatial)
 

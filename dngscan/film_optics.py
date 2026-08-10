@@ -873,3 +873,129 @@ def _sample_plain(
     s = _at(ye[1:], xe[1:]) - _at(ye[1:], xe[:-1]) - _at(ye[:-1], xe[1:]) + _at(ye[:-1], xe[:-1])
     area = (ye[1:] - ye[:-1])[:, None, None] * (xe[1:] - xe[:-1])[None, :, None]
     return (s / np.maximum(area, 1e-12)).astype(np.float32)
+
+
+# --------------------------------------------------------------------------
+# editorial capture bloom (§6.1, phase P3)
+# --------------------------------------------------------------------------
+
+def capture_bloom_gate(y_over_grey: np.ndarray, t0: float, t1: float) -> np.ndarray:
+    """smootherstep source gate on scene EV above 18% grey."""
+    ev = np.log2(np.maximum(np.asarray(y_over_grey, dtype=np.float32), 1e-20))
+    t = np.clip((ev - np.float32(t0)) / np.float32(max(t1 - t0, 1e-6)), 0.0, 1.0)
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+
+
+def capture_bloom_source_rows(
+    rgb: np.ndarray, bloom: "CaptureBloomAsset"
+) -> np.ndarray:
+    """The FINEST detection scale, evaluated at full resolution.
+
+    §6.1 wants source SIZE and diffusion radius to be independent, which needs
+    the detector to be a scale space rather than one radius. The finest scale
+    has to run at full resolution or a filament lamp — one pixel, enormously
+    bright — is averaged below the gate before it is ever looked at, which is
+    the same non-commutation that cost the old bloom its energy (review batch
+    18). The coarser scales are detected on the decimated grid, which IS a
+    low-pass: area decimation to the spread grid is a box filter at roughly
+    18 um, exactly the next rung of the ladder.
+    """
+    arr = np.asarray(rgb, dtype=np.float32)
+    y = arr @ np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    t0, t1 = bloom.scales[0].gate_ev
+    return arr * capture_bloom_gate(y / np.float32(0.18), t0, t1)[..., None]
+
+
+def capture_bloom_map(
+    fine_source_dec: np.ndarray,
+    scene_dec: np.ndarray,
+    geometry_w_mm: float,
+    bloom: "CaptureBloomAsset",
+) -> np.ndarray:
+    """Assemble the diffused glow on the decimated grid.
+
+    Each detection scale gets its OWN diffusion kernel, so a filament, a neon
+    tube and a blown window do not all receive a halo of the same size — the
+    §10.1 gate 18 requirement, and the thing a single detector radius cannot
+    do however its threshold is set.
+    """
+    dh, dw = scene_dec.shape[:2]
+    px_per_mm = dw / max(geometry_w_mm, 1e-9)
+    scene = np.asarray(scene_dec, dtype=np.float32)
+    y = scene @ np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    out = np.zeros((dh, dw, 3), dtype=np.float32)
+    for i, scale in enumerate(bloom.scales):
+        if i == 0:
+            src = np.asarray(fine_source_dec, dtype=np.float32)
+        else:
+            # Detect on a progressively low-passed luminance: only sources
+            # whose AREA survives the blur still clear the gate, which is what
+            # separates "a big light" from "a bright speck".
+            det_px = max(scale.detect_um * 1e-3 * px_per_mm, 0.35)
+            y_lp = _gaussian_blur(y[..., None], det_px)[..., 0]
+            src = scene * capture_bloom_gate(
+                y_lp / np.float32(0.18), *scale.gate_ev
+            )[..., None]
+        r_px = max(scale.diffuse_um * 1e-3 * px_per_mm, 0.35)
+        out += np.float32(scale.weight) * _gaussian_blur(src, r_px)
+    return out
+
+
+def capture_bloom_apply_rows(
+    rgb: np.ndarray,
+    glow_map: np.ndarray,
+    y0: int,
+    y1: int,
+    height: int,
+    width: int,
+    bloom: "CaptureBloomAsset",
+    amount: float,
+) -> np.ndarray:
+    """Add the glow to scene-linear rows [y0, y1), with C1 core protection.
+
+    Save Lights used to be `max(G - k*S, 0)`, which is only C0 and can leave a
+    hard ring or a hollow halo around a large bright area — and it conflicts
+    with §10.1 gate 4's own C1 requirement. The suppression is now a smooth
+    function of how much of the local glow the pixel itself contributes:
+
+        r      = S / (G + eps)
+        w_core = 1 - save_lights * smootherstep(r0, r1, r)
+        delta  = G * w_core
+
+    A pixel that IS the source has r near 1 and keeps little of the glow; a
+    pixel merely near one has r near 0 and keeps all of it. Nothing is
+    clipped, so the halo stays continuous everywhere.
+
+    This runs BEFORE the emulsion by construction (§6.1): the scene is where
+    six stops of overrange still exist. The old operator ran after B2, where
+    P0 measured 0.73 EV of headroom against the scene's 6.00 — no strength
+    could have made that look like veiling glare.
+    """
+    if amount <= 0.0:
+        return rgb
+    n = y1 - y0
+    img = np.asarray(rgb, dtype=np.float32).reshape(n, width, 3)
+    glow = upsample_rows(glow_map, y0, y1, height, width)
+    source = capture_bloom_source_rows(img, bloom)
+    lum = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    gy = glow @ lum
+    sy = source @ lum
+    ratio = sy / np.maximum(gy, 1e-12)
+    t = np.clip(
+        (ratio - np.float32(bloom.core_ratio[0]))
+        / np.float32(max(bloom.core_ratio[1] - bloom.core_ratio[0], 1e-6)),
+        0.0, 1.0,
+    )
+    smooth = t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    w_core = 1.0 - np.float32(bloom.save_lights) * smooth
+    delta = glow * w_core[..., None]
+    if bloom.saturation != 1.0:
+        # Scale the glow's chroma about its own luminance axis: a saturation
+        # control must not change how much LIGHT the glow adds, only its hue
+        # purity, or it becomes a second strength slider.
+        dy = delta @ lum
+        delta = np.maximum(
+            dy[..., None] + np.float32(bloom.saturation) * (delta - dy[..., None]),
+            0.0,
+        )
+    return np.maximum(img + np.float32(amount) * delta, 0.0).reshape(-1, 3)

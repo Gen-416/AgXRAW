@@ -840,9 +840,18 @@ provenance。不得只输出“模拟光学 standard”。
 
 - 新 scene-linear editorial bloom；
 - **尺度空间 source 检测**（R1 §6.1）、diffusion、比例式 Save Lights、saturation；
-- formation scatter 插点接入 B1/timing 与正介质曲线之间，并登记进该介质的
-  `MTF_explicit`；
+- `film_bloom` 改指 capture bloom；旧的 post-B2 守恒算子更名
+  `legacy_print_scatter`，保留作验收对照，**不再由任何用户档位可达**；
 - viewing scatter 只留 asset/plan 空位，默认关闭。
+
+> **P3 实施记录（2026-08-10）：§6.2 的 formation scatter 推迟到 P5**，与 §5.1 的
+> 乳剂散射合并处理。两者是同一类算子：都在**全分辨率**的线性曝光上做小半径
+> （2–12 µm）卷积，都无法用 ≤2048 的降采样扩散网格表示（其网格约 18 µm/格），
+> 因此都需要行带路径支持 halo 行——那套基础设施 §11.3 本来就排在 P5。此外两者
+> 的尺度都需要实测 MTF 才能定，而当前资产里没有任何一份 measured MTF。先建一次
+> halo 行带路径、再把两个算子一起放上去，比在 P3 里为其中一个单独发明一套协议
+> 更省也更诚实。门 13 因此在 P3/P4 期间为空转：没有显式散射，`MTF_explicit`
+> 即恒等。
 
 退出门：亮窗、点灯、树叶天空三种 source size 可独立控制（门 18）；Save Lights 全程
 连续无空心环（门 17）；Bloom 不再通过暗化核心来“守恒”。
@@ -863,6 +872,8 @@ provenance。不得只输出“模拟光学 standard”。
 ### P5：GUI、性能与正式迁移
 
 - profile 摘要、隔离视图和高级控制；
+- **halo 行带路径**，然后在其上实现 §5.1 乳剂 core/tail 散射与 §6.2 正介质
+  formation scatter，并接入 §4.4.1 的传递函数预算（门 13 到此才有可断言的内容）；
 - IIR/FFT/C++ 优化；
 - 全量真实 RAW A/B 与文档示例重渲；
 - V2 默认后删除 legacy 算子、旧 `MODELLED_DEFAULT` 与临时开关。

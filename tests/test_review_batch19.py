@@ -31,96 +31,54 @@ class IntegralContractTests(unittest.TestCase):
 
     def test_conservation_holds_at_larger_frames(self) -> None:
         """The sniffing bug passed at 64x96 and lost 0.087 per channel at
-        640x960, where the localized source's spread map has a zero border."""
-        from dngscan.film_develop import apply_film_core
+        640x960, where the localized source's spread map has a zero border.
 
-        stock = _negative_stock()
-        luma = np.array([0.2627, 0.6780, 0.0593])
+        Driven on the OPERATOR now, not through `film_bloom`: P3 pointed that
+        amount at the additive editorial capture bloom, so a conservation
+        assertion made through it would be asserting the wrong physics. The
+        conservative print scatter this test is about is still the operator
+        under test — it is just no longer reachable from a user slider.
+        """
+        from dngscan.film_optics import (
+            bloom_apply_rows,
+            bloom_delta_map,
+            integral_from_field,
+            scatter_source,
+            scatter_spread,
+        )
+        from dngscan.film_optics_assets import (
+            DEFAULT_PRINT_OPTICS,
+            load_print_optics,
+        )
+
+        scatter = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
         for h, w in ((64, 96), (320, 480), (640, 960)):
             img = np.full((h, w, 3), 0.01, dtype=np.float32)
             img[h // 2, w // 2] = 20.0
-            flat = img.reshape(-1, 3)
-            base = apply_film_core(flat, _plan(stock))
-            out = apply_film_core(
-                flat, _plan(stock, film_bloom=1.0), spatial_shape=(h, w)
-            )
-            total = float(base.sum(dtype=np.float64))
+            spread = scatter_spread(scatter_source(img, scatter), scatter)
+            spread_ii = integral_from_field(spread).astype(np.float32)
+            out = bloom_apply_rows(
+                img.reshape(-1, 3), spread_ii, 0, h, h, w, scatter, 1.0
+            ).reshape(h, w, 3)
+            total = float(img.sum(dtype=np.float64))
             drift = abs(float(out.sum(dtype=np.float64)) - total) / total
             self.assertLess(
                 drift, 1e-5,
                 f"{h}x{w}: scatter lost {drift * 100:.4f}% of the frame energy",
             )
-            b3 = base.reshape(h, w, 3)
-            o3 = out.reshape(h, w, 3)
             self.assertLess(
-                float(o3[h // 2, w // 2] @ luma), float(b3[h // 2, w // 2] @ luma),
+                float(out[h // 2, w // 2].sum()), float(img[h // 2, w // 2].sum()),
                 f"{h}x{w}: the core must shed energy",
             )
             self.assertGreater(
-                float(o3[h // 2 + 3, w // 2] @ luma),
-                float(b3[h // 2 + 3, w // 2] @ luma),
-                f"{h}x{w}: the neighbourhood must RECEIVE it",
+                float(out[h // 2 + 3, w // 2].sum()),
+                float(img[h // 2 + 3, w // 2].sum()),
+                f"{h}x{w}: the neighbourhood must receive it",
             )
-
-
-class PassOrderTests(unittest.TestCase):
-    def test_bloom_only_render_skips_the_halation_decimation(self) -> None:
-        """Pass A exists for halation alone (review batch 19): a bloom-only
-        render used to decimate the whole scene and throw the result away."""
-        from unittest import mock
-
-        from dngscan import render as render_mod
-        from dngscan.render import render_output_u8
-        from dngscan.tone import build_render_plan
-        from tests.golden_support import build_daylight_wide_dr
-
-        scene = build_daylight_wide_dr()
-        stock = _negative_stock()
-
-        def run(**kw):
-            plan = build_render_plan(
-                scene.bundle, scene.analysis, "agx", "srgb",
-                film_curve=stock, film_mode="full",
-                film_crossover="datasheet", **kw,
+            self.assertLessEqual(
+                float(np.abs(bloom_delta_map(img, scatter).sum(axis=(0, 1))).max()),
+                1e-3,
             )
-            from dngscan import film_develop
-
-            calls = []
-            real = film_develop.FilmSpatialContext.finish_maps
-
-            def spy(self, *a, **k):
-                calls.append(1)
-                return real(self, *a, **k)
-
-            # finish_maps IS pass A: it allocates the decimated accumulator
-            # and walks the whole scene. area_decimate_rows is not a valid
-            # probe any more — pass B legitimately uses it to decimate the
-            # bloom SOURCE.
-            with mock.patch.object(
-                film_develop.FilmSpatialContext, "finish_maps", spy
-            ):
-                render_output_u8(scene.bundle, scene.analysis, "srgb", plan)
-            return len(calls)
-
-        self.assertEqual(
-            run(film_bloom=0.6), 0,
-            "a bloom-only render must not run the halation decimation pass",
-        )
-        self.assertGreater(
-            run(film_halation=0.6), 0,
-            "halation still needs its decimated scene",
-        )
-
-    def test_bloom_accumulator_does_not_depend_on_pass_a(self) -> None:
-        from dngscan.film_develop import prepare_film_spatial
-
-        ctx = prepare_film_spatial(
-            _plan(_negative_stock(), film_bloom=0.5), 64, 96
-        )
-        self.assertIsNotNone(ctx)
-        ctx.begin_bloom_source()   # no finish_maps() first
-        self.assertIsNotNone(ctx.bloom_source)
-        self.assertEqual(ctx.bloom_source.shape[:2], ctx.spread_shape)
 
 
 class BudgetTierTests(unittest.TestCase):

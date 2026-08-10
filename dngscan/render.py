@@ -307,11 +307,18 @@ def _optics_budget_mib() -> int:
 # integral image dominated the real peak): the resident float32 grain field
 # (2000x3000x3), its float64 integral image during sampling, plus the
 # decimated spread maps and blur temporaries.
-# Measured fixed context (review batch 19): the float32 grain integral
-# (72 MiB), the float64 bloom-source accumulator on the spread grid plus its
-# spread, integral transient and stored map (~200 MiB at 2048 wide), and the
-# blur temporaries. Charged before bands are sized.
-_OPTICS_FIXED_MIB = 72 + 200 + 48
+# Measured fixed context: the float32 grain integral (72 MiB), the decimated
+# scene accumulator and the capture bloom's float64 fine-source accumulator on
+# the spread grid plus the stored glow and halation maps (~300 MiB at 2048
+# wide), and the blur temporaries. Charged before bands are sized.
+#
+# P3 raised this by 100 MiB. The capture bloom's fine accumulator lives
+# alongside the scene decimation for the whole of pass A, where the old bloom
+# built nothing until its own separate pass. The independent-process RSS gate
+# measured 664 MiB against a 608 MiB allowance before the charge was
+# corrected — the classic failure this constant exists to prevent is exactly
+# that: budgeting the bands while the context quietly outgrows the tier.
+_OPTICS_FIXED_MIB = 72 + 300 + 48
 
 
 def _optics_band_rows(width: int) -> int:
@@ -398,42 +405,19 @@ def _prepare_spatial_pass1(
     # Pass A exists ONLY for halation (review batch 19): since the bloom
     # source moved to the full-resolution pass B, decimating the scene for a
     # bloom-only render walked the whole frame and threw the result away.
-    if ctx.halation > 0.0:
+    if ctx.halation > 0.0 or ctx.bloom > 0.0:
+        # ONE pass over the scene now serves both operators (P3). Bloom's
+        # finest detection rung is accumulated at full resolution in this same
+        # loop, so the extra full render pass B used to cost — a whole
+        # colorimetric + grain + halation walk, only to threshold the print —
+        # is gone with the operator that needed it.
         dh, dw = spread_grid_shape(h, w)
         acc = np.zeros((dh, dw, 3), dtype=np.float64)
         retreat_strength = (
             float(color_plan.raw_clip_retreat_strength)
             if color_plan is not None else 0.0
         )
-        for y0 in range(0, h, band_rows):
-            y1 = min(y0 + band_rows, h)
-            s0, e0 = y0 * w, y1 * w
-            rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
-            if clip_masks is not None and retreat_strength > 0.0:
-                rec = retreat_engine.apply_clip_retreat_rec2020(
-                    rec, clip_masks[s0:e0], retreat_strength
-                )
-            area_decimate_rows(rec, y0, h, w, dh, dw, acc)
-        ctx.finish_maps(
-            acc.astype(np.float32),
-            tone_plan,
-            str(getattr(tone_plan, "curve_preset", "") or ""),
-        )
-        del acc
-    if ctx.bloom > 0.0:
         ctx.begin_bloom_source()
-        # Pass B (review batch 18): stream the PRE-BLOOM print at full
-        # resolution and accumulate its decimated scatter source. Threshold,
-        # develop and decimation do not commute, so the source cannot come
-        # from a decimated proxy — the apply side subtracts this very
-        # quantity, which is what makes the balance conserve energy. Costs
-        # one extra colorimetric+grain+halation pass, only when bloom is on.
-        from .film_develop import apply_film_core
-
-        retreat_strength = (
-            float(color_plan.raw_clip_retreat_strength)
-            if color_plan is not None else 0.0
-        )
         for y0 in range(0, h, band_rows):
             y1 = min(y0 + band_rows, h)
             s0, e0 = y0 * w, y1 * w
@@ -442,10 +426,18 @@ def _prepare_spatial_pass1(
                 rec = retreat_engine.apply_clip_retreat_rec2020(
                     rec, clip_masks[s0:e0], retreat_strength
                 )
-            ctx.accumulate_bloom_source(
-                apply_film_core(rec, tone_plan, spatial=(ctx, y0, y1)), y0, y1
+            ctx.accumulate_bloom_source(rec, y0, y1)
+            area_decimate_rows(rec, y0, h, w, dh, dw, acc)
+        scene_dec = acc.astype(np.float32)
+        del acc
+        if ctx.bloom > 0.0:
+            ctx.finish_bloom_map(scene_dec)
+        if ctx.halation > 0.0:
+            ctx.finish_maps(
+                scene_dec, tone_plan,
+                str(getattr(tone_plan, "curve_preset", "") or ""),
             )
-        ctx.finish_bloom_map()
+        del scene_dec
     return ctx, band_rows * w
 
 

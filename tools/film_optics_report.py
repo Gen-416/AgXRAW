@@ -405,25 +405,28 @@ def measure_perf(stock: str, megapixels: float = 61.0) -> dict:
         base_rss = rss_mib()
         t0 = time.perf_counter()
         ctx = prepare_film_spatial(plan, h, w)
-        if ctx is not None and ctx.halation > 0.0:
+        if ctx is not None and (ctx.halation > 0.0 or ctx.bloom > 0.0):
+            # P3: one scene pass drives both spatial operators. The separate
+            # full-resolution pass B the old bloom needed — a whole
+            # colorimetric + grain + halation walk just to threshold the
+            # print — is gone with the operator that required it.
             dh, dw = spread_grid_shape(h, w)
             acc = np.zeros((dh, dw, 3), dtype=np.float64)
-            for y0 in range(0, h, band):
-                y1 = min(y0 + band, h)
-                area_decimate_rows(
-                    rows_for(y0, y1).reshape(y1 - y0, w, 3), y0, h, w, dh, dw, acc
-                )
-            ctx.finish_maps(acc.astype(np.float32), plan, stock)
-            del acc
-        if ctx is not None and ctx.bloom > 0.0:
             ctx.begin_bloom_source()
             for y0 in range(0, h, band):
                 y1 = min(y0 + band, h)
-                ctx.accumulate_bloom_source(
-                    apply_film_core(rows_for(y0, y1), plan, spatial=(ctx, y0, y1)),
-                    y0, y1,
+                rows = rows_for(y0, y1)
+                ctx.accumulate_bloom_source(rows, y0, y1)
+                area_decimate_rows(
+                    rows.reshape(y1 - y0, w, 3), y0, h, w, dh, dw, acc
                 )
-            ctx.finish_bloom_map()
+            scene_dec = acc.astype(np.float32)
+            del acc
+            if ctx.bloom > 0.0:
+                ctx.finish_bloom_map(scene_dec)
+            if ctx.halation > 0.0:
+                ctx.finish_maps(scene_dec, plan, stock)
+            del scene_dec
         for y0 in range(0, h, band):
             y1 = min(y0 + band, h)
             spatial = None if ctx is None else (ctx, y0, y1)
