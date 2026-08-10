@@ -1,0 +1,93 @@
+{
+  "cases": [
+    {
+      "scene_id": "night_sparse_lamps",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "light"
+    },
+    {
+      "scene_id": "night_sparse_lamps",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "standard"
+    },
+    {
+      "scene_id": "daylight_wide_dr",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "light"
+    },
+    {
+      "scene_id": "daylight_wide_dr",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "standard"
+    },
+    {
+      "scene_id": "high_key",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "light"
+    },
+    {
+      "scene_id": "high_key",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "standard"
+    },
+    {
+      "scene_id": "crop__SDI0150",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "light"
+    },
+    {
+      "scene_id": "crop__SDI0150",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "standard"
+    },
+    {
+      "scene_id": "crop__SDI0238",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "light"
+    },
+    {
+      "scene_id": "crop__SDI0238",
+      "seed": 0,
+      "stock": "portra400",
+      "tier": "standard"
+    }
+  ],
+  "fixture_sha256": {
+    "crop__SDI0150__portra400__light": "81125a0f3dd8cb59aa1d2f586bcb126f6e463904f891bf132377478648862fcc",
+    "crop__SDI0150__portra400__standard": "64fbec83d6087cd6d4c890b74bdb106d3f4063075f57de432b68d30230486375",
+    "crop__SDI0238__portra400__light": "1cb78ba97e9a8e716cd3222265e93f8b7d449e7cea05b5add9e2c391068cab26",
+    "crop__SDI0238__portra400__standard": "8f69b9b6412d6244ce7b87e2240d9292ba710be5da45f98ef8b6a440622fd7f6",
+    "daylight_wide_dr__portra400__light": "39c704c4fc04466a390dc333098d339e0b69c43a226c2a5f665e05d9203d29f1",
+    "daylight_wide_dr__portra400__standard": "589cad20234a4b0f0e74b2dcbb4daba56a7ff8974090845f7665a9d95891a652",
+    "high_key__portra400__light": "960d6b242914b05819e9d5c47f94f1828026846154f629475d5776c132bc944e",
+    "high_key__portra400__standard": "d82c930802487140813b8e346851a246b86acc597f204e94fe41787f51db2df9",
+    "night_sparse_lamps__portra400__light": "5e6e80a9fac13c24b6cea5ff71252add6be1217d8f4b905a383e646792b0bb93",
+    "night_sparse_lamps__portra400__standard": "169252c135f2c3e3abb5f4cba7647c981e47f5b6e4e31a6c1fa33dbaec365e47"
+  },
+  "phase": "optics_v2_p0",
+  "policy": "Regenerate only with an explicit decision recorded in docs/FILM_OPTICS_V2_PLAN.zh-CN.md. Never to silence a test.",
+  "purpose": "Legacy analog-optics output frozen before the FILM_OPTICS_V2 rewrite. P1 must not move these bytes.",
+  "seed": 0,
+  "stock": "portra400",
+  "tiers": {
+    "light": [
+      0.25,
+      0.2,
+      0.15
+    ],
+    "standard": [
+      0.5,
+      0.4,
+      0.3
+    ]
+  }
+}
