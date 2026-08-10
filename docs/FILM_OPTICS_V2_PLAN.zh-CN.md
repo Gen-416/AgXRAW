@@ -748,7 +748,15 @@ PSD、MTF 和效果前后差值。没有隔离图的视觉验收不算完成。
 
 ### 11.1 Spread 算子
 
-保留当前最大长边 2048 的低频 spread grid，但改成多通道、可复用的 scale-space basis：
+spread grid 的最大长边**由内存档位决定**（P3 实施变更）：512 MiB 档 1408，
+1024 MiB 档 2048。P3 把第二个扩散算子放到了同一张网格上，两张图加各自的构建
+临时量在 512 MiB 档放不下 2048（独立进程 RSS 门实测 810 MiB / 允许 608），而
+「宣告一个实现兑现不了的档位」是批十九明确否决过的。1408 在 36 mm 片门上是
+25.6 µm/格：halation 最紧的分量（65 µm）仍有 2.5 格、bloom 最细的扩散（40 µm）
+1.6 格，都在各自核的 Nyquist 之上，因此这是分辨率取舍而不是换了个算子。想要
+2048 网格显式选 1024 档。
+
+该 spread basis 保持多通道、可复用：
 
 - area-decimate 线性 source；
 - 同一 source 的 Gaussian/exponential basis 每个尺度只算一次；
@@ -769,7 +777,9 @@ PSD、MTF 和效果前后差值。没有隔离图的视觉验收不算完成。
 ### 11.3 性能门
 
 - optics off：输出逐字节不变，速度回归 <= 2%；
-- 默认 512 MiB 档：61 MP 三效果额外峰值仍 <= 512 MiB；
+- 默认 512 MiB 档：61 MP 三效果额外峰值仍 <= 512 MiB（+96 MiB 分配器余量）。
+  P3 起该档同时把 spread grid 降到 1408；独立进程 RSS 门实测从 810 MiB 降到
+  553 MiB；
 - V2 standard 在同机同图上不得慢于当前 standard 的 1.25 倍；
 - 预览允许使用同一物理 source 的低分辨率 area version，但不得重新生成另一份颗粒；
 - C++/Metal 只在 NumPy 小图 oracle 和统计门稳定后实现，不能先用近似 GPU kernel 固化错误。
