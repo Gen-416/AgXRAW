@@ -389,7 +389,7 @@ class FilmSpatialContext:
         read the bloomed scene or the two operators disagree about the same
         photograph.
         """
-        from .film_optics import halation_spread_map, layer_reference_exposure
+        from .film_optics import halation_spread_map
         from .film_v2_math import (
             film_compression_ev,
             layer_log_exposure,
@@ -441,9 +441,17 @@ class FilmSpatialContext:
             log_e = layer_log_exposure(part, stock["observer"]) + ev_offset * _LOG10_2
             e_lin[r0:r1] = np.power(10.0, log_e).reshape(r1 - r0, dw, 3)
             del part, log_e
-        self.hal_ref = (
-            layer_reference_exposure(stock["observer"]) * (10.0 ** (ev_offset))
-        ).astype(np.float32)
+        # The gate reference is UNITY (review 2026-08-10 F1). layer_log_
+        # exposure is already neutral-anchored — it divides by observer@0.18 —
+        # so e_lin is in multiples of the grey layer exposure and carries
+        # 2^ev_offset. The first version multiplied the ABSOLUTE grey
+        # exposure back in (4.2-4.9x: every declared gate sat ~2.2 EV high)
+        # and scaled it by 10^ev instead of 2^ev, so each added stop of film
+        # exposure pushed the trigger 2.32 EV the WRONG way — measured 400x
+        # LESS halation at +1 EV. With ref = 1, gate_ev means "scene EV above
+        # box-speed 18% grey", and overexposure raises the scene against
+        # fixed gates: more exposure, more halation, like the material.
+        self.hal_ref = np.ones(3, dtype=np.float32)
         _, _, geo_w_mm, _ = self.geometry.region()
         self.hal_map = halation_spread_map(
             e_lin, self.hal_ref, geo_w_mm, self.optics.stock.halation

@@ -29,16 +29,16 @@
         "radius_mm": 0.075,
         "gate_ev": [
           [
-            0.6,
-            1.8
+            2.8,
+            4.0
           ],
           [
-            1.0,
-            2.2
+            3.2,
+            4.4
           ],
           [
-            1.4,
-            2.6
+            3.6,
+            4.8
           ]
         ],
         "transfer": [
@@ -64,16 +64,16 @@
         "radius_mm": 0.32,
         "gate_ev": [
           [
-            1.6,
-            3.0
+            3.8,
+            5.2
           ],
           [
-            2.0,
-            3.4
+            4.2,
+            5.6
           ],
           [
-            2.4,
-            3.8
+            4.6,
+            6.0
           ]
         ],
         "transfer": [
@@ -99,16 +99,16 @@
         "radius_mm": 1.25,
         "gate_ev": [
           [
-            3.0,
-            4.4
+            5.2,
+            6.6
           ],
           [
-            3.4,
-            4.8
+            5.6,
+            7.0
           ],
           [
-            3.8,
-            5.2
+            6.0,
+            7.4
           ]
         ],
         "transfer": [
@@ -134,6 +134,7 @@
   "source_notes": [
     "EDITORIAL. This is the removed-remjet look people shoot cine negative for, authored to the described behaviour and explicitly not claimed as any stock's measurement.",
     "The aura component is what distinguishes it: with no anti-halation backing, a large-radius red return exists at all. The strong-AH profile keeps the same component at zero transfer so the two assets are directly comparable.",
-    "Provenance is editorial at the asset level even though the grain block is modelled, because the halation numbers were chosen for look."
+    "Provenance is editorial at the asset level even though the grain block is modelled, because the halation numbers were chosen for look.",
+    "2026-08-10 F1 fix: gate reference corrected to unity (layer exposure is already grey-normalized), so gate_ev now genuinely means scene EV above box-speed 18% grey. All gates shifted +2.2 EV to preserve the tuned look at film exposure 0; film exposure now moves the trigger in the physical direction."
   ]
 }

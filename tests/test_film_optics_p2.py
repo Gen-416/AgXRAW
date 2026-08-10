@@ -294,3 +294,43 @@ class FreezeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExposureDirectionTests(unittest.TestCase):
+    """Review 2026-08-10 F1. The first gate reference multiplied the absolute
+    grey layer exposure back into an already-normalized coordinate and scaled
+    it by 10^ev instead of 2^ev: each added stop of film exposure pushed the
+    halation trigger 2.32 EV the WRONG way — measured 400x LESS injected
+    energy at +1 EV. The P2 gate only asserted that exposure CHANGED the
+    energy, which a backwards response satisfies; this one pins the sign.
+    """
+
+    def test_more_film_exposure_means_more_halation(self) -> None:
+        scene, _ = charts.single_emitter(
+            320, 480, diameter_mm=0.3, exposure_ev=5.0, background_ev=-4.0
+        )
+        energies = []
+        for ev in (-1.0, 0.0, 1.0):
+            base = _develop(scene, film_exposure_ev=ev)
+            lit = _develop(scene, film_exposure_ev=ev, film_halation=0.6)
+            energies.append(float(np.sum(np.abs(lit - base))))
+        self.assertLess(energies[0], energies[1])
+        self.assertLess(energies[1], energies[2])
+        self.assertGreater(
+            energies[2] / max(energies[1], 1e-12), 1.5,
+            "a stop of overexposure must meaningfully widen the trigger",
+        )
+
+    def test_the_gate_reference_is_unity(self) -> None:
+        """layer_log_exposure is neutral-anchored, so the reference the gates
+        measure EV against must be exactly 1 — anything else re-introduces
+        the absolute-exposure double count."""
+        from dngscan.film_develop import prepare_film_spatial
+
+        ctx = prepare_film_spatial(_plan(film_halation=0.5), 64, 96)
+        flat = charts.uniform_patch(64, 96, 0.0)
+        ctx.finish_maps(
+            np.asarray(flat, dtype=np.float32), _plan(film_halation=0.5),
+            "portra400",
+        )
+        np.testing.assert_array_equal(ctx.hal_ref, np.ones(3, dtype=np.float32))
