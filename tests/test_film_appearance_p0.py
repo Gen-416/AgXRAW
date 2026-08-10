@@ -153,7 +153,17 @@ class AppearanceFreezeTests(unittest.TestCase):
 
         self.assertEqual(golden_tree_digest(), self.manifest["golden_tree_sha256"])
 
-    def test_probe_output_is_exact(self) -> None:
+    # One float32 ULP at unity. The probe is pinned to this rather than to
+    # exact equality because the observe path is matrix-heavy and its last bit
+    # is not portable: CI reproduced 23 of 2229 elements differing by at most
+    # 2.4e-07 (exactly 2^-22) against this machine, on both Python 3.11 and
+    # 3.12, while the full path matched exactly. The bound is four orders of
+    # magnitude below any colour difference the appearance layer could make,
+    # so it still fails on a real change — see the dE00 assertion below, which
+    # states the same thing in units a reader can judge.
+    PROBE_ATOL = 1e-6
+
+    def test_probe_output_is_stable(self) -> None:
         from tools.film_palette_probe import render_probe
         from tools.regen_appearance_freeze import probe_path
 
@@ -161,10 +171,22 @@ class AppearanceFreezeTests(unittest.TestCase):
         for stock in self.manifest["probe_stocks"]:
             for mode in ("observe", "full"):
                 with self.subTest(stock=stock, mode=mode):
-                    stored = np.load(probe_path(stock, mode), allow_pickle=False)
-                    np.testing.assert_array_equal(
-                        stored["mapped"],
-                        render_probe(volume, stock, mode).astype(np.float32),
+                    stored = np.load(probe_path(stock, mode), allow_pickle=False)["mapped"]
+                    live = render_probe(volume, stock, mode).astype(np.float32)
+                    delta = float(np.max(np.abs(live - stored)))
+                    self.assertLessEqual(
+                        delta, self.PROBE_ATOL,
+                        f"{stock}/{mode}: probe drifted (max_abs={delta:.3g})",
+                    )
+                    worst = float(
+                        pal.delta_e00(
+                            pal.rec2020_to_lab(stored.astype(np.float64)),
+                            pal.rec2020_to_lab(live.astype(np.float64)),
+                        ).max()
+                    )
+                    self.assertLess(
+                        worst, 1e-3,
+                        f"{stock}/{mode}: probe moved by {worst:.4f} dE00",
                     )
 
     def test_technical_render_is_byte_identical(self) -> None:
@@ -195,6 +217,42 @@ class MeasuredWeaknessTests(unittest.TestCase):
         if not path.is_file():
             raise unittest.SkipTest("missing BASELINE.json")
         cls.base = json.loads(path.read_text("utf-8"))
+
+    def test_baseline_recomputes(self) -> None:
+        """Recompute the whole report rather than only reading it.
+
+        A stored baseline nobody recomputes rots quietly: the numbers below
+        would keep passing long after the chain they describe had moved. The
+        tolerance is 1% relative because these are medians and percentiles
+        over 743 samples sitting on top of the float32 noise measured above,
+        not because the numbers are vague.
+        """
+        from tools.film_palette_probe import build_report
+
+        live = build_report(tuple(self.base["stocks"]))
+
+        def walk(stored, got, path=""):
+            if isinstance(stored, dict):
+                self.assertEqual(set(stored), set(got), f"key set changed at {path}")
+                for k in stored:
+                    walk(stored[k], got[k], f"{path}/{k}")
+            elif isinstance(stored, list):
+                self.assertEqual(len(stored), len(got), f"length changed at {path}")
+                for i, (x, y) in enumerate(zip(stored, got)):
+                    walk(x, y, f"{path}[{i}]")
+            elif isinstance(stored, (int, float)) and not isinstance(stored, bool):
+                if not np.isfinite(float(stored)):
+                    self.assertFalse(np.isfinite(float(got)), f"NaN-ness at {path}")
+                    return
+                self.assertAlmostEqual(
+                    float(got), float(stored),
+                    delta=max(abs(float(stored)) * 1e-2, 1e-6),
+                    msg=f"baseline drifted at {path}",
+                )
+            else:
+                self.assertEqual(stored, got, f"baseline drifted at {path}")
+
+        walk(self.base, live)
 
     def test_within_family_stocks_are_not_separated(self) -> None:
         """Portra 400 and Ektar 100 are two C-41 negatives with famously
