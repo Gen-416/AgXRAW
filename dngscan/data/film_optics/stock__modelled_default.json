@@ -29,16 +29,16 @@
         "radius_mm": 0.065,
         "gate_ev": [
           [
-            1.0,
-            2.2
+            3.2,
+            4.4
           ],
           [
-            1.4,
-            2.6
+            3.6,
+            4.8
           ],
           [
-            1.8,
-            3.0
+            4.0,
+            5.2
           ]
         ],
         "transfer": [
@@ -64,16 +64,16 @@
         "radius_mm": 0.26,
         "gate_ev": [
           [
-            2.0,
-            3.4
+            4.2,
+            5.6
           ],
           [
-            2.4,
-            3.8
+            4.6,
+            6.0
           ],
           [
-            2.8,
-            4.2
+            5.0,
+            6.4
           ]
         ],
         "transfer": [
@@ -99,16 +99,16 @@
         "radius_mm": 1.1,
         "gate_ev": [
           [
-            4.0,
-            5.4
+            6.2,
+            7.6
           ],
           [
-            4.4,
-            5.8
+            6.6,
+            8.0
           ],
           [
-            4.8,
-            6.2
+            7.0,
+            8.4
           ]
         ],
         "transfer": [
@@ -134,6 +134,7 @@
   "source_notes": [
     "The default stock optics. Its halation block is the 35mm_strong_ah_modelled profile: P0 measured the first version's single-radius additive kernel at a 0.66-0.72 mm half-energy radius against its own declared 0.55 mm, a red-dominant halo even from a blue source, and +0.95% frame-wide red energy.",
     "Grain constants are unchanged from the first version and are still known bad: 60 um blobs, Selwyn slope -0.44, 48 um RMS granularity 87 against ~4 for a real 400-speed stock. P4 replaces the model.",
-    "dc_mode is residual: the characteristic curve already contains the uniform-field reflection, so only the spatial part is reinjected."
+    "dc_mode is residual: the characteristic curve already contains the uniform-field reflection, so only the spatial part is reinjected.",
+    "2026-08-10 F1 fix: gate reference corrected to unity (layer exposure is already grey-normalized), so gate_ev now genuinely means scene EV above box-speed 18% grey. All gates shifted +2.2 EV to preserve the tuned look at film exposure 0; film exposure now moves the trigger in the physical direction."
   ]
 }

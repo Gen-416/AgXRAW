@@ -797,19 +797,6 @@ def halation_reinject_rows(
     return np.log10(np.maximum(lin.astype(np.float64), 1e-12)).reshape(-1, 3)
 
 
-def layer_reference_exposure(observer: np.ndarray, grey: float = 0.18) -> np.ndarray:
-    """Layer exposure produced by a neutral 18% scene — the per-layer anchor
-    the source gate measures EV against.
-
-    Derived from the stock's own observer rather than declared in the asset:
-    the reference has to move with the observer, or a stock whose blue layer
-    is twice as sensitive would appear to trigger a stop earlier for no
-    physical reason.
-    """
-    grey_rgb = np.full((1, 3), float(grey), dtype=np.float64)
-    return (grey_rgb @ np.asarray(observer, dtype=np.float64).T).reshape(3)
-
-
 def scatter_source(rgb: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:
     """The luminance-gated, RGB-proportional removable energy at a pixel:
     source = rgb * max(Y - threshold, 0) / max(Y, eps). Pointwise, so it can

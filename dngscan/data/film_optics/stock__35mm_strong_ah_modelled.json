@@ -29,16 +29,16 @@
         "radius_mm": 0.065,
         "gate_ev": [
           [
-            1.0,
-            2.2
+            3.2,
+            4.4
           ],
           [
-            1.4,
-            2.6
+            3.6,
+            4.8
           ],
           [
-            1.8,
-            3.0
+            4.0,
+            5.2
           ]
         ],
         "transfer": [
@@ -64,16 +64,16 @@
         "radius_mm": 0.26,
         "gate_ev": [
           [
-            2.0,
-            3.4
+            4.2,
+            5.6
           ],
           [
-            2.4,
-            3.8
+            4.6,
+            6.0
           ],
           [
-            2.8,
-            4.2
+            5.0,
+            6.4
           ]
         ],
         "transfer": [
@@ -99,16 +99,16 @@
         "radius_mm": 1.1,
         "gate_ev": [
           [
-            4.0,
-            5.4
+            6.2,
+            7.6
           ],
           [
-            4.4,
-            5.8
+            6.6,
+            8.0
           ],
           [
-            4.8,
-            6.2
+            7.0,
+            8.4
           ]
         ],
         "transfer": [
@@ -136,6 +136,7 @@
     "Per-layer transfer: the local component returns red AND green so the inner ring reads warm; the global component returns almost only red so the outer reach reads red. Blue returns nothing through a strong anti-halation layer.",
     "aura is all zeros here by construction: a modern stock with an intact anti-halation layer does not produce a large-radius return, and leaving the component present with zero transfer keeps the asset shape comparable to the no-remjet profile.",
     "These are MODELLED values fitted to the described behaviour, not measured from a scan. A measured profile requires point-source and edge exposures on the same roll (plan 9.2).",
-    "Component transfers are tuned against the MEASURED print response, not against layer-space intuition: a pure red-layer bump already returns G/R ~ 0.30 in the print through the baked interlayer coupling, so the inner ring needs its own green return to read visibly warmer than the outer one."
+    "Component transfers are tuned against the MEASURED print response, not against layer-space intuition: a pure red-layer bump already returns G/R ~ 0.30 in the print through the baked interlayer coupling, so the inner ring needs its own green return to read visibly warmer than the outer one.",
+    "2026-08-10 F1 fix: gate reference corrected to unity (layer exposure is already grey-normalized), so gate_ev now genuinely means scene EV above box-speed 18% grey. All gates shifted +2.2 EV to preserve the tuned look at film exposure 0; film exposure now moves the trigger in the physical direction."
   ]
 }

@@ -1435,6 +1435,12 @@ def export_suffix_parts(
     return "_".join(parts)
 
 
+def _optics_budget_mib_for_fingerprint() -> int:
+    from dngscan.render import _optics_budget_mib
+
+    return _optics_budget_mib()
+
+
 def export_plan_fingerprint(**params: object) -> str:
     """A stable short fingerprint of every render-affecting export parameter.
 
@@ -1737,6 +1743,14 @@ def run_export(params: dict) -> dict:
         film_halation=film_halation,
         film_bloom=film_bloom,
         film_optics_seed=film_optics_seed,
+        # The optics budget tier picks the spread-grid size since P3, so it
+        # changes rendered bytes whenever any spatial amount is engaged. It
+        # participates only then: an unused env var must not fork the names
+        # of identical non-optics exports (same rule as hdr_headroom below).
+        optics_budget_mib=(
+            _optics_budget_mib_for_fingerprint()
+            if (film_grain or film_halation or film_bloom) else 0
+        ),
         color_head_y=float(color_head_y),
         color_head_m=float(color_head_m),
         adjustments=dataclasses.astuple(adjustments),

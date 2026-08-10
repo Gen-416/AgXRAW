@@ -19,6 +19,15 @@ from .models import Analysis, AutoEvResult, RawBundle, ToneCompressionPlan
 from .raw_io import highlight_mode_cn
 from .tone import plan_for_mode
 
+def _optics_budget_mib_report() -> int:
+    """The active optics budget tier, for the report line: since P3 it picks
+    the spread-grid resolution, so it is render-affecting state the reader
+    must be able to see."""
+    from .render import _optics_budget_mib
+
+    return _optics_budget_mib()
+
+
 def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
     lines = ["Darktable 修图建议:"]
     max_clip = max(analysis.clip_pct.values()) if analysis.clip_pct else 0.0
@@ -452,7 +461,8 @@ def jpeg_tone_plan_cn(
                 + f"/halation{prov.get('halation') or '—'})"
                 + f"·印相资产={rep.get('print_optics', '?')}"
                 + f"(散射{prov.get('print_scatter') or '—'})"
-                + f"·halation DC={rep.get('halation_dc_mode') or '—'}；"
+                + f"·halation DC={rep.get('halation_dc_mode') or '—'}"
+                + f"·预算档={_optics_budget_mib_report()}MiB；"
             )
         return (
             f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
