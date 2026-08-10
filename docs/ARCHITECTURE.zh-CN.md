@@ -4,7 +4,10 @@
 > 技术下层。只想用起来看[使用说明](USER_GUIDE.zh-CN.md)；想看问题与解法的推理过程
 > 看[工程决策记录](ENGINEERING_NOTES.zh-CN.md)；胶片观察功能群的生产合同在
 > [FILM_OBSERVATION_PLAN.zh-CN.md](FILM_OBSERVATION_PLAN.zh-CN.md)；机型支持与
-> 降级策略在 [SENSOR_SUPPORT.zh-CN.md](SENSOR_SUPPORT.zh-CN.md)。
+> 降级策略在 [SENSOR_SUPPORT.zh-CN.md](SENSOR_SUPPORT.zh-CN.md)。想先了解软件分层、
+> 用例和领域模型，请看[产品架构与领域模型](PRODUCT_ARCHITECTURE.zh-CN.md)。本文中的
+> Capture、Tone、Color geometry、Delivery 是像素处理阶段，不是表现层、应用层、领域层、
+> 基础设施层四层软件架构。
 
 先读[认识论基调](#认识论基调与声明纪律)——它解释这条管线的每个"为什么"共享的
 那个前提。然后按四层往下读（胶片观察位置作为跨层功能群，单独成节排在三层之后）：

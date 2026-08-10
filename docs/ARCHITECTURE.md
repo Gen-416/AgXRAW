@@ -6,7 +6,10 @@
 > [engineering notes](ENGINEERING_NOTES.zh-CN.md) (Chinese); the film-observation
 > production contract is [FILM_OBSERVATION_PLAN.zh-CN.md](FILM_OBSERVATION_PLAN.zh-CN.md);
 > per-body support and degradation policy live in
-> [SENSOR_SUPPORT.zh-CN.md](SENSOR_SUPPORT.zh-CN.md).
+> [SENSOR_SUPPORT.zh-CN.md](SENSOR_SUPPORT.zh-CN.md). For software layers, use cases, and
+> the domain model, start with [product architecture and domain model](PRODUCT_ARCHITECTURE.md).
+> Capture, Tone, Color geometry, and Delivery in this document are pixel-processing stages,
+> not the Presentation, Application, Domain, and Infrastructure software layers.
 
 Start with the [epistemological stance](#epistemological-stance-and-declaration-discipline)
 — it is the shared premise behind every "why" in this document. Then read down the four
@@ -1285,4 +1288,3 @@ vertical axis. Density curves may be lightly smoothed for display; clip percenta
 medians, percentiles, and all other statistics always come from the unsmoothed samples.
 SNR and dynamic range are single-frame estimates, not full photon-transfer measurements;
 container bit depth is not the same as usable dynamic range.
-

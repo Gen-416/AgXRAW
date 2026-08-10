@@ -251,6 +251,7 @@ testing standards, and developing new image-formation methods on the same captur
 
 ## Technical documentation for developers
 
+[Product architecture and domain model](docs/PRODUCT_ARCHITECTURE.md) (software layers, use cases, bounded contexts, and invariants) ·
 [Architecture and technical details](docs/ARCHITECTURE.md) (the full pipeline and why each stage is built this way) ·
 [Engineering notes](docs/ENGINEERING_NOTES.zh-CN.md) (problems, evidence and reasoning; Chinese) ·
 [Design contract](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (film observation contract and boundaries; Chinese) ·
