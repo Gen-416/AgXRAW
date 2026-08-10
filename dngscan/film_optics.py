@@ -304,6 +304,21 @@ def _gaussian_blur(img: np.ndarray, sigma: float) -> np.ndarray:
 # deterministic film-space grain field
 # --------------------------------------------------------------------------
 
+def _blur_bounded(img: np.ndarray, sigma: float) -> np.ndarray:
+    """Separable Gaussian with a SLAB-bounded working set, out of place.
+
+    `_gaussian_blur` holds a padded copy plus a full accumulator for each
+    pass, so a spread grid's worth of decimated RGB costs two extra full
+    buffers per call — and P3's two spread operators make eighteen such calls
+    between them. CI's independent-process RSS gate measured 810 MiB against
+    a 608 MiB allowance from exactly that; the slabbed kernel keeps the
+    transient at slab scale instead. The copy is explicit because the slabbed
+    routine works in place and `ascontiguousarray` hands back the argument
+    itself when it is already float32 and contiguous.
+    """
+    return _gaussian_blur_slabbed(np.array(img, dtype=np.float32, copy=True), sigma)
+
+
 def _film_grid_shape(grain: GrainAsset) -> tuple[int, int]:
     pitch_mm = grain.pitch_um * 1e-3
     return (int(round(GATE_H_MM / pitch_mm)), int(round(GATE_W_MM / pitch_mm)))
@@ -622,11 +637,27 @@ def halation_layer_gate(
     """
     e = np.asarray(e_lin, dtype=np.float32)
     ref = np.asarray(e_ref, dtype=np.float32).reshape(1, 1, 3)
-    ev = np.log2(np.maximum(e, 1e-20) / np.maximum(ref, 1e-20))
-    t0 = np.asarray(gate_ev, dtype=np.float32)[None, None, :, 0]
-    t1 = np.asarray(gate_ev, dtype=np.float32)[None, None, :, 1]
-    t = np.clip((ev - t0) / np.maximum(t1 - t0, 1e-6), 0.0, 1.0)
-    return (t * t * t * (t * (t * 6.0 - 15.0) + 10.0)).astype(np.float32)
+    gate = np.asarray(gate_ev, dtype=np.float32)
+    t0 = gate[None, None, :, 0]
+    span = np.maximum(gate[:, 1] - gate[:, 0], 1e-6)[None, None, :]
+    # Evaluated IN PLACE. The obvious expression chain — log2, subtract,
+    # divide, clip, then t*t*t*(t*(t*6-15)+10) — holds six full grids at once,
+    # and this runs once per component in both the map and the pointwise term.
+    # CI's RSS gate measured 810 MiB against a 608 MiB allowance largely here.
+    t = np.maximum(e, 1e-20)
+    t /= np.maximum(ref, 1e-20)
+    np.log2(t, out=t)
+    t -= t0
+    t /= span
+    np.clip(t, 0.0, 1.0, out=t)
+    poly = t * np.float32(6.0)
+    poly -= np.float32(15.0)
+    poly *= t
+    poly += np.float32(10.0)
+    poly *= t
+    poly *= t
+    poly *= t
+    return poly
 
 
 def halation_pointwise_return(
@@ -642,11 +673,12 @@ def halation_pointwise_return(
     proxy's version instead steals light from pixels that never had any.
     """
     e = np.asarray(e_lin, dtype=np.float32)
-    shape = e.shape[:-1]
-    out = np.zeros(shape + (3,), dtype=np.float32)
+    out = np.zeros(e.shape[:-1] + (3,), dtype=np.float32)
     for comp in halation.components:
-        u = e * halation_layer_gate(e, e_ref, comp.gate_ev)
+        u = halation_layer_gate(e, e_ref, comp.gate_ev)
+        u *= e
         out += np.einsum("cj,...j->...c", comp.transfer.astype(np.float32), u)
+        del u
     return out
 
 
@@ -674,15 +706,21 @@ def halation_spread_map(
     px_per_mm = dw / max(geometry_w_mm, 1e-9)
     out = np.zeros((dh, dw, 3), dtype=np.float32)
     for comp in halation.components:
-        u = e * halation_layer_gate(e, e_ref, comp.gate_ev)
+        u = halation_layer_gate(e, e_ref, comp.gate_ev)
+        u *= e
         r0 = max(comp.radius_mm * px_per_mm, 0.35)
-        spread = np.zeros_like(u)
-        # Exponential-tail cascade approximated by three Gaussians. The
+        mat = comp.transfer.astype(np.float32)
+        # Exponential-tail cascade approximated by three Gaussians whose
         # weights sum to 1, so a uniform source spreads to itself and the
-        # residual is exactly zero on a flat field.
+        # residual is exactly zero on a flat field. Each scale is folded
+        # straight into `out`: holding the per-component spread as its own
+        # buffer cost a third full grid for nothing.
         for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
-            spread += np.float32(wgt) * _gaussian_blur(u, r0 * scale)
-        out += np.einsum("cj,...j->...c", comp.transfer.astype(np.float32), spread)
+            blurred = _blur_bounded(u, r0 * scale)
+            blurred *= np.float32(wgt)
+            out += np.einsum("cj,...j->...c", mat, blurred)
+            del blurred
+        del u
     return out
 
 
@@ -881,9 +919,21 @@ def _sample_plain(
 
 def capture_bloom_gate(y_over_grey: np.ndarray, t0: float, t1: float) -> np.ndarray:
     """smootherstep source gate on scene EV above 18% grey."""
-    ev = np.log2(np.maximum(np.asarray(y_over_grey, dtype=np.float32), 1e-20))
-    t = np.clip((ev - np.float32(t0)) / np.float32(max(t1 - t0, 1e-6)), 0.0, 1.0)
-    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+    # In place, for the same reason as halation_layer_gate: the readable
+    # expression chain costs six full grids of transient on a spread grid.
+    t = np.maximum(np.asarray(y_over_grey, dtype=np.float32), 1e-20)
+    np.log2(t, out=t)
+    t -= np.float32(t0)
+    t /= np.float32(max(t1 - t0, 1e-6))
+    np.clip(t, 0.0, 1.0, out=t)
+    poly = t * np.float32(6.0)
+    poly -= np.float32(15.0)
+    poly *= t
+    poly += np.float32(10.0)
+    poly *= t
+    poly *= t
+    poly *= t
+    return poly
 
 
 def capture_bloom_source_rows(
@@ -902,8 +952,9 @@ def capture_bloom_source_rows(
     """
     arr = np.asarray(rgb, dtype=np.float32)
     y = arr @ np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    y /= np.float32(0.18)
     t0, t1 = bloom.scales[0].gate_ev
-    return arr * capture_bloom_gate(y / np.float32(0.18), t0, t1)[..., None]
+    return arr * capture_bloom_gate(y, t0, t1)[..., None]
 
 
 def capture_bloom_map(
@@ -927,17 +978,18 @@ def capture_bloom_map(
     for i, scale in enumerate(bloom.scales):
         if i == 0:
             src = np.asarray(fine_source_dec, dtype=np.float32)
-        else:
+        else:  # noqa: PLR5501 - the branches allocate differently on purpose
             # Detect on a progressively low-passed luminance: only sources
             # whose AREA survives the blur still clear the gate, which is what
             # separates "a big light" from "a bright speck".
             det_px = max(scale.detect_um * 1e-3 * px_per_mm, 0.35)
-            y_lp = _gaussian_blur(y[..., None], det_px)[..., 0]
-            src = scene * capture_bloom_gate(
-                y_lp / np.float32(0.18), *scale.gate_ev
-            )[..., None]
+            y_lp = _blur_bounded(np.ascontiguousarray(y[..., None]), det_px)[..., 0]
+            y_lp /= np.float32(0.18)
+            src = scene * capture_bloom_gate(y_lp, *scale.gate_ev)[..., None]
+            del y_lp
         r_px = max(scale.diffuse_um * 1e-3 * px_per_mm, 0.35)
-        out += np.float32(scale.weight) * _gaussian_blur(src, r_px)
+        out += np.float32(scale.weight) * _blur_bounded(src, r_px)
+        del src
     return out
 
 

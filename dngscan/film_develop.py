@@ -464,7 +464,10 @@ class FilmSpatialContext:
         from .film_optics import spread_grid_shape
 
         self.spread_shape = spread_grid_shape(self.height, self.width)
-        self.bloom_fine = np.zeros(self.spread_shape + (3,), dtype=np.float64)
+        # float32: each decimated cell accumulates only a few source
+        # pixels, so the float64 accumulator review batch 13 needed for
+        # the scene decimation buys nothing here and costs a full grid.
+        self.bloom_fine = np.zeros(self.spread_shape + (3,), dtype=np.float32)
 
     def accumulate_bloom_source(self, scene_rows: Any, y0: int, y1: int) -> None:
         """Area-decimate the finest rung's gated SCENE source for rows
@@ -492,7 +495,7 @@ class FilmSpatialContext:
 
         _, _, geo_w_mm, _ = self.geometry.region()
         self.bloom_map = capture_bloom_map(
-            self.bloom_fine.astype(np.float32),
+            self.bloom_fine,
             np.asarray(scene_dec, dtype=np.float32),
             geo_w_mm,
             self.optics.capture_bloom,
@@ -720,6 +723,7 @@ def apply_film_core(
                 if ctx.halation > 0.0:
                     ctx.finish_maps(scene_dec, plan, preset)
                 del scene_dec
+                ctx.bloom_fine = None
             spatial = (ctx, 0, h)
     return _apply_film_core_v2(rgb, plan, preset, spatial)
 
