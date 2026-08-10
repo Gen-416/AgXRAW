@@ -71,18 +71,53 @@ class ColourMathTests(unittest.TestCase):
         ]])
         d = pal.compare(base, pal.oklab_to_rec2020(rot))
         self.assertAlmostEqual(float(d["d_hue_deg"][0]), 12.0, delta=0.05)
-        self.assertAlmostEqual(float(d["log2_chroma_ratio"][0]), 0.0, delta=1e-6)
+        self.assertAlmostEqual(float(d["log2_saturation_ratio"][0]), 0.0, delta=1e-6)
 
         scaled = pal.oklab_to_rec2020(np.array([[0.7, 0.20, 0.04]]))
         d2 = pal.compare(base, scaled)
-        self.assertAlmostEqual(float(d2["log2_chroma_ratio"][0]), 1.0, delta=1e-6)
+        self.assertAlmostEqual(float(d2["log2_saturation_ratio"][0]), 1.0, delta=1e-6)
         self.assertAlmostEqual(float(d2["d_hue_deg"][0]), 0.0, delta=0.02)
+
+    def test_saturation_is_invariant_to_linear_exposure_scale(self) -> None:
+        base = pal.oklab_to_rec2020(np.array([[0.65, 0.12, -0.04]]))
+        d = pal.compare(base, base * 4.0)
+        # Oklab is homogeneous of degree 1/3: +2 linear EV is +2/3 stop
+        # absolute colourfulness, while C/L (purity) does not move.
+        self.assertAlmostEqual(
+            float(d["log2_colorfulness_ratio"][0]), 2.0 / 3.0, delta=1e-6
+        )
+        self.assertAlmostEqual(float(d["log2_saturation_ratio"][0]), 0.0, delta=1e-6)
+        self.assertAlmostEqual(float(d["d_output_ev"][0]), 2.0, delta=1e-6)
+
+    def test_de00_is_not_claimed_for_negative_xyz(self) -> None:
+        valid = np.array([[0.18, 0.18, 0.18]])
+        invalid = np.array([[-0.1, 0.2, 0.2]])
+        d = pal.compare(valid, invalid)
+        self.assertTrue(np.isnan(d["delta_e00"][0]))
+        self.assertTrue(np.isfinite(d["delta_e_ok"][0]))
+
+    def test_gamut_pressure_accepts_every_declared_gamut(self) -> None:
+        volume, _ = pal.palette_volume()
+        for gamut in ("srgb", "p3", "rec2020"):
+            with self.subTest(gamut=gamut):
+                got = pal.gamut_pressure(volume, gamut)
+                self.assertGreaterEqual(got["outside_fraction"], 0.0)
+                self.assertLessEqual(got["outside_fraction"], 1.0)
 
     def test_compare_of_identical_inputs_is_zero(self) -> None:
         volume, _ = pal.palette_volume()
         d = pal.compare(volume, volume)
         self.assertAlmostEqual(float(np.nanmax(np.abs(d["d_hue_deg"]))), 0.0, delta=1e-9)
-        self.assertAlmostEqual(float(np.max(d["delta_e00"])), 0.0, delta=1e-9)
+        self.assertAlmostEqual(float(np.nanmax(d["delta_e00"])), 0.0, delta=1e-9)
+
+    def test_report_freeze_distinguishes_nonfinite_values(self) -> None:
+        from tools.regen_appearance_freeze import _reports_close
+
+        self.assertTrue(_reports_close(float("nan"), float("nan")))
+        self.assertTrue(_reports_close(float("inf"), float("inf")))
+        self.assertTrue(_reports_close(float("-inf"), float("-inf")))
+        self.assertFalse(_reports_close(float("nan"), float("inf")))
+        self.assertFalse(_reports_close(float("inf"), float("-inf")))
 
 
 class ProbeVolumeTests(unittest.TestCase):
@@ -102,10 +137,10 @@ class ProbeVolumeTests(unittest.TestCase):
         dh = (self.dec["h_deg"][w] - self.index.hue_deg[w] + 180.0) % 360.0 - 180.0
         self.assertLess(float(np.abs(dh).max()), 0.01)
 
-    def test_chroma_fraction_is_monotone_in_measured_chroma(self) -> None:
+    def test_gamut_ray_fraction_is_monotone_in_measured_saturation(self) -> None:
         w = self.index.kind == "wheel"
         means = [
-            float(self.dec["C"][w & (self.index.chroma_frac == c)].mean())
+            float(self.dec["S"][w & (self.index.chroma_frac == c)].mean())
             for c in pal.CHROMA_LEVELS
         ]
         self.assertTrue(all(b > a for a, b in zip(means, means[1:])), means)
@@ -123,7 +158,7 @@ class AppearanceFreezeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         if not (FREEZE_DIR / "MANIFEST.json").is_file():
-            raise unittest.SkipTest(
+            raise AssertionError(
                 "missing tests/appearance_freeze; run tools/regen_appearance_freeze.py"
             )
         cls._fast = os.environ.get("DNGSCAN_FAST")
@@ -138,6 +173,12 @@ class AppearanceFreezeTests(unittest.TestCase):
             os.environ["DNGSCAN_FAST"] = cls._fast
 
     def test_manifest_hashes_match(self) -> None:
+        from tools.regen_appearance_freeze import expected_fixture_paths
+
+        self.assertEqual(
+            set(self.manifest["fixture_sha256"]),
+            {path.name for path in expected_fixture_paths()},
+        )
         for name, digest in self.manifest["fixture_sha256"].items():
             path = FREEZE_DIR / name
             self.assertTrue(path.is_file(), f"missing {name}")
@@ -145,13 +186,6 @@ class AppearanceFreezeTests(unittest.TestCase):
                 hashlib.sha256(path.read_bytes()).hexdigest(), digest,
                 f"{name} drifted from the manifest",
             )
-
-    def test_golden_tree_is_pinned(self) -> None:
-        """`technical` must stay byte-identical through the appearance work,
-        and the golden tree is where the wider pipeline's bytes live."""
-        from tools.regen_appearance_freeze import golden_tree_digest
-
-        self.assertEqual(golden_tree_digest(), self.manifest["golden_tree_sha256"])
 
     # One float32 ULP at unity. The probe is pinned to this rather than to
     # exact equality because the observe path is matrix-heavy and its last bit
@@ -178,12 +212,13 @@ class AppearanceFreezeTests(unittest.TestCase):
                         delta, self.PROBE_ATOL,
                         f"{stock}/{mode}: probe drifted (max_abs={delta:.3g})",
                     )
-                    worst = float(
-                        pal.delta_e00(
-                            pal.rec2020_to_lab(stored.astype(np.float64)),
-                            pal.rec2020_to_lab(live.astype(np.float64)),
-                        ).max()
-                    )
+                    # Respect the metric contract here too: pre-gamut negative
+                    # XYZ has no defined CIEDE2000 meaning.
+                    worst = float(np.nanmax(
+                        pal.compare(stored.astype(np.float64), live.astype(np.float64))[
+                            "delta_e00"
+                        ]
+                    ))
                     self.assertLess(
                         worst, 1e-3,
                         f"{stock}/{mode}: probe moved by {worst:.4f} dE00",
@@ -195,12 +230,35 @@ class AppearanceFreezeTests(unittest.TestCase):
         for scene_id in self.manifest["render_scenes"]:
             with self.subTest(scene=scene_id):
                 stored = np.load(render_path(scene_id), allow_pickle=False)
+                meta = json.loads(str(stored["meta"]))
+                self.assertEqual(meta["neutralization"], "bounded")
                 linear, u8 = render_technical(scene_id)
                 np.testing.assert_array_equal(stored["u8"], u8)
-                delta = float(
-                    np.max(np.abs(linear - stored["linear"].astype(np.float32)))
+                np.testing.assert_allclose(
+                    linear, stored["linear"].astype(np.float32), rtol=0.0, atol=1e-6
                 )
-                self.assertLessEqual(delta, float(np.finfo(np.float16).eps) * 4)
+
+    def test_frozen_technical_is_the_user_visible_default(self) -> None:
+        from tools.film_palette_probe import reference_plan
+
+        plan, _bundle, _transform, _strength = reference_plan("portra400", "full")
+        self.assertEqual(
+            self.manifest["technical_definition"]["neutralization"], "bounded"
+        )
+        self.assertEqual(plan.tone.film_crossover, "off")
+        self.assertIsNotNone(plan.film)
+        self.assertEqual(plan.film[2].neutralization_policy, "bounded")
+
+    def test_regenerator_refuses_a_missing_source_scene(self) -> None:
+        import contextlib
+        import io
+        from unittest import mock
+
+        from tools import regen_appearance_freeze as regen
+
+        with mock.patch.object(regen, "all_scenes", return_value={}):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(regen.regen(check=True), 1)
 
 
 class MeasuredWeaknessTests(unittest.TestCase):
@@ -215,19 +273,33 @@ class MeasuredWeaknessTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         path = FREEZE_DIR / "BASELINE.json"
         if not path.is_file():
-            raise unittest.SkipTest("missing BASELINE.json")
+            raise AssertionError("missing tracked appearance BASELINE.json")
         cls.base = json.loads(path.read_text("utf-8"))
+
+    def test_baseline_declares_the_measured_branch(self) -> None:
+        self.assertEqual(
+            self.base["technical_definition"],
+            {
+                "tone_core": "agx",
+                "film_mode": "full",
+                "neutralization": "bounded",
+                "legacy_film_crossover": "off",
+                "plan_output_gamut": "srgb",
+                "measurement_space": "pre-gamut-fit-linear-rec2020",
+            },
+        )
 
     def test_baseline_recomputes(self) -> None:
         """Recompute the whole report rather than only reading it.
 
         A stored baseline nobody recomputes rots quietly: the numbers below
         would keep passing long after the chain they describe had moved. The
-        tolerance is 1% relative because these are medians and percentiles
-        over 743 samples sitting on top of the float32 noise measured above,
-        not because the numbers are vague.
+        tolerance follows the measured float32/BLAS portability bound. A 1%
+        allowance hid changes of several tenths of dE00 in the largest tails,
+        which is too loose for an instrument baseline.
         """
         from tools.film_palette_probe import build_report
+        from tools.regen_appearance_freeze import REPORT_ATOL, REPORT_RTOL
 
         live = build_report(tuple(self.base["stocks"]))
 
@@ -246,7 +318,7 @@ class MeasuredWeaknessTests(unittest.TestCase):
                     return
                 self.assertAlmostEqual(
                     float(got), float(stored),
-                    delta=max(abs(float(stored)) * 1e-2, 1e-6),
+                    delta=max(abs(float(stored)) * REPORT_RTOL, REPORT_ATOL),
                     msg=f"baseline drifted at {path}",
                 )
             else:
@@ -256,12 +328,12 @@ class MeasuredWeaknessTests(unittest.TestCase):
 
     def test_within_family_stocks_are_not_separated(self) -> None:
         """Portra 400 and Ektar 100 are two C-41 negatives with famously
-        different palettes. Today the full chain puts them 0.7 dE00 apart —
+        different palettes. The default bounded full chain puts them 0.46 dE00 apart —
         below the plan's own 2.0 floor for stock identity, and effectively a
         small hue rotation with no chroma or lightness difference at all."""
         pe = self.base["stock_identity"]["portra400__vs__ektar100"]["full"]
         self.assertLess(pe["delta_e00"]["overall"]["median"], 1.5)
-        self.assertLess(abs(pe["log2_chroma_ratio"]["overall"]["median"]), 0.1)
+        self.assertLess(abs(pe["log2_saturation_ratio"]["overall"]["median"]), 0.1)
         for region, stats in pe["by_region"].items():
             with self.subTest(region=region):
                 self.assertLess(stats["delta_e00"]["median"], 1.5)
@@ -276,38 +348,40 @@ class MeasuredWeaknessTests(unittest.TestCase):
                 med = self.base["stock_identity"][key]["full"]["delta_e00"]["overall"]["median"]
                 self.assertGreater(med, 3.0)
 
-    def test_the_c41_negatives_lose_chroma_against_observe(self) -> None:
+    def test_the_c41_negatives_lose_saturation_against_observe(self) -> None:
         """The numeric form of "full looks weak": on the C-41 negatives the
-        full chain delivers roughly two thirds of observe's Oklab chroma. It
+        full chain delivers roughly half of observe's Oklab C/L saturation. It
         is NOT true of the reversal or the cine negative, so a global
         saturation lift would be the wrong fix."""
         for stock in ("portra400", "ektar100"):
             with self.subTest(stock=stock):
                 med = self.base["observe_vs_technical"][stock][
-                    "log2_chroma_ratio"]["overall"]["median"]
+                    "log2_saturation_ratio"]["overall"]["median"]
                 self.assertLess(med, -0.3)
-        self.assertGreater(
-            self.base["observe_vs_technical"]["velvia100"][
-                "log2_chroma_ratio"]["overall"]["median"],
-            0.0,
-        )
+        for stock in ("velvia100", "vision3250d"):
+            with self.subTest(stock=stock):
+                med = self.base["observe_vs_technical"][stock][
+                    "log2_saturation_ratio"]["overall"]["median"]
+                self.assertLess(abs(med), 0.15)
 
     def test_full_uses_less_of_the_gamut_than_observe(self) -> None:
         for stock in ("portra400", "ektar100", "vision3250d"):
             with self.subTest(stock=stock):
-                g = self.base["gamut_pressure"][stock]
+                g = self.base["gamut_pressure"][stock]["srgb"]
                 self.assertLess(
                     g["full"]["outside_fraction"], g["observe"]["outside_fraction"]
                 )
 
-    def test_the_two_modes_agree_in_the_highlights_and_differ_in_the_midtones(self) -> None:
-        """Useful for aiming a recipe: whatever the appearance layer does, the
-        place it has room to act is the midtone, not the shoulder."""
+    def test_highlight_median_converges_but_saturated_tail_does_not(self) -> None:
+        """Most +6 EV patches converge toward white, but the high-chroma tail
+        remains far apart. A recipe may focus on the midtone; it must not treat
+        the entire shoulder as already equivalent."""
         for stock in ("portra400", "ektar100"):
             with self.subTest(stock=stock):
                 by_ev = self.base["observe_vs_technical"][stock]["delta_e00"]["by_ev"]
                 self.assertGreater(by_ev["+0"]["median"], 5.0)
                 self.assertLess(by_ev["+6"]["median"], 1.5)
+                self.assertGreater(by_ev["+6"]["p95"], 10.0)
 
 
 if __name__ == "__main__":

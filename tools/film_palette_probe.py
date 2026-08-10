@@ -104,7 +104,10 @@ def reference_plan(stock: str, film_mode: str):
         agx_primaries=primaries,
         film_curve=stock,
         film_mode=film_mode,
-        film_crossover="datasheet" if film_mode == "full" else "off",
+        # `technical` means the current user-visible full default.  That is
+        # bounded neutralization (`off` in the legacy internal enum), not the
+        # opt-in datasheet/native branch.
+        film_crossover="off",
     )
     return plan, scene.bundle, transform, strength
 
@@ -120,7 +123,10 @@ def render_probe(volume: np.ndarray, stock: str, film_mode: str) -> np.ndarray:
     the post-intent values it wants to test.
     """
     plan, bundle, transform, strength = reference_plan(stock, film_mode)
-    rec = np.asarray(volume, dtype=np.float32).reshape(-1, 3)
+    # Own the probe buffer. The current transforms are pure, but a diagnostic
+    # must not let a future in-place optimization make later stock/mode passes
+    # depend on iteration order.
+    rec = np.array(volume, dtype=np.float32, copy=True).reshape(-1, 3)
     if film_mode != "full":
         wb_adapt = scene_transform_engine.window_transport(bundle)
         rec = scene_transform_engine.apply_scene_transform_rec2020(
@@ -140,9 +146,19 @@ def _region_mask(index: pal.ProbeIndex, region: str) -> np.ndarray:
     hue = index.hue_deg
     inside = (hue >= lo) & (hue < hi) if lo < hi else (hue >= lo) | (hue < hi)
     return (
-        (index.kind != "neutral")
+        (index.kind == "wheel")
         & np.nan_to_num(inside, nan=False).astype(bool)
         & (index.chroma_frac >= min_c)
+    )
+
+
+def _named_mask(index: pal.ProbeIndex, name: str) -> np.ndarray:
+    prefix = f"{name}_ev"
+    return np.fromiter(
+        (kind == "named" and label.startswith(prefix)
+         for kind, label in zip(index.kind, index.label)),
+        dtype=bool,
+        count=len(index.label),
     )
 
 
@@ -175,9 +191,15 @@ def compare_pair(a: np.ndarray, b: np.ndarray, index: pal.ProbeIndex) -> dict:
     d = pal.compare(a, b)
     report = {
         "delta_e00": _by_axis(d["delta_e00"], index),
+        "delta_e_ok": _by_axis(d["delta_e_ok"], index),
         "abs_hue_deg": _by_axis(np.abs(d["d_hue_deg"]), index),
-        "log2_chroma_ratio": _by_axis(d["log2_chroma_ratio"], index),
+        "log2_colorfulness_ratio": _by_axis(
+            d["log2_colorfulness_ratio"], index
+        ),
+        "log2_saturation_ratio": _by_axis(d["log2_saturation_ratio"], index),
         "abs_d_L": _by_axis(np.abs(d["d_L"]), index),
+        "d_output_ev": _by_axis(d["d_output_ev"], index),
+        "cie_valid_fraction": float(np.mean(d["cie_valid"])),
     }
     report["by_region"] = {
         name: {
@@ -185,11 +207,27 @@ def compare_pair(a: np.ndarray, b: np.ndarray, index: pal.ProbeIndex) -> dict:
             "abs_hue_deg": pal.summarize(
                 np.abs(d["d_hue_deg"])[_region_mask(index, name)]
             ),
-            "log2_chroma_ratio": pal.summarize(
-                d["log2_chroma_ratio"][_region_mask(index, name)]
+            "log2_colorfulness_ratio": pal.summarize(
+                d["log2_colorfulness_ratio"][_region_mask(index, name)]
+            ),
+            "log2_saturation_ratio": pal.summarize(
+                d["log2_saturation_ratio"][_region_mask(index, name)]
             ),
         }
         for name in TARGET_REGIONS
+    }
+    report["by_named_patch"] = {
+        name: {
+            "delta_e00": pal.summarize(d["delta_e00"][_named_mask(index, name)]),
+            "delta_e_ok": pal.summarize(d["delta_e_ok"][_named_mask(index, name)]),
+            "abs_hue_deg": pal.summarize(
+                np.abs(d["d_hue_deg"])[_named_mask(index, name)]
+            ),
+            "log2_saturation_ratio": pal.summarize(
+                d["log2_saturation_ratio"][_named_mask(index, name)]
+            ),
+        }
+        for name in pal.NAMED_PATCHES
     }
     neutral = index.kind == "neutral"
     report["neutral"] = {
@@ -198,13 +236,14 @@ def compare_pair(a: np.ndarray, b: np.ndarray, index: pal.ProbeIndex) -> dict:
         "max_oklab_chroma_b": float(pal.decompose(b)["C"][neutral].max()),
     }
     # Risk 2 (§17): a recipe whose gain is the same everywhere is a saturation
-    # slider wearing a costume. Report the SPREAD of the chroma gain across
+    # slider wearing a costume. Report the SPREAD of the exposure-invariant
+    # saturation gain across
     # hue, not just its level — a selective palette has a wide one.
     wheel = index.kind == "wheel"
-    ratios = d["log2_chroma_ratio"][wheel]
+    ratios = d["log2_saturation_ratio"][wheel]
     ratios = ratios[np.isfinite(ratios)]
     report["selectivity"] = {
-        "chroma_gain_iqr": float(
+        "saturation_gain_iqr": float(
             np.percentile(ratios, 75) - np.percentile(ratios, 25)
         ) if ratios.size else float("nan"),
         "hue_rotation_p95_deg": float(
@@ -233,6 +272,14 @@ def build_report(stocks: tuple[str, ...] = PROBE_STOCKS) -> dict:
             "evs": list(pal.PROBE_EVS),
             "named_patches": sorted(pal.NAMED_PATCHES),
         },
+        "technical_definition": {
+            "tone_core": "agx",
+            "film_mode": "full",
+            "neutralization": "bounded",
+            "legacy_film_crossover": "off",
+            "plan_output_gamut": "srgb",
+            "measurement_space": "pre-gamut-fit-linear-rec2020",
+        },
         "stocks": list(stocks),
         "observe_pairing": {
             s: dict(zip(("scene_transform", "strength", "agx_primaries"),
@@ -248,8 +295,11 @@ def build_report(stocks: tuple[str, ...] = PROBE_STOCKS) -> dict:
             rendered[stock]["observe"], rendered[stock]["full"], index
         )
         report["gamut_pressure"][stock] = {
-            mode: pal.gamut_pressure(rendered[stock][mode], "srgb")
-            for mode in ("observe", "full")
+            gamut: {
+                mode: pal.gamut_pressure(rendered[stock][mode], gamut)
+                for mode in ("observe", "full")
+            }
+            for gamut in ("srgb", "p3")
         }
 
     # Stock identity: how far apart two stocks land in the SAME mode. This is
