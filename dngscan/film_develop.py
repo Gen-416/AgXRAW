@@ -511,6 +511,61 @@ class FilmSpatialContext:
         self.bloom_fine = None
 
 
+# --------------------------------------------------------------------------
+# Inter-image amplification (mainline A, 2026-08-10 review)
+# --------------------------------------------------------------------------
+# The chain's honesty labels have always said DIR couplers / inter-layer
+# effects are absent from the data and therefore from the chain. The full
+# review measured what that absence costs: at EV0 the C-41 print-through
+# path delivered an Oklab saturation transfer of 0.76 where observe gives
+# 1.16 and a real optical print >= 1.2 — colour separation, not tone, is
+# where "full looks weak" lives (system gamma measured equal to observe and
+# inside the classic 1.5-1.8 neg x paper range).
+#
+# The modelled term amplifies each layer's development relative to the
+# stock's NEUTRAL response at the same overall exposure:
+#
+#     D'_c = D_c + beta * (D_c - C_c(mean(logE)))
+#
+# which is the first-order shape of DIR inter-image inhibition. The neutral
+# reference is the same characteristic table the pixel itself used (including
+# any editorial developer perturbation), so a grey ramp is EXACTLY invariant
+# — the orange mask, the timing anchor tau(0), and both neutralization
+# families are untouched by construction. The naive D - mean(D) form fails
+# precisely there: a C-41 neutral has strongly unequal channel densities, so
+# amplifying against the channel mean shifted the neutral axis by up to 48%.
+#
+# Values are MODELLED, first-drafted from the S-transfer measurements and
+# deliberately spread within the C-41 family (Portra soft, Ektar vivid) —
+# they are ALSO the within-family identity lever: before this term Portra
+# and Ektar differed by 0.46 dE00 median, a hue whisper with no chroma or
+# lightness difference at all. Reversals stay at 0: their direct-B2 chain
+# measured 1.16 already, the look is baked in the measured response.
+# Owner look review pending; these numbers are starting points, not claims.
+INTERIMAGE_BETA: dict[str, float] = {
+    # Kodak C-41 portrait family: gentle separation
+    "portra160": 0.50, "portra400": 0.50, "portra800": 0.50,
+    "portra800push1": 0.52, "portra800push2": 0.55,
+    # the vivid outlier
+    "ektar100": 0.80,
+    # consumer C-41: crisp middle ground
+    "gold200": 0.60, "ultramax400": 0.60, "c200": 0.60, "superia400": 0.62,
+    # Fuji's airy soft portrait stock
+    "pro400h": 0.28,
+    # cine negatives: wide-latitude scan restraint (baseline already 0.92)
+    "vision350d": 0.35, "vision3250d": 0.35, "vision3200t": 0.35,
+    "vision3500t": 0.35, "verita200d": 0.35,
+    "vision350d_theatrical": 0.35, "vision3250d_theatrical": 0.35,
+    "vision3200t_theatrical": 0.35, "vision3500t_theatrical": 0.35,
+    "verita200d_theatrical": 0.35,
+}
+
+
+def interimage_beta(preset: str) -> float:
+    """The declared inter-image amplification for a stock (0 = none)."""
+    return float(INTERIMAGE_BETA.get(str(preset), 0.0))
+
+
 def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
     """Renderer entry: a context when the plan engages any optics amount,
     else None (the chunk-stream fast path stays byte-identical).
@@ -615,6 +670,30 @@ def _apply_film_core_v2(
             ctx.optics.stock.halation, ctx.halation,
         )
     amounts = characteristic_amounts(log_e, stock["char_le"], char_amounts)
+    # `film_interimage` selects whether the declared modelled beta applies.
+    # "off" exists because the spectral oracle gates certify the MEASURED
+    # chain — comparing a modelled addition against baked spectral truth
+    # would either fail honestly or force beta into the truth dishonestly.
+    interimage_mode = str(getattr(plan, "film_interimage", "declared") or "declared")
+    if interimage_mode not in ("declared", "off"):
+        raise ValueError(
+            f"film_interimage={interimage_mode!r} 未知（可选 declared/off）"
+        )
+    beta = interimage_beta(preset) if interimage_mode == "declared" else 0.0
+    if beta > 0.0:
+        # Mainline A: inter-image amplification, BEFORE grain (both are
+        # development effects; grain modulates the final density). The
+        # neutral reference uses the SAME post-halation logE and the SAME
+        # (possibly recipe-perturbed) table the pixel used, which is what
+        # makes the grey axis exactly invariant.
+        le_mean = np.mean(
+            np.asarray(log_e, dtype=np.float64), axis=1, keepdims=True
+        )
+        neutral = characteristic_amounts(
+            np.repeat(le_mean, 3, axis=1), stock["char_le"], char_amounts
+        )
+        amounts = amounts + beta * (amounts - neutral)
+        del le_mean, neutral
     if ctx is not None and ctx.grain > 0.0:
         from .film_optics import apply_density_grain
 

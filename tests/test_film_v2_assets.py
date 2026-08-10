@@ -260,6 +260,11 @@ class FilmV2RuntimeTests(unittest.TestCase):
             film_exposure_ev=0.0, film_print_timing="fixed",
             film_print_medium="", film_print_exposure_ev=0.0,
             color_head_y=0.0, color_head_m=0.0,
+            # These oracles certify the MEASURED spectral chain; the modelled
+            # inter-image beta (mainline A) has its own gates in
+            # test_film_mainline_a and must not be compared against baked
+            # spectral truth.
+            film_interimage="off",
         )
         base.update(kw)
         return SimpleNamespace(**base)
@@ -326,6 +331,9 @@ class FilmV2RetimedTests(unittest.TestCase):
             film_exposure_ev=exposure, film_print_timing=timing,
             film_print_medium="", film_print_exposure_ev=0.0,
             color_head_y=0.0, color_head_m=0.0,
+            # Spectral-oracle certification runs without the modelled
+            # inter-image beta — see the runtime tests' plan helper above.
+            film_interimage="off",
         )
         base.update(kw)
         return SimpleNamespace(**base)

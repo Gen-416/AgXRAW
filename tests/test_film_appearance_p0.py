@@ -326,51 +326,66 @@ class MeasuredWeaknessTests(unittest.TestCase):
 
         walk(self.base, live)
 
-    def test_within_family_stocks_are_not_separated(self) -> None:
-        """Portra 400 and Ektar 100 are two C-41 negatives with famously
-        different palettes. The default bounded full chain puts them 0.46 dE00 apart —
-        below the plan's own 2.0 floor for stock identity, and effectively a
-        small hue rotation with no chroma or lightness difference at all."""
+    def test_within_family_separation_arrived_with_mainline_a(self) -> None:
+        """INVERTED 2026-08-10. P0 recorded Portra vs Ektar at 0.46 dE00 —
+        a hue whisper with no chroma or lightness difference. The mainline A
+        inter-image spread (Portra beta 0.50, Ektar 0.80) is the lever that
+        bought the separation, so this baseline now records its presence."""
         pe = self.base["stock_identity"]["portra400__vs__ektar100"]["full"]
-        self.assertLess(pe["delta_e00"]["overall"]["median"], 1.5)
-        self.assertLess(abs(pe["log2_saturation_ratio"]["overall"]["median"]), 0.1)
-        for region, stats in pe["by_region"].items():
-            with self.subTest(region=region):
-                self.assertLess(stats["delta_e00"]["median"], 1.5)
+        self.assertGreater(pe["delta_e00"]["overall"]["median"], 1.2)
+        self.assertGreater(
+            pe["log2_saturation_ratio"]["overall"]["median"], 0.1,
+            "Ektar must read more saturated than Portra",
+        )
 
-    def test_cross_family_separation_already_exists(self) -> None:
-        """The complaint is not that the chain cannot separate anything: a
-        negative against a reversal is already well past the 2.0 floor. The
-        appearance layer's job is identity WITHIN a family, not more contrast
-        between families."""
+    def test_cross_family_separation_survives_mainline_a(self) -> None:
+        """Cross-family distance narrowed when the C-41 stocks recovered
+        their saturation (Portra moved toward Velvia: 3.54 -> 2.23), which is
+        the correct direction — but it must stay above the plan's 2.0 floor
+        or the recovery has erased a real identity instead of adding one."""
         for key in ("portra400__vs__velvia100", "velvia100__vs__vision3250d"):
             with self.subTest(pair=key):
                 med = self.base["stock_identity"][key]["full"]["delta_e00"]["overall"]["median"]
-                self.assertGreater(med, 3.0)
+                self.assertGreater(med, 2.0)
 
-    def test_the_c41_negatives_lose_saturation_against_observe(self) -> None:
-        """The numeric form of "full looks weak": on the C-41 negatives the
-        full chain delivers roughly half of observe's Oklab C/L saturation. It
-        is NOT true of the reversal or the cine negative, so a global
-        saturation lift would be the wrong fix."""
+    def test_the_c41_saturation_loss_is_recovered(self) -> None:
+        """INVERTED 2026-08-10. P0's headline: the C-41 print-through chain
+        delivered 0.53-0.58x of observe's saturation (log2 -0.78/-0.92).
+        After the inter-image term the gap closes to within a quarter stop —
+        and it must not overshoot into cartoon either."""
+        for stock, lo, hi in (
+            ("portra400", -0.35, 0.1),
+            ("ektar100", -0.2, 0.25),
+        ):
+            with self.subTest(stock=stock):
+                med = self.base["observe_vs_technical"][stock][
+                    "log2_saturation_ratio"]["overall"]["median"]
+                self.assertGreater(med, lo)
+                self.assertLess(med, hi)
+        self.assertAlmostEqual(
+            self.base["observe_vs_technical"]["velvia100"][
+                "log2_saturation_ratio"]["overall"]["median"],
+            -0.05, delta=0.1,
+            msg="the reversal declares beta 0 and must not have moved",
+        )
+
+    def test_gamut_pressure_stays_inside_the_observe_envelope_for_c41(self) -> None:
+        """P0 recorded full at a third of observe's out-of-gamut share; the
+        recovery spends some of that headroom, which is fine — what it must
+        not do is exceed the envelope observe already renders for the same
+        stock. vision3250d is the declared exception: its observe pairing is
+        deliberately muted (x1.2), so its full chain now carries more chroma
+        than observe by design and is bounded absolutely instead."""
         for stock in ("portra400", "ektar100"):
-            with self.subTest(stock=stock):
-                med = self.base["observe_vs_technical"][stock][
-                    "log2_saturation_ratio"]["overall"]["median"]
-                self.assertLess(med, -0.3)
-        for stock in ("velvia100", "vision3250d"):
-            with self.subTest(stock=stock):
-                med = self.base["observe_vs_technical"][stock][
-                    "log2_saturation_ratio"]["overall"]["median"]
-                self.assertLess(abs(med), 0.15)
-
-    def test_full_uses_less_of_the_gamut_than_observe(self) -> None:
-        for stock in ("portra400", "ektar100", "vision3250d"):
             with self.subTest(stock=stock):
                 g = self.base["gamut_pressure"][stock]["srgb"]
                 self.assertLess(
                     g["full"]["outside_fraction"], g["observe"]["outside_fraction"]
                 )
+        self.assertLess(
+            self.base["gamut_pressure"]["vision3250d"]["srgb"]["full"]["outside_fraction"],
+            0.35,
+        )
 
     def test_highlight_median_converges_but_saturated_tail_does_not(self) -> None:
         """Most +6 EV patches converge toward white, but the high-chroma tail
