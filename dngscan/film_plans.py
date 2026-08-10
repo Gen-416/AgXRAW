@@ -14,6 +14,8 @@ silently ignored, never downgraded to fixed.
 """
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 
 # Declared source class per field (plan §4): measured / modelled / editorial.
@@ -26,6 +28,8 @@ FIELD_PROVENANCE: dict[str, str] = {
     "FilmDevelopmentPlan.contrast_delta": "editorial",
     "FilmDevelopmentPlan.fog_delta": "editorial",
     "FilmDevelopmentPlan.color_density": "editorial",
+    "FilmDevelopmentPlan.interimage_mode": "modelled",
+    "FilmDevelopmentPlan.interimage_beta": "modelled",
     "FilmPrintPlan.medium_id": "measured",
     "FilmPrintPlan.timing_policy": "modelled",
     "FilmPrintPlan.neutralization_policy": "modelled",
@@ -67,12 +71,15 @@ class FilmDevelopmentPlan:
     fog_delta: float = 0.0
     color_density: float = 0.0
     provenance: str = "measured"
-    # Mainline A2: the compiled inter-image state. `interimage_mode` is the
-    # user-facing switch ("declared" applies the stock's modelled beta,
-    # "off" is the pure spectral base the oracles certify); `interimage_beta`
-    # is the EFFECTIVE value resolved at compile time so the immutable plan
-    # is auditable — the runtime must not consult mutable module state.
-    interimage_mode: str = "declared"
+    # Mainline A2/A3: the compiled inter-image state. `interimage_mode` is
+    # the switch ("declared" applies the stock's modelled beta, "off" is the
+    # pure spectral base the oracles certify); `interimage_beta` is the
+    # EFFECTIVE value resolved at compile time so the immutable plan is
+    # auditable. The DATACLASS default is "off"/0.0 — the only pair that is
+    # self-consistent without knowing a stock — and the compiler always
+    # writes both fields explicitly; validation then holds declared plans to
+    # the stock's declared value exactly.
+    interimage_mode: str = "off"
     interimage_beta: float = 0.0
 
 
@@ -127,6 +134,20 @@ def validate_film_plans(
         raise ValueError(
             f"film_interimage={development.interimage_mode!r} 未知（可选 declared/off）"
         )
+    beta = development.interimage_beta
+    if not (isinstance(beta, (int, float)) and math.isfinite(beta)) or beta < 0.0:
+        raise ValueError(f"interimage_beta={beta!r} 非法（需有限且 >= 0）")
+    if development.interimage_mode == "off" and beta != 0.0:
+        raise ValueError("film_interimage=off 时 interimage_beta 必须为 0")
+    if development.interimage_mode == "declared":
+        from .film_develop import interimage_beta as _declared_beta
+
+        expected = _declared_beta(exposure.stock_id)
+        if beta != expected:
+            raise ValueError(
+                f"interimage_beta={beta} 与 stock '{exposure.stock_id}' 声明值 "
+                f"{expected} 不一致"
+            )
     if not (exposure_ev_min <= float(exposure.exposure_ev) <= exposure_ev_max):
         raise ValueError(
             f"film_exposure_ev={exposure.exposure_ev} 超出资产声明域 "

@@ -872,6 +872,10 @@ def build_render_plan(
             film_print_exposure_ev=print_exposure_value,
             film_development=development_value,
             film_interimage=str(film_interimage or "declared"),
+            film_interimage_beta=(
+                _interimage_beta_for(film_curve)
+                if str(film_interimage or "declared") == "declared" else 0.0
+            ),
             film_dev_contrast=float(film_dev_contrast),
             film_dev_fog=float(film_dev_fog),
             film_dev_density=float(film_dev_density),

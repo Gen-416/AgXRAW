@@ -133,15 +133,19 @@ class SaturationRecoveryTests(unittest.TestCase):
         s = _s_transfer("velvia100")
         self.assertAlmostEqual(s, 1.157, delta=0.02)
 
-    def test_the_hue_path_is_bounded_and_fold_free(self) -> None:
-        """Honest claim (review 2026-08-11 item 3). Amplifying along a
-        pixel's colour direction in DYE space does not commute with B1, the
-        paper curves and B2 into display hue: the full probe measures a mean
-        3.6 deg / p95 12 deg hue path on Portra. That can be a legitimate
-        film hue path, but it may not be called "no rotation", and it must
-        stay bounded and must not FOLD (two distinct input hues collapsing
-        or crossing), which is where an amplification would turn into a
-        posterizer."""
+    def test_the_hue_path_is_bounded_and_does_not_worsen_folds(self) -> None:
+        """Honest claims, round two (A3 item 2).
+
+        Round one gated "strictly monotone" but only at EV 0/-2 with a
+        -20 degree tolerance — a false green: at +4 EV, full chroma, the
+        chain reverses hue by ~4.6 degrees between the 210 and 225 degree
+        spokes. The BASE spectral chain does that too, so absolute
+        fold-freedom is not this term's contract to make. What IS its
+        contract: across the FULL grid (every EV x chroma ring, hue-defined
+        samples only), the amplification must not create a fold the base
+        chain does not have, and must not deepen the worst existing one by
+        more than a degree-scale increment.
+        """
         from tools.film_palette_probe import render_probe
 
         vol, idx = pal.palette_volume()
@@ -153,19 +157,53 @@ class SaturationRecoveryTests(unittest.TestCase):
         hh = hh[np.isfinite(hh)]
         self.assertLess(float(np.mean(hh)), 6.0, "mean hue path drifting")
         self.assertLess(float(np.percentile(hh, 95)), 20.0, "hue path tail")
-        # fold check: within each (EV, chroma) ring the output hue must stay
-        # strictly monotone in input hue (mod 360)
+
         dec_on = pal.decompose(on)
-        for ev in (0.0, -2.0):
-            for cf in (0.5, 1.0):
+        dec_off = pal.decompose(off)
+
+        def worst_step(dec, ring, order, valid, adjacent):
+            h_v = np.radians(dec["h_deg"][ring][order][valid])
+            if h_v.size < 3 or not adjacent.any():
+                return 0.0
+            return float(np.min(np.diff(np.unwrap(h_v))[adjacent]))
+
+        for ev in pal.PROBE_EVS:
+            for cf in pal.CHROMA_LEVELS:
                 ring = wheel & (idx.ev == ev) & (idx.chroma_frac == cf)
                 order = np.argsort(idx.hue_deg[ring])
-                h_out = dec_on["h_deg"][ring][order]
-                unwrapped = np.unwrap(np.radians(h_out))
-                self.assertGreater(
-                    float(np.min(np.diff(unwrapped))), -0.35,
-                    f"hue fold at ev={ev} chroma={cf}",
+                # Hue validity floor: PERCEPTUAL (0.01 Oklab C — an order
+                # above the 4e-4 matrix-noise floor of Rec.2020 white, an
+                # order below the least saturated visible wheel sample), and
+                # taken as the INTERSECTION of both renderings. The common
+                # mask is what makes the comparison a comparison: in deep
+                # shadow the amplification lifts spokes past the floor that
+                # the base left invisible, and measuring the declared fold on
+                # spokes the base cannot even see is not "worse than base",
+                # it is a different sample set. Newly-visible near-floor
+                # colours stay covered by the absolute mean/p95 gates above.
+                valid = (
+                    (dec_off["C"][ring][order] > 1e-2)
+                    & (dec_on["C"][ring][order] > 1e-2)
                 )
+                # A fold is defined between ADJACENT spokes. When the floor
+                # thins a shadow ring to a few survivors, consecutive kept
+                # spokes can sit 300 degrees of input hue apart (measured:
+                # EV -4 / 0.75 keeps 5 of 24, with a 30->330 wrap gap), and
+                # the output-hue step across that gap is geometry, not a
+                # fold. Steps are compared only where the input gap is at
+                # most two spoke spacings.
+                hin = idx.hue_deg[ring][order][valid]
+                adjacent = np.diff(hin) <= 2.0 * (360.0 / pal.HUE_COUNT) + 1.0
+                base = worst_step(dec_off, ring, order, valid, adjacent)
+                got = worst_step(dec_on, ring, order, valid, adjacent)
+                with self.subTest(ev=ev, chroma=cf):
+                    # no NEW fold where the base is monotone, and no
+                    # deepening of an existing one beyond ~1.7 degrees
+                    self.assertGreaterEqual(
+                        got, min(base, 0.0) - 0.03,
+                        f"fold worsened: base {np.degrees(base):.2f}deg "
+                        f"-> declared {np.degrees(got):.2f}deg",
+                    )
 
     def test_within_family_identity_exists_now(self) -> None:
         """Portra vs Ektar was 0.46 dE00 median — indistinguishable. The
@@ -185,6 +223,32 @@ class SaturationRecoveryTests(unittest.TestCase):
         self.assertGreater(
             float(np.nanmedian(d["log2_saturation_ratio"][wheel])), 0.1,
             "Ektar must read more saturated than Portra, not merely different",
+        )
+
+    def test_a_compiled_plan_is_immune_to_table_mutation(self) -> None:
+        """A3 item 1. The compiler writes the effective beta into the plan
+        and the runtime consumes THAT — editing the module table after
+        compile must not move a single pixel (measured 0.0726 max drift
+        when the runtime still consulted the table)."""
+        import dngscan.film_develop as fd
+        from dngscan.render import apply_tone_core
+        from tools.film_palette_probe import reference_plan
+
+        plan, _, _, _ = reference_plan("portra400", "full")
+        self.assertEqual(
+            plan.tone.film_interimage_beta, fd.INTERIMAGE_BETA["portra400"]
+        )
+        arr = _chroma_sweep()
+        before = apply_tone_core(arr, plan.tone, plan.color)
+        saved = dict(fd.INTERIMAGE_BETA)
+        try:
+            fd.INTERIMAGE_BETA["portra400"] = 0.0
+            after = apply_tone_core(arr, plan.tone, plan.color)
+        finally:
+            fd.INTERIMAGE_BETA.update(saved)
+        np.testing.assert_array_equal(
+            np.asarray(before), np.asarray(after),
+            err_msg="compiled plan output moved with the module table",
         )
 
     def test_editorial_developer_recipes_still_compose(self) -> None:
