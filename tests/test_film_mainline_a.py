@@ -95,17 +95,11 @@ class NeutralInvarianceTests(unittest.TestCase):
         orange mask, the tau(0) timing anchor and both neutralization
         families never see it."""
         from tools.film_palette_probe import render_probe
-        import dngscan.film_develop as fd
 
         evs = np.linspace(-6.0, 4.0, 21)
         ramp = (0.18 * np.exp2(evs))[:, None].repeat(3, 1).astype(np.float32)
         with_beta = render_probe(ramp, "portra400", "full")
-        saved = dict(fd.INTERIMAGE_BETA)
-        try:
-            fd.INTERIMAGE_BETA.clear()
-            without = render_probe(ramp, "portra400", "full")
-        finally:
-            fd.INTERIMAGE_BETA.update(saved)
+        without = render_probe(ramp, "portra400", "full", film_interimage="off")
         np.testing.assert_array_equal(with_beta, without)
 
     def test_tone_is_untouched_on_the_neutral_axis(self) -> None:
@@ -139,25 +133,39 @@ class SaturationRecoveryTests(unittest.TestCase):
         s = _s_transfer("velvia100")
         self.assertAlmostEqual(s, 1.157, delta=0.02)
 
-    def test_hue_does_not_rotate(self) -> None:
-        """Amplification runs along each pixel's own colour direction in dye
-        space; a hue shift would mean the neutral reference is off-axis."""
+    def test_the_hue_path_is_bounded_and_fold_free(self) -> None:
+        """Honest claim (review 2026-08-11 item 3). Amplifying along a
+        pixel's colour direction in DYE space does not commute with B1, the
+        paper curves and B2 into display hue: the full probe measures a mean
+        3.6 deg / p95 12 deg hue path on Portra. That can be a legitimate
+        film hue path, but it may not be called "no rotation", and it must
+        stay bounded and must not FOLD (two distinct input hues collapsing
+        or crossing), which is where an amplification would turn into a
+        posterizer."""
         from tools.film_palette_probe import render_probe
-        import dngscan.film_develop as fd
 
-        arr = _chroma_sweep()
-        with_beta = render_probe(arr, "portra400", "full")
-        saved = dict(fd.INTERIMAGE_BETA)
-        try:
-            fd.INTERIMAGE_BETA.clear()
-            without = render_probe(arr, "portra400", "full")
-        finally:
-            fd.INTERIMAGE_BETA.update(saved)
-        d = pal.compare(without, with_beta)
-        self.assertLess(
-            float(np.nanmean(np.abs(d["d_hue_deg"]))), 2.5,
-            "the term must not act as a hue rotation",
-        )
+        vol, idx = pal.palette_volume()
+        wheel = idx.kind == "wheel"
+        on = render_probe(vol, "portra400", "full")
+        off = render_probe(vol, "portra400", "full", film_interimage="off")
+        d = pal.compare(off, on)
+        hh = np.abs(d["d_hue_deg"][wheel])
+        hh = hh[np.isfinite(hh)]
+        self.assertLess(float(np.mean(hh)), 6.0, "mean hue path drifting")
+        self.assertLess(float(np.percentile(hh, 95)), 20.0, "hue path tail")
+        # fold check: within each (EV, chroma) ring the output hue must stay
+        # strictly monotone in input hue (mod 360)
+        dec_on = pal.decompose(on)
+        for ev in (0.0, -2.0):
+            for cf in (0.5, 1.0):
+                ring = wheel & (idx.ev == ev) & (idx.chroma_frac == cf)
+                order = np.argsort(idx.hue_deg[ring])
+                h_out = dec_on["h_deg"][ring][order]
+                unwrapped = np.unwrap(np.radians(h_out))
+                self.assertGreater(
+                    float(np.min(np.diff(unwrapped))), -0.35,
+                    f"hue fold at ev={ev} chroma={cf}",
+                )
 
     def test_within_family_identity_exists_now(self) -> None:
         """Portra vs Ektar was 0.46 dE00 median — indistinguishable. The

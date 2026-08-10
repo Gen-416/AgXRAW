@@ -52,6 +52,8 @@ import build_full_lut as v1  # noqa: E402
 import fit_film_curve as ff  # noqa: E402
 import spectral_base as sb  # noqa: E402
 from dngscan.film_v2_math import (  # noqa: E402
+    EDITORIAL_DENSITY_LIMIT,
+    EDITORIAL_FOG_MAX,
     LOG10_2,
     SCENE_MID,
     amounts_to_unit,
@@ -219,16 +221,19 @@ class _PrintChain:
         )
 
 
-# Editorial developer envelope (dngscan.film_plans bounds): colour density
-# scales amounts about the mid-grey anchor by up to 1.5x, fog adds up to 0.3
-# uniform density (contrast warps the logE axis and cannot leave the measured
-# amount range). The B1 / reversal-B2 computational shaper domains must COVER
-# this envelope — review batch 13 measured 35-47% of perturbed curve nodes
-# silently clamped against the bare measured envelope. The spectral chain
-# evaluates the extension by the same Beer-Lambert stacking (declared
-# extrapolation beyond the measured Dmin/Dmax).
-EDITORIAL_DENSITY_SCALE = 1.5
-EDITORIAL_FOG_MAX = 0.3
+# Editorial developer envelope: colour density scales amounts about the
+# mid-grey anchor by up to (1 + EDITORIAL_DENSITY_LIMIT)x, fog adds up to
+# EDITORIAL_FOG_MAX uniform density (contrast warps the logE axis and cannot
+# leave the measured amount range). The B1 / reversal-B2 computational shaper
+# domains must COVER this envelope — review batch 13 measured 35-47% of
+# perturbed curve nodes silently clamped against the bare measured envelope.
+# The bounds are IMPORTED from dngscan.film_v2_math, the same constants
+# validate_film_plans and the runtime guard in developer_perturbation
+# enforce (mainline A2 follow-up: a locally duplicated 1.5/0.3 here is how
+# the bake and the declaration drift apart). The spectral chain evaluates the
+# extension by the same Beer-Lambert stacking (declared extrapolation beyond
+# the measured Dmin/Dmax).
+EDITORIAL_DENSITY_SCALE = 1.0 + EDITORIAL_DENSITY_LIMIT
 
 
 def _stage_a_tables(stock: dict):
