@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "kind": "capture_bloom",
+  "asset_id": "none",
+  "provenance": "editorial",
+  "active": false,
+  "source_notes": [
+    "Deliberately empty slot. The scene-linear editorial glow arrives in P3; until then the plan shape is stable and nothing can quietly borrow the print scatter's amount."
+  ]
+}

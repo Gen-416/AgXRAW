@@ -435,9 +435,24 @@ def jpeg_tone_plan_cn(
             if val > 0.0
         ]
         if optics:
+            # §12.2 refuses a bare "模拟光学 standard": a reader must be able
+            # to tell which asset produced the halo and how honest each field
+            # is without opening the source. The compiled plan owns those
+            # answers, so the line is built from it rather than re-derived.
+            from .film_optics_assets import compile_film_optics_plan
+
+            optics_plan = compile_film_optics_plan(plan)
+            rep = optics_plan.report() if optics_plan is not None else {}
+            prov = rep.get("provenance", {})
             state += (
-                "模拟光学(modelled) " + "·".join(optics)
-                + f"·seed={int(getattr(plan, 'film_optics_seed', 0) or 0)}；"
+                "模拟光学 " + "·".join(optics)
+                + f"·seed={int(rep.get('seed', 0))}"
+                + f"·胶片资产={rep.get('stock_optics', '?')}"
+                + f"(颗粒{prov.get('grain') or '—'}"
+                + f"/halation{prov.get('halation') or '—'})"
+                + f"·印相资产={rep.get('print_optics', '?')}"
+                + f"(散射{prov.get('print_scatter') or '—'})"
+                + f"·halation DC={rep.get('halation_dc_mode') or '—'}；"
             )
         return (
             f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"

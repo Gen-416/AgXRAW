@@ -21,6 +21,20 @@ from pathlib import Path
 
 import numpy as np
 
+# P1 §7.1: the operators take the specific asset they implement, so the tests
+# pull the same declared assets the renderer compiles rather than a shared
+# profile struct that no longer exists.
+from dngscan.film_optics_assets import (  # noqa: E402
+    DEFAULT_PRINT_OPTICS,
+    DEFAULT_STOCK_OPTICS,
+    load_print_optics,
+    load_stock_optics,
+)
+
+_GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+_HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
+_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
+
 from tests.test_film_v2_assets import _stock_files
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +60,6 @@ class GateGeometryTests(unittest.TestCase):
 
     def test_no_zero_grain_rows_for_portrait_and_4x3(self) -> None:
         from dngscan.film_optics import (
-            MODELLED_DEFAULT,
             FilmGeometry,
             grain_field_for,
             integral_from_field,
@@ -55,7 +68,7 @@ class GateGeometryTests(unittest.TestCase):
 
         # sample_field takes an INTEGRAL image by contract (batch 19): the
         # caller declares which one it holds instead of it being sniffed.
-        field = integral_from_field(grain_field_for(MODELLED_DEFAULT, 0))
+        field = integral_from_field(grain_field_for(_GRAIN, 0))
         for h, w in ((600, 400), (300, 400), (400, 300)):
             got = sample_field(field, FilmGeometry.fit(h, w))
             row_rms = np.sqrt(np.mean(np.square(got, dtype=np.float64), axis=(1, 2)))
@@ -116,7 +129,7 @@ class GateGeometryTests(unittest.TestCase):
 
 class BloomPyramidEdgeTests(unittest.TestCase):
     def test_odd_edges_keep_their_bloom_and_tiny_inputs_survive(self) -> None:
-        from dngscan.film_optics import MODELLED_DEFAULT, bloom_delta_map
+        from dngscan.film_optics import bloom_delta_map
 
         # 33x35: highlights at the four corners must all participate — the
         # conservative delta is NEGATIVE at each impulse core (it loses
@@ -125,7 +138,7 @@ class BloomPyramidEdgeTests(unittest.TestCase):
         img = np.zeros((33, 35, 3), dtype=np.float32)
         for y, x in ((0, 0), (0, 34), (32, 0), (32, 34)):
             img[y, x] = 1.0
-        delta = bloom_delta_map(img, MODELLED_DEFAULT)
+        delta = bloom_delta_map(img, _SCATTER)
         cores = [float(delta[y, x].mean()) for y, x in
                  ((0, 0), (0, 34), (32, 0), (32, 34))]
         self.assertLess(max(cores), 0.0, "every corner core must shed energy")
@@ -144,7 +157,7 @@ class BloomPyramidEdgeTests(unittest.TestCase):
         # tiny inputs: no crash, finite output
         for shape in ((5, 5), (1, 7), (3, 2)):
             tiny = np.ones(shape + (3,), dtype=np.float32)
-            out = bloom_delta_map(tiny, MODELLED_DEFAULT)
+            out = bloom_delta_map(tiny, _SCATTER)
             self.assertTrue(np.isfinite(out).all(), shape)
 
 

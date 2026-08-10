@@ -328,20 +328,24 @@ class FilmSpatialContext:
     """
 
     __slots__ = (
-        "height", "width", "profile", "grain", "halation", "bloom", "seed",
+        "height", "width", "optics", "grain", "halation", "bloom", "seed",
         "hal_map", "bloom_map", "geometry", "bloom_source", "spread_shape",
     )
 
     def __init__(self, height: int, width: int, plan: Any) -> None:
-        from .film_optics import MODELLED_DEFAULT
+        from .film_optics_assets import compile_film_optics_plan
 
         self.height = int(height)
         self.width = int(width)
-        self.profile = MODELLED_DEFAULT
-        self.grain = float(getattr(plan, "film_grain", 0.0) or 0.0)
-        self.halation = float(getattr(plan, "film_halation", 0.0) or 0.0)
-        self.bloom = float(getattr(plan, "film_bloom", 0.0) or 0.0)
-        self.seed = int(getattr(plan, "film_optics_seed", 0) or 0)
+        # The compiled §7.2 plan, or None when nothing is engaged. Runtime
+        # reads assets off this and never falls back to a module default:
+        # an operator that can silently substitute constants is an operator
+        # whose output cannot be attributed.
+        self.optics = compile_film_optics_plan(plan)
+        self.grain = 0.0 if self.optics is None else self.optics.grain_amount
+        self.halation = 0.0 if self.optics is None else self.optics.halation_amount
+        self.bloom = 0.0 if self.optics is None else self.optics.print_scatter_amount
+        self.seed = 0 if self.optics is None else self.optics.seed
         self.hal_map = None
         self.bloom_map = None
         self.bloom_source = None
@@ -355,7 +359,7 @@ class FilmSpatialContext:
 
     @property
     def engaged(self) -> bool:
-        return self.grain > 0.0 or self.halation > 0.0 or self.bloom > 0.0
+        return self.optics is not None and self.optics.engaged
 
     def band_geometry(self, y0: int, y1: int):
         return self.geometry.rows(y0, y1)
@@ -397,7 +401,7 @@ class FilmSpatialContext:
         ).reshape(dh, dw)
         _, _, geo_w_mm, _ = self.geometry.region()
         self.hal_map = halation_spread_map(
-            exposure_lin, self.width, geo_w_mm, self.profile
+            exposure_lin, self.width, geo_w_mm, self.optics.stock.halation
         )
 
     def begin_bloom_source(self) -> None:
@@ -422,7 +426,7 @@ class FilmSpatialContext:
         rows = np.asarray(developed_rows, dtype=np.float32).reshape(
             y1 - y0, self.width, 3
         )
-        src = scatter_source(rows, self.profile)
+        src = scatter_source(rows, self.optics.print_medium.print_scatter)
         dh, dw = self.spread_shape
         area_decimate_rows(src, y0, self.height, self.width, dh, dw, self.bloom_source)
 
@@ -434,7 +438,8 @@ class FilmSpatialContext:
         from .film_optics import integral_from_field, scatter_spread
 
         spread = scatter_spread(
-            self.bloom_source.astype(np.float32), self.profile
+            self.bloom_source.astype(np.float32),
+            self.optics.print_medium.print_scatter,
         )
         self.bloom_map = integral_from_field(spread).astype(np.float32)
         self.bloom_source = None
@@ -511,7 +516,16 @@ def _apply_film_core_v2(
             fog_delta=float(getattr(plan, "film_dev_fog", 0.0) or 0.0),
             color_density=float(getattr(plan, "film_dev_density", 0.0) or 0.0),
         )
-    log_e = layer_log_exposure(rgb, stock["observer"])
+    # R1 §3.1: the film's own exposure state enters the LAYER EXPOSURE, not
+    # the characteristic-curve lookup. It used to ride in as `ev_offset` on
+    # `characteristic_amounts`, i.e. AFTER halation had already run, so
+    # changing the film exposure moved density while leaving every spatial
+    # operator looking at the same light. Since `ev_offset` was only ever a
+    # translation of the lookup axis, moving it here is algebraically the
+    # same transform; what changes is who else can see it.
+    log_e = layer_log_exposure(rgb, stock["observer"]) + (
+        exposure_ev + float(stock["anchor"])
+    ) * _LOG10_2
     if ctx is not None and ctx.halation > 0.0:
         from .film_optics import halation_reinject_rows
 
@@ -520,12 +534,9 @@ def _apply_film_core_v2(
         # layer exposure before the curves.
         log_e = halation_reinject_rows(
             log_e, ctx.hal_map, y0, y1, ctx.height, ctx.width,
-            ctx.profile, ctx.halation,
+            ctx.optics.stock.halation, ctx.halation,
         )
-    amounts = characteristic_amounts(
-        log_e, stock["char_le"], char_amounts,
-        ev_offset=exposure_ev + float(stock["anchor"]),
-    )
+    amounts = characteristic_amounts(log_e, stock["char_le"], char_amounts)
     if ctx is not None and ctx.grain > 0.0:
         from .film_optics import apply_density_grain
 
@@ -538,7 +549,7 @@ def _apply_film_core_v2(
         )
         amounts = apply_density_grain(
             amounts, _g_lo, _g_hi, ctx.band_geometry(y0, y1),
-            ctx.profile, ctx.grain, ctx.seed,
+            ctx.optics.stock.grain, ctx.grain, ctx.seed,
         )
     bounded = str(getattr(plan, "film_crossover", "off")) != "datasheet"
     if stock["reversal"]:
@@ -558,7 +569,7 @@ def _apply_film_core_v2(
 
             developed = bloom_apply_rows(
                 developed, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
-                ctx.profile, ctx.bloom,
+                ctx.optics.print_medium.print_scatter, ctx.bloom,
             )
         return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
@@ -620,7 +631,7 @@ def _apply_film_core_v2(
         # once, on the final pass.
         developed = bloom_apply_rows(
             developed, ctx.bloom_map, y0, y1, ctx.height, ctx.width,
-            ctx.profile, ctx.bloom,
+            ctx.optics.print_medium.print_scatter, ctx.bloom,
         )
     return developed.astype(np.float32, copy=False)
 

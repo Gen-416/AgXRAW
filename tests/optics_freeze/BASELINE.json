@@ -1,4 +1,37 @@
 {
+  "assets": {
+    "grain": {
+      "layer_corr": 0.35,
+      "medium": "negative",
+      "model": "band_limited_gaussian_v1",
+      "pitch_um": 12.0,
+      "provenance": "modelled",
+      "sigma0": 0.055,
+      "size_um": 18.0
+    },
+    "halation": {
+      "dc_mode": "additive",
+      "layer_weights": [
+        1.0,
+        0.22,
+        0.06
+      ],
+      "model": "legacy_threshold_cascade_v1",
+      "provenance": "modelled",
+      "radius_mm": 0.55,
+      "strength": 0.12,
+      "threshold_ev": 1.5
+    },
+    "print": "modelled_default",
+    "print_scatter": {
+      "levels": 4,
+      "model": "conservative_pyramid_v1",
+      "provenance": "modelled",
+      "strength": 0.22,
+      "threshold": 0.6
+    },
+    "stock": "modelled_default"
+  },
   "bloom": {
     "light": {
       "base_sum": [
@@ -300,23 +333,6 @@
         "mtf_at_0p25": 0.892475120409539
       }
     }
-  },
-  "profile": {
-    "bloom_levels": 4,
-    "bloom_strength": 0.22,
-    "bloom_threshold": 0.6,
-    "grain_layer_corr": 0.35,
-    "grain_pitch_um": 12.0,
-    "grain_sigma0": 0.055,
-    "grain_size_um": 18.0,
-    "halation_radius_mm": 0.55,
-    "halation_strength": 0.12,
-    "halation_threshold_ev": 1.5,
-    "halation_weights": [
-      1.0,
-      0.22,
-      0.06
-    ]
   },
   "stock": "portra400",
   "tiers": {

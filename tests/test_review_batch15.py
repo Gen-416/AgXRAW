@@ -16,6 +16,20 @@ from types import SimpleNamespace
 
 import numpy as np
 
+# P1 §7.1: the operators take the specific asset they implement, so the tests
+# pull the same declared assets the renderer compiles rather than a shared
+# profile struct that no longer exists.
+from dngscan.film_optics_assets import (  # noqa: E402
+    DEFAULT_PRINT_OPTICS,
+    DEFAULT_STOCK_OPTICS,
+    load_print_optics,
+    load_stock_optics,
+)
+
+_GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+_HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
+_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
+
 from tests.test_film_v2_assets import _stock_files
 
 
@@ -45,9 +59,9 @@ def _plan(preset: str, **kw):
 
 class ConservativeScatterTests(unittest.TestCase):
     def _delta(self, img):
-        from dngscan.film_optics import MODELLED_DEFAULT, bloom_delta_map
+        from dngscan.film_optics import bloom_delta_map
 
-        return bloom_delta_map(img, MODELLED_DEFAULT)
+        return bloom_delta_map(img, _SCATTER)
 
     def test_uniform_field_passes_through(self) -> None:
         img = np.full((48, 64, 3), 0.9, dtype=np.float32)  # above threshold
@@ -74,8 +88,6 @@ class ConservativeScatterTests(unittest.TestCase):
         self.assertLessEqual(float(sums.max()), 1e-5)
 
     def test_coloured_highlight_keeps_its_rgb_ratio(self) -> None:
-        from dngscan.film_optics import MODELLED_DEFAULT
-
         img = np.full((48, 64, 3), 0.05, dtype=np.float32)
         img[24, 32] = (0.9, 0.6, 0.3)  # warm highlight above Y threshold
         delta = self._delta(img)
@@ -90,42 +102,41 @@ class ConservativeScatterTests(unittest.TestCase):
     @staticmethod
     def _spread_ii(img):
         from dngscan.film_optics import (
-            MODELLED_DEFAULT,
             integral_from_field,
             scatter_source,
             scatter_spread,
         )
 
         return integral_from_field(
-            scatter_spread(scatter_source(img, MODELLED_DEFAULT), MODELLED_DEFAULT)
+            scatter_spread(scatter_source(img, _SCATTER), _SCATTER)
         ).astype(np.float32)
 
     def test_band_split_matches_full_frame_bytes(self) -> None:
-        from dngscan.film_optics import MODELLED_DEFAULT, bloom_apply_rows
+        from dngscan.film_optics import bloom_apply_rows
 
         h, w = 64, 96
         rng = np.random.default_rng(2)
         img = rng.uniform(0.0, 1.0, (h, w, 3)).astype(np.float32)
         spread_ii = self._spread_ii(img)
         flat = img.reshape(-1, 3)
-        full = bloom_apply_rows(flat, spread_ii, 0, h, h, w, MODELLED_DEFAULT, 0.8)
+        full = bloom_apply_rows(flat, spread_ii, 0, h, h, w, _SCATTER, 0.8)
         banded = np.empty_like(full)
         for y0 in range(0, h, 11):
             y1 = min(y0 + 11, h)
             banded[y0 * w:y1 * w] = bloom_apply_rows(
-                flat[y0 * w:y1 * w], spread_ii, y0, y1, h, w, MODELLED_DEFAULT, 0.8
+                flat[y0 * w:y1 * w], spread_ii, y0, y1, h, w, _SCATTER, 0.8
             )
         np.testing.assert_array_equal(full, banded)
 
     def test_output_sum_conserved_and_clean(self) -> None:
-        from dngscan.film_optics import MODELLED_DEFAULT, bloom_apply_rows
+        from dngscan.film_optics import bloom_apply_rows
 
         h, w = 64, 96
         rng = np.random.default_rng(3)
         img = rng.uniform(0.0, 1.1, (h, w, 3)).astype(np.float32)
         spread_ii = self._spread_ii(img)
         out = bloom_apply_rows(
-            img.reshape(-1, 3), spread_ii, 0, h, h, w, MODELLED_DEFAULT, 1.0
+            img.reshape(-1, 3), spread_ii, 0, h, h, w, _SCATTER, 1.0
         )
         self.assertTrue(np.isfinite(out).all())
         self.assertGreaterEqual(float(out.min()), 0.0)
@@ -170,7 +181,7 @@ class GrainRealizationTests(unittest.TestCase):
         from unittest import mock
 
         from dngscan import film_optics
-        from dngscan.film_optics import MODELLED_DEFAULT, _grain_ii_for
+        from dngscan.film_optics import _grain_ii_for
 
         film_optics._FIELD_CACHE.clear()
         calls = []
@@ -181,14 +192,14 @@ class GrainRealizationTests(unittest.TestCase):
             return real(profile, seed)
 
         with mock.patch.object(film_optics, "_band_limited_field", spy):
-            _grain_ii_for(MODELLED_DEFAULT, film_optics.MASTER_SEED)
+            _grain_ii_for(_GRAIN, film_optics.MASTER_SEED)
             from dngscan.film_optics import (
-                FilmGeometry,
-                realization_phases,
-                sample_field,
-            )
+            FilmGeometry,
+            realization_phases,
+            sample_field,
+        )
 
-            master = _grain_ii_for(MODELLED_DEFAULT, film_optics.MASTER_SEED)
+            master = _grain_ii_for(_GRAIN, film_optics.MASTER_SEED)
             gh, gw = master.shape[0] - 1, master.shape[1] - 1
             for seed in (111, 222, 333):
                 sample_field(
@@ -211,13 +222,12 @@ class GrainRealizationTests(unittest.TestCase):
 
     def test_periodic_boundary_has_no_seam(self) -> None:
         from dngscan.film_optics import (
-            MODELLED_DEFAULT,
             FilmGeometry,
             _grain_ii_for,
             sample_field,
         )
 
-        master = _grain_ii_for(MODELLED_DEFAULT, 0)
+        master = _grain_ii_for(_GRAIN, 0)
         gh, gw = master.shape[0] - 1, master.shape[1] - 1
         # a phase that forces every footprint to wrap
         got = sample_field(
@@ -232,14 +242,13 @@ class GrainRealizationTests(unittest.TestCase):
 
     def test_half_resolution_is_still_the_area_mean(self) -> None:
         from dngscan.film_optics import (
-            MODELLED_DEFAULT,
             FilmGeometry,
             _grain_ii_for,
             realization_phases,
             sample_field,
         )
 
-        master = _grain_ii_for(MODELLED_DEFAULT, 0)
+        master = _grain_ii_for(_GRAIN, 0)
         gh, gw = master.shape[0] - 1, master.shape[1] - 1
         phase = realization_phases(97, gh, gw)
         full = sample_field(master, FilmGeometry(400, 600), phase=phase)
@@ -288,7 +297,25 @@ class SeedLifecycleTests(unittest.TestCase):
         src = inspect.getsource(cli)
         self.assertIn('== "auto"', src)
         self.assertIn("secrets", src)
-        self.assertIn("film_optics_seed", inspect.getsource(report))
+        # The report must PRINT the resolved seed. Asserted on the rendered
+        # text rather than by grepping report.py for a field name: the seed
+        # now reaches the line through the compiled optics plan, and a source
+        # grep would have called that refactor a regression while the user-
+        # visible behaviour was unchanged.
+        from types import SimpleNamespace
+
+        from tests.golden_support import all_scenes
+
+        scene = all_scenes()["daylight_wide_dr"]
+        note = report.jpeg_tone_plan_cn(
+            scene.bundle, scene.analysis, "agx",
+            tone_plan=SimpleNamespace(
+                film_mode="full", curve_preset="portra400",
+                film_grain=0.5, film_halation=0.0, film_bloom=0.0,
+                film_optics_seed=20260810, film_crossover="datasheet",
+            ),
+        )
+        self.assertIn("seed=20260810", note)
 
     def test_build_render_plan_never_randomizes(self) -> None:
         import inspect

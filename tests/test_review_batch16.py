@@ -21,6 +21,20 @@ from types import SimpleNamespace
 
 import numpy as np
 
+# P1 §7.1: the operators take the specific asset they implement, so the tests
+# pull the same declared assets the renderer compiles rather than a shared
+# profile struct that no longer exists.
+from dngscan.film_optics_assets import (  # noqa: E402
+    DEFAULT_PRINT_OPTICS,
+    DEFAULT_STOCK_OPTICS,
+    load_print_optics,
+    load_stock_optics,
+)
+
+_GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+_HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
+_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
+
 from tests.test_film_v2_assets import _stock_files
 
 
@@ -88,9 +102,9 @@ class PeriodicMasterTests(unittest.TestCase):
         """First differences across the wrap must sit inside the population
         of interior first differences (the reflect-blurred master measured
         ~20 sigma seams)."""
-        from dngscan.film_optics import MODELLED_DEFAULT, _band_limited_field
+        from dngscan.film_optics import _band_limited_field
 
-        f = _band_limited_field(MODELLED_DEFAULT, 0).astype(np.float64)
+        f = _band_limited_field(_GRAIN, 0).astype(np.float64)
         inner_rows = np.abs(np.diff(f, axis=0)).mean(axis=(1, 2))
         seam_row = np.abs(f[0] - f[-1]).mean()
         self.assertLess(
@@ -106,7 +120,6 @@ class PeriodicMasterTests(unittest.TestCase):
 
     def test_phased_sampling_matches_the_rolled_field(self) -> None:
         from dngscan.film_optics import (
-            MODELLED_DEFAULT,
             FilmGeometry,
             _band_limited_field,
             _grain_ii_for,
@@ -114,8 +127,8 @@ class PeriodicMasterTests(unittest.TestCase):
             sample_field,
         )
 
-        master = _grain_ii_for(MODELLED_DEFAULT, 0)
-        field = _band_limited_field(MODELLED_DEFAULT, 0)
+        master = _grain_ii_for(_GRAIN, 0)
+        field = _band_limited_field(_GRAIN, 0)
         geo = FilmGeometry.fit(200, 300)
         for phase in ((1234, 2345), (1999, 2999), (0, 1500), (500, 0)):
             got = sample_field(master, geo, phase=phase)
@@ -140,13 +153,12 @@ class PeriodicMasterTests(unittest.TestCase):
             self.skipTest("wall-clock gate runs locally only")
 
         from dngscan.film_optics import (
-            MODELLED_DEFAULT,
             FilmGeometry,
             _grain_ii_for,
             sample_field,
         )
 
-        master = _grain_ii_for(MODELLED_DEFAULT, 0)
+        master = _grain_ii_for(_GRAIN, 0)
         gh, gw = master.shape[0] - 1, master.shape[1] - 1
         geo = FilmGeometry.fit(500, 750)
         # warm both paths, then time
