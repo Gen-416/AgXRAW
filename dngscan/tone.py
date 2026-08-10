@@ -862,6 +862,14 @@ def build_render_plan(
                 "手动印相曝光仅在 timing=custom 下有意义;fixed/retimed 的印相"
                 "由联合求解决定"
             )
+        # A4 item 2: the effective beta is resolved from the declared table
+        # exactly ONCE per compile. Both plan copies (ToneCompressionPlan for
+        # the runtime, FilmDevelopmentPlan for the audit surface) receive
+        # this one value, so a mid-compile table mutation cannot fork them.
+        _effective_interimage_beta = (
+            _interimage_beta_for(film_curve)
+            if str(film_interimage or "declared") == "declared" else 0.0
+        )
         tone = _replace(
             tone,
             film_mode=mode_value,
@@ -872,10 +880,7 @@ def build_render_plan(
             film_print_exposure_ev=print_exposure_value,
             film_development=development_value,
             film_interimage=str(film_interimage or "declared"),
-            film_interimage_beta=(
-                _interimage_beta_for(film_curve)
-                if str(film_interimage or "declared") == "declared" else 0.0
-            ),
+            film_interimage_beta=_effective_interimage_beta,
             film_dev_contrast=float(film_dev_contrast),
             film_dev_fog=float(film_dev_fog),
             film_dev_density=float(film_dev_density),
@@ -961,10 +966,11 @@ def build_render_plan(
                 interimage_mode=str(
                     getattr(tone, "film_interimage", "declared") or "declared"
                 ),
-                interimage_beta=(
-                    _interimage_beta_for(film_curve)
-                    if str(getattr(tone, "film_interimage", "declared") or "declared")
-                    == "declared" else 0.0
+                # The SAME resolved value the tone plan carries — resolved
+                # exactly once (A4 item 2), so the two copies cannot diverge
+                # even in principle; a test pins their equality.
+                interimage_beta=float(
+                    getattr(tone, "film_interimage_beta", 0.0) or 0.0
                 ),
             ),
             FilmPrintPlan(

@@ -703,6 +703,15 @@ def _apply_film_core_v2(
     # measured 0.0726 max pixel drift from editing the module table after
     # compile while the runtime still consulted it.
     if interimage_mode != "declared":
+        # Same semantics as the plan validator (A4 item 3): a hand-built
+        # plan claiming "off" while carrying a nonzero compiled beta is a
+        # contradiction, and silently zeroing it would make the two entry
+        # points disagree about what "off" means.
+        stray = getattr(plan, "film_interimage_beta", None)
+        if stray is not None and float(stray) != 0.0:
+            raise ValueError(
+                f"film_interimage=off 但 film_interimage_beta={stray!r} 非零"
+            )
         beta = 0.0
     else:
         compiled = getattr(plan, "film_interimage_beta", None)

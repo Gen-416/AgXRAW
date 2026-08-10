@@ -400,7 +400,14 @@ dngscan_assets/film_appearance/
 先用一对同工艺家族完成首个纵向切片，再覆盖差异最大的其他家族：
 
 1. `Portra 400 + Endura`：低/中纯度肤色略更红暖，黄绿温和偏黄，高纯度颜色软限制，蓝青不过亮；
-2. `Ektar 100 + Endura`：与 Portra 同属 C-41，但红/青分离和色密度更明确；它与 Portra 必须首先跨过同家族 identity 门；
+2. `Ektar 100 + Endura`：与 Portra 同属 C-41，但红/青分离和色密度更明确；它与 Portra 必须首先跨过同家族 identity 门。
+   **成对合同（2026-08-11）**：两卷成对 author，联合 A/B 通过前互不算完成；
+   authoring 层表示为 **Endura 公共基调 + 每卷 residual**（防止两卷被人为向相反
+   方向推开），运行时仍烘平为独立资产。受控前提已由主线 A 提供：β 差给出中位
+   1.79 dE00 / +0.26 stop 纯度差，两卷中位亮度差仅 0.0011 EV，recipe 新增的曝光
+   依赖 hue path 与差分 color density（目标色区 0.1–0.3 EV）可单独归因；首轮
+   **禁用 richness 场做科内区分**（那是 β 已占用的纯度轴），验证点为肤色/红/
+   黄绿/青蓝的差分 hue path 与中性/非目标区不动；
 3. `Velvia 100 direct`：绿/青/洋红分离更明确，彩色区域有更高 color density，高纯度仍受软肩，肤色保护更强；
 4. `Vision3 250D + 2383`：暗色更密，肤色温暖，青蓝阴影有轻微冷向，亮部向暖/绿后平滑回中性；
 5. `Vision3 250D extended`：保留电影负片家族方向，但降低灰轴偏色、放宽 gamut、压低黑位，作为 scan/telecine 解释对照。
@@ -560,7 +567,11 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 - reference 对 technical 的中位 DeltaE00 目标 `3..6`；
 - 重点 hue 区 p75 DeltaE00 至少 `4`；
 - 非目标中性和低 saturation 区 DeltaE00 保持 `<1`；
-- 两个不同 stock reference 在各自目标色区的 DeltaE00 至少 `2`，且至少一组必须是同工艺家族（首门为 Portra 400 vs Ektar 100）；
+- 科内身份以 **recipe 增量**计（2026-08-11：technical 在层间放大后 Portra/Ektar
+  已达 1.79 dE00，绝对下限 2 形同虚设）：
+  `identity_increment = dE00(Portra_ref, Ektar_ref) − dE00(Portra_tech, Ektar_tech)`
+  在目标色区中位至少 `+1.5`，且去掉全局饱和度/亮度差后仍然成立；跨工艺家族
+  组合仍保留绝对 `2` 下限；
 - 任何单 patch hue 旋转初始上限 `12 degrees`，超过必须单独审查；
 - gamut fit 前超域比例不得比 technical 无上限增长，报告新增压力及位置。
 

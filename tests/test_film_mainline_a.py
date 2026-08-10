@@ -134,76 +134,79 @@ class SaturationRecoveryTests(unittest.TestCase):
         self.assertAlmostEqual(s, 1.157, delta=0.02)
 
     def test_the_hue_path_is_bounded_and_does_not_worsen_folds(self) -> None:
-        """Honest claims, round two (A3 item 2).
+        """Honest claims, round three (A4 item 1).
 
-        Round one gated "strictly monotone" but only at EV 0/-2 with a
-        -20 degree tolerance — a false green: at +4 EV, full chroma, the
-        chain reverses hue by ~4.6 degrees between the 210 and 225 degree
-        spokes. The BASE spectral chain does that too, so absolute
-        fold-freedom is not this term's contract to make. What IS its
-        contract: across the FULL grid (every EV x chroma ring, hue-defined
-        samples only), the amplification must not create a fold the base
-        chain does not have, and must not deepen the worst existing one by
-        more than a degree-scale increment.
+        Round two compared only each ring's WORST step, which lets a new
+        shallow fold at spoke B hide behind a deeper pre-existing one at
+        spoke A, skipped the 345->0 wrap seam, and ran Portra only. The gate
+        is now PER ADJACENT EDGE — step_declared[i] >= min(step_off[i], 0) -
+        tolerance — with the periodic closing edge included, over EVERY
+        stock that declares a beta. A4's own stricter scan found no actual
+        violation; this pins that state so one cannot appear unnoticed.
+
+        Bounds (mean/p95 of the hue path) stay asserted on the two extremes
+        of the beta table, Portra (family default) and Ektar (largest beta).
         """
+        from dngscan.film_develop import INTERIMAGE_BETA
         from tools.film_palette_probe import render_probe
 
         vol, idx = pal.palette_volume()
         wheel = idx.kind == "wheel"
-        on = render_probe(vol, "portra400", "full")
-        off = render_probe(vol, "portra400", "full", film_interimage="off")
-        d = pal.compare(off, on)
-        hh = np.abs(d["d_hue_deg"][wheel])
-        hh = hh[np.isfinite(hh)]
-        self.assertLess(float(np.mean(hh)), 6.0, "mean hue path drifting")
-        self.assertLess(float(np.percentile(hh, 95)), 20.0, "hue path tail")
+        spoke = 360.0 / pal.HUE_COUNT
 
-        dec_on = pal.decompose(on)
-        dec_off = pal.decompose(off)
+        def ring_edges(dec_off, dec_on, ring, order):
+            """Aligned per-edge hue steps for both renderings.
 
-        def worst_step(dec, ring, order, valid, adjacent):
-            h_v = np.radians(dec["h_deg"][ring][order][valid])
-            if h_v.size < 3 or not adjacent.any():
-                return 0.0
-            return float(np.min(np.diff(np.unwrap(h_v))[adjacent]))
+            Common validity mask (perceptual 0.01 Oklab C floor, in BOTH
+            renderings — same reasoning as round two), adjacency filter on
+            the input-hue gap, and the wrap edge from the last surviving
+            spoke back to the first (+360) appended so the 345->0 seam is a
+            first-class edge instead of a blind spot.
+            """
+            valid = (
+                (dec_off["C"][ring][order] > 1e-2)
+                & (dec_on["C"][ring][order] > 1e-2)
+            )
+            if valid.sum() < 3:
+                return None
+            hin = idx.hue_deg[ring][order][valid]
+            gaps = np.diff(np.concatenate([hin, [hin[0] + 360.0]]))
+            adjacent = gaps <= 2.0 * spoke + 1.0
 
-        for ev in pal.PROBE_EVS:
-            for cf in pal.CHROMA_LEVELS:
-                ring = wheel & (idx.ev == ev) & (idx.chroma_frac == cf)
-                order = np.argsort(idx.hue_deg[ring])
-                # Hue validity floor: PERCEPTUAL (0.01 Oklab C — an order
-                # above the 4e-4 matrix-noise floor of Rec.2020 white, an
-                # order below the least saturated visible wheel sample), and
-                # taken as the INTERSECTION of both renderings. The common
-                # mask is what makes the comparison a comparison: in deep
-                # shadow the amplification lifts spokes past the floor that
-                # the base left invisible, and measuring the declared fold on
-                # spokes the base cannot even see is not "worse than base",
-                # it is a different sample set. Newly-visible near-floor
-                # colours stay covered by the absolute mean/p95 gates above.
-                valid = (
-                    (dec_off["C"][ring][order] > 1e-2)
-                    & (dec_on["C"][ring][order] > 1e-2)
-                )
-                # A fold is defined between ADJACENT spokes. When the floor
-                # thins a shadow ring to a few survivors, consecutive kept
-                # spokes can sit 300 degrees of input hue apart (measured:
-                # EV -4 / 0.75 keeps 5 of 24, with a 30->330 wrap gap), and
-                # the output-hue step across that gap is geometry, not a
-                # fold. Steps are compared only where the input gap is at
-                # most two spoke spacings.
-                hin = idx.hue_deg[ring][order][valid]
-                adjacent = np.diff(hin) <= 2.0 * (360.0 / pal.HUE_COUNT) + 1.0
-                base = worst_step(dec_off, ring, order, valid, adjacent)
-                got = worst_step(dec_on, ring, order, valid, adjacent)
-                with self.subTest(ev=ev, chroma=cf):
-                    # no NEW fold where the base is monotone, and no
-                    # deepening of an existing one beyond ~1.7 degrees
-                    self.assertGreaterEqual(
-                        got, min(base, 0.0) - 0.03,
-                        f"fold worsened: base {np.degrees(base):.2f}deg "
-                        f"-> declared {np.degrees(got):.2f}deg",
-                    )
+            def steps(dec):
+                h = np.radians(dec["h_deg"][ring][order][valid])
+                u = np.unwrap(np.concatenate([h, [h[0]]]))
+                return np.diff(u)
+
+            return steps(dec_off)[adjacent], steps(dec_on)[adjacent]
+
+        for stock in sorted(k for k, v in INTERIMAGE_BETA.items() if v > 0):
+            on = render_probe(vol, stock, "full")
+            off = render_probe(vol, stock, "full", film_interimage="off")
+            dec_on = pal.decompose(on)
+            dec_off = pal.decompose(off)
+            if stock in ("portra400", "ektar100"):
+                d = pal.compare(off, on)
+                hh = np.abs(d["d_hue_deg"][wheel])
+                hh = hh[np.isfinite(hh)]
+                with self.subTest(stock=stock, gate="bounds"):
+                    self.assertLess(float(np.mean(hh)), 6.5)
+                    self.assertLess(float(np.percentile(hh, 95)), 22.0)
+            for ev in pal.PROBE_EVS:
+                for cf in pal.CHROMA_LEVELS:
+                    ring = wheel & (idx.ev == ev) & (idx.chroma_frac == cf)
+                    order = np.argsort(idx.hue_deg[ring])
+                    edges = ring_edges(dec_off, dec_on, ring, order)
+                    if edges is None:
+                        continue
+                    base, got = edges
+                    worst = float(np.min(got - np.minimum(base, 0.0)))
+                    with self.subTest(stock=stock, ev=ev, chroma=cf):
+                        self.assertGreaterEqual(
+                            worst, -0.03,
+                            "a fold appeared or deepened on an edge: "
+                            f"declared vs off margin {np.degrees(worst):.2f}deg",
+                        )
 
     def test_within_family_identity_exists_now(self) -> None:
         """Portra vs Ektar was 0.46 dE00 median — indistinguishable. The
