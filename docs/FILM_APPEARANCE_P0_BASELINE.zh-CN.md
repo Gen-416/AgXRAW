@@ -7,6 +7,12 @@
 > `tests/test_film_appearance_p0.py` 复算。计划正文见
 > [`FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md`](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md)。
 
+> **历史状态注（2026-08-11）**：本文件是外观层 P0 时点的测量记录。其中
+> 「Portra vs Ektar 0.46 dE00」「C-41 S 传递明显下降」等数字描述的是
+> **主线 A（层间放大）落地之前**的链。当前值见
+> `tests/appearance_freeze/BASELINE.json`（落地后：科内约 1.8 dE00，
+> C-41 的 S 亏空已恢复到 ±0.1 量级）。本文不改写，作为决策依据的原始记录保留。
+
 ## 0. 测量合同
 
 | 交付物 | 位置 |

@@ -683,6 +683,12 @@ def apply_render_adjustments(
     return replace(plan, tone=tone, color=color)
 
 
+def _interimage_beta_for(stock: str) -> float:
+    from .film_develop import interimage_beta
+
+    return interimage_beta(stock)
+
+
 def build_render_plan(
     bundle: RawBundle,
     analysis: Analysis,
@@ -706,6 +712,7 @@ def build_render_plan(
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
     film_development: str = "measured_default",
+    film_interimage: str = "declared",
     film_dev_contrast: float = 0.0,
     film_dev_fog: float = 0.0,
     film_dev_density: float = 0.0,
@@ -864,6 +871,7 @@ def build_render_plan(
             film_print_medium=medium_value,
             film_print_exposure_ev=print_exposure_value,
             film_development=development_value,
+            film_interimage=str(film_interimage or "declared"),
             film_dev_contrast=float(film_dev_contrast),
             film_dev_fog=float(film_dev_fog),
             film_dev_density=float(film_dev_density),
@@ -945,6 +953,14 @@ def build_render_plan(
                     "editorial"
                     if str(getattr(tone, "film_development", "measured_default"))
                     == "editorial_custom" else "measured"
+                ),
+                interimage_mode=str(
+                    getattr(tone, "film_interimage", "declared") or "declared"
+                ),
+                interimage_beta=(
+                    _interimage_beta_for(film_curve)
+                    if str(getattr(tone, "film_interimage", "declared") or "declared")
+                    == "declared" else 0.0
                 ),
             ),
             FilmPrintPlan(

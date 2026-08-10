@@ -23,6 +23,17 @@ import numpy as np
 LOG10_2 = 0.30102999566398119521
 SCENE_MID = 0.18
 
+# The declared editorial developer domain (plan §6). SINGLE SOURCE: the plan
+# validator (film_plans.validate_film_plans), the runtime guard in
+# developer_perturbation below and the asset builder's shaper-domain bake
+# (tools/build_film_v2_assets.py) all read these — the baked amount_lo/hi
+# cover EXACTLY this envelope, so any wider recipe would clip silently at the
+# Stage B rails (mainline A2 measured up to 12% excursion at contrast +1,
+# density +1, 230/743 probe samples clamped).
+EDITORIAL_CONTRAST_LIMIT = 0.5
+EDITORIAL_DENSITY_LIMIT = 0.5
+EDITORIAL_FOG_MAX = 0.3
+
 
 def layer_log_exposure(rgb_rec2020: Any, observer: Any) -> Any:
     """Per-layer log10 exposure, neutral-anchored (grey ramps map exactly to
@@ -115,13 +126,33 @@ def developer_perturbation(
     is what chemical fog does, and hiding it would be a lie. Monotonicity is
     preserved for a > 0 and any color_density > -1. Amounts clamp at zero
     (density cannot be negative); provenance: editorial, never measured.
+
+    The declared editorial domain is enforced HERE, not only at plan
+    validation: the baked shaper domains cover exactly this envelope, so a
+    caller that bypasses validate_film_plans (mainline A2 probed contrast +1,
+    density +1 through a raw plan object) would otherwise push densities past
+    the Stage B rails and have amounts_to_unit clip them silently — the exact
+    excursion class that function's contract forbids. Fail closed instead.
     """
     le = np.asarray(char_le, dtype=np.float64)
     table = np.asarray(char_amounts, dtype=np.float64)
+    if not abs(float(contrast_delta)) <= EDITORIAL_CONTRAST_LIMIT:
+        raise ValueError(
+            f"显影对比扰动域为 [-{EDITORIAL_CONTRAST_LIMIT}, "
+            f"{EDITORIAL_CONTRAST_LIMIT}]（收到 {float(contrast_delta)}；"
+            "烘焙 shaper 域只覆盖声明包络,超域会在 Stage B 轨道静默裁剪）"
+        )
+    if not abs(float(color_density)) <= EDITORIAL_DENSITY_LIMIT:
+        raise ValueError(
+            f"显影色密度扰动域为 [-{EDITORIAL_DENSITY_LIMIT}, "
+            f"{EDITORIAL_DENSITY_LIMIT}]（收到 {float(color_density)}）"
+        )
+    if not 0.0 <= float(fog_delta) <= EDITORIAL_FOG_MAX:
+        raise ValueError(
+            f"显影 fog 域为 [0, {EDITORIAL_FOG_MAX}]（收到 {float(fog_delta)}）"
+        )
     a = 1.0 + float(contrast_delta)
     cd = 1.0 + float(color_density)
-    if a <= 0.0 or cd <= 0.0:
-        raise ValueError("developer perturbation out of physical range")
     if a == 1.0 and cd == 1.0 and float(fog_delta) == 0.0:
         return table
     x0 = 0.0  # scene mid-grey on the neutral-anchored logE axis

@@ -119,6 +119,12 @@ def _reports_close(expected: object, actual: object) -> bool:
     return expected == actual
 
 
+def _beta_table() -> dict:
+    from dngscan.film_develop import INTERIMAGE_BETA
+
+    return dict(sorted(INTERIMAGE_BETA.items()))
+
+
 def regen(check: bool = False) -> int:
     FREEZE_DIR.mkdir(parents=True, exist_ok=True)
     volume, _ = pal.palette_volume()
@@ -192,6 +198,7 @@ def regen(check: bool = False) -> int:
             pinned = manifest.get("fixture_sha256", {})
             manifest_ok = (
                 manifest.get("phase") == "appearance_p0"
+                and manifest.get("interimage", {}).get("beta_table") == _beta_table()
                 and set(pinned) == expected
                 and all(
                     path.is_file()
@@ -223,6 +230,11 @@ def regen(check: bool = False) -> int:
                     "probe_stocks": list(PROBE_STOCKS),
                     "render_scenes": list(RENDER_SCENES),
                     "render_stock": RENDER_STOCK,
+                    "interimage": {
+                        "mode": "declared",
+                        "form": "rail-preserving bounded, refit 2026-08-11",
+                        "beta_table": _beta_table(),
+                    },
                     "technical_definition": {
                         "tone_core": "agx",
                         "film_mode": "full",

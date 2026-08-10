@@ -67,6 +67,13 @@ class FilmDevelopmentPlan:
     fog_delta: float = 0.0
     color_density: float = 0.0
     provenance: str = "measured"
+    # Mainline A2: the compiled inter-image state. `interimage_mode` is the
+    # user-facing switch ("declared" applies the stock's modelled beta,
+    # "off" is the pure spectral base the oracles certify); `interimage_beta`
+    # is the EFFECTIVE value resolved at compile time so the immutable plan
+    # is auditable — the runtime must not consult mutable module state.
+    interimage_mode: str = "declared"
+    interimage_beta: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -116,6 +123,10 @@ def validate_film_plans(
     exposure_ev_max: float = FILM_EXPOSURE_EV_MAX,
 ) -> None:
     """Fail-closed contract from plan §5.3 / §7.2. Raises ValueError."""
+    if development.interimage_mode not in ("declared", "off"):
+        raise ValueError(
+            f"film_interimage={development.interimage_mode!r} 未知（可选 declared/off）"
+        )
     if not (exposure_ev_min <= float(exposure.exposure_ev) <= exposure_ev_max):
         raise ValueError(
             f"film_exposure_ev={exposure.exposure_ev} 超出资产声明域 "
@@ -174,13 +185,26 @@ def validate_film_plans(
         raise ValueError("高光色密度 rho 域为 [0,2]")
     if development.recipe_id == "editorial_custom":
         # §6 bounded perturbation: declared editorial domains, hard-rejected
-        # beyond (the anchor-preserving construction only holds inside them).
-        if not -0.5 <= float(development.contrast_delta) <= 0.5:
-            raise ValueError("显影对比扰动域为 [-0.5, 0.5]")
-        if not 0.0 <= float(development.fog_delta) <= 0.3:
-            raise ValueError("显影 fog 域为 [0, 0.3](fog 只会增加密度)")
-        if not -0.5 <= float(development.color_density) <= 0.5:
-            raise ValueError("显影色密度扰动域为 [-0.5, 0.5]")
+        # beyond (the anchor-preserving construction only holds inside them,
+        # and the baked shaper domains cover exactly this envelope). The
+        # numeric bounds are shared with the runtime guard and the asset
+        # builder via film_v2_math — one declaration, three enforcers.
+        from .film_v2_math import (
+            EDITORIAL_CONTRAST_LIMIT,
+            EDITORIAL_DENSITY_LIMIT,
+            EDITORIAL_FOG_MAX,
+        )
+
+        _c = EDITORIAL_CONTRAST_LIMIT
+        _d = EDITORIAL_DENSITY_LIMIT
+        if not -_c <= float(development.contrast_delta) <= _c:
+            raise ValueError(f"显影对比扰动域为 [-{_c}, {_c}]")
+        if not 0.0 <= float(development.fog_delta) <= EDITORIAL_FOG_MAX:
+            raise ValueError(
+                f"显影 fog 域为 [0, {EDITORIAL_FOG_MAX}](fog 只会增加密度)"
+            )
+        if not -_d <= float(development.color_density) <= _d:
+            raise ValueError(f"显影色密度扰动域为 [-{_d}, {_d}]")
         # The retimed tau table and the bounded neutralization casts are both
         # SOLVED against the measured development; an editorial recipe moves
         # the negative's densities out from under them. Fail closed instead of

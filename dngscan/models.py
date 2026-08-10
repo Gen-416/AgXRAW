@@ -277,6 +277,11 @@ class ToneCompressionPlan:
     # for scene-adaptive compilation. Informational: consumers must read the curve
     # fields themselves, never re-derive behaviour from the name.
     curve_preset: str = "none"
+    # Mainline A2: whether the stock's declared modelled inter-image beta
+    # applies in full mode. "declared" (default) or "off" (the pure spectral
+    # base — what the oracle gates certify). Compiled into
+    # FilmDevelopmentPlan.interimage_beta; fail-closed on unknown values.
+    film_interimage: str = "declared"
     # Two-mode film contract: "observe" (default) = the film declares what the
     # observer saw (WB/separation/tone signature), AgX develops — colour stays with
     # the pipeline's validated rendering. "full" = the film v2 factorized chain

@@ -30,10 +30,22 @@ Ultra HDR export runs this chain as "film print + scene HDR extension"
 Honesty labels: this is a TRISTIMULUS reconstruction CONSTRAINED by spectral
 data — three numbers cannot recover a spectrum, and the observer inverse's
 metamer residual is measured and stamped per stock. DIR couplers/interlayer
-effects remain absent from the data and therefore from the chain. The
+effects remain absent from the DATA; since mainline A the chain carries a
+declared MODELLED inter-image term on top of the spectral base (see
+INTERIMAGE_BETA below) — the base itself, `film_interimage="off"`, is what
+the spectral oracle gates certify, and the report names the composition
+"spectral base + modelled inter-image" rather than calling it measured. The
 computational shaper domains (amount_lo/hi, dye_lo/hi) are baked WIDER than
 the measured curve envelope to cover the declared editorial developer
-envelope (review batch 13), so recipe-perturbed densities stay in-domain.
+envelope (review batch 13) — EXACTLY that envelope, no more: the bounds are
+one set of constants (film_v2_math.EDITORIAL_*) shared by the plan
+validator, the asset builder and a fail-closed guard inside
+developer_perturbation itself. The guard is the mainline A2 follow-up: a
+probe that bypassed plan validation at contrast +1 / density +1 pushed the
+perturbed tables up to 12% past the baked cube and amounts_to_unit clipped
+230/743 samples silently; recipes beyond the declared domain now raise
+instead of clipping, and in-domain recipes stay inside the cube by
+construction.
 
 Grey-scale neutralization (plan.film_crossover storage; surface name
 --film-neutralization): "datasheet" serves the chain verbatim; "bounded"
@@ -535,8 +547,11 @@ class FilmSpatialContext:
 # precisely there: a C-41 neutral has strongly unequal channel densities, so
 # amplifying against the channel mean shifted the neutral axis by up to 48%.
 #
-# Values are MODELLED, first-drafted from the S-transfer measurements and
-# deliberately spread within the C-41 family (Portra soft, Ektar vivid) —
+# Values are MODELLED, refitted 2026-08-11 against the RAIL-PRESERVING
+# bounded map (the first draft was fitted while the raw linear form was
+# silently clipping 18-26% of probe samples at the dye-domain rails, so part
+# of its measured effect was fake) and deliberately spread within the C-41
+# family (Portra soft, Ektar vivid) —
 # they are ALSO the within-family identity lever: before this term Portra
 # and Ektar differed by 0.46 dE00 median, a hue whisper with no chroma or
 # lightness difference at all. Reversals stay at 0: their direct-B2 chain
@@ -544,20 +559,20 @@ class FilmSpatialContext:
 # Owner look review pending; these numbers are starting points, not claims.
 INTERIMAGE_BETA: dict[str, float] = {
     # Kodak C-41 portrait family: gentle separation
-    "portra160": 0.50, "portra400": 0.50, "portra800": 0.50,
-    "portra800push1": 0.52, "portra800push2": 0.55,
+    "portra160": 0.62, "portra400": 0.62, "portra800": 0.62,
+    "portra800push1": 0.64, "portra800push2": 0.67,
     # the vivid outlier
-    "ektar100": 0.80,
+    "ektar100": 1.05,
     # consumer C-41: crisp middle ground
-    "gold200": 0.60, "ultramax400": 0.60, "c200": 0.60, "superia400": 0.62,
+    "gold200": 0.75, "ultramax400": 0.75, "c200": 0.75, "superia400": 0.66,
     # Fuji's airy soft portrait stock
-    "pro400h": 0.28,
-    # cine negatives: wide-latitude scan restraint (baseline already 0.92)
-    "vision350d": 0.35, "vision3250d": 0.35, "vision3200t": 0.35,
-    "vision3500t": 0.35, "verita200d": 0.35,
-    "vision350d_theatrical": 0.35, "vision3250d_theatrical": 0.35,
-    "vision3200t_theatrical": 0.35, "vision3500t_theatrical": 0.35,
-    "verita200d_theatrical": 0.35,
+    "pro400h": 0.32,
+    # cine negatives: wide-latitude scan restraint
+    "vision350d": 0.40, "vision3250d": 0.40, "vision3200t": 0.40,
+    "vision3500t": 0.40, "verita200d": 0.40,
+    "vision350d_theatrical": 0.40, "vision3250d_theatrical": 0.40,
+    "vision3200t_theatrical": 0.40, "vision3500t_theatrical": 0.40,
+    "verita200d_theatrical": 0.40,
 }
 
 
@@ -674,6 +689,9 @@ def _apply_film_core_v2(
     # "off" exists because the spectral oracle gates certify the MEASURED
     # chain — comparing a modelled addition against baked spectral truth
     # would either fail honestly or force beta into the truth dishonestly.
+    # The plan is a REAL field now (ToneCompressionPlan.film_interimage,
+    # compiled into FilmDevelopmentPlan.interimage_beta): the runtime never
+    # consults mutable module state, tests toggle through the plan.
     interimage_mode = str(getattr(plan, "film_interimage", "declared") or "declared")
     if interimage_mode not in ("declared", "off"):
         raise ValueError(
@@ -681,19 +699,54 @@ def _apply_film_core_v2(
         )
     beta = interimage_beta(preset) if interimage_mode == "declared" else 0.0
     if beta > 0.0:
-        # Mainline A: inter-image amplification, BEFORE grain (both are
-        # development effects; grain modulates the final density). The
-        # neutral reference uses the SAME post-halation logE and the SAME
-        # (possibly recipe-perturbed) table the pixel used, which is what
-        # makes the grey axis exactly invariant.
+        # Mainline A2: RAIL-PRESERVING inter-image amplification, BEFORE
+        # grain (both are development effects; grain modulates the final
+        # density). The first version was the raw linear form
+        # D + beta*(D - N); it pushed 18-26% of probe samples past the Stage
+        # B dye domain and let amounts_to_unit clip them silently — part of
+        # the measured "saturation recovery" was channels riding the LUT
+        # rails, indistinguishable from real separation. The bounded form
+        # normalizes the colour deviation by its own headroom to the rail
+        # and saturates smoothly:
+        #
+        #     d  = D - N                     (colour part of development)
+        #     h  = rail distance from N along sign(d), PER CHANNEL
+        #     t  = |d| / h                   (0 at neutral, 1 at the rail)
+        #     t' = (1+beta)*t / (1 + beta*t)
+        #     D' = N + sign(d) * h * t'
+        #
+        # Grey identity (d=0), beta=0 identity, slope 1+beta at the neutral
+        # axis, and Dmin/Dmax are fixed points — no sample can leave the
+        # domain, so nothing downstream ever clips. The rails are the
+        # EFFECTIVE characteristic table's own extrema (including any
+        # editorial developer perturbation), not the baked cube, which may
+        # be deliberately wider.
         le_mean = np.mean(
             np.asarray(log_e, dtype=np.float64), axis=1, keepdims=True
         )
         neutral = characteristic_amounts(
             np.repeat(le_mean, 3, axis=1), stock["char_le"], char_amounts
         )
-        amounts = amounts + beta * (amounts - neutral)
-        del le_mean, neutral
+        del le_mean
+        table = np.asarray(char_amounts, dtype=np.float64)
+        # Rails are the EFFECTIVE table's extrema INTERSECTED with the baked
+        # cube. Since the A2 envelope-gap follow-up the intersection is an
+        # identity for every reachable recipe — developer_perturbation
+        # refuses recipes beyond the declared domain, and in-domain
+        # perturbed tables sit inside the cube by construction — but it
+        # stays as the guard that keeps this term unable to amplify INTO an
+        # excursion if either invariant is ever broken upstream.
+        cube_lo = np.asarray(stock["lo"], dtype=np.float64)[None, :]
+        cube_hi = np.asarray(stock["hi"], dtype=np.float64)[None, :]
+        rail_lo = np.maximum(table.min(axis=0)[None, :], cube_lo)
+        rail_hi = np.minimum(table.max(axis=0)[None, :], cube_hi)
+        d = amounts - neutral
+        head = np.where(d >= 0.0, rail_hi - neutral, neutral - rail_lo)
+        head = np.maximum(head, 1e-9)
+        t = np.minimum(np.abs(d) / head, 1.0)
+        t = (1.0 + beta) * t / (1.0 + beta * t)
+        amounts = neutral + np.sign(d) * head * t
+        del neutral, d, head, t
     if ctx is not None and ctx.grain > 0.0:
         from .film_optics import apply_density_grain
 
