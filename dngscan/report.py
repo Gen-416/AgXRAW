@@ -434,6 +434,15 @@ def jpeg_tone_plan_cn(
             if rho > 0.0:
                 state += f"·高光色密度ρ={rho:.2f}"
             state += "；"
+        from .film_develop import interimage_beta
+
+        beta = (
+            interimage_beta(str(plan.curve_preset))
+            if str(getattr(plan, "film_interimage", "declared") or "declared")
+            == "declared" else 0.0
+        )
+        if beta > 0.0:
+            state += f"层间放大β={beta:.2f}(modelled)；"
         optics = [
             f"{label}{val:.2f}"
             for label, val in (
