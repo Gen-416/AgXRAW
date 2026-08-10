@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "kind": "print_optics",
+  "asset_id": "modelled_default",
+  "provenance": "modelled",
+  "legacy_print_scatter": {
+    "provenance": "modelled",
+    "model": "conservative_pyramid_v1",
+    "levels": 4,
+    "threshold": 0.6,
+    "strength": 0.22
+  },
+  "formation_scatter": null,
+  "positive_grain": null,
+  "viewing_scatter": null,
+  "source_notes": [
+    "This is the operator the GUI still labels Bloom. It is the positive medium's conservative scatter, applied after B2 on display-linear output.",
+    "Measured in P0: half-energy radius 0.759 mm, energy ratio ~1e-10 (conservative as designed), but only 0.73 EV of overrange exists in the domain it runs in against 6.00 EV in the scene. P3 moves the editorial glow to a scene-linear operator and leaves this one as the small medium effect it actually is.",
+    "viewing_scatter stays null: no paper PSF/CTF data exists, and the plan refuses to let a display-linear blur stand in for one."
+  ]
+}

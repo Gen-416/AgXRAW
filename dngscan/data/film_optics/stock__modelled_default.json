@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "kind": "stock_optics",
+  "asset_id": "modelled_default",
+  "provenance": "modelled",
+  "gate_reference_mm": [36.0, 24.0],
+  "anti_halation": "modelled_generic",
+  "grain": {
+    "provenance": "modelled",
+    "medium": "negative",
+    "model": "band_limited_gaussian_v1",
+    "pitch_um": 12.0,
+    "size_um": 18.0,
+    "sigma0": 0.055,
+    "layer_corr": 0.35
+  },
+  "emulsion_scatter": null,
+  "halation": {
+    "provenance": "modelled",
+    "model": "legacy_threshold_cascade_v1",
+    "radius_mm": 0.55,
+    "layer_weights": [1.0, 0.22, 0.06],
+    "threshold_ev": 1.5,
+    "strength": 0.12,
+    "dc_mode": "additive"
+  },
+  "source_notes": [
+    "First-version modelled constants carried over unchanged from OpticsProfile so P1 can prove byte-identity. No measured grain spectrum or scatter profile exists for any stock yet.",
+    "Measured behaviour of these constants is recorded in docs/FILM_OPTICS_V2_P0_BASELINE.zh-CN.md: 60 um grain blobs, Selwyn slope -0.44, 48 um RMS granularity 87, halo half-energy radius 0.66-0.72 mm, +0.95% frame-wide red energy.",
+    "dc_mode additive is known to double-count the uniform-field reflection the characteristic curve already contains; P2 switches it to residual."
+  ]
+}

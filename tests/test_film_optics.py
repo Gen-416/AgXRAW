@@ -16,6 +16,20 @@ from types import SimpleNamespace
 
 import numpy as np
 
+# P1 §7.1: the operators take the specific asset they implement, so the tests
+# pull the same declared assets the renderer compiles rather than a shared
+# profile struct that no longer exists.
+from dngscan.film_optics_assets import (  # noqa: E402
+    DEFAULT_PRINT_OPTICS,
+    DEFAULT_STOCK_OPTICS,
+    load_print_optics,
+    load_stock_optics,
+)
+
+_GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+_HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
+_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
+
 from tests.test_film_v2_assets import _stock_files
 
 
@@ -45,29 +59,28 @@ def _negative_stock() -> str:
 
 class GrainFieldContractTests(unittest.TestCase):
     def test_field_statistics_and_determinism(self) -> None:
-        from dngscan.film_optics import MODELLED_DEFAULT, _band_limited_field
+        from dngscan.film_optics import _band_limited_field
 
-        f = _band_limited_field(MODELLED_DEFAULT, 7)
+        f = _band_limited_field(_GRAIN, 7)
         rms = np.sqrt(np.mean(np.square(f, dtype=np.float64), axis=(0, 1)))
         np.testing.assert_allclose(rms, 1.0, atol=1e-3)
         flat = f.reshape(-1, 3).astype(np.float64)
         corr = np.corrcoef(flat.T)
         self.assertAlmostEqual(
-            corr[0, 1], MODELLED_DEFAULT.grain_layer_corr, delta=0.05,
+            corr[0, 1], _GRAIN.layer_corr, delta=0.05,
             msg="declared cross-layer covariance",
         )
         # band-limited, not white: strong positive neighbour correlation
         lag1 = np.mean(flat[:-1, 0] * flat[1:, 0])
         self.assertGreater(lag1, 0.5)
-        f2 = _band_limited_field(MODELLED_DEFAULT, 7)
+        f2 = _band_limited_field(_GRAIN, 7)
         np.testing.assert_array_equal(f, f2)
-        f3 = _band_limited_field(MODELLED_DEFAULT, 8)
+        f3 = _band_limited_field(_GRAIN, 8)
         self.assertFalse(np.allclose(f, f3))
 
     def test_shared_coordinate_sampling(self) -> None:
         from dngscan.film_optics import (
             FilmGeometry,
-            MODELLED_DEFAULT,
             grain_field_for,
             integral_from_field,
             sample_field,
@@ -77,7 +90,7 @@ class GrainFieldContractTests(unittest.TestCase):
         # field silently produced different values (RMS 0.425 apart), and a
         # test that only compares scale/crop RELATIONS could not see it —
         # both sides were equally wrong (review batch 20).
-        field = integral_from_field(grain_field_for(MODELLED_DEFAULT, 0))
+        field = integral_from_field(grain_field_for(_GRAIN, 0))
         full = sample_field(field, FilmGeometry(400, 600))
         # half-resolution preview == block mean of the full sampling
         half = sample_field(field, FilmGeometry(200, 300))
@@ -101,13 +114,12 @@ class GrainFieldContractTests(unittest.TestCase):
             GATE_H_MM,
             GATE_W_MM,
             FilmGeometry,
-            MODELLED_DEFAULT,
             grain_field_for,
             integral_from_field,
             sample_field,
         )
 
-        field = grain_field_for(MODELLED_DEFAULT, 0)
+        field = grain_field_for(_GRAIN, 0)
         gh, gw = field.shape[:2]
         got = sample_field(
             integral_from_field(field),
@@ -120,7 +132,6 @@ class SpatialOperatorTests(unittest.TestCase):
     def test_identity_at_zero_amount(self) -> None:
         from dngscan.film_optics import (
             FilmGeometry,
-            MODELLED_DEFAULT,
             apply_density_grain,
             bloom_apply_rows,
             halation_reinject_rows,
@@ -131,22 +142,21 @@ class SpatialOperatorTests(unittest.TestCase):
         a = rng.uniform(0.2, 1.5, (600, 3))
         self.assertIs(
             apply_density_grain(a, np.zeros(3), np.ones(3) * 2, g,
-                                MODELLED_DEFAULT, 0.0, 0), a,
+                                _GRAIN, 0.0, 0), a,
         )
         le = rng.uniform(-1, 1, (600, 3))
         self.assertIs(
-            halation_reinject_rows(le, None, 0, 20, 20, 30, MODELLED_DEFAULT, 0.0),
+            halation_reinject_rows(le, None, 0, 20, 20, 30, _HALATION, 0.0),
             le,
         )
         img = rng.uniform(0, 1, (600, 3))
         self.assertIs(
-            bloom_apply_rows(img, None, 0, 20, 20, 30, MODELLED_DEFAULT, 0.0), img
+            bloom_apply_rows(img, None, 0, 20, 20, 30, _SCATTER, 0.0), img
         )
 
     def test_halation_is_red_dominant_and_spreads(self) -> None:
         from dngscan.film_optics import (
             GATE_W_MM,
-            MODELLED_DEFAULT,
             halation_reinject_rows,
             halation_spread_map,
         )
@@ -155,9 +165,9 @@ class SpatialOperatorTests(unittest.TestCase):
         le = np.full((h * w, 3), -0.5)
         exposure_lin = np.full((h, w), float(np.exp2(-2.0)))
         exposure_lin[h // 2, w // 2] = float(np.exp2(5.0))
-        spread = halation_spread_map(exposure_lin, w, GATE_W_MM, MODELLED_DEFAULT)
+        spread = halation_spread_map(exposure_lin, w, GATE_W_MM, _HALATION)
         out = halation_reinject_rows(
-            le, spread, 0, h, h, w, MODELLED_DEFAULT, 1.0
+            le, spread, 0, h, h, w, _HALATION, 1.0
         )
         delta = (out - le).reshape(h, w, 3)
         near = delta[h // 2 - 2, w // 2, :]
@@ -167,7 +177,6 @@ class SpatialOperatorTests(unittest.TestCase):
 
     def test_bloom_redistributes_highlights_conservatively(self) -> None:
         from dngscan.film_optics import (
-            MODELLED_DEFAULT,
             integral_from_field,
             bloom_apply_rows,
         )
@@ -178,11 +187,11 @@ class SpatialOperatorTests(unittest.TestCase):
         from dngscan.film_optics import scatter_source, scatter_spread
 
         spread = scatter_spread(
-            scatter_source(img.reshape(h, w, 3), MODELLED_DEFAULT), MODELLED_DEFAULT
+            scatter_source(img.reshape(h, w, 3), _SCATTER), _SCATTER
         )
         ii = integral_from_field(spread).astype(np.float32)
         out = bloom_apply_rows(
-            img, ii, 0, h, h, w, MODELLED_DEFAULT, 1.0
+            img, ii, 0, h, h, w, _SCATTER, 1.0
         ).reshape(h, w, 3)
         base = img.reshape(h, w, 3)
         # neighbourhood brightens, the CORE darkens (energy redistribution),
@@ -195,7 +204,6 @@ class SpatialOperatorTests(unittest.TestCase):
     def test_grain_modulates_density_at_mid_not_extremes(self) -> None:
         from dngscan.film_optics import (
             FilmGeometry,
-            MODELLED_DEFAULT,
             apply_density_grain,
         )
 
@@ -204,11 +212,11 @@ class SpatialOperatorTests(unittest.TestCase):
         lo, hi = np.zeros(3), np.full(3, 2.0)
         mid = np.full((h * w, 3), 1.0)
         toe = np.full((h * w, 3), 0.0)
-        out_mid = apply_density_grain(mid, lo, hi, g, MODELLED_DEFAULT, 1.0, 0)
-        out_toe = apply_density_grain(toe, lo, hi, g, MODELLED_DEFAULT, 1.0, 0)
+        out_mid = apply_density_grain(mid, lo, hi, g, _GRAIN, 1.0, 0)
+        out_toe = apply_density_grain(toe, lo, hi, g, _GRAIN, 1.0, 0)
         self.assertGreater(np.std(out_mid), 1e-3, "grain must act at mid density")
         self.assertLess(np.std(out_toe), 1e-9, "no grain at film base")
-        again = apply_density_grain(mid, lo, hi, g, MODELLED_DEFAULT, 1.0, 0)
+        again = apply_density_grain(mid, lo, hi, g, _GRAIN, 1.0, 0)
         np.testing.assert_array_equal(out_mid, again)
 
 

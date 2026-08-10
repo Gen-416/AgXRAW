@@ -18,6 +18,20 @@ from unittest import mock
 
 import numpy as np
 
+# P1 §7.1: the operators take the specific asset they implement, so the tests
+# pull the same declared assets the renderer compiles rather than a shared
+# profile struct that no longer exists.
+from dngscan.film_optics_assets import (  # noqa: E402
+    DEFAULT_PRINT_OPTICS,
+    DEFAULT_STOCK_OPTICS,
+    load_print_optics,
+    load_stock_optics,
+)
+
+_GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+_HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
+_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,13 +43,12 @@ class SamplingTruthTests(unittest.TestCase):
             GATE_H_MM,
             GATE_W_MM,
             FilmGeometry,
-            MODELLED_DEFAULT,
             grain_field_for,
             integral_from_field,
             sample_field,
         )
 
-        field = grain_field_for(MODELLED_DEFAULT, 0)
+        field = grain_field_for(_GRAIN, 0)
         gh, gw = field.shape[:2]
         geo = FilmGeometry(gh, gw, w_mm=GATE_W_MM, h_mm=GATE_H_MM)
         right = sample_field(integral_from_field(field), geo)

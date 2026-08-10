@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """film v2 analog optics (FILM_PRINT_RENDERING_PLAN §9): density grain,
-halation reinjection and medium bloom.
+halation reinjection and print-medium scatter.
 
-All three are MODELLED profiles in this first version (profile + amount only,
-per §9.2) — no measured grain spectra or scatter profiles exist yet, and the
-report says so. The contracts that ARE hard here:
+Each operator now takes the SPECIFIC asset it implements — a GrainAsset, a
+HalationAsset, a PrintScatterAsset — rather than one shared profile struct
+(FILM_OPTICS_V2 §7.1, phase P1). The old single `OpticsProfile` made it easy
+to read a print-medium constant as a film property and to quote a modelled
+halo radius as if the whole profile were measured; the assets carry their own
+provenance, and a function that only needs grain cannot see halation at all.
+
+The contracts that ARE hard here:
 
 - The grain random field lives in NEGATIVE FILM COORDINATES (mm on a declared
   gate), not output pixels. A fixed seed generates one band-limited field on
@@ -15,9 +20,10 @@ report says so. The contracts that ARE hard here:
 - Halation extracts from the pre-emulsion highlight scene exposure and
   reinjects into the LAYER EXPOSURE before the characteristic curves, through
   a red-dominant backscatter kernel. It never shares a blur with bloom.
-- Medium bloom is the positive medium's intrinsic scatter, applied after
-  print formation (B2 output) and before delivery gamut fit, as a multi-scale
-  low-frequency pyramid.
+- Print-medium scatter (the control the GUI still labels "Bloom") is the
+  positive medium's intrinsic scatter, applied after print formation (B2
+  output) and before delivery gamut fit, as a multi-scale low-frequency
+  pyramid.
 - Amount 0 is a strict identity everywhere (the caller keeps the
   chunk-stream fast path; these functions are only entered when engaged).
 
@@ -30,35 +36,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .film_optics_assets import GrainAsset, HalationAsset, PrintScatterAsset
+
 # 135 full-frame gate. Other gate sizes (8/16/65 mm) become profile data when
 # per-stock measured optics land; the coordinate CONTRACT does not change.
 GATE_W_MM = 36.0
 GATE_H_MM = 24.0
-
-
-@dataclass(frozen=True)
-class OpticsProfile:
-    """Modelled analog-optics profile (provenance: modelled, first version)."""
-
-    # grain: band-limited Gaussian field on the film grid
-    grain_pitch_um: float = 12.0        # film-space sample pitch
-    grain_size_um: float = 18.0         # band-limit (Gaussian sigma) in film space
-    grain_sigma0: float = 0.055         # density RMS at the mid-density peak
-    grain_layer_corr: float = 0.35      # cross-layer covariance
-    # halation: red-sensitive backscatter, exponential-tail cascade
-    halation_radius_mm: float = 0.55
-    halation_weights: tuple = (1.0, 0.22, 0.06)   # R, G, B layer reinjection
-    halation_threshold_ev: float = 1.5            # above mid-grey, scene EV
-    halation_strength: float = 0.12               # energy fraction at amount 1
-    # medium bloom: intrinsic scatter of the positive medium
-    bloom_levels: int = 4
-    bloom_threshold: float = 0.6                  # display-linear source floor
-    bloom_strength: float = 0.22                  # mixed-back fraction at amount 1
-
-
-MODELLED_DEFAULT = OpticsProfile()
-
-OPTICS_PROFILES = {"modelled_default": MODELLED_DEFAULT}
 
 
 @dataclass(frozen=True)
@@ -321,21 +304,21 @@ def _gaussian_blur(img: np.ndarray, sigma: float) -> np.ndarray:
 # deterministic film-space grain field
 # --------------------------------------------------------------------------
 
-def _film_grid_shape(profile: OpticsProfile) -> tuple[int, int]:
-    pitch_mm = profile.grain_pitch_um * 1e-3
+def _film_grid_shape(grain: GrainAsset) -> tuple[int, int]:
+    pitch_mm = grain.pitch_um * 1e-3
     return (int(round(GATE_H_MM / pitch_mm)), int(round(GATE_W_MM / pitch_mm)))
 
 
-def _band_limited_field(profile: OpticsProfile, seed: int) -> np.ndarray:
+def _band_limited_field(grain: GrainAsset, seed: int) -> np.ndarray:
     """[gh, gw, 3]: unit-RMS per layer, cross-layer correlation via a shared
     component, Gaussian band limit at the declared grain size. Philox keyed
     on the seed alone — no shape, tile order or thread count enters the
     stream, so the realization is reproducible by contract."""
-    gh, gw = _film_grid_shape(profile)
+    gh, gw = _film_grid_shape(grain)
     rng = np.random.Generator(np.random.Philox(key=int(seed) & 0xFFFFFFFF))
     white = rng.standard_normal((gh, gw, 3), dtype=np.float32)
     shared = rng.standard_normal((gh, gw, 1), dtype=np.float32)
-    c = float(np.clip(profile.grain_layer_corr, 0.0, 1.0))
+    c = float(np.clip(grain.layer_corr, 0.0, 1.0))
     # In-place mixing and an einsum RMS: the naive expression chain held four
     # grid-sized temporaries at once and the float64 square another two —
     # the measured ~620 MiB build transient of review batch 13.
@@ -344,7 +327,7 @@ def _band_limited_field(profile: OpticsProfile, seed: int) -> np.ndarray:
         white[..., ch] += np.float32(np.sqrt(c)) * shared[..., 0]
     del shared
     field = _gaussian_blur_slabbed(
-        white, profile.grain_size_um / profile.grain_pitch_um, periodic=True
+        white, grain.size_um / grain.pitch_um, periodic=True
     )
     del white
     n = field.shape[0] * field.shape[1]
@@ -387,23 +370,23 @@ def realization_phases(seed: int, gh: int, gw: int) -> tuple[int, int]:
     return (a % max(gh, 1), b % max(gw, 1))
 
 
-def grain_field_for(profile: OpticsProfile, seed: int) -> np.ndarray:
+def grain_field_for(grain: GrainAsset, seed: int) -> np.ndarray:
     """The deterministic film-space field (kept for tests/inspection; the
     sampling path uses the cached MASTER integral image below)."""
-    return _band_limited_field(profile, seed)
+    return _band_limited_field(grain, seed)
 
 
-def _grain_ii_for(profile: OpticsProfile, seed: int) -> np.ndarray:
+def _grain_ii_for(grain: GrainAsset, seed: int) -> np.ndarray:
     """The field's 2-D integral image, built ONCE per (profile, seed) and
     cached INSTEAD of the field (review batch 13): rebuilding the ~144 MB
     float64 integral every row band dominated the measured peak, and the
     field itself is never needed after the integral exists. The old entry is
     released before the replacement is built."""
-    key = (profile, int(seed))
+    key = (grain, int(seed))
     got = _FIELD_CACHE.get(key)
     if got is None:
         _FIELD_CACHE.clear()
-        field = _band_limited_field(profile, seed)
+        field = _band_limited_field(grain, seed)
         gh, gw = field.shape[:2]
         # float64 during accumulation (the running sums reach ~1e3 x cell
         # values), stored float32: sampling differences carry ~1e-4 relative
@@ -597,7 +580,7 @@ def apply_density_grain(
     lo: np.ndarray,
     hi: np.ndarray,
     geometry: FilmGeometry,
-    profile: OpticsProfile,
+    grain: GrainAsset,
     amount: float,
     seed: int,
 ) -> np.ndarray:
@@ -608,7 +591,7 @@ def apply_density_grain(
     if amount <= 0.0:
         return amounts
     h, w = geometry.height, geometry.width
-    master = _grain_ii_for(profile, MASTER_SEED)
+    master = _grain_ii_for(grain, MASTER_SEED)
     gh, gw = master.shape[0] - 1, master.shape[1] - 1
     field = sample_field(
         master, geometry, phase=realization_phases(seed, gh, gw)
@@ -617,7 +600,7 @@ def apply_density_grain(
     lo64 = np.asarray(lo, dtype=np.float64)
     span = np.maximum(np.asarray(hi, dtype=np.float64) - lo64, 1e-9)
     dn = np.clip((a - lo64) / span, 0.0, 1.0)
-    sigma = float(amount) * profile.grain_sigma0 * 4.0 * dn * (1.0 - dn)
+    sigma = float(amount) * grain.sigma0 * 4.0 * dn * (1.0 - dn)
     return (a + sigma * span * field.astype(np.float64)).reshape(-1, 3)
 
 
@@ -625,7 +608,7 @@ def halation_spread_map(
     ev_y_dec: np.ndarray,
     full_width: int,
     geometry_w_mm: float,
-    profile: OpticsProfile,
+    halation: HalationAsset,
 ) -> np.ndarray:
     """Halation spread on the decimated grid (§9.2, spread-grid contract):
     source is the pre-emulsion highlight LINEAR scene exposure above the
@@ -635,11 +618,11 @@ def halation_spread_map(
     dh, dw = ev_y_dec.shape[:2]
     src = np.maximum(
         np.asarray(ev_y_dec, dtype=np.float32)
-        - np.float32(np.exp2(profile.halation_threshold_ev)),
+        - np.float32(np.exp2(halation.threshold_ev)),
         0.0,
     ).reshape(dh, dw, 1)
     px_per_mm_dec = dw / max(geometry_w_mm, 1e-9)
-    r0_px = max(profile.halation_radius_mm * px_per_mm_dec, 0.5)
+    r0_px = max(halation.radius_mm * px_per_mm_dec, 0.5)
     spread = np.zeros_like(src)
     for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
         spread += wgt * _gaussian_blur(src, r0_px * scale)
@@ -653,7 +636,7 @@ def halation_reinject_rows(
     y1: int,
     height: int,
     width: int,
-    profile: OpticsProfile,
+    halation: HalationAsset,
     amount: float,
 ) -> np.ndarray:
     """Reinject the upsampled spread into the LAYER EXPOSURE for output rows
@@ -663,13 +646,13 @@ def halation_reinject_rows(
         return log_e
     spread = upsample_rows(spread_map, y0, y1, height, width)[..., 0]
     lin = np.power(10.0, np.asarray(log_e, dtype=np.float64).reshape(y1 - y0, width, 3))
-    gain = float(amount) * profile.halation_strength
-    for c, wc in enumerate(profile.halation_weights):
+    gain = float(amount) * halation.strength
+    for c, wc in enumerate(halation.layer_weights):
         lin[..., c] += gain * wc * spread.astype(np.float64)
     return np.log10(np.maximum(lin, 1e-12)).reshape(-1, 3)
 
 
-def scatter_source(rgb: np.ndarray, profile: OpticsProfile) -> np.ndarray:
+def scatter_source(rgb: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:
     """The luminance-gated, RGB-proportional removable energy at a pixel:
     source = rgb * max(Y - threshold, 0) / max(Y, eps). Pointwise, so it can
     be evaluated at ANY resolution — the production path evaluates it on the
@@ -679,18 +662,18 @@ def scatter_source(rgb: np.ndarray, profile: OpticsProfile) -> np.ndarray:
     rgb = np.asarray(rgb, dtype=np.float32)
     luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
     y = rgb @ luma
-    excess = np.maximum(y - profile.bloom_threshold, 0.0)
+    excess = np.maximum(y - scatter.threshold, 0.0)
     return rgb * (excess / np.maximum(y, 1e-9))[..., None]
 
 
-def scatter_spread(source: np.ndarray, profile: OpticsProfile) -> np.ndarray:
+def scatter_spread(source: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:
     """The non-negative multi-scale scatter of a source map, per-channel
     renormalized (float64 sums) to the source's exact energy."""
     dh, dw = source.shape[:2]
     level = source
     spread = np.zeros_like(source)
     total = 0.0
-    for lvl in range(profile.bloom_levels):
+    for lvl in range(scatter.levels):
         if min(level.shape[0], level.shape[1]) <= 1:
             break
         pad_h = level.shape[0] % 2
@@ -718,7 +701,7 @@ def scatter_spread(source: np.ndarray, profile: OpticsProfile) -> np.ndarray:
     return spread
 
 
-def bloom_delta_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.ndarray:
+def bloom_delta_map(developed_dec: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:
     """CONSERVATIVE medium scatter on the decimated grid (P1, review batch
     15): the positive medium REDISTRIBUTES energy, it never adds light.
 
@@ -738,8 +721,8 @@ def bloom_delta_map(developed_dec: np.ndarray, profile: OpticsProfile) -> np.nda
     through untouched.
     """
     rgb = np.asarray(developed_dec, dtype=np.float32)
-    source = scatter_source(rgb, profile)
-    return scatter_spread(source, profile) - source
+    source = scatter_source(rgb, scatter)
+    return scatter_spread(source, scatter) - source
 
 
 
@@ -750,7 +733,7 @@ def bloom_apply_rows(
     y1: int,
     height: int,
     width: int,
-    profile: OpticsProfile,
+    scatter: PrintScatterAsset,
     amount: float,
 ) -> np.ndarray:
     """Conservative scatter for output rows [y0, y1), two-term form (review
@@ -769,9 +752,9 @@ def bloom_apply_rows(
     if amount <= 0.0:
         return display_linear
     img = np.asarray(display_linear, dtype=np.float32).reshape(y1 - y0, width, 3)
-    a = float(amount) * profile.bloom_strength
+    a = float(amount) * scatter.strength
     up = _sample_plain(spread_ii, y0, y1, height, width)
-    source_full = scatter_source(img, profile)
+    source_full = scatter_source(img, scatter)
     return (img + a * (up - source_full)).reshape(-1, 3)
 
 

@@ -40,7 +40,21 @@ import numpy as np
 from dngscan import film_optics_charts as charts
 from dngscan import film_optics_diag as diag
 from dngscan.film_develop import apply_film_core
-from dngscan.film_optics import GATE_W_MM, MODELLED_DEFAULT
+from dngscan.film_optics import GATE_W_MM
+from dngscan.film_optics_assets import (
+    DEFAULT_PRINT_OPTICS,
+    DEFAULT_STOCK_OPTICS,
+    load_print_optics,
+    load_stock_optics,
+)
+
+# P1: the report reads the same declared assets the renderer compiles, so a
+# constant it prints can never be one the render path does not use.
+STOCK_OPTICS = load_stock_optics(DEFAULT_STOCK_OPTICS)
+PRINT_OPTICS = load_print_optics(DEFAULT_PRINT_OPTICS)
+GRAIN = STOCK_OPTICS.grain
+HALATION = STOCK_OPTICS.halation
+PRINT_SCATTER = PRINT_OPTICS.print_scatter
 
 # The GUI's declared tiers (gui/service.py). "standard" is the modelled
 # default a user actually gets; "light" is the conservative tier. Amounts are
@@ -114,7 +128,7 @@ def measure_spread(
         "encircled_at_declared_radius": [],
         "peak_delta": [],
     }
-    declared_px = MODELLED_DEFAULT.halation_radius_mm / scale
+    declared_px = HALATION.radius_mm / scale
     for c in range(3):
         out["half_energy_radius_mm"].append(
             float(diag.half_energy_radius(radii, prof[:, c], baseline=0.0) * scale)
@@ -157,8 +171,8 @@ def measure_grain(stock: str, amount: float) -> dict:
 
     from dngscan.film_optics import _band_limited_field
 
-    field = _band_limited_field(MODELLED_DEFAULT, 0)
-    pitch = MODELLED_DEFAULT.grain_pitch_um
+    field = _band_limited_field(GRAIN, 0)
+    pitch = GRAIN.pitch_um
     corr_cells = diag.correlation_length_cells(field)
     # The rendered patch is a print, so its "granularity" is reported in 8-bit
     # display code values — the unit a viewer can argue about. The datasheet
@@ -179,7 +193,7 @@ def measure_grain(stock: str, amount: float) -> dict:
         "rms_granularity_48um_at_span2": [
             float(v)
             for v in diag.rms_granularity(
-                field * (MODELLED_DEFAULT.grain_sigma0 * 2.0), pitch
+                field * (GRAIN.sigma0 * 2.0), pitch
             )
         ],
     }
@@ -223,7 +237,7 @@ def measure_bloom_source(stock: str) -> dict:
     )[0]
     base = develop(scene, make_plan(stock))
     y = base @ diag.LUMA_REC2020
-    thr = MODELLED_DEFAULT.bloom_threshold
+    thr = PRINT_SCATTER.threshold
     peak = float(y.max())
     scene_y = scene @ diag.LUMA_REC2020
     return {
@@ -286,9 +300,15 @@ def build_report(stock: str = DEFAULT_STOCK, *, perf: bool = False) -> dict:
         "chart_shape": [CHART_H, CHART_W],
         "gate_w_mm": GATE_W_MM,
         "mm_per_px": mm_per_px(CHART_W),
-        "profile": {
-            k: (list(v) if isinstance(v, tuple) else v)
-            for k, v in vars(MODELLED_DEFAULT).items()
+        "assets": {
+            "stock": STOCK_OPTICS.asset_id,
+            "print": PRINT_OPTICS.asset_id,
+            "grain": {k: (list(v) if isinstance(v, tuple) else v)
+                      for k, v in vars(GRAIN).items()},
+            "halation": {k: (list(v) if isinstance(v, tuple) else v)
+                         for k, v in vars(HALATION).items()},
+            "print_scatter": {k: (list(v) if isinstance(v, tuple) else v)
+                              for k, v in vars(PRINT_SCATTER).items()},
         },
         "tiers": {k: list(v) for k, v in TIERS.items()},
         "grain": {},

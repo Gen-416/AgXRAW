@@ -1,0 +1,9 @@
+{
+ "count": 3,
+ "files": {
+  "bloom__none.json": "bc9be14063bcd402f75a453a527872a2a9d4ce9a0aa5f6288c62a2402407ce8a",
+  "print__modelled_default.json": "a3fe5b63037731e0d11439d484a8719d7663e4dbf44997a6d68d6876a7cd361c",
+  "stock__modelled_default.json": "6186f4492c16ba664b0ce007bd0df0b64f94dc93117ae5f4332f36880a7f269d"
+ },
+ "schema": 1
+}
