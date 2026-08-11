@@ -65,6 +65,23 @@ class VariantPlumbingTests(unittest.TestCase):
         self.assertEqual(plan.tone.film_appearance_compiled.recipe_id, RID_REF)
         self.assertEqual(plan.tone.film_crossover, "print")
 
+    def test_strength_zero_keeps_the_declared_grey_axis(self) -> None:
+        """A6 item 2, DECIDED semantics: strength scales the PALETTE only.
+        The neutralization policy is the interpretation's own declared
+        property, so reference+strength=0 keeps print-balanced (continuous
+        in strength — collapsing to technical at 0 would jump the grey
+        axis). Full technical identity is spelled film_appearance=technical
+        or an explicit neutralization choice; the CLI help says so."""
+        _, plan = _render(pal.palette_volume()[0][:8],
+                          film_appearance="reference",
+                          film_appearance_strength=0.0)
+        self.assertEqual(plan.tone.film_crossover, "print")
+        _, plan = _render(pal.palette_volume()[0][:8],
+                          film_appearance="reference",
+                          film_appearance_strength=0.0,
+                          film_crossover="off")
+        self.assertEqual(plan.tone.film_crossover, "off")
+
     def test_an_explicit_crossover_still_wins(self) -> None:
         _, plan = _render(pal.palette_volume()[0][:8],
                           film_appearance="reference",

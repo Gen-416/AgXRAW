@@ -23,6 +23,7 @@ Contracts that hold from day one:
 from __future__ import annotations
 
 import hashlib
+from types import MappingProxyType
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -201,7 +202,10 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
         is_identity = all(float(np.abs(fields[k]).max()) == 0.0 for k in fields)
 
         out = {
-            "meta": meta,
+            # A6 item 6: meta is frozen alongside the recipe mapping below —
+            # a frozen dataclass holding a mutable dict is only shallowly
+            # immutable, and the cache SHARES this object across plans.
+            "meta": MappingProxyType(dict(meta)),
             "provenance": provenance,
             "sha256": sha,
             "chroma_knee": chroma_knee,
@@ -218,6 +222,7 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
                 for k in ("hue_delta_deg", "log_chroma_gain", "density_ev")
             },
         }
+        out = MappingProxyType(out)
     _RECIPE_CACHE.clear()
     _RECIPE_CACHE[cache_key] = out
     return out
@@ -332,10 +337,15 @@ def medium_family(medium_id: str) -> str:
 def _pchip_derivatives(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Fritsch-Carlson monotone-cubic knot derivatives along axis 0.
 
-    §6.6 requires the EV axis to be C1 with clamped overshoot; PCHIP gives
-    both by construction — the interpolant never leaves the hull of its
-    bracketing knots, so a recipe cannot manufacture a value its author
-    never wrote. y is [K, ...]; returns d of the same shape.
+    §6.6 requires the EV axis to be C1 with clamped overshoot. The hull
+    property holds EXACTLY on each hue-knot column (a 1-D PCHIP never
+    leaves its bracketing knots); the 2-D field evaluated at an arbitrary
+    hue interpolates values AND derivatives with periodic Catmull-Rom,
+    which is not equivalent to re-deriving PCHIP there and can overshoot
+    mildly (A6 item 3: shipped recipes measure <= 0.08 deg / 0.0012 —
+    around 1% of the authored amplitude; the honest bound lives in the P2
+    overshoot gate, not in a "never" claim). y is [K, ...]; returns d of
+    the same shape.
     """
     x = np.asarray(x, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)

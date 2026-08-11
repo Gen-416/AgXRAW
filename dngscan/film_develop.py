@@ -581,18 +581,22 @@ def interimage_beta(preset: str) -> float:
     return float(INTERIMAGE_BETA.get(str(preset), 0.0))
 
 
-def _appearance_scene_ev(rgb_postcomp) -> "np.ndarray":
-    """The recipe's exposure coordinate (A5 item 1): SCENE luminance EV of
-    the post-compression Rec.2020 entering Stage A — per the asset contract
-    ("...+scene-ev"). The first kernel derived it from the DEVELOPED print,
-    which let the paper, the timing and the neutralization policy move where
-    a recipe samples its own fields; the scene coordinate is invariant to
-    every print-side choice."""
+def _appearance_scene_ev(rgb_postcomp, exposure_ev: float = 0.0) -> "np.ndarray":
+    """The recipe's exposure coordinate (A5 item 1, A6 item 1): SCENE
+    luminance EV of the post-compression Rec.2020 entering Stage A PLUS the
+    film exposure offset — §6.1's full definition
+    ``e_film = log2(Y/0.18) + film_exposure_ev``. Stage A applies the same
+    offset to the layer exposures, so without the added term here a pushed
+    or pulled emulsion state would move the densities but leave the
+    recipe's exposure axis behind. The first kernel derived the coordinate
+    from the DEVELOPED print, which let the paper, the timing and the
+    neutralization policy move where a recipe samples its own fields; the
+    scene coordinate is invariant to every print-side choice."""
     y = np.maximum(
         np.asarray(rgb_postcomp, dtype=np.float32).reshape(-1, 3) @ REC2020_LUMA,
         np.float32(1e-9),
     )
-    return np.log2(y / np.float32(0.18))
+    return np.log2(y / np.float32(0.18)) + np.float32(exposure_ev)
 
 
 def _appearance_for(plan) -> "object | None":
@@ -857,7 +861,7 @@ def _apply_film_core_v2(
             from .film_appearance import apply_film_appearance
 
             developed = apply_film_appearance(
-                developed, _app, scene_ev=_appearance_scene_ev(rgb)
+                developed, _app, scene_ev=_appearance_scene_ev(rgb, exposure_ev)
             )
         return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
@@ -928,7 +932,7 @@ def _apply_film_core_v2(
         from .film_appearance import apply_film_appearance
 
         developed = apply_film_appearance(
-            developed, _app, scene_ev=_appearance_scene_ev(rgb)
+            developed, _app, scene_ev=_appearance_scene_ev(rgb, exposure_ev)
         )
     return developed.astype(np.float32, copy=False)
 

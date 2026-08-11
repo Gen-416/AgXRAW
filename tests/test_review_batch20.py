@@ -76,7 +76,10 @@ class SamplingTruthTests(unittest.TestCase):
                 bind = re.match(r"\s*(\w+)\s*=\s*(.+)$", line)
                 if bind and any(fn in bind.group(2) for fn in producers):
                     declared.add(bind.group(1))
-                call = re.search(r"sample_field\(\s*(\w+)?", line)
+                # bare name only: the optics sampler. The appearance
+                # kernel's fa._sample_field takes recipe tables, not
+                # integral images (A6: the P2 overshoot gate calls it).
+                call = re.search(r"(?<![\w.])sample_field\(\s*(\w+)?", line)
                 if not call or "def " in line:
                     continue
                 arg = call.group(1)

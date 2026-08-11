@@ -84,7 +84,10 @@ def sheet(*bands: np.ndarray, ev: np.ndarray = EV_PROFILE) -> np.ndarray:
 COMMON = {
     # gentle warmth through the skin-to-yellow arc
     "hue_delta_deg": sheet(band(40.0, 70.0, 1.5)),
-    # a restrained COMMON richness lift (allowed: common, not differential)
+    # a restrained COMMON richness lift (allowed: common, not differential).
+    # A6 item 4: the field is LOG2 chroma gain — 0.08 means x2^0.08 (~+5.7%),
+    # applied through the S shoulder. The runtime uses exp2 and the probe
+    # reports log2 ratios; authors calibrate against those numbers.
     "log_chroma_gain": sheet(band(0.0, 360.0, 0.08)),
     # deep-colour density: the print's blacks hold colour instead of fading
     "density_ev": sheet(band(0.0, 360.0, 0.06)),

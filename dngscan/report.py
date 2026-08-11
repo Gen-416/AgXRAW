@@ -449,13 +449,27 @@ def jpeg_tone_plan_cn(
         else:
             state += "层间放大=off(光谱底座)；"
         _app_mode = str(getattr(plan, "film_appearance", "technical") or "technical")
-        if _app_mode == "reference":
+        if _app_mode in ("reference", "custom"):
+            # A6 item 5: the report must let a reader AUDIT the appearance —
+            # mode, variant, exact asset (id + hash prefix), strength, and
+            # any custom modifiers. "custom" was previously invisible.
             _app = getattr(plan, "film_appearance_compiled", None)
+            _sha = str(getattr(_app, "asset_sha256", "") or "")
             state += (
-                f"外观层=reference({getattr(_app, 'recipe_id', '?')}"
+                f"外观层={_app_mode}"
+                f"[{getattr(_app, 'variant', 'reference')}]"
+                f"({getattr(_app, 'recipe_id', '?')}"
+                f"@{_sha[:12] or '?'}"
                 f"×{float(getattr(plan, 'film_appearance_strength', 1.0)):.2f},"
-                f"{getattr(_app, 'provenance', '?')})；"
+                f"{getattr(_app, 'provenance', '?')})"
             )
+            if _app_mode == "custom":
+                state += (
+                    f"{{丰度{float(getattr(_app, 'richness_delta', 0.0)):+.2f}"
+                    f"/色密度{float(getattr(_app, 'color_density_delta', 0.0)):+.2f}"
+                    f"/灰偏×{float(getattr(_app, 'neutral_bias_strength', 1.0)):.2f}}}"
+                )
+            state += "；"
         optics = [
             f"{label}{val:.2f}"
             for label, val in (
