@@ -802,18 +802,39 @@ def _apply_film_core_v2(
             amounts, _g_lo, _g_hi, ctx.band_geometry(y0, y1),
             ctx.optics.stock.grain, ctx.grain, ctx.seed,
         )
-    bounded = str(getattr(plan, "film_crossover", "off")) != "datasheet"
+    # Three neutralization policies (appearance P3, plan §8):
+    #   "off"       technical-neutral — per-pixel exposure-indexed cast
+    #                division (the historical bounded default, frozen);
+    #   "print"     print-balanced — ONE constant per-channel balance,
+    #                solved at EV0: mid grey prints neutral, the grey
+    #                scale's own crossover at both ends survives (the print
+    #                character the per-pixel form erases);
+    #   "datasheet" native — no correction at all.
+    crossover = str(getattr(plan, "film_crossover", "off"))
+    if crossover not in ("off", "print", "datasheet"):
+        raise ValueError(
+            f"film_crossover={crossover!r} 未知（可选 off/print/datasheet）"
+        )
+    bounded = crossover != "datasheet"
     if stock["reversal"]:
         if timing != "fixed":
             raise ValueError("reversal_direct 无印相环节：timing 只能是 fixed")
         u = amounts_to_unit(amounts, b2["dye_lo"], b2["dye_hi"])
         developed = _tetrahedral(b2["volume"], u.astype(np.float32), b2["n"])
         if bounded:
-            ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
-            for c in range(3):
-                developed[:, c] /= np.interp(
-                    ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
+            if crossover == "print":
+                for c in range(3):
+                    developed[:, c] /= np.float32(np.interp(
+                        0.0, stock["cast_ev"], stock["cast_bounded"][:, c]
+                    ))
+            else:
+                ev_y = np.log2(
+                    np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18)
                 )
+                for c in range(3):
+                    developed[:, c] /= np.interp(
+                        ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
+                    )
         developed = np.maximum(developed, 0.0)
         _app = _appearance_for(plan)
         if _app is not None:
@@ -859,17 +880,29 @@ def _apply_film_core_v2(
     if bounded:
         if timing == "custom":
             raise ValueError(
-                "custom timing 与有界灰阶中性化互斥：手动印相的意义是保留"
-                "印出的样子；请配 --film-neutralization datasheet"
+                "custom timing 与数字灰阶中性化互斥：手动印相的意义是保留"
+                "印出的样子；请配 --film-neutralization native"
             )
-        ev_y = np.log2(np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18))
         nodes = ps["tau_nodes"]
         i_hi = int(np.searchsorted(nodes, cast_key_ev, side="left").clip(1, nodes.size - 1))
         i_lo = i_hi - 1
         t = (cast_key_ev - nodes[i_lo]) / (nodes[i_hi] - nodes[i_lo])
         cast_e = (1.0 - t) * ps["casts"][i_lo] + t * ps["casts"][i_hi]
-        for c in range(3):
-            developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
+        if crossover == "print":
+            # print-balanced: the SAME cast table, evaluated once at the
+            # EV0 anchor — a constant per-channel balance, so the ratio to
+            # native is constant by construction and the ends keep their
+            # exposure-dependent crossover.
+            for c in range(3):
+                developed[:, c] /= np.float32(
+                    np.interp(0.0, ps["cast_ev"], cast_e[:, c])
+                )
+        else:
+            ev_y = np.log2(
+                np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18)
+            )
+            for c in range(3):
+                developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
     developed = np.maximum(developed, 0.0)
     # Appearance slot (plan §11): after B2 + neutral policy, before delivery.
     _app = _appearance_for(plan)

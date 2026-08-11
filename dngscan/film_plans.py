@@ -52,7 +52,13 @@ FILM_EXPOSURE_EV_MIN = -2.0
 FILM_EXPOSURE_EV_MAX = 2.0
 
 TIMING_POLICIES = ("fixed", "retimed", "custom")
-NEUTRALIZATION_POLICIES = ("bounded", "datasheet")
+# Canonical names since appearance P3 (plan §8). "bounded"/"datasheet"
+# remain accepted as deprecated aliases for hand-built plans; the compiler
+# only ever writes canonical values.
+NEUTRALIZATION_POLICIES = (
+    "technical-neutral", "print-balanced", "native",
+    "bounded", "datasheet",
+)
 DEVELOPMENT_RECIPES = ("measured_default", "editorial_custom")
 
 
@@ -87,7 +93,7 @@ class FilmDevelopmentPlan:
 class FilmPrintPlan:
     medium_id: str = "none"           # Endura / 2383 / reversal_direct / none
     timing_policy: str = "fixed"
-    neutralization_policy: str = "bounded"
+    neutralization_policy: str = "technical-neutral"
     printer_y_cc: float = 0.0
     printer_m_cc: float = 0.0
     print_exposure_ev: float = 0.0
@@ -235,7 +241,9 @@ def validate_film_plans(
                 "editorial_custom 显影与 retimed timing 互斥:retimed τ 表按 "
                 "measured 显影求解;编辑显影请配 fixed 或 custom timing"
             )
-        if print_plan.neutralization_policy == "bounded":
+        if print_plan.neutralization_policy in (
+            "bounded", "technical-neutral", "print-balanced",
+        ):
             raise ValueError(
                 "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 "
                 "measured 显影求解;请配 --film-neutralization datasheet"

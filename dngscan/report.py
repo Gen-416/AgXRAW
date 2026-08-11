@@ -409,11 +409,11 @@ def jpeg_tone_plan_cn(
             if medium:
                 state += f"·介质 {medium}"
             state += "；"
-        neutral = (
-            "datasheet"
-            if str(getattr(plan, "film_crossover", "off")) == "datasheet"
-            else "bounded"
-        )
+        neutral = {
+            "off": "technical-neutral",
+            "print": "print-balanced",
+            "datasheet": "native",
+        }.get(str(getattr(plan, "film_crossover", "off")), "technical-neutral")
         if str(getattr(plan, "film_development", "measured_default")) == "editorial_custom":
             state += (
                 "编辑显影配方(对比{:+.2f}/fog{:+.2f}/色密度{:+.2f})；".format(
