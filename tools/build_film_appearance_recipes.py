@@ -102,7 +102,7 @@ RESIDUALS = {
             sheet(band(45.0, 55.0, -0.08))     # skin: airy, slightly open
             + sheet(band(140.0, 80.0, 0.10))   # greens: a little weight
             + sheet(band(235.0, 60.0, 0.05))   # blues: quiet weight
-            + sheet(band(320.0, 55.0, -0.05))  # magenta: kept light
+            + sheet(band(330.0, 70.0, -0.08))  # magenta arc: kept light
         ),
     },
     "ektar100": {
@@ -113,14 +113,14 @@ RESIDUALS = {
             + sheet(band(45.0, 45.0, -3.0))    # skin arc rides toward red too
             + sheet(band(140.0, 80.0, 7.0))    # greens: toward emerald
             + sheet(band(235.0, 60.0, 6.0))    # blues: deeper
-            + sheet(band(300.0, 60.0, -2.0))   # magenta: toward blue
+            + sheet(band(330.0, 75.0, -4.0))   # magenta arc: toward blue
         ),
         "density_ev": (
             sheet(band(25.0, 50.0, 0.24))      # reds: dense (the signature)
             + sheet(band(75.0, 40.0, 0.12))    # yellows
             + sheet(band(140.0, 80.0, 0.16))   # greens
             + sheet(band(235.0, 60.0, 0.22))   # blues
-            + sheet(band(320.0, 55.0, 0.14))   # magenta: dense like its reds
+            + sheet(band(330.0, 70.0, 0.22))   # magenta arc: dense like its reds
         ),
     },
 }
@@ -154,9 +154,9 @@ def build(stock_id: str, medium_id: str) -> Path:
         "process_space": "display-linear-rec2020/oklab+scene-ev",
         "provenance": "editorial-authored",
         "neutralization_policy": "print-balanced",
-        "chroma_knee": 0.18,
+        "chroma_knee": 0.28,
         "chroma_power": 2.0,
-        "neutral_chroma_c0": 0.03,
+        "neutral_chroma_c0": 0.046,
         "note": (
             "P4 v1 draft: Endura common base + stock residual, authored "
             "jointly with its pair. Differential axes are hue path and "

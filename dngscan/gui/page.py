@@ -374,14 +374,53 @@ FILM_CURVE_OPTIONS
     </div>
     <div id="filmCrossoverBlock" style="flex:1;min-width:190px;display:none">
       <label>灰阶中性化</label>
-      <select id="filmNeutralization" title="灰阶中性化（与印相 timing 正交，仅接管模式）。有界数字中性=完整链输出按像素亮度曝光除以随包的有界中性染色曲线，介质灰阶偏中性两档以内严格中性（即原层间漂移=关）；数据手册漂移=链原样，中灰由印相求解锚定，暗部/亮部按层间数据漂移（如 Velvia 阴影温和偏冷）——量级未经外部裁决。">
-        <option value="bounded">有界数字中性 · 默认</option>
-        <option value="datasheet">数据手册漂移（实验）</option>
+      <select id="filmNeutralization" title="灰阶中性化（与印相 timing 正交，仅接管模式）。跟随胶片解释=不显式声明，由编译器按胶片解释解析（技术中和→数字中性；参考印相/自定义→印相平衡）；数字中性=完整链输出按像素曝光除以随包中性染色曲线，整条灰阶严格中性；印相平衡=同一染色表只在中灰锚点取值一次做恒定平衡——中灰依构造中性，灰阶两端保留介质自身的曝光相关 crossover（印相性格）；数据手册漂移=链原样，中灰由印相求解锚定（实验）。">
+        <option value="auto">跟随胶片解释 · 默认</option>
+        <option value="technical-neutral">数字中性</option>
+        <option value="print-balanced">印相平衡</option>
+        <option value="native">数据手册漂移（实验）</option>
       </select>
     </div>
     <div id="filmMediumBlock" style="flex:1;min-width:190px;display:none">
       <label>印相介质</label>
       <select id="filmPrintMedium" title="film v2 印相介质：默认为该卷的出厂配对；仅列出已烘焙的介质（B1/τ 按 卷×介质 求解，B2 跨卷复用）。"></select>
+    </div>
+  </div>
+  <div class="row" id="filmAppearanceRow" style="margin-top:12px;display:none">
+    <div style="flex:1;min-width:190px">
+      <label>胶片解释</label>
+      <select id="filmAppearance" title="外观层（仅接管模式）：技术中和=冻结基线，测量链原样；参考印相=该卷在配对相纸上的编辑性调色板（授权配方：色相路径+色密度，Oklab+场景EV 域，灰阶依内核构造不动）；自定义=参考印相加三个有界修饰（丰度/色密度/灰阶偏色强度）。">
+        <option value="technical">技术中和 · 默认</option>
+        <option value="reference">参考印相</option>
+        <option value="custom">自定义</option>
+      </select>
+    </div>
+    <div style="flex:1;min-width:190px">
+      <label>层间放大</label>
+      <select id="filmInterimage" title="层间放大（inter-image effect）：显影耦合对色差的有界放大 D'=N+sign(d)·h·t'，β 按卷声明，轨距内保界。声明=默认；关=光谱基线（oracle 口径）。">
+        <option value="declared">声明 · 默认</option>
+        <option value="off">关 · 光谱基线</option>
+      </select>
+    </div>
+    <div class="sliderField" id="filmAppearanceStrengthBlock" style="display:none">
+      <div class="labelRow"><label title="外观层强度：0=不施加，1=配方声明值，>1 温和外推（上限 1.5）。">解释强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
+      <input type="range" id="filmAppearanceStrength" min="0" max="1.5" step="0.05" value="1">
+    </div>
+    <div id="filmAppearanceCustom" style="display:none;flex-basis:100%">
+      <div class="row">
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="颜色丰度修饰：配方 chroma-gain 场 ×(1+r)，纯度肩部内核保护高饱和。">丰度</label><span class="val" id="filmRichnessVal">0.00</span></div>
+          <input type="range" id="filmRichness" min="-1" max="1" step="0.05" value="0">
+        </div>
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="色密度修饰：配方 density 场 ×(1+d)，中性密度式压亮（L 与 C 同缩，饱和度守恒）。">色密度</label><span class="val" id="filmColorDensityVal">0.00</span></div>
+          <input type="range" id="filmColorDensity" min="-1" max="1" step="0.05" value="0">
+        </div>
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="灰阶偏色强度：配方 neutral-bias 场 ×s（当前配方为零场，此控件预留）。">灰阶偏色</label><span class="val" id="filmNeutralBiasVal">1.00</span></div>
+          <input type="range" id="filmNeutralBias" min="0" max="2" step="0.05" value="1">
+        </div>
+      </div>
     </div>
   </div>
   <div class="row" id="filmExposureRow" style="margin-top:12px;display:none">
@@ -900,6 +939,10 @@ function saveSettings(){
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
     filmOptics:$("#filmOptics").value,filmGrain:$("#filmGrain").value,
     filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
+    filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
+    filmAppearanceStrength:$("#filmAppearanceStrength").value,
+    filmRichness:$("#filmRichness").value,filmColorDensity:$("#filmColorDensity").value,
+    filmNeutralBias:$("#filmNeutralBias").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     highlight:$("#highlight").dataset.librawValue||$("#highlight").value,gamut:$("#gamut").value,wb:$("#wb").value,demosaic:$("#demosaic").dataset.librawValue||$("#demosaic").value,
     decoder:$("#decoder").value,coreimageVersion:$("#coreimageVersion").value,
@@ -950,8 +993,18 @@ function restoreSettings(){
   if(s.colorHeadM!==undefined)$("#colorHeadM").value=s.colorHeadM;
   if(s.film&&[...$("#film").options].some(o=>o.value===s.film))$("#film").value=s.film;
   if(s.filmMode&&[...$("#filmMode").options].some(o=>o.value===s.filmMode))$("#filmMode").value=s.filmMode;
-  if(s.filmNeutralization&&["bounded","datasheet"].includes(s.filmNeutralization))$("#filmNeutralization").value=s.filmNeutralization;
-  else if(s.filmCrossover){$("#filmNeutralization").value=s.filmCrossover==="datasheet"?"datasheet":"bounded";}
+  if(s.filmNeutralization&&["auto","technical-neutral","print-balanced","native"].includes(s.filmNeutralization))$("#filmNeutralization").value=s.filmNeutralization;
+  // 旧值迁移:bounded 是旧默认(未表达偏好)→auto 交给编译器;datasheet→native
+  else if(s.filmNeutralization==="bounded")$("#filmNeutralization").value="auto";
+  else if(s.filmNeutralization==="datasheet")$("#filmNeutralization").value="native";
+  else if(s.filmCrossover){$("#filmNeutralization").value=s.filmCrossover==="datasheet"?"native":"auto";}
+  if(s.filmAppearance&&["technical","reference","custom"].includes(s.filmAppearance))$("#filmAppearance").value=s.filmAppearance;
+  if(s.filmInterimage&&["declared","off"].includes(s.filmInterimage))$("#filmInterimage").value=s.filmInterimage;
+  if(s.filmAppearanceStrength!==undefined)$("#filmAppearanceStrength").value=s.filmAppearanceStrength;
+  if(s.filmRichness!==undefined)$("#filmRichness").value=s.filmRichness;
+  if(s.filmColorDensity!==undefined)$("#filmColorDensity").value=s.filmColorDensity;
+  if(s.filmNeutralBias!==undefined)$("#filmNeutralBias").value=s.filmNeutralBias;
+  if(typeof setFilmAppearanceLabels==="function")setFilmAppearanceLabels();
   if(s.filmPrintMedium!==undefined)window.__pendingMedium=s.filmPrintMedium;
   if(s.filmPrintExposure!==undefined)$("#filmPrintExposure").value=s.filmPrintExposure;
   if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
@@ -1039,6 +1092,24 @@ function updateFilmModeUi(){
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
   if(!full){const ob=$("#filmOpticsBlock");if(ob)ob.style.display="none";const oc=$("#filmOpticsCustom");if(oc)oc.style.display="none";}
+  // 胶片解释控件组:full 才显示;非 full 清回默认(service 合同)
+  const appRow=$("#filmAppearanceRow");
+  if(appRow){
+    appRow.style.display=full?"":"none";
+    if(!full){
+      $("#filmAppearance").value="technical";$("#filmInterimage").value="declared";
+      $("#filmAppearanceStrength").value=1;
+      $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
+    }
+    const appMode=$("#filmAppearance").value;
+    $("#filmAppearanceStrengthBlock").style.display=(full&&appMode!=="technical")?"":"none";
+    $("#filmAppearanceCustom").style.display=(full&&appMode==="custom")?"":"none";
+    if(appMode!=="custom"){
+      $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
+    }
+    if(appMode==="technical"){$("#filmAppearanceStrength").value=1;}
+    if(typeof setFilmAppearanceLabels==="function")setFilmAppearanceLabels();
+  }
   const expRow=$("#filmExposureRow");
   if(expRow){
     expRow.style.display=full?"":"none";
@@ -1070,9 +1141,9 @@ function updateFilmModeUi(){
         timing.value="fixed";
       }
       if(hint){hint.textContent=reason;hint.style.display=reason?"":"none";}
-      // custom timing 需要 datasheet 中性化(互斥合同);GUI 直接联动
-      if(timing.value==="custom"&&$("#filmNeutralization").value!=="datasheet"){
-        $("#filmNeutralization").value="datasheet";
+      // custom timing 需要数据手册漂移(互斥合同);GUI 直接联动
+      if(timing.value==="custom"&&$("#filmNeutralization").value!=="native"){
+        $("#filmNeutralization").value="native";
       }
       const peb=$("#filmPrintExposureBlock");
       if(peb){
@@ -1155,6 +1226,18 @@ function setFilmOpticsLabels(){
   $("#filmBloomVal").textContent=parseFloat($("#filmBloom").value).toFixed(2);
 }
 setFilmOpticsLabels();
+function setFilmAppearanceLabels(){
+  $("#filmAppearanceStrengthVal").textContent=parseFloat($("#filmAppearanceStrength").value).toFixed(2);
+  $("#filmRichnessVal").textContent=parseFloat($("#filmRichness").value).toFixed(2);
+  $("#filmColorDensityVal").textContent=parseFloat($("#filmColorDensity").value).toFixed(2);
+  $("#filmNeutralBiasVal").textContent=parseFloat($("#filmNeutralBias").value).toFixed(2);
+}
+setFilmAppearanceLabels();
+$("#filmAppearance").addEventListener("change",()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();});
+$("#filmInterimage").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+for(const id of ["filmAppearanceStrength","filmRichness","filmColorDensity","filmNeutralBias"]){
+  $("#"+id).addEventListener("input",()=>{setFilmAppearanceLabels();saveSettings();scheduleLivePreview();});
+}
 $("#filmOptics").addEventListener("change",()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();});
 for(const id of ["filmGrain","filmHalation","filmBloom"]){
   $("#"+id).addEventListener("input",()=>{setFilmOpticsLabels();saveSettings();scheduleLivePreview();});
@@ -1289,7 +1372,7 @@ $("#outdirBtn").onclick=()=>{
 function payload(){
   const input=$("#input").value.trim();
   if(!input){setStatus("请先选择一个 DNG/RAW 文件","err");return null;}
-  return {
+  const p={
     input,highlight:$("#highlight").value,gamut:$("#gamut").value,wb:$("#wb").value,demosaic:$("#demosaic").value,
     decoder:$("#decoder").value,coreimageVersion:$("#coreimageVersion").value,
     lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,
@@ -1298,6 +1381,10 @@ function payload(){
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
     filmOptics:$("#filmOptics").value,filmGrain:$("#filmGrain").value,
     filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
+    filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
+    filmAppearanceStrength:+$("#filmAppearanceStrength").value,
+    filmRichness:+$("#filmRichness").value,filmColorDensity:+$("#filmColorDensity").value,
+    filmNeutralBias:+$("#filmNeutralBias").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
@@ -1313,6 +1400,9 @@ function payload(){
     hdrHeadroom:+$("#hdrHeadroom").value,ev:+$("#ev").value,quality:+$("#quality").value,
     outdir:$("#outdir").value.trim(),png:$("#png").checked
   };
+  // auto=不显式声明中性化,由编译器按胶片解释解析(A5 item 6:单一解析点)
+  if(p.filmNeutralization==="auto")delete p.filmNeutralization;
+  return p;
 }
 
 async function postJob(path, body, signal){

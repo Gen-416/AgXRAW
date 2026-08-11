@@ -581,6 +581,20 @@ def interimage_beta(preset: str) -> float:
     return float(INTERIMAGE_BETA.get(str(preset), 0.0))
 
 
+def _appearance_scene_ev(rgb_postcomp) -> "np.ndarray":
+    """The recipe's exposure coordinate (A5 item 1): SCENE luminance EV of
+    the post-compression Rec.2020 entering Stage A — per the asset contract
+    ("...+scene-ev"). The first kernel derived it from the DEVELOPED print,
+    which let the paper, the timing and the neutralization policy move where
+    a recipe samples its own fields; the scene coordinate is invariant to
+    every print-side choice."""
+    y = np.maximum(
+        np.asarray(rgb_postcomp, dtype=np.float32).reshape(-1, 3) @ REC2020_LUMA,
+        np.float32(1e-9),
+    )
+    return np.log2(y / np.float32(0.18))
+
+
 def _appearance_for(plan) -> "object | None":
     """The compiled appearance plan the runtime consumes, fail-closed.
 
@@ -842,7 +856,9 @@ def _apply_film_core_v2(
         if _app is not None:
             from .film_appearance import apply_film_appearance
 
-            developed = apply_film_appearance(developed, _app)
+            developed = apply_film_appearance(
+                developed, _app, scene_ev=_appearance_scene_ev(rgb)
+            )
         return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
     u1 = amounts_to_unit(amounts, stock["lo"], stock["hi"])
@@ -911,7 +927,9 @@ def _apply_film_core_v2(
     if _app is not None:
         from .film_appearance import apply_film_appearance
 
-        developed = apply_film_appearance(developed, _app)
+        developed = apply_film_appearance(
+            developed, _app, scene_ev=_appearance_scene_ev(rgb)
+        )
     return developed.astype(np.float32, copy=False)
 
 

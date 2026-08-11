@@ -50,9 +50,9 @@ def build(stock_id: str, medium_id: str) -> Path:
         "medium_id": medium_id,
         "process_space": "display-linear-rec2020/oklab+scene-ev",
         "provenance": "editorial-authored",
-        "chroma_knee": 0.18,
+        "chroma_knee": 0.28,
         "chroma_power": 2.0,
-        "neutral_chroma_c0": 0.03,
+        "neutral_chroma_c0": 0.046,
         "note": (
             "P1 identity placeholder: every field zero by construction. "
             "P4 authors the real palette; the loader refuses non-identity "
