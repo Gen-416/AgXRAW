@@ -444,7 +444,7 @@ def render_ultrahdr_agx_pair(
         and str(getattr(plan.tone, "curve_preset", "none")) != "none"
     ):
         # Kernel-level defence (review batch 11): the SDR leg routes through
-        # apply_tone_core, which under full+preset is the takeover LUT, while
+        # apply_tone_core, which under full+preset is the takeover film chain, while
         # the HDR leg below is AgX formation — refusing here keeps the pair
         # honest even for hand-built plans that bypassed export_jpeg.
         raise RuntimeError(

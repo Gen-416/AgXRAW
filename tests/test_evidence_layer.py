@@ -98,7 +98,7 @@ class EvidenceContractTests(unittest.TestCase):
                     "build_clip_masks",
                     return_value=np.zeros((2, 2, 3), dtype=np.float16),
                 ),
-                patch.object(coreimage_decode, "available", return_value=True),
+                patch.object(coreimage_decode, "runtime_available", return_value=True),
                 patch.object(
                     coreimage_decode,
                     "decode_scene_rec2020",

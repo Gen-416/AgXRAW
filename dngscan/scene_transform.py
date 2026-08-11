@@ -72,7 +72,7 @@ def effective_scene_transform(
 ) -> str:
     """The ONE normalization point for full mode's input-domain contract.
 
-    The takeover LUT's observer inverse is fitted on plain Rec.2020, so with
+    The takeover chain's Stage A observer inverse is fitted on plain Rec.2020, so with
     film_mode="full" the film prefeed must not touch ANY consumer — the plan
     sample, the scene-EV histogram, the brightness-reference probe, cache
     keys, reports and the pixel render all read the transform through this

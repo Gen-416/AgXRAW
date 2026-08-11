@@ -1311,7 +1311,12 @@ def load_raw(
         neutral_cct = None
         from . import coreimage_decode
 
-        if not coreimage_decode.runtime_available():
+        # A10 item 2: the decode below renders with interactive=half_size,
+        # so the precheck probes THAT workload — preview and export
+        # contexts carry different options and can fail independently.
+        if not coreimage_decode.runtime_available(
+            interactive=bool(scene_half_size)
+        ):
             raise RuntimeError(
                 "Core Image decoder unavailable on this system "
                 "(macOS + PyObjC Quartz / CIRAWFilter required)"

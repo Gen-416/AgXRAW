@@ -160,16 +160,15 @@ def validate_film_plans(
     for _name, _val in _numeric:
         if not (isinstance(_val, (int, float)) and math.isfinite(float(_val))):
             raise ValueError(f"{_name}={_val!r} 非法（必须是有限数值）")
+    # A9 item 5 established the 5CC detent contract; A10 item 5 routes it
+    # through the ONE public validator (film_curve.validate_color_head_cc)
+    # so a float-noise value like 10.000000000000002 gets the same verdict
+    # from every entry point instead of two.
+    from .film_curve import validate_color_head_cc
+
     for _name, _cc in (("printer_y_cc", print_plan.printer_y_cc),
                        ("printer_m_cc", print_plan.printer_m_cc)):
-        if not 0.0 <= float(_cc) <= 200.0:
-            raise ValueError(f"{_name}={_cc} 域为 [0, 200] CC")
-        # A9 item 5: the colour head is a 5CC detent instrument — the GUI
-        # slider steps by 5 and the solved tau tables are calibrated on
-        # that grid; a continuous CC through the API was a silent contract
-        # break.
-        if float(_cc) % 5.0 != 0.0:
-            raise ValueError(f"{_name}={_cc} 必须是 5CC 档位(色头拨盘合同)")
+        validate_color_head_cc(_cc, _name)
     if not 2000.0 <= float(exposure.reference_cct) <= 20000.0:
         raise ValueError(
             f"reference_cct={exposure.reference_cct} 域为 [2000, 20000] K"

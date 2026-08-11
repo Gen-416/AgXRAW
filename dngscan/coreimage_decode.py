@@ -160,13 +160,22 @@ def runtime_available(*, interactive: bool = False) -> bool:
             from Foundation import NSData  # type: ignore
 
             ctx = _render_context(Quartz, interactive=key)
+            # A10 item 2: probe the REAL workload, not a toy one — the
+            # decode renders RGBAh into extended linear Rec.2020, and hosts
+            # exist where a plain RGBA8/no-colourspace render succeeds
+            # while this combination fails (or vice versa).
+            color_space = Quartz.CGColorSpaceCreateWithName(
+                Quartz.kCGColorSpaceExtendedLinearITUR_2020
+            )
+            if color_space is None:
+                raise RuntimeError("extended linear Rec.2020 unavailable")
             img = Quartz.CIImage.imageWithColor_(
                 Quartz.CIColor.colorWithRed_green_blue_(0.5, 0.5, 0.5)
             ).imageByCroppingToRect_(Quartz.CGRectMake(0, 0, 1, 1))
-            buf = bytearray(4)
+            buf = bytearray(8)   # RGBAh: 4 x float16
             ctx.render_toBitmap_rowBytes_bounds_format_colorSpace_(
-                img, buf, 4, Quartz.CGRectMake(0, 0, 1, 1),
-                Quartz.kCIFormatRGBA8, None,
+                img, buf, 8, Quartz.CGRectMake(0, 0, 1, 1),
+                Quartz.kCIFormatRGBAh, color_space,
             )
             ok = True
         except Exception:

@@ -326,9 +326,9 @@ class ToneCompressionPlan:
     # curve_preset, and physically absent for reversal film (no printing stage).
     color_head_y: float = 0.0
     color_head_m: float = 0.0
-    # Declared crossover switch for the film-takeover LUT's neutral-axis
-    # serving. Meaningful only with film_mode="full"; otherwise inert. "off"
-    # (default) is the DIGITAL NEUTRALIZED variant: the sampled LUT output is
+    # Declared crossover switch for the film chain's neutral-axis serving.
+    # Meaningful only with film_mode="full"; otherwise inert. "off"
+    # (default) is the DIGITAL NEUTRALIZED variant: the developed output is
     # divided per pixel by the shipped bounded neutral-cast curve at the
     # pixel's luminance exposure (grays neutral wherever the medium's own gray
     # is within two stops of neutral per channel). "datasheet" serves the
