@@ -11,7 +11,8 @@ from ._deps import np
 from . import priors as sensor_priors
 from .color import clamp_float, XYZ_TO_RGB
 from .constants import (
-    CEILING_MIN_PILE_FRACTION, CEILING_MIN_PILE_PIXELS, CEILING_PLAUSIBLE_FRACTION, EPS, EV_REPORT_FLOOR, GAMUT_EPS,
+    CEILING_MIN_PILE_FRACTION, CEILING_MIN_PILE_PIXELS, CEILING_NEAR_WINDOW_SCALE,
+    CEILING_PLAUSIBLE_FRACTION, EPS, EV_REPORT_FLOOR, GAMUT_EPS,
     GRAY_EV, MIDGRAY_HEADROOM_STOPS, NOISE_DR_EPS, SNR_BRIGHT_UNRELIABLE_STOP,
     SNR_LOW_PERCENTILE, SNR_TILE,
 )
@@ -140,7 +141,7 @@ def detect_ceilings(
         level = int((sat or {}).get(cid, 0)) or int(np.iinfo(raw_image.dtype).max
                                                     if np.issubdtype(raw_image.dtype, np.integer)
                                                     else 65535)
-        window = max(2, int(round(level / 8192)))
+        window = max(2, int(round(level / CEILING_NEAR_WINDOW_SCALE)))
         near = int(np.count_nonzero(vals >= max(ceil - window, 0)))
         min_pile = max(CEILING_MIN_PILE_PIXELS, int(math.ceil(vals.size * CEILING_MIN_PILE_FRACTION)))
         ceilings[cid] = ceil

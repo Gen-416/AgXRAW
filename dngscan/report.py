@@ -152,6 +152,8 @@ def wb_line_cn(bundle: RawBundle) -> str:
 
 
 def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
+    from .policy import policy_line
+
     black = padded_channel_values(bundle.black_levels, analysis.channel_ids)
     wb = padded_channel_values(bundle.camera_wb, analysis.channel_ids)
     spike_flags = {
@@ -213,6 +215,7 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
         f"高亮采样比例: {analysis.bright_pixel_pct:.2f}% 像素",
         f"最不易剪切通道: {analysis.survivor_channel}",
         "注: SNR/噪声为单帧估计，不是光子转移测量。",
+        policy_line(),
     ]
 
 

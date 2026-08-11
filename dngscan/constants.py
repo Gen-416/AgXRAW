@@ -47,6 +47,9 @@ CEILING_PLAUSIBLE_FRACTION = 0.75
 
 
 CEILING_MIN_PILE_FRACTION = 2e-5
+# A8 item 1: the near-pile window tracks bit depth — window = max(2,
+# level/CEILING_NEAR_WINDOW_SCALE), ~2 DN at 14 bits.
+CEILING_NEAR_WINDOW_SCALE = 8192
 
 
 OUTPUT_GAMUT_SPACES = {"srgb": "sRGB", "p3": "P3"}
