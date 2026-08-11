@@ -291,6 +291,12 @@ class ToneCompressionPlan:
     # hand-built plans; a hand-built plan claiming "reference" without it
     # fails closed at runtime.
     film_appearance_compiled: object = None
+    # P6 custom controls, meaningful only with film_appearance="custom":
+    # bounded multiplicative modifiers about the recipe's own values (plan
+    # §13: 颜色丰度/色密度/灰阶偏色). 0/0/1 keeps custom == reference exactly.
+    film_richness: float = 0.0
+    film_color_density: float = 0.0
+    film_neutral_bias: float = 1.0
     film_interimage: str = "declared"
     # The EFFECTIVE beta, resolved by the compiler from the declared table.
     # None means "not compiled" (hand-built test plans): the runtime falls

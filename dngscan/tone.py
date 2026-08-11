@@ -722,6 +722,9 @@ def build_render_plan(
     film_interimage: str = "declared",
     film_appearance: str = "technical",
     film_appearance_strength: float = 1.0,
+    film_richness: float = 0.0,
+    film_color_density: float = 0.0,
+    film_neutral_bias: float = 1.0,
     film_dev_contrast: float = 0.0,
     film_dev_fog: float = 0.0,
     film_dev_density: float = 0.0,
@@ -892,6 +895,9 @@ def build_render_plan(
             film_interimage=str(film_interimage or "declared"),
             film_appearance=str(film_appearance or "technical"),
             film_appearance_strength=float(film_appearance_strength),
+            film_richness=float(film_richness),
+            film_color_density=float(film_color_density),
+            film_neutral_bias=float(film_neutral_bias),
             film_interimage_beta=_effective_interimage_beta,
             film_dev_contrast=float(film_dev_contrast),
             film_dev_fog=float(film_dev_fog),
@@ -1035,6 +1041,9 @@ def build_render_plan(
         _appearance_plan = compile_appearance_plan(
             _appearance_mode,
             float(film_appearance_strength),
+            richness_delta=float(film_richness),
+            color_density_delta=float(film_color_density),
+            neutral_bias_strength=float(film_neutral_bias),
             stock_id=film_curve,
             medium_id=(
                 (

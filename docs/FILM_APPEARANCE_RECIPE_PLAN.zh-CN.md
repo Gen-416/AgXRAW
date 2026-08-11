@@ -652,8 +652,10 @@ editorial 显影与两种数字中性化互斥。reference recipe 默认 print-b
 每个 recipe 必须有合成图、真实场景矩阵、盲选记录、版本说明。通过后才扩到同家族其他卷。
 
 （2026-08-12 状态：Portra/Ektar 对 v2 草稿已 author 并通过全部数值门,
-reference 默认 print-balanced 已接线（显式选择优先）,样张已出待 owner
-联合 A/B——按 A4 合同,A/B 通过前两只均不算完成。）
+reference 默认 print-balanced 已接线（显式选择优先）。**联合 A/B 已通过**
+（owner 审阅 5 场景四联样张,裁定"右列读作两种胶片且与 technical 可辨"）——
+P4 首对完成。同家族扩卷与清单 3–5（Vision3+2383/Velvia/extended）待后续
+批次,复用同一 authoring 结构。）
 
 ### P5：印相 tone-fit
 
@@ -676,12 +678,24 @@ reference 默认 print-balanced 已接线（显式选择优先）,样张已出�
 3. Python/原生内核逐元素 parity；
 4. recipe 仍是规范，LUT/原生实现只是编译产物。
 
+（2026-08-12 状态：三个 custom 控件已落地——`--film-appearance custom` +
+`--film-richness/--film-color-density/--film-neutral-bias`,乘法式以 recipe 为
+中心,0/0/1 与 reference 逐位相同(测试钉扎),非 custom 模式携带非默认值 fail
+closed。**原生内核延后**：NumPy 参考内核 1MP 实测 300ms,仅 reference 模式引擎,
+预览规模下可用;待 §10 清单 3–5(Vision3/Velvia/extended)扩卷定型后与其一并做,
+避免对仍会迭代的场固化 SIMD。NumPy 路径保持 correctness oracle 身份。）
+
 ### P7：文档与默认值决策
 
 1. README 展示 AgX、film technical、film reference 三联；
 2. 架构图增加 measured/modelled/editorial 三层；
 3. 用户指南解释灰阶策略和 reference 强度；
 4. 只有盲测和回归完成后，才讨论把 reference 设为 GUI 默认。
+
+（2026-08-12 状态：README 双语三联已加（docs/assets/film-three-interpretations.jpg,
+含三层 provenance 表述）；灰阶策略与 reference/custom 的用户口径写入 README 段落,
+教程细化随扩卷补。**默认值决策：保持 technical**——首对 A/B 已过但按第 4 条,
+更广盲测(多场景类型+多 recipe)完成前不动 GUI 默认;reference 为显式选择。）
 
 ## 17. 风险与失败判据
 
