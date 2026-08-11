@@ -568,10 +568,16 @@ class SubjectiveControlTests(unittest.TestCase):
         filt = Quartz.CIRAWFilter.alloc().initWithImageURL_(
             NSURL.fileURLWithPath_(str(SIGMA_DNG))
         )
+        # Defaults are DECODER-SPECIFIC (the module's own rule: read after
+        # selecting the version). The first cut read the fresh-filter
+        # default, which broke when a RawCamera update changed the file's
+        # default decoder — decoder 9's own moire default is 0.0 and the
+        # policy under test is "configure must not TOUCH the control",
+        # not "the default is nonzero".
+        filt.setDecoderVersion_("9")
         default = float(filt.moireReductionAmount())
         coreimage_decode.configure_linear_filter(filt, version="9", scale_factor=0.1)
         self.assertAlmostEqual(float(filt.moireReductionAmount()), default, places=6)
-        self.assertGreater(default, 0.0)
         # Policy pin: the module must not expose a path that zeros this control.
         source = Path(coreimage_decode.__file__).read_text(encoding="utf-8")
         self.assertNotIn("setMoireReductionAmount_", source)

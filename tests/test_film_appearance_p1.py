@@ -55,8 +55,9 @@ class CompileTests(unittest.TestCase):
         self.assertIs(plan.tone.film_appearance_compiled, app)
 
     def test_reference_without_a_recipe_fails_closed(self) -> None:
+        # gold200 has no authored recipe (E1 gave velvia100 one)
         with self.assertRaises(ValueError):
-            _compile_render_plan(film_curve="velvia100", film_appearance="reference")
+            _compile_render_plan(film_curve="gold200", film_appearance="reference")
 
     def test_reference_outside_full_mode_fails_closed(self) -> None:
         with self.assertRaises(ValueError):
