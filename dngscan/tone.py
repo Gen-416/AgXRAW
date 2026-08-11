@@ -822,7 +822,8 @@ def build_render_plan(
         # --film-crossover for every reversal preset: reversals reject the
         # colour head, so the stamp became unreachable).
         crossover_value = (
-            film_crossover if film_crossover in ("off", "datasheet") else "off"
+            film_crossover
+            if film_crossover in ("off", "print", "datasheet") else "off"
         )
         # film v2 P2: the emulsion exposure state and the print timing are
         # FULL-mode declarations (observe has no emulsion/print model); the
@@ -955,10 +956,14 @@ def build_render_plan(
         )
 
         process = film_process(film_curve)
-        neutralization = (
-            "datasheet" if str(getattr(tone, "film_crossover", "off")) == "datasheet"
-            else "bounded"
-        )
+        # Canonical policy names (plan §8): the internal crossover switch
+        # keeps its historical off/print/datasheet values, the PLAN records
+        # what they mean.
+        neutralization = {
+            "off": "technical-neutral",
+            "print": "print-balanced",
+            "datasheet": "native",
+        }[str(getattr(tone, "film_crossover", "off"))]
         film_plans = (
             FilmExposurePlan(
                 stock_id=film_curve,

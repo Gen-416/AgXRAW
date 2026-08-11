@@ -1003,12 +1003,17 @@ def parse_film_params(params: dict) -> tuple:
             "filmCrossover 已弃用为 filmNeutralization 的别名;两者不能同时给出"
         )
     if neutral_req is not None:
-        if str(neutral_req) not in ("bounded", "datasheet"):
+        mapping = {
+            "technical-neutral": "off", "bounded": "off",
+            "print-balanced": "print",
+            "native": "datasheet", "datasheet": "datasheet",
+        }
+        if str(neutral_req) not in mapping:
             raise ValueError(f"未知灰阶中性化：{neutral_req}")
-        film_crossover = "off" if str(neutral_req) == "bounded" else "datasheet"
+        film_crossover = mapping[str(neutral_req)]
     else:
         film_crossover = str(crossover_req if crossover_req is not None else "off")
-        if film_crossover not in ("off", "datasheet"):
+        if film_crossover not in ("off", "print", "datasheet"):
             raise ValueError(f"未知层间漂移开关：{film_crossover}")
     film_exposure_ev = _finite_number(
         params.get("filmExposure", params.get("film_exposure_ev", 0.0)) or 0.0,

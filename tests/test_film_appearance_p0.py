@@ -247,7 +247,11 @@ class AppearanceFreezeTests(unittest.TestCase):
         )
         self.assertEqual(plan.tone.film_crossover, "off")
         self.assertIsNotNone(plan.film)
-        self.assertEqual(plan.film[2].neutralization_policy, "bounded")
+        # The plan records the canonical name since appearance P3; the
+        # manifest keeps the historical word for the frozen bytes it pins.
+        self.assertEqual(
+            plan.film[2].neutralization_policy, "technical-neutral"
+        )
 
     def test_regenerator_refuses_a_missing_source_scene(self) -> None:
         import contextlib

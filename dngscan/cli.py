@@ -376,11 +376,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--film-neutralization",
-        choices=("bounded", "datasheet"),
+        choices=(
+            "technical-neutral", "print-balanced", "native",
+            "bounded", "datasheet",
+        ),
         default=None,
         help=(
-            "film v2 灰阶中性化(与 timing 正交):bounded=有界数字中性(默认,"
-            "即现行 crossover=off);datasheet=保留曝光依赖 cast/crossover。"
+            "film v2 灰阶中性化(与 timing 正交):technical-neutral=逐像素有界"
+            "数字中性(默认);print-balanced=只在 EV0 解常数 balance,保留灰阶"
+            "两端 crossover(参考印相推荐);native=不做校正,介质原样。"
+            "bounded/datasheet 为弃用别名(=technical-neutral/native)。"
             "与已弃用的 --film-crossover 同时给出时硬失败"
         ),
     )
@@ -664,9 +669,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "同时给出(off≡bounded,datasheet≡datasheet)"
         )
     if args.film_neutralization is not None:
-        args.film_crossover = (
-            "off" if args.film_neutralization == "bounded" else "datasheet"
-        )
+        args.film_crossover = NEUTRALIZATION_TO_CROSSOVER[args.film_neutralization]
     elif args.film_crossover is None:
         args.film_crossover = "off"
     if args.film_print_timing == "custom" and args.film_crossover != "datasheet":
@@ -817,6 +820,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         args.highlight_mode = "reconstruct"
         args.demosaic = "auto"
     return args
+
+
+# Canonical neutralization names -> the internal crossover switch (plan §8).
+# bounded/datasheet stay as deprecated aliases; the mapping is module-level so
+# tests can pin it without driving the whole CLI.
+NEUTRALIZATION_TO_CROSSOVER = {
+    "technical-neutral": "off", "bounded": "off",
+    "print-balanced": "print",
+    "native": "datasheet", "datasheet": "datasheet",
+}
 
 
 def main(argv: list[str]) -> int:

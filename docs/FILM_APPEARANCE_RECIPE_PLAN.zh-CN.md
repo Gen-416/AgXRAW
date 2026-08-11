@@ -631,6 +631,11 @@ full 胶片核的 **37%**（300ms vs 812ms；float64 初版 66%，经 float32 �
 4. reference recipe 默认选择 print-balanced，但在资产中显式记录。
 
 完成条件：EV0 中性精确，灰阶两端的 native crossover 可见且连续。
+（2026-08-11 完成：`print` 为 crossover 第三档,print/native 比值逐通道恒定
+（构造性）,EV0 与 technical-neutral 精确一致;CLI/service 接受规范名
+technical-neutral/print-balanced/native,bounded/datasheet 留作弃用别名;
+editorial 显影与两种数字中性化互斥。reference recipe 默认 print-balanced
+的接线随 P4 资产声明落地。）
 
 ### P4：reference recipe 纵向切片
 
