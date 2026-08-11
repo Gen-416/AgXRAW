@@ -58,6 +58,29 @@ class RegisterConsistencyTests(unittest.TestCase):
             policy.POLICY_FINGERPRINTS[policy.POLICY_VERSION],
         )
 
+    def test_the_fingerprint_separates_every_field(self) -> None:
+        """A11 item 3: the naive joined-string hash collided when content
+        moved across field boundaries (rationale="a~b"/constrained_by="c"
+        vs "a"/"b~c"). Canonical JSON must (a) not collide on exactly that
+        pair and (b) change when ANY single field mutates."""
+        import dataclasses
+
+        base = policy.PolicyEntry(
+            name="X", value=1.0, unit="u",
+            rationale="a~b", constrained_by="c", history=("h",),
+        )
+        moved = dataclasses.replace(base, rationale="a", constrained_by="b~c")
+        self.assertNotEqual(policy._fingerprint((base,)),
+                            policy._fingerprint((moved,)))
+        for field_name, new_val in (
+            ("value", 2.0), ("unit", "v"), ("rationale", "r2"),
+            ("constrained_by", "c2"), ("history", ("h", "h2")),
+        ):
+            mutated = dataclasses.replace(base, **{field_name: new_val})
+            with self.subTest(field=field_name):
+                self.assertNotEqual(policy._fingerprint((base,)),
+                                    policy._fingerprint((mutated,)))
+
     def test_clip_margin_matches_the_cli_default(self) -> None:
         import argparse
 

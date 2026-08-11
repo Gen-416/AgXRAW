@@ -725,10 +725,15 @@ def parse_decoder(params: dict) -> tuple[str, str]:
         raise ValueError(f"未知解码器：{decoder}")
     if version not in COREIMAGE_VERSION_CHOICES:
         raise ValueError(f"未知 Core Image 版本：{version}")
-    if decoder == "coreimage" and not coreimage_decode.runtime_available():
+    # A11 item 1: no runtime gate HERE. parse_decoder serves preview
+    # (interactive context) and export (export context) alike, and gating
+    # both on the export probe wrongly refused previews on hosts where
+    # only the interactive context works. load_raw prechecks the ACTUAL
+    # workload (runtime_available(interactive=scene_half_size)) at the
+    # decode entry — the single point that knows which context runs.
+    if decoder == "coreimage" and not coreimage_decode.available():
         raise RuntimeError(
-            "Core Image 解码器在此系统不可运行（需要 macOS + PyObjC Quartz,"
-            "且 CIContext 能实际创建——A8:符号存在不等于运行时可用）"
+            "Core Image 解码器在此系统不可用（需要 macOS + PyObjC Quartz）"
         )
     # A9 item 4: the RAW9 daylight rejection is GONE — raw_io implements
     # the project hot-WB on top of the fixed AsShot decode (the transport
