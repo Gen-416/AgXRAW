@@ -135,6 +135,34 @@ def available() -> bool:
         return False
 
 
+_RUNTIME_AVAILABLE: bool | None = None
+
+
+def runtime_available() -> bool:
+    """True when a CIContext can actually be CREATED, cached per process.
+
+    A8 item 6: ``available()`` only proves the API surface exists (class +
+    selector), which is a false positive on hosts where Quartz imports but
+    context creation fails (headless CI, sandboxed runners) — 13 live
+    tests errored past the symbol probe there. Capability answers "can I
+    call it"; this answers "will it run". GUI support hints and live
+    integration tests must use THIS one. Never raises."""
+    global _RUNTIME_AVAILABLE
+    if _RUNTIME_AVAILABLE is not None:
+        return _RUNTIME_AVAILABLE
+    if not available():
+        _RUNTIME_AVAILABLE = False
+        return False
+    try:
+        import Quartz  # type: ignore
+
+        ctx = Quartz.CIContext.context()
+        _RUNTIME_AVAILABLE = ctx is not None
+    except Exception:
+        _RUNTIME_AVAILABLE = False
+    return _RUNTIME_AVAILABLE
+
+
 def _require_quartz() -> Any:
     if not available():
         raise RuntimeError(

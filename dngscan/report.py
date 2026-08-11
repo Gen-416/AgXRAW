@@ -357,13 +357,15 @@ def jpeg_policy_cn(
     label = output_gamut_label(output_gamut)
     if mode == "agx":
         if film_mode == "full" and str(curve_preset or "none") != "none":
-            # The takeover LUT replaces the AgX formation wholesale — the
-            # policy line must not describe stages that never ran.
+            # A8 item 5: the runtime is the FACTORISED film chain since
+            # v2 P3 — a monolithic baked 65^3 LUT no longer exists, and the
+            # policy line must describe the stages that actually run.
             return (
                 f"agx·filmfull: scene-linear Rec.2020 工作空间；白平衡按导出"
-                f"选项；跳过胶片前馈（LUT 的观察者逆矩阵自担分色），场景颜色"
-                f"直接进入离线烘焙的胶片光谱链 65³ LUT（观察者逆矩阵→三层乳剂"
-                f"→特性曲线→印相/幻灯观看链），AgX 仅保留交付侧色域安全；"
+                f"选项；跳过胶片前馈（Stage A 的观察者逆矩阵自担分色），场景"
+                f"颜色进入因式分解的胶片链（Stage A 观察者→层曝光→特性密度 "
+                f"→ B1 → 印相 timing → 相纸显影 → B2 → 灰阶中性化 → 可选参考"
+                f"印相外观层），AgX 仅保留交付侧色域安全；"
                 f"最后转 {label}；4:4:4 色度采样"
             )
         return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore→outset（负片色头档位>0 时后接 LMS 对角增益场）；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；4:4:4 色度采样"

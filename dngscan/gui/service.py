@@ -725,8 +725,11 @@ def parse_decoder(params: dict) -> tuple[str, str]:
         raise ValueError(f"未知解码器：{decoder}")
     if version not in COREIMAGE_VERSION_CHOICES:
         raise ValueError(f"未知 Core Image 版本：{version}")
-    if decoder == "coreimage" and not coreimage_decode.available():
-        raise RuntimeError("Core Image 解码器在此系统不可用（需要 macOS + PyObjC Quartz）")
+    if decoder == "coreimage" and not coreimage_decode.runtime_available():
+        raise RuntimeError(
+            "Core Image 解码器在此系统不可运行（需要 macOS + PyObjC Quartz,"
+            "且 CIContext 能实际创建——A8:符号存在不等于运行时可用）"
+        )
     wb = str(params.get("wb", "camera"))
     if decoder == "coreimage" and wb == "daylight":
         raise ValueError(

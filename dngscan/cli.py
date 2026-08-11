@@ -46,12 +46,21 @@ from .tone import (
 )
 
 
-def require_dependencies() -> None:
-    if IMPORT_ERRORS:
-        joined = "\n  ".join(IMPORT_ERRORS)
+def require_dependencies(*, dashboard: bool = False) -> None:
+    """Core deps (numpy, rawpy) gate every run; matplotlib gates only the
+    diagnostic dashboard (A8 item 8: it is an extra, and a plain
+    conversion must not fail without it)."""
+    from ._deps import DASHBOARD_IMPORT_ERRORS
+
+    errors = list(IMPORT_ERRORS)
+    if dashboard:
+        errors += DASHBOARD_IMPORT_ERRORS
+    if errors:
+        joined = "\n  ".join(errors)
         raise RuntimeError(
-            "Missing or broken dependency. Install only the required packages "
-            "(rawpy, numpy, matplotlib) and rerun.\n  " + joined
+            "Missing or broken dependency. Install the required packages "
+            "(numpy, rawpy; matplotlib only for the dashboard) and rerun."
+            "\n  " + joined
         )
 
 
@@ -869,7 +878,14 @@ def main(argv: list[str]) -> int:
             raise FileNotFoundError(f"Input file does not exist: {args.path}")
         if not args.path.is_file():
             raise FileNotFoundError(f"Input path is not a file: {args.path}")
-        require_dependencies()
+        # Mirrors scan_requested below: the six-panel dashboard also runs
+        # by default when neither --jpeg nor --csv was asked for.
+        require_dependencies(
+            dashboard=bool(
+                args.scan or args.out is not None
+                or (args.jpeg is None and args.csv is None)
+            )
+        )
         if args.support:
             from .decode_support import probe_decode_support
 

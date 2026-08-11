@@ -35,6 +35,15 @@ SNR_BRIGHT_UNRELIABLE_STOP = -2.5
 
 
 CEILING_MIN_PILE_PIXELS = 256
+# A8 item 1: a pile is only believable as SENSOR saturation when it sits
+# near the metadata white level — an ordinary highlight plateau (a lamp, a
+# blown sky patch dimmed by lens falloff) can hold thousands of equal
+# pixels far below full well, and overriding the metadata with it deflates
+# clip %, usable DR, the CFA clip mask and HDR headroom in one stroke.
+# 0.75 (~0.42 stop under metadata white) accepts real sensors whose
+# measured clip sits a few percent under the declared level and rejects
+# mid-range plateaus outright.
+CEILING_PLAUSIBLE_FRACTION = 0.75
 
 
 CEILING_MIN_PILE_FRACTION = 2e-5

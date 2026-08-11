@@ -96,7 +96,10 @@ Ultra HDR 下它以"胶片印相 + scene HDR 扩展"参与（SDR 底图=胶片�
 
 ## 快速开始
 
-需要 **macOS**（Apple Silicon 或 Intel）与 Python 3.11 或更新版本。工具与 Core Image /
+需要 **Apple Silicon 的 macOS** 与 Python 3.11 或更新版本——原生内核 wheel
+只在构建机的 macOS 版本上构建与验证（产物按构建机平台打标签,如
+``macosx_.._arm64``）;更早的系统与 Intel Mac 未经测试,不作支持声明。纯
+NumPy 路径（``DNGSCAN_FAST=0``）除 Python + NumPy 外无原生要求。工具与 Core Image /
 RAW 9 解码器、HDR 增益图交付及其回读校验深度集成，支持平台限定为 macOS——这是声明的
 边界，不是未测试的默认。项目已把验证过的 rawpy/LibRaw 源码版本锁为直接依赖，首次安装
 会进行本机构建，因此还需要 Git 与 Xcode Command Line Tools。
