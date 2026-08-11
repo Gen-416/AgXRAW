@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
-project(dngscan LANGUAGES CXX)
+# A9 item 7: LANGUAGES NONE — initialising the project with CXX made the
+# advertised pure-Python fallback unreachable (configure itself failed on
+# hosts without a C++ toolchain, before the option below was ever read).
+# CXX is enabled OPTIONALLY after probing for a compiler.
+project(dngscan LANGUAGES NONE)
 
 # Native backend defaults ON (review batch 17): a standard install gets the
 # C++ AgX/HDR/output kernels; a toolchain that cannot compile them falls
@@ -7,9 +11,10 @@ project(dngscan LANGUAGES CXX)
 option(DNGSCAN_BUILD_NATIVE "Build the optional _dngscan_fast extension" ON)
 
 if(DNGSCAN_BUILD_NATIVE)
-  include(CheckCXXSourceCompiles)
-  check_cxx_source_compiles("int main() { return 0; }" DNGSCAN_CXX_WORKS)
-  if(DNGSCAN_CXX_WORKS)
+  include(CheckLanguage)
+  check_language(CXX)
+  if(CMAKE_CXX_COMPILER)
+    enable_language(CXX)
     add_subdirectory(cpp)
   else()
     message(WARNING

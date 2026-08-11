@@ -23,7 +23,7 @@
 `filters/schott_KG3.csv`：Schott KG3 热吸收滤镜透过率（同一上游 commit 的
 `src/spektrafilm/data/filters/heat_absorbing/schott/KG3.csv` 原样副本），为
 印相光源移植预置——上游 TH-KG3 = 3400K 黑体 × KG3（`model/illuminants.py`），
-当前拟合器仍用纯 3200K 黑体代替,属已知偏差,待光谱底座重建时替换。
+拟合器现用 3400K 黑体 × KG3 热吸收玻璃合成印片光源（A9 item 8 更正:此行曾停留在早期'纯 3200K 黑体'口径,与实现不符）。
 
 引入日期：2026-07-29。上游 commit：`3bb2c2d2801ff68b92019cf1dbcbb133d60832bc`
 （2026-08-05 复核：本目录 28 个 JSON 与该 commit 的

@@ -12,7 +12,20 @@ from dngscan import policy
 
 class RegisterConsistencyTests(unittest.TestCase):
     def test_every_entry_matches_its_live_constant(self) -> None:
+        from dngscan import hdr_agx_plan as h
+
         live = {
+            "RHO_BASE": h.RHO_BASE,
+            "MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT": h.MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT,
+            "P3_PRESSURE_ZERO_CONFIDENCE_PCT": h.P3_PRESSURE_ZERO_CONFIDENCE_PCT,
+            "UNALIGNED_DECODER_RHO_CAP": h.UNALIGNED_DECODER_RHO_CAP,
+            "NORMAL_WHITE_MARGIN_EV": h.NORMAL_WHITE_MARGIN_EV,
+            "SPARSE_EMITTER_WHITE_MARGIN_EV": h.SPARSE_EMITTER_WHITE_MARGIN_EV,
+            "NORMAL_MINIMUM_WHITE_EV": h.NORMAL_MINIMUM_WHITE_EV,
+            "SPARSE_EMITTER_MINIMUM_WHITE_EV": h.SPARSE_EMITTER_MINIMUM_WHITE_EV,
+            "MAXIMUM_WHITE_EV": h.MAXIMUM_WHITE_EV,
+            "NORMAL_SHOULDER_START_EV": h.NORMAL_SHOULDER_START_EV,
+            "SPARSE_EMITTER_SHOULDER_START_EV": h.SPARSE_EMITTER_SHOULDER_START_EV,
             "MIDGRAY_HEADROOM_STOPS": c.MIDGRAY_HEADROOM_STOPS,
             "CEILING_MIN_PILE_PIXELS": c.CEILING_MIN_PILE_PIXELS,
             "CEILING_MIN_PILE_FRACTION": c.CEILING_MIN_PILE_FRACTION,
@@ -34,6 +47,16 @@ class RegisterConsistencyTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIsNotNone(policy.entry(name),
                                      "live policy constant missing from register")
+
+    def test_the_version_fingerprint_pins_the_value_set(self) -> None:
+        """A9 item 6: editing a value and the register together without a
+        POLICY_VERSION bump fails here — the stored fingerprint for the
+        current version no longer matches the recomputed one."""
+        self.assertIn(policy.POLICY_VERSION, policy.POLICY_FINGERPRINTS)
+        self.assertEqual(
+            policy._fingerprint(policy.ENTRIES),
+            policy.POLICY_FINGERPRINTS[policy.POLICY_VERSION],
+        )
 
     def test_clip_margin_matches_the_cli_default(self) -> None:
         import argparse

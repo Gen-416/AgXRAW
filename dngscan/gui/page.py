@@ -1082,7 +1082,7 @@ $("#film").addEventListener("change",()=>{
 });
 // Film-takeover controls (EXPERIMENTAL): the mode row appears only with an active
 // curve preset, and the crossover declaration only in full (takeover) mode.
-// Controls the takeover LUT ignores by construction: the baked spectral
+// Controls the takeover film chain ignores by construction: the factorised spectral
 // chain replaces the AgX formation wholesale, so tone shaping, primaries and
 // punch are inert in full mode and the backend REJECTS full + non-agx cores.
 // Disable them (with the reason in the tooltip) rather than let dead sliders
@@ -1982,7 +1982,7 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         .replace("PREVIEW_LONG_EDGE", str(REALTIME_PREVIEW_LONG_EDGE))
         .replace("GRADE_OPTIONS", _grade_options_html())
         .replace("SCENE_TRANSFORM_OPTIONS", _scene_transform_options_html())
-        .replace("COREIMAGE_AVAILABLE_FLAG", "true" if coreimage_decode.available() else "false")
+        .replace("COREIMAGE_AVAILABLE_FLAG", "true" if coreimage_decode.runtime_available() else "false")
         # Keep the slider ceiling on the same source of truth as the CLI's
         # --hdr-headroom bound (log2(4000/100) = 5.32); step 0.02 lands on it exactly.
         .replace("MAX_HDR_HEADROOM_ATTR", f"{MAX_HDR_HEADROOM_EV:.2f}")

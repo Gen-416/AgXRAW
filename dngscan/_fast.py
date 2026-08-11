@@ -134,7 +134,7 @@ def supports_hdr_formation(formation_plan: Any) -> bool:
     """Whether the native HDR formation kernel may be dispatched for this plan.
 
     The kernel covers the full _form_hdr_chunk chain; film_mode="full" with an
-    active curve preset swaps in the takeover LUT — a per-pixel transfer the
+    active curve preset swaps in the takeover film chain — a per-pixel transfer the
     kernel does not model — so those plans keep the NumPy path (same exclusion
     precedent as supports_agx).
     """

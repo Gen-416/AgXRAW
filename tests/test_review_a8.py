@@ -30,6 +30,22 @@ class FullwellPlausibilityTests(unittest.TestCase):
         self.assertEqual(fw, 16383)
         self.assertIn("metadata", note)
 
+    def test_plateaus_at_three_quarters_and_nine_tenths_stay_rejected(self) -> None:
+        """A9 item 2: A8's 0.75 gate still let a 13000/16383 plateau
+        through. Metadata is authoritative; only a pile within the narrow
+        0.95 tolerance may override. Regression at 0.76/0.80/0.90."""
+        from dngscan.analysis import detect_ceilings, resolve_fullwell
+
+        colors = np.zeros((1000, 1000), np.int32)
+        sat = {0: 16383}
+        for frac in (0.76, 0.80, 0.90):
+            raw = np.full((1000, 1000), 3000, np.uint16)
+            raw.flat[:300] = int(16383 * frac)
+            ce, _, _, ok = detect_ceilings(raw, colors, [0], sat)
+            fw, _, _, _ = resolve_fullwell([0], ce, ok, sat)
+            with self.subTest(frac=frac):
+                self.assertEqual(fw, 16383)
+
     def test_a_genuine_near_white_pile_still_overrides(self) -> None:
         from dngscan.analysis import detect_ceilings, resolve_fullwell
 

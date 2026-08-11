@@ -730,7 +730,7 @@ def render_output_u8(
     # Same defence-in-depth as scene_render_to_display_linear (review batch
     # 11): the parameter sources normalize the transform away under
     # full+preset, but a hand-built plan reaching this production path must
-    # not feed the takeover LUT prefeed-separated pixels.
+    # not feed the takeover film chain prefeed-separated pixels.
     film_full = (
         str(getattr(effective_tone, "film_mode", "observe")) == "full"
         and str(getattr(effective_tone, "curve_preset", "none")) != "none"

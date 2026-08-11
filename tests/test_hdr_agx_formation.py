@@ -270,7 +270,7 @@ def _coreimage_available() -> bool:
     try:
         from dngscan import coreimage_decode
 
-        return coreimage_decode.available()
+        return coreimage_decode.runtime_available()
     except Exception:
         return False
 

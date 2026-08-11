@@ -730,12 +730,11 @@ def parse_decoder(params: dict) -> tuple[str, str]:
             "Core Image 解码器在此系统不可运行（需要 macOS + PyObjC Quartz,"
             "且 CIContext 能实际创建——A8:符号存在不等于运行时可用）"
         )
-    wb = str(params.get("wb", "camera"))
-    if decoder == "coreimage" and wb == "daylight":
-        raise ValueError(
-            "Core Image 解码器不支持“相机日光标定”模式（LibRaw 元数据乘数无验证映射）；"
-            "固定色温声明（如 5500K）与拍摄值均可用"
-        )
+    # A9 item 4: the RAW9 daylight rejection is GONE — raw_io implements
+    # the project hot-WB on top of the fixed AsShot decode (the transport
+    # matrix composes decode->applied with the daylight frame's inverse),
+    # the CLI allows it and tests pin it. One behaviour across GUI, CLI
+    # and the Python API.
     return decoder, version
 
 

@@ -590,7 +590,7 @@ def apply_render_adjustments(
         str(getattr(plan.tone, "film_mode", "observe")) == "full"
         and str(getattr(plan.tone, "curve_preset", "none")) != "none"
     ):
-        # The takeover LUT owns the highlight colour path entirely; a stale
+        # The takeover film chain owns the highlight colour path entirely; a stale
         # highlight-fade value from before the mode switch measurably altered
         # full-mode exports (0.129 max linear channel diff on _SDI0222 +
         # Velvia) through a control the GUI shows as disabled. Forced off at
@@ -808,18 +808,18 @@ def build_render_plan(
         tone = _replace(tone, endpoint_mode="adaptive", endpoint_note=None)
         mode_value = film_mode if film_mode in ("observe", "full") else "observe"
         if mode_value == "full" and str(tone_core) != "agx":
-            # The takeover LUT replaces the AgX formation wholesale and only
+            # The takeover film chain replaces the AgX formation wholesale and only
             # runs in the agx pipeline slot; the render stage would otherwise
             # fall back to the requested core SILENTLY while the filename
             # still claimed filmfull (the review's measured 0.0-diff bug).
             raise ValueError(
-                "胶片接管显影（full 模式）只在 AgX tone core 上运行：接管 LUT "
+                "胶片接管显影（full 模式）只在 AgX tone core 上运行：接管胶片链 "
                 "整体替换 AgX formation，lum/neutral/gated 核会静默退回普通渲染；"
                 "请使用 --tone-core agx 或切回 observe 模式"
             )
-        # Crossover is a declaration on the takeover LUT's neutral axis: it rides the plan only
+        # Crossover is a declaration on the takeover chain's neutral axis: it rides the plan only
         # alongside an active preset, defaults to "off" (byte-identical status quo)
-        # and is inert outside full mode (the film-takeover LUT's variant switch).
+        # and is inert outside full mode (the film-takeover chain's variant switch).
         # It must be stamped here, with the preset itself — not inside the
         # colour-head block below, which only runs for nonzero CC values (the
         # #20/#21 merge briefly moved it there, which silently killed

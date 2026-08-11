@@ -164,6 +164,24 @@ def validate_film_plans(
                        ("printer_m_cc", print_plan.printer_m_cc)):
         if not 0.0 <= float(_cc) <= 200.0:
             raise ValueError(f"{_name}={_cc} 域为 [0, 200] CC")
+        # A9 item 5: the colour head is a 5CC detent instrument — the GUI
+        # slider steps by 5 and the solved tau tables are calibrated on
+        # that grid; a continuous CC through the API was a silent contract
+        # break.
+        if float(_cc) % 5.0 != 0.0:
+            raise ValueError(f"{_name}={_cc} 必须是 5CC 档位(色头拨盘合同)")
+    if not 2000.0 <= float(exposure.reference_cct) <= 20000.0:
+        raise ValueError(
+            f"reference_cct={exposure.reference_cct} 域为 [2000, 20000] K"
+        )
+    if not isinstance(finish.seed, int) or isinstance(finish.seed, bool):
+        raise ValueError(f"seed={finish.seed!r} 必须是整数")
+    for _pname, _pval in (("grain_profile", finish.grain_profile),
+                          ("halation_profile", finish.halation_profile)):
+        if _pval not in ("off", "modelled_default"):
+            # A9 item 5: an unknown profile with amount=0 previously slid
+            # through because only the amount>0 branch checked it.
+            raise ValueError(f"{_pname}={_pval!r} 未知(可选 off/modelled_default)")
     if not -8.0 <= float(print_plan.print_exposure_ev) <= 8.0:
         raise ValueError(
             f"print_exposure_ev={print_plan.print_exposure_ev} 域为 [-8, 8]"

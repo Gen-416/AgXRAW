@@ -1311,7 +1311,7 @@ def load_raw(
         neutral_cct = None
         from . import coreimage_decode
 
-        if not coreimage_decode.available():
+        if not coreimage_decode.runtime_available():
             raise RuntimeError(
                 "Core Image decoder unavailable on this system "
                 "(macOS + PyObjC Quartz / CIRAWFilter required)"
