@@ -1012,7 +1012,16 @@ def parse_film_params(params: dict) -> tuple:
             raise ValueError(f"未知灰阶中性化：{neutral_req}")
         film_crossover = mapping[str(neutral_req)]
     else:
-        film_crossover = str(crossover_req if crossover_req is not None else "off")
+        # reference mode's sentinel default is the recipes' declared
+        # print-balanced; technical keeps the frozen "off".
+        _appearance_req = str(
+            params.get("filmAppearance", params.get("film_appearance", "technical"))
+            or "technical"
+        )
+        default_crossover = "print" if _appearance_req == "reference" else "off"
+        film_crossover = str(
+            crossover_req if crossover_req is not None else default_crossover
+        )
         if film_crossover not in ("off", "print", "datasheet"):
             raise ValueError(f"未知层间漂移开关：{film_crossover}")
     film_exposure_ev = _finite_number(

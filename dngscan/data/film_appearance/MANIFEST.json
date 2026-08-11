@@ -1,8 +1,8 @@
 {
  "count": 2,
  "files": {
-  "ektar100__endura_reference_v1.npz": "c3ca8298ed26693ff16ed3a6051f70f500de261547cd71539b79cc560d6a7592",
-  "portra400__endura_reference_v1.npz": "710d500c01223ffbe3cbaba9b63b42ccf94414ad54500f7908f4ecfd79d1092e"
+  "ektar100__endura_reference_v1.npz": "2dc0a0f9ecdd766a4f9cc61f37d15095a5529aac83049b2f45eec0207734a523",
+  "portra400__endura_reference_v1.npz": "81352a3cf5f9e6ab27c94d45461827c7afeb8ce76b2520fba2a975d43c14cac5"
  },
  "policy": "Every appearance recipe is hash-pinned; the loader refuses an asset whose bytes drift from this manifest.",
  "schema": 1

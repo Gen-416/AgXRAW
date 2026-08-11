@@ -99,14 +99,14 @@ def patch_volume() -> np.ndarray:
 class FastPathTests(unittest.TestCase):
     def test_identity_recipe_returns_the_same_object(self) -> None:
         """The Oklab round trip alone would cost byte identity; the identity
-        flag must route around the kernel entirely."""
-        plan = fa.compile_appearance_plan(
-            "reference", 1.0,
-            stock_id="portra400", medium_id="kodak_portra_endura__translated",
-        )
-        self.assertTrue(plan.recipe["is_identity"])
-        arr = np.ones((8, 3), np.float32) * 0.3
-        self.assertIs(fa.apply_film_appearance(arr, plan), arr)
+        flag must route around the kernel entirely. Synthetic since P4 —
+        the shipped recipes are authored now."""
+        with tempfile.TemporaryDirectory() as td:
+            tmp, man = synth_recipe(Path(td))
+            plan = plan_for(tmp, man)
+            self.assertTrue(plan.recipe["is_identity"])
+            arr = np.ones((8, 3), np.float32) * 0.3
+            self.assertIs(fa.apply_film_appearance(arr, plan), arr)
 
     def test_strength_zero_returns_the_same_object(self) -> None:
         with tempfile.TemporaryDirectory() as td:
