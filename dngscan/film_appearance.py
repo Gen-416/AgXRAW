@@ -123,6 +123,13 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
         provenance = str(meta.get("provenance", ""))
         if provenance not in ("editorial-authored", "empirical-own-target"):
             raise ValueError(f"外观 recipe provenance 未知:{provenance!r}")
+        declared_neutral = str(meta.get("neutralization_policy", "print-balanced"))
+        if declared_neutral not in (
+            "technical-neutral", "print-balanced", "native",
+        ):
+            raise ValueError(
+                f"外观 recipe 中性化声明未知:{declared_neutral!r}"
+            )
 
         ev = np.asarray(z["ev_knots"], dtype=np.float64)
         hue = np.asarray(z["hue_knots_deg"], dtype=np.float64)
@@ -175,6 +182,7 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
             "chroma_power": chroma_power,
             "neutral_c0": neutral_c0,
             "is_identity": is_identity,
+            "neutralization_policy": declared_neutral,
             **fields,
             # PCHIP derivatives along the EV axis, precomputed at load so the
             # per-pixel evaluation is pure gathers (§6.6: monotone C1 on EV,

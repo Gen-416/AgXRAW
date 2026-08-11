@@ -159,18 +159,22 @@ class LoaderFailClosedTests(unittest.TestCase):
 
 
 class RuntimeTests(unittest.TestCase):
-    def test_reference_identity_recipe_is_pixel_identical(self) -> None:
-        """The P1 exit gate in one assertion: reference mode wired end to
-        end through the real chain, with the identity recipe, changes not
-        one float against technical."""
+    def test_reference_engages_and_technical_stays_frozen(self) -> None:
+        """P1's original assertion (reference == technical) was predicated
+        on the identity placeholders; P4 authored the shipped recipes, so
+        the wiring contract flips: reference must CHANGE the render and
+        technical must not have moved. The strict identity behaviour lives
+        on with synthetic identity recipes in test_film_appearance_p2."""
         from dngscan.render import apply_tone_core
 
         pt = _compile_render_plan()
-        pr = _compile_render_plan(film_appearance="reference")
+        pr = _compile_render_plan(film_appearance="reference",
+                                  film_crossover="off")
         arr = (np.random.default_rng(7).random((1024, 3)) * 0.6).astype(np.float32)
         a = np.asarray(apply_tone_core(arr, pt.tone, pt.color))
         b = np.asarray(apply_tone_core(arr, pr.tone, pr.color))
-        np.testing.assert_array_equal(a, b)
+        self.assertFalse(np.array_equal(a, b),
+                         "an authored recipe must change the render")
 
     def test_technical_apply_returns_the_same_object(self) -> None:
         arr = np.ones((4, 3), dtype=np.float32)

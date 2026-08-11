@@ -76,7 +76,10 @@ def resolve_observe(stock: str) -> tuple[str, float, str]:
     return transform, float(strength), str(primaries)
 
 
-def reference_plan(stock: str, film_mode: str, film_interimage: str = "declared"):
+def reference_plan(
+    stock: str, film_mode: str, film_interimage: str = "declared",
+    film_appearance: str = "technical",
+):
     """Compile a render plan for one (stock, mode).
 
     The plan is compiled from a FIXED reference scene, not from the probe
@@ -109,6 +112,7 @@ def reference_plan(stock: str, film_mode: str, film_interimage: str = "declared"
         # opt-in datasheet/native branch.
         film_crossover="off",
         film_interimage=film_interimage,
+        film_appearance=film_appearance,
     )
     return plan, scene.bundle, transform, strength
 
@@ -116,6 +120,7 @@ def reference_plan(stock: str, film_mode: str, film_interimage: str = "declared"
 def render_probe(
     volume: np.ndarray, stock: str, film_mode: str,
     film_interimage: str = "declared",
+    film_appearance: str = "technical",
 ) -> np.ndarray:
     """Probe volume -> mapped Rec.2020, the common reference space.
 
@@ -127,7 +132,7 @@ def render_probe(
     the post-intent values it wants to test.
     """
     plan, bundle, transform, strength = reference_plan(
-        stock, film_mode, film_interimage
+        stock, film_mode, film_interimage, film_appearance
     )
     # Own the probe buffer. The current transforms are pure, but a diagnostic
     # must not let a future in-place optimization make later stock/mode passes

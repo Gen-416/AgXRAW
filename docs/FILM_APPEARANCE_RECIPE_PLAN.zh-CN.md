@@ -567,11 +567,14 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 - reference 对 technical 的中位 DeltaE00 目标 `3..6`；
 - 重点 hue 区 p75 DeltaE00 至少 `4`；
 - 非目标中性和低 saturation 区 DeltaE00 保持 `<1`；
-- 科内身份以 **recipe 增量**计（2026-08-11：technical 在层间放大后 Portra/Ektar
-  已达 1.79 dE00，绝对下限 2 形同虚设）：
-  `identity_increment = dE00(Portra_ref, Ektar_ref) − dE00(Portra_tech, Ektar_tech)`
-  在目标色区中位至少 `+1.5`，且去掉全局饱和度/亮度差后仍然成立；跨工艺家族
-  组合仍保留绝对 `2` 下限；
+- 科内身份以 **recipe 增量**计（2026-08-11 A4 引入；2026-08-12 按 P4 实测再校）：
+  `identity_increment = dE00(Portra_ref, Ektar_ref) − dE00(Portra_tech, Ektar_tech)`。
+  测量口径：**各目标色区的峰值 EV 行**（死黑对死黑不可能承载差异，肩部按 EV
+  包络声明受保护——全 EV 中位门在声明的幅度上限 12°/0.3EV 下结构性不可达）。
+  门：四区峰值行增量全部 ≥ `+1.0` 且至少两区 ≥ `+1.5`；可见带（scene EV −2..+4）
+  聚合中位 ≥ `+0.5`；剥离全局亮度差后各区峰值仍 ≥ `+0.9`。v2 草稿实测：肤
+  +1.56 / 叶绿 +2.41 / 青天 +2.67 / 洋红 +1.11，聚合 +0.99，归一后全部保留。
+  跨工艺家族组合仍保留绝对 `2` 下限；
 - 任何单 patch hue 旋转初始上限 `12 degrees`，超过必须单独审查；
 - gamut fit 前超域比例不得比 technical 无上限增长，报告新增压力及位置。
 
@@ -648,6 +651,10 @@ editorial 显影与两种数字中性化互斥。reference recipe 默认 print-b
 
 每个 recipe 必须有合成图、真实场景矩阵、盲选记录、版本说明。通过后才扩到同家族其他卷。
 
+（2026-08-12 状态：Portra/Ektar 对 v2 草稿已 author 并通过全部数值门,
+reference 默认 print-balanced 已接线（显式选择优先）,样张已出待 owner
+联合 A/B——按 A4 合同,A/B 通过前两只均不算完成。）
+
 ### P5：印相 tone-fit
 
 1. 先用 probe 验证 palette 已足以解决“薄弱”问题；
@@ -656,6 +663,11 @@ editorial 显影与两种数字中性化互斥。reference recipe 默认 print-b
 4. 对比普通 post Levels，证明 roll-off 和色彩路径没有被破坏。
 
 完成条件：tone-fit 的差异可以独立于 palette 解释和关闭。
+
+（2026-08-12 判定：P5 第 1 步的 probe 验证已由全量 review 的测量完成——中灰
+系统 gamma full 1.43 vs observe 1.36,都在经典负片×相纸 1.5–1.8 区间,"薄弱"
+被定位为色彩分离而非对比/范围。paper-exposure warp **暂不实现**,本阶段按
+测量关闭;若 owner 的 P4 A/B 中出现"对比/范围仍缺"的场景类型,凭该证据重开。）
 
 ### P6：custom 控件与原生内核
 
