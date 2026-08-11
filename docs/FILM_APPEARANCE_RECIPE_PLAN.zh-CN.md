@@ -414,6 +414,16 @@ dngscan_assets/film_appearance/
 
 这些是可检验的 editorial targets，不写成“严格复现 Portra/2383”。每个 recipe 先在合成 chart 上定义，再由真实场景微调；禁止只凭单张照片手调。
 
+（2026-08-11 E1 状态：清单 3、4 已 author——`vision3250d__print2383_reference_v1`
+与 `velvia100__direct_reference_v1`。单卷家族直接 author,无 common/residual 拆分;
+endura 的"禁差分 richness"是成对归因规则,单卷家族可用 richness 场（Velvia 的
+口碑正在该轴）。E1 新增阴影/亮部加权 EV 包络（电影冷阴影/暖亮部结构不可分离）,
+±6 EV 仍严格为零。门在 tests/test_film_appearance_p8.py:四区可见度地板
+(峰值行≥1.5,至少两区≥2.5)+中带聚合≥1.5+方向性断言(Vision3 阴影蓝向青、
+Velvia 绿向翠)+Velvia 肤区为最少移动区+内核隔离中性<0.5+跨家族两两中位≥2
+(实测 3.7–6.5)+theatrical 无配方 fail closed。owner A/B 待审。清单 5
+(extended 解释)与原生内核为后续批次。）
+
 ## 11. 运行时接线
 
 新增：

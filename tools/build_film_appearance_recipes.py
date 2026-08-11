@@ -51,9 +51,15 @@ H = HUE_KNOT_COUNT
 K = len(EV_KNOTS)
 HUES = np.arange(H) * (360.0 / H)
 
-# Midtone-centred EV envelope over knots (-6, -3, 0, +3, +6): zero at both
-# extremes by declaration.
+# EV envelopes over knots (-6, -3, 0, +3, +6): zero at both extremes by
+# declaration (the shoulder's path to white and the deep toe are not the
+# palette's to bend). E1 adds shadow-/highlight-weighted envelopes so a
+# recipe can declare exposure-dependent paths (the cine cool-shadow /
+# warm-highlight structure is NOT separable into one profile x one hue
+# curve); each band still tapers to zero at ±6 EV.
 EV_PROFILE = np.array([0.0, 0.75, 1.0, 0.7, 0.0])
+EV_SHADOW = np.array([0.0, 1.0, 0.5, 0.1, 0.0])
+EV_HIGHLIGHT = np.array([0.0, 0.1, 0.5, 1.0, 0.0])
 
 
 def band(center: float, width: float, amount: float) -> np.ndarray:
@@ -65,10 +71,10 @@ def band(center: float, width: float, amount: float) -> np.ndarray:
     return amount * 0.5 * (1.0 + np.cos(np.pi * x))
 
 
-def sheet(*bands: np.ndarray) -> np.ndarray:
-    """Hue profile -> [K, H] field through the EV envelope."""
+def sheet(*bands: np.ndarray, ev: np.ndarray = EV_PROFILE) -> np.ndarray:
+    """Hue profile -> [K, H] field through an EV envelope."""
     hue_profile = np.sum(bands, axis=0) if bands else np.zeros(H)
-    return (EV_PROFILE[:, None] * hue_profile[None, :]).astype(np.float32)
+    return (ev[:, None] * hue_profile[None, :]).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -125,27 +131,90 @@ RESIDUALS = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# E1 (§10 items 3-4): single-stock families, authored directly — no common/
+# residual split because there is no sibling to attribute a differential to.
+# The endura no-differential-richness rule was a PAIR-attribution rule; a
+# single-stock family may use the richness field, and Velvia's reputation
+# genuinely lives on that axis.
+# ---------------------------------------------------------------------------
+DIRECT_FIELDS = {
+    # Vision3 250D printed on 2383: the cine print reading — dense darks,
+    # warm open skin, cyan-cold shadow blues, highlights drifting warm-green
+    # before the ±6 envelope walks them back to neutral (§10 item 4).
+    "vision3250d": {
+        "hue_delta_deg": (
+            sheet(band(40.0, 60.0, 2.5))                    # skin arc: warm
+            + sheet(band(225.0, 80.0, -5.0), ev=EV_SHADOW)  # shadow blues: cyan-cold
+            + sheet(band(85.0, 70.0, 3.0), ev=EV_HIGHLIGHT) # highlights: warm-green
+        ),
+        "log_chroma_gain": sheet(band(0.0, 360.0, 0.06)),
+        "density_ev": (
+            sheet(band(0.0, 360.0, 0.12), ev=EV_SHADOW)     # dense dark colour
+            + sheet(band(0.0, 360.0, 0.05))                 # mild mid weight
+            + sheet(band(230.0, 70.0, 0.06))                # blues carry a little more
+        ),
+    },
+    # Velvia 100 viewed directly: the landmark separation — greens toward
+    # emerald, cyans toward blue, the magenta arc toward red — with high
+    # colour density everywhere chromatic and the skin arc left alone
+    # (§10 item 3; the purity shoulder in the kernel guards the top end).
+    "velvia100": {
+        "hue_delta_deg": (
+            sheet(band(20.0, 40.0, -3.0))     # reds: toward crimson, tight of skin
+            + sheet(band(140.0, 60.0, 6.0))   # greens: toward emerald
+            + sheet(band(210.0, 50.0, 5.0))   # cyans: toward blue (away from green)
+            + sheet(band(330.0, 70.0, 4.0))   # magenta arc: toward red
+        ),
+        "log_chroma_gain": (
+            sheet(band(0.0, 360.0, 0.14))     # the richness reputation
+            + sheet(band(50.0, 50.0, -0.08))  # skin protection: arc pulled back
+        ),
+        "density_ev": (
+            sheet(band(0.0, 360.0, 0.10))     # dense colour is the base state
+            + sheet(band(140.0, 70.0, 0.12))  # greens
+            + sheet(band(230.0, 60.0, 0.12))  # blues
+            + sheet(band(330.0, 60.0, 0.10))  # magenta
+            + sheet(band(20.0, 40.0, 0.08))   # reds, tight of the skin arc
+            + sheet(band(50.0, 45.0, -0.05))  # skin protection: density relief
+        ),
+    },
+}
+
 RECIPES = (
     ("portra400", "kodak_portra_endura__translated"),
     ("ektar100", "kodak_portra_endura__translated"),
+    ("vision3250d", "kodak_2383__translated"),
+    ("velvia100", "direct__velvia100"),
 )
+
+
+def _fields_for(stock_id: str) -> dict:
+    if stock_id in RESIDUALS:
+        res = RESIDUALS[stock_id]
+        return {
+            "hue_delta_deg": COMMON["hue_delta_deg"] + res.get(
+                "hue_delta_deg", np.zeros((K, H), np.float32)
+            ),
+            "log_chroma_gain": COMMON["log_chroma_gain"],   # NO differential
+            "density_ev": COMMON["density_ev"] + res.get(
+                "density_ev", np.zeros((K, H), np.float32)
+            ),
+        }
+    return dict(DIRECT_FIELDS[stock_id])
 
 
 def build(stock_id: str, medium_id: str) -> Path:
     rid = f"{stock_id}__{medium_family(medium_id)}_reference_v1"
-    res = RESIDUALS[stock_id]
-    fields = {
-        "hue_delta_deg": COMMON["hue_delta_deg"] + res.get(
-            "hue_delta_deg", np.zeros((K, H), np.float32)
-        ),
-        "log_chroma_gain": COMMON["log_chroma_gain"],   # NO differential
-        "density_ev": COMMON["density_ev"] + res.get(
-            "density_ev", np.zeros((K, H), np.float32)
-        ),
-        "neutral_bias_ab": np.zeros((K, 2), np.float32),
-    }
+    fields = {**_fields_for(stock_id),
+              "neutral_bias_ab": np.zeros((K, 2), np.float32)}
     cap = float(np.abs(fields["hue_delta_deg"]).max())
     assert cap <= 12.0, f"{rid}: hue cap {cap:.1f} > 12 deg (§15.2)"
+    # §15.2's 0.3 EV is the per-band authoring intent; overlapping band
+    # tails may sum slightly past it (approved v3 Ektar peaks at 0.34).
+    # The hard gate is on the summed field.
+    dcap = float(np.abs(fields["density_ev"]).max())
+    assert dcap <= 0.35, f"{rid}: density cap {dcap:.2f} > 0.35 EV summed"
     meta = {
         "schema": APPEARANCE_SCHEMA,
         "recipe_id": rid,
