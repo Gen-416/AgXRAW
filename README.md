@@ -45,7 +45,9 @@ One RAW, four observation positions: the AgX baseline (no film), Kodak Portra 40
 (negative + paper), Fujifilm Velvia 100 (reversal), and Vision3 250D in its theatrical
 quotation. Each stock's calibrated base — the WB Kelvin, the layer separation, the
 development curve, the viewing translation — is constructed declaratively from the
-datasheets' spectral data, with no baked LUT. The default look of a stock then adds two
+datasheets' spectral data — no monolithic, creative or opaque LUT: the spectral chain
+is factorised into traceable B1/B2 interpolation assets (65^3 volumes solved offline
+from the same declared data, not hand-tuned looks). The default look of a stock then adds two
 declarations that are explicitly editorial, not measured: a separation-strength
 pairing and an AgX primaries pairing, chosen by stock reputation. Both are visible
 in the UI, freely adjustable, and never override a value you set yourself — the

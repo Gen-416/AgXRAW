@@ -258,8 +258,14 @@ ENTRIES: tuple[PolicyEntry, ...] = (
 def _fingerprint(entries: tuple[PolicyEntry, ...]) -> str:
     import hashlib
 
+    # A10 item 3: the module contract says value OR MEANING changes bump
+    # the version, so the fingerprint canonicalises the meaning fields too
+    # — editing a rationale silently was possible when only name/value/unit
+    # were hashed.
     payload = "|".join(
-        f"{e.name}={e.value!r}[{e.unit}]" for e in sorted(entries, key=lambda e: e.name)
+        f"{e.name}={e.value!r}[{e.unit}]"
+        f"~{e.rationale}~{e.constrained_by}~{';'.join(e.history)}"
+        for e in sorted(entries, key=lambda e: e.name)
     )
     return hashlib.sha256(payload.encode()).hexdigest()
 
@@ -268,7 +274,7 @@ def _fingerprint(entries: tuple[PolicyEntry, ...]) -> str:
 # entry set) without bumping the version breaks the match; bumping demands
 # a new pinned line here — a conscious, reviewable act.
 POLICY_FINGERPRINTS = {
-    2: "f4c9971f70d7a7c6641b2031ae555542fdc87ca840c60bda3b92fed4b3ab97b5",
+    2: "94bbe1b53408b1a97d5f924747d98672f36ae9dead774429e3bb3253cfd8ca02",
 }
 
 

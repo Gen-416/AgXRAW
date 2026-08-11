@@ -135,7 +135,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_accepts_dng_version_token(self) -> None:
         with (
-            patch.object(coreimage_decode, "available", return_value=True),
+            patch.object(coreimage_decode, "runtime_available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -148,7 +148,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_reports_explicit_legacy_fallback(self) -> None:
         with (
-            patch.object(coreimage_decode, "available", return_value=True),
+            patch.object(coreimage_decode, "runtime_available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -162,7 +162,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_contains_open_error(self) -> None:
         with (
-            patch.object(coreimage_decode, "available", return_value=True),
+            patch.object(coreimage_decode, "runtime_available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -198,7 +198,7 @@ class CoreImageVersionTests(unittest.TestCase):
         self.assertTrue(result["geometry"])
 
 
-@unittest.skipUnless(coreimage_decode.available(), "Core Image unavailable")
+@unittest.skipUnless(coreimage_decode.runtime_available(), "Core Image runtime unavailable")
 class CoreImageLiveTests(unittest.TestCase):
     def test_color_noise_default_cleared(self) -> None:
         _skip_unless_available()
@@ -436,8 +436,11 @@ class LoadRawDecoderGuardTests(unittest.TestCase):
     def test_daylight_uses_project_hot_wb_after_fixed_coreimage_decode(self) -> None:
         from dngscan.raw_io import load_raw
 
-        if not coreimage_decode.available():
-            raise unittest.SkipTest("Core Image unavailable")
+        # A10 item 1: this test decodes a real frame — gate on the
+        # RUNTIME probe (the symbol probe passes on hosts where context
+        # creation fails and the test then errors instead of skipping).
+        if not coreimage_decode.runtime_available(interactive=True):
+            raise unittest.SkipTest("Core Image runtime unavailable")
         if not SIGMA_DNG.is_file():
             raise unittest.SkipTest(f"missing {SIGMA_DNG}")
         bundle = load_raw(
