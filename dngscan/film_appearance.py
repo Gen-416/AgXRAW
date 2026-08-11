@@ -34,6 +34,11 @@ APPEARANCE_DIR = Path(__file__).with_name("data") / "film_appearance"
 MANIFEST_PATH = APPEARANCE_DIR / "MANIFEST.json"
 
 APPEARANCE_MODES = ("technical", "reference", "custom")
+# Recipe interpretation variants (§10 item 5): "reference" is the print
+# reading; "extended" is the scan/telecine counter-reading — same family
+# direction at reduced amplitude with a digitally neutral grey axis. The
+# variant selects the recipe ASSET; the mode still selects the pipeline.
+APPEARANCE_VARIANTS = ("reference", "extended")
 
 # §6.6 axes the P2 kernel will interpolate over. Declared here so the loader
 # can validate shapes before any kernel exists to consume them.
@@ -61,6 +66,8 @@ class FilmAppearancePlan:
     richness_delta: float = 0.0
     color_density_delta: float = 0.0
     neutral_bias_strength: float = 1.0
+    # E2: which recipe interpretation the asset id was resolved from.
+    variant: str = "reference"
     recipe: dict | None = field(default=None, compare=False)
 
 
@@ -219,7 +226,7 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
 def compile_appearance_plan(
     mode: str, strength: float, *, stock_id: str, medium_id: str,
     richness_delta: float = 0.0, color_density_delta: float = 0.0,
-    neutral_bias_strength: float = 1.0,
+    neutral_bias_strength: float = 1.0, variant: str = "reference",
 ) -> FilmAppearancePlan:
     """Resolve the user's appearance selection into the immutable plan."""
     mode = str(mode or "technical")
@@ -247,9 +254,19 @@ def compile_appearance_plan(
     ):
         if not np.isfinite(val) or not lo <= val <= hi:
             raise ValueError(f"{name}={val!r} 域为 [{lo}, {hi}]")
+    variant = str(variant or "reference")
+    if variant not in APPEARANCE_VARIANTS:
+        raise ValueError(
+            f"film_appearance_variant={variant!r} 未知(可选 reference/extended)"
+        )
     if mode == "technical":
+        if variant != "reference":
+            raise ValueError(
+                "film_appearance_variant 属于外观层(reference/custom 模式);"
+                "technical 携带非默认变体是合同违规"
+            )
         return FilmAppearancePlan(mode="technical")
-    rid = f"{stock_id}__{medium_family(medium_id)}_reference_v1"
+    rid = f"{stock_id}__{medium_family(medium_id)}_{variant}_v1"
     recipe = load_recipe(rid, stock_id=stock_id, medium_id=medium_id)
     return FilmAppearancePlan(
         mode=mode,
@@ -260,8 +277,33 @@ def compile_appearance_plan(
         richness_delta=rich,
         color_density_delta=dens,
         neutral_bias_strength=nbias,
+        variant=variant,
         recipe=recipe,
     )
+
+
+_POLICY_TO_CROSSOVER = {
+    "technical-neutral": "off", "print-balanced": "print", "native": "datasheet",
+}
+
+
+def declared_crossover(stock_id: str, medium_id: str, variant: str) -> str:
+    """The crossover a recipe DECLARES, for the compiler's None-default.
+
+    E2 refines A5 item 6: the single resolution point stays in the plan
+    compiler, but the default now comes from the recipe's own
+    neutralization_policy declaration instead of a mode-based constant —
+    the extended interpretation declares technical-neutral (the neutral
+    grey axis IS its point) while the reference recipes declare
+    print-balanced. Fail-closed: an unloadable recipe raises here exactly
+    as the appearance compile would."""
+    rid = f"{stock_id}__{medium_family(medium_id)}_{str(variant)}_v1"
+    recipe = load_recipe(rid, stock_id=stock_id, medium_id=medium_id)
+    policy = str(recipe["neutralization_policy"])
+    try:
+        return _POLICY_TO_CROSSOVER[policy]
+    except KeyError:
+        raise ValueError(f"{rid}: 未知 neutralization_policy {policy!r}")
 
 
 def medium_family(medium_id: str) -> str:

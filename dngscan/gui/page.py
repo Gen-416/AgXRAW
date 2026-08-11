@@ -395,6 +395,13 @@ FILM_CURVE_OPTIONS
         <option value="custom">自定义</option>
       </select>
     </div>
+    <div id="filmAppearanceVariantBlock" style="flex:1;min-width:190px;display:none">
+      <label>解释变体</label>
+      <select id="filmAppearanceVariant" title="配方解释变体:参考印相=该卷在配对介质上的印相解读(默认);扫描对照(extended)=同家族方向 0.6 幅度、阴影密度不加、灰轴数字中性——scan/telecine 的对照解读。仅已作 extended 配方的卷可用(当前 vision3250d),缺资产硬失败。">
+        <option value="reference">参考印相 · 默认</option>
+        <option value="extended">扫描对照 extended</option>
+      </select>
+    </div>
     <div style="flex:1;min-width:190px">
       <label>层间放大</label>
       <select id="filmInterimage" title="层间放大（inter-image effect）：显影耦合对色差的有界放大 D'=N+sign(d)·h·t'，β 按卷声明，轨距内保界。声明=默认；关=光谱基线（oracle 口径）。">
@@ -941,6 +948,7 @@ function saveSettings(){
     filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
     filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
     filmAppearanceStrength:$("#filmAppearanceStrength").value,
+    filmAppearanceVariant:$("#filmAppearanceVariant").value,
     filmRichness:$("#filmRichness").value,filmColorDensity:$("#filmColorDensity").value,
     filmNeutralBias:$("#filmNeutralBias").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
@@ -999,6 +1007,7 @@ function restoreSettings(){
   else if(s.filmNeutralization==="datasheet")$("#filmNeutralization").value="native";
   else if(s.filmCrossover){$("#filmNeutralization").value=s.filmCrossover==="datasheet"?"native":"auto";}
   if(s.filmAppearance&&["technical","reference","custom"].includes(s.filmAppearance))$("#filmAppearance").value=s.filmAppearance;
+  if(s.filmAppearanceVariant&&["reference","extended"].includes(s.filmAppearanceVariant))$("#filmAppearanceVariant").value=s.filmAppearanceVariant;
   if(s.filmInterimage&&["declared","off"].includes(s.filmInterimage))$("#filmInterimage").value=s.filmInterimage;
   if(s.filmAppearanceStrength!==undefined)$("#filmAppearanceStrength").value=s.filmAppearanceStrength;
   if(s.filmRichness!==undefined)$("#filmRichness").value=s.filmRichness;
@@ -1098,11 +1107,13 @@ function updateFilmModeUi(){
     appRow.style.display=full?"":"none";
     if(!full){
       $("#filmAppearance").value="technical";$("#filmInterimage").value="declared";
-      $("#filmAppearanceStrength").value=1;
+      $("#filmAppearanceStrength").value=1;$("#filmAppearanceVariant").value="reference";
       $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
     }
     const appMode=$("#filmAppearance").value;
     $("#filmAppearanceStrengthBlock").style.display=(full&&appMode!=="technical")?"":"none";
+    $("#filmAppearanceVariantBlock").style.display=(full&&appMode!=="technical")?"":"none";
+    if(appMode==="technical"){$("#filmAppearanceVariant").value="reference";}
     $("#filmAppearanceCustom").style.display=(full&&appMode==="custom")?"":"none";
     if(appMode!=="custom"){
       $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
@@ -1235,6 +1246,7 @@ function setFilmAppearanceLabels(){
 setFilmAppearanceLabels();
 $("#filmAppearance").addEventListener("change",()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();});
 $("#filmInterimage").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+$("#filmAppearanceVariant").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 for(const id of ["filmAppearanceStrength","filmRichness","filmColorDensity","filmNeutralBias"]){
   $("#"+id).addEventListener("input",()=>{setFilmAppearanceLabels();saveSettings();scheduleLivePreview();});
 }
@@ -1383,6 +1395,7 @@ function payload(){
     filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
     filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
     filmAppearanceStrength:+$("#filmAppearanceStrength").value,
+    filmAppearanceVariant:$("#filmAppearanceVariant").value,
     filmRichness:+$("#filmRichness").value,filmColorDensity:+$("#filmColorDensity").value,
     filmNeutralBias:+$("#filmNeutralBias").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,

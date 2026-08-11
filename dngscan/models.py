@@ -286,6 +286,8 @@ class ToneCompressionPlan:
     # "reference" resolves the stock x medium recipe at compile, fail-closed.
     film_appearance: str = "technical"
     film_appearance_strength: float = 1.0
+    # E2: which recipe interpretation (reference/extended) was selected.
+    film_appearance_variant: str = "reference"
     # The COMPILED FilmAppearancePlan (A3 doctrine: the runtime consumes the
     # compiled object, never re-resolves from disk or a registry). None on
     # hand-built plans; a hand-built plan claiming "reference" without it
