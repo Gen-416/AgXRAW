@@ -417,12 +417,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--film-appearance",
-        choices=("technical", "reference"),
+        choices=("technical", "reference", "custom"),
         default="technical",
         help=(
             "胶片解释(仅 full):technical=光谱链本体(默认);reference=参考印相"
-            "外观层(P1 仅 identity recipe,P4 起有内容;缺 recipe 的卷硬失败)"
+            "外观层(缺 recipe 的卷硬失败);custom=reference+三个有界修饰"
         ),
+    )
+    parser.add_argument(
+        "--film-richness",
+        type=float, default=0.0, metavar="R",
+        help="颜色丰度修饰 -1..1(仅 custom;0=按 recipe)",
+    )
+    parser.add_argument(
+        "--film-color-density",
+        type=float, default=0.0, metavar="D",
+        help="色密度修饰 -1..1(仅 custom;0=按 recipe)",
+    )
+    parser.add_argument(
+        "--film-neutral-bias",
+        type=float, default=1.0, metavar="S",
+        help="灰阶偏色强度 0..2(仅 custom;1=按 recipe;当前首批 recipe 该场为零)",
     )
     parser.add_argument(
         "--film-appearance-strength",
@@ -675,7 +690,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         # print-balanced interpretation when the user expressed no explicit
         # neutralization choice; technical keeps the frozen default.
         args.film_crossover = (
-            "print" if getattr(args, "film_appearance", "technical") == "reference"
+            "print"
+            if getattr(args, "film_appearance", "technical") in ("reference", "custom")
             else "off"
         )
     if args.film_print_timing == "custom" and args.film_crossover != "datasheet":
@@ -965,6 +981,9 @@ def main(argv: list[str]) -> int:
                 film_interimage=args.film_interimage,
                 film_appearance=args.film_appearance,
                 film_appearance_strength=args.film_appearance_strength,
+                film_richness=args.film_richness,
+                film_color_density=args.film_color_density,
+                film_neutral_bias=args.film_neutral_bias,
                 film_dev_contrast=args.film_dev_contrast,
                 film_dev_fog=args.film_dev_fog,
                 film_dev_density=args.film_dev_density,
@@ -1015,6 +1034,9 @@ def main(argv: list[str]) -> int:
                 film_interimage=args.film_interimage,
                 film_appearance=args.film_appearance,
                 film_appearance_strength=args.film_appearance_strength,
+                film_richness=args.film_richness,
+                film_color_density=args.film_color_density,
+                film_neutral_bias=args.film_neutral_bias,
                 film_dev_contrast=args.film_dev_contrast,
                 film_dev_fog=args.film_dev_fog,
                 film_dev_density=args.film_dev_density,

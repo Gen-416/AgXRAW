@@ -210,7 +210,9 @@ class ServiceWiringTests(unittest.TestCase):
         out = parse_film_params({**base, "filmInterimage": "off",
                                  "filmAppearance": "reference",
                                  "filmAppearanceStrength": 0.8})
-        self.assertEqual(out[-3:], ("off", "reference", 0.8))
+        # positions 13:16 are the interpretation trio; the tail grew the
+        # P6 custom modifiers (richness/color-density/neutral-bias)
+        self.assertEqual(out[13:16], ("off", "reference", 0.8))
         with self.assertRaises(ValueError):
             parse_film_params({**base, "filmAppearance": "banana"})
         with self.assertRaises(ValueError):

@@ -48,6 +48,19 @@ Fujifilm Velvia 100（反转片）、Vision3 250D 影院放映外观（引用原
 [胶片教程](docs/FILM_TUTORIAL.zh-CN.md)，技术底座见
 [架构文档](docs/ARCHITECTURE.zh-CN.md)。
 
+## 一张图看三种胶片解释
+
+![AgX 观察、胶片技术链、胶片参考印相对比](docs/assets/film-three-interpretations.jpg)
+
+外观层落地后，full 模式下一卷胶片回答两个可分离的问题。**technical（技术链）**
+是光谱底座加 modelled 层间放大——测量的乳剂×相纸系统印出的样子，灰阶数字中性。
+**reference（参考印相）**在其上叠加声明的参考印相外观：按卷 author 的 palette
+（hue 路径与色密度，以 Endura 公共基调 + 每卷 residual 表达，从不是烘焙 LUT），
+以及 print-balanced 灰阶策略——锚定中灰、让相纸自己的两端 crossover 呼吸。每一层
+都声明来源（measured / modelled / editorial），`technical` 始终字节冻结、随时可回。
+第三档 `custom` 暴露三个以 recipe 自身为中心的有界修饰（颜色丰度/色密度/灰阶
+偏色）。默认仍为 `technical`；reference 是显式选择，待更广盲测后再议默认。
+
 ## 一张图看光谱印相链
 
 | 数字中性化（默认） | 数据手册层间漂移 |

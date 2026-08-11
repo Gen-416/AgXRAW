@@ -33,7 +33,7 @@ APPEARANCE_SCHEMA = 1
 APPEARANCE_DIR = Path(__file__).with_name("data") / "film_appearance"
 MANIFEST_PATH = APPEARANCE_DIR / "MANIFEST.json"
 
-APPEARANCE_MODES = ("technical", "reference")
+APPEARANCE_MODES = ("technical", "reference", "custom")
 
 # §6.6 axes the P2 kernel will interpolate over. Declared here so the loader
 # can validate shapes before any kernel exists to consume them.
@@ -56,6 +56,11 @@ class FilmAppearancePlan:
     strength: float = 1.0
     provenance: str = ""
     asset_sha256: str = ""
+    # P6 custom deltas (plan §11), compiled and validated; identity values
+    # make "custom" bit-equal to "reference".
+    richness_delta: float = 0.0
+    color_density_delta: float = 0.0
+    neutral_bias_strength: float = 1.0
     recipe: dict | None = field(default=None, compare=False)
 
 
@@ -198,27 +203,49 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
 
 
 def compile_appearance_plan(
-    mode: str, strength: float, *, stock_id: str, medium_id: str
+    mode: str, strength: float, *, stock_id: str, medium_id: str,
+    richness_delta: float = 0.0, color_density_delta: float = 0.0,
+    neutral_bias_strength: float = 1.0,
 ) -> FilmAppearancePlan:
     """Resolve the user's appearance selection into the immutable plan."""
     mode = str(mode or "technical")
     if mode not in APPEARANCE_MODES:
-        raise ValueError(f"film_appearance={mode!r} 未知(可选 technical/reference)")
+        raise ValueError(
+            f"film_appearance={mode!r} 未知(可选 technical/reference/custom)"
+        )
     strength = float(strength)
     if not np.isfinite(strength) or not 0.0 <= strength <= STRENGTH_MAX:
         raise ValueError(
             f"film_appearance_strength={strength!r} 域为 [0, {STRENGTH_MAX}]"
         )
+    rich = float(richness_delta)
+    dens = float(color_density_delta)
+    nbias = float(neutral_bias_strength)
+    if mode != "custom" and (rich != 0.0 or dens != 0.0 or nbias != 1.0):
+        raise ValueError(
+            "richness/color-density/neutral-bias 修饰只在 film_appearance="
+            "custom 下有意义(非默认值 + 非 custom 模式是合同违规)"
+        )
+    for name, val, lo, hi in (
+        ("film_richness", rich, -1.0, 1.0),
+        ("film_color_density", dens, -1.0, 1.0),
+        ("film_neutral_bias", nbias, 0.0, 2.0),
+    ):
+        if not np.isfinite(val) or not lo <= val <= hi:
+            raise ValueError(f"{name}={val!r} 域为 [{lo}, {hi}]")
     if mode == "technical":
         return FilmAppearancePlan(mode="technical")
     rid = f"{stock_id}__{medium_family(medium_id)}_reference_v1"
     recipe = load_recipe(rid, stock_id=stock_id, medium_id=medium_id)
     return FilmAppearancePlan(
-        mode="reference",
+        mode=mode,
         recipe_id=rid,
         strength=strength,
         provenance=recipe["provenance"],
         asset_sha256=recipe["sha256"],
+        richness_delta=rich,
+        color_density_delta=dens,
+        neutral_bias_strength=nbias,
         recipe=recipe,
     )
 
@@ -352,8 +379,8 @@ def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np
         return developed
     recipe = plan.recipe
     if recipe is None:
-        raise ValueError("reference 模式的 plan 缺少已解析 recipe(编译期错误)")
-    if recipe["is_identity"]:
+        raise ValueError("reference/custom 模式的 plan 缺少已解析 recipe(编译期错误)")
+    if recipe["is_identity"] and plan.neutral_bias_strength == 1.0:
         return developed
 
     rgb = np.asarray(developed, dtype=np.float32).reshape(-1, 3)
@@ -387,6 +414,13 @@ def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np
     dh = _sample_field(recipe["hue_delta_deg"], recipe["d_hue_delta_deg"], coef)
     gc = _sample_field(recipe["log_chroma_gain"], recipe["d_log_chroma_gain"], coef)
     dd = _sample_field(recipe["density_ev"], recipe["d_density_ev"], coef)
+    # P6 custom modifiers: multiplicative about the recipe's own values, so
+    # 0/0 keeps custom == reference exactly and the recipe stays the centre
+    # of the control range (plan §7.3: no unitless free constants).
+    if plan.richness_delta != 0.0:
+        gc = gc * np.float32(1.0 + plan.richness_delta)
+    if plan.color_density_delta != 0.0:
+        dd = dd * np.float32(1.0 + plan.color_density_delta)
 
     sw = strength * w_c
     h_new = np.radians(hdeg + dh * sw)
@@ -397,7 +431,7 @@ def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np
 
     a_new = C_new * np.cos(h_new)
     b_new = C_new * np.sin(h_new)
-    nb = recipe["neutral_bias_ab"]
+    nb = recipe["neutral_bias_ab"] * np.float32(plan.neutral_bias_strength)
     if float(np.abs(nb).max()) > 0.0:
         ev_axis = np.asarray(EV_KNOTS, dtype=np.float32)
         ec = np.clip(e, ev_axis[0], ev_axis[-1])

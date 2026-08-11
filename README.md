@@ -53,6 +53,24 @@ measured base and the editorial pairing stay distinguishable. All twenty stocks 
 five theatrical variants are listed in the [film tutorial](docs/FILM_TUTORIAL.zh-CN.md)
 (Chinese); the technical base lives in the [architecture notes](docs/ARCHITECTURE.md).
 
+## Three film interpretations in one frame
+
+![AgX observe, film technical, and film reference compared](docs/assets/film-three-interpretations.jpg)
+
+Since the appearance layer landed, a stock in full mode answers two separable
+questions. **technical** is the spectral base plus the modelled inter-image
+term — what the measured emulsion-and-paper system prints, with the grey scale
+digitally neutralized. **reference** adds the declared reference-print
+appearance on top: a per-stock palette (hue paths and colour density authored
+as an Endura common base plus stock residuals — never a baked LUT), and the
+print-balanced grey policy that anchors mid grey while letting the paper's own
+crossover breathe at both ends. Every layer states its provenance — measured,
+modelled, or editorial — and `technical` remains byte-frozen and reachable at
+any time. A third mode, `custom`, exposes three bounded modifiers (richness,
+colour density, neutral bias) centred on the recipe's own values. The default
+remains `technical`; reference is an explicit choice pending broader blind
+testing.
+
 ## The spectral print chain in one frame
 
 | Digital neutralized (default) | Datasheet inter-layer crossover |

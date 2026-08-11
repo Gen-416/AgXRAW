@@ -591,12 +591,14 @@ def _appearance_for(plan) -> "object | None":
     mode = str(getattr(plan, "film_appearance", "technical") or "technical")
     if mode == "technical":
         return None
-    if mode != "reference":
-        raise ValueError(f"film_appearance={mode!r} 未知(可选 technical/reference)")
+    if mode not in ("reference", "custom"):
+        raise ValueError(
+            f"film_appearance={mode!r} 未知(可选 technical/reference/custom)"
+        )
     compiled = getattr(plan, "film_appearance_compiled", None)
     if compiled is None:
         raise ValueError(
-            "film_appearance=reference 但 plan 未携带编译后的外观对象——"
+            f"film_appearance={mode} 但 plan 未携带编译后的外观对象——"
             "请经 build_render_plan 编译,运行时不做现场解析"
         )
     return compiled
