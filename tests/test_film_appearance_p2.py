@@ -8,8 +8,9 @@ print-EV space. What this file pins, in the order the plan demands it:
   P1 byte gate depends on it);
 - the neutral axis is untouchable by construction (w_c -> 0), not by test
   tolerance;
-- the hue field wraps C1 across 345->0 and the EV axis cannot overshoot its
-  knots (PCHIP hull property);
+- the hue field wraps C1 across 345->0; the EV axis is hull-bounded on
+  hue-knot columns exactly, and the 2-D sampling's residual overshoot is
+  gated at ~1% of authored amplitude on the shipped assets (A6 item 3);
 - each field does ITS job and not another's: a pure hue recipe rotates
   without changing chroma, a pure density recipe darkens without rotating;
 - folds: the per-edge comparative gate from mainline A4, reused verbatim in
@@ -204,6 +205,32 @@ class FieldSemanticsTests(unittest.TestCase):
         self.assertGreater(float(g_high), 0.0)
 
 
+class SceneEvCoordinateTests(unittest.TestCase):
+    def test_the_exposure_offset_rides_the_coordinate(self) -> None:
+        """A6 item 1: §6.1 defines e_film = log2(Y/0.18) + film_exposure_ev.
+        Stage A applies the same offset to the layer exposures; the recipe
+        axis must move WITH the emulsion state, not stay behind."""
+        from dngscan.film_develop import _appearance_scene_ev
+
+        rgb = np.array([[0.18, 0.18, 0.18], [0.72, 0.4, 0.1]], np.float32)
+        base = _appearance_scene_ev(rgb)
+        shifted = _appearance_scene_ev(rgb, 1.5)
+        np.testing.assert_allclose(shifted, base + np.float32(1.5), atol=1e-6)
+
+    def test_both_chain_exits_pass_the_offset(self) -> None:
+        """Source pin: the reversal and negative exits both feed the offset
+        into the coordinate — a refactor dropping one silently regresses
+        push/pull recipe sampling."""
+        import inspect
+
+        from dngscan import film_develop
+
+        src = inspect.getsource(film_develop._apply_film_core_v2)
+        self.assertEqual(
+            src.count("_appearance_scene_ev(rgb, exposure_ev)"), 2
+        )
+
+
 class ContinuityTests(unittest.TestCase):
     def _field_probe(self, field: np.ndarray) -> np.ndarray:
         """Sample one field densely across hue at EV 0 through the public
@@ -236,8 +263,11 @@ class ContinuityTests(unittest.TestCase):
                         "0.5-degree sampling must show no seam jump")
 
     def test_ev_interpolation_cannot_overshoot_its_knots(self) -> None:
-        """PCHIP hull property: a recipe writing [0, 0, 10, 0, 0] on the EV
-        axis can never deliver more than 10 anywhere."""
+        """On a HUE-CONSTANT field the 1-D PCHIP hull property is exact: a
+        recipe writing [0, 0, 10, 0, 0] on the EV axis never delivers more
+        than 10. (The hue-varying case is NOT hull-bounded — that honest
+        bound is the next test; the first cut asserted only this case and
+        called it the general property, a false green.)"""
         k, h = len(fa.EV_KNOTS), fa.HUE_KNOT_COUNT
         field = np.zeros((k, h), np.float32)
         field[2, :] = 10.0   # EV 0 only
@@ -255,6 +285,47 @@ class ContinuityTests(unittest.TestCase):
             hh = d["d_hue_deg"]
             hh = hh[np.isfinite(hh)]
             self.assertLessEqual(float(np.nanmax(np.abs(hh))), 10.5)
+
+    def test_shipped_recipe_overshoot_stays_negligible(self) -> None:
+        """A6 item 3: the 2-D sampling (per-column PCHIP derivatives fed
+        through periodic Catmull-Rom in hue) is NOT hull-bounded in
+        general. The honest gate: on a dense (EV x hue) scan the shipped
+        assets exceed their own knot extrema by <= 0.15 deg on the hue
+        field and <= 0.005 on richness/density — around 1% of authored
+        amplitude, invisible next to the fields themselves. Measured at
+        review time: 0.027-0.079 deg / 0.0012."""
+        ev_dense = np.linspace(float(fa.EV_KNOTS[0]), float(fa.EV_KNOTS[-1]),
+                               241).astype(np.float32)
+        hue_dense = np.arange(0.0, 360.0, 0.5, dtype=np.float32)
+        ee = np.repeat(ev_dense, hue_dense.size)
+        hh = np.tile(hue_dense, ev_dense.size)
+        coef = fa._grid_coefficients(ee, hh)
+        shipped = (
+            ("portra400__endura_reference_v1", "portra400",
+             "kodak_portra_endura__translated"),
+            ("ektar100__endura_reference_v1", "ektar100",
+             "kodak_portra_endura__translated"),
+            ("vision3250d__print2383_reference_v1", "vision3250d",
+             "kodak_2383__translated"),
+            ("vision3250d__print2383_extended_v1", "vision3250d",
+             "kodak_2383__translated"),
+            ("velvia100__direct_reference_v1", "velvia100",
+             "direct__velvia100"),
+        )
+        for rid, stock, medium in shipped:
+            r = fa.load_recipe(rid, stock_id=stock, medium_id=medium)
+            for field, dfield, cap in (
+                ("hue_delta_deg", "d_hue_delta_deg", 0.15),
+                ("log_chroma_gain", "d_log_chroma_gain", 0.005),
+                ("density_ev", "d_density_ev", 0.005),
+            ):
+                vals = fa._sample_field(r[field], r[dfield], coef)
+                lo = float(r[field].min())
+                hi = float(r[field].max())
+                over = max(float(vals.max()) - hi, lo - float(vals.min()), 0.0)
+                with self.subTest(recipe=rid, field=field):
+                    self.assertLessEqual(over, cap,
+                                         f"overshoot {over:.4f} past knots")
 
     def test_strength_scales_continuously(self) -> None:
         k, h = len(fa.EV_KNOTS), fa.HUE_KNOT_COUNT

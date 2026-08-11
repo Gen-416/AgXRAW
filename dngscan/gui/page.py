@@ -1112,8 +1112,13 @@ function updateFilmModeUi(){
     }
     const appMode=$("#filmAppearance").value;
     $("#filmAppearanceStrengthBlock").style.display=(full&&appMode!=="technical")?"":"none";
-    $("#filmAppearanceVariantBlock").style.display=(full&&appMode!=="technical")?"":"none";
-    if(appMode==="technical"){$("#filmAppearanceVariant").value="reference";}
+    // capability 门(A6 item 7):只有已作 extended 配方的卷显示变体下拉,
+    // 换卷后残留的 extended 选择被拉回 reference——底层 fail-closed 是
+    // 合同,GUI 不应主动提供必然失败的组合。
+    const variants=FILM_VARIANTS[$("#filmCurve").value]||[];
+    const hasVariants=variants.length>0;
+    $("#filmAppearanceVariantBlock").style.display=(full&&appMode!=="technical"&&hasVariants)?"":"none";
+    if(appMode==="technical"||!hasVariants){$("#filmAppearanceVariant").value="reference";}
     $("#filmAppearanceCustom").style.display=(full&&appMode==="custom")?"":"none";
     if(appMode!=="custom"){
       $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
@@ -1263,6 +1268,7 @@ $("#lensFilter").addEventListener("change",()=>{saveSettings();scheduleLivePrevi
 const FILM_COLOR_HEADS=FILM_COLOR_HEADS_JSON;
 const FILM_RETIMED=FILM_RETIMED_JSON;
 const FILM_MEDIA=FILM_MEDIA_JSON;
+const FILM_VARIANTS=FILM_VARIANTS_JSON;
 function setColorHeadLabels(){
   $("#colorHeadYVal").textContent=$("#colorHeadY").value+" CC";
   $("#colorHeadMVal").textContent=$("#colorHeadM").value+" CC";
@@ -1863,6 +1869,29 @@ def _film_retimed_json() -> str:
     return json.dumps(out)
 
 
+def _film_variants_json() -> str:
+    """stock -> appearance variants beyond "reference" whose assets exist.
+
+    A6 item 7: the GUI must not OFFER a combination the loader will refuse
+    — only stocks with an authored extended recipe get the option. The
+    manifest is the authority (hash-pinned asset list)."""
+    import json as _json
+    import re as _re
+
+    from ..film_appearance import MANIFEST_PATH
+
+    out: dict[str, list[str]] = {}
+    try:
+        files = _json.loads(MANIFEST_PATH.read_text())["files"]
+    except (OSError, KeyError, ValueError):
+        return "{}"
+    for name in files:
+        m = _re.match(r"^([a-z0-9_]+?)__[a-z0-9_]+_extended_v\d+\.npz$", name)
+        if m:
+            out.setdefault(m.group(1), []).append("extended")
+    return _json.dumps(out, sort_keys=True)
+
+
 def _film_media_json() -> str:
     """stock -> baked media list (default first), from the asset family."""
     import json
@@ -1951,5 +1980,6 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         .replace("FILM_COLOR_HEADS_JSON", color_heads_json)
         .replace("FILM_RETIMED_JSON", _film_retimed_json())
         .replace("FILM_MEDIA_JSON", _film_media_json())
+        .replace("FILM_VARIANTS_JSON", _film_variants_json())
     )
     return html.encode("utf-8")

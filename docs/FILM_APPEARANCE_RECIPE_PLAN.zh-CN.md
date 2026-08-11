@@ -184,7 +184,7 @@ Oklab 的 `C` 是绝对 colorfulness，不是曝光不变的纯度：线性 RGB 
 
 ```text
 delta_h = F_h(e_film, h) * w_s(S)           # hue path，弧度
-g_s     = exp(F_s(e_film, h) * r(S))        # saturation/richness gain
+g_s     = 2^(F_s(e_film, h) * r(S))         # saturation/richness gain(log2 域)
 d_ev    = F_d(e_film, h) * w_s(S)           # color density，线性曝光档
 ```
 
@@ -192,7 +192,7 @@ d_ev    = F_d(e_film, h) * w_s(S)           # color density，线性曝光档
 
 ```text
 h1 = h + strength * delta_h
-S1 = S * exp(strength * log(g_s))
+S1 = S * 2^(strength * log2(g_s))
 k  = 2^(-strength * d_ev / 3)
 L' = k * L
 C' = k * L * S1
@@ -220,7 +220,7 @@ w_s(S) = S^2 / (S^2 + S0^2)
 
 ```text
 r(S) = 1 / (1 + (S / Sk)^p)
-log(S1/S) = strength * F_s(e_film,h) * r(S)
+log2(S1/S) = strength * F_s(e_film,h) * r(S)
 ```
 
 这使增益主要落在低到中等 saturation；已经很饱和的像素只移动少量。`Sk` 与 `p` 是 recipe 资产，不先暴露到 GUI。
@@ -434,6 +434,17 @@ neutralization_policy=technical-neutral,编译器的 None 默认从 recipe 声�
 bounded technical 浮点噪声级(实测 0.001 dE00)+更克制(0.41 vs 2.17)+仍是
 独立解释(对 reference 中位 2.04)+0.6 比例逐字节+其余卷 fail closed。
 owner A/B 待审;原生内核为最后批次。）
+
+（2026-08-11 A6 整改：①曝光坐标补全 `+ film_exposure_ev`(§6.1 全式,推挽状态
+下 recipe 轴随乳剂移动;默认曝光 0 不改变已认可 look,A/B 不作废);②**strength 0
+语义定案:只归零 palette**,灰阶中性化仍按解释声明解析(0 处连续;要整条回
+technical 用 film_appearance=technical 或显式中性化,CLI 帮助已改口);③二维采样
+的"无过冲"声明改为诚实口径——hue 常数列上 PCHIP 壳性质精确,任意 hue 处
+Catmull-Rom 可轻微过冲,P2 新增在售资产密集扫描门(≤0.15°/0.005,实测≈授权幅度
+1%);④richness 场定为 **log2 域**(0.08=×2^0.08,文档三式与 authoring 注释已改,
+不动计算);⑤报告完整审计外观(custom 可见+variant+asset sha 前缀+修饰值);
+⑥recipe/meta 冻结为 MappingProxyType(编译计划真不可变);⑦GUI 按 manifest
+capability 只对已作 extended 的卷露变体下拉。）
 
 ## 11. 运行时接线
 
