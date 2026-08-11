@@ -4,6 +4,7 @@
 #include "thread_budget.h"
 #include "dngscan_fast/hdr_core.h"
 #include "dngscan_fast/output_core.h"
+#include "dngscan_fast/film_appearance_core.h"
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
@@ -169,6 +170,71 @@ PYBIND11_MODULE(_dngscan_fast, m) {
   m.doc() = "dngscan optional C++ AgX core";
 
   m.def("native_abi_version", []() { return dngscan_fast::NATIVE_ABI_VERSION; });
+
+  m.def(
+      "film_appearance_apply_f32",
+      [](py::array_t<float, py::array::c_style | py::array::forcecast> rgb,
+         py::array_t<float, py::array::c_style | py::array::forcecast> scene_ev,
+         py::array_t<float, py::array::c_style | py::array::forcecast> f_hue,
+         py::array_t<float, py::array::c_style | py::array::forcecast> d_hue,
+         py::array_t<float, py::array::c_style | py::array::forcecast> f_chroma,
+         py::array_t<float, py::array::c_style | py::array::forcecast> d_chroma,
+         py::array_t<float, py::array::c_style | py::array::forcecast> f_density,
+         py::array_t<float, py::array::c_style | py::array::forcecast> d_density,
+         py::array_t<float, py::array::c_style | py::array::forcecast> ev_knots,
+         py::array_t<float, py::array::c_style | py::array::forcecast> nb_ab,
+         bool has_neutral_bias, float strength, float neutral_c0,
+         float chroma_knee, float chroma_power, float richness_mult,
+         float density_mult,
+         py::array_t<float, py::array::c_style | py::array::forcecast> m_fwd,
+         py::array_t<float, py::array::c_style | py::array::forcecast> m2,
+         py::array_t<float, py::array::c_style | py::array::forcecast> m2_inv,
+         py::array_t<float, py::array::c_style | py::array::forcecast> m_inv) {
+        if (rgb.ndim() != 2 || rgb.shape(1) != 3) {
+          throw std::invalid_argument("rgb must be (N, 3) float32");
+        }
+        const py::ssize_t n = rgb.shape(0);
+        if (scene_ev.ndim() != 1 || scene_ev.shape(0) != n) {
+          throw std::invalid_argument("scene_ev must be (N,)");
+        }
+        const int K = static_cast<int>(ev_knots.shape(0));
+        const int H = static_cast<int>(f_hue.shape(1));
+        for (const auto* arr : {&f_hue, &d_hue, &f_chroma, &d_chroma,
+                                &f_density, &d_density}) {
+          if (arr->ndim() != 2 || arr->shape(0) != K || arr->shape(1) != H) {
+            throw std::invalid_argument("field tables must be (K, H)");
+          }
+        }
+        if (nb_ab.ndim() != 2 || nb_ab.shape(0) != K || nb_ab.shape(1) != 2) {
+          throw std::invalid_argument("nb_ab must be (K, 2)");
+        }
+        for (const auto* mat : {&m_fwd, &m2, &m2_inv, &m_inv}) {
+          if (mat->size() != 9) {
+            throw std::invalid_argument("matrices must have 9 elements");
+          }
+        }
+        py::array_t<float> out({n, static_cast<py::ssize_t>(3)});
+        dngscan_fast::FilmAppearanceParams p{};
+        p.f_hue = f_hue.data(); p.d_hue = d_hue.data();
+        p.f_chroma = f_chroma.data(); p.d_chroma = d_chroma.data();
+        p.f_density = f_density.data(); p.d_density = d_density.data();
+        p.ev_knots = ev_knots.data(); p.nb_ab = nb_ab.data();
+        p.k_knots = K; p.h_knots = H;
+        p.has_neutral_bias = has_neutral_bias;
+        p.strength = strength; p.neutral_c0 = neutral_c0;
+        p.chroma_knee = chroma_knee; p.chroma_power = chroma_power;
+        p.richness_mult = richness_mult; p.density_mult = density_mult;
+        p.m_fwd = m_fwd.data(); p.m2 = m2.data();
+        p.m2_inv = m2_inv.data(); p.m_inv = m_inv.data();
+        std::int64_t neg = 0;
+        {
+          py::gil_scoped_release release;
+          neg = dngscan_fast::film_appearance_apply(
+              rgb.data(), scene_ev.data(), out.mutable_data(), n, p);
+        }
+        return py::make_tuple(out, neg);
+      },
+      "Film appearance palette kernel (E3); returns (out, pre-clamp rows).");
 
   m.def(
       "apply_agx_core_f32",

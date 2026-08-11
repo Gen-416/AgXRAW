@@ -20,7 +20,7 @@ from .constants import (
 )
 from .models import ToneCompressionPlan
 
-NATIVE_ABI_VERSION = 6
+NATIVE_ABI_VERSION = 7
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

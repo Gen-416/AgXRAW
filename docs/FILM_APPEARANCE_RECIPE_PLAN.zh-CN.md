@@ -711,9 +711,17 @@ S 门槛）改变实际 look,v3 配方在修正内核下重标并重过全部数
 （2026-08-12 状态：三个 custom 控件已落地——`--film-appearance custom` +
 `--film-richness/--film-color-density/--film-neutral-bias`,乘法式以 recipe 为
 中心,0/0/1 与 reference 逐位相同(测试钉扎),非 custom 模式携带非默认值 fail
-closed。**原生内核延后**：NumPy 参考内核 1MP 实测 300ms,仅 reference 模式引擎,
-预览规模下可用;待 §10 清单 3–5(Vision3/Velvia/extended)扩卷定型后与其一并做,
-避免对仍会迭代的场固化 SIMD。NumPy 路径保持 correctness oracle 身份。）
+closed。）
+
+（2026-08-11 E3 状态：**原生内核已落地**——cpp/src/film_appearance_core.cpp,
+逐元素移植 §6 全部数学(Oklab 分解、S 门、周期 Catmull-Rom×单调 Hermite 场采样、
+richness 软肩、中性密度 k、对手色重建),线程走 S3 预算(budgeted_workers),
+ABI v7。实测 1MP:预算全开 12.4ms(oracle 的 21×,胶片核 812ms 的 **1.5%**),
+单线程 68ms(8.4%)——两口径都过 10% 指标。NumPy 路径保持 correctness oracle:
+奇偶门 tests/test_film_appearance_p10.py 覆盖全部五只资产+custom 修饰+
+neutral-bias 分支+clamp 计数一致,容差 5e-5(float32 重排噪声实测 1.7e-5,
+x³ 重建放大三倍);派发合同与 _fast 相同(auto/strict/off),FAST=0 决不触碰
+扩展,FAST=1 缺扩展硬失败。CI 双模式恰好各验一条路径。）
 
 ### P7：文档与默认值决策
 
