@@ -29,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 
-APPEARANCE_SCHEMA = 1
+APPEARANCE_SCHEMA = 2
 APPEARANCE_DIR = Path(__file__).with_name("data") / "film_appearance"
 MANIFEST_PATH = APPEARANCE_DIR / "MANIFEST.json"
 
@@ -115,12 +115,22 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
             )
         for key, expect in (
             ("recipe_id", rid), ("stock_id", str(stock_id)),
-            ("medium_id", str(medium_id)),
         ):
             if str(meta.get(key)) != expect:
                 raise ValueError(
                     f"外观 recipe 身份不符:{key}={meta.get(key)!r} != {expect!r}"
                 )
+        # A5 item 7: recipes are authored per medium FAMILY (the contract
+        # medium_family() declares); the loader previously demanded the
+        # concrete medium id, so Portra + Supra Endura resolved the family
+        # recipe and then refused it. The asset records which concrete
+        # medium it was AUTHORED against; identity is family equality.
+        if medium_family(str(meta.get("medium_id"))) != medium_family(str(medium_id)):
+            raise ValueError(
+                f"外观 recipe 介质家族不符:{meta.get('medium_id')!r} 属 "
+                f"{medium_family(str(meta.get('medium_id')))!r}, 请求 "
+                f"{medium_id!r} 属 {medium_family(str(medium_id))!r}"
+            )
         if str(meta.get("process_space")) != "display-linear-rec2020/oklab+scene-ev":
             raise ValueError(
                 f"外观 recipe 处理空间未知:{meta.get('process_space')!r}"
@@ -160,18 +170,22 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
             arr.setflags(write=False)
             fields[name] = arr
 
-        # Kernel scalars (§6.2/§6.3): richness shoulder knee/power and the
-        # neutral-protection knee. Bounded fail-closed — an absurd knee is a
-        # data error, not a style.
-        chroma_knee = float(meta.get("chroma_knee", 0.18))
+        # Kernel scalars (§6.2/§6.3), schema 2: knee and neutral floor are
+        # declared in SATURATION units (S = C/L) — A5 item 3 measured the
+        # absolute-C form protecting HIGH exposures hardest (richness factor
+        # 0.89 -> 0.34 from -3 to +3 EV at identical purity), the exact
+        # behaviour §6.1 forbids. Bounded fail-closed.
+        chroma_knee = float(meta.get("chroma_knee", 0.28))
         chroma_power = float(meta.get("chroma_power", 2.0))
-        neutral_c0 = float(meta.get("neutral_chroma_c0", 0.03))
-        if not 0.05 <= chroma_knee <= 0.6:
-            raise ValueError(f"chroma_knee={chroma_knee} 域为 [0.05, 0.6]")
+        neutral_c0 = float(meta.get("neutral_chroma_c0", 0.046))
+        if not 0.08 <= chroma_knee <= 0.9:
+            raise ValueError(f"chroma_knee={chroma_knee} 域为 [0.08, 0.9] (S 单位)")
         if not 1.0 <= chroma_power <= 4.0:
             raise ValueError(f"chroma_power={chroma_power} 域为 [1, 4]")
-        if not 0.01 <= neutral_c0 <= 0.08:
-            raise ValueError(f"neutral_chroma_c0={neutral_c0} 域为 [0.01, 0.08]")
+        if not 0.015 <= neutral_c0 <= 0.12:
+            raise ValueError(
+                f"neutral_chroma_c0={neutral_c0} 域为 [0.015, 0.12] (S 单位)"
+            )
 
         # Identity detection decides the strict fast path: an all-zero
         # recipe must stay BYTE-identical (the P1 exit gate), and the Oklab
@@ -363,7 +377,11 @@ def _sample_field(f: np.ndarray, d: np.ndarray, coef: tuple) -> np.ndarray:
     )
 
 
-def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np.ndarray:
+def apply_film_appearance(
+    developed: np.ndarray,
+    plan: FilmAppearancePlan,
+    scene_ev: np.ndarray | None = None,
+) -> np.ndarray:
     """Apply the palette kernel to mapped Rec.2020 (post-neutralization,
     pre-delivery). Plan §6, all of it pointwise — the streamed band path and
     the full-frame oracle share it with no full-frame temporary.
@@ -387,8 +405,16 @@ def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np
     strength = np.float32(plan.strength)
     m_fwd, m_inv = _fused_oklab_matrices()
 
-    y = np.maximum(rgb @ _LUMA_REC2020, np.float32(1e-9))
-    e = np.log2(y / np.float32(0.18))
+    # A5 item 1: the exposure coordinate is the SCENE EV entering Stage A
+    # (post-compression), passed by the chain — the asset contract's
+    # "scene-ev". Deriving it from the developed print let paper, timing and
+    # neutralization move the recipe's sampling position. The print-side
+    # fallback exists only for direct unit calls that have no scene.
+    if scene_ev is not None:
+        e = np.asarray(scene_ev, dtype=np.float32).reshape(-1)
+    else:
+        y = np.maximum(rgb @ _LUMA_REC2020, np.float32(1e-9))
+        e = np.log2(y / np.float32(0.18))
     lab = np.cbrt(rgb @ m_fwd.T) @ _OKLAB_M2_F32.T
     L = lab[:, 0]
     a = lab[:, 1]
@@ -396,12 +422,16 @@ def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np
     C = np.hypot(a, b)
     hdeg = np.degrees(np.arctan2(b, a)).astype(np.float32) % np.float32(360.0)
 
+    # A5 item 3: purity gates run on SATURATION S = C/L, which is invariant
+    # under linear-light exposure scaling — the same purity gets the same
+    # protection at every exposure.
+    S = C / np.maximum(L, np.float32(1e-6))
     c0 = np.float32(recipe["neutral_c0"])
-    C2 = C * C
-    w_c = C2 / (C2 + c0 * c0)
+    S2 = S * S
+    w_c = S2 / (S2 + c0 * c0)
     ck = np.float32(recipe["chroma_knee"])
     cp = float(recipe["chroma_power"])
-    cr = C / ck
+    cr = S / ck
     if cp == 2.0:      # the common case: float32 pow is ~10x a multiply
         shoulder = cr * cr
     elif cp == 1.0:
@@ -424,10 +454,13 @@ def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np
 
     sw = strength * w_c
     h_new = np.radians(hdeg + dh * sw)
-    C_new = C * np.exp2(gc * r_sh * sw)
-    # §6.4: darken LUMINANCE by dd EV holding the (a, b) direction — under
-    # Oklab's Y^(1/3) homogeneity an exact L scale of 2^(-dd/3).
-    L_new = L * np.exp2(dd * sw * np.float32(-1.0 / 3.0))
+    # §6.4 corrected (A5 item 2): colour density is an EXPOSURE scale — the
+    # same k on L and C, so S is untouched. The first form scaled only L and
+    # smuggled +0.095 stop of saturation in through a 0.3 EV density; that
+    # axis belongs to richness/beta, not to density.
+    k_dens = np.exp2(dd * sw * np.float32(-1.0 / 3.0))
+    C_new = C * np.exp2(gc * r_sh * sw) * k_dens
+    L_new = L * k_dens
 
     a_new = C_new * np.cos(h_new)
     b_new = C_new * np.sin(h_new)
@@ -441,11 +474,32 @@ def apply_film_appearance(developed: np.ndarray, plan: FilmAppearancePlan) -> np
     lms_ = np.stack([L_new, a_new, b_new], axis=1) @ _OKLAB_M2_INV_F32.T
     out = (lms_ * lms_ * lms_) @ m_inv.T
     # The chain contract downstream is non-negative mapped Rec.2020; the
-    # opponent reconstruction can go negative for extreme recipes — clamped
-    # here, and the authoring probes measure the pre-clamp share so a recipe
-    # buying its look at the floor stays visible (§6.6).
+    # opponent reconstruction can go negative for extreme recipes. The
+    # pre-clamp share is recorded (per process, cheap) so the authoring
+    # probe can report a recipe buying its look at the floor (§6.6).
+    global _CLAMP_ROWS, _CLAMP_NEGATIVE_ROWS
+    neg = (out < 0.0).any(axis=1)
+    _CLAMP_ROWS += int(out.shape[0])
+    _CLAMP_NEGATIVE_ROWS += int(neg.sum())
     np.maximum(out, np.float32(0.0), out=out)
     return out.reshape(np.shape(developed))
+
+
+# Authoring diagnostics: cumulative pre-clamp counters, reset by the probe
+# around a measurement. NOT part of any rendering contract.
+_CLAMP_ROWS = 0
+_CLAMP_NEGATIVE_ROWS = 0
+
+
+def clamp_stats_reset() -> None:
+    global _CLAMP_ROWS, _CLAMP_NEGATIVE_ROWS
+    _CLAMP_ROWS = 0
+    _CLAMP_NEGATIVE_ROWS = 0
+
+
+def clamp_stats() -> tuple[int, int]:
+    """(rows seen, rows clamped negative) since the last reset."""
+    return _CLAMP_ROWS, _CLAMP_NEGATIVE_ROWS
 
 
 _LUMA_REC2020 = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)

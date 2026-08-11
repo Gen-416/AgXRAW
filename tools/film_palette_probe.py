@@ -110,7 +110,10 @@ def reference_plan(
         # `technical` means the current user-visible full default.  That is
         # bounded neutralization (`off` in the legacy internal enum), not the
         # opt-in datasheet/native branch.
-        film_crossover="off",
+        # technical is DEFINED as the bounded default; reference/custom get
+        # the compiler-resolved policy (the recipes' declared print-balanced)
+        # so the P4 gates measure the true reference pipeline (A5 item 6).
+        film_crossover=("off" if film_appearance == "technical" else None),
         film_interimage=film_interimage,
         film_appearance=film_appearance,
     )

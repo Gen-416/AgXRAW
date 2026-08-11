@@ -685,15 +685,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     if args.film_neutralization is not None:
         args.film_crossover = NEUTRALIZATION_TO_CROSSOVER[args.film_neutralization]
-    elif args.film_crossover is None:
-        # §16 P3/P4: reference mode defaults to the recipes' declared
-        # print-balanced interpretation when the user expressed no explicit
-        # neutralization choice; technical keeps the frozen default.
-        args.film_crossover = (
-            "print"
-            if getattr(args, "film_appearance", "technical") in ("reference", "custom")
-            else "off"
-        )
+    # When neither --film-neutralization nor --film-crossover was given,
+    # args.film_crossover stays None and the COMPILER resolves the default
+    # from the appearance mode (A5 item 6: one resolution point).
     if args.film_print_timing == "custom" and args.film_crossover != "datasheet":
         parser.error(
             "custom timing 与有界灰阶中性化互斥:手动印相的意义是保留印出的"

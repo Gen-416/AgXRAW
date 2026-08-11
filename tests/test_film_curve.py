@@ -564,15 +564,17 @@ class FilmCrossoverTests(unittest.TestCase):
         self.assertLess(float(out[2, 2] / out[2, 0]), 1.2)
 
     def test_build_render_plan_validates_and_defaults_the_switch(self) -> None:
-        """The plan compiler's crossover plumbing: unknown values collapse to
-        "off" and the declared value rides the tone plan only with a preset."""
+        """The plan compiler's crossover plumbing: the parameter defaults to
+        the None SENTINEL (A5 item 6 — no explicit choice), and the compiler
+        resolves it from the appearance mode: technical -> "off". The
+        resolved default must stay byte-identical to the historical "off"."""
         import inspect
 
         from dngscan.tone import build_render_plan
 
         signature = inspect.signature(build_render_plan)
         self.assertIn("film_crossover", signature.parameters)
-        self.assertEqual(signature.parameters["film_crossover"].default, "off")
+        self.assertIsNone(signature.parameters["film_crossover"].default)
 
     def test_compiled_plan_carries_the_switch_without_a_color_head(self) -> None:
         """Regression: the #20/#21 merge stamped film_crossover inside the

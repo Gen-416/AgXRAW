@@ -46,6 +46,28 @@ def _renders():
     return vol, idx, out
 
 
+def _print_balanced_technical(vol, stock):
+    """technical appearance on the print-balanced chain: the reference
+    pipeline minus the recipe — the kernel-isolation baseline."""
+    from tests.golden_support import all_scenes
+    from dngscan.render import apply_tone_core
+    from dngscan.tone import build_render_plan
+
+    scene = all_scenes()["daylight_wide_dr"]
+    plan = build_render_plan(
+        scene.bundle, scene.analysis, "agx", "srgb",
+        film_curve=stock, film_mode="full",
+        film_crossover="print", film_appearance="technical",
+    )
+    import numpy as np
+
+    return np.asarray(
+        apply_tone_core(np.asarray(vol, dtype=np.float32).reshape(-1, 3),
+                        plan.tone, plan.color),
+        dtype=np.float64,
+    )
+
+
 class IdentityIncrementTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -65,8 +87,9 @@ class IdentityIncrementTests(unittest.TestCase):
 
     def test_every_region_gains_identity_at_its_peak(self) -> None:
         """Recalibrated §15.2: peak-row increment >= +1.0 in every target
-        region, >= +1.5 in at least two. Measured v2 draft: skin +1.56,
-        foliage +2.41, sky +2.67, magenta +1.11."""
+        region, >= +1.5 in at least two. Measured v3 (post-A5 kernel: scene
+        EV coordinate, S gates, density on L and C, true print-balanced
+        pipeline): skin +1.90, foliage +2.38, sky +3.01, magenta +1.69."""
         from tools.film_palette_probe import TARGET_REGIONS
 
         strong = 0
@@ -91,20 +114,27 @@ class IdentityIncrementTests(unittest.TestCase):
     def test_the_increment_survives_stripping_global_brightness(self) -> None:
         """Ektar's density fields darken it overall; if the identity were
         only that global difference, normalizing luminance would erase it.
-        Measured: every region's normalized peak stays within a tenth of
-        the raw one."""
+        A5 item 8: BOTH pairs are normalized the same way (the first cut
+        normalized only the reference pair, inflating its increment) and
+        the normalization is Rec.2020 LUMA, not a channel sum."""
         from tools.film_palette_probe import TARGET_REGIONS
 
+        luma = np.array([0.2627, 0.6780, 0.0593])
         wheel = self.idx.kind == "wheel"
         mid = (self.idx.ev >= MID_BAND[0]) & (self.idx.ev <= MID_BAND[1])
-        pr = self.renders["portra400"]["ref"]
-        er = self.renders["ektar100"]["ref"]
-        ys = float(np.median(pr[wheel & mid].sum(1))
-                   / np.median(er[wheel & mid].sum(1)))
-        d_norm = pal.compare(pr, (er * ys).astype(np.float64))["delta_e00"]
+
+        def norm_pair(a, b):
+            ys = float(np.median(a[wheel & mid] @ luma)
+                       / np.median(b[wheel & mid] @ luma))
+            return pal.compare(a, (b * ys).astype(np.float64))["delta_e00"]
+
+        d_tech_n = norm_pair(self.renders["portra400"]["tech"],
+                             self.renders["ektar100"]["tech"])
+        d_ref_n = norm_pair(self.renders["portra400"]["ref"],
+                            self.renders["ektar100"]["ref"])
         for name in TARGET_REGIONS:
-            rows_t = self._region_rows(self.d_tech, name)
-            rows_n = self._region_rows(d_norm, name)
+            rows_t = self._region_rows(d_tech_n, name)
+            rows_n = self._region_rows(d_ref_n, name)
             peak = max(rows_n[ev] - rows_t[ev] for ev in rows_t)
             with self.subTest(region=name):
                 self.assertGreaterEqual(
@@ -145,15 +175,26 @@ class IdentityIncrementTests(unittest.TestCase):
                     self.assertEqual(float(np.abs(r[f][-1]).max()), 0.0,
                                      "the +6 EV row must stay zero")
 
-    def test_neutral_ramp_untouched_by_both(self) -> None:
+    def test_neutral_ramp_untouched_by_the_kernel(self) -> None:
+        """Since A5 item 6 the reference pipeline runs print-balanced, so
+        tech(bounded)-vs-ref greys legitimately differ by the CROSSOVER —
+        that difference is the print character, not a leak. The gate
+        therefore isolates the KERNEL: same print-balanced chain with and
+        without the recipe must leave the grey ramp alone."""
         neutral = self.idx.kind == "neutral"
         for stock in ("portra400", "ektar100"):
             d = pal.compare(
-                self.renders[stock]["tech"], self.renders[stock]["ref"]
+                _print_balanced_technical(self.vol, stock),
+                self.renders[stock]["ref"],
             )
             with self.subTest(stock=stock):
+                # Not zero: print-balanced greys carry the crossover cast,
+                # and to the S-gated kernel that residual chroma IS colour
+                # (S near c0 puts w_c around 0.4), so heavy density fields
+                # graze them — the same bounded graze P6 pins at the EV
+                # scale. The bound is well under one JND.
                 self.assertLess(
-                    float(np.nanmax(d["delta_e00"][neutral])), 0.05
+                    float(np.nanmax(d["delta_e00"][neutral])), 0.5
                 )
 
 
@@ -165,21 +206,37 @@ class NeutralizationDefaultTests(unittest.TestCase):
         )
         self.assertEqual(r["neutralization_policy"], "print-balanced")
 
-    def test_service_reference_defaults_to_print_balanced(self) -> None:
+    def test_the_compiler_resolves_the_default_policy(self) -> None:
+        """A5 item 6: ONE resolution point. The service forwards None when
+        the user made no explicit choice; the compiler resolves it from the
+        appearance mode; explicit choices win everywhere."""
         from dngscan.gui.service import parse_film_params
+        from dngscan.tone import build_render_plan
+        from tests.golden_support import all_scenes
 
         base = {"film": "portra400", "filmMode": "full"}
-        out = parse_film_params({**base, "filmAppearance": "reference"})
-        self.assertEqual(out[3], "print")
-        # explicit choice still wins
-        out2 = parse_film_params({
+        self.assertIsNone(parse_film_params(
+            {**base, "filmAppearance": "reference"})[3])
+        self.assertEqual(parse_film_params({
             **base, "filmAppearance": "reference",
             "filmNeutralization": "technical-neutral",
-        })
-        self.assertEqual(out2[3], "off")
-        # technical keeps the frozen default
-        out3 = parse_film_params(base)
-        self.assertEqual(out3[3], "off")
+        })[3], "off")
+        scene = all_scenes()["daylight_wide_dr"]
+        for appearance, crossover, expect in (
+            ("reference", None, "print-balanced"),
+            ("custom", None, "print-balanced"),
+            ("technical", None, "technical-neutral"),
+            ("reference", "off", "technical-neutral"),
+        ):
+            with self.subTest(appearance=appearance, crossover=crossover):
+                plan = build_render_plan(
+                    scene.bundle, scene.analysis, "agx", "srgb",
+                    film_curve="portra400", film_mode="full",
+                    film_crossover=crossover, film_appearance=appearance,
+                )
+                self.assertEqual(
+                    plan.film[2].neutralization_policy, expect
+                )
 
 
 if __name__ == "__main__":

@@ -710,7 +710,7 @@ def build_render_plan(
     adjustments: RenderAdjustments | None = None,
     film_curve: str = "none",
     film_mode: str = "observe",
-    film_crossover: str = "off",
+    film_crossover: str | None = None,
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -824,10 +824,22 @@ def build_render_plan(
         # #20/#21 merge briefly moved it there, which silently killed
         # --film-crossover for every reversal preset: reversals reject the
         # colour head, so the stamp became unreachable).
-        crossover_value = (
-            film_crossover
-            if film_crossover in ("off", "print", "datasheet") else "off"
-        )
+        # A5 item 6: the DEFAULT policy is resolved HERE, in the compiler,
+        # from the appearance mode — reference/custom inherit the recipes'
+        # declared print-balanced, technical keeps the frozen bounded
+        # default. An explicit value always wins. The CLI/service sentinels
+        # forward None so this is the single resolution point.
+        if film_crossover is None:
+            crossover_value = (
+                "print"
+                if str(film_appearance or "technical") in ("reference", "custom")
+                else "off"
+            )
+        else:
+            crossover_value = (
+                film_crossover
+                if film_crossover in ("off", "print", "datasheet") else "off"
+            )
         # film v2 P2: the emulsion exposure state and the print timing are
         # FULL-mode declarations (observe has no emulsion/print model); the
         # combination fails closed rather than silently ignoring the dial.

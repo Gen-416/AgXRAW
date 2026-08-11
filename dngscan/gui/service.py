@@ -573,6 +573,12 @@ def _cached_render_plan(
         _cache_float(film_grain),
         _cache_float(film_halation),
         _cache_float(film_bloom),
+        film_interimage,
+        film_appearance,
+        _cache_float(film_appearance_strength),
+        _cache_float(film_richness),
+        _cache_float(film_color_density),
+        _cache_float(film_neutral_bias),
         int(film_optics_seed),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
@@ -679,6 +685,12 @@ def _preview_pixel_key(
         _cache_float(film_grain),
         _cache_float(film_halation),
         _cache_float(film_bloom),
+        film_interimage,
+        film_appearance,
+        _cache_float(film_appearance_strength),
+        _cache_float(film_richness),
+        _cache_float(film_color_density),
+        _cache_float(film_neutral_bias),
         int(film_optics_seed),
         endpoint_mode,
         _adjustment_key(adjustments),
@@ -1030,19 +1042,12 @@ def parse_film_params(params: dict) -> tuple:
             raise ValueError(f"未知灰阶中性化：{neutral_req}")
         film_crossover = mapping[str(neutral_req)]
     else:
-        # reference mode's sentinel default is the recipes' declared
-        # print-balanced; technical keeps the frozen "off".
-        _appearance_req = str(
-            params.get("filmAppearance", params.get("film_appearance", "technical"))
-            or "technical"
-        )
-        default_crossover = (
-            "print" if _appearance_req in ("reference", "custom") else "off"
-        )
-        film_crossover = str(
-            crossover_req if crossover_req is not None else default_crossover
-        )
-        if film_crossover not in ("off", "print", "datasheet"):
+        # No explicit choice -> None; the COMPILER resolves the default from
+        # the appearance mode (A5 item 6: one resolution point).
+        film_crossover = None if crossover_req is None else str(crossover_req)
+        if film_crossover is not None and film_crossover not in (
+            "off", "print", "datasheet"
+        ):
             raise ValueError(f"未知层间漂移开关：{film_crossover}")
     film_exposure_ev = _finite_number(
         params.get("filmExposure", params.get("film_exposure_ev", 0.0)) or 0.0,

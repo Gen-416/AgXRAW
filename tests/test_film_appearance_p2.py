@@ -171,6 +171,12 @@ class FieldSemanticsTests(unittest.TestCase):
         strong = dec["C"] > 0.1
         self.assertLess(float(np.nanmax(d["d_output_ev"][strong])), 0.0,
                         "denser colours must get darker")
+        # A5 item 2: density is a NEUTRAL-DENSITY move — it scales L and C
+        # together, so saturation S = C/L is conserved. The first cut scaled
+        # only L and silently added +0.1 stop of saturation per 0.3 EV.
+        sat = d["log2_saturation_ratio"][strong]
+        self.assertLess(float(np.nanmax(np.abs(sat[np.isfinite(sat)]))), 0.02,
+                        "density must not move saturation")
         hh = np.abs(d["d_hue_deg"][strong])
         self.assertLess(float(np.nanmedian(hh[np.isfinite(hh)])), 1.5)
         neutral = dec["C"] < 1e-3
@@ -180,15 +186,18 @@ class FieldSemanticsTests(unittest.TestCase):
         )
 
     def test_richness_shoulder_gives_low_purity_more_than_high(self) -> None:
-        """§6.3: the whole point of r(C) — a chroma recipe lifts low/mid
-        purity more (in log ratio) than already-saturated colour."""
+        """§6.3: the whole point of r(S) — a chroma recipe lifts low/mid
+        purity more (in log ratio) than already-saturated colour. A5 item 3:
+        purity is SATURATION S = C/L, not raw chroma C — grouping by C mixes
+        bright weak colour with dark strong colour and measures the wrong
+        shoulder."""
         k, h = len(fa.EV_KNOTS), fa.HUE_KNOT_COUNT
         vol = patch_volume()
         out = self._apply(vol, log_chroma_gain=np.full((k, h), 0.4))
         d = pal.compare(vol.astype(np.float64), out)
         dec = pal.decompose(vol.astype(np.float64))
-        low = (dec["C"] > 0.06) & (dec["C"] < 0.1)
-        high = dec["C"] > 0.2
+        low = (dec["S"] > 0.1) & (dec["S"] < 0.2)
+        high = dec["S"] > 0.35
         g_low = np.nanmedian(d["log2_colorfulness_ratio"][low])
         g_high = np.nanmedian(d["log2_colorfulness_ratio"][high])
         self.assertGreater(float(g_low), float(g_high) + 0.05)
