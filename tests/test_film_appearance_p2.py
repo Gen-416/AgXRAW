@@ -300,20 +300,19 @@ class ContinuityTests(unittest.TestCase):
         ee = np.repeat(ev_dense, hue_dense.size)
         hh = np.tile(hue_dense, ev_dense.size)
         coef = fa._grid_coefficients(ee, hh)
-        shipped = (
-            ("portra400__endura_reference_v1", "portra400",
-             "kodak_portra_endura__translated"),
-            ("ektar100__endura_reference_v1", "ektar100",
-             "kodak_portra_endura__translated"),
-            ("vision3250d__print2383_reference_v1", "vision3250d",
-             "kodak_2383__translated"),
-            ("vision3250d__print2383_extended_v1", "vision3250d",
-             "kodak_2383__translated"),
-            ("velvia100__direct_reference_v1", "velvia100",
-             "direct__velvia100"),
-        )
-        for rid, stock, medium in shipped:
-            r = fa.load_recipe(rid, stock_id=stock, medium_id=medium)
+        # A7 item 3: enumerate from the MANIFEST, not a hand-written list —
+        # a future recipe with pathological 2-D overshoot must not slide
+        # past a stale enumeration. The pairing comes from each asset's own
+        # meta (the loader then re-validates it).
+        manifest = json.loads(fa.MANIFEST_PATH.read_text())["files"]
+        self.assertGreaterEqual(len(manifest), 5)
+        for name in sorted(manifest):
+            with np.load(fa.APPEARANCE_DIR / name, allow_pickle=False) as z:
+                zmeta = json.loads(str(np.asarray(z["meta"])))
+            rid = zmeta["recipe_id"]
+            r = fa.load_recipe(
+                rid, stock_id=zmeta["stock_id"], medium_id=zmeta["medium_id"]
+            )
             for field, dfield, cap in (
                 ("hue_delta_deg", "d_hue_delta_deg", 0.15),
                 ("log_chroma_gain", "d_log_chroma_gain", 0.005),

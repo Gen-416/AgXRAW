@@ -842,15 +842,21 @@ def _apply_film_core_v2(
         u = amounts_to_unit(amounts, b2["dye_lo"], b2["dye_hi"])
         developed = _tetrahedral(b2["volume"], u.astype(np.float32), b2["n"])
         if bounded:
+            # A7 item 1: the reversal cast table is solved at the EV0
+            # emulsion state, and its axis is the EV0 asset's scene EV. A
+            # pushed/pulled exposure shifts where this frame's content sits
+            # on that axis, so every query carries the offset — without it
+            # a -1.5 EV Velvia measured 0.36 stop of channel cast under a
+            # "neutral" policy.
             if crossover == "print":
                 for c in range(3):
                     developed[:, c] /= np.float32(np.interp(
-                        0.0, stock["cast_ev"], stock["cast_bounded"][:, c]
+                        exposure_ev, stock["cast_ev"], stock["cast_bounded"][:, c]
                     ))
             else:
                 ev_y = np.log2(
                     np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18)
-                )
+                ) + np.float32(exposure_ev)
                 for c in range(3):
                     developed[:, c] /= np.interp(
                         ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
@@ -910,19 +916,26 @@ def _apply_film_core_v2(
         i_lo = i_hi - 1
         t = (cast_key_ev - nodes[i_lo]) / (nodes[i_hi] - nodes[i_lo])
         cast_e = (1.0 - t) * ps["casts"][i_lo] + t * ps["casts"][i_hi]
+        # A7 item 1: which EV axis the selected table speaks. retimed
+        # interpolated a per-exposure cast table (cast_key_ev above), so
+        # its axis is THIS exposure's scene EV; fixed keeps the EV0 table,
+        # whose axis is the EV0 asset's scene EV — a pushed/pulled frame's
+        # content sits offset on it. Without the offset a -1.5 EV Vision3
+        # measured 0.24 stop of channel cast under technical-neutral.
+        cast_axis_offset = 0.0 if timing == "retimed" else exposure_ev
         if crossover == "print":
             # print-balanced: the SAME cast table, evaluated once at the
-            # EV0 anchor — a constant per-channel balance, so the ratio to
-            # native is constant by construction and the ends keep their
-            # exposure-dependent crossover.
+            # mid-grey anchor OF THIS EXPOSURE — a constant per-channel
+            # balance, so the ratio to native is constant by construction
+            # and the ends keep their exposure-dependent crossover.
             for c in range(3):
                 developed[:, c] /= np.float32(
-                    np.interp(0.0, ps["cast_ev"], cast_e[:, c])
+                    np.interp(cast_axis_offset, ps["cast_ev"], cast_e[:, c])
                 )
         else:
             ev_y = np.log2(
                 np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18)
-            )
+            ) + np.float32(cast_axis_offset)
             for c in range(3):
                 developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
     developed = np.maximum(developed, 0.0)

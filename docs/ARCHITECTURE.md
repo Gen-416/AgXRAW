@@ -892,7 +892,7 @@ flowchart LR
     D2["Lens filter (optional)<br/>Wratten mired shift<br/>(Layer 1 optics)"]
     D3["Spectral separation<br/>the film's layers as the observer<br/>(prefeed)"]
     D4["Development curve + viewing translation<br/>named AgX coordinate · surround term · medium floor<br/>(Layer 2 Tone)"]
-    D5["Exposure-dependent colour<br/>observe: post-outset colour head (negatives)<br/>full: baked spectral-chain LUT"]
+    D5["Exposure-dependent colour<br/>observe: post-outset colour head (negatives)<br/>full: Stage A -> B1 -> timing -> paper -> B2<br/>-> neutral policy -> appearance layer"]
     D1 --> D2 --> D3 --> D4 --> D5
     D5 --> OUT["Layer 4 works unchanged<br/>including Ultra HDR gain-map delivery"]
 ```

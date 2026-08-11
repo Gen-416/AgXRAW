@@ -584,7 +584,9 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 ### 15.1 数学与回归
 
 - `technical` 对 P0 专用 probe 与真实/合成场景冻结保持 float32 容差和 u8 逐字节一致；不哈希无关的全仓 golden 树；
-- strength 0 严格恒等，无额外 gamut fit 变化；
+- strength 0 时 **palette 算子**严格恒等（同对象快路径），无额外 gamut fit
+  变化；灰阶中性化是解释自身的声明属性，不随 strength 归零（A6 定案，0 处
+  连续）——整条回 technical 基线用 `film_appearance=technical`；
 - 中性输入在关闭 neutral bias 时保持 `a=b=0`，EV0 DeltaE00 `< 0.1`；
 - hue 周期边界值和一阶导连续；
 - 无 NaN/Inf，局部 hue 映射不 fold；

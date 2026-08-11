@@ -460,7 +460,10 @@ def jpeg_tone_plan_cn(
                 f"[{getattr(_app, 'variant', 'reference')}]"
                 f"({getattr(_app, 'recipe_id', '?')}"
                 f"@{_sha[:12] or '?'}"
-                f"×{float(getattr(plan, 'film_appearance_strength', 1.0)):.2f},"
+                # A7 item 4: ONE strength source — the runtime consumes the
+                # compiled object, so the audit must read the same field
+                # (a replace()d plan could otherwise report a stale dial).
+                f"×{float(getattr(_app, 'strength', 1.0)):.2f},"
                 f"{getattr(_app, 'provenance', '?')})"
             )
             if _app_mode == "custom":
