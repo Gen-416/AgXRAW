@@ -167,6 +167,41 @@ class RuntimeProbeTests(unittest.TestCase):
         if not ci.available():
             self.assertFalse(first)
 
+    def test_the_probe_renders_the_real_workload_parameters(self) -> None:
+        """A11 item 2: pin the probe's render call — RGBAh, rowBytes 8,
+        extended linear Rec.2020 — with a fake Quartz, so a host (or CI
+        runner) without Core Image still guards the parameter set."""
+        import sys
+        import unittest.mock as mock
+
+        from dngscan import coreimage_decode as ci
+
+        calls = {}
+
+        class _Ctx:
+            def render_toBitmap_rowBytes_bounds_format_colorSpace_(
+                self, img, buf, row_bytes, bounds, fmt, cs
+            ):
+                calls.update(row_bytes=row_bytes, fmt=fmt, cs=cs,
+                             buflen=len(buf))
+
+        fake = mock.MagicMock()
+        fake.kCIFormatRGBAh = "RGBAh"
+        fake.kCGColorSpaceExtendedLinearITUR_2020 = "ext2020-name"
+        fake.CGColorSpaceCreateWithName = lambda name: f"cs:{name}"
+        fake.CIContext.contextWithOptions_ = lambda opts: _Ctx()
+        img = mock.MagicMock()
+        img.imageByCroppingToRect_ = lambda rect: img
+        fake.CIImage.imageWithColor_ = lambda color: img
+
+        with mock.patch.dict(sys.modules, {"Quartz": fake,
+                                           "Foundation": mock.MagicMock()}),              mock.patch.object(ci, "available", return_value=True),              mock.patch.dict(ci._RUNTIME_AVAILABLE, {}, clear=True),              mock.patch.dict(ci._CONTEXTS, {}, clear=True):
+            self.assertTrue(ci.runtime_available())
+        self.assertEqual(calls["fmt"], "RGBAh")
+        self.assertEqual(calls["row_bytes"], 8)
+        self.assertEqual(calls["buflen"], 8)
+        self.assertEqual(calls["cs"], "cs:ext2020-name")
+
 
 if __name__ == "__main__":
     unittest.main()

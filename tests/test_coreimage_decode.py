@@ -21,10 +21,12 @@ SIGMA_VERTICAL_DNG = PICTURES / "AgXRAW样张" / "_SDI0165.DNG"
 FUJI_RAF = PICTURES / "DSCF0614.RAF"
 
 
-def _skip_unless_available() -> None:
-    # A8 item 6: live tests need a working RUNTIME, not just the API
-    # surface — the symbol probe is a false positive on headless hosts.
-    if not coreimage_decode.runtime_available():
+def _skip_unless_available(*, interactive: bool = True) -> None:
+    # A8 item 6 / A11 item 2: live tests need a working RUNTIME for the
+    # workload they exercise — most of this file decodes half_size=True,
+    # which renders through the INTERACTIVE context, so that is the
+    # default probe here; full-size tests pass interactive=False.
+    if not coreimage_decode.runtime_available(interactive=interactive):
         raise unittest.SkipTest("Core Image runtime unavailable")
 
 
@@ -198,7 +200,8 @@ class CoreImageVersionTests(unittest.TestCase):
         self.assertTrue(result["geometry"])
 
 
-@unittest.skipUnless(coreimage_decode.runtime_available(), "Core Image runtime unavailable")
+@unittest.skipUnless(coreimage_decode.runtime_available(interactive=True),
+                     "Core Image interactive runtime unavailable")
 class CoreImageLiveTests(unittest.TestCase):
     def test_color_noise_default_cleared(self) -> None:
         _skip_unless_available()
