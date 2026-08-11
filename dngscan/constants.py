@@ -40,10 +40,14 @@ CEILING_MIN_PILE_PIXELS = 256
 # blown sky patch dimmed by lens falloff) can hold thousands of equal
 # pixels far below full well, and overriding the metadata with it deflates
 # clip %, usable DR, the CFA clip mask and HDR headroom in one stroke.
-# 0.75 (~0.42 stop under metadata white) accepts real sensors whose
-# measured clip sits a few percent under the declared level and rejects
-# mid-range plateaus outright.
-CEILING_PLAUSIBLE_FRACTION = 0.75
+# A9 item 2 narrowed A8's 0.75: a 13000/16383 plateau still slipped
+# through, and the review's contract is that a legal DNG WhiteLevel is
+# AUTHORITATIVE by default — a single-frame histogram pile may only
+# override within a narrow tolerance of it (real sensors' measured clip
+# sits a few percent under the declared level; anything further is a
+# scene plateau). 0.95 is ~0.074 stop. Per-camera saturation calibration
+# is the sanctioned wider override path, not this constant.
+CEILING_PLAUSIBLE_FRACTION = 0.95
 
 
 CEILING_MIN_PILE_FRACTION = 2e-5

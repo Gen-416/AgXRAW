@@ -13,11 +13,13 @@ license = { text = "GPL-3.0-or-later" }
 dependencies = [
     "numpy>=1.24",
     "rawpy @ git+https://github.com/Gen-416/rawpy.git@cc7b4748c7b3e87da319198fdfcdb46e17c9c2a6",
-    "matplotlib>=3.6",
     "pillow>=9.2",
 ]
 
 [project.optional-dependencies]
+# A9 item 8: matplotlib gates only the diagnostic dashboard (--scan/--csv);
+# a plain conversion must install without it.
+scan = ["matplotlib>=3.6"]
 native = ["pybind11>=2.11"]
 calibration = ["colour-science>=0.4.4"]
 gui = ["pyobjc-framework-Quartz>=12.0; platform_system == 'Darwin'"]

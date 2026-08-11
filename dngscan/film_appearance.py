@@ -89,10 +89,13 @@ class FrozenRecipe(Mapping):
 
     def __init__(self, data):
         # A re-invoked __init__ was one of the review's demonstrated holes:
-        # it would swap the payload out from under every cached plan.
+        # it would swap the payload out from under every cached plan. A9
+        # closed the next one: _data itself is a MappingProxyType, so even
+        # code reaching for the private attribute gets a read-only view —
+        # the A8 plain dict could be mutated via recipe._data["x"] = ...
         if hasattr(self, "_data"):
             raise TypeError("recipe payload is frozen (shared across plans)")
-        object.__setattr__(self, "_data", dict(data))
+        object.__setattr__(self, "_data", MappingProxyType(dict(data)))
 
     def __getitem__(self, key):
         return self._data[key]
@@ -117,6 +120,20 @@ class FrozenRecipe(Mapping):
 
     def __deepcopy__(self, memo):
         return self
+
+    def to_dict(self) -> dict:
+        """A JSON-safe plain-dict view (A9 item 1: asdict alone is not
+        JSON-serializable — ndarrays and nested FrozenRecipes need explicit
+        conversion)."""
+        out = {}
+        for k, v in self._data.items():
+            if isinstance(v, FrozenRecipe):
+                out[k] = v.to_dict()
+            elif isinstance(v, np.ndarray):
+                out[k] = v.tolist()
+            else:
+                out[k] = v
+        return out
 
 
 _RECIPE_CACHE: dict[tuple, dict] = {}
@@ -222,7 +239,7 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
                 raise ValueError(f"外观 recipe 字段 {name} 形状 {arr.shape} != {shape}")
             if not np.isfinite(arr).all():
                 raise ValueError(f"外观 recipe 字段 {name} 含非有限值")
-            arr.setflags(write=False)
+            arr = _readonly(arr)   # A9: bytes-backed, not advisory
             fields[name] = arr
 
         # Kernel scalars (§6.2/§6.3), schema 2: knee and neutral floor are
@@ -384,9 +401,13 @@ def medium_family(medium_id: str) -> str:
 # --------------------------------------------------------------------------
 
 def _readonly(arr: np.ndarray) -> np.ndarray:
-    a = np.asarray(arr, dtype=np.float32)
-    a.setflags(write=False)
-    return a
+    """A9 item 1: setflags(write=False) on an owning array is advisory —
+    the holder can setflags(write=True) right back. Rebuilding the array
+    over an immutable ``bytes`` base makes re-enabling writes a hard
+    ValueError from NumPy itself."""
+    a = np.ascontiguousarray(arr)
+    frozen = np.frombuffer(a.tobytes(), dtype=a.dtype).reshape(a.shape)
+    return frozen
 
 
 def _pchip_derivatives(x: np.ndarray, y: np.ndarray) -> np.ndarray:

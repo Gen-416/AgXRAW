@@ -12,7 +12,16 @@ This register does not MOVE any value — the consuming modules keep their
 constants (zero pixel change by construction) and a self-check test pins
 the register to the live values, so silent drift on either side fails the
 suite. Bump POLICY_VERSION whenever an entry's value or meaning changes,
-and record the reason in the entry's ``history``.
+and record the reason in the entry's ``history``. A9 item 6: each
+version's value set is FINGERPRINTED (POLICY_FINGERPRINTS) — editing a
+value and the register together without bumping the version fails the
+suite, because the stored fingerprint no longer matches.
+
+Known candidates NOT yet registered (they first need names at their
+consuming sites): the view-brightness gate literals (tone.py — 0.30 gain,
+5.5/8.5 EV smoothstep), the punch gate family, and the sparse-emitter
+detection thresholds in analysis. The register is honest about being a
+growing inventory, not a completed one.
 """
 from __future__ import annotations
 
@@ -20,7 +29,7 @@ from dataclasses import dataclass, field
 
 from . import constants as _c
 
-POLICY_VERSION = 1
+POLICY_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -75,14 +84,20 @@ ENTRIES: tuple[PolicyEntry, ...] = (
         value=float(_c.CEILING_PLAUSIBLE_FRACTION),
         unit="fraction of metadata white",
         rationale=(
-            "a pile below ~0.42 stop under the declared white level is an "
-            "ordinary highlight plateau, not the full well (A8 item 1)"
+            "a legal DNG WhiteLevel is AUTHORITATIVE; a single-frame pile "
+            "may only override within this narrow tolerance (~0.074 stop) "
+            "— anything further under is a scene plateau, not the full "
+            "well. Per-camera saturation calibration is the sanctioned "
+            "wider override path (A9 item 2)"
         ),
         constrained_by=(
             "per-camera measured clip points vs metadata WhiteLevel: the "
             "largest legitimate shortfall observed"
         ),
-        history=("v1: introduced by review A8 (was: any pile overrode)",),
+        history=(
+            "v1: 0.75, introduced by review A8 (was: any pile overrode)",
+            "v2: 0.95 — A9 showed a 13000/16383 plateau still passing 0.75",
+        ),
     ),
     PolicyEntry(
         name="CEILING_NEAR_WINDOW_SCALE",
@@ -146,6 +161,92 @@ ENTRIES: tuple[PolicyEntry, ...] = (
         constrained_by="owner review across display classes",
     ),
     PolicyEntry(
+        name="RHO_BASE",
+        value=0.5,
+        unit="fraction (channel-separation freedom)",
+        rationale="the starting HDR rho before evidence-based withdrawal",
+        constrained_by="EDR corpus scored for highlight hue fidelity",
+    ),
+    PolicyEntry(
+        name="MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT",
+        value=10.0,
+        unit="% of frame",
+        rationale=(
+            "multi-channel CFA clipping at this share is treated as total "
+            "loss of hue confidence — deliberately strict first cut"
+        ),
+        constrained_by="EDR corpus with known clipped-hue ground truth",
+    ),
+    PolicyEntry(
+        name="P3_PRESSURE_ZERO_CONFIDENCE_PCT",
+        value=20.0,
+        unit="% out-of-P3 among bright pixels",
+        rationale="heavy gamut pressure withdraws per-channel freedom",
+        constrained_by="same EDR corpus, projector-pullback measurements",
+    ),
+    PolicyEntry(
+        name="UNALIGNED_DECODER_RHO_CAP",
+        value=0.25,
+        unit="fraction",
+        rationale=(
+            "non-libraw decoders lack the aligned RAW tail evidence, so "
+            "rho is capped rather than trusted"
+        ),
+        constrained_by="cross-decoder alignment corpus",
+    ),
+    PolicyEntry(
+        name="NORMAL_WHITE_MARGIN_EV",
+        value=0.30,
+        unit="EV",
+        rationale="latitude kept under the chosen HDR white (normal scenes)",
+        constrained_by="owner review across display classes",
+    ),
+    PolicyEntry(
+        name="SPARSE_EMITTER_WHITE_MARGIN_EV",
+        value=0.50,
+        unit="EV",
+        rationale="wider margin when highlights ARE the subject",
+        constrained_by="owner review on emitter-dominant scenes",
+    ),
+    PolicyEntry(
+        name="NORMAL_MINIMUM_WHITE_EV",
+        value=3.00,
+        unit="EV over mid grey",
+        rationale="the HDR white never drops below this for normal scenes",
+        constrained_by="owner review across display classes",
+    ),
+    PolicyEntry(
+        name="SPARSE_EMITTER_MINIMUM_WHITE_EV",
+        value=3.50,
+        unit="EV over mid grey",
+        rationale="sparse-emitter floor sits higher for the same reason",
+        constrained_by="owner review on emitter-dominant scenes",
+    ),
+    PolicyEntry(
+        name="MAXIMUM_WHITE_EV",
+        value=8.50,
+        unit="EV over mid grey",
+        rationale="authoring ceiling for the HDR white",
+        constrained_by="owner review; display availability",
+    ),
+    PolicyEntry(
+        name="NORMAL_SHOULDER_START_EV",
+        value=0.20,
+        unit="scene EV over mid grey",
+        rationale=(
+            "the HDR shoulder leaves the darktable body slightly above the "
+            "pivot so ordinary bright subjects keep the body's contrast"
+        ),
+        constrained_by="corpus latitude calibration",
+    ),
+    PolicyEntry(
+        name="SPARSE_EMITTER_SHOULDER_START_EV",
+        value=0.00,
+        unit="scene EV over mid grey",
+        rationale="emitter highlights are the subject; shoulder starts at the pivot",
+        constrained_by="corpus latitude calibration",
+    ),
+    PolicyEntry(
         name="MAX_HDR_PEAK_NITS",
         value=float(_c.MAX_HDR_PEAK_NITS),
         unit="nit",
@@ -153,6 +254,23 @@ ENTRIES: tuple[PolicyEntry, ...] = (
         constrained_by="owner review; display availability",
     ),
 )
+
+def _fingerprint(entries: tuple[PolicyEntry, ...]) -> str:
+    import hashlib
+
+    payload = "|".join(
+        f"{e.name}={e.value!r}[{e.unit}]" for e in sorted(entries, key=lambda e: e.name)
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+# One fingerprint per shipped POLICY_VERSION. Changing any value (or the
+# entry set) without bumping the version breaks the match; bumping demands
+# a new pinned line here — a conscious, reviewable act.
+POLICY_FINGERPRINTS = {
+    2: "f4c9971f70d7a7c6641b2031ae555542fdc87ca840c60bda3b92fed4b3ab97b5",
+}
+
 
 _BY_NAME = {e.name: e for e in ENTRIES}
 

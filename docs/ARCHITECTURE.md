@@ -688,12 +688,13 @@ requests.
 knobs are calibrated controls over the model rather than stages that can be switched off.
 `exposure` is plumbed through. The white-balance interface (`neutralTemperature` /
 `neutralTint` / `neutralChromaticity` / `neutralLocation`) is the supported way to move
-white balance and is why `--wb daylight` is refused rather than approximated on this
-path. `linearSpaceFilter` is Apple's own hook for inserting a CIFilter while the image is
-still linear, which is the architecturally correct place for any scene-referred operation
-this pipeline might want to push into the decode. Until that white-balance interface has
-a validated temperature/tint mapping, `--wb daylight` is rejected on this path rather
-than approximated.
+white balance inside the decode. `--wb daylight` is SUPPORTED on this path (review A9):
+the frame decodes at the fixed AsShot neutral and the project's hot-WB transport then
+composes the applied balance with the inverse of the daylight calibration frame's — the
+same declaration semantics as the LibRaw path, without asking RAW 9 to approximate a
+metadata-multiplier mapping it does not define. `linearSpaceFilter` remains Apple's own
+hook for inserting a CIFilter while the image is still linear, the architecturally
+correct place for any scene-referred operation this pipeline might push into the decode.
 
 RAW 9 ships with the OS, so a macOS update can replace the model while `decoderVersion`
 continues to report "9". Reports now record the system version/build fingerprint alongside

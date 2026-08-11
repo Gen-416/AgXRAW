@@ -135,32 +135,44 @@ def available() -> bool:
         return False
 
 
-_RUNTIME_AVAILABLE: bool | None = None
+_RUNTIME_AVAILABLE: dict[bool, bool] = {}
 
 
-def runtime_available() -> bool:
-    """True when a CIContext can actually be CREATED, cached per process.
+def runtime_available(*, interactive: bool = False) -> bool:
+    """True when THIS workload's render context can be built and can
+    render one pixel, cached per (process, workload).
 
-    A8 item 6: ``available()`` only proves the API surface exists (class +
-    selector), which is a false positive on hosts where Quartz imports but
-    context creation fails (headless CI, sandboxed runners) — 13 live
-    tests errored past the symbol probe there. Capability answers "can I
-    call it"; this answers "will it run". GUI support hints and live
-    integration tests must use THIS one. Never raises."""
-    global _RUNTIME_AVAILABLE
-    if _RUNTIME_AVAILABLE is not None:
-        return _RUNTIME_AVAILABLE
-    if not available():
-        _RUNTIME_AVAILABLE = False
-        return False
-    try:
-        import Quartz  # type: ignore
+    A8's first cut probed a plain ``CIContext.context()`` — a second false
+    positive (A9 item 3): the actual decode path builds its context with
+    ``contextWithOptions_`` via _render_context, and hosts exist where the
+    plain constructor succeeds while the optioned one returns None. The
+    probe therefore exercises the REAL path — _render_context plus a
+    minimal 1x1 bitmap render — and preview (interactive) and export
+    capabilities are cached separately because their option sets differ.
+    Never raises."""
+    key = bool(interactive)
+    if key in _RUNTIME_AVAILABLE:
+        return _RUNTIME_AVAILABLE[key]
+    ok = False
+    if available():
+        try:
+            import Quartz  # type: ignore
+            from Foundation import NSData  # type: ignore
 
-        ctx = Quartz.CIContext.context()
-        _RUNTIME_AVAILABLE = ctx is not None
-    except Exception:
-        _RUNTIME_AVAILABLE = False
-    return _RUNTIME_AVAILABLE
+            ctx = _render_context(Quartz, interactive=key)
+            img = Quartz.CIImage.imageWithColor_(
+                Quartz.CIColor.colorWithRed_green_blue_(0.5, 0.5, 0.5)
+            ).imageByCroppingToRect_(Quartz.CGRectMake(0, 0, 1, 1))
+            buf = bytearray(4)
+            ctx.render_toBitmap_rowBytes_bounds_format_colorSpace_(
+                img, buf, 4, Quartz.CGRectMake(0, 0, 1, 1),
+                Quartz.kCIFormatRGBA8, None,
+            )
+            ok = True
+        except Exception:
+            ok = False
+    _RUNTIME_AVAILABLE[key] = ok
+    return ok
 
 
 def _require_quartz() -> Any:
@@ -212,7 +224,7 @@ def probe_raw9_support(path: Path) -> dict[str, Any]:
     that expose different decoder versions for the same camera family.
     """
     result: dict[str, Any] = {
-        "coreimage_available": available(),
+        "coreimage_available": runtime_available(),
         "raw9_supported": False,
         "versions_offered": (),
         "fallback_version": None,

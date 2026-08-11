@@ -590,7 +590,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--decoder",
         choices=DECODER_CHOICES,
         default="libraw",
-        help="scene-linear RGB 解码器: libraw=默认；coreimage=macOS CIRAWFilter（证据层仍为 LibRaw；与 --wb daylight 不兼容）",
+        help="scene-linear RGB 解码器: libraw=默认；coreimage=macOS CIRAWFilter（证据层仍为 LibRaw；--wb daylight 经固定 AsShot 解码后的项目 hot-WB 实现）",
     )
     parser.add_argument(
         "--coreimage-version",
