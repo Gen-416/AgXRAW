@@ -10,6 +10,7 @@ pybind11_add_module(
   src/agx_core.cpp
   src/hdr_core.cpp
   src/output_core.cpp
+  src/film_appearance_core.cpp
 )
 
 target_include_directories(_dngscan_fast PRIVATE include)

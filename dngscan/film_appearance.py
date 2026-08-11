@@ -419,6 +419,45 @@ def _sample_field(f: np.ndarray, d: np.ndarray, coef: tuple) -> np.ndarray:
     )
 
 
+def _native_apply(rgb: np.ndarray, e: np.ndarray, plan) -> np.ndarray | None:
+    """Dispatch to the C++ palette kernel under the shared _fast policy
+    (auto: use when importable; strict: required; off: never). Returns None
+    to fall back to the NumPy oracle."""
+    from . import _fast
+
+    if not _fast.available():
+        if _fast.strict_requested():
+            raise _fast.NativeKernelError(
+                "DNGSCAN_FAST=1 但原生外观内核不可用"
+            )
+        return None
+    recipe = plan.recipe
+    ext = _fast._require_extension()
+    m_fwd, m_inv = _fused_oklab_matrices()
+    nb = (recipe["neutral_bias_ab"]
+          * np.float32(plan.neutral_bias_strength)).astype(np.float32)
+    out, neg = ext.film_appearance_apply_f32(
+        np.ascontiguousarray(rgb, dtype=np.float32),
+        np.ascontiguousarray(e, dtype=np.float32),
+        recipe["hue_delta_deg"], recipe["d_hue_delta_deg"],
+        recipe["log_chroma_gain"], recipe["d_log_chroma_gain"],
+        recipe["density_ev"], recipe["d_density_ev"],
+        np.asarray(EV_KNOTS, dtype=np.float32), nb,
+        bool(float(np.abs(nb).max()) > 0.0),
+        float(plan.strength), float(recipe["neutral_c0"]),
+        float(recipe["chroma_knee"]), float(recipe["chroma_power"]),
+        float(1.0 + plan.richness_delta),
+        float(1.0 + plan.color_density_delta),
+        np.ascontiguousarray(m_fwd, dtype=np.float32),
+        _OKLAB_M2_F32, _OKLAB_M2_INV_F32,
+        np.ascontiguousarray(m_inv, dtype=np.float32),
+    )
+    global _CLAMP_ROWS, _CLAMP_NEGATIVE_ROWS
+    _CLAMP_ROWS += int(out.shape[0])
+    _CLAMP_NEGATIVE_ROWS += int(neg)
+    return out
+
+
 def apply_film_appearance(
     developed: np.ndarray,
     plan: FilmAppearancePlan,
@@ -457,6 +496,13 @@ def apply_film_appearance(
     else:
         y = np.maximum(rgb @ _LUMA_REC2020, np.float32(1e-9))
         e = np.log2(y / np.float32(0.18))
+
+    # E3: the native kernel is an elementwise port of everything below; this
+    # NumPy path stays the correctness oracle (parity gate in P10) and the
+    # DNGSCAN_FAST=0 suite runs it end to end.
+    native = _native_apply(rgb, e, plan)
+    if native is not None:
+        return native.reshape(np.shape(developed))
     lab = np.cbrt(rgb @ m_fwd.T) @ _OKLAB_M2_F32.T
     L = lab[:, 0]
     a = lab[:, 1]
