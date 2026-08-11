@@ -22,8 +22,10 @@ FUJI_RAF = PICTURES / "DSCF0614.RAF"
 
 
 def _skip_unless_available() -> None:
-    if not coreimage_decode.available():
-        raise unittest.SkipTest("Core Image / CIRAWFilter unavailable")
+    # A8 item 6: live tests need a working RUNTIME, not just the API
+    # surface — the symbol probe is a false positive on headless hosts.
+    if not coreimage_decode.runtime_available():
+        raise unittest.SkipTest("Core Image runtime unavailable")
 
 
 class CoreImageDecodeImportTests(unittest.TestCase):

@@ -23,12 +23,15 @@ else:
 
 # matplotlib is only needed by the diagnostic dashboard (plot.py), yet importing
 # pyplot + font_manager costs ~0.27s — paid by every spawned export worker if it
-# happens at package import. Availability is checked cheaply here; the actual
-# import is deferred to plot._matplotlib() at first dashboard render.
+# happens at package import. A8 item 8: it is a true EXTRA — a plain
+# conversion must not fail because the dashboard dependency is absent, so
+# its availability is tracked separately from the required deps and only
+# the dashboard path enforces it (plot._matplotlib() at first render).
+DASHBOARD_IMPORT_ERRORS: list[str] = []
 try:
     import importlib.util as _importlib_util
 
     if _importlib_util.find_spec("matplotlib") is None:
         raise ImportError("matplotlib is not installed")
 except Exception as exc:  # pragma: no cover - exercised only on missing deps
-    IMPORT_ERRORS.append(f"matplotlib: {exc}")
+    DASHBOARD_IMPORT_ERRORS.append(f"matplotlib: {exc}")

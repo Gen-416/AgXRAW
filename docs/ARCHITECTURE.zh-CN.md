@@ -780,7 +780,7 @@ flowchart LR
     D2["镜前滤镜（可选）<br/>Wratten mired 位移<br/>（一层 Capture 光学）"]
     D3["光谱分离<br/>胶片感色层作为观察者<br/>（前馈层）"]
     D4["显影曲线 + 观看条件翻译<br/>AgX 具名坐标 · surround 项 · 介质地板<br/>（二层 Tone）"]
-    D5["曝光依赖色彩<br/>observe: 后置色头(负片) · full: 烘焙光谱链 LUT<br/>（三层 formation 之后）"]
+    D5["曝光依赖色彩<br/>observe: 后置色头(负片)<br/>full: Stage A→B1→timing→相纸→B2<br/>→中性化→外观层"]
     D1 --> D2 --> D3 --> D4 --> D5
     D5 --> OUT["四层交付原样工作<br/>含 Ultra HDR gain map"]
 ```

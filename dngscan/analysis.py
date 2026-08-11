@@ -11,7 +11,7 @@ from ._deps import np
 from . import priors as sensor_priors
 from .color import clamp_float, XYZ_TO_RGB
 from .constants import (
-    CEILING_MIN_PILE_FRACTION, CEILING_MIN_PILE_PIXELS, EPS, EV_REPORT_FLOOR, GAMUT_EPS,
+    CEILING_MIN_PILE_FRACTION, CEILING_MIN_PILE_PIXELS, CEILING_PLAUSIBLE_FRACTION, EPS, EV_REPORT_FLOOR, GAMUT_EPS,
     GRAY_EV, MIDGRAY_HEADROOM_STOPS, NOISE_DR_EPS, SNR_BRIGHT_UNRELIABLE_STOP,
     SNR_LOW_PERCENTILE, SNR_TILE,
 )
@@ -120,7 +120,10 @@ def padded_channel_values(values: list[float], channel_ids: list[int]) -> dict[i
     return out
 
 
-def detect_ceilings(raw_image: Any, raw_colors: Any, channel_ids: list[int]) -> tuple[dict[int, int], dict[int, int], dict[int, int], dict[int, bool]]:
+def detect_ceilings(
+    raw_image: Any, raw_colors: Any, channel_ids: list[int],
+    sat: dict[int, int] | None = None,
+) -> tuple[dict[int, int], dict[int, int], dict[int, int], dict[int, bool]]:
     ceilings: dict[int, int] = {}
     exact_counts: dict[int, int] = {}
     near_counts: dict[int, int] = {}
@@ -131,7 +134,14 @@ def detect_ceilings(raw_image: Any, raw_colors: Any, channel_ids: list[int]) -> 
             raise RuntimeError(f"no visible pixels for raw color channel {cid}")
         ceil = int(np.max(vals))
         exact = int(np.count_nonzero(vals == ceil))
-        near = int(np.count_nonzero(vals >= max(ceil - 2, 0)))
+        # A8 item 1: the near-window scales with bit depth — a fixed 2 DN
+        # is a different tolerance at 12 and 16 bits. ~2 DN per 14-bit
+        # scale, floor 2.
+        level = int((sat or {}).get(cid, 0)) or int(np.iinfo(raw_image.dtype).max
+                                                    if np.issubdtype(raw_image.dtype, np.integer)
+                                                    else 65535)
+        window = max(2, int(round(level / 8192)))
+        near = int(np.count_nonzero(vals >= max(ceil - window, 0)))
         min_pile = max(CEILING_MIN_PILE_PIXELS, int(math.ceil(vals.size * CEILING_MIN_PILE_FRACTION)))
         ceilings[cid] = ceil
         exact_counts[cid] = exact
@@ -231,7 +241,16 @@ def resolve_fullwell(
     """Prefer the measured saturation pile when the scene actually clips; otherwise fall back
     to the metadata white level so an unclipped frame's brightest pixel is not mistaken for the
     full well (which would deflate clip %, usable DR, and the tone plan)."""
-    strong = [cid for cid in channel_ids if spike_ok.get(cid, False)]
+    # A8 item 1: a pile only overrides metadata when it is PLAUSIBLY the
+    # sensor's full well — near the metadata white level. An ordinary
+    # highlight plateau (measured: 300 px at 8000 under WhiteLevel 16383)
+    # must not become the frame's "full well" and poison clip %, DR, the
+    # clip mask and HDR headroom downstream.
+    strong = [
+        cid for cid in channel_ids
+        if spike_ok.get(cid, False)
+        and ceilings[cid] >= CEILING_PLAUSIBLE_FRACTION * max(sat[cid], 1)
+    ]
     channel_fullwell = {
         cid: int(ceilings[cid]) if cid in strong else int(sat[cid])
         for cid in channel_ids
@@ -550,11 +569,17 @@ def compute_snr_curves(
 
 
 def compute_gamut_metrics(
-    xyz_render: Any,
-    render_scale: float,
+    scene_rec2020: Any,
+    scene_scale: float,
     y: Any,
     gamut_names: tuple[str, ...] | list[str] | None = None,
 ) -> tuple[dict[str, float], float]:
+    """Out-of-gamut pressure from the SCENE Rec.2020 buffer, converted to
+    float XYZ per chunk. A8 item 3: the packed uint16 XYZ render clips Z at
+    the representable ceiling, and Rec.2020's pure blue carries Z ~= 1.061
+    — reading it back under-reported exactly the saturated blues/cyans this
+    metric exists to count (round-tripped blue fell to ~0.943 and grew
+    ~0.015 of red). The scene buffer is the unclipped source of truth."""
     names = tuple(gamut_names) if gamut_names is not None else tuple(XYZ_TO_RGB.keys())
     names = tuple(name for name in names if name in XYZ_TO_RGB)
     if not names:
@@ -570,9 +595,11 @@ def compute_gamut_metrics(
     if bright_total == 0:
         return {name: 0.0 for name in names}, 0.0
 
+    from .color import rec2020_to_xyz
+
     counts = {name: 0 for name in names}
-    flat_xyz = xyz_render.reshape(-1, xyz_render.shape[-1])
-    inv_scale = np.float32(1.0 / render_scale)
+    flat_scene = scene_rec2020.reshape(-1, scene_rec2020.shape[-1])
+    inv_scale = np.float32(1.0 / scene_scale)
     chunk = 1_000_000
 
     for start in range(0, total_pixels, chunk):
@@ -580,7 +607,8 @@ def compute_gamut_metrics(
         mask = bright_flat[start:end]
         if not np.any(mask):
             continue
-        xyz = flat_xyz[start:end, :3][mask].astype(np.float32, copy=False) * inv_scale
+        linear = flat_scene[start:end, :3][mask].astype(np.float32) * inv_scale
+        xyz = rec2020_to_xyz(linear).astype(np.float32, copy=False)
         xyz = np.nan_to_num(xyz, nan=0.0, posinf=1.0, neginf=0.0)
         x = xyz[:, 0]
         y_chan = xyz[:, 1]
@@ -705,8 +733,10 @@ def analyze(
     channel_ids = [int(x) for x in sorted(np.unique(raw_colors).tolist())]
     labels = channel_labels(bundle.color_desc, channel_ids)
 
-    ceilings, exact_counts, near_counts, spike_ok = detect_ceilings(raw_image, raw_colors, channel_ids)
     sat = channel_saturation_levels(channel_ids, bundle.camera_white_levels, bundle.white_level)
+    ceilings, exact_counts, near_counts, spike_ok = detect_ceilings(
+        raw_image, raw_colors, channel_ids, sat
+    )
     fullwell, fullwell_ids, fullwell_note, channel_fullwell = resolve_fullwell(
         channel_ids, ceilings, spike_ok, sat
     )
@@ -738,7 +768,7 @@ def analyze(
     else:
         snr_curves, snr1_dr, snr1_stop = {}, {}, {}
     gamut_pct, bright_pct = compute_gamut_metrics(
-        bundle.xyz_render, bundle.render_scale, y, gamut_names
+        bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names
     )
 
     # Priors layer: electron-domain calibration from public measurements (best-effort).
@@ -838,8 +868,8 @@ def reanalyze_balanced_scene(
         ev_future = pool.submit(compute_ev_metrics, y)
         gamut_future = pool.submit(
             compute_gamut_metrics,
-            bundle.xyz_render,
-            bundle.render_scale,
+            bundle.scene_rec2020_render,
+            bundle.scene_scale,
             y,
             gamut_names,
         )

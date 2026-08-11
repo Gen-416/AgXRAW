@@ -23,6 +23,7 @@ Contracts that hold from day one:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from types import MappingProxyType
 import json
 from dataclasses import dataclass, field
@@ -72,29 +73,50 @@ class FilmAppearancePlan:
     recipe: dict | None = field(default=None, compare=False)
 
 
-class FrozenRecipe(dict):
-    """An immutable, still-serializable recipe payload (A7 item 2).
+class FrozenRecipe(Mapping):
+    """A truly immutable, still-serializable recipe payload (A8 item 2).
 
-    MappingProxyType made compiled plans unpicklable (spawned export
-    workers and dataclasses.asdict both need serialization); a dict
-    subclass keeps every consumer and pickle working while refusing
-    mutation through the public interface. Field arrays AND the
-    precomputed derivative tables are additionally read-only NumPy
-    views, so the shared cache object behind every compiled plan cannot
-    drift a later render."""
+    The A7 dict subclass could still be mutated through ``|=``, the dict
+    C-level methods (``dict.__setitem__(obj, ...)``) or a re-invoked
+    ``__init__`` — and the object is SHARED by the module cache, so one
+    accidental write would drift every later plan. A Mapping wrapper has
+    no inherited mutation surface at all; pickle/copy go through
+    ``__reduce__`` and dataclasses.asdict deep-copies it intact. Field
+    arrays and derivative tables stay read-only NumPy views on top.
+    """
 
-    def _refuse(self, *a, **k):
+    __slots__ = ("_data",)
+
+    def __init__(self, data):
+        # A re-invoked __init__ was one of the review's demonstrated holes:
+        # it would swap the payload out from under every cached plan.
+        if hasattr(self, "_data"):
+            raise TypeError("recipe payload is frozen (shared across plans)")
+        object.__setattr__(self, "_data", dict(data))
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __repr__(self):
+        return f"FrozenRecipe({self._data!r})"
+
+    def __setattr__(self, name, value):
         raise TypeError("recipe payload is frozen (shared across plans)")
 
-    __setitem__ = __delitem__ = _refuse
-    clear = pop = popitem = setdefault = update = _refuse
-
     def __reduce__(self):
-        return (_thaw_recipe, (dict(self),))
+        return (FrozenRecipe, (dict(self._data),))
 
+    def __copy__(self):
+        return self
 
-def _thaw_recipe(payload: dict) -> "FrozenRecipe":
-    return FrozenRecipe(payload)
+    def __deepcopy__(self, memo):
+        return self
 
 
 _RECIPE_CACHE: dict[tuple, dict] = {}

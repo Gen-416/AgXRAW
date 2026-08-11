@@ -136,6 +136,38 @@ def validate_film_plans(
     exposure_ev_max: float = FILM_EXPOSURE_EV_MAX,
 ) -> None:
     """Fail-closed contract from plan §5.3 / §7.2. Raises ValueError."""
+    # A8 item 4: every numeric field must be FINITE before any range check
+    # runs — NaN passes every comparison-based bound ("nan < 0" and
+    # "nan > 1" are both False), so grain_amount=nan and
+    # print_exposure_ev=nan sailed through. One validator serves the CLI,
+    # the GUI service and the Python API alike.
+    _numeric = (
+        ("film_exposure_ev", exposure.exposure_ev),
+        ("reference_cct", exposure.reference_cct),
+        ("dev_contrast", development.contrast_delta),
+        ("dev_fog", development.fog_delta),
+        ("dev_density", development.color_density),
+        ("printer_y_cc", print_plan.printer_y_cc),
+        ("printer_m_cc", print_plan.printer_m_cc),
+        ("print_exposure_ev", print_plan.print_exposure_ev),
+        ("grain_amount", finish.grain_amount),
+        ("halation_amount", finish.halation_amount),
+        ("bloom_amount", finish.bloom_amount),
+        ("compression", finish.compression),
+        ("compression_knee_ev", finish.compression_knee_ev),
+        ("highlight_color_density", finish.highlight_color_density),
+    )
+    for _name, _val in _numeric:
+        if not (isinstance(_val, (int, float)) and math.isfinite(float(_val))):
+            raise ValueError(f"{_name}={_val!r} 非法（必须是有限数值）")
+    for _name, _cc in (("printer_y_cc", print_plan.printer_y_cc),
+                       ("printer_m_cc", print_plan.printer_m_cc)):
+        if not 0.0 <= float(_cc) <= 200.0:
+            raise ValueError(f"{_name}={_cc} 域为 [0, 200] CC")
+    if not -8.0 <= float(print_plan.print_exposure_ev) <= 8.0:
+        raise ValueError(
+            f"print_exposure_ev={print_plan.print_exposure_ev} 域为 [-8, 8]"
+        )
     if development.interimage_mode not in ("declared", "off"):
         raise ValueError(
             f"film_interimage={development.interimage_mode!r} 未知（可选 declared/off）"

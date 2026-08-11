@@ -116,7 +116,12 @@ served verbatim.
 
 ## Quick start
 
-**macOS** (Apple Silicon or Intel) and Python 3.11 or newer are required. The
+**macOS on Apple Silicon** and Python 3.11 or newer are required — the
+native kernel wheel is built and verified only on the build host's macOS
+version (the produced wheel tags the host's platform, e.g.
+``macosx_.._arm64``); earlier systems and Intel Macs are not claimed
+because they are not tested. The pure-NumPy path (``DNGSCAN_FAST=0``)
+carries no native requirement beyond Python + NumPy. The
 tool is deeply integrated with Core Image / RAW 9 decoding, HDR gain-map
 delivery and its read-back validation; macOS is the declared supported
 platform — a stated boundary, not an untested default. The validated
