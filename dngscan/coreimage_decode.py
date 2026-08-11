@@ -233,7 +233,11 @@ def probe_raw9_support(path: Path) -> dict[str, Any]:
     that expose different decoder versions for the same camera family.
     """
     result: dict[str, Any] = {
-        "coreimage_available": runtime_available(),
+        # A12 item 1: this probe answers "which decoder VERSIONS does the
+        # file offer", an API-surface question — pinning it to the export
+        # context blocked preview-only hosts. Runtime capability belongs to
+        # load_raw's per-workload precheck.
+        "coreimage_available": available(),
         "raw9_supported": False,
         "versions_offered": (),
         "fallback_version": None,

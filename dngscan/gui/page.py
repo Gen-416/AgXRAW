@@ -1982,7 +1982,11 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         .replace("PREVIEW_LONG_EDGE", str(REALTIME_PREVIEW_LONG_EDGE))
         .replace("GRADE_OPTIONS", _grade_options_html())
         .replace("SCENE_TRANSFORM_OPTIONS", _scene_transform_options_html())
-        .replace("COREIMAGE_AVAILABLE_FLAG", "true" if coreimage_decode.runtime_available() else "false")
+        # A12 item 1: the page flag gates only on the API surface — probing
+        # the EXPORT context here disabled Apple RAW previews on machines
+        # where only the interactive context works. Real runtime capability
+        # is judged at the decode entry (load_raw probes its own workload).
+        .replace("COREIMAGE_AVAILABLE_FLAG", "true" if coreimage_decode.available() else "false")
         # Keep the slider ceiling on the same source of truth as the CLI's
         # --hdr-headroom bound (log2(4000/100) = 5.32); step 0.02 lands on it exactly.
         .replace("MAX_HDR_HEADROOM_ATTR", f"{MAX_HDR_HEADROOM_EV:.2f}")
