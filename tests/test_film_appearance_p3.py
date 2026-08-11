@@ -120,6 +120,44 @@ class ConstructionTests(unittest.TestCase):
                     )
 
 
+class ExposureCastAxisTests(unittest.TestCase):
+    """A7 item 1: which scene-EV axis the neutralization cast table speaks.
+
+    retimed selects a per-exposure table (axis = this exposure's scene EV);
+    fixed and reversal keep the EV0 table, whose axis belongs to the EV0
+    asset — a pushed/pulled frame's content sits OFFSET on it. The source-
+    string pin missed this; the behaviour gate is mid-grey neutrality at
+    ±1.5 EV (pre-fix: Vision3 fixed 0.24 stop, Velvia 0.36 stop of cast)."""
+
+    CASES = (
+        ("vision3250d", "fixed"),
+        ("portra400", "retimed"),
+        ("velvia100", "fixed"),
+    )
+
+    def _spread(self, stock, timing, crossover, exp) -> float:
+        grey = _ramp(np.array([0.0]))
+        out = np.asarray(
+            apply_film_core(grey, _plan(
+                crossover, curve_preset=stock, film_exposure_ev=exp,
+                film_print_timing=timing,
+            )), np.float64,
+        )[0]
+        return float(np.log2(out.max() / max(out.min(), 1e-9)))
+
+    def test_mid_grey_stays_neutral_across_exposure(self) -> None:
+        for stock, timing in self.CASES:
+            for exp in (-1.5, 0.0, 1.5):
+                for crossover in ("off", "print"):
+                    with self.subTest(stock=stock, timing=timing,
+                                      crossover=crossover, exp=exp):
+                        self.assertLess(
+                            self._spread(stock, timing, crossover, exp), 0.05,
+                            "mid grey must stay neutral at every emulsion "
+                            "state under a digital neutralization policy",
+                        )
+
+
 class NamingMigrationTests(unittest.TestCase):
     def test_cli_maps_canonical_and_deprecated_names(self) -> None:
         from dngscan.cli import NEUTRALIZATION_TO_CROSSOVER

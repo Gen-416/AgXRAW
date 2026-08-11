@@ -1875,20 +1875,32 @@ def _film_variants_json() -> str:
     A6 item 7: the GUI must not OFFER a combination the loader will refuse
     — only stocks with an authored extended recipe get the option. The
     manifest is the authority (hash-pinned asset list)."""
+    import hashlib as _hashlib
     import json as _json
     import re as _re
 
-    from ..film_appearance import MANIFEST_PATH
+    from ..film_appearance import APPEARANCE_DIR, MANIFEST_PATH
 
     out: dict[str, list[str]] = {}
     try:
         files = _json.loads(MANIFEST_PATH.read_text())["files"]
     except (OSError, KeyError, ValueError):
         return "{}"
-    for name in files:
+    for name, sha in files.items():
         m = _re.match(r"^([a-z0-9_]+?)__[a-z0-9_]+_extended_v\d+\.npz$", name)
-        if m:
-            out.setdefault(m.group(1), []).append("extended")
+        if not m:
+            continue
+        # A7 item 5: a manifest ENTRY is not a loadable asset — verify the
+        # file exists and its bytes match the pinned hash before offering
+        # the option (the loader would fail closed anyway; the GUI must
+        # not advertise a combination that cannot succeed).
+        path = APPEARANCE_DIR / name
+        try:
+            if _hashlib.sha256(path.read_bytes()).hexdigest() != sha:
+                continue
+        except OSError:
+            continue
+        out.setdefault(m.group(1), []).append("extended")
     return _json.dumps(out, sort_keys=True)
 
 

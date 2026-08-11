@@ -235,6 +235,26 @@ def _fields_for(stock_id: str, variant: str = "reference") -> dict:
     return dict(DIRECT_FIELDS[stock_id])
 
 
+def _dense_overshoot_gate(rid: str, fields: dict) -> None:
+    from dngscan import film_appearance as fa
+
+    ev_dense = np.linspace(float(EV_KNOTS[0]), float(EV_KNOTS[-1]), 241)
+    hue_dense = np.arange(0.0, 360.0, 0.5)
+    ee = np.repeat(ev_dense, hue_dense.size).astype(np.float32)
+    hh = np.tile(hue_dense, ev_dense.size).astype(np.float32)
+    coef = fa._grid_coefficients(ee, hh)
+    for key, cap in (("hue_delta_deg", 0.15), ("log_chroma_gain", 0.005),
+                     ("density_ev", 0.005)):
+        f = np.asarray(fields[key], np.float32)
+        d = fa._pchip_derivatives(np.asarray(EV_KNOTS), f)
+        vals = fa._sample_field(f, d, coef)
+        over = max(float(vals.max()) - float(f.max()),
+                   float(f.min()) - float(vals.min()), 0.0)
+        assert over <= cap, (
+            f"{rid}: {key} 2-D overshoot {over:.4f} past knots (cap {cap})"
+        )
+
+
 def build(stock_id: str, medium_id: str, variant: str = "reference") -> Path:
     rid = f"{stock_id}__{medium_family(medium_id)}_{variant}_v1"
     fields = {**_fields_for(stock_id, variant),
@@ -265,6 +285,11 @@ def build(stock_id: str, medium_id: str, variant: str = "reference") -> Path:
             "colour density only; owner look review pending."
         ),
     }
+    # A7 item 3: the knot-amplitude asserts above bound what the author
+    # WROTE; the 2-D sampling can overshoot past it (per-column PCHIP
+    # derivatives through periodic Catmull-Rom). Publish only if a dense
+    # scan stays within the same caps the P2 gate enforces.
+    _dense_overshoot_gate(rid, fields)
     path = APPEARANCE_DIR / f"{rid}.npz"
     np.savez_compressed(
         path,

@@ -131,6 +131,30 @@ class VariantPlumbingTests(unittest.TestCase):
             })
 
 
+class CapabilityMapTests(unittest.TestCase):
+    def test_the_gui_capability_map_is_hash_verified(self) -> None:
+        """A7 item 5: the map lists exactly the stocks whose extended asset
+        exists AND matches the pinned hash; a corrupt or missing file drops
+        out instead of advertising a fail-closed combination."""
+        import json
+        import unittest.mock as mock
+
+        from dngscan.gui.page import _film_variants_json
+
+        self.assertEqual(json.loads(_film_variants_json()),
+                         {"vision3250d": ["extended"]})
+        # corrupt bytes -> the entry disappears
+        real_read = type(fa.MANIFEST_PATH).read_bytes
+        ext_name = "vision3250d__print2383_extended_v1.npz"
+
+        def corrupt(self):
+            data = real_read(self)
+            return data + b"x" if self.name == ext_name else data
+
+        with mock.patch.object(type(fa.MANIFEST_PATH), "read_bytes", corrupt):
+            self.assertEqual(json.loads(_film_variants_json()), {})
+
+
 class ExtendedSemanticsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

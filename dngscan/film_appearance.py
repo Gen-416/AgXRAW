@@ -72,6 +72,31 @@ class FilmAppearancePlan:
     recipe: dict | None = field(default=None, compare=False)
 
 
+class FrozenRecipe(dict):
+    """An immutable, still-serializable recipe payload (A7 item 2).
+
+    MappingProxyType made compiled plans unpicklable (spawned export
+    workers and dataclasses.asdict both need serialization); a dict
+    subclass keeps every consumer and pickle working while refusing
+    mutation through the public interface. Field arrays AND the
+    precomputed derivative tables are additionally read-only NumPy
+    views, so the shared cache object behind every compiled plan cannot
+    drift a later render."""
+
+    def _refuse(self, *a, **k):
+        raise TypeError("recipe payload is frozen (shared across plans)")
+
+    __setitem__ = __delitem__ = _refuse
+    clear = pop = popitem = setdefault = update = _refuse
+
+    def __reduce__(self):
+        return (_thaw_recipe, (dict(self),))
+
+
+def _thaw_recipe(payload: dict) -> "FrozenRecipe":
+    return FrozenRecipe(payload)
+
+
 _RECIPE_CACHE: dict[tuple, dict] = {}
 
 
@@ -205,7 +230,7 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
             # A6 item 6: meta is frozen alongside the recipe mapping below —
             # a frozen dataclass holding a mutable dict is only shallowly
             # immutable, and the cache SHARES this object across plans.
-            "meta": MappingProxyType(dict(meta)),
+            "meta": FrozenRecipe(meta),
             "provenance": provenance,
             "sha256": sha,
             "chroma_knee": chroma_knee,
@@ -218,11 +243,13 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
             # per-pixel evaluation is pure gathers (§6.6: monotone C1 on EV,
             # no overshoot past the knots).
             **{
-                f"d_{k}": _pchip_derivatives(np.asarray(EV_KNOTS), fields[k])
+                f"d_{k}": _readonly(
+                    _pchip_derivatives(np.asarray(EV_KNOTS), fields[k])
+                )
                 for k in ("hue_delta_deg", "log_chroma_gain", "density_ev")
             },
         }
-        out = MappingProxyType(out)
+        out = FrozenRecipe(out)
     _RECIPE_CACHE.clear()
     _RECIPE_CACHE[cache_key] = out
     return out
@@ -333,6 +360,12 @@ def medium_family(medium_id: str) -> str:
 # --------------------------------------------------------------------------
 # P2 palette kernel (plan §6)
 # --------------------------------------------------------------------------
+
+def _readonly(arr: np.ndarray) -> np.ndarray:
+    a = np.asarray(arr, dtype=np.float32)
+    a.setflags(write=False)
+    return a
+
 
 def _pchip_derivatives(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Fritsch-Carlson monotone-cubic knot derivatives along axis 0.
