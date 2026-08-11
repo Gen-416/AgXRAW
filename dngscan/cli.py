@@ -447,6 +447,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="参考印相强度 0..1.5(仅 reference;0=严格恒等)",
     )
     parser.add_argument(
+        "--film-appearance-variant",
+        choices=("reference", "extended"),
+        default="reference",
+        help=(
+            "解释变体(仅 reference/custom):reference=印相解读(默认);"
+            "extended=scan/telecine 对照解读——同家族方向 0.6 幅度,灰轴数字中性"
+            "(recipe 声明 technical-neutral,编译器默认随之);缺资产的卷硬失败"
+        ),
+    )
+    parser.add_argument(
         "--film-development",
         choices=("measured_default", "editorial_custom"),
         default="measured_default",
@@ -975,6 +985,7 @@ def main(argv: list[str]) -> int:
                 film_interimage=args.film_interimage,
                 film_appearance=args.film_appearance,
                 film_appearance_strength=args.film_appearance_strength,
+                film_appearance_variant=args.film_appearance_variant,
                 film_richness=args.film_richness,
                 film_color_density=args.film_color_density,
                 film_neutral_bias=args.film_neutral_bias,
@@ -1028,6 +1039,7 @@ def main(argv: list[str]) -> int:
                 film_interimage=args.film_interimage,
                 film_appearance=args.film_appearance,
                 film_appearance_strength=args.film_appearance_strength,
+                film_appearance_variant=args.film_appearance_variant,
                 film_richness=args.film_richness,
                 film_color_density=args.film_color_density,
                 film_neutral_bias=args.film_neutral_bias,

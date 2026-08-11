@@ -722,6 +722,7 @@ def build_render_plan(
     film_interimage: str = "declared",
     film_appearance: str = "technical",
     film_appearance_strength: float = 1.0,
+    film_appearance_variant: str = "reference",
     film_richness: float = 0.0,
     film_color_density: float = 0.0,
     film_neutral_bias: float = 1.0,
@@ -824,17 +825,23 @@ def build_render_plan(
         # #20/#21 merge briefly moved it there, which silently killed
         # --film-crossover for every reversal preset: reversals reject the
         # colour head, so the stamp became unreachable).
-        # A5 item 6: the DEFAULT policy is resolved HERE, in the compiler,
-        # from the appearance mode — reference/custom inherit the recipes'
-        # declared print-balanced, technical keeps the frozen bounded
-        # default. An explicit value always wins. The CLI/service sentinels
-        # forward None so this is the single resolution point.
+        # A5 item 6 established the single resolution point HERE; E2 refines
+        # the source: the None-default comes from the selected RECIPE's own
+        # neutralization_policy declaration (reference recipes declare
+        # print-balanced; the extended interpretation declares
+        # technical-neutral — the neutral grey axis is its point).
+        # technical keeps the frozen bounded default. Explicit values win.
         if film_crossover is None:
-            crossover_value = (
-                "print"
-                if str(film_appearance or "technical") in ("reference", "custom")
-                else "off"
-            )
+            if str(film_appearance or "technical") in ("reference", "custom"):
+                from .film_appearance import declared_crossover
+
+                crossover_value = declared_crossover(
+                    film_curve,
+                    str(film_print_medium or "") or _default_medium_for(film_curve),
+                    str(film_appearance_variant or "reference"),
+                )
+            else:
+                crossover_value = "off"
         else:
             crossover_value = (
                 film_crossover
@@ -907,6 +914,7 @@ def build_render_plan(
             film_interimage=str(film_interimage or "declared"),
             film_appearance=str(film_appearance or "technical"),
             film_appearance_strength=float(film_appearance_strength),
+            film_appearance_variant=str(film_appearance_variant or "reference"),
             film_richness=float(film_richness),
             film_color_density=float(film_color_density),
             film_neutral_bias=float(film_neutral_bias),
@@ -1056,6 +1064,7 @@ def build_render_plan(
             richness_delta=float(film_richness),
             color_density_delta=float(film_color_density),
             neutral_bias_strength=float(film_neutral_bias),
+            variant=str(film_appearance_variant or "reference"),
             stock_id=film_curve,
             medium_id=(
                 (

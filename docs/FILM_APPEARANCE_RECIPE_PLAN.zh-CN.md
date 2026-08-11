@@ -421,8 +421,19 @@ endura 的"禁差分 richness"是成对归因规则,单卷家族可用 richness 
 ±6 EV 仍严格为零。门在 tests/test_film_appearance_p8.py:四区可见度地板
 (峰值行≥1.5,至少两区≥2.5)+中带聚合≥1.5+方向性断言(Vision3 阴影蓝向青、
 Velvia 绿向翠)+Velvia 肤区为最少移动区+内核隔离中性<0.5+跨家族两两中位≥2
-(实测 3.7–6.5)+theatrical 无配方 fail closed。owner A/B 待审。清单 5
-(extended 解释)与原生内核为后续批次。）
+(实测 3.7–6.5)+theatrical 无配方 fail closed。**E1 A/B 已通过**
+（owner:"B(reference 列)确实效果不错",两只 v1 定稿）。）
+
+（2026-08-11 E2 状态：清单 5 已落地——`vision3250d__print2383_extended_v1`,
+经 `--film-appearance-variant extended`(CLI/service/GUI 同名字段)选择。实现为
+同家族方向 0.6 幅度、去阴影密度块、灰轴数字中性:recipe 声明
+neutralization_policy=technical-neutral,编译器的 None 默认从 recipe 声明解析
+(E2 对 A5 单一解析点的细化:默认源从"模式常量"改为"recipe 声明",显式选择仍
+优先)。黑位/gamut 宽度不属于 palette 权力(归 tone/gamut fit;§7 纸曝光 warp
+维持按测量关闭)。门在 tests/test_film_appearance_p9.py:变体接线矩阵+灰轴对
+bounded technical 浮点噪声级(实测 0.001 dE00)+更克制(0.41 vs 2.17)+仍是
+独立解释(对 reference 中位 2.04)+0.6 比例逐字节+其余卷 fail closed。
+owner A/B 待审;原生内核为最后批次。）
 
 ## 11. 运行时接线
 

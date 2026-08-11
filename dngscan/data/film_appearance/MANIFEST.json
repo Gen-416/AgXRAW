@@ -1,9 +1,10 @@
 {
- "count": 4,
+ "count": 5,
  "files": {
   "ektar100__endura_reference_v1.npz": "0b229f1c89e282289601c0913909e82df2f6991b2cc1cfb28cf8efb20c31c31f",
   "portra400__endura_reference_v1.npz": "d8a6896e84e48465a42ab18baff93acf43a6287c309e467521bb9d8fbbf73056",
   "velvia100__direct_reference_v1.npz": "c637eb8ac359002b3ed0e172d02bb9b49d449adc3e3bc0b1a8a216db4600bb14",
+  "vision3250d__print2383_extended_v1.npz": "dc27ef35189087be10858a4b142a0054fd0b91ec0894e19c8c7590c9016af58c",
   "vision3250d__print2383_reference_v1.npz": "15380c140bf3e243a9261b20367f9cd6117f6e3a6ad05cb788edc771c5e20905"
  },
  "policy": "Every appearance recipe is hash-pinned; the loader refuses an asset whose bytes drift from this manifest.",

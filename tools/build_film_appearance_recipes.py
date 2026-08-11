@@ -181,15 +181,43 @@ DIRECT_FIELDS = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# E2 (§10 item 5): the extended interpretation — the scan/telecine
+# counter-reading of the same cine family direction. Same hue paths and
+# richness at 0.6x amplitude; the shadow density block is dropped (open
+# blacks are the scan reading) and only the mild mid weight kept; the grey
+# axis declares technical-neutral (a digitally neutral grey scale IS the
+# point — Filmbox's Extended is described the same way). Black point and
+# gamut width belong to tone/gamut fit, NOT the palette; §7's paper warp
+# stays closed by measurement (P5) and is not smuggled in here.
+# ---------------------------------------------------------------------------
+EXTENDED_FIELDS = {
+    "vision3250d": {
+        "hue_delta_deg": (
+            0.6 * DIRECT_FIELDS["vision3250d"]["hue_delta_deg"]
+        ).astype(np.float32),
+        "log_chroma_gain": (
+            0.6 * DIRECT_FIELDS["vision3250d"]["log_chroma_gain"]
+        ).astype(np.float32),
+        "density_ev": (
+            0.6 * (sheet(band(0.0, 360.0, 0.05))
+                   + sheet(band(230.0, 70.0, 0.06)))
+        ).astype(np.float32),
+    },
+}
+
 RECIPES = (
-    ("portra400", "kodak_portra_endura__translated"),
-    ("ektar100", "kodak_portra_endura__translated"),
-    ("vision3250d", "kodak_2383__translated"),
-    ("velvia100", "direct__velvia100"),
+    ("portra400", "kodak_portra_endura__translated", "reference"),
+    ("ektar100", "kodak_portra_endura__translated", "reference"),
+    ("vision3250d", "kodak_2383__translated", "reference"),
+    ("velvia100", "direct__velvia100", "reference"),
+    ("vision3250d", "kodak_2383__translated", "extended"),
 )
 
 
-def _fields_for(stock_id: str) -> dict:
+def _fields_for(stock_id: str, variant: str = "reference") -> dict:
+    if variant == "extended":
+        return dict(EXTENDED_FIELDS[stock_id])
     if stock_id in RESIDUALS:
         res = RESIDUALS[stock_id]
         return {
@@ -204,9 +232,9 @@ def _fields_for(stock_id: str) -> dict:
     return dict(DIRECT_FIELDS[stock_id])
 
 
-def build(stock_id: str, medium_id: str) -> Path:
-    rid = f"{stock_id}__{medium_family(medium_id)}_reference_v1"
-    fields = {**_fields_for(stock_id),
+def build(stock_id: str, medium_id: str, variant: str = "reference") -> Path:
+    rid = f"{stock_id}__{medium_family(medium_id)}_{variant}_v1"
+    fields = {**_fields_for(stock_id, variant),
               "neutral_bias_ab": np.zeros((K, 2), np.float32)}
     cap = float(np.abs(fields["hue_delta_deg"]).max())
     assert cap <= 12.0, f"{rid}: hue cap {cap:.1f} > 12 deg (§15.2)"
@@ -222,7 +250,9 @@ def build(stock_id: str, medium_id: str) -> Path:
         "medium_id": medium_id,
         "process_space": "display-linear-rec2020/oklab+scene-ev",
         "provenance": "editorial-authored",
-        "neutralization_policy": "print-balanced",
+        "neutralization_policy": (
+            "technical-neutral" if variant == "extended" else "print-balanced"
+        ),
         "chroma_knee": 0.28,
         "chroma_power": 2.0,
         "neutral_chroma_c0": 0.046,
@@ -245,7 +275,7 @@ def build(stock_id: str, medium_id: str) -> Path:
 
 def main() -> int:
     APPEARANCE_DIR.mkdir(parents=True, exist_ok=True)
-    paths = [build(stock, medium) for stock, medium in RECIPES]
+    paths = [build(*spec) for spec in RECIPES]
     files = {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in sorted(APPEARANCE_DIR.glob("*.npz"))
