@@ -86,8 +86,17 @@ def find_black_levels(
 def report_line(
     make: str | None, model: str | None, iso: float | None,
     metadata_levels: tuple[float, ...] | list[float] | None,
+    color_desc: str | None = None,
 ) -> str | None:
-    """One advisory report line, or None when CBLD has no match."""
+    """One advisory report line, or None when CBLD has no match.
+
+    The channel-wise mismatch comparison runs only when the decoder's
+    color_desc is RGBG, i.e. LibRaw's channel order is R, G1, B, G2 and
+    lines up with CBLD's published order — the upstream tutorial itself
+    warns other cameras may report RG1G2B-style orders, and comparing
+    across a mislabeled order would invent a mismatch. The reference
+    values are still shown either way.
+    """
     hit = find_black_levels(make, model, iso)
     if hit is None:
         return None
@@ -98,7 +107,8 @@ def report_line(
     )
     if hit["clipping"]:
         line += "（该 ISO 黑电平有削底,均值偏高）"
-    if metadata_levels:
+    order_comparable = (color_desc or "").upper() == "RGBG"
+    if metadata_levels and order_comparable:
         meta = list(metadata_levels)[:4]
         if meta and any(m > 0 for m in meta):
             worst = max(
@@ -106,5 +116,7 @@ def report_line(
             ) if len(meta) >= 4 else None
             if worst is not None and worst >= 0.5:
                 line += f"；与元数据最大差 {worst:.2f} DN(暗部偏色候选成因)"
+    elif metadata_levels and not order_comparable:
+        line += "；通道顺序非 RGBG,不与元数据逐通道比较"
     line += "；数据:知乎@姜尧耕,仅供参考"
     return line

@@ -19,10 +19,12 @@ Checks:
   2. metadata black level reads exactly 512 on all four channels.
   3. resolved full-well falls back to metadata white_level (16383) —
      the scene barely clips, so no ceiling pile may override it.
-  4. difference-frame PTC: kadc and FWC within 1% of declared truth;
-     read noise within 10% after removing the difference-frame
-     quantisation variance (1/6 ADU², see QUANT_VAR_ADU2) from the
-     fit intercept.
+  4. difference-frame PTC: kadc within 1% of declared truth; read
+     noise within 10% after removing the difference-frame quantisation
+     variance (1/6 ADU², see QUANT_VAR_ADU2) from the fit intercept.
+     The derived full-well row is a CONSISTENCY check only — it is
+     kadc x (WL - BL), algebraically tied to the gain row, so the
+     check count overstates the number of independent evidences.
 
 Run against the archived pair (see the README next to the assets):
 
@@ -141,7 +143,8 @@ def validate(asset_dir: Path) -> list[tuple[str, bool, str]]:
         f"({abs(kadc - kadc_true) / kadc_true * 100:.2f}%)",
     ))
     rows.append((
-        "PTC full-well",
+        "PTC derived full-well consistency (kadc x (WL-BL), "
+        "not independent of the gain check)",
         abs(fwc - fwc_true) / fwc_true <= FWC_TOL,
         f"{fwc:.0f} e-, truth {fwc_true:.0f} "
         f"({abs(fwc - fwc_true) / fwc_true * 100:.2f}%)",

@@ -38,7 +38,8 @@ class LookupTests(unittest.TestCase):
 class ReportLineTests(unittest.TestCase):
     def test_mismatch_against_metadata_is_surfaced(self) -> None:
         line = cbld.report_line(
-            "NIKON CORPORATION", "NIKON D810", 800, [600, 600, 600, 600]
+            "NIKON CORPORATION", "NIKON D810", 800, [600, 600, 600, 600],
+            color_desc="RGBG",
         )
         self.assertIn("削底", line)
         self.assertIn("最大差", line)
@@ -48,12 +49,28 @@ class ReportLineTests(unittest.TestCase):
         line = cbld.report_line(
             "NIKON CORPORATION", "NIKON D810", 64,
             [601.3, 601.3, 601.5, 601.4],
+            color_desc="RGBG",
         )
         self.assertIsNotNone(line)
         self.assertNotIn("最大差", line)
 
+    def test_non_rgbg_order_skips_channel_comparison(self) -> None:
+        # upstream warns some cameras report RG1G2B-style orders; a
+        # channel-wise diff across a mismatched order would invent a
+        # spurious mismatch, so the comparison must be gated on RGBG.
+        for desc in ("RGGB", "", None):
+            line = cbld.report_line(
+                "NIKON CORPORATION", "NIKON D810", 800,
+                [600, 600, 600, 600], color_desc=desc,
+            )
+            self.assertIsNotNone(line)
+            self.assertNotIn("最大差", line)
+            self.assertIn("通道顺序非 RGBG", line)
+
     def test_no_match_yields_no_line(self) -> None:
-        self.assertIsNone(cbld.report_line("SONY", "ILCE-1", 100, None))
+        self.assertIsNone(
+            cbld.report_line("SONY", "ILCE-1", 100, None, color_desc="RGBG")
+        )
 
 
 if __name__ == "__main__":
