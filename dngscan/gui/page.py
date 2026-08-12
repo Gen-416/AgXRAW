@@ -389,9 +389,9 @@ FILM_CURVE_OPTIONS
   <div class="row" id="filmAppearanceRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
       <label>胶片解释</label>
-      <select id="filmAppearance" title="外观层（仅接管模式）：技术中和=冻结基线，测量链原样；参考印相=该卷在配对相纸上的编辑性调色板（授权配方：色相路径+色密度，Oklab+场景EV 域，灰阶依内核构造不动）；自定义=参考印相加三个有界修饰（丰度/色密度/灰阶偏色强度）。">
-        <option value="technical">技术中和 · 默认</option>
-        <option value="reference">参考印相</option>
+      <select id="filmAppearance" title="外观层（仅接管模式）：技术中和=冻结基线，测量链原样；参考印相=该卷在配对相纸上的编辑性调色板（授权配方：色相路径+色密度，Oklab+场景EV 域，灰阶依内核构造不动）；自定义=参考印相加三个有界修饰（丰度/色密度/灰阶偏色强度）。出厂默认=参考印相@1.0（2026-08-12 校准）；技术中和一键可回，且始终是无配方卷的回退。">
+        <option value="technical">技术中和</option>
+        <option value="reference" selected>参考印相 · 默认</option>
         <option value="custom">自定义</option>
       </select>
     </div>
@@ -949,6 +949,7 @@ function saveSettings(){
     filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
     filmAppearanceStrength:$("#filmAppearanceStrength").value,
     filmAppearanceVariant:$("#filmAppearanceVariant").value,
+    filmAppearanceMemo:currentAppearanceMemo(),
     filmRichness:$("#filmRichness").value,filmColorDensity:$("#filmColorDensity").value,
     filmNeutralBias:$("#filmNeutralBias").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
@@ -1007,6 +1008,12 @@ function restoreSettings(){
   else if(s.filmNeutralization==="datasheet")$("#filmNeutralization").value="native";
   else if(s.filmCrossover){$("#filmNeutralization").value=s.filmCrossover==="datasheet"?"native":"auto";}
   if(s.filmAppearance&&["technical","reference","custom"].includes(s.filmAppearance))$("#filmAppearance").value=s.filmAppearance;
+  if(s.filmAppearanceMemo&&typeof s.filmAppearanceMemo==="object"
+     &&["technical","reference","custom"].includes(s.filmAppearanceMemo.appearance)){
+    appearanceMemo={appearance:s.filmAppearanceMemo.appearance,
+      strength:s.filmAppearanceMemo.strength,
+      variant:["reference","extended"].includes(s.filmAppearanceMemo.variant)?s.filmAppearanceMemo.variant:"reference"};
+  }
   if(s.filmAppearanceVariant&&["reference","extended"].includes(s.filmAppearanceVariant))$("#filmAppearanceVariant").value=s.filmAppearanceVariant;
   if(s.filmInterimage&&["declared","off"].includes(s.filmInterimage))$("#filmInterimage").value=s.filmInterimage;
   if(s.filmAppearanceStrength!==undefined)$("#filmAppearanceStrength").value=s.filmAppearanceStrength;
@@ -1095,6 +1102,21 @@ const FILM_FULL_INERT_IDS=["toneCore","midtoneBrightness","midtoneContrast",
 // the payload (the backend also forces them off; the reset keeps the UI and
 // the payload telling the same story).
 const FILM_FULL_RESET_ZERO_IDS=["highlightFade"];
+// 出厂默认(owner 2026-08-12 一次性校准):full 模式的胶片解释=参考印相@1.0。
+// 非 full 载荷必须清回 technical(service 合同),因此把 full 模式下的选择
+// 记在 appearanceMemo 里,切回 full 时恢复;经 filmAppearanceMemo 跨会话
+// 持久化。capability 门在恢复之后运行,无配方卷照旧拉回 technical。
+const APPEARANCE_FACTORY_DEFAULT={appearance:"reference",strength:"1",variant:"reference"};
+let appearanceMemo=null;
+let filmWasFull=null;
+function currentAppearanceMemo(){
+  if($("#filmCurve").value!=="none"&&$("#filmMode").value==="full"){
+    appearanceMemo={appearance:$("#filmAppearance").value,
+      strength:$("#filmAppearanceStrength").value,
+      variant:$("#filmAppearanceVariant").value};
+  }
+  return appearanceMemo;
+}
 function updateFilmModeUi(){
   const hasCurve=$("#filmCurve").value!=="none";
   $("#filmModeRow").style.display=hasCurve?"":"none";
@@ -1106,10 +1128,23 @@ function updateFilmModeUi(){
   if(appRow){
     appRow.style.display=full?"":"none";
     if(!full){
+      if(filmWasFull===true){
+        appearanceMemo={appearance:$("#filmAppearance").value,
+          strength:$("#filmAppearanceStrength").value,
+          variant:$("#filmAppearanceVariant").value};
+      }
       $("#filmAppearance").value="technical";$("#filmInterimage").value="declared";
       $("#filmAppearanceStrength").value=1;$("#filmAppearanceVariant").value="reference";
       $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
+    }else if(filmWasFull===false){
+      const memo=appearanceMemo||APPEARANCE_FACTORY_DEFAULT;
+      if(["technical","reference","custom"].includes(memo.appearance)){
+        $("#filmAppearance").value=memo.appearance;
+        $("#filmAppearanceStrength").value=memo.strength;
+        $("#filmAppearanceVariant").value=["reference","extended"].includes(memo.variant)?memo.variant:"reference";
+      }
     }
+    filmWasFull=full;
     const appMode=$("#filmAppearance").value;
     // capability 门(A6 item 7 + A13 item 2):reference/custom 只对已作
     // reference 配方的卷开放,extended 只对已作 extended 资产的卷露下拉;

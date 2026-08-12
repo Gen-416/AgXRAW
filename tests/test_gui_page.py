@@ -487,3 +487,40 @@ class FilmModePlacementTests(unittest.TestCase):
                          '$("#filmCurve").addEventListener'):
             line = PAGE[PAGE.index(listener) : PAGE.index("\n", PAGE.index(listener))]
             self.assertIn("updateHdrOptionGate()", line)
+
+
+class AppearanceFactoryDefaultTests(unittest.TestCase):
+    """出厂默认 reference@1.0(owner 2026-08-12 一次性校准)与 full 模式
+    选择记忆:非 full 载荷清回 technical 是 service 合同,出厂值经由
+    appearanceMemo 在进入 full 时恢复,并跨会话持久化。"""
+
+    def test_factory_default_is_reference_at_strength_one(self) -> None:
+        self.assertIn(
+            '<option value="reference" selected>参考印相 · 默认</option>', PAGE
+        )
+        self.assertNotIn("技术中和 · 默认", PAGE)
+        self.assertIn(
+            'APPEARANCE_FACTORY_DEFAULT={appearance:"reference",'
+            'strength:"1",variant:"reference"}', PAGE,
+        )
+
+    def test_full_mode_restores_remembered_choice_before_capability_gate(
+        self,
+    ) -> None:
+        # 恢复必须发生在 capability 门之前:无配方卷靠门拉回 technical,
+        # 而不是靠出厂值永远不生效。
+        restore = PAGE.index("appearanceMemo||APPEARANCE_FACTORY_DEFAULT")
+        gate = PAGE.index('const hasReference=variants.includes("reference")')
+        self.assertLess(restore, gate)
+        # 离开 full 前记忆当前选择;非 full 清回 technical 的合同不变。
+        self.assertIn("if(filmWasFull===true){", PAGE)
+        self.assertIn(
+            '$("#filmAppearance").value="technical";'
+            '$("#filmInterimage").value="declared";', PAGE,
+        )
+
+    def test_memo_is_persisted_and_restored(self) -> None:
+        self.assertIn("filmAppearanceMemo:currentAppearanceMemo()", PAGE)
+        self.assertIn(
+            's.filmAppearanceMemo&&typeof s.filmAppearanceMemo==="object"', PAGE
+        )
