@@ -8,7 +8,11 @@ Sources (Grain V2 / optics V2 P4 data pass):
     per-channel characteristic density D(logE) (solid, Status M-like
     "Granularity" densitometry) plus granularity Sigma-D(logE) (dashed,
     48 um aperture microdensitometer, log right axis, rms = value*1000).
-  - (2383 print film follows in the same format from H-1-2383.)
+  - KODAK VISION Color Print Film 2383/3383, H-1-2383, (c) 2022,
+    Revised 3-22 — same chart form (Status A, ECP-2D); the print stock's
+    characteristic tables were scanned off the granularity chart itself
+    by density-line crossings (its sensitometric chart uses a different
+    per-channel exposure normalization and is not interchangeable).
 
 Method (recorded per plan §15 digitization provenance rules): the chart
 page is rendered at 4x via Quartz; the plot box, x ticks and the
@@ -29,8 +33,8 @@ The solid curves carry Status M base+mask density (B-channel base is
 against that same density coordinate, so sigma(D) pairs eliminate logE
 per channel directly.
 
-    python tools/import_kodak_granularity.py            # write asset
-    python tools/import_kodak_granularity.py --overlay OUT.png PAGE.png
+    python tools/import_kodak_granularity.py            # write all assets
+    python tools/import_kodak_granularity.py --overlay 5207 OUT.png PAGE.png
         # render anchors over the (4x) chart page for visual verification
 """
 from __future__ import annotations
@@ -40,13 +44,18 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "dngscan" / "data" / "grain" / "granularity_5207.json"
+OUT_DIR = ROOT / "dngscan" / "data" / "grain"
 
-# Chart calibration (page rendered at 4x, H-1-5207 page 3).
+# Chart calibrations (pages rendered at 4x; H-1-5207 p.3, H-1-2383 p.4).
 CAL_5207 = {
     "x0_px": 1499.5, "px_per_loge": 116.4,
     "d0_py": 1095.5, "px_per_density": 193.83,
     "sigma_ref_py": 912.5, "sigma_ref": 0.01, "px_per_decade": 183.0,
+}
+CAL_2383 = {
+    "x0_px": 1407.5, "px_per_loge": 246.0,
+    "d0_py": 1030.5, "px_per_density": 184.615,
+    "sigma_ref_py": 683.0, "sigma_ref": 0.1, "px_per_decade": 175.0,
 }
 
 # Anchor tables: (logE, value). D anchors from the solid characteristic
@@ -115,38 +124,110 @@ DATA_5207 = {
 }
 
 
-def sigma_of_density(channel: dict, n: int = 61):
+# H-1-2383 (KODAK VISION Color Print Film 2383/3383), p.4 "Diffuse rms
+# Granularity Curves": Status A, ECP-2D, 48 um. Same reading method and
+# grid-overlay verification as 5207 (x ticks at 246 px/logE, D axis
+# 184.6 px/D, sigma log axis 175 px/decade — the two detected decades
+# agree exactly). Print film: the granularity curves stop near
+# logE 1.95 where the characteristic curves reach D ~2.3-2.6, so the
+# sigma(D) join only covers that range (the D 2.6-4.1 shoulder has no
+# published granularity). Note R sits ABOVE G here (chart labels).
+DATA_2383 = {
+    "film": "Kodak VISION Color Print Film 2383",
+    "process": "ECP-2D",
+    "densitometry": "Status A (base included, clear base ~0.08)",
+    "aperture_um": 48.0,
+    "source": "H-1-2383, Eastman Kodak, (c) 2022, Revised 3-22, p.4 'Diffuse rms Granularity Curves'",
+    "source_url": "https://www.kodak.com/content/products-brochures/Film/KODAK-VISION-Color-Print-Film-2383-3383-data-sheet.pdf",
+    "method": "manual anchor read-off against a programmatically calibrated grid overlay; see module docstring",
+    "uncertainty": "±0.03 logE horizontal on the steep print sigmoid (density-line crossing scan; G/R split by ordering where merged), ±6% sigma; upstream notes curve shape varies with measuring equipment",
+    "channels": {
+        "B": {
+            "density_loge": [
+                [0.0, 0.08], [0.5, 0.08], [0.878, 0.2], [1.018, 0.3],
+                [1.16, 0.5], [1.285, 0.7], [1.325, 0.8], [1.404, 1.0],
+                [1.461, 1.2], [1.537, 1.5], [1.608, 1.8], [1.687, 2.1],
+                [1.77, 2.4], [1.85, 2.75], [1.892, 3.0], [1.931, 3.2],
+            ],
+            "sigma_loge": [
+                [0.0, 0.0075], [0.25, 0.0085], [0.5, 0.0100], [0.75, 0.0141],
+                [1.0, 0.0249], [1.25, 0.0400], [1.5, 0.0553], [1.75, 0.0605],
+                [1.95, 0.0572],
+            ],
+        },
+        "G": {
+            "density_loge": [
+                [0.0, 0.08], [0.55, 0.08], [0.945, 0.2], [1.055, 0.3],
+                [1.20, 0.5], [1.31, 0.7], [1.35, 0.8], [1.465, 1.0],
+                [1.508, 1.2], [1.573, 1.5], [1.646, 1.8], [1.724, 2.1],
+                [1.801, 2.4], [1.855, 2.75], [1.923, 3.0], [1.963, 3.2],
+            ],
+            "sigma_loge": [
+                [0.0, 0.0022], [0.25, 0.0022], [0.5, 0.0025], [0.75, 0.00285],
+                [1.0, 0.0036], [1.25, 0.0052], [1.35, 0.0071], [1.5, 0.0092],
+                [1.75, 0.0116], [1.95, 0.0146],
+            ],
+        },
+        "R": {
+            "density_loge": [
+                [0.0, 0.08], [0.6, 0.08], [1.018, 0.2], [1.128, 0.3],
+                [1.291, 0.5], [1.378, 0.7], [1.404, 0.8], [1.495, 1.0],
+                [1.528, 1.2], [1.593, 1.5], [1.666, 1.8], [1.744, 2.1],
+                [1.821, 2.4], [1.875, 2.75], [1.943, 3.0],
+            ],
+            "sigma_loge": [
+                [0.0, 0.00245], [0.25, 0.0024], [0.5, 0.0026], [0.75, 0.0031],
+                [1.0, 0.0040], [1.25, 0.0068], [1.35, 0.0090], [1.5, 0.0109],
+                [1.75, 0.0140], [1.95, 0.0157],
+            ],
+        },
+    },
+    "notes": [
+        "granularity curves end near logE 1.95 (D ~2.3-2.6); the print shoulder above has no published sigma",
+        "R granularity sits above G on this stock (chart labels R over G at the right edge)",
+        "characteristic tables come from the granularity chart itself (density-line crossing scan) — the sensitometric chart on the same page uses a different per-channel exposure normalization and is NOT interchangeable",
+        "where B/G or G/R merge into one stroke the split follows the fixed B<G<R ordering; residual horizontal error <=0.03 logE -> <=2-3% sigma(D) error",
+    ],
+}
+
+DATASETS = {
+    "5207": (DATA_5207, CAL_5207, "granularity_5207.json", 5.0),
+    "2383": (DATA_2383, CAL_2383, "granularity_2383.json", 1.95),
+}
+
+
+def sigma_of_density(channel: dict, loge_max: float, n: int = 61):
     """Parametric join: sample logE, return (D, sigma) rows."""
     import numpy as np
 
     d_tab = np.array(channel["density_loge"], dtype=float)
     s_tab = np.array(channel["sigma_loge"], dtype=float)
-    loge = np.linspace(0.0, 5.0, n)
+    loge = np.linspace(0.0, loge_max, n)
     dens = np.interp(loge, d_tab[:, 0], d_tab[:, 1])
     sig = np.interp(loge, s_tab[:, 0], s_tab[:, 1])
     return [[round(float(d), 4), round(float(s), 6)] for d, s in zip(dens, sig)]
 
 
-def build_asset() -> dict:
-    payload = json.loads(json.dumps(DATA_5207))  # deep copy
+def build_asset(data: dict, cal: dict, loge_max: float) -> dict:
+    payload = json.loads(json.dumps(data))  # deep copy
     payload["schema"] = 1
-    payload["calibration_px"] = CAL_5207
+    payload["calibration_px"] = cal
     for name, ch in payload["channels"].items():
-        ch["sigma_density"] = sigma_of_density(ch)
+        ch["sigma_density"] = sigma_of_density(ch, loge_max)
     return payload
 
 
-def overlay(page_png: str, out_png: str) -> None:
+def overlay(dataset: str, page_png: str, out_png: str) -> None:
     """Render the anchor tables over the 4x chart page for verification."""
     import math
 
     from PIL import Image, ImageDraw
 
-    cal = CAL_5207
+    data, cal, _, _ = DATASETS[dataset]
     im = Image.open(page_png).convert("RGB")
     dr = ImageDraw.Draw(im)
     colors = {"B": (0, 90, 255), "G": (0, 170, 0), "R": (255, 0, 0)}
-    for name, ch in DATA_5207["channels"].items():
+    for name, ch in data["channels"].items():
         for loge, dv in ch["density_loge"]:
             x = cal["x0_px"] + loge * cal["px_per_loge"]
             y = cal["d0_py"] - dv * cal["px_per_density"]
@@ -160,13 +241,17 @@ def overlay(page_png: str, out_png: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) >= 4 and sys.argv[1] == "--overlay":
-        overlay(sys.argv[3], sys.argv[2])
+    if len(sys.argv) >= 5 and sys.argv[1] == "--overlay":
+        overlay(sys.argv[2], sys.argv[4], sys.argv[3])
         return 0
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(build_asset(), ensure_ascii=False, indent=1) + "\n",
-                   encoding="utf-8")
-    print(f"wrote {OUT.relative_to(ROOT)}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    for key, (data, cal, fname, loge_max) in DATASETS.items():
+        out = OUT_DIR / fname
+        out.write_text(
+            json.dumps(build_asset(data, cal, loge_max), ensure_ascii=False,
+                       indent=1) + "\n",
+            encoding="utf-8")
+        print(f"wrote {out.relative_to(ROOT)}")
     return 0
 
 
