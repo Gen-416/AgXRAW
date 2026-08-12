@@ -79,6 +79,17 @@ def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]
     return lines
 
 
+def _cbld_line(bundle: RawBundle) -> tuple[str, ...]:
+    """Advisory CBLD black-level reference (one line, or nothing)."""
+    from .cbld import report_line
+
+    line = report_line(
+        bundle.shot_make, bundle.shot_model, bundle.shot_iso,
+        getattr(bundle, "black_levels", None),
+    )
+    return (line,) if line else ()
+
+
 def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
     ident = f"{bundle.shot_make or '?'} {bundle.shot_model or '?'}".strip()
     iso = f"ISO{bundle.shot_iso}" if bundle.shot_iso else "ISO?"
@@ -200,6 +211,7 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
         f"中位亮度相对 18% 灰: {analysis.median_vs_gray_ev:+.2f} EV",
         f"RAW 噪声底: {analysis.noise_floor:.6g}  可用 DR 上限: {analysis.usable_dr_ev:.2f} 档",
         priors_line_cn(bundle, analysis),
+        *(_cbld_line(bundle) or ()),
         health_line_cn(analysis),
         wb_line_cn(bundle),
         "SNR=1 可用 DR: " + format_snr_dr(analysis.snr1_dr),
