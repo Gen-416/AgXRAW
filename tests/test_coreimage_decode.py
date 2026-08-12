@@ -137,7 +137,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_accepts_dng_version_token(self) -> None:
         with (
-            patch.object(coreimage_decode, "runtime_available", return_value=True),
+            patch.object(coreimage_decode, "available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -150,7 +150,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_reports_explicit_legacy_fallback(self) -> None:
         with (
-            patch.object(coreimage_decode, "runtime_available", return_value=True),
+            patch.object(coreimage_decode, "available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -164,7 +164,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_contains_open_error(self) -> None:
         with (
-            patch.object(coreimage_decode, "runtime_available", return_value=True),
+            patch.object(coreimage_decode, "available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",

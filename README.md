@@ -43,15 +43,22 @@ If the RAW contains no reliable highlight information, AgXRAW does not invent HD
 
 One RAW, four observation positions: the AgX baseline (no film), Kodak Portra 400
 (negative + paper), Fujifilm Velvia 100 (reversal), and Vision3 250D in its theatrical
-quotation. Each stock's calibrated base — the WB Kelvin, the layer separation, the
-development curve, the viewing translation — is constructed declaratively from the
-datasheets' spectral data — no monolithic, creative or opaque LUT: the spectral chain
-is factorised into traceable B1/B2 interpolation assets (65^3 volumes solved offline
-from the same declared data, not hand-tuned looks). The default look of a stock then adds two
-declarations that are explicitly editorial, not measured: a separation-strength
-pairing and an AgX primaries pairing, chosen by stock reputation. Both are visible
-in the UI, freely adjustable, and never override a value you set yourself — the
-measured base and the editorial pairing stay distinguishable. All twenty stocks and
+quotation.
+
+**Two modes, two semantics** (A13 correction — the previous text blended them into
+one default film base). The default ``--film <stock>`` is **observe** mode: the film
+declares what its observer sees — the WB Kelvin, the layer-separation prefeed, the
+development curve — while colour is still formed by AgX; it does NOT run the paper
+simulation. A stock's default look then adds two declarations that are explicitly
+editorial, not measured: a separation-strength pairing and an AgX primaries pairing,
+chosen by stock reputation — visible in the UI, freely adjustable, never overriding
+a value you set yourself. **full** takeover mode (``--film-mode full``, experimental)
+is what runs the factorised spectral chain — Stage A observer -> layer exposure ->
+characteristic density -> B1 -> print timing -> paper development -> B2 -> grey-axis
+neutralization -> optional reference-print appearance — with no monolithic, creative
+or opaque LUT: the chain factorises into traceable B1/B2 interpolation assets (65^3
+volumes solved offline from the same declared data). Inter-image amplification and
+the reference recipes belong to full mode only. All twenty stocks and
 five theatrical variants are listed in the [film tutorial](docs/FILM_TUTORIAL.zh-CN.md)
 (Chinese); the technical base lives in the [architecture notes](docs/ARCHITECTURE.md).
 

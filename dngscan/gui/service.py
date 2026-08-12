@@ -543,6 +543,10 @@ def _cached_render_plan(
     film_print_timing: str = "fixed",
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
+    # A13: the film tail is keyword-only — a positional caller
+    # misbinding after signature growth becomes a TypeError, not a
+    # silently wrong preview.
+    *,
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
@@ -653,6 +657,10 @@ def _preview_pixel_key(
     film_print_timing: str = "fixed",
     film_print_medium: str = "",
     film_print_exposure_ev: float = 0.0,
+    # A13: the film tail is keyword-only — a positional caller
+    # misbinding after signature growth becomes a TypeError, not a
+    # silently wrong preview.
+    *,
     film_grain: float = 0.0,
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
@@ -859,10 +867,23 @@ def export_preview_jpeg(
         film_print_timing,
         film_print_medium,
         film_print_exposure_ev,
-        film_grain,
-        film_halation,
-        film_bloom,
-        film_optics_seed,
+        # A13 item 1: the film tail binds by KEYWORD — the appearance params
+        # joined the signature after film_bloom, and this positional tail
+        # silently fed film_optics_seed into film_interimage (full-mode
+        # previews failed on "unknown interimage" with any nonzero seed, and
+        # reference/custom never reached the preview or its cache key while
+        # the export path, which passes keywords, honoured them).
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
+        film_richness=film_richness,
+        film_color_density=film_color_density,
+        film_neutral_bias=film_neutral_bias,
+        film_appearance_variant=film_appearance_variant,
+        film_optics_seed=film_optics_seed,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
     if auto_ev is None:
@@ -910,10 +931,17 @@ def export_preview_jpeg(
             film_print_timing,
             film_print_medium,
             film_print_exposure_ev,
-            film_grain,
-            film_halation,
-            film_bloom,
-            film_optics_seed,
+            film_grain=film_grain,
+            film_halation=film_halation,
+            film_bloom=film_bloom,
+            film_interimage=film_interimage,
+            film_appearance=film_appearance,
+            film_appearance_strength=film_appearance_strength,
+            film_richness=film_richness,
+            film_color_density=film_color_density,
+            film_neutral_bias=film_neutral_bias,
+            film_appearance_variant=film_appearance_variant,
+            film_optics_seed=film_optics_seed,
         )
         if rgb_u8 is None:
             ensure_current()
@@ -1484,10 +1512,17 @@ def prepare_preview(params: dict) -> dict:
             film_print_timing,
             film_print_medium,
             film_print_exposure_ev,
-            film_grain,
-            film_halation,
-            film_bloom,
-            film_optics_seed,
+            film_grain=film_grain,
+            film_halation=film_halation,
+            film_bloom=film_bloom,
+            film_interimage=film_interimage,
+            film_appearance=film_appearance,
+            film_appearance_strength=film_appearance_strength,
+            film_richness=film_richness,
+            film_color_density=film_color_density,
+            film_neutral_bias=film_neutral_bias,
+            film_appearance_variant=film_appearance_variant,
+            film_optics_seed=film_optics_seed,
         )
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
