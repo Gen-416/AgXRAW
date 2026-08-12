@@ -86,6 +86,7 @@ def _cbld_line(bundle: RawBundle) -> tuple[str, ...]:
     line = report_line(
         bundle.shot_make, bundle.shot_model, bundle.shot_iso,
         getattr(bundle, "black_levels", None),
+        color_desc=getattr(bundle, "color_desc", None),
     )
     return (line,) if line else ()
 
