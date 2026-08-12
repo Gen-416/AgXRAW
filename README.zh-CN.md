@@ -65,7 +65,9 @@ B2→灰阶中性化→可选参考印相外观层——没有单体、创意或
 以及 print-balanced 灰阶策略——锚定中灰、让相纸自己的两端 crossover 呼吸。每一层
 都声明来源（measured / modelled / editorial），`technical` 始终字节冻结、随时可回。
 第三档 `custom` 暴露三个以 recipe 自身为中心的有界修饰（颜色丰度/色密度/灰阶
-偏色）。默认仍为 `technical`；reference 是显式选择，待更广盲测后再议默认。
+偏色）。GUI 出厂默认为 `reference` @ 强度 1.0（2026-08-12 一次性校准；依据
+A/B 判词与真实照片可见性实测），`technical` 一键可回、无配方卷自动回退；
+CLI/API 默认保持 `technical`（脚本口径以测量链为基准）。
 
 ## 一张图看光谱印相链
 

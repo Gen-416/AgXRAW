@@ -76,9 +76,12 @@ print-balanced grey policy that anchors mid grey while letting the paper's own
 crossover breathe at both ends. Every layer states its provenance — measured,
 modelled, or editorial — and `technical` remains byte-frozen and reachable at
 any time. A third mode, `custom`, exposes three bounded modifiers (richness,
-colour density, neutral bias) centred on the recipe's own values. The default
-remains `technical`; reference is an explicit choice pending broader blind
-testing.
+colour density, neutral bias) centred on the recipe's own values. The GUI ships
+with `reference` @ strength 1.0 as its factory default (calibrated once,
+2026-08-12, from the owner's A/B verdicts and measured real-photo visibility);
+`technical` is one click away and is the automatic fallback for stocks without
+a recipe. The CLI/API default stays `technical` — scripted output is anchored
+to the measured chain.
 
 ## The spectral print chain in one frame
 

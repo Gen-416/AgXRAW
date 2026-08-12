@@ -119,7 +119,7 @@ full 路径增加三种明确状态：
 | 状态 | 含义 | 现有行为 | 默认计划 |
 |---|---|---|---|
 | `technical` | 只运行现有可测/建模介质链 | 完全等于当前 full | 保留且逐字节冻结 |
-| `reference` | technical + 项目声明的参考印相外观 | 新增 | A/B 后再决定是否成为 GUI 默认 |
+| `reference` | technical + 项目声明的参考印相外观 | 新增 | GUI 出厂默认 @1.0（2026-08-12 校准） |
 | `custom` | reference + 少量用户外观调整 | 新增二期 | 不改变 recipe 的 provenance |
 
 `observe` 继续保留为“AgX 胶片观察”，不强行并入。长期 GUI 名称建议为：
@@ -773,8 +773,12 @@ x³ 重建放大三倍);派发合同与 _fast 相同(auto/strict/off),FAST=0 决
 
 （2026-08-12 状态：README 双语三联已加（docs/assets/film-three-interpretations.jpg,
 含三层 provenance 表述）；灰阶策略与 reference/custom 的用户口径写入 README 段落,
-教程细化随扩卷补。**默认值决策：保持 technical**——A5 后首对 A/B 待重做,
-更广盲测(多场景类型+多 recipe)完成前不动 GUI 默认;reference 为显式选择。）
+教程细化随扩卷补。**默认值决策（2026-08-12 终版）：GUI 出厂默认 reference @ 1.0**。
+口味下放准则（§15.3）把原"更广盲测"降级为一次性校准,owner 依据既有 A/B 判词
+（reference 通过、strength 旋钮足够）与可见性仪器实测（Ektar 55% 可见@1.0）拍板。
+实现:非 full 载荷仍清回 technical（service 合同不变）,GUI 以 appearanceMemo 记忆
+full 模式选择并跨会话持久化,出厂值只决定首次进入 full 的第一印象;无 reference
+配方的卷由 capability 门照旧回退 technical。CLI/API 默认保持 technical（脚本口径）。）
 
 ## 17. 风险与失败判据
 
