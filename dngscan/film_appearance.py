@@ -47,7 +47,16 @@ APPEARANCE_VARIANTS = ("reference", "extended")
 # can validate shapes before any kernel exists to consume them.
 EV_KNOTS = (-6.0, -3.0, 0.0, 3.0, 6.0)
 HUE_KNOT_COUNT = 24
-STRENGTH_MAX = 1.5
+# Owner policy (2026-08-11): taste decisions whose MATH is sound become
+# user dials. 3.0 is the measured safe ceiling — at strength 3 across all
+# shipped assets the hue field stays fold-free (worst adjacent-hue
+# reversal 0.0012 rad ~ 0.07 deg on a dense ring), the neutral axis is
+# untouched (drift 1e-5 of mid grey; w_c does not scale with strength)
+# and the palette-volume pre-clamp share grows only +1.2 pp over the
+# previously approved 1.5 state. Weak-visibility stocks (Velvia measured
+# 3.2% of real-photo pixels past 2/255 chroma at 1.0) reach readable
+# territory by DIAL, not by re-authoring.
+STRENGTH_MAX = 3.0
 
 
 @dataclass(frozen=True)

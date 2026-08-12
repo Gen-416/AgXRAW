@@ -66,7 +66,9 @@ class CompileTests(unittest.TestCase):
     def test_unknown_mode_and_strength_fail_closed(self) -> None:
         with self.assertRaises(ValueError):
             compile_appearance_plan("banana", 1.0, stock_id="x", medium_id="y")
-        for bad in (-0.1, 1.6, float("nan")):
+        # 3.1 = just past STRENGTH_MAX (raised to 3.0 by the owner's
+        # taste-to-dial policy; the ceiling itself is math-gated in P2)
+        for bad in (-0.1, 3.1, float("nan")):
             with self.subTest(strength=bad):
                 with self.assertRaises(ValueError):
                     compile_appearance_plan(

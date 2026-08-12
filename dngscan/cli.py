@@ -454,7 +454,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=1.0,
         metavar="S",
         help=(
-            "参考印相强度 0..1.5(仅 reference;0=palette 严格恒等——灰阶中性化"
+            "参考印相强度 0..3(仅 reference;0=palette 严格恒等——灰阶中性化"
             "仍按解释声明解析,要连灰轴一起回 technical 基线请切"
             " --film-appearance technical 或显式 --film-neutralization)"
         ),

@@ -69,8 +69,11 @@ def report(stem: str, stock: str) -> None:
     ref = _render(bundle, analysis, stock, film_appearance="reference")
     ref15 = _render(bundle, analysis, stock, film_appearance="reference",
                     film_appearance_strength=1.5)
+    ref30 = _render(bundle, analysis, stock, film_appearance="reference",
+                    film_appearance_strength=3.0)
     print(f"\n== {stem} × {stock}")
-    for label, img in (("reference 1.0", ref), ("reference 1.5", ref15)):
+    for label, img in (("reference 1.0", ref), ("reference 1.5", ref15),
+                       ("reference 3.0", ref30)):
         dl, dc = _delta(img, base_pb)
         line = (
             f"  {label:14s} 对 print-balanced technical: "
