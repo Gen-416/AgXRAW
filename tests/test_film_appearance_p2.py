@@ -205,6 +205,48 @@ class FieldSemanticsTests(unittest.TestCase):
         self.assertGreater(float(g_high), 0.0)
 
 
+class StrengthCeilingSafetyTests(unittest.TestCase):
+    """Owner policy (2026-08-11): sound-math taste knobs go to the user.
+    STRENGTH_MAX=3.0 is the measured ceiling; this gate re-verifies the
+    three safety properties AT the ceiling for every shipped asset so a
+    future recipe cannot ride the wide dial past them."""
+
+    ASSETS = (
+        ("portra400", "kodak_portra_endura__translated", "reference"),
+        ("ektar100", "kodak_portra_endura__translated", "reference"),
+        ("vision3250d", "kodak_2383__translated", "reference"),
+        ("vision3250d", "kodak_2383__translated", "extended"),
+        ("velvia100", "direct__velvia100", "reference"),
+    )
+
+    def test_max_strength_stays_fold_free_and_neutral(self) -> None:
+        for stock, medium, variant in self.ASSETS:
+            plan = fa.compile_appearance_plan(
+                "reference", fa.STRENGTH_MAX,
+                stock_id=stock, medium_id=medium, variant=variant,
+            )
+            # dense hue ring at mid purity: adjacent-hue order must hold
+            n = 720
+            hh = np.radians(np.linspace(0, 360, n, endpoint=False))
+            lab = np.stack([np.full(n, 0.6), 0.3 * 0.6 * np.cos(hh),
+                            0.3 * 0.6 * np.sin(hh)], 1)
+            rgb = np.maximum(pal.oklab_to_rec2020(lab), 1e-6)
+            rgb = (rgb * (0.18 / (rgb @ LUMA))[:, None]).astype(np.float32)
+            e = np.zeros(n, np.float32)
+            out = np.asarray(fa.apply_film_appearance(rgb, plan, e), np.float64)
+            ang = np.unwrap(np.radians(pal.decompose(out)["h_deg"]))
+            d = np.diff(np.concatenate([ang, [ang[0] + 2 * np.pi]]))
+            with self.subTest(stock=stock, variant=variant, prop="fold"):
+                self.assertGreater(float(d.min()), -0.005,
+                                   "hue ordering reversed at max strength")
+            grey = np.repeat(np.linspace(0.02, 0.5, 32), 3).reshape(-1, 3)
+            og = np.asarray(fa.apply_film_appearance(
+                grey.astype(np.float32), plan, np.zeros(32, np.float32)
+            ), np.float64)
+            with self.subTest(stock=stock, variant=variant, prop="neutral"):
+                self.assertLess(float(np.abs(og - grey).max() / 0.18), 1e-3)
+
+
 class SceneEvCoordinateTests(unittest.TestCase):
     def test_the_exposure_offset_rides_the_coordinate(self) -> None:
         """A6 item 1: §6.1 defines e_film = log2(Y/0.18) + film_exposure_ev.

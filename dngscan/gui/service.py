@@ -1169,7 +1169,7 @@ def parse_film_params(params: dict) -> tuple:
             "filmAppearanceStrength",
             params.get("film_appearance_strength", 1.0),
         ) or 0.0,
-        "参考印相强度", 0.0, 1.5,
+        "参考印相强度", 0.0, 3.0,
     )
     if film_mode != "full" and (
         film_interimage != "declared" or film_appearance != "technical"

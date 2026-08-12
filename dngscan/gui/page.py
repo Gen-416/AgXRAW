@@ -410,8 +410,8 @@ FILM_CURVE_OPTIONS
       </select>
     </div>
     <div class="sliderField" id="filmAppearanceStrengthBlock" style="display:none">
-      <div class="labelRow"><label title="外观层强度：0=不施加，1=配方声明值，>1 温和外推（上限 1.5）。">解释强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
-      <input type="range" id="filmAppearanceStrength" min="0" max="1.5" step="0.05" value="1">
+      <div class="labelRow"><label title="外观层强度：0=不施加，1=配方声明值，>1 外推（上限 3——数学安全域实测:无折叠/灰轴不动/clamp 增量可忽略;弱可见卷如 Velvia 靠这只旋钮到位,不重作配方）。">解释强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
+      <input type="range" id="filmAppearanceStrength" min="0" max="3" step="0.05" value="1">
     </div>
     <div id="filmAppearanceCustom" style="display:none;flex-basis:100%">
       <div class="row">
