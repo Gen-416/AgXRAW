@@ -1111,19 +1111,26 @@ function updateFilmModeUi(){
       $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
     }
     const appMode=$("#filmAppearance").value;
-    $("#filmAppearanceStrengthBlock").style.display=(full&&appMode!=="technical")?"":"none";
-    // capability 门(A6 item 7):只有已作 extended 配方的卷显示变体下拉,
-    // 换卷后残留的 extended 选择被拉回 reference——底层 fail-closed 是
-    // 合同,GUI 不应主动提供必然失败的组合。
+    // capability 门(A6 item 7 + A13 item 2):reference/custom 只对已作
+    // reference 配方的卷开放,extended 只对已作 extended 资产的卷露下拉;
+    // 换卷残留选择拉回合法值——底层 fail-closed 是合同,GUI 不应主动提供
+    // 必然失败的组合。
     const variants=FILM_VARIANTS[$("#filmCurve").value]||[];
-    const hasVariants=variants.length>0;
-    $("#filmAppearanceVariantBlock").style.display=(full&&appMode!=="technical"&&hasVariants)?"":"none";
-    if(appMode==="technical"||!hasVariants){$("#filmAppearanceVariant").value="reference";}
-    $("#filmAppearanceCustom").style.display=(full&&appMode==="custom")?"":"none";
-    if(appMode!=="custom"){
+    const hasReference=variants.includes("reference");
+    const hasExtended=variants.includes("extended");
+    for(const opt of $("#filmAppearance").options){
+      if(opt.value!=="technical"){opt.disabled=!hasReference;}
+    }
+    if(!hasReference&&appMode!=="technical"){$("#filmAppearance").value="technical";}
+    const appModeG=$("#filmAppearance").value;
+    $("#filmAppearanceStrengthBlock").style.display=(full&&appModeG!=="technical")?"":"none";
+    $("#filmAppearanceVariantBlock").style.display=(full&&appModeG!=="technical"&&hasExtended)?"":"none";
+    if(appModeG==="technical"||!hasExtended){$("#filmAppearanceVariant").value="reference";}
+    $("#filmAppearanceCustom").style.display=(full&&appModeG==="custom")?"":"none";
+    if(appModeG!=="custom"){
       $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
     }
-    if(appMode==="technical"){$("#filmAppearanceStrength").value=1;}
+    if(appModeG==="technical"){$("#filmAppearanceStrength").value=1;}
     if(typeof setFilmAppearanceLabels==="function")setFilmAppearanceLabels();
   }
   const expRow=$("#filmExposureRow");
@@ -1886,8 +1893,13 @@ def _film_variants_json() -> str:
         files = _json.loads(MANIFEST_PATH.read_text())["files"]
     except (OSError, KeyError, ValueError):
         return "{}"
+    # A13 item 2: BOTH interpretations are capability-gated — only four
+    # stocks ship a reference recipe today, and offering reference/custom
+    # for every stock walked straight into the loader's fail-closed error.
     for name, sha in files.items():
-        m = _re.match(r"^([a-z0-9_]+?)__[a-z0-9_]+_extended_v\d+\.npz$", name)
+        m = _re.match(
+            r"^([a-z0-9_]+?)__[a-z0-9_]+_(reference|extended)_v\d+\.npz$", name
+        )
         if not m:
             continue
         # A7 item 5: a manifest ENTRY is not a loadable asset — verify the
@@ -1900,7 +1912,7 @@ def _film_variants_json() -> str:
                 continue
         except OSError:
             continue
-        out.setdefault(m.group(1), []).append("extended")
+        out.setdefault(m.group(1), []).append(m.group(2))
     return _json.dumps(out, sort_keys=True)
 
 
@@ -1982,7 +1994,11 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         .replace("PREVIEW_LONG_EDGE", str(REALTIME_PREVIEW_LONG_EDGE))
         .replace("GRADE_OPTIONS", _grade_options_html())
         .replace("SCENE_TRANSFORM_OPTIONS", _scene_transform_options_html())
-        .replace("COREIMAGE_AVAILABLE_FLAG", "true" if coreimage_decode.runtime_available() else "false")
+        # A12 item 1: the page flag gates only on the API surface — probing
+        # the EXPORT context here disabled Apple RAW previews on machines
+        # where only the interactive context works. Real runtime capability
+        # is judged at the decode entry (load_raw probes its own workload).
+        .replace("COREIMAGE_AVAILABLE_FLAG", "true" if coreimage_decode.available() else "false")
         # Keep the slider ceiling on the same source of truth as the CLI's
         # --hdr-headroom bound (log2(4000/100) = 5.32); step 0.02 lands on it exactly.
         .replace("MAX_HDR_HEADROOM_ATTR", f"{MAX_HDR_HEADROOM_EV:.2f}")

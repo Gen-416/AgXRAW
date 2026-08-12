@@ -956,7 +956,7 @@ gamut safety. Beyond SDR, Ultra HDR runs full mode as "film print + scene
 HDR extension" — the SDR base is the film print byte-identically, and
 reliable scene highlights gain smoothly (C1) above the print's reference
 white, capped at the solved reliable headroom. Assets live in
-`dngscan/data/film_v2/` as the stock / print_state / b2 family (schema 5,
+`dngscan/data/film_v2/` as the stock / print_state / b2 family (schema 6,
 fail-closed loaders). With `--film` off the pipeline is pure AgX.
 Per-channel rolloff IS a colour operation — which is the structural reason "AgX
 for stretch/rolloff, film for colour" cannot be split down the middle and had to

@@ -1,11 +1,11 @@
 {
  "count": 5,
  "files": {
-  "ektar100__endura_reference_v1.npz": "0b229f1c89e282289601c0913909e82df2f6991b2cc1cfb28cf8efb20c31c31f",
-  "portra400__endura_reference_v1.npz": "d8a6896e84e48465a42ab18baff93acf43a6287c309e467521bb9d8fbbf73056",
-  "velvia100__direct_reference_v1.npz": "c637eb8ac359002b3ed0e172d02bb9b49d449adc3e3bc0b1a8a216db4600bb14",
-  "vision3250d__print2383_extended_v1.npz": "dc27ef35189087be10858a4b142a0054fd0b91ec0894e19c8c7590c9016af58c",
-  "vision3250d__print2383_reference_v1.npz": "15380c140bf3e243a9261b20367f9cd6117f6e3a6ad05cb788edc771c5e20905"
+  "ektar100__endura_reference_v1.npz": "df0caa80882d36f4a47b5bf1e30b7449e16c75053ea418e971421d5419f7ddad",
+  "portra400__endura_reference_v1.npz": "805e021f89c6444d1c42e5b551e65be11d82773faa648b43f17ddc265f15dc9c",
+  "velvia100__direct_reference_v1.npz": "56041a5510bbf9506034f337d04bea2d14db0e330dd53a7e505817d5365b6812",
+  "vision3250d__print2383_extended_v1.npz": "c585cd67b3ff1158108e7cde9c6ed6a6236a4cad28f0d68ee98418b2c324e8b1",
+  "vision3250d__print2383_reference_v1.npz": "6d4e96f19251b010e3ae0669da090a82ffa3bbd51c80caa6062e174bc951ff6b"
  },
  "policy": "Every appearance recipe is hash-pinned; the loader refuses an asset whose bytes drift from this manifest.",
  "schema": 2

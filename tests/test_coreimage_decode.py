@@ -137,7 +137,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_accepts_dng_version_token(self) -> None:
         with (
-            patch.object(coreimage_decode, "runtime_available", return_value=True),
+            patch.object(coreimage_decode, "available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -150,7 +150,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_reports_explicit_legacy_fallback(self) -> None:
         with (
-            patch.object(coreimage_decode, "runtime_available", return_value=True),
+            patch.object(coreimage_decode, "available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -164,7 +164,7 @@ class CoreImageVersionTests(unittest.TestCase):
 
     def test_raw9_probe_contains_open_error(self) -> None:
         with (
-            patch.object(coreimage_decode, "runtime_available", return_value=True),
+            patch.object(coreimage_decode, "available", return_value=True),
             patch.object(
                 coreimage_decode,
                 "supported_versions",
@@ -393,13 +393,41 @@ class CoreImageLiveTests(unittest.TestCase):
         delta_ev = float(np.log2(body_median(ci_bundle) / body_median(libraw)))
         self.assertLess(abs(delta_ev), 0.2)
 
+    def _moved_to_export_context_class(self) -> None:
+        """test_full_resolution_production_path_renders moved to
+        CoreImageExportContextTests (A12 item 2): full-size decodes run
+        through the EXPORT context, and this class's interactive gate
+        either errored it (export context broken) or skipped it wrongly
+        (only export context working)."""
+    def test_fuji_resolves_without_claiming_v9(self) -> None:
+        _skip_unless_available()
+        if not FUJI_RAF.is_file():
+            raise unittest.SkipTest(f"missing {FUJI_RAF}")
+        offered = coreimage_decode.supported_versions(FUJI_RAF)
+        self.assertNotIn("9", {_normalize(v) for v in offered})
+        with self.assertRaises(RuntimeError):
+            coreimage_decode.resolve_decoder_version("9", offered)
+        _, info = coreimage_decode.decode_scene_rec2020(
+            FUJI_RAF, half_size=True, version="auto"
+        )
+        self.assertEqual(coreimage_decode._normalize_version_token(info["version"]), "8")
+
+
+
+@unittest.skipUnless(coreimage_decode.runtime_available(interactive=False),
+                     "Core Image export runtime unavailable")
+class CoreImageExportContextTests(unittest.TestCase):
+    """Full-size decodes render through the EXPORT context (A12 item 2):
+    they get their own class and probe so an interactive-only host skips
+    them cleanly and an export-only host still runs them."""
+
     def test_full_resolution_production_path_renders(self) -> None:
         """Exercise the resolution the exporter actually uses.
 
-        The earlier gate passed at half size and rejected every full-size export; any
-        future check must be verified where production runs.
+        The earlier gate passed at half size and rejected every full-size
+        export; any future check must be verified where production runs.
         """
-        _skip_unless_available()
+        _skip_unless_available(interactive=False)
         if not SIGMA_DNG.is_file():
             raise unittest.SkipTest(f"missing {SIGMA_DNG}")
         import numpy as np
@@ -417,18 +445,6 @@ class CoreImageLiveTests(unittest.TestCase):
         self.assertGreater(int(np.asarray(rgb).max()), 32)
 
 
-    def test_fuji_resolves_without_claiming_v9(self) -> None:
-        _skip_unless_available()
-        if not FUJI_RAF.is_file():
-            raise unittest.SkipTest(f"missing {FUJI_RAF}")
-        offered = coreimage_decode.supported_versions(FUJI_RAF)
-        self.assertNotIn("9", {_normalize(v) for v in offered})
-        with self.assertRaises(RuntimeError):
-            coreimage_decode.resolve_decoder_version("9", offered)
-        _, info = coreimage_decode.decode_scene_rec2020(
-            FUJI_RAF, half_size=True, version="auto"
-        )
-        self.assertEqual(coreimage_decode._normalize_version_token(info["version"]), "8")
 
 
 def _normalize(token: str) -> str:

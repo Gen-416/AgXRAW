@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Reference-print appearance layer: plan object and asset contract
-(FILM_APPEARANCE_RECIPE_PLAN §9/§11, phase P1).
+"""Reference-print appearance layer: plan object, asset contract, palette
+kernel and native dispatch (FILM_APPEARANCE_RECIPE_PLAN §6/§9/§11).
 
-P1 ships the INFRASTRUCTURE and nothing visible: the immutable plan, the
-fail-closed recipe loader, and the strict fast paths. The palette kernel
-itself is P2; until it lands, only IDENTITY recipes (every field zero) are
-accepted, and a non-identity asset refuses to load rather than silently
-doing nothing — an asset that promises a look and delivers a no-op would be
-the quiet version of that lie.
+Shipped state (A13 doc correction — the P1-era "identity recipes only"
+text long outlived P2/P4/E1/E2): the immutable compiled plan, the
+fail-closed hash-pinned recipe loader, the Oklab + scene-EV palette kernel
+with its strict identity fast paths, authored reference recipes for four
+stocks (Portra 400 / Ektar 100 on Endura, Vision3 250D on 2383, Velvia 100
+direct) plus the vision3250d extended interpretation, custom modifiers,
+and the C++ kernel dispatch with the NumPy path as correctness oracle.
 
 Contracts that hold from day one:
 

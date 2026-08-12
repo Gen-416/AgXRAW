@@ -279,10 +279,18 @@ def build(stock_id: str, medium_id: str, variant: str = "reference") -> Path:
         "chroma_knee": 0.28,
         "chroma_power": 2.0,
         "neutral_chroma_c0": 0.046,
+        # A13 item 7: the note names each recipe's ACTUAL structure —
+        # every asset (including Velvia and Vision3) previously claimed
+        # "Endura common base".
         "note": (
-            "P4 v1 draft: Endura common base + stock residual, authored "
-            "jointly with its pair. Differential axes are hue path and "
-            "colour density only; owner look review pending."
+            "Endura pair (common base + stock residual, authored jointly; "
+            "differential axes are hue path and colour density only)."
+            if stock_id in RESIDUALS else
+            f"Single-stock {medium_family(medium_id)} family recipe, "
+            "authored directly."
+            if variant == "reference" else
+            "Extended interpretation: the family direction at 0.6x, no "
+            "shadow density block, technical-neutral grey axis."
         ),
     }
     # A7 item 3: the knot-amplitude asserts above bound what the author

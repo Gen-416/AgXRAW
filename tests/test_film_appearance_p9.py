@@ -141,9 +141,16 @@ class CapabilityMapTests(unittest.TestCase):
 
         from dngscan.gui.page import _film_variants_json
 
-        self.assertEqual(json.loads(_film_variants_json()),
-                         {"vision3250d": ["extended"]})
-        # corrupt bytes -> the entry disappears
+        # A13 item 2: the map now carries BOTH interpretations, so the
+        # GUI can gate reference/custom (four stocks) separately from the
+        # extended dropdown (one stock).
+        self.assertEqual(json.loads(_film_variants_json()), {
+            "ektar100": ["reference"],
+            "portra400": ["reference"],
+            "velvia100": ["reference"],
+            "vision3250d": ["extended", "reference"],
+        })
+        # corrupt bytes -> that ASSET's capability disappears, the rest stay
         real_read = type(fa.MANIFEST_PATH).read_bytes
         ext_name = "vision3250d__print2383_extended_v1.npz"
 
@@ -152,7 +159,9 @@ class CapabilityMapTests(unittest.TestCase):
             return data + b"x" if self.name == ext_name else data
 
         with mock.patch.object(type(fa.MANIFEST_PATH), "read_bytes", corrupt):
-            self.assertEqual(json.loads(_film_variants_json()), {})
+            got = json.loads(_film_variants_json())
+        self.assertNotIn("extended", got.get("vision3250d", []))
+        self.assertIn("reference", got.get("portra400", []))
 
 
 class ExtendedSemanticsTests(unittest.TestCase):
