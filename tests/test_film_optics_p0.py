@@ -296,13 +296,18 @@ class MeasuredBaselineTests(unittest.TestCase):
         say what it is fixing cannot say when it is done.
         """
         grain = self.live["grain"]["standard"]
-        # Grain is a blotch field, not a granularity process: correlated over
-        # tens of micrometres and averaging down far slower than Selwyn's law.
+        # Grain is STILL a blotch field spatially (P4 replaced the sigma(D)
+        # statistics, not the spectrum — measured PSD data is the recorded
+        # remainder), so the correlation complaints stay un-inverted:
         self.assertGreater(grain["field_blob_fwhm_um"], 40.0)
         self.assertGreater(grain["field_selwyn_slope"], -0.7)
-        # And an order of magnitude hotter than any datasheet stock, whose
-        # 48 um RMS granularity sits near 4.
-        self.assertGreater(min(grain["rms_granularity_48um_at_span2"]), 40.0)
+        # INVERTED by P4 (grain V2): the 48 um RMS used to sit an order of
+        # magnitude above any datasheet stock (>40 x1000); the measured
+        # sigma(D) kernel now lands the as-rendered figures inside the
+        # 5207 chart's own window (~4-17 x1000 across channels).
+        quotes = grain["rms_granularity_48um_at_span2"]
+        self.assertLess(max(quotes), 20.0)
+        self.assertGreater(min(quotes), 3.0)
 
         # Halation was fixed in P2, so its assertions are INVERTED here rather
         # than deleted: the baseline is where a phase says what it changed.

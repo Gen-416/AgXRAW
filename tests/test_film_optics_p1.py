@@ -52,7 +52,10 @@ class AssetLoadingTests(unittest.TestCase):
         bloom = fa.load_capture_bloom(fa.DEFAULT_CAPTURE_BLOOM)
         for asset in (stock, medium, bloom):
             self.assertIn(asset.provenance, fa.PROVENANCE)
-        self.assertEqual(stock.grain.provenance, "modelled")
+        # P4 reversed: the default grain block is now the MEASURED 5207
+        # sigma(D) model (the field geometry stays modelled pending PSD data)
+        self.assertEqual(stock.grain.provenance, "measured")
+        self.assertEqual(stock.grain.model, "measured_sigma_v2")
         self.assertEqual(stock.halation.provenance, "modelled")
         self.assertEqual(medium.print_scatter.provenance, "modelled")
         self.assertTrue(bloom.active, "P3 ships an editorial capture bloom")
@@ -72,7 +75,9 @@ class AssetLoadingTests(unittest.TestCase):
         path = fa.ASSET_DIR / f"{name}.json"
         original = path.read_bytes()
         try:
-            path.write_bytes(original.replace(b'"sigma0": 0.055', b'"sigma0": 0.5'))
+            path.write_bytes(
+                original.replace(b'"layer_corr": 0.35', b'"layer_corr": 0.9')
+            )
             fa._CACHE.clear()
             with self.assertRaises(fa.OpticsAssetError) as ctx:
                 fa.load_stock_optics(fa.DEFAULT_STOCK_OPTICS)
