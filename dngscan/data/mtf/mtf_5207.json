@@ -1,0 +1,153 @@
+{
+ "film": "Kodak VISION3 250D 5207",
+ "source": "H-1-5207, Eastman Kodak, (c) 2022, Revised 3-22, p.3 'Modulation-Transfer Function Curves' (5500K, ECN-2, Status M)",
+ "model": "core_tail_v1",
+ "channels": {
+  "B": [
+   [
+    2,
+    1.0
+   ],
+   [
+    5,
+    1.01
+   ],
+   [
+    10,
+    1.03
+   ],
+   [
+    15,
+    1.03
+   ],
+   [
+    20,
+    1.0
+   ],
+   [
+    30,
+    0.8
+   ],
+   [
+    50,
+    0.6
+   ],
+   [
+    70,
+    0.45
+   ],
+   [
+    85,
+    0.4
+   ]
+  ],
+  "G": [
+   [
+    2,
+    1.0
+   ],
+   [
+    5,
+    1.0
+   ],
+   [
+    10,
+    1.02
+   ],
+   [
+    15,
+    1.01
+   ],
+   [
+    20,
+    0.97
+   ],
+   [
+    30,
+    0.72
+   ],
+   [
+    50,
+    0.52
+   ],
+   [
+    70,
+    0.41
+   ],
+   [
+    85,
+    0.38
+   ]
+  ],
+  "R": [
+   [
+    2,
+    1.0
+   ],
+   [
+    5,
+    0.99
+   ],
+   [
+    10,
+    0.94
+   ],
+   [
+    15,
+    0.82
+   ],
+   [
+    20,
+    0.74
+   ],
+   [
+    30,
+    0.51
+   ],
+   [
+    50,
+    0.27
+   ],
+   [
+    70,
+    0.19
+   ],
+   [
+    85,
+    0.16
+   ]
+  ]
+ },
+ "schema": 1,
+ "calibration_px": {
+  "x0_px": 319.5,
+  "px_per_decade_x": 288.0,
+  "y100_py": 988.5,
+  "px_per_decade_y": 262.5
+ },
+ "method": "manual anchor read-off against the chart's own log grid; see tools/import_kodak_mtf.py docstring",
+ "uncertainty": "±5% response (±8% below 10 c/mm); adjacency bump >100% is a development edge effect the passive scatter model cannot and does not reproduce",
+ "fit": {
+  "B": {
+   "s": 0.6739,
+   "w": 0.0,
+   "sigma_um": 4.097,
+   "lambda_um": 1.374,
+   "rms_residual": 0.0353
+  },
+  "G": {
+   "s": 0.6499,
+   "w": 0.0,
+   "sigma_um": 4.968,
+   "lambda_um": 2.004,
+   "rms_residual": 0.042
+  },
+  "R": {
+   "s": 1.0,
+   "w": 0.2818,
+   "sigma_um": 7.594,
+   "lambda_um": 1.268,
+   "rms_residual": 0.01
+  }
+ }
+}
