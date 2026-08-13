@@ -3,7 +3,7 @@
 halation reinjection and print-medium scatter.
 
 Each operator now takes the SPECIFIC asset it implements — a GrainAsset, a
-HalationAsset, a PrintScatterAsset — rather than one shared profile struct
+HalationAsset, a ScatterKernelAsset — rather than one shared profile struct
 (FILM_OPTICS_V2 §7.1, phase P1). The old single `OpticsProfile` made it easy
 to read a print-medium constant as a film property and to quote a modelled
 halo radius as if the whole profile were measured; the assets carry their own
@@ -20,10 +20,12 @@ The contracts that ARE hard here:
 - Halation extracts from the pre-emulsion highlight scene exposure and
   reinjects into the LAYER EXPOSURE before the characteristic curves, through
   a red-dominant backscatter kernel. It never shares a blur with bloom.
-- Print-medium scatter (the control the GUI still labels "Bloom") is the
-  positive medium's intrinsic scatter, applied after print formation (B2
-  output) and before delivery gamut fit, as a multi-scale low-frequency
-  pyramid.
+- The measured scatter mixes (P5): emulsion scatter on linear layer
+  exposure and the print medium's formation scatter on linear paper
+  exposure — energy-conserving, MTF-fitted, full-resolution via the halo
+  row-band protocol. (The old post-B2 "legacy print scatter" pyramid was
+  deleted in P5e; bloom is the editorial CAPTURE bloom, before the
+  emulsion.)
 - Amount 0 is a strict identity everywhere (the caller keeps the
   chunk-stream fast path; these functions are only entered when engaged).
 
@@ -36,7 +38,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .film_optics_assets import GrainAsset, HalationAsset, PrintScatterAsset
+from .film_optics_assets import GrainAsset, HalationAsset
 
 # 135 full-frame gate. Other gate sizes (8/16/65 mm) become profile data when
 # per-stock measured optics land; the coordinate CONTRACT does not change.
@@ -699,6 +701,8 @@ def apply_density_grain(
     grain: GrainAsset,
     amount: float,
     seed: int,
+    field_out: dict | None = None,
+    field_in: np.ndarray | None = None,
 ) -> np.ndarray:
     """D' = D + sigma_c(D) * N(x,y) (plan §9.1): the field modulates DENSITY
     before printing, so grain participates in colour and local contrast
@@ -718,11 +722,21 @@ def apply_density_grain(
     if amount <= 0.0:
         return amounts
     h, w = geometry.height, geometry.width
-    master = _grain_ii_for(grain, MASTER_SEED)
-    gh, gw = master.shape[0] - 1, master.shape[1] - 1
-    field = sample_field(
-        master, geometry, phase=realization_phases(seed, gh, gw)
-    )
+    if field_in is not None:
+        # P5 perf (plan §11.2 "共享基础随机场并按尺度派生"): the caller
+        # hands a band field derived from another medium's sampling — the
+        # dual-grain path pays sample_field ONCE per band instead of twice
+        # (measured 0.19 s/band at 61 MP), with the derivation supplying
+        # the decorrelation. `seed` is unused on this path by design.
+        field = field_in
+    else:
+        master = _grain_ii_for(grain, MASTER_SEED)
+        gh, gw = master.shape[0] - 1, master.shape[1] - 1
+        field = sample_field(
+            master, geometry, phase=realization_phases(seed, gh, gw)
+        )
+    if field_out is not None:
+        field_out["field"] = field
     a = np.asarray(amounts, dtype=np.float64).reshape(h, w, 3)
     lo64 = np.asarray(lo, dtype=np.float64)
     span = np.maximum(np.asarray(hi, dtype=np.float64) - lo64, 1e-9)
@@ -730,24 +744,28 @@ def apply_density_grain(
         dn = np.clip((a - lo64) / span, 0.0, 1.0)
         sigma = float(amount) * grain.sigma0 * 4.0 * dn * (1.0 - dn)
         return (a + sigma * span * field.astype(np.float64)).reshape(-1, 3)
-    # measured_sigma_v2 — channel-by-channel with in-place temporaries: the
-    # obvious full-grid expressions held a float64 field copy plus two
-    # (h, w, 3) intermediates and broke the CI 512 memory tier.
+    # measured_sigma_v2 — channel-by-channel with in-place FLOAT32
+    # temporaries: the obvious full-grid expressions held a float64 field
+    # copy plus two (h, w, 3) intermediates and broke the CI 512 memory
+    # tier; the f64 chains then cost measurable seconds at 61 MP for
+    # precision the density domain cannot use (sigma ~1e-2 on D ~0-3;
+    # f32 keeps ~1e-7 relative).
     rms48 = max(_aperture_rms(grain), 1e-9)
-    ln10 = np.log(10.0)
+    ln10 = np.float32(np.log(10.0))
     out = a.copy()
     for ch in range(3):
         base, dmax = grain.chart_density[ch]
         tab = np.asarray(grain.sigma_density[ch], dtype=np.float64)
-        s = a[..., ch] - lo64[ch]
-        s /= span[ch]
+        s = a[..., ch].astype(np.float32)
+        s -= np.float32(lo64[ch])
+        s /= np.float32(span[ch])
         np.clip(s, 0.0, 1.0, out=s)
-        s *= (dmax - base)
-        s += base
-        s = np.interp(s, tab[:, 0], tab[:, 1])
+        s *= np.float32(dmax - base)
+        s += np.float32(base)
+        s = np.interp(s, tab[:, 0], tab[:, 1]).astype(np.float32)
         # chart-density sigma -> dye-amount sigma: the chain's [lo, hi]
         # span corresponds to the chart's [base, max] span per channel
-        s *= float(amount) / rms48 * (span[ch] / (dmax - base))
+        s *= np.float32(float(amount) / rms48 * (span[ch] / (dmax - base)))
         out[..., ch] += s * field[..., ch]
         # mean-transmittance compensation, anchored at the FILM GRID scale
         # (the master field is unit-RMS there by construction): a constant
@@ -755,7 +773,7 @@ def apply_density_grain(
         # band-local field RMS here would break the §9.1 band-invariance
         # contract, since each band would see a different DC term.
         np.square(s, out=s)
-        s *= ln10 * 0.5
+        s *= ln10 * np.float32(0.5)
         out[..., ch] += s
         del s
     return out.reshape(-1, 3)
@@ -993,139 +1011,6 @@ def halation_reinject_rows(
     lin = np.maximum(lin + take - give, 0.0)
     return np.log10(np.maximum(lin.astype(np.float64), 1e-12)).reshape(-1, 3)
 
-
-def scatter_source(rgb: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:
-    """The luminance-gated, RGB-proportional removable energy at a pixel:
-    source = rgb * max(Y - threshold, 0) / max(Y, eps). Pointwise, so it can
-    be evaluated at ANY resolution — the production path evaluates it on the
-    actual full-resolution developed band (review batch 16: subtracting a
-    proxy-derived source at full resolution stole light from dark pixels
-    that never had any)."""
-    rgb = np.asarray(rgb, dtype=np.float32)
-    luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
-    y = rgb @ luma
-    excess = np.maximum(y - scatter.threshold, 0.0)
-    return rgb * (excess / np.maximum(y, 1e-9))[..., None]
-
-
-def scatter_spread(source: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:
-    """The non-negative multi-scale scatter of a source map, per-channel
-    renormalized (float64 sums) to the source's exact energy."""
-    dh, dw = source.shape[:2]
-    level = source
-    spread = np.zeros_like(source)
-    total = 0.0
-    for lvl in range(scatter.levels):
-        if min(level.shape[0], level.shape[1]) <= 1:
-            break
-        pad_h = level.shape[0] % 2
-        pad_w = level.shape[1] % 2
-        if pad_h or pad_w:
-            level = np.pad(level, ((0, pad_h), (0, pad_w), (0, 0)), mode="edge")
-        sh, sw = level.shape[0] // 2, level.shape[1] // 2
-        level = level.reshape(sh, 2, sw, 2, 3).mean(axis=(1, 3))
-        blurred = _gaussian_blur(level, 2.0)
-        factor = 2 ** (lvl + 1)
-        col_idx = np.minimum(np.arange(dw) // factor, blurred.shape[1] - 1)
-        wgt = 1.0 / (lvl + 1.0)
-        total += wgt
-        for r0 in range(0, dh, 256):
-            r1 = min(r0 + 256, dh)
-            row_idx = np.minimum(
-                np.arange(r0, r1) // factor, blurred.shape[0] - 1
-            )
-            spread[r0:r1] += wgt * blurred[row_idx][:, col_idx]
-    spread /= max(total, 1e-9)
-    src_sum = np.sum(source, axis=(0, 1), dtype=np.float64)
-    spr_sum = np.sum(spread, axis=(0, 1), dtype=np.float64)
-    scale = np.where(spr_sum > 0.0, src_sum / np.maximum(spr_sum, 1e-30), 0.0)
-    spread *= scale.astype(np.float32)[None, None, :]
-    return spread
-
-
-def bloom_delta_map(developed_dec: np.ndarray, scatter: PrintScatterAsset) -> np.ndarray:
-    """CONSERVATIVE medium scatter on the decimated grid (P1, review batch
-    15): the positive medium REDISTRIBUTES energy, it never adds light.
-
-        Y      = dot(rgb, luma)
-        excess = max(Y - threshold, 0)
-        source = rgb * excess / max(Y, eps)      # luminance-gated, RGB-
-                                                 # proportional: hue intact
-        spread = K(source)                       # non-negative multi-scale
-        delta  = spread - source                 # signed, sums to ZERO
-
-    K is the same multi-scale pyramid, per-channel renormalized to the
-    source's exact energy (float64 sums), so sum(delta) == 0 per channel to
-    float precision: highlight cores LOSE what their neighbourhoods gain.
-    The frame is a declared closed system — scatter neither appears from
-    nowhere nor models losses past the frame edge. A uniform field yields
-    delta == 0 (blur and pyramid preserve uniformity), so flat scenes pass
-    through untouched.
-    """
-    rgb = np.asarray(developed_dec, dtype=np.float32)
-    source = scatter_source(rgb, scatter)
-    return scatter_spread(source, scatter) - source
-
-
-
-def bloom_apply_rows(
-    display_linear: np.ndarray,
-    spread_ii: np.ndarray,
-    y0: int,
-    y1: int,
-    height: int,
-    width: int,
-    scatter: PrintScatterAsset,
-    amount: float,
-) -> np.ndarray:
-    """Conservative scatter for output rows [y0, y1), two-term form (review
-    batch 16):
-
-        out = img - a * source_full + a * upsample(spread)
-
-    source_full is evaluated POINTWISE on this very band of the developed
-    full-resolution image — the subtraction can never remove light a pixel
-    does not carry, so a bright point inside a dark decimated cell no longer
-    drives its neighbours negative (a * source_full <= strength * img keeps
-    the output non-negative by construction). spread comes from the
-    decimated proxy, renormalized to its own source's energy; the applied
-    balance therefore conserves total light to proxy accuracy — exactly, on
-    a uniform field, where the two terms cancel pointwise."""
-    if amount <= 0.0:
-        return display_linear
-    img = np.asarray(display_linear, dtype=np.float32).reshape(y1 - y0, width, 3)
-    a = float(amount) * scatter.strength
-    up = _sample_plain(spread_ii, y0, y1, height, width)
-    source_full = scatter_source(img, scatter)
-    return (img + a * (up - source_full)).reshape(-1, 3)
-
-
-def _sample_plain(
-    ii: np.ndarray, y0: int, y1: int, height: int, width: int
-) -> np.ndarray:
-    """Fractional-footprint area means of a decimated map for output rows
-    [y0, y1) — the area-preserving resampler behind bloom_apply_rows."""
-    gh, gw = ii.shape[0] - 1, ii.shape[1] - 1
-    ye = np.arange(y0, y1 + 1) * (gh / height)
-    xe = np.arange(width + 1) * (gw / width)
-
-    def _at(yq, xq):
-        yi = np.clip(np.floor(yq).astype(int), 0, gh - 1)
-        xi = np.clip(np.floor(xq).astype(int), 0, gw - 1)
-        yf = (yq - yi)[:, None, None]
-        xf = (xq - xi)[None, :, None]
-        top = ii[yi][:, xi] * (1 - xf) + ii[yi][:, xi + 1] * xf
-        bot = ii[yi + 1][:, xi] * (1 - xf) + ii[yi + 1][:, xi + 1] * xf
-        return top * (1 - yf) + bot * yf
-
-    s = _at(ye[1:], xe[1:]) - _at(ye[1:], xe[:-1]) - _at(ye[:-1], xe[1:]) + _at(ye[:-1], xe[:-1])
-    area = (ye[1:] - ye[:-1])[:, None, None] * (xe[1:] - xe[:-1])[None, :, None]
-    return (s / np.maximum(area, 1e-12)).astype(np.float32)
-
-
-# --------------------------------------------------------------------------
-# editorial capture bloom (§6.1, phase P3)
-# --------------------------------------------------------------------------
 
 def capture_bloom_gate(y_over_grey: np.ndarray, t0: float, t1: float) -> np.ndarray:
     """smootherstep source gate on scene EV above 18% grey."""

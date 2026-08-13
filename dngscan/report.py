@@ -517,7 +517,8 @@ def jpeg_tone_plan_cn(
                 + f"(颗粒{prov.get('grain') or '—'}"
                 + f"/halation{prov.get('halation') or '—'})"
                 + f"·印相资产={rep.get('print_optics', '?')}"
-                + f"(散射{prov.get('print_scatter') or '—'})"
+                + f"(散射{prov.get('formation_scatter') or '—'}"
+                + f"/颗粒{prov.get('positive_grain') or '—'})"
                 + f"·halation DC={rep.get('halation_dc_mode') or '—'}"
                 + f"·预算档={_optics_budget_mib_report()}MiB；"
             )

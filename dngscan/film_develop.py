@@ -20,9 +20,10 @@ paper's 1-D development curves on the log2 axis -> B2 (positive-medium
 density -> viewed Rec.2020, 65^3, keyed by print medium x viewing and reused
 across stocks). Reversals skip B1/tau/paper into their direct B2. Nothing
 spatial happens after B2 any more: the operator that used to (the positive
-medium's conservative scatter) is `legacy_print_scatter`, retained as an
-asset for the acceptance comparison and reachable from no user amount, since
-P0 measured it seeing 0.73 EV of overrange where the scene offered 6.00.
+medium's conservative scatter) was `legacy_print_scatter`, retained through
+P3-P4 for acceptance comparison and DELETED in P5e; the medium's real
+scatter is the measured formation scatter, applied on linear paper exposure
+BEFORE the paper curves, where the physics puts it.
 Beyond SDR, the
 Ultra HDR export runs this chain as "film print + scene HDR extension"
 (hdr_agx.render_ultrahdr_film_pair).
@@ -773,13 +774,19 @@ def _apply_film_core_v2(
             # preview pitches the components fall below the pixel scale
             # and the mix is exact identity.
             _rows = y1 - y0
-            e_lin = np.power(10.0, log_e.astype(np.float64)).reshape(
-                _rows, ctx.width, 3
-            )
-            e_lin = apply_scatter_mix(e_lin, ctx.mm_per_px(), _scat)
-            log_e = np.log10(
-                np.maximum(e_lin.reshape(-1, 3), 1e-30)
-            ).astype(log_e.dtype)
+            # float32 exp/log: the f64 pow/log10 pair alone cost ~5 s at
+            # 61 MP; the f32 error (~5e-7 relative) sits far below the
+            # characteristic-curve resolution.
+            e_lin = log_e.astype(np.float32, copy=True)
+            e_lin *= np.float32(_LOG10_2 * 0.0 + 2.302585092994046)
+            np.exp(e_lin, out=e_lin)
+            e_lin = apply_scatter_mix(
+                e_lin.reshape(_rows, ctx.width, 3), ctx.mm_per_px(), _scat
+            ).reshape(-1, 3)
+            np.maximum(e_lin, np.float32(1e-30), out=e_lin)
+            np.log(e_lin, out=e_lin)
+            e_lin *= np.float32(1.0 / 2.302585092994046)
+            log_e = e_lin.astype(log_e.dtype)
             del e_lin
     if ctx is not None and ctx.halation > 0.0:
         from .film_optics import halation_reinject_rows
@@ -884,9 +891,11 @@ def _apply_film_core_v2(
             (stock["lo"], stock["hi"]) if not stock["reversal"]
             else (media[medium][1]["dye_lo"], media[medium][1]["dye_hi"])
         )
+        _field_stash: dict = {}
         amounts = apply_density_grain(
             amounts, _g_lo, _g_hi, ctx.band_geometry(y0, y1),
             ctx.optics.stock.grain, ctx.grain, ctx.seed,
+            field_out=_field_stash,
         )
     # Three neutralization policies (appearance P3, plan §8):
     #   "off"       technical-neutral — per-pixel exposure-indexed cast
@@ -980,14 +989,31 @@ def _apply_film_core_v2(
             # Normalized kernel: a uniform patch is unchanged, so the
             # Stage B neutral/colour-head calibration stays intact.
             _rows = (y1 - y0)
-            p_lin = np.exp2(_le2_eff.astype(np.float64)).reshape(
-                _rows, ctx.width, 3
-            )
-            p_lin = apply_scatter_mix(p_lin, ctx.mm_per_px(), _form)
-            _le2_eff = np.log2(
-                np.maximum(p_lin.reshape(-1, 3), 1e-30)
-            ).astype(_le2_eff.dtype)
+            p_lin = _le2_eff.astype(np.float32, copy=True)
+            np.exp2(p_lin, out=p_lin)
+            p_lin = apply_scatter_mix(
+                p_lin.reshape(_rows, ctx.width, 3), ctx.mm_per_px(), _form
+            ).reshape(-1, 3)
+            np.maximum(p_lin, np.float32(1e-30), out=p_lin)
+            np.log2(p_lin, out=p_lin)
+            _le2_eff = p_lin.astype(_le2_eff.dtype)
             del p_lin
+    if _crop_rows is not None:
+        # P5 perf: the formation scatter was the LAST consumer of halo
+        # rows — everything downstream (paper curves, the print grain,
+        # B2's 65^3 gather, neutralization, the appearance palette) is
+        # pointwise, so the slab pays its way no further. Cropping here
+        # removed the halo share of the chain's most expensive tail.
+        _w = ctx.width
+        _sl = slice(_crop_rows[0] * _w, _crop_rows[1] * _w)
+        _le2_eff = _le2_eff[_sl]
+        rgb = rgb[_sl]
+        if "_field_stash" in dir() and _field_stash.get("field") is not None:
+            _field_stash["field"] = _field_stash["field"][
+                _crop_rows[0]:_crop_rows[1]
+            ]
+        y0, y1 = y0 + _crop_rows[0], y0 + _crop_rows[1]
+        _crop_rows = None
     dye = np.stack([
         np.interp(_le2_eff[:, c], b2["paper_le2"], b2["paper_amounts"][:, c])
         for c in range(3)
@@ -1005,9 +1031,20 @@ def _apply_film_core_v2(
             # media); the seed is decorrelated from the stock field's
             # realization phase, and the master field itself is shared via
             # the field-geometry cache key.
+            _pf = None
+            _stash = locals().get("_field_stash")
+            if _stash and _stash.get("field") is not None:
+                # §11.2: derive instead of resampling — channel roll plus
+                # sign flip decorrelates the print realization from the
+                # negative's (per-channel cross-correlation -layer_corr,
+                # anti-aligned speckle) at zero sampling cost. A declared
+                # approximation of true independence, recorded here.
+                _f = _stash["field"]
+                _pf = np.ascontiguousarray(-_f[..., [2, 0, 1]])
             dye = apply_density_grain(
                 dye, b2["dye_lo"], b2["dye_hi"], ctx.band_geometry(y0, y1),
                 pos, ctx.grain, ctx.seed ^ 0x50524E54,
+                field_in=_pf,
             )
     u2 = amounts_to_unit(dye, b2["dye_lo"], b2["dye_hi"])
     developed = _tetrahedral(b2["volume"], u2.astype(np.float32), b2["n"])

@@ -28,7 +28,6 @@ from dngscan.film_optics_assets import (  # noqa: E402
 
 _GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
 _HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
-_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
 
 from tests.test_film_v2_assets import _stock_files
 
@@ -58,92 +57,9 @@ def _plan(preset: str, **kw):
 
 
 class ConservativeScatterTests(unittest.TestCase):
-    def _delta(self, img):
-        from dngscan.film_optics import bloom_delta_map
-
-        return bloom_delta_map(img, _SCATTER)
-
-    def test_uniform_field_passes_through(self) -> None:
-        img = np.full((48, 64, 3), 0.9, dtype=np.float32)  # above threshold
-        delta = self._delta(img)
-        self.assertLess(float(np.abs(delta).max()), 1e-5,
-                        "a uniform bright field must scatter into itself")
-
-    def test_impulse_conserves_energy_and_redistributes(self) -> None:
-        img = np.full((64, 96, 3), 0.05, dtype=np.float32)
-        img[32, 48] = 1.0
-        delta = self._delta(img)
-        # per-channel total energy error < 1e-5 (interior impulse)
-        sums = delta.sum(axis=(0, 1), dtype=np.float64)
-        self.assertLess(float(np.abs(sums).max()), 1e-5)
-        # core loses, neighbourhood gains
-        self.assertLess(float(delta[32, 48].mean()), 0.0)
-        self.assertGreater(float(delta[34, 48].mean()), 0.0)
-
-    def test_edge_impulse_never_gains_energy(self) -> None:
-        img = np.full((33, 35, 3), 0.05, dtype=np.float32)
-        img[0, 0] = 1.0
-        delta = self._delta(img)
-        sums = delta.sum(axis=(0, 1), dtype=np.float64)
-        self.assertLessEqual(float(sums.max()), 1e-5)
-
-    def test_coloured_highlight_keeps_its_rgb_ratio(self) -> None:
-        img = np.full((48, 64, 3), 0.05, dtype=np.float32)
-        img[24, 32] = (0.9, 0.6, 0.3)  # warm highlight above Y threshold
-        delta = self._delta(img)
-        # the source (negative part at the core) must be RGB-proportional to
-        # the pixel, so the scattered energy carries the highlight's hue
-        core = -delta[24, 32]
-        self.assertGreater(float(core.min()), 0.0)
-        ratio = core / core[0]
-        want = np.array([0.9, 0.6, 0.3]) / 0.9
-        np.testing.assert_allclose(ratio, want, rtol=0.02)
-
-    @staticmethod
-    def _spread_ii(img):
-        from dngscan.film_optics import (
-            integral_from_field,
-            scatter_source,
-            scatter_spread,
-        )
-
-        return integral_from_field(
-            scatter_spread(scatter_source(img, _SCATTER), _SCATTER)
-        ).astype(np.float32)
-
-    def test_band_split_matches_full_frame_bytes(self) -> None:
-        from dngscan.film_optics import bloom_apply_rows
-
-        h, w = 64, 96
-        rng = np.random.default_rng(2)
-        img = rng.uniform(0.0, 1.0, (h, w, 3)).astype(np.float32)
-        spread_ii = self._spread_ii(img)
-        flat = img.reshape(-1, 3)
-        full = bloom_apply_rows(flat, spread_ii, 0, h, h, w, _SCATTER, 0.8)
-        banded = np.empty_like(full)
-        for y0 in range(0, h, 11):
-            y1 = min(y0 + 11, h)
-            banded[y0 * w:y1 * w] = bloom_apply_rows(
-                flat[y0 * w:y1 * w], spread_ii, y0, y1, h, w, _SCATTER, 0.8
-            )
-        np.testing.assert_array_equal(full, banded)
-
-    def test_output_sum_conserved_and_clean(self) -> None:
-        from dngscan.film_optics import bloom_apply_rows
-
-        h, w = 64, 96
-        rng = np.random.default_rng(3)
-        img = rng.uniform(0.0, 1.1, (h, w, 3)).astype(np.float32)
-        spread_ii = self._spread_ii(img)
-        out = bloom_apply_rows(
-            img.reshape(-1, 3), spread_ii, 0, h, h, w, _SCATTER, 1.0
-        )
-        self.assertTrue(np.isfinite(out).all())
-        self.assertGreaterEqual(float(out.min()), 0.0)
-        drift = abs(float(out.sum(dtype=np.float64))
-                    - float(img.sum(dtype=np.float64)))
-        self.assertLess(drift / float(img.sum(dtype=np.float64)), 1e-4)
-
+    # P5e deleted the legacy conservative print scatter this class pinned
+    # (bloom_delta_map/scatter_spread/bloom_apply_rows); the surviving test
+    # certifies the CORE's amount-0 identity, which is operator-independent.
     def test_amount_zero_is_byte_identity_through_the_core(self) -> None:
         from dngscan.film_develop import apply_film_core
 

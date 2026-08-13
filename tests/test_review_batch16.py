@@ -33,7 +33,6 @@ from dngscan.film_optics_assets import (  # noqa: E402
 
 _GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
 _HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
-_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
 
 from tests.test_film_v2_assets import _stock_files
 
@@ -61,40 +60,6 @@ def _plan(preset: str, **kw):
     base.update(kw)
     return SimpleNamespace(**base)
 
-
-class ProductionScatterTests(unittest.TestCase):
-    def test_sparse_highlight_never_drives_neighbours_negative(self) -> None:
-        """The review's exact construction: one 20.0 point in a 0.01 field,
-        rendered through the REAL pipeline where the spread grid is coarser
-        than the image (long side > SPREAD_MAX_DIM), so the decimated proxy
-        cell blends the point with dark pixels. The two-term construction
-        subtracts only pointwise-real source, so nothing goes negative."""
-        from dngscan.film_develop import apply_film_core
-        from dngscan.film_optics import SPREAD_MAX_DIM
-
-        stock = _negative_stock()
-        h, w = 32, SPREAD_MAX_DIM * 2  # decimation factor 2 in x
-        img = np.full((h, w, 3), 0.01, dtype=np.float32)
-        img[h // 2, w // 2] = 20.0
-        out = apply_film_core(
-            img.reshape(-1, 3), _plan(stock, film_bloom=1.0),
-            spatial_shape=(h, w),
-        )
-        self.assertTrue(np.isfinite(out).all())
-        self.assertGreaterEqual(
-            float(out.min()), 0.0,
-            f"{int((out < 0).sum())} negative channels, min {float(out.min()):.4f}"
-            " — the proxy stole light from dark pixels (review batch 16)",
-        )
-
-    def test_two_term_form_is_the_shipping_code(self) -> None:
-        import inspect
-
-        from dngscan import film_optics
-
-        src = inspect.getsource(film_optics.bloom_apply_rows)
-        self.assertIn("source_full", src)
-        self.assertIn("up - source_full", src)
 
 
 class PeriodicMasterTests(unittest.TestCase):

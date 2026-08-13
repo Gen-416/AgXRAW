@@ -11,8 +11,7 @@ So the data splits the way the physics does:
     stock optics    negative/reversal grain, in-emulsion scatter, backing
                     halation, anti-halation class
     print optics    formation scatter, positive-medium grain, viewing
-                    scatter, and (for now) the legacy print scatter that the
-                    GUI still calls "Bloom"
+                    scatter
     capture bloom   an EDITORIAL lens-and-emulsion glow, declared as such
 
 Every asset carries its own provenance — `measured`, `derived`, `modelled` or
@@ -25,10 +24,11 @@ hash mismatch or a non-finite number all raise. A spatial operator that
 silently falls back to a default is a spatial operator whose output nobody can
 attribute.
 
-Naming note (§12.2): the operator the GUI calls "Bloom" is, in this version,
-the positive medium's own conservative scatter. It is `legacy_print_scatter`
-here. The editorial capture bloom that the name will eventually mean does not
-exist yet; P3 introduces it, and the two must never share a field.
+Naming note (§12.2): "Bloom" is the editorial capture bloom (P3). The old
+post-B2 conservative print scatter that once wore the name was retained
+through P3-P4 as `legacy_print_scatter` for acceptance comparison and was
+DELETED in P5e — the V2 operators are the default and the comparison had
+served its purpose.
 """
 from __future__ import annotations
 
@@ -326,42 +326,6 @@ class HalationAsset:
 
 
 @dataclass(frozen=True)
-class PrintScatterAsset:
-    """The positive medium's own conservative scatter — the GUI's "Bloom".
-
-    Named for what it is. §12.2: the user-facing control keeps its label for
-    now, but nothing internal may call this bloom, or the editorial glow P3
-    introduces will end up sharing its amount by accident.
-    """
-
-    provenance: str
-    model: str                   # conservative_pyramid_v1
-    levels: int
-    threshold: float
-    strength: float
-
-    @classmethod
-    def from_json(cls, raw: dict, where: str) -> "PrintScatterAsset":
-        model = str(raw.get("model", ""))
-        _require(model == "conservative_pyramid_v1",
-                 f"{where}: unknown print-scatter model {model!r}")
-        levels = int(raw["levels"])
-        _require(levels >= 1, f"{where}: levels must be >= 1")
-        threshold = _finite(raw["threshold"], f"{where}.threshold")
-        _require(threshold >= 0.0, f"{where}: threshold must be non-negative")
-        strength = _finite(raw["strength"], f"{where}.strength")
-        _require(strength >= 0.0, f"{where}: strength must be non-negative")
-        return cls(
-            provenance=_provenance(raw["provenance"], where),
-            model=model, levels=levels, threshold=threshold, strength=strength,
-        )
-
-
-# --------------------------------------------------------------------------
-# family assets
-# --------------------------------------------------------------------------
-
-@dataclass(frozen=True)
 class StockOpticsAsset:
     asset_id: str
     provenance: str
@@ -407,7 +371,6 @@ class StockOpticsAsset:
 class PrintOpticsAsset:
     asset_id: str
     provenance: str
-    print_scatter: PrintScatterAsset | None
     formation_scatter: "ScatterKernelAsset | None" = None  # P5 (§6.2)
     positive_grain: GrainAsset | None = None   # P4
     viewing_scatter: Any = None           # deliberately never enabled in v2
@@ -420,7 +383,9 @@ class PrintOpticsAsset:
         form = raw.get("formation_scatter")
         _require(raw.get("viewing_scatter") is None,
                  f"{where}: viewing_scatter has no measured PSF and stays null")
-        scatter = raw.get("legacy_print_scatter")
+        _require(raw.get("legacy_print_scatter") is None,
+                 f"{where}: legacy_print_scatter was deleted in P5e — "
+                 "the V2 formation scatter is the medium's scatter")
         # P4 activated the reserved slot: the positive medium's own grain
         # (2383 print film measured tables), applied on the PRINT dye
         # amounts before B2 viewing. A paper/print asset without one simply
@@ -430,11 +395,6 @@ class PrintOpticsAsset:
         return cls(
             asset_id=str(raw["asset_id"]),
             provenance=_provenance(raw["provenance"], where),
-            print_scatter=(
-                PrintScatterAsset.from_json(
-                    scatter, f"{where}.legacy_print_scatter"
-                ) if scatter else None
-            ),
             positive_grain=(
                 GrainAsset.from_json(pos, f"{where}.positive_grain")
                 if pos else None
@@ -677,6 +637,18 @@ class FilmOpticsPlan:
                     self.stock.halation.provenance if self.stock.halation else None
                 ),
                 "capture_bloom": self.capture_bloom.provenance,
+                "emulsion_scatter": (
+                    self.stock.emulsion_scatter.provenance
+                    if self.stock.emulsion_scatter else None
+                ),
+                "formation_scatter": (
+                    self.print_medium.formation_scatter.provenance
+                    if self.print_medium.formation_scatter else None
+                ),
+                "positive_grain": (
+                    self.print_medium.positive_grain.provenance
+                    if self.print_medium.positive_grain else None
+                ),
             },
             "halation_dc_mode": (
                 self.stock.halation.dc_mode if self.stock.halation else None

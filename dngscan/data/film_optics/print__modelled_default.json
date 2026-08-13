@@ -3,13 +3,6 @@
  "kind": "print_optics",
  "asset_id": "modelled_default",
  "provenance": "modelled",
- "legacy_print_scatter": {
-  "provenance": "modelled",
-  "model": "conservative_pyramid_v1",
-  "levels": 4,
-  "threshold": 0.6,
-  "strength": 0.22
- },
  "formation_scatter": {
   "provenance": "measured",
   "model": "gaussian_v1",
@@ -453,6 +446,7 @@
   "Measured in P0: half-energy radius 0.759 mm, energy ratio ~1e-10 (conservative as designed), but only 0.73 EV of overrange exists in the domain it runs in against 6.00 EV in the scene. P3 moves the editorial glow to a scene-linear operator and leaves this one as the small medium effect it actually is.",
   "viewing_scatter stays null: no paper PSF/CTF data exists, and the plan refuses to let a display-linear blur stand in for one.",
   "grain V2 (P4): positive_grain activated with measured 2383 sigma(D); applied on the print dye amounts before B2, negative branch only (a directly-viewed reversal has no print stage)",
-  "optics V2 P5: formation_scatter activated with the measured 2383 MTF fit; normalized kernel — uniform patches unchanged, Stage B calibration intact; negative branch only (print stage)"
+  "optics V2 P5: formation_scatter activated with the measured 2383 MTF fit; normalized kernel — uniform patches unchanged, Stage B calibration intact; negative branch only (print stage)",
+  "P5e: legacy_print_scatter deleted (operator and asset) — the V2 formation scatter + positive grain are the medium's spatial behaviour"
  ]
 }

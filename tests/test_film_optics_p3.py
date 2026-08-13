@@ -218,23 +218,25 @@ class RenameTests(unittest.TestCase):
         self.assertTrue(got.capture_bloom.active)
         self.assertFalse(hasattr(got, "print_scatter_amount"))
 
-    def test_the_legacy_print_scatter_is_no_longer_reachable(self) -> None:
-        """§12.2: a medium property must not ride a look slider. The operator
-        stays available for the acceptance comparison, but nothing a user can
-        set turns it on."""
-        import inspect
+    def test_the_legacy_print_scatter_is_deleted(self) -> None:
+        """P5e closed the §12.2 ledger: the legacy operator and its asset
+        are GONE, not merely unreachable — the acceptance comparison it was
+        retained for has served its purpose. A print asset that still
+        carries the block is refused, so it can never quietly return."""
+        from dngscan import film_optics
 
-        from dngscan import film_develop
-
-        # `capture_bloom_apply_rows` contains the legacy name as a substring,
-        # so the check is on the import site, not on a bare substring.
-        src = inspect.getsource(film_develop)
-        self.assertNotIn("import bloom_apply_rows", src)
-        self.assertNotIn("print_medium.print_scatter", src)
-        self.assertIsNotNone(
-            fa.load_print_optics(fa.DEFAULT_PRINT_OPTICS).print_scatter,
-            "the asset is retained for the acceptance comparison",
-        )
+        self.assertFalse(hasattr(film_optics, "bloom_apply_rows"))
+        self.assertFalse(hasattr(film_optics, "scatter_spread"))
+        self.assertFalse(hasattr(fa, "PrintScatterAsset"))
+        self.assertFalse(
+            hasattr(fa.load_print_optics(fa.DEFAULT_PRINT_OPTICS),
+                    "print_scatter"))
+        with self.assertRaises(fa.OpticsAssetError):
+            fa.PrintOpticsAsset.from_json({
+                "kind": "print_optics", "asset_id": "t",
+                "provenance": "modelled",
+                "legacy_print_scatter": {"threshold": 0.6},
+            }, "t")
 
     def test_the_report_names_the_capture_bloom_and_its_provenance(self) -> None:
         rep = fa.compile_film_optics_plan(_plan(film_bloom=0.4)).report()

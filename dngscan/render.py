@@ -490,6 +490,10 @@ def scene_render_to_display_linear(
             bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w
         )
     halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
+    if halo_rows > 0:
+        # amortize the halo redundancy: with 2x bands the extra rows fall
+        # to half their share of the chain; the slab stays row-aligned
+        chunk = min(chunk * 3, flat_scene.shape[0])
     for start in range(0, flat_scene.shape[0], chunk):
         end = min(start + chunk, flat_scene.shape[0])
         # P5b halo slab: an engaged full-resolution scatter kernel needs
@@ -764,6 +768,8 @@ def render_output_u8(
         )
 
     halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
+    if halo_rows > 0:
+        spatial_chunk = min(spatial_chunk * 3, flat_scene.shape[0])
 
     def render_post_tone_chunk(start: int, end: int) -> Any:
         # P5b halo slab (same protocol as the streaming loop above): expand

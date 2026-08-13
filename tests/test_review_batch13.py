@@ -33,7 +33,6 @@ from dngscan.film_optics_assets import (  # noqa: E402
 
 _GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
 _HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
-_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
 
 from tests.test_film_v2_assets import _stock_files
 
@@ -124,39 +123,6 @@ class GateGeometryTests(unittest.TestCase):
             )
         np.testing.assert_allclose(out, full, atol=2e-6)
 
-
-class BloomPyramidEdgeTests(unittest.TestCase):
-    def test_odd_edges_keep_their_bloom_and_tiny_inputs_survive(self) -> None:
-        from dngscan.film_optics import bloom_delta_map
-
-        # 33x35: highlights at the four corners must all participate — the
-        # conservative delta is NEGATIVE at each impulse core (it loses
-        # energy) and positive in each neighbourhood; truncation used to
-        # zero out the bottom-right corner entirely.
-        img = np.zeros((33, 35, 3), dtype=np.float32)
-        for y, x in ((0, 0), (0, 34), (32, 0), (32, 34)):
-            img[y, x] = 1.0
-        delta = bloom_delta_map(img, _SCATTER)
-        cores = [float(delta[y, x].mean()) for y, x in
-                 ((0, 0), (0, 34), (32, 0), (32, 34))]
-        self.assertLess(max(cores), 0.0, "every corner core must shed energy")
-        self.assertLess(
-            min(cores) / min(max(cores, key=abs), -1e-9), 4.0,
-            "corner participation must be comparable, not lost to truncation",
-        )
-        for y, x in ((2, 2), (2, 32), (30, 2), (30, 32)):
-            self.assertGreater(
-                float(delta[y, x].mean()), 0.0, "neighbourhood must gain"
-            )
-        # conservation on the map itself
-        self.assertLess(
-            float(np.abs(delta.sum(axis=(0, 1), dtype=np.float64)).max()), 1e-4
-        )
-        # tiny inputs: no crash, finite output
-        for shape in ((5, 5), (1, 7), (3, 2)):
-            tiny = np.ones(shape + (3,), dtype=np.float32)
-            out = bloom_delta_map(tiny, _SCATTER)
-            self.assertTrue(np.isfinite(out).all(), shape)
 
 
 class EditorialDomainTests(unittest.TestCase):

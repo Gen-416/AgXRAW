@@ -888,6 +888,22 @@ provenance。不得只输出“模拟光学 standard”。
 退出门：合成平场达到 RMS/PSD/高阶统计门（门 14），amount 扫描不改变平均影调
 （门 15），真实照片不再呈单尺度磨砂噪声。
 
+> **P4 实施记录（2026-08-13，PR #97/#98/#99/#100 + e6d51cc）**：
+> ① 数据：H-1-5207 与 H-1-2383 的 σ(D) 曲线数字化入
+> `dngscan/data/grain/`（网格程序检测标定+手读锚点+叠加验证，
+> `tools/import_kodak_granularity.py`；2383 特性表取自颗粒图本身——同页感光计
+> 图逐通道曝光归一不同，不可互换）。② 内核：`measured_sigma_v2` 模型——Dn→图表
+> 密度→σ 查表→染料量 span 换算；倍率锚定 master 场数值计算的 48µm 孔径平均
+> RMS（不用 Selwyn √面积律）；均值透过率补偿 +s²·ln10/2 锚定胶片网格尺度（行带
+> 不变性要求常数 DC）。门 14 实测 12% 内、门 15 <0.4%。③ 频谱：粒子 oracle
+> （染料云布尔模型 1µm/cell，`tools/grain_particle_oracle.py`）拟合出混合
+> 每格白噪 0.85+18µm 0.15（Selwyn -0.90、FWHM 12.3µm，孔径曲线误差 4.2%），
+> P0 blotch 投诉全部反转。④ 双颗粒：print 资产 `positive_grain` 激活
+> （实测 2383 表），负片分支 dye 进 B2 前二次调制；场缓存按场几何键控，
+> 负/印共享一个 master。**Portra/Ektar 决策**：无公开 RMS（PGI 官方不可换算），
+> 默认 profile 统一使用 5207 实测 σ(D)；按 PGI 比例缩放或自扫描反推（TOG 2023
+> 参数估计）记为后续可选项，不静默烘焙。真实照片目检"不再单尺度磨砂"待 owner。
+
 ### P5：GUI、性能与正式迁移
 
 - profile 摘要、隔离视图和高级控制；
@@ -898,6 +914,25 @@ provenance。不得只输出“模拟光学 standard”。
 - V2 默认后删除 legacy 算子、旧 `MODELLED_DEFAULT` 与临时开关。
 
 退出门：功能、视觉、性能、内存、文档和 provenance 同时完成；不能只以“效果更明显”合并。
+
+> **P5 实施记录（2026-08-13/14，PR #101/#102 + 75f3eb8 + P5e 批）**：
+> ① MTF 数字化与拟合（`tools/import_kodak_mtf.py` → `dngscan/data/mtf/`）：
+> 5207 §5.1 core/tail——B s=.674 σ4.1µm、G s=.650 σ5.0µm、R s=1.0 w=.28
+> σ7.6µm λ1.3µm（底层全散射+指数尾）；2383 §6.2 高斯 K_form——G s=.221
+> σ14.4µm、R s=.405 σ8.7µm、B s=.681 σ10µm。>100% 邻接峰为显影边缘效应，
+> 记录为模型外残差。② halo 行带路径：spatial=(ctx,y0,y1,y0e,y1e)，渲染循环按
+> `ctx.scatter_halo_rows()` 扩展逐点上游；级联核 halo 半径**相加**；缺 halo 的
+> 部分行带硬错误；<0.4px 分量精确恒等（预览零开销）。§5.1 挂层曝光（线性域、
+> halation 回注前），§6.2 挂纸曝光（B2 前）；均匀 patch 不变（1e-5），Stage B
+> 标定不受扰。门 13 成立：算子正弦调制=解析传递 3e-2 内；8.8µm/px 行带=全帧
+> oracle 2e-5。③ GUI：模拟光学 profile 摘要从渲染同源资产读 provenance。
+> ④ legacy 删除：`legacy_print_scatter` 算子（scatter_source/scatter_spread/
+> bloom_delta_map/bloom_apply_rows）、PrintScatterAsset、资产块与钉其行为的
+> 批 15-20 测试全部移除；再带该块的 print 资产被拒载。P0 blockiness 门反转
+> （实测 formation scatter 物理扩散金字塔阶跃边；§11.1 的 NN expand 禁令随
+> 算子删除一并闭账）；display-threshold source gate 的 P0 记录以墓碑保留
+> （删除即修复）。⑤ 文档示例重渲：full 输出的颗粒/散射观感已变，展示图刷新
+> 需 owner 样张按 doc-showcase 风格另批执行（唯一遗留项）。
 
 ## 14. 明确暂不声称的内容
 

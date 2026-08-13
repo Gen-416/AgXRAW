@@ -332,11 +332,16 @@ class MeasuredBaselineTests(unittest.TestCase):
             "P2's component set makes the inner ring warmer than the outer",
         )
 
-        gate = self.live["bloom"]["source_gate"]
-        # The domain error, as a number: the operator runs where less than a
-        # stop of overrange exists, on a scene that offered six.
-        self.assertLess(gate["display_source_headroom_ev"], 1.0)
-        self.assertGreater(gate["scene_headroom_ev"], 5.0)
+        # RESOLVED by deletion (P5e): the P0 numbers here recorded the
+        # legacy operator's domain error (a display-threshold source gate
+        # seeing <1 EV of overrange where the scene offered 6). P3 replaced
+        # the operator with the scene-linear capture bloom and P5e deleted
+        # the legacy code and asset; the baseline keeps a tombstone so the
+        # section cannot silently vanish.
+        self.assertEqual(
+            self.live["bloom"]["source_gate"],
+            "deleted_with_legacy_print_scatter",
+        )
 
         # INVERTED by P5: the P0 complaint was that nearest-neighbour
         # pyramid expand left its block edges visible in the RENDERED
