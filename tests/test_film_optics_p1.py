@@ -57,7 +57,6 @@ class AssetLoadingTests(unittest.TestCase):
         self.assertEqual(stock.grain.provenance, "measured")
         self.assertEqual(stock.grain.model, "measured_sigma_v2")
         self.assertEqual(stock.halation.provenance, "modelled")
-        self.assertEqual(medium.print_scatter.provenance, "modelled")
         self.assertTrue(bloom.active, "P3 ships an editorial capture bloom")
         self.assertEqual(bloom.provenance, "editorial")
 

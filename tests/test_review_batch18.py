@@ -100,50 +100,6 @@ class SpawnSeedTests(unittest.TestCase):
 
 
 class ScatterSourceTests(unittest.TestCase):
-    def test_sparse_highlight_sheds_and_the_neighbourhood_gains(self) -> None:
-        """A decimated proxy source subtracted at full resolution stole light
-        from pixels that never had any: a 1.0 highlight fell to 0.912 with
-        nothing anywhere gained. Source and subtraction must be the SAME
-        full-resolution quantity.
-
-        Driven on the operator directly since P3: `film_bloom` now means the
-        additive editorial capture bloom, which deliberately does NOT shed
-        from the core, so routing this through the amount would assert the
-        wrong operator's physics.
-        """
-        from dngscan.film_optics import (
-            bloom_apply_rows,
-            integral_from_field,
-            scatter_source,
-            scatter_spread,
-        )
-        from dngscan.film_optics_assets import (
-            DEFAULT_PRINT_OPTICS,
-            load_print_optics,
-        )
-
-        scatter = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
-        h, w = 64, 96
-        img = np.full((h, w, 3), 0.01, dtype=np.float32)
-        img[h // 2, w // 2] = 20.0
-        spread_ii = integral_from_field(
-            scatter_spread(scatter_source(img, scatter), scatter)
-        ).astype(np.float32)
-        out = bloom_apply_rows(
-            img.reshape(-1, 3), spread_ii, 0, h, h, w, scatter, 1.0
-        ).reshape(h, w, 3)
-        luma = np.array([0.2627, 0.6780, 0.0593])
-        self.assertLess(
-            float(out[h // 2, w // 2] @ luma), float(img[h // 2, w // 2] @ luma),
-            "the core must shed energy",
-        )
-        self.assertGreater(
-            float(out[h // 2 + 3, w // 2] @ luma),
-            float(img[h // 2 + 3, w // 2] @ luma),
-            "the neighbourhood must RECEIVE what the core shed — a decimated "
-            "proxy source gave it to nobody",
-        )
-
     def test_bloom_applies_exactly_once(self) -> None:
         """Pass B renders the pre-bloom print with the same context; the
         map is None then, so bloom cannot be applied twice."""

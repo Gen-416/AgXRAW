@@ -30,7 +30,6 @@ from dngscan.film_optics_assets import (  # noqa: E402
 
 _GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
 _HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
-_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
 
 ROOT = Path(__file__).resolve().parents[1]
 

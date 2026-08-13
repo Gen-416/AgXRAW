@@ -28,7 +28,6 @@ from dngscan.film_optics_assets import (  # noqa: E402
 
 _GRAIN = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
 _HALATION = load_stock_optics(DEFAULT_STOCK_OPTICS).halation
-_SCATTER = load_print_optics(DEFAULT_PRINT_OPTICS).print_scatter
 
 from tests.test_film_v2_assets import _stock_files
 
@@ -138,7 +137,6 @@ class SpatialOperatorTests(unittest.TestCase):
         from dngscan.film_optics import (
             FilmGeometry,
             apply_density_grain,
-            bloom_apply_rows,
             halation_reinject_rows,
         )
 
@@ -155,10 +153,6 @@ class SpatialOperatorTests(unittest.TestCase):
                 le, None, np.full(3, 0.18), 0, 20, 20, 30, _HALATION, 0.0
             ),
             le,
-        )
-        img = rng.uniform(0, 1, (600, 3))
-        self.assertIs(
-            bloom_apply_rows(img, None, 0, 20, 20, 30, _SCATTER, 0.0), img
         )
 
     def test_halation_is_red_dominant_and_spreads(self) -> None:
@@ -188,31 +182,6 @@ class SpatialOperatorTests(unittest.TestCase):
         core = delta[h // 2, w // 2, :]
         self.assertLess(float(core[0]), 0.0)
 
-    def test_bloom_redistributes_highlights_conservatively(self) -> None:
-        from dngscan.film_optics import (
-            integral_from_field,
-            bloom_apply_rows,
-        )
-
-        h, w = 64, 96
-        img = np.full((h * w, 3), 0.05, dtype=np.float32)
-        img[(h // 2) * w + w // 2] = 1.0
-        from dngscan.film_optics import scatter_source, scatter_spread
-
-        spread = scatter_spread(
-            scatter_source(img.reshape(h, w, 3), _SCATTER), _SCATTER
-        )
-        ii = integral_from_field(spread).astype(np.float32)
-        out = bloom_apply_rows(
-            img, ii, 0, h, h, w, _SCATTER, 1.0
-        ).reshape(h, w, 3)
-        base = img.reshape(h, w, 3)
-        # neighbourhood brightens, the CORE darkens (energy redistribution),
-        # far corner nearly untouched, nothing negative
-        self.assertGreater(out[h // 2 + 3, w // 2, 1], base[h // 2 + 3, w // 2, 1])
-        self.assertLess(out[h // 2, w // 2, 1], base[h // 2, w // 2, 1])
-        self.assertLess(abs(out[2, 2, 1] - base[2, 2, 1]), 5e-3)
-        self.assertGreaterEqual(float(out.min()), 0.0)
 
     def test_grain_follows_the_measured_sigma_profile(self) -> None:
         # P4 INVERTED the v1 mid-peak contract: the measured 5207 chart has

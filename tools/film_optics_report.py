@@ -54,7 +54,7 @@ STOCK_OPTICS = load_stock_optics(DEFAULT_STOCK_OPTICS)
 PRINT_OPTICS = load_print_optics(DEFAULT_PRINT_OPTICS)
 GRAIN = STOCK_OPTICS.grain
 HALATION = STOCK_OPTICS.halation
-PRINT_SCATTER = PRINT_OPTICS.print_scatter
+FORMATION_SCATTER = PRINT_OPTICS.formation_scatter
 
 # The GUI's declared tiers (gui/service.py). "standard" is the modelled
 # default a user actually gets; "light" is the conservative tier. Amounts are
@@ -237,12 +237,13 @@ def _rms_granularity_quote(field, pitch):
 def measure_pyramid_blockiness(stock: str, amount: float) -> dict:
     """Does the spread map carry its pyramid's block edges?
 
-    `scatter_spread` expands each pyramid level with `arange(dw) // factor` —
-    a nearest-neighbour repeat. That leaves a step every `factor` pixels in
-    the delta, at every level. The measurement compares the mean absolute
-    first difference AT those step positions with the mean everywhere else:
-    a smooth expansion reads ~1.0, a repeat reads visibly above it. §11.1 of
-    the V2 plan forbids nearest-neighbour expand for exactly this reason.
+    The spread-map pyramid used to expand each level with a
+    nearest-neighbour repeat, leaving a step every `factor` pixels in the
+    delta (the P0 recorded defect; §11.1 forbids NN expand). The measurement
+    compares the mean absolute first difference AT those step positions with
+    the mean everywhere else: a smooth result reads ~1.0. Since P5 the
+    measured formation scatter physically diffuses these edges in the
+    rendered output, which is what the inverted P0 gate now certifies.
     """
     scene = charts.edge_chart(CHART_H, CHART_W, tilt_deg=5.0)
     base = develop(scene, make_plan(stock))
@@ -256,39 +257,6 @@ def measure_pyramid_blockiness(stock: str, amount: float) -> dict:
         off = float(dif[idx % factor != factor - 1].mean())
         out[f"step_{factor}px_ratio"] = float(on / max(off, 1e-30))
     return out
-
-
-def measure_bloom_source(stock: str) -> dict:
-    """How much of a real print the bloom threshold can even see.
-
-    The operator's source is `max(Y - 0.6, 0)` on DISPLAY-linear output. On a
-    print whose diffuse white sits near 1.0, that gate admits a sliver of the
-    frame at a dynamic range of well under a stop — which is the structural
-    reason the effect cannot look like optical veiling glare no matter how the
-    strength is set.
-    """
-    scene = charts.emitter_chart(
-        CHART_H, CHART_W, background_ev=-3.0, color="white"
-    )[0]
-    base = develop(scene, make_plan(stock))
-    y = base @ diag.LUMA_REC2020
-    thr = PRINT_SCATTER.threshold
-    peak = float(y.max())
-    scene_y = scene @ diag.LUMA_REC2020
-    return {
-        "display_threshold": float(thr),
-        "source_pixel_fraction": float((y > thr).mean()),
-        "display_max": peak,
-        # The two numbers to read side by side: how many stops of overrange a
-        # veiling-glare source has in the domain the operator runs in, versus
-        # how many the scene actually offered before development.
-        "display_source_headroom_ev": float(
-            np.log2(max(peak, 1e-9) / max(thr, 1e-9))
-        ),
-        "scene_headroom_ev": float(
-            np.log2(float(scene_y.max()) / charts.MID_GREY)
-        ),
-    }
 
 
 def measure_mtf(stock: str, tier: str) -> dict:
@@ -353,8 +321,10 @@ def build_report(stock: str = DEFAULT_STOCK, *, perf: bool = False) -> dict:
                 ],
                 "total_return": HALATION.total_return().tolist(),
             },
-            "print_scatter": {k: (list(v) if isinstance(v, tuple) else v)
-                              for k, v in vars(PRINT_SCATTER).items()},
+            "formation_scatter": {
+                k: (list(v) if isinstance(v, tuple) else v)
+                for k, v in vars(FORMATION_SCATTER).items()
+            } if FORMATION_SCATTER is not None else None,
         },
         "tiers": {k: list(v) for k, v in TIERS.items()},
         "grain": {},
@@ -367,7 +337,11 @@ def build_report(stock: str = DEFAULT_STOCK, *, perf: bool = False) -> dict:
         report["halation"][tier] = measure_spread(stock, "film_halation", h)
         report["bloom"][tier] = measure_spread(stock, "film_bloom", b)
         report["mtf"][tier] = measure_mtf(stock, tier)
-    report["bloom"]["source_gate"] = measure_bloom_source(stock)
+    # P5e: the legacy display-threshold source gate this section measured
+    # was deleted with its operator; the capture bloom reads SCENE-linear
+    # exposure by construction (P3), which was the fix the P0 numbers
+    # demanded.
+    report["bloom"]["source_gate"] = "deleted_with_legacy_print_scatter"
     report["bloom"]["pyramid_blockiness"] = measure_pyramid_blockiness(
         stock, TIERS["standard"][2]
     )
@@ -447,10 +421,18 @@ def measure_perf(stock: str, megapixels: float = 61.0) -> dict:
             if ctx.halation > 0.0:
                 ctx.finish_maps(scene_dec, plan, stock)
             del scene_dec
-        for y0 in range(0, h, band):
-            y1 = min(y0 + band, h)
-            spatial = None if ctx is None else (ctx, y0, y1)
-            apply_film_core(rows_for(y0, y1), plan, spatial=spatial)
+        halo = ctx.scatter_halo_rows() if ctx is not None else 0
+        band_eff = band * 3 if halo > 0 else band  # renderer's amortization
+        for y0 in range(0, h, band_eff):
+            y1 = min(y0 + band_eff, h)
+            if ctx is not None:
+                y0e, y1e = max(0, y0 - halo), min(h, y1 + halo)
+                apply_film_core(
+                    rows_for(y0e, y1e), plan,
+                    spatial=(ctx, y0, y1, y0e, y1e),
+                )
+            else:
+                apply_film_core(rows_for(y0, y1), plan, spatial=None)
         out[f"{name}_seconds"] = round(time.perf_counter() - t0, 3)
         out[f"{name}_peak_rss_mib"] = round(rss_mib(), 1)
         out[f"{name}_rss_growth_mib"] = round(rss_mib() - base_rss, 1)
