@@ -1,0 +1,135 @@
+{
+ "film": "Kodak VISION Color Print Film 2383",
+ "source": "H-1-2383, Eastman Kodak, (c) 2022, Revised 3-22, p.4 'Modulation-Transfer Function Curves' (3200K, ECP-2D, Status A, 35% modulation target)",
+ "model": "gaussian_v1",
+ "channels": {
+  "G": [
+   [
+    2.5,
+    1.05
+   ],
+   [
+    5,
+    1.0
+   ],
+   [
+    10,
+    0.9
+   ],
+   [
+    20,
+    0.82
+   ],
+   [
+    30,
+    0.81
+   ],
+   [
+    50,
+    0.805
+   ],
+   [
+    70,
+    0.8
+   ],
+   [
+    85,
+    0.71
+   ]
+  ],
+  "R": [
+   [
+    2.5,
+    1.05
+   ],
+   [
+    5,
+    1.0
+   ],
+   [
+    10,
+    0.91
+   ],
+   [
+    20,
+    0.79
+   ],
+   [
+    30,
+    0.72
+   ],
+   [
+    50,
+    0.645
+   ],
+   [
+    70,
+    0.58
+   ],
+   [
+    77,
+    0.57
+   ]
+  ],
+  "B": [
+   [
+    2.5,
+    1.04
+   ],
+   [
+    5,
+    0.99
+   ],
+   [
+    10,
+    0.85
+   ],
+   [
+    20,
+    0.6
+   ],
+   [
+    30,
+    0.47
+   ],
+   [
+    50,
+    0.35
+   ],
+   [
+    70,
+    0.3
+   ],
+   [
+    77,
+    0.3
+   ]
+  ]
+ },
+ "schema": 1,
+ "calibration_px": {
+  "x0_px": 294.5,
+  "px_per_decade_x": 291.0,
+  "y100_py": 1603.0,
+  "px_per_decade_y": 265.0
+ },
+ "method": "manual anchor read-off against the chart's own log grid; see tools/import_kodak_mtf.py docstring",
+ "uncertainty": "±5% response (±8% below 10 c/mm); adjacency bump >100% is a development edge effect the passive scatter model cannot and does not reproduce",
+ "fit": {
+  "G": {
+   "s": 0.2213,
+   "sigma_um": 14.353,
+   "rms_residual": 0.031
+  },
+  "R": {
+   "s": 0.4051,
+   "sigma_um": 8.707,
+   "rms_residual": 0.025
+  },
+  "B": {
+   "s": 0.681,
+   "sigma_um": 9.987,
+   "rms_residual": 0.0246
+  }
+ }
+}
