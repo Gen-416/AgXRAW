@@ -70,9 +70,14 @@ class GrainFieldContractTests(unittest.TestCase):
             corr[0, 1], _GRAIN.layer_corr, delta=0.05,
             msg="declared cross-layer covariance",
         )
-        # band-limited, not white: strong positive neighbour correlation
+        # P4 INVERTED: the single-blotch field pinned lag1 > 0.5; the
+        # particle-oracle band mixture is white-dominated (0.85 per-cell)
+        # with a small 18 um remnant, so neighbour correlation is small but
+        # strictly positive — near-zero band energy or a return of the
+        # blotch would both fail.
         lag1 = np.mean(flat[:-1, 0] * flat[1:, 0])
-        self.assertGreater(lag1, 0.5)
+        self.assertGreater(lag1, 0.01)
+        self.assertLess(lag1, 0.3)
         f2 = _band_limited_field(_GRAIN, 7)
         np.testing.assert_array_equal(f, f2)
         f3 = _band_limited_field(_GRAIN, 8)

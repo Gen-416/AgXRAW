@@ -16,7 +16,7 @@
   "size_um": 18.0,
   "layer_corr": 0.35,
   "aperture_um": 48.0,
-  "source": "sigma(D) digitized from Kodak H-1-5207 'Diffuse rms Granularity Curves' (dngscan/data/grain/granularity_5207.json, tools/import_kodak_granularity.py); field geometry (pitch/size/layer_corr) retained from the modelled profile pending measured PSD data",
+  "source": "sigma(D) digitized from Kodak H-1-5207 'Diffuse rms Granularity Curves' (dngscan/data/grain/granularity_5207.json, tools/import_kodak_granularity.py); field geometry (pitch/size/layer_corr) retained from the modelled profile pending measured PSD data; band mixture fitted by tools/grain_particle_oracle.py against a dye-cloud Boolean oracle (1um cells, lognormal clouds median 1um sigma_ln 0.45): per-cell white 0.85 + 18um 0.15 reproduces the oracle's 12um-pitch aperture-RMS curve to 4.2% log-RMS (Selwyn slope -0.90, correlation FWHM 12.3um)",
   "channels": {
    "R": {
     "chart_density": [
@@ -414,7 +414,17 @@
      ]
     ]
    }
-  }
+  },
+  "bands": [
+   [
+    6.0,
+    0.85
+   ],
+   [
+    18.0,
+    0.15
+   ]
+  ]
  },
  "emulsion_scatter": null,
  "halation": {

@@ -296,11 +296,14 @@ class MeasuredBaselineTests(unittest.TestCase):
         say what it is fixing cannot say when it is done.
         """
         grain = self.live["grain"]["standard"]
-        # Grain is STILL a blotch field spatially (P4 replaced the sigma(D)
-        # statistics, not the spectrum — measured PSD data is the recorded
-        # remainder), so the correlation complaints stay un-inverted:
-        self.assertGreater(grain["field_blob_fwhm_um"], 40.0)
-        self.assertGreater(grain["field_selwyn_slope"], -0.7)
+        # INVERTED by P4 multi-band: the field used to be a single blotch
+        # (FWHM > 40 um, Selwyn slope shallower than -0.7). The particle-
+        # oracle-fitted band mixture brings the correlation length down to
+        # the render pitch and the slope into the granularity regime the
+        # dye-cloud Boolean model predicts for a 12 um representation.
+        self.assertLess(grain["field_blob_fwhm_um"], 20.0)
+        self.assertLess(grain["field_selwyn_slope"], -0.8)
+        self.assertGreater(grain["field_selwyn_slope"], -1.05)
         # INVERTED by P4 (grain V2): the 48 um RMS used to sit an order of
         # magnitude above any datasheet stock (>40 x1000); the measured
         # sigma(D) kernel now lands the as-rendered figures inside the

@@ -102,6 +102,10 @@ class GrainAsset:
     aperture_um: float = 0.0
     chart_density: tuple = ()    # ((base, max),) * 3
     sigma_density: tuple = ()    # (((D, sigma), ...),) * 3
+    # multi-band spectrum (P4 particle oracle): ((size_um, weight), ...).
+    # Empty means one band at size_um (the pre-oracle behaviour). A size
+    # at or below half the pitch renders as per-cell white noise.
+    bands: tuple = ()
 
     @classmethod
     def from_json(cls, raw: dict, where: str) -> "GrainAsset":
@@ -156,6 +160,21 @@ class GrainAsset:
                 tab.append((d, s))
             bases.append((base, dmax))
             tables.append(tuple(tab))
+        bands: list[tuple] = []
+        if "bands" in raw:
+            wsum = 0.0
+            prev_size = 0.0
+            for i, row in enumerate(raw["bands"]):
+                bsize = _finite(row[0], f"{where}.bands[{i}][0]")
+                bwgt = _finite(row[1], f"{where}.bands[{i}][1]")
+                _require(bsize > prev_size,
+                         f"{where}.bands: sizes must be positive ascending")
+                _require(bwgt > 0.0, f"{where}.bands: weights must be positive")
+                prev_size = bsize
+                wsum += bwgt
+                bands.append((bsize, bwgt))
+            _require(abs(wsum - 1.0) < 1e-6,
+                     f"{where}.bands: weights must sum to 1 (got {wsum})")
         return cls(
             provenance=_provenance(raw["provenance"], where),
             medium=str(raw["medium"]),
@@ -164,6 +183,7 @@ class GrainAsset:
             aperture_um=aperture,
             chart_density=tuple(bases),
             sigma_density=tuple(tables),
+            bands=tuple(bands),
         )
 
 
