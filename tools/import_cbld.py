@@ -28,7 +28,11 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "dngscan" / "data" / "cbld.json"
+# Review R1 item 8: CBLD carries no explicit redistribution license, so the
+# import writes to the USER's own config location (dngscan/cbld.py reads it
+# from there, or from $DNGSCAN_CBLD) — never into the repo or the wheel.
+# Running this tool is the user fetching upstream data for personal use.
+OUT = Path.home() / ".config" / "dngscan" / "cbld.json"
 PAGE = "https://y-g-jiang.github.io/CBLD.html"
 
 
@@ -107,9 +111,10 @@ def main() -> int:
         "fetched": datetime.date.today().isoformat(),
         "cameras": cams,
     }
+    OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + "\n",
                    encoding="utf-8")
-    print(f"wrote {OUT.relative_to(ROOT)} ({len(cams)} cameras)")
+    print(f"wrote {OUT} ({len(cams)} cameras,仅本机使用,不再分发)")
     return 0
 
 

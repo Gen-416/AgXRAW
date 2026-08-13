@@ -534,8 +534,10 @@ class OpticsProfileSummaryTests(unittest.TestCase):
         from dngscan.gui.page import _optics_profile_summary, render_page
 
         line = _optics_profile_summary()
-        self.assertIn("颗粒:measured", line)
-        self.assertIn("散射:measured", line)
+        # R1 item 7: generic profile with 5207/2383-sourced numbers =
+        # derived, and the summary must say so
+        self.assertIn("颗粒:derived", line)
+        self.assertIn("散射:derived", line)
         self.assertIn("bloom:editorial", line)
         html = render_page("").decode("utf-8")
         self.assertIn('id="filmOpticsSummary"', html)

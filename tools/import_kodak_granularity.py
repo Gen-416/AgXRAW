@@ -205,7 +205,22 @@ def sigma_of_density(channel: dict, loge_max: float, n: int = 61):
     loge = np.linspace(0.0, loge_max, n)
     dens = np.interp(loge, d_tab[:, 0], d_tab[:, 1])
     sig = np.interp(loge, s_tab[:, 0], s_tab[:, 1])
-    return [[round(float(d), 4), round(float(s), 6)] for d, s in zip(dens, sig)]
+    # The chart's toe holds density FLAT while sigma still moves with
+    # exposure, so the parametric join is not single-valued in D. The
+    # render queries by density alone, and a pixel AT base density is the
+    # unexposed state — so the fold keeps the FIRST (lowest-logE) row per
+    # unique density and the emitted table is strictly increasing in D,
+    # which the loader enforces again (review R1 item 5: np.interp on
+    # duplicated x silently kept the LAST toe row instead).
+    rows = []
+    seen = -1.0
+    for d, s in zip(dens, sig):
+        d4 = round(float(d), 4)
+        if d4 <= seen:
+            continue
+        seen = d4
+        rows.append([d4, round(float(s), 6)])
+    return rows
 
 
 def build_asset(data: dict, cal: dict, loge_max: float) -> dict:

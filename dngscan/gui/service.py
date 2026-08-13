@@ -267,6 +267,7 @@ def estimate_ev_headroom(
     film_neutral_bias: float = 1.0,
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
+    film_media_scatter: str = "declared",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
     lens_filter: str | None = None,
@@ -309,6 +310,7 @@ def estimate_ev_headroom(
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
         lens_filter=lens_filter,
@@ -558,6 +560,7 @@ def _cached_render_plan(
     film_neutral_bias: float = 1.0,
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
+    film_media_scatter: str = "declared",
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     key = (
@@ -588,6 +591,7 @@ def _cached_render_plan(
         _cache_float(film_neutral_bias),
         film_appearance_variant,
         int(film_optics_seed),
+        str(film_media_scatter),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
     )
@@ -622,6 +626,7 @@ def _cached_render_plan(
             film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
+            film_media_scatter=film_media_scatter,
             adjustments=None,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
@@ -672,6 +677,7 @@ def _preview_pixel_key(
     film_neutral_bias: float = 1.0,
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
+    film_media_scatter: str = "declared",
 ) -> tuple[Any, ...]:
     return (
         gamut,
@@ -707,6 +713,7 @@ def _preview_pixel_key(
         _cache_float(film_neutral_bias),
         film_appearance_variant,
         int(film_optics_seed),
+        str(film_media_scatter),
         endpoint_mode,
         _adjustment_key(adjustments),
         # Exposure is represented by ``ev`` above; the scale contract guards against
@@ -803,6 +810,7 @@ def export_preview_jpeg(
     film_neutral_bias: float = 1.0,
     film_appearance_variant: str = "reference",
     film_optics_seed: int | None = None,
+    film_media_scatter: str = "declared",
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -884,6 +892,7 @@ def export_preview_jpeg(
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
     if auto_ev is None:
@@ -942,6 +951,7 @@ def export_preview_jpeg(
             film_neutral_bias=film_neutral_bias,
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
+            film_media_scatter=film_media_scatter,
         )
         if rgb_u8 is None:
             ensure_current()
@@ -1149,6 +1159,16 @@ def parse_film_params(params: dict) -> tuple:
             "模拟光学属于接管显影(full 模式);GUI 在其他状态隐藏该控件,"
             "非零载荷是直接 API 合同违规"
         )
+    # Review R1 item 4: media-scatter enablement is a declared policy on the
+    # media, independent of the look sliders above.
+    film_media_scatter = str(
+        params.get("filmMediaScatter", params.get("film_media_scatter", "declared"))
+        or "declared"
+    )
+    if film_media_scatter not in ("declared", "off"):
+        raise ValueError(
+            f"未知介质散射策略:{film_media_scatter}(可选 declared/off)"
+        )
     # 胶片解释控件组 (appearance P1): interimage 底座开关与外观层模式。
     film_interimage = str(
         params.get("filmInterimage", params.get("film_interimage", "declared"))
@@ -1209,7 +1229,7 @@ def parse_film_params(params: dict) -> tuple:
             film_grain, film_halation, film_bloom,
             film_interimage, film_appearance, film_appearance_strength,
             film_richness, film_color_density, film_neutral_bias,
-            film_appearance_variant)
+            film_appearance_variant, film_media_scatter)
 
 
 def effective_optics_seed(params: dict, entry) -> int:
@@ -1258,7 +1278,7 @@ def run_preview(params: dict) -> dict:
      film_grain, film_halation, film_bloom,
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant,
+     film_appearance_variant, film_media_scatter,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1319,6 +1339,7 @@ def run_preview(params: dict) -> dict:
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,
@@ -1368,6 +1389,7 @@ def run_preview(params: dict) -> dict:
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
@@ -1464,7 +1486,7 @@ def prepare_preview(params: dict) -> dict:
      film_grain, film_halation, film_bloom,
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant,
+     film_appearance_variant, film_media_scatter,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1523,6 +1545,7 @@ def prepare_preview(params: dict) -> dict:
             film_neutral_bias=film_neutral_bias,
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
+            film_media_scatter=film_media_scatter,
         )
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
@@ -1767,7 +1790,7 @@ def run_export(params: dict) -> dict:
      film_grain, film_halation, film_bloom,
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant,
+     film_appearance_variant, film_media_scatter,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1852,6 +1875,7 @@ def run_export(params: dict) -> dict:
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             lens_filter=lens_filter,
@@ -1888,6 +1912,7 @@ def run_export(params: dict) -> dict:
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -1968,6 +1993,7 @@ def run_export(params: dict) -> dict:
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
         # The optics budget tier picks the spread-grid size since P3, so it
         # changes rendered bytes whenever any spatial amount is engaged. It
         # participates only then: an unused env var must not fork the names
@@ -2103,6 +2129,7 @@ def run_export(params: dict) -> dict:
             film_neutral_bias=film_neutral_bias,
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
+            film_media_scatter=film_media_scatter,
                     color_head_y=color_head_y,
                     color_head_m=color_head_m,
                     lens_filter=lens_filter,

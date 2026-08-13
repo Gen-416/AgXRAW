@@ -84,6 +84,12 @@ def make_plan(stock: str, **amounts) -> SimpleNamespace:
         film_highlight_density=0.0,
         film_grain=0.0, film_halation=0.0, film_bloom=0.0,
         film_optics_seed=0,
+        # Review R1 item 4: media-scatter enablement. The per-operator
+        # measurements below switch it "off" on BOTH sides so the isolated
+        # delta is the named operator alone — with it riding along, every
+        # look slider silently dragged both scatter stages into the
+        # measurement (and into gates certified against it).
+        film_media_scatter="declared",
     )
     base.update(amounts)
     return SimpleNamespace(**base)
@@ -122,8 +128,11 @@ def measure_spread(
         CHART_H, CHART_W, diameter_mm=0.04, exposure_ev=7.0,
         background_ev=-4.0, color=color,
     )
-    base = develop(scene, make_plan(stock))
-    got = develop(scene, make_plan(stock, **{amount_key: amount}))
+    base = develop(scene, make_plan(stock, film_media_scatter="off"))
+    got = develop(
+        scene,
+        make_plan(stock, film_media_scatter="off", **{amount_key: amount}),
+    )
     delta = diag.isolate(got, base)
     scale = mm_per_px(CHART_W)
 
@@ -179,8 +188,11 @@ def measure_grain(stock: str, amount: float) -> dict:
     any amount; the rendered patch says how much of it a viewer sees.
     """
     scene = charts.uniform_patch(CHART_H, CHART_W, 0.0)
-    base = develop(scene, make_plan(stock))
-    got = develop(scene, make_plan(stock, film_grain=amount))
+    base = develop(scene, make_plan(stock, film_media_scatter="off"))
+    got = develop(
+        scene,
+        make_plan(stock, film_grain=amount, film_media_scatter="off"),
+    )
     delta = diag.isolate(got, base)
     lum = delta @ diag.LUMA_REC2020
 
@@ -241,13 +253,18 @@ def measure_pyramid_blockiness(stock: str, amount: float) -> dict:
     nearest-neighbour repeat, leaving a step every `factor` pixels in the
     delta (the P0 recorded defect; §11.1 forbids NN expand). The measurement
     compares the mean absolute first difference AT those step positions with
-    the mean everywhere else: a smooth result reads ~1.0. Since P5 the
-    measured formation scatter physically diffuses these edges in the
-    rendered output, which is what the inverted P0 gate now certifies.
+    the mean everywhere else: a smooth result reads ~1.0. Measured with the
+    media scatter OFF (review R1 item 4): P5b briefly certified an inverted
+    gate here, but that pass was the formation scatter riding the
+    measurement, not the pyramid expand being fixed — the §11.1 NN-expand
+    item is still open and the gate must keep saying so.
     """
     scene = charts.edge_chart(CHART_H, CHART_W, tilt_deg=5.0)
-    base = develop(scene, make_plan(stock))
-    got = develop(scene, make_plan(stock, film_bloom=amount))
+    base = develop(scene, make_plan(stock, film_media_scatter="off"))
+    got = develop(
+        scene,
+        make_plan(stock, film_bloom=amount, film_media_scatter="off"),
+    )
     row = diag.isolate(got, base)[CHART_H // 2, :, 1]
     dif = np.abs(np.diff(row))
     idx = np.arange(dif.size)
@@ -290,6 +307,58 @@ def measure_mtf(stock: str, tier: str) -> dict:
     out["edge_snr_with_grain"] = float(
         contrast / max(float(np.sqrt(np.mean(noise ** 2))), 1e-12)
     )
+    return out
+
+
+def measure_mtf_residual() -> dict:
+    """MTF transfer budget (review R1 item 2): measured / explicit.
+
+    The explicit operators (§5.1 emulsion, §6.2 formation) implement fitted
+    scatter mixes; the digitized charts are the measurement they were fitted
+    to. The ratio MTF_measured / MTF_explicit at each chart frequency is the
+    part of the medium's transfer the explicit model does NOT carry — the
+    adjacency bump (chemical edge effect, >1) and the fit's own error. It is
+    computed from the SHIPPED runtime assets, not the import tool's fit, so
+    the number certifies what a render actually applies.
+    """
+    mtf_dir = ROOT / "dngscan" / "data" / "mtf"
+
+    def _explicit(asset, ch_index: int, f: np.ndarray) -> np.ndarray:
+        s = float(asset.s[ch_index])
+        w = float(asset.w[ch_index])
+        sg = float(asset.sigma_um[ch_index]) * 1e-3   # um -> mm
+        lm = float(asset.lambda_um[ch_index]) * 1e-3
+        g = np.exp(-2.0 * np.pi ** 2 * sg ** 2 * f ** 2)
+        e = (1.0 + (2.0 * np.pi * lm * f) ** 2) ** -1.5
+        return (1.0 - s) + s * ((1.0 - w) * g + w * e)
+
+    out: dict = {}
+    for name, asset in (
+        ("5207_emulsion", STOCK_OPTICS.emulsion_scatter),
+        ("2383_formation", PRINT_OPTICS.formation_scatter),
+    ):
+        if asset is None:
+            out[name] = None
+            continue
+        chart = json.loads(
+            (mtf_dir / f"mtf_{name.split('_')[0]}.json").read_text("utf-8")
+        )
+        rows: dict = {"source": chart["source"], "channels": {}}
+        worst = 0.0
+        for ch_name, ch_index in (("R", 0), ("G", 1), ("B", 2)):
+            pts = np.asarray(chart["channels"][ch_name], dtype=np.float64)
+            f, measured = pts[:, 0], pts[:, 1]
+            explicit = _explicit(asset, ch_index, f)
+            residual = measured / np.maximum(explicit, 1e-9)
+            rows["channels"][ch_name] = [
+                [float(a), float(b), float(c), float(d)]
+                for a, b, c, d in zip(f, measured, explicit, residual)
+            ]
+            worst = max(worst, float(np.max(np.abs(np.log(residual)))))
+        # One number for the gate: the worst |log residual| across every
+        # chart point of this asset (log so 1.10 and 1/1.10 read equally).
+        rows["max_abs_log_residual"] = worst
+        out[name] = rows
     return out
 
 
@@ -337,6 +406,7 @@ def build_report(stock: str = DEFAULT_STOCK, *, perf: bool = False) -> dict:
         report["halation"][tier] = measure_spread(stock, "film_halation", h)
         report["bloom"][tier] = measure_spread(stock, "film_bloom", b)
         report["mtf"][tier] = measure_mtf(stock, tier)
+    report["mtf_residual"] = measure_mtf_residual()
     # P5e: the legacy display-threshold source gate this section measured
     # was deleted with its operator; the capture bloom reads SCENE-linear
     # exposure by construction (P3), which was the fix the P0 numbers

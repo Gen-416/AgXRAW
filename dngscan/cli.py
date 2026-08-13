@@ -565,9 +565,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0.0,
         metavar="A",
         help=(
-            "film v2 介质散射 [0,1](仅 full;modelled profile):正介质形成后"
-            "的守恒能量重分布——高光核心变暗、邻域变亮,总光能不增加(非叠加 "
-            "glow;不模拟观看环境 flare);印相之后、gamut fit 之前;0=严格恒等"
+            "film v2 捕获辉光 [0,1](仅 full;声明为 editorial):进乳剂前的"
+            "加性眩光,作用于场景线性光——非守恒介质散射(介质自身的散射由 "
+            "--film-media-scatter 声明,不走这个滑杆);0=严格恒等"
+        ),
+    )
+    parser.add_argument(
+        "--film-media-scatter",
+        choices=("declared", "off"),
+        default="declared",
+        help=(
+            "film v2 介质散射策略(仅 full;审查R1第4项):乳剂散射(§5.1)与"
+            "相纸成像散射(§6.2)是所声明介质的属性而非观感量,独立于观感滑杆"
+            "启用。declared(默认)=按编译 profile 应用;off=关闭(算子隔离"
+            "测量口径)"
         ),
     )
     parser.add_argument(
@@ -1019,6 +1030,7 @@ def main(argv: list[str]) -> int:
                 film_halation=args.film_halation,
                 film_bloom=args.film_bloom,
                 film_optics_seed=args.film_optics_seed,
+                film_media_scatter=args.film_media_scatter,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
             )
@@ -1073,6 +1085,7 @@ def main(argv: list[str]) -> int:
                 film_halation=args.film_halation,
                 film_bloom=args.film_bloom,
                 film_optics_seed=args.film_optics_seed,
+                film_media_scatter=args.film_media_scatter,
                 endpoint_mode=args.endpoint_mode,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,

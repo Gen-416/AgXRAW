@@ -620,13 +620,17 @@ def sample_field(
         slab = max(1, 8_000_000 // max(n_cols, 1))
         for r0 in range(0, n_rows, slab):
             r1 = min(r0 + slab, n_rows)
-            s00 = query(yq_e[r0:r1], xq_e[:-1])
-            s01 = query(yq_e[r0:r1], xq_e[1:])
-            s10 = query(yq_e[r0 + 1:r1 + 1], xq_e[:-1])
-            s11 = query(yq_e[r0 + 1:r1 + 1], xq_e[1:])
+            # R1 #6 perf: every interior edge is a corner of FOUR pixel
+            # rectangles — query the (rows+1)x(cols+1) edge grid once and
+            # difference shifted views instead of querying each corner set
+            # separately (4x fewer interpolations, bit-identical values:
+            # same lerp per edge, same subtraction order as the old
+            # s11-s10-s01+s00).
+            e = query(yq_e[r0:r1 + 1], xq_e)
             area = (ya_e[r0 + 1:r1 + 1] - ya_e[r0:r1])[:, None, None] * area_x
             out[rows.start + r0:rows.start + r1, cols] = (
-                (s11 - s10 - s01 + s00) / np.maximum(area, 1e-12)
+                (e[1:, 1:] - e[1:, :-1] - e[:-1, 1:] + e[:-1, :-1])
+                / np.maximum(area, 1e-12)
             )
 
     _fill(slice(0, geometry.height), ye_q, ye,
@@ -701,8 +705,6 @@ def apply_density_grain(
     grain: GrainAsset,
     amount: float,
     seed: int,
-    field_out: dict | None = None,
-    field_in: np.ndarray | None = None,
 ) -> np.ndarray:
     """D' = D + sigma_c(D) * N(x,y) (plan §9.1): the field modulates DENSITY
     before printing, so grain participates in colour and local contrast
@@ -722,21 +724,16 @@ def apply_density_grain(
     if amount <= 0.0:
         return amounts
     h, w = geometry.height, geometry.width
-    if field_in is not None:
-        # P5 perf (plan §11.2 "共享基础随机场并按尺度派生"): the caller
-        # hands a band field derived from another medium's sampling — the
-        # dual-grain path pays sample_field ONCE per band instead of twice
-        # (measured 0.19 s/band at 61 MP), with the derivation supplying
-        # the decorrelation. `seed` is unused on this path by design.
-        field = field_in
-    else:
-        master = _grain_ii_for(grain, MASTER_SEED)
-        gh, gw = master.shape[0] - 1, master.shape[1] - 1
-        field = sample_field(
-            master, geometry, phase=realization_phases(seed, gh, gw)
-        )
-    if field_out is not None:
-        field_out["field"] = field
+    # Review R1 item 6: every caller samples its OWN keyed phase of the
+    # shared master (stock and print media pass different seeds), so the two
+    # realizations have ~0 cross-covariance instead of the old derived
+    # anti-correlation. The shared-corner _fill rewrite in sample_field
+    # covers the second pass's cost.
+    master = _grain_ii_for(grain, MASTER_SEED)
+    gh, gw = master.shape[0] - 1, master.shape[1] - 1
+    field = sample_field(
+        master, geometry, phase=realization_phases(seed, gh, gw)
+    )
     a = np.asarray(amounts, dtype=np.float64).reshape(h, w, 3)
     lo64 = np.asarray(lo, dtype=np.float64)
     span = np.maximum(np.asarray(hi, dtype=np.float64) - lo64, 1e-9)
@@ -745,11 +742,21 @@ def apply_density_grain(
         sigma = float(amount) * grain.sigma0 * 4.0 * dn * (1.0 - dn)
         return (a + sigma * span * field.astype(np.float64)).reshape(-1, 3)
     # measured_sigma_v2 — channel-by-channel with in-place FLOAT32
-    # temporaries: the obvious full-grid expressions held a float64 field
-    # copy plus two (h, w, 3) intermediates and broke the CI 512 memory
-    # tier; the f64 chains then cost measurable seconds at 61 MP for
-    # precision the density domain cannot use (sigma ~1e-2 on D ~0-3;
-    # f32 keeps ~1e-7 relative).
+    # temporaries (memory tier + 61 MP cost discipline as before).
+    #
+    # COORDINATE CONTRACT (review R1 item 1): the chain's dye amounts ARE
+    # net Status-family densities — the characteristic tables were fitted
+    # from the datasheet curves, whose measured maxima match the chart's
+    # net spans (e.g. 5207: 1.70/1.78/1.91 vs chart 1.78/2.06/1.98). The
+    # cube [lo, hi] is the deliberately WIDER editorial envelope, so
+    # normalizing by it warped both the density axis and the amplitude by
+    # the span/chart ratio (1.3-2.6x measured across stocks). The mapping
+    # is therefore density-native: D_chart = chart_base + amount, sigma
+    # applies 1:1 in density units, and [lo, hi] plays no role here (it
+    # remains the v1 path's normalization). The residual crosstalk between
+    # per-layer dye density and a real Status densitometer reading is NOT
+    # modelled — that open loop is why these optics carry `derived`
+    # provenance, not `measured`.
     rms48 = max(_aperture_rms(grain), 1e-9)
     ln10 = np.float32(np.log(10.0))
     out = a.copy()
@@ -757,15 +764,9 @@ def apply_density_grain(
         base, dmax = grain.chart_density[ch]
         tab = np.asarray(grain.sigma_density[ch], dtype=np.float64)
         s = a[..., ch].astype(np.float32)
-        s -= np.float32(lo64[ch])
-        s /= np.float32(span[ch])
-        np.clip(s, 0.0, 1.0, out=s)
-        s *= np.float32(dmax - base)
-        s += np.float32(base)
+        s += np.float32(base)          # net density -> chart absolute
         s = np.interp(s, tab[:, 0], tab[:, 1]).astype(np.float32)
-        # chart-density sigma -> dye-amount sigma: the chain's [lo, hi]
-        # span corresponds to the chart's [base, max] span per channel
-        s *= np.float32(float(amount) / rms48 * (span[ch] / (dmax - base)))
+        s *= np.float32(float(amount) / rms48)
         out[..., ch] += s * field[..., ch]
         # mean-transmittance compensation, anchored at the FILM GRID scale
         # (the master field is unit-RMS there by construction): a constant
@@ -783,31 +784,39 @@ def apply_density_grain(
 # P5 (§5.1 / §6.2): energy-conserving scatter mixes on LINEAR exposure
 # --------------------------------------------------------------------------
 
-# Below this kernel scale (in pixels) a convolution is indistinguishable
-# from identity at the render's sampling; the component's weight stays on
-# the unscattered term so energy is still conserved exactly.
-_SCATTER_MIN_PX = 0.4
+# A component may be dropped to the identity term only when its absence
+# is invisible: the MIX depth it removes at the render's Nyquist,
+# s * w_comp * (1 - MTF_comp(f_nyq)), must stay below this bound. The old
+# rule keyed on kernel scale alone (skip below 0.4 px) and threw away the
+# R channel's exponential tail at 6 um/px — a 5.6 pp response error at
+# 50 c/mm (review R1 item 2): sub-pixel SCALE does not imply sub-percent
+# EFFECT for a heavy mix weight.
+_SCATTER_MAX_SKIP_DEPTH = 0.01
 
 
 def _scatter_components(kernel, ch: int, mm_per_px: float):
     """((sigma_px, weight), ...) of ACTIVE blur components for one channel.
 
     The exponential tail is approximated by a Gaussian of matching second
-    moment (sigma = sqrt(3)*lambda; the 2-D isotropic exponential PSF has
-    per-axis variance 3*lambda^2). At every practical render pitch the
-    fitted lambdas (1.3-2 um) sit far below _SCATTER_MIN_PX, so the tail
-    contributes identity; the approximation only matters for hypothetical
-    sub-2um-pixel renders and is recorded here rather than silently exact.
-    """
+    moment (sigma = sqrt(3)*lambda, per-axis variance of the isotropic
+    exponential PSF). The approximation is exact enough below Nyquist
+    (<=1.5 pp at 50 c/mm for the fitted lambdas) and the gate-13 budget
+    test bounds the residual against the exponential-form fit."""
     px_per_mm = 1.0 / max(mm_per_px, 1e-12)
-    sigma_px = kernel.sigma_um[ch] * 1e-3 * px_per_mm
-    tail_px = np.sqrt(3.0) * kernel.lambda_um[ch] * 1e-3 * px_per_mm
-    w = kernel.w[ch]
+    s_mix = kernel.s[ch]
+    comps = (
+        (kernel.sigma_um[ch] * 1e-3 * px_per_mm, 1.0 - kernel.w[ch]),
+        (np.sqrt(3.0) * kernel.lambda_um[ch] * 1e-3 * px_per_mm,
+         kernel.w[ch]),
+    )
     out = []
-    if sigma_px >= _SCATTER_MIN_PX and (1.0 - w) > 0.0:
-        out.append((float(sigma_px), float(1.0 - w)))
-    if tail_px >= _SCATTER_MIN_PX and w > 0.0:
-        out.append((float(tail_px), float(w)))
+    for sigma_px, w in comps:
+        if w <= 0.0 or sigma_px <= 0.0:
+            continue
+        mtf_nyq = float(np.exp(-2.0 * np.pi ** 2 * sigma_px ** 2 * 0.25))
+        if s_mix * w * (1.0 - mtf_nyq) < _SCATTER_MAX_SKIP_DEPTH:
+            continue
+        out.append((float(sigma_px), float(w)))
     return out
 
 
@@ -851,9 +860,47 @@ def apply_scatter_mix(
         chan = src[..., ch]
         acc = chan * np.float32(inert)
         for scale, w in comps:
-            blurred = _gaussian_blur_slabbed(chan[:, :, None], scale)[:, :, 0]
+            if scale < 1.0:
+                blurred = _blur_small_sigma(chan, scale)
+            else:
+                blurred = _gaussian_blur_slabbed(
+                    chan[:, :, None], scale
+                )[:, :, 0]
             acc += np.float32(s_mix * w) * blurred
         out[..., ch] = acc
+    return out
+
+
+def _blur_small_sigma(chan: np.ndarray, sigma_px: float) -> np.ndarray:
+    """Separable Gaussian for sigma < 1 px, FREQUENCY-matched 5 taps.
+
+    Neither classic discretization is honest here: point-sampled taps
+    under-blur (0.93 at 0.3 cyc/px where the continuous response is 0.78
+    at sigma 0.37), and pixel-integrated (erf) taps convolve an extra
+    pixel box, over-blurring by its sinc (measured 3.9 pp at 50 c/mm on
+    the 2383 B kernel). The symmetric 5-tap [c, b, a, b, c] instead hits
+    the CONTINUOUS Gaussian transfer exactly at omega = 0, pi/2 and pi:
+        b = (1 - G(pi)) / 4,   c = ((1 + G(pi))/2 - G(pi/2)) / 4
+    with G(w) = exp(-sigma^2 w^2 / 2); in-band deviation stays under
+    ~1 pp for sigma <= 1 (tiny negative lobes below sigma ~0.7 are the
+    price of the in-band match and sum to zero energy)."""
+    g_half = float(np.exp(-0.5 * sigma_px ** 2 * (np.pi / 2.0) ** 2))
+    g_nyq = float(np.exp(-0.5 * sigma_px ** 2 * np.pi ** 2))
+    b = (1.0 - g_nyq) / 4.0
+    c = ((1.0 + g_nyq) / 2.0 - g_half) / 4.0
+    a = 1.0 - 2.0 * b - 2.0 * c
+    k = np.asarray([c, b, a, b, c], dtype=np.float32)
+    r = 2
+    out = np.asarray(chan, dtype=np.float32)
+    for axis in (0, 1):
+        pad = [(0, 0)] * out.ndim
+        pad[axis] = (r, r)
+        padded = np.pad(out, pad, mode="reflect")
+        out = np.zeros_like(out)
+        for j, kv in enumerate(k):
+            sl = [slice(None)] * out.ndim
+            sl[axis] = slice(j, j + out.shape[axis])
+            out += kv * padded[tuple(sl)]
     return out
 
 

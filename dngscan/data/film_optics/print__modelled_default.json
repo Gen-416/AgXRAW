@@ -4,7 +4,7 @@
  "asset_id": "modelled_default",
  "provenance": "modelled",
  "formation_scatter": {
-  "provenance": "measured",
+  "provenance": "derived",
   "model": "gaussian_v1",
   "source": "fitted from the digitized H-1-2383 MTF (dngscan/data/mtf/mtf_2383.json); rms residuals <= 3.1%",
   "channels": {
@@ -23,7 +23,7 @@
   }
  },
  "positive_grain": {
-  "provenance": "measured",
+  "provenance": "derived",
   "medium": "print_film",
   "model": "measured_sigma_v2",
   "pitch_um": 12.0,
@@ -51,42 +51,6 @@
      [
       0.08,
       0.00245
-     ],
-     [
-      0.08,
-      0.002437
-     ],
-     [
-      0.08,
-      0.002424
-     ],
-     [
-      0.08,
-      0.002411
-     ],
-     [
-      0.08,
-      0.002408
-     ],
-     [
-      0.08,
-      0.00246
-     ],
-     [
-      0.08,
-      0.002512
-     ],
-     [
-      0.08,
-      0.002564
-     ],
-     [
-      0.08,
-      0.00264
-     ],
-     [
-      0.08,
-      0.00277
      ],
      [
       0.0944,
@@ -183,38 +147,6 @@
      [
       0.08,
       0.0022
-     ],
-     [
-      0.08,
-      0.0022
-     ],
-     [
-      0.08,
-      0.0022
-     ],
-     [
-      0.08,
-      0.0022
-     ],
-     [
-      0.08,
-      0.002212
-     ],
-     [
-      0.08,
-      0.00229
-     ],
-     [
-      0.08,
-      0.002368
-     ],
-     [
-      0.08,
-      0.002446
-     ],
-     [
-      0.08,
-      0.002528
      ],
      [
       0.0906,
@@ -317,120 +249,92 @@
       0.0075
      ],
      [
-      0.08,
-      0.00776
+      0.0967,
+      0.010861
      ],
      [
-      0.08,
-      0.00802
+      0.1173,
+      0.011927
      ],
      [
-      0.08,
-      0.00828
+      0.1379,
+      0.012993
      ],
      [
-      0.08,
-      0.00856
+      0.1586,
+      0.014059
      ],
      [
-      0.08,
-      0.00895
+      0.1792,
+      0.0168
      ],
      [
-      0.08,
-      0.00934
+      0.1998,
+      0.019608
      ],
      [
-      0.08,
-      0.00973
+      0.2461,
+      0.022416
      ],
      [
-      0.0863,
-      0.010328
+      0.2925,
+      0.025353
      ],
      [
-      0.107,
-      0.011394
+      0.3768,
+      0.029279
      ],
      [
-      0.1276,
-      0.01246
+      0.4683,
+      0.033205
      ],
      [
-      0.1483,
-      0.013526
+      0.568,
+      0.037131
      ],
      [
-      0.1689,
-      0.015396
+      0.672,
+      0.041071
      ],
      [
-      0.1895,
-      0.018204
+      0.819,
+      0.045049
      ],
      [
-      0.2229,
-      0.021012
+      0.9835,
+      0.049027
      ],
      [
-      0.2693,
-      0.02382
+      1.2059,
+      0.053005
      ],
      [
-      0.331,
-      0.027316
+      1.4625,
+      0.055872
      ],
      [
-      0.4225,
-      0.031242
+      1.7345,
+      0.057224
      ],
      [
-      0.516,
-      0.035168
+      1.988,
+      0.058576
      ],
      [
-      0.62,
-      0.039094
+      2.2283,
+      0.059928
      ],
      [
-      0.7375,
-      0.04306
+      2.4766,
+      0.059881
      ],
      [
-      0.9013,
-      0.047038
+      2.7649,
+      0.058809
      ],
      [
-      1.0912,
-      0.051016
-     ],
-     [
-      1.3342,
-      0.054994
-     ],
-     [
-      1.5972,
-      0.056548
-     ],
-     [
-      1.8646,
-      0.0579
-     ],
-     [
-      2.1108,
-      0.059252
-     ],
-     [
-      2.3458,
-      0.060417
-     ],
-     [
-      2.6187,
-      0.059345
-     ],
-     [
-      2.9583,
-      0.058272
+      3.1308,
+      0.057736
      ],
      [
       3.2,
@@ -442,11 +346,10 @@
  },
  "viewing_scatter": null,
  "source_notes": [
-  "This is the operator the GUI still labels Bloom. It is the positive medium's conservative scatter, applied after B2 on display-linear output.",
-  "Measured in P0: half-energy radius 0.759 mm, energy ratio ~1e-10 (conservative as designed), but only 0.73 EV of overrange exists in the domain it runs in against 6.00 EV in the scene. P3 moves the editorial glow to a scene-linear operator and leaves this one as the small medium effect it actually is.",
-  "viewing_scatter stays null: no paper PSF/CTF data exists, and the plan refuses to let a display-linear blur stand in for one.",
-  "grain V2 (P4): positive_grain activated with measured 2383 sigma(D); applied on the print dye amounts before B2, negative branch only (a directly-viewed reversal has no print stage)",
-  "optics V2 P5: formation_scatter activated with the measured 2383 MTF fit; normalized kernel — uniform patches unchanged, Stage B calibration intact; negative branch only (print stage)",
-  "P5e: legacy_print_scatter deleted (operator and asset) — the V2 formation scatter + positive grain are the medium's spatial behaviour"
+  "GENERIC default print profile (review R1 item 3): serves every print medium selection today; 2383-sourced blocks carry `derived`, not the measured optics of Endura/Crystal Archive or any specific paper. Per-medium binding is the recorded follow-up.",
+  "positive_grain (V2 P4): sigma(D) amplitude digitized from H-1-2383 (measured source), field geometry modelled -> `derived`; applied on the print dye amounts before B2, negative branch only.",
+  "formation_scatter (V2 P5): single-Gaussian kernel fitted from the H-1-2383 MTF chart -> `derived`; normalized, uniform patches unchanged, Stage B calibration intact.",
+  "viewing_scatter stays null: no paper PSF/CTF data exists, and the plan refuses to let a display-linear blur stand in for it.",
+  "P5e: the legacy conservative print scatter (operator and asset) was deleted; assets still carrying legacy_print_scatter are refused."
  ]
 }

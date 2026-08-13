@@ -121,7 +121,10 @@ class VariantPlumbingTests(unittest.TestCase):
             **base, "filmAppearance": "reference",
             "filmAppearanceVariant": "extended",
         })
-        self.assertEqual(out[-1], "extended")
+        # R1 item 4 appended film_media_scatter to the tuple; the variant
+        # sits second-from-last now.
+        self.assertEqual(out[-2], "extended")
+        self.assertEqual(out[-1], "declared")
         with self.assertRaises(ValueError):
             parse_film_params({**base, "filmAppearanceVariant": "extended"})
         with self.assertRaises(ValueError):

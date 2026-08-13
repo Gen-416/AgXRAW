@@ -54,7 +54,10 @@ class AssetLoadingTests(unittest.TestCase):
             self.assertIn(asset.provenance, fa.PROVENANCE)
         # P4 reversed: the default grain block is now the MEASURED 5207
         # sigma(D) model (the field geometry stays modelled pending PSD data)
-        self.assertEqual(stock.grain.provenance, "measured")
+        # R1 item 3/7: the generic default profile may not claim the
+        # rendered material's own measurement — 5207-sourced blocks are
+        # `derived` (measured amplitude, generic binding)
+        self.assertEqual(stock.grain.provenance, "derived")
         self.assertEqual(stock.grain.model, "measured_sigma_v2")
         self.assertEqual(stock.halation.provenance, "modelled")
         self.assertTrue(bloom.active, "P3 ships an editorial capture bloom")
