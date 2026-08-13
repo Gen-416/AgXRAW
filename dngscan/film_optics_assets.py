@@ -90,29 +90,80 @@ class GrainAsset:
 
     provenance: str
     medium: str                  # negative | reversal | print_film | paper
-    model: str                   # band_limited_gaussian_v1
+    model: str                   # band_limited_gaussian_v1 | measured_sigma_v2
     pitch_um: float
     size_um: float
-    sigma0: float
+    sigma0: float                # v1 only; 0.0 under measured_sigma_v2
     layer_corr: float
+    # measured_sigma_v2 (grain V2 P4): per-channel diffuse rms sigma(D)
+    # measured at `aperture_um` in the CHART's densitometry coordinate.
+    # channel order (R, G, B); per channel: (chart_base, chart_max) and a
+    # monotone-in-D ((D, sigma), ...) table. Empty tuples under v1.
+    aperture_um: float = 0.0
+    chart_density: tuple = ()    # ((base, max),) * 3
+    sigma_density: tuple = ()    # (((D, sigma), ...),) * 3
 
     @classmethod
     def from_json(cls, raw: dict, where: str) -> "GrainAsset":
         model = str(raw.get("model", ""))
-        _require(model == "band_limited_gaussian_v1",
+        _require(model in ("band_limited_gaussian_v1", "measured_sigma_v2"),
                  f"{where}: unknown grain model {model!r}")
         pitch = _finite(raw["pitch_um"], f"{where}.pitch_um")
         size = _finite(raw["size_um"], f"{where}.size_um")
         _require(pitch > 0.0 and size > 0.0, f"{where}: grain scales must be positive")
-        sigma0 = _finite(raw["sigma0"], f"{where}.sigma0")
-        _require(sigma0 >= 0.0, f"{where}: sigma0 must be non-negative")
         corr = _finite(raw["layer_corr"], f"{where}.layer_corr")
         _require(0.0 <= corr <= 1.0, f"{where}: layer_corr outside [0,1]")
+        if model == "band_limited_gaussian_v1":
+            sigma0 = _finite(raw["sigma0"], f"{where}.sigma0")
+            _require(sigma0 >= 0.0, f"{where}: sigma0 must be non-negative")
+            _require("channels" not in raw and "aperture_um" not in raw,
+                     f"{where}: v1 must not carry measured-model fields")
+            return cls(
+                provenance=_provenance(raw["provenance"], where),
+                medium=str(raw["medium"]),
+                model=model,
+                pitch_um=pitch, size_um=size, sigma0=sigma0, layer_corr=corr,
+            )
+        # measured_sigma_v2: the maths has no free sigma0 — a leftover one
+        # would silently double-scale, so its presence is a hard error.
+        _require("sigma0" not in raw,
+                 f"{where}: measured_sigma_v2 carries no sigma0")
+        aperture = _finite(raw["aperture_um"], f"{where}.aperture_um")
+        _require(aperture > 0.0, f"{where}: aperture_um must be positive")
+        chans = raw["channels"]
+        _require(set(chans) == {"R", "G", "B"},
+                 f"{where}: channels must be exactly R, G, B")
+        bases: list[tuple] = []
+        tables: list[tuple] = []
+        for name in ("R", "G", "B"):
+            ch = chans[name]
+            base = _finite(ch["chart_density"][0], f"{where}.{name}.chart_density[0]")
+            dmax = _finite(ch["chart_density"][1], f"{where}.{name}.chart_density[1]")
+            _require(dmax > base >= 0.0,
+                     f"{where}.{name}: chart_density range must be increasing")
+            rows = ch["sigma_density"]
+            _require(len(rows) >= 4, f"{where}.{name}: sigma_density too short")
+            prev_d = None
+            tab = []
+            for i, row in enumerate(rows):
+                d = _finite(row[0], f"{where}.{name}.sigma_density[{i}][0]")
+                s = _finite(row[1], f"{where}.{name}.sigma_density[{i}][1]")
+                _require(0.0 < s < 0.2,
+                         f"{where}.{name}: sigma {s} outside (0, 0.2)")
+                _require(prev_d is None or d >= prev_d,
+                         f"{where}.{name}: sigma_density not sorted by D")
+                prev_d = d
+                tab.append((d, s))
+            bases.append((base, dmax))
+            tables.append(tuple(tab))
         return cls(
             provenance=_provenance(raw["provenance"], where),
             medium=str(raw["medium"]),
             model=model,
-            pitch_um=pitch, size_um=size, sigma0=sigma0, layer_corr=corr,
+            pitch_um=pitch, size_um=size, sigma0=0.0, layer_corr=corr,
+            aperture_um=aperture,
+            chart_density=tuple(bases),
+            sigma_density=tuple(tables),
         )
 
 

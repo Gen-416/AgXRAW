@@ -613,6 +613,37 @@ def sample_field(
 # operators
 # --------------------------------------------------------------------------
 
+_APERTURE_RMS_CACHE: dict[tuple, float] = {}
+
+
+def _aperture_rms(grain: GrainAsset) -> float:
+    """RMS of the unit-RMS master field averaged over the measurement
+    aperture (grain V2 P4). The chart sigma was read through a 48 um
+    microdensitometer aperture; our per-pixel sampling area-averages the
+    same field over each pixel's own footprint, so calibrating the
+    multiplier against the field's OWN aperture-averaged RMS makes the
+    rendered image reproduce the chart number when measured the chart's
+    way — and (physically) exceed it at finer pixel pitches. Computed
+    numerically from the master realization rather than assuming the
+    Selwyn sqrt-area law, which only holds for aperture >> grain size."""
+    key = (grain,)
+    got = _APERTURE_RMS_CACHE.get(key)
+    if got is not None:
+        return got
+    n = max(int(round(grain.aperture_um / grain.pitch_um)), 1)
+    field = _band_limited_field(grain, MASTER_SEED)
+    ii = np.zeros(
+        (field.shape[0] + 1, field.shape[1] + 1, 3), dtype=np.float64
+    )
+    np.cumsum(np.cumsum(field, axis=0, dtype=np.float64), axis=1,
+              out=ii[1:, 1:])
+    box = (ii[n:, n:] - ii[n:, :-n] - ii[:-n, n:] + ii[:-n, :-n]) / (n * n)
+    rms = float(np.sqrt(np.mean(box * box)))
+    _APERTURE_RMS_CACHE.clear()
+    _APERTURE_RMS_CACHE[key] = rms
+    return rms
+
+
 def apply_density_grain(
     amounts: np.ndarray,
     lo: np.ndarray,
@@ -624,8 +655,19 @@ def apply_density_grain(
 ) -> np.ndarray:
     """D' = D + sigma_c(D) * N(x,y) (plan §9.1): the field modulates DENSITY
     before printing, so grain participates in colour and local contrast
-    downstream. The RMS follows the classic mid-density peak
-    sigma0 * 4*Dn*(1-Dn) — zero at film base and at Dmax, no extra knobs."""
+    downstream.
+
+    band_limited_gaussian_v1: RMS follows the classic mid-density peak
+    sigma0 * 4*Dn*(1-Dn) — zero at film base and at Dmax, no extra knobs.
+
+    measured_sigma_v2 (P4): per-channel sigma(D) from the digitized 48 um
+    chart tables. Dn maps into the chart's own density coordinate, the
+    chart sigma converts to the dye-amount span, and the multiplier is
+    calibrated against the master field's aperture-averaged RMS
+    (_aperture_rms) so a 48 um measurement of the OUTPUT reproduces the
+    chart (gate 14). A per-pixel mean-transmittance compensation term
+    +s^2*rms_px^2*ln10/2 keeps the amount slider from lightening the mean
+    tone (gate 15): E[10^-(D+sF)] = 10^-D * e^((s*ln10*rms)^2/2)."""
     if amount <= 0.0:
         return amounts
     h, w = geometry.height, geometry.width
@@ -638,8 +680,30 @@ def apply_density_grain(
     lo64 = np.asarray(lo, dtype=np.float64)
     span = np.maximum(np.asarray(hi, dtype=np.float64) - lo64, 1e-9)
     dn = np.clip((a - lo64) / span, 0.0, 1.0)
-    sigma = float(amount) * grain.sigma0 * 4.0 * dn * (1.0 - dn)
-    return (a + sigma * span * field.astype(np.float64)).reshape(-1, 3)
+    if grain.model == "band_limited_gaussian_v1":
+        sigma = float(amount) * grain.sigma0 * 4.0 * dn * (1.0 - dn)
+        return (a + sigma * span * field.astype(np.float64)).reshape(-1, 3)
+    # measured_sigma_v2
+    rms48 = max(_aperture_rms(grain), 1e-9)
+    f64 = field.astype(np.float64)
+    ln10 = np.log(10.0)
+    out = a.copy()
+    for ch in range(3):
+        base, dmax = grain.chart_density[ch]
+        tab = np.asarray(grain.sigma_density[ch], dtype=np.float64)
+        d_chart = base + dn[..., ch] * (dmax - base)
+        sig_chart = np.interp(d_chart, tab[:, 0], tab[:, 1])
+        # chart-density sigma -> dye-amount sigma: the chain's [lo, hi]
+        # span corresponds to the chart's [base, max] span per channel
+        s = float(amount) * sig_chart / rms48 * (span[ch] / (dmax - base))
+        out[..., ch] += s * f64[..., ch]
+        # mean-transmittance compensation, anchored at the FILM GRID scale
+        # (the master field is unit-RMS there by construction): a constant
+        # per density level, so row bands and preview scales agree — a
+        # band-local field RMS here would break the §9.1 band-invariance
+        # contract, since each band would see a different DC term.
+        out[..., ch] += (s * s) * (ln10 * 0.5)
+    return out.reshape(-1, 3)
 
 
 def halation_layer_gate(

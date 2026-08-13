@@ -202,16 +202,36 @@ def measure_grain(stock: str, amount: float) -> dict:
             f"{int(round(n * pitch))}um": [float(v) for v in diag.aperture_rms(field, n)]
             for n in (1, 2, 4, 8)
         },
-        # sigma(D) peaks at sigma0 * span at mid density; span is the stock's
-        # own density range, so the datasheet-comparable number is quoted for a
-        # representative span rather than pretending one exists in the profile.
-        "rms_granularity_48um_at_span2": [
-            float(v)
-            for v in diag.rms_granularity(
-                field * (GRAIN.sigma0 * 2.0), pitch
-            )
-        ],
+        # P4 (measured_sigma_v2): the field is scaled per channel exactly the
+        # way the kernel scales it — chart sigma at mid chart density over the
+        # field's own 48 um aperture RMS — and then measured back through the
+        # 48 um aperture. The number is therefore the as-rendered datasheet
+        # figure (x1000), and closing the calibration loop is the point.
+        # (v1 profiles keep the historical sigma0*2 span quote.)
+        "rms_granularity_48um_at_span2": _rms_granularity_quote(field, pitch),
     }
+
+
+def _rms_granularity_quote(field, pitch):
+    import numpy as np
+    from dngscan import film_optics_diag as diag
+
+    if GRAIN.model == "measured_sigma_v2":
+        from dngscan.film_optics import _aperture_rms
+
+        rms48 = max(_aperture_rms(GRAIN), 1e-9)
+        scaled = np.array(field, dtype=np.float64, copy=True)
+        for ch in range(3):
+            base, dmax = GRAIN.chart_density[ch]
+            tab = np.asarray(GRAIN.sigma_density[ch], dtype=np.float64)
+            mid = 0.5 * (base + dmax)
+            sig = float(np.interp(mid, tab[:, 0], tab[:, 1]))
+            scaled[..., ch] *= sig / rms48
+        return [float(v) for v in diag.rms_granularity(scaled, pitch)]
+    return [
+        float(v)
+        for v in diag.rms_granularity(field * (GRAIN.sigma0 * 2.0), pitch)
+    ]
 
 
 def measure_pyramid_blockiness(stock: str, amount: float) -> dict:

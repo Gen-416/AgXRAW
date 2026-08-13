@@ -209,7 +209,11 @@ class SpatialOperatorTests(unittest.TestCase):
         self.assertLess(abs(out[2, 2, 1] - base[2, 2, 1]), 5e-3)
         self.assertGreaterEqual(float(out.min()), 0.0)
 
-    def test_grain_modulates_density_at_mid_not_extremes(self) -> None:
+    def test_grain_follows_the_measured_sigma_profile(self) -> None:
+        # P4 INVERTED the v1 mid-peak contract: the measured 5207 chart has
+        # NONZERO grain at film base (base fog grains exist) and its sigma
+        # rises from base to the mid-exposure hump rather than following a
+        # parabola that dies at both ends.
         from dngscan.film_optics import (
             FilmGeometry,
             apply_density_grain,
@@ -223,7 +227,13 @@ class SpatialOperatorTests(unittest.TestCase):
         out_mid = apply_density_grain(mid, lo, hi, g, _GRAIN, 1.0, 0)
         out_toe = apply_density_grain(toe, lo, hi, g, _GRAIN, 1.0, 0)
         self.assertGreater(np.std(out_mid), 1e-3, "grain must act at mid density")
-        self.assertLess(np.std(out_toe), 1e-9, "no grain at film base")
+        self.assertGreater(
+            np.std(out_toe), 1e-4, "measured base-fog grain must not vanish"
+        )
+        self.assertGreater(
+            np.std(out_mid), np.std(out_toe),
+            "sigma(D) rises from base toward the mid-exposure hump",
+        )
         again = apply_density_grain(mid, lo, hi, g, _GRAIN, 1.0, 0)
         np.testing.assert_array_equal(out_mid, again)
 
