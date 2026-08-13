@@ -349,25 +349,50 @@ def _film_grid_shape(grain: GrainAsset) -> tuple[int, int]:
 
 def _band_limited_field(grain: GrainAsset, seed: int) -> np.ndarray:
     """[gh, gw, 3]: unit-RMS per layer, cross-layer correlation via a shared
-    component, Gaussian band limit at the declared grain size. Philox keyed
-    on the seed alone — no shape, tile order or thread count enters the
-    stream, so the realization is reproducible by contract."""
+    component, Gaussian band limit at the declared grain size(s). Philox
+    keyed on the seed alone — no shape, tile order or thread count enters
+    the stream, so the realization is reproducible by contract.
+
+    P4 multi-band: when the asset declares `bands`, the field is a weighted
+    sum of independently drawn band-limited components (per-band unit RMS
+    before weighting, total unit RMS after) — the particle-oracle fit that
+    replaces the single-blotch spectrum (tools/grain_particle_oracle.py).
+    A band at or below half the pitch skips the blur: per-cell white."""
     gh, gw = _film_grid_shape(grain)
     rng = np.random.Generator(np.random.Philox(key=int(seed) & 0xFFFFFFFF))
-    white = rng.standard_normal((gh, gw, 3), dtype=np.float32)
-    shared = rng.standard_normal((gh, gw, 1), dtype=np.float32)
     c = float(np.clip(grain.layer_corr, 0.0, 1.0))
-    # In-place mixing and an einsum RMS: the naive expression chain held four
-    # grid-sized temporaries at once and the float64 square another two —
-    # the measured ~620 MiB build transient of review batch 13.
-    white *= np.float32(np.sqrt(1.0 - c))
-    for ch in range(3):
-        white[..., ch] += np.float32(np.sqrt(c)) * shared[..., 0]
-    del shared
-    field = _gaussian_blur_slabbed(
-        white, grain.size_um / grain.pitch_um, periodic=True
-    )
-    del white
+    bands = grain.bands or ((grain.size_um, 1.0),)
+    field: np.ndarray | None = None
+    for size_um, weight in bands:
+        # In-place mixing and an einsum RMS: the naive expression chain held
+        # four grid-sized temporaries at once and the float64 square another
+        # two — the measured ~620 MiB build transient of review batch 13.
+        # The multi-band loop keeps that discipline: one band lives at a
+        # time next to the accumulator.
+        white = rng.standard_normal((gh, gw, 3), dtype=np.float32)
+        shared = rng.standard_normal((gh, gw, 1), dtype=np.float32)
+        white *= np.float32(np.sqrt(1.0 - c))
+        for ch in range(3):
+            white[..., ch] += np.float32(np.sqrt(c)) * shared[..., 0]
+        del shared
+        sigma_cells = float(size_um) / grain.pitch_um
+        if sigma_cells > 0.55:
+            band = _gaussian_blur_slabbed(white, sigma_cells, periodic=True)
+            del white
+        else:
+            band = white
+        n = band.shape[0] * band.shape[1]
+        rms = np.sqrt(
+            np.einsum("hwc,hwc->c", band, band, dtype=np.float64) / n
+        )
+        band /= np.maximum(rms, 1e-12).astype(np.float32)
+        band *= np.float32(weight)
+        if field is None:
+            field = band
+        else:
+            field += band
+            del band
+    assert field is not None
     n = field.shape[0] * field.shape[1]
     rms = np.sqrt(
         np.einsum("hwc,hwc->c", field, field, dtype=np.float64) / n

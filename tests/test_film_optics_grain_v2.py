@@ -180,3 +180,47 @@ class GrainAssetContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MultiBandFieldTests(unittest.TestCase):
+    """P4 multi-band spectrum gates, windows from the dye-cloud particle
+    oracle (tools/grain_particle_oracle.py): a 12 um-pitch representation
+    of Boolean dye-cloud grain shows Selwyn slope ~-0.93 and correlation
+    FWHM ~13 um; the fitted band mixture reproduces the aperture-RMS curve
+    to 4.2% log-RMS with slope -0.90 / FWHM 12.3 um."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.grain = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+
+    def test_default_asset_declares_the_oracle_fit(self) -> None:
+        self.assertEqual(self.grain.bands, ((6.0, 0.85), (18.0, 0.15)))
+
+    def test_field_is_grain_not_blotch(self) -> None:
+        from dngscan import film_optics_diag as diag
+        from dngscan.film_optics import grain_field_for
+
+        f = grain_field_for(self.grain, 0)
+        slope = diag.selwyn_slope(f, apertures=(1, 2, 4, 8))
+        self.assertLess(slope, -0.8, "Selwyn slope must be in the grain regime")
+        self.assertGreater(slope, -1.05)
+        corr = diag.correlation_length_cells(f)
+        self.assertLess(
+            2.0 * corr * self.grain.pitch_um, 20.0,
+            "correlation FWHM must sit near the render pitch, not blotch scale",
+        )
+
+    def test_band_weights_fail_closed(self) -> None:
+        import json as _json
+        base = _json.loads(_json.dumps(GrainAssetContractTests.BASE))
+        base["bands"] = [[6.0, 0.5], [18.0, 0.4]]  # sum != 1
+        with self.assertRaises(Exception):
+            GrainAsset.from_json(base, "t")
+        base["bands"] = [[18.0, 0.5], [6.0, 0.5]]  # not ascending
+        with self.assertRaises(Exception):
+            GrainAsset.from_json(base, "t")
+
+    def test_single_band_fallback_matches_declared_size(self) -> None:
+        # an asset without `bands` keeps the one-band behaviour
+        g = GrainAsset.from_json(dict(GrainAssetContractTests.BASE), "t")
+        self.assertEqual(g.bands, ())
