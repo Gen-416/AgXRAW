@@ -761,6 +761,84 @@ def apply_density_grain(
     return out.reshape(-1, 3)
 
 
+# --------------------------------------------------------------------------
+# P5 (§5.1 / §6.2): energy-conserving scatter mixes on LINEAR exposure
+# --------------------------------------------------------------------------
+
+# Below this kernel scale (in pixels) a convolution is indistinguishable
+# from identity at the render's sampling; the component's weight stays on
+# the unscattered term so energy is still conserved exactly.
+_SCATTER_MIN_PX = 0.4
+
+
+def _scatter_components(kernel, ch: int, mm_per_px: float):
+    """((sigma_px, weight), ...) of ACTIVE blur components for one channel.
+
+    The exponential tail is approximated by a Gaussian of matching second
+    moment (sigma = sqrt(3)*lambda; the 2-D isotropic exponential PSF has
+    per-axis variance 3*lambda^2). At every practical render pitch the
+    fitted lambdas (1.3-2 um) sit far below _SCATTER_MIN_PX, so the tail
+    contributes identity; the approximation only matters for hypothetical
+    sub-2um-pixel renders and is recorded here rather than silently exact.
+    """
+    px_per_mm = 1.0 / max(mm_per_px, 1e-12)
+    sigma_px = kernel.sigma_um[ch] * 1e-3 * px_per_mm
+    tail_px = np.sqrt(3.0) * kernel.lambda_um[ch] * 1e-3 * px_per_mm
+    w = kernel.w[ch]
+    out = []
+    if sigma_px >= _SCATTER_MIN_PX and (1.0 - w) > 0.0:
+        out.append((float(sigma_px), float(1.0 - w)))
+    if tail_px >= _SCATTER_MIN_PX and w > 0.0:
+        out.append((float(tail_px), float(w)))
+    return out
+
+
+def scatter_halo_px(kernels, mm_per_px: float) -> int:
+    """Rows of context a band needs so the scatter mixes are seam-free.
+
+    The kernels CASCADE (emulsion scatter on layer exposure, formation
+    scatter on print exposure), so their finite supports ADD: the halo is
+    the SUM over stages of each stage's largest kernel radius (the blur
+    truncates its taps at 3 sigma, so this bound is exact, not merely
+    asymptotic — taking the max across stages left a measurable 3.5e-5
+    band seam from the second stage reading the first stage's own halo)."""
+    total = 0.0
+    for kernel in kernels:
+        if kernel is None:
+            continue
+        stage = 0.0
+        for ch in range(3):
+            for scale, _w in _scatter_components(kernel, ch, mm_per_px):
+                stage = max(stage, np.ceil(3.0 * scale))
+        total += stage
+    return int(total)
+
+
+def apply_scatter_mix(
+    img: np.ndarray, mm_per_px: float, kernel
+) -> np.ndarray:
+    """E' = (1-s)E + s * sum_i w_i (K_i * E) on a LINEAR (rows, w, 3) slab.
+
+    Kernels are normalized (reflect boundary per §11.1), so a uniform patch
+    is unchanged to numerical precision — the §6.2 invariance that keeps
+    the Stage B neutral/colour-head calibration intact. Components below
+    the render's resolving scale keep their weight on the identity term.
+    """
+    src = np.asarray(img, dtype=np.float32)
+    out = np.empty_like(src)
+    for ch in range(3):
+        s_mix = float(kernel.s[ch])
+        comps = _scatter_components(kernel, ch, mm_per_px)
+        inert = 1.0 - s_mix * sum(w for _sc, w in comps)
+        chan = src[..., ch]
+        acc = chan * np.float32(inert)
+        for scale, w in comps:
+            blurred = _gaussian_blur_slabbed(chan[:, :, None], scale)[:, :, 0]
+            acc += np.float32(s_mix * w) * blurred
+        out[..., ch] = acc
+    return out
+
+
 def halation_layer_gate(
     e_lin: np.ndarray, e_ref: np.ndarray, gate_ev: np.ndarray
 ) -> np.ndarray:

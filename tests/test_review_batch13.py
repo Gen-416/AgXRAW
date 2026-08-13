@@ -298,12 +298,16 @@ if ctx is not None:
     if ctx.halation > 0.0:
         ctx.finish_maps(scene_dec, plan, "portra400")
     del scene_dec
+halo = ctx.scatter_halo_rows() if ctx is not None else 0
 for y0 in range(0, h, band_rows):
     y1 = min(y0 + band_rows, h)
-    out = apply_film_core(
-        flat[y0*w:y1*w], plan,
-        spatial=(ctx, y0, y1) if ctx is not None else None,
-    )
+    if ctx is not None:
+        y0e, y1e = max(0, y0 - halo), min(h, y1 + halo)
+        out = apply_film_core(
+            flat[y0e*w:y1e*w], plan, spatial=(ctx, y0, y1, y0e, y1e),
+        )
+    else:
+        out = apply_film_core(flat[y0*w:y1*w], plan, spatial=None)
     assert np.isfinite(out).all()
 print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 """

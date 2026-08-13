@@ -188,6 +188,54 @@ class GrainAsset:
 
 
 @dataclass(frozen=True)
+class ScatterKernelAsset:
+    """A per-channel energy-conserving scatter mix (P5, plan §5.1/§6.2).
+
+    E' = (1-s)E + s[(1-w)·G_sigma*E + w·Exp_lambda*E], kernels normalized,
+    scales in film-plane micrometres. Parameters come from the fitted
+    datasheet MTF curves (dngscan/data/mtf/, tools/import_kodak_mtf.py).
+    `w` and `lambda_um` are 0 for a pure-Gaussian fit (§6.2 K_form)."""
+
+    provenance: str
+    model: str                    # core_tail_v1 | gaussian_v1
+    s: tuple                      # (R, G, B) mix fractions
+    w: tuple                      # (R, G, B) exponential-tail weights
+    sigma_um: tuple               # (R, G, B) Gaussian core scales
+    lambda_um: tuple              # (R, G, B) exponential tail scales
+    source: str = ""
+
+    @classmethod
+    def from_json(cls, raw: dict, where: str) -> "ScatterKernelAsset":
+        model = str(raw.get("model", ""))
+        _require(model in ("core_tail_v1", "gaussian_v1"),
+                 f"{where}: unknown scatter model {model!r}")
+        chans = raw["channels"]
+        _require(set(chans) == {"R", "G", "B"},
+                 f"{where}: channels must be exactly R, G, B")
+        s, w, sig, lam = [], [], [], []
+        for name in ("R", "G", "B"):
+            ch = chans[name]
+            sv = _finite(ch["s"], f"{where}.{name}.s")
+            _require(0.0 < sv <= 1.0, f"{where}.{name}: s outside (0, 1]")
+            sgv = _finite(ch["sigma_um"], f"{where}.{name}.sigma_um")
+            _require(0.0 < sgv < 30.0, f"{where}.{name}: sigma_um implausible")
+            wv = _finite(ch.get("w", 0.0), f"{where}.{name}.w")
+            _require(0.0 <= wv <= 1.0, f"{where}.{name}: w outside [0, 1]")
+            lmv = _finite(ch.get("lambda_um", 0.0), f"{where}.{name}.lambda_um")
+            _require(0.0 <= lmv < 30.0, f"{where}.{name}: lambda_um implausible")
+            _require(model != "gaussian_v1" or (wv == 0.0 and lmv == 0.0),
+                     f"{where}.{name}: gaussian_v1 carries no tail fields")
+            s.append(sv); w.append(wv); sig.append(sgv); lam.append(lmv)
+        return cls(
+            provenance=_provenance(raw["provenance"], where),
+            model=model,
+            s=tuple(s), w=tuple(w),
+            sigma_um=tuple(sig), lambda_um=tuple(lam),
+            source=str(raw.get("source", "")),
+        )
+
+
+@dataclass(frozen=True)
 class HalationComponent:
     """One radial component of the backing reflection (§5.3).
 
@@ -321,7 +369,7 @@ class StockOpticsAsset:
     anti_halation: str
     grain: GrainAsset | None
     halation: HalationAsset | None
-    emulsion_scatter: Any = None          # P2
+    emulsion_scatter: "ScatterKernelAsset | None" = None   # P5 (§5.1)
     source_notes: tuple[str, ...] = ()
 
     @classmethod
@@ -333,8 +381,10 @@ class StockOpticsAsset:
                  f"{where}: gate_reference_mm must be two positive lengths")
         grain = raw.get("grain")
         halation = raw.get("halation")
-        _require(raw.get("emulsion_scatter") is None,
-                 f"{where}: emulsion_scatter is a P2 field and must be null here")
+        # P5 activated the reserved slot: the stock's own emulsion scatter,
+        # fitted from the datasheet MTF (plan §5.1). Absence means the
+        # medium declares none — not an error.
+        scat = raw.get("emulsion_scatter")
         return cls(
             asset_id=str(raw["asset_id"]),
             provenance=_provenance(raw["provenance"], where),
@@ -345,6 +395,10 @@ class StockOpticsAsset:
                 HalationAsset.from_json(halation, f"{where}.halation")
                 if halation else None
             ),
+            emulsion_scatter=(
+                ScatterKernelAsset.from_json(scat, f"{where}.emulsion_scatter")
+                if scat else None
+            ),
             source_notes=tuple(str(s) for s in raw.get("source_notes", ())),
         )
 
@@ -354,7 +408,7 @@ class PrintOpticsAsset:
     asset_id: str
     provenance: str
     print_scatter: PrintScatterAsset | None
-    formation_scatter: Any = None         # P3
+    formation_scatter: "ScatterKernelAsset | None" = None  # P5 (§6.2)
     positive_grain: GrainAsset | None = None   # P4
     viewing_scatter: Any = None           # deliberately never enabled in v2
     source_notes: tuple[str, ...] = ()
@@ -363,8 +417,7 @@ class PrintOpticsAsset:
     def from_json(cls, raw: dict, where: str) -> "PrintOpticsAsset":
         _require(str(raw.get("kind")) == "print_optics",
                  f"{where}: not a print_optics asset")
-        _require(raw.get("formation_scatter") is None,
-                 f"{where}: formation_scatter is a P3 field and must be null here")
+        form = raw.get("formation_scatter")
         _require(raw.get("viewing_scatter") is None,
                  f"{where}: viewing_scatter has no measured PSF and stays null")
         scatter = raw.get("legacy_print_scatter")
@@ -385,6 +438,10 @@ class PrintOpticsAsset:
             positive_grain=(
                 GrainAsset.from_json(pos, f"{where}.positive_grain")
                 if pos else None
+            ),
+            formation_scatter=(
+                ScatterKernelAsset.from_json(form, f"{where}.formation_scatter")
+                if form else None
             ),
             source_notes=tuple(str(s) for s in raw.get("source_notes", ())),
         )

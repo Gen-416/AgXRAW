@@ -489,9 +489,21 @@ def scene_render_to_display_linear(
         spatial_ctx, chunk = _prepare_spatial_pass1(
             bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w
         )
+    halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
     for start in range(0, flat_scene.shape[0], chunk):
         end = min(start + chunk, flat_scene.shape[0])
-        rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
+        # P5b halo slab: an engaged full-resolution scatter kernel needs
+        # context rows around each band; every upstream op here is
+        # pointwise, so the band simply processes the expanded slab and the
+        # develop core returns only the inner band.
+        if halo_rows > 0:
+            y0b, y1b = start // w, end // w
+            y0e = max(0, y0b - halo_rows)
+            y1e = min(h, y1b + halo_rows)
+            starte, ende = y0e * w, y1e * w
+        else:
+            starte, ende = start, end
+        rec = scene_intent_rec2020(flat_scene[starte:ende, :3], bundle)
         if not film_full:
             rec = scene_transform_engine.apply_scene_transform_rec2020(
                 rec, scene_transform, scene_transform_strength, wb_adapt
@@ -499,15 +511,21 @@ def scene_render_to_display_linear(
         if clip_masks is not None and float(color_plan.raw_clip_retreat_strength) > 0.0:
             rec = retreat_engine.apply_clip_retreat_rec2020(
                 rec,
-                clip_masks[start:end],
+                clip_masks[starte:ende],
                 float(color_plan.raw_clip_retreat_strength),
             )
         if spatial_ctx is not None:
             from .film_develop import apply_film_core
 
             mapped_rec = apply_film_core(
-                rec, tone_plan, spatial=(spatial_ctx, start // w, end // w)
+                rec, tone_plan,
+                spatial=(spatial_ctx, start // w, end // w,
+                         starte // w, ende // w),
             )
+            if starte != start or ende != end:
+                # downstream consumers (display filter scene reference,
+                # capture buffers) expect the inner band
+                rec = rec[start - starte:(start - starte) + (end - start)]
         else:
             mapped_rec = apply_tone_core(
                 rec,
@@ -745,13 +763,24 @@ def render_output_u8(
             bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w
         )
 
+    halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
+
     def render_post_tone_chunk(start: int, end: int) -> Any:
-        rec = scene_intent_rec2020(flat_scene[start:end, :3], bundle)
+        # P5b halo slab (same protocol as the streaming loop above): expand
+        # the pointwise upstream to the context rows the scatter needs; the
+        # develop core returns only the inner band.
+        if halo_rows > 0:
+            y0e_ = max(0, start // w - halo_rows)
+            y1e_ = min(h, end // w + halo_rows)
+            starte, ende = y0e_ * w, y1e_ * w
+        else:
+            starte, ende = start, end
+        rec = scene_intent_rec2020(flat_scene[starte:ende, :3], bundle)
         if not film_full:
             rec = scene_transform_engine.apply_scene_transform_rec2020(
                 rec, scene_transform, scene_transform_strength, wb_adapt
             )
-        sample_masks = clip_masks[start:end] if clip_masks is not None else None
+        sample_masks = clip_masks[starte:ende] if clip_masks is not None else None
         if (
             sample_masks is not None
             and color_plan is not None
@@ -764,8 +793,12 @@ def render_output_u8(
             from .film_develop import apply_film_core
 
             mapped_rec = apply_film_core(
-                rec, effective_tone, spatial=(spatial_ctx, start // w, end // w)
+                rec, effective_tone,
+                spatial=(spatial_ctx, start // w, end // w,
+                         starte // w, ende // w),
             )
+            if starte != start or ende != end:
+                rec = rec[start - starte:(start - starte) + (end - start)]
         else:
             mapped_rec = apply_tone_core(
                 rec,

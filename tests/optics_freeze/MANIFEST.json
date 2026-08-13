@@ -62,16 +62,16 @@
     }
   ],
   "fixture_sha256": {
-    "crop__SDI0150__portra400__light": "1549dd97fab43ed605cc644cd9bca76df4f1d0c5b6b2fcb7c65c6868b5b5c40b",
-    "crop__SDI0150__portra400__standard": "61e03b6658233f2b2c6f8d5b2432bbb9d5624b5f6e45e436bc031247c759e685",
-    "crop__SDI0238__portra400__light": "a30e7d97228fb65f60b4487c3480aa30aee63002e3ef6ead596d3fdacfd1ec84",
+    "crop__SDI0150__portra400__light": "0aa35e17c44f2a3fa2b725d3016add47a95afa97e21c64f9fa1406c0da6ab775",
+    "crop__SDI0150__portra400__standard": "586a0d3725be20b17ba7dcc95246b2861ce7512e5208e307e8c8bf1e67b14769",
+    "crop__SDI0238__portra400__light": "cbc3a8b609e9e9f1116d882b4d190ab07fc47af2078dcdad70222ea92b4f5720",
     "crop__SDI0238__portra400__standard": "98e341ac1a7f21d76d70e517d7735201ece65680d42d4dede1364aca69c552fc",
-    "daylight_wide_dr__portra400__light": "2227dd13c2f6505e36ff6caf364f92402883ce9c18ed3e7b03e04a28ad2fe20a",
-    "daylight_wide_dr__portra400__standard": "57fc7ade36fd40fc0ae9edc656b5febbd83a2aee6f95d1c62771a5bbc4d49d32",
+    "daylight_wide_dr__portra400__light": "9c40a8aaf3c4d8f843ef2ebe104a867e05b8de2e66cc5fd3b9883531e8af33b3",
+    "daylight_wide_dr__portra400__standard": "f86bb0afe7c3a7c26bf212d73fe1eca3ecdc878d25f9043e83d84145f765afe1",
     "high_key__portra400__light": "860b4a8446f9884c5332dbf09877372e53dafb59374c5f44ecb0234bb21f8c00",
-    "high_key__portra400__standard": "9ca2e6620b96fc02da9da599fe97aa1433f806f603fb426582515eb6eeba08a8",
-    "night_sparse_lamps__portra400__light": "4db876192dd11f7beafb56e1b5a2f0a6066b69241486c779bf8c42f3ba209228",
-    "night_sparse_lamps__portra400__standard": "7b5d7e1cc1c06c8dfc71eb32584c1435a1f3f6950a8e1048b893957444361a95"
+    "high_key__portra400__standard": "19ff747db44479854753360e0b6fe69c39d837ab771b69cf2ce7b99553545168",
+    "night_sparse_lamps__portra400__light": "c7121381cee6bda966fafb729634384742860906343918d2763cd3ff6e6dc1fd",
+    "night_sparse_lamps__portra400__standard": "b8d5b8fd160b388f3ab361857bd3ebde323bf7a1a5f2cbeb75c68d9481f88f8f"
   },
   "phase": "optics_v2_p0",
   "policy": "Regenerate only with an explicit decision recorded in docs/FILM_OPTICS_V2_PLAN.zh-CN.md. Never to silence a test.",

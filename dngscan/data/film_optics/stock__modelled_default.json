@@ -426,7 +426,31 @@
    ]
   ]
  },
- "emulsion_scatter": null,
+ "emulsion_scatter": {
+  "provenance": "measured",
+  "model": "core_tail_v1",
+  "source": "fitted from the digitized H-1-5207 MTF (dngscan/data/mtf/mtf_5207.json, tools/import_kodak_mtf.py); rms residuals 1-4.2%",
+  "channels": {
+   "R": {
+    "s": 1.0,
+    "sigma_um": 7.594,
+    "w": 0.2818,
+    "lambda_um": 1.268
+   },
+   "G": {
+    "s": 0.6499,
+    "sigma_um": 4.968,
+    "w": 0.0,
+    "lambda_um": 2.004
+   },
+   "B": {
+    "s": 0.6739,
+    "sigma_um": 4.097,
+    "w": 0.0,
+    "lambda_um": 1.374
+   }
+  }
+ },
  "halation": {
   "provenance": "modelled",
   "model": "layer_components_v1",
@@ -545,6 +569,7 @@
   "Grain constants are unchanged from the first version and are still known bad: 60 um blobs, Selwyn slope -0.44, 48 um RMS granularity 87 against ~4 for a real 400-speed stock. P4 replaces the model.",
   "dc_mode is residual: the characteristic curve already contains the uniform-field reflection, so only the spatial part is reinjected.",
   "2026-08-10 F1 fix: gate reference corrected to unity (layer exposure is already grey-normalized), so gate_ev now genuinely means scene EV above box-speed 18% grey. All gates shifted +2.2 EV to preserve the tuned look at film exposure 0; film exposure now moves the trigger in the physical direction.",
-  "grain V2 (P4): sigma(D) is measured (5207); per-curve binding (PGI-scaled Portra/Ektar, Velvia single-point) is recorded future work — one stock optics profile serves all curves today"
+  "grain V2 (P4): sigma(D) is measured (5207); per-curve binding (PGI-scaled Portra/Ektar, Velvia single-point) is recorded future work — one stock optics profile serves all curves today",
+  "optics V2 P5: emulsion_scatter activated with the measured 5207 MTF fit; engages with the spatial context (any optics amount > 0) as a medium property, not a user slider"
  ]
 }

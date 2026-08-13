@@ -338,9 +338,18 @@ class MeasuredBaselineTests(unittest.TestCase):
         self.assertLess(gate["display_source_headroom_ev"], 1.0)
         self.assertGreater(gate["scene_headroom_ev"], 5.0)
 
-        # Nearest-neighbour pyramid expand leaves its block edges in the map.
+        # INVERTED by P5: the P0 complaint was that nearest-neighbour
+        # pyramid expand left its block edges visible in the RENDERED
+        # output (step_8px ratio measured 3.0). The measured 2383
+        # formation scatter now stands between the spread map and the
+        # print, and its ~half-pixel kernel at this chart's pitch
+        # physically diffuses those step edges below the visibility
+        # ratio. The NN expand itself still exists upstream and its
+        # replacement stays on the §11.1 ledger for the legacy-deletion
+        # pass — this gate certifies the OUTPUT, not the map code.
         block = self.live["bloom"]["pyramid_blockiness"]
-        self.assertGreater(block["step_8px_ratio"], 1.15)
+        self.assertLess(block["step_8px_ratio"], 1.15)
+        self.assertLess(block["step_16px_ratio"], 2.0)
 
 
 if __name__ == "__main__":

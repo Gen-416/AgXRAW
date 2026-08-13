@@ -385,6 +385,22 @@ class FilmSpatialContext:
     def band_geometry(self, y0: int, y1: int):
         return self.geometry.rows(y0, y1)
 
+    def mm_per_px(self) -> float:
+        """Film-plane sampling pitch of this rendering (gate mm per pixel)."""
+        _, _, w_mm, _ = self.geometry.region()
+        return w_mm / max(self.width, 1)
+
+    def scatter_halo_rows(self) -> int:
+        """Rows of context each band needs for the P5 scatter mixes (0 when
+        no kernel resolves at this pitch — previews stay unexpanded)."""
+        from .film_optics import scatter_halo_px
+
+        return scatter_halo_px(
+            (self.optics.stock.emulsion_scatter,
+             self.optics.print_medium.formation_scatter),
+            self.mm_per_px(),
+        )
+
     def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
         """Pass A: build the halation spread from the decimated post-intent
         scene. Halation's source is PRE-emulsion LAYER exposure, a genuinely
@@ -648,14 +664,45 @@ def _apply_film_core_v2(
 
     stock, media = _load_v2(preset)
     # P5 (§9): analog optics run through a prepared spatial context. spatial
-    # is (ctx, y0, y1): this call's rows within the full image. Flat
+    # is (ctx, y0, y1): this call's rows within the full image, or the P5b
+    # halo form (ctx, y0, y1, y0e, y1e): the flat input covers the EXPANDED
+    # rows [y0e, y1e) and only [y0, y1) is returned — the context a
+    # full-resolution scatter kernel needs so row bands are seam-free. Flat
     # colorimetric callers (probes, decimated map sources, tests) pass None
     # and see the amounts as inert by contract.
     ctx = y0 = y1 = None
+    y0e = y1e = None
+    _crop_rows = None
     if spatial is not None:
-        ctx, y0, y1 = spatial
+        if len(spatial) == 5:
+            ctx, y0, y1, y0e, y1e = spatial
+        else:
+            ctx, y0, y1 = spatial
+            y0e, y1e = y0, y1
         if ctx is None or not ctx.engaged:
+            if (y0e, y1e) != (y0, y1):
+                raise ValueError(
+                    "halo slab passed without an engaged spatial context"
+                )
             ctx = None
+    if ctx is not None:
+        # No silent seams: an engaged scatter kernel over a PARTIAL band
+        # demands the halo rows it declared (renderer contract); the only
+        # partial band allowed without them is one whose kernels resolve
+        # below the pixel scale (halo 0).
+        need = ctx.scatter_halo_rows()
+        partial = y0 > 0 or y1 < ctx.height
+        if need > 0 and partial:
+            if (y0 - y0e) < min(need, y0) or (y1e - y1) < min(need, ctx.height - y1):
+                raise ValueError(
+                    f"scatter halo rows missing: band [{y0},{y1}) needs "
+                    f"{need} context rows, slab covers [{y0e},{y1e})"
+                )
+        # From here on the WORKING band is the expanded slab; the inner
+        # band survives as the final crop.
+        if (y0e, y1e) != (y0, y1):
+            _crop_rows = (y0 - y0e, y1 - y0e)
+        y0, y1 = y0e, y1e
     # P3 §6.1: the editorial capture bloom is the FIRST thing to touch the
     # scene — before compression, before the observer. That ordering IS the
     # phase: the scene still carries six stops of overrange here, where the
@@ -715,6 +762,25 @@ def _apply_film_core_v2(
     log_e = layer_log_exposure(rgb, stock["observer"]) + (
         exposure_ev + float(stock["anchor"])
     ) * _LOG10_2
+    if ctx is not None:
+        _scat = ctx.optics.stock.emulsion_scatter
+        if _scat is not None:
+            from .film_optics import apply_scatter_mix
+
+            # P5 (§5.1): energy-conserving core/tail mix on LINEAR layer
+            # exposure, BEFORE the halation reinject (plan order) and the
+            # characteristic curves. Kernel scales are film-plane um; at
+            # preview pitches the components fall below the pixel scale
+            # and the mix is exact identity.
+            _rows = y1 - y0
+            e_lin = np.power(10.0, log_e.astype(np.float64)).reshape(
+                _rows, ctx.width, 3
+            )
+            e_lin = apply_scatter_mix(e_lin, ctx.mm_per_px(), _scat)
+            log_e = np.log10(
+                np.maximum(e_lin.reshape(-1, 3), 1e-30)
+            ).astype(log_e.dtype)
+            del e_lin
     if ctx is not None and ctx.halation > 0.0:
         from .film_optics import halation_reinject_rows
 
@@ -869,6 +935,10 @@ def _apply_film_core_v2(
             developed = apply_film_appearance(
                 developed, _app, scene_ev=_appearance_scene_ev(rgb, exposure_ev)
             )
+        if _crop_rows is not None:
+            developed = developed.reshape(y1 - y0, ctx.width, 3)[
+                _crop_rows[0]:_crop_rows[1]
+            ].reshape(-1, 3)
         return developed.astype(np.float32, copy=False)
     # Negative: B1 -> +tau -> paper development -> B2 (ratified §5.4).
     u1 = amounts_to_unit(amounts, stock["lo"], stock["hi"])
@@ -899,10 +969,30 @@ def _apply_film_core_v2(
     else:
         tau = ps["tau"][int(np.argmin(np.abs(ps["tau_nodes"])))]
         cast_key_ev = 0.0
+    _le2_eff = np.stack([lep2[:, c] + tau[c] for c in range(3)], axis=1)
+    if ctx is not None:
+        _form = ctx.optics.print_medium.formation_scatter
+        if _form is not None:
+            from .film_optics import apply_scatter_mix
+
+            # P5 (§6.2): the print medium's formation scatter on LINEAR
+            # paper exposure P = 2^(LEP2 + tau), before the paper curves.
+            # Normalized kernel: a uniform patch is unchanged, so the
+            # Stage B neutral/colour-head calibration stays intact.
+            _rows = (y1 - y0)
+            p_lin = np.exp2(_le2_eff.astype(np.float64)).reshape(
+                _rows, ctx.width, 3
+            )
+            p_lin = apply_scatter_mix(p_lin, ctx.mm_per_px(), _form)
+            _le2_eff = np.log2(
+                np.maximum(p_lin.reshape(-1, 3), 1e-30)
+            ).astype(_le2_eff.dtype)
+            del p_lin
     dye = np.stack([
-        np.interp(lep2[:, c] + tau[c], b2["paper_le2"], b2["paper_amounts"][:, c])
+        np.interp(_le2_eff[:, c], b2["paper_le2"], b2["paper_amounts"][:, c])
         for c in range(3)
     ], axis=1)
+    del _le2_eff
     if ctx is not None and ctx.grain > 0.0:
         pos = ctx.optics.print_medium.positive_grain
         if pos is not None:
@@ -963,6 +1053,10 @@ def _apply_film_core_v2(
         developed = apply_film_appearance(
             developed, _app, scene_ev=_appearance_scene_ev(rgb, exposure_ev)
         )
+    if _crop_rows is not None:
+        developed = developed.reshape(y1 - y0, ctx.width, 3)[
+            _crop_rows[0]:_crop_rows[1]
+        ].reshape(-1, 3)
     return developed.astype(np.float32, copy=False)
 
 

@@ -1,0 +1,182 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Optics V2 P5: scatter mixes (§5.1 emulsion / §6.2 formation) and the
+halo row-band protocol.
+
+Gate 13 finally has content: the operator's measured MTF must equal the
+analytic transfer of the fitted kernel mix. Plus the §6.2 invariance
+(uniform patches unchanged), the sub-pixel identity that keeps previews
+untouched, seam-free banded rendering at a pitch where the kernels
+resolve, and the no-silent-seams enforcement."""
+from __future__ import annotations
+
+import unittest
+
+import numpy as np
+
+from dngscan.film_optics import (
+    _SCATTER_MIN_PX,
+    apply_scatter_mix,
+    scatter_halo_px,
+)
+from dngscan.film_optics_assets import (
+    DEFAULT_PRINT_OPTICS,
+    DEFAULT_STOCK_OPTICS,
+    ScatterKernelAsset,
+    load_print_optics,
+    load_stock_optics,
+)
+
+
+def _kernels():
+    stock = load_stock_optics(DEFAULT_STOCK_OPTICS).emulsion_scatter
+    form = load_print_optics(DEFAULT_PRINT_OPTICS).formation_scatter
+    return stock, form
+
+
+class ScatterMixTests(unittest.TestCase):
+    def test_assets_declare_measured_scatter(self) -> None:
+        stock, form = _kernels()
+        self.assertIsNotNone(stock)
+        self.assertIsNotNone(form)
+        self.assertEqual(stock.provenance, "measured")
+        self.assertEqual(stock.model, "core_tail_v1")
+        self.assertEqual(form.model, "gaussian_v1")
+
+    def test_gate13_operator_mtf_matches_the_analytic_mix(self) -> None:
+        stock, _ = _kernels()
+        mm_per_px = 0.006  # 6 um pixels: the kernels resolve
+        h, w = 64, 4096
+        for ch in range(3):
+            for cycles_per_mm in (20.0, 50.0):
+                fx = cycles_per_mm * mm_per_px  # cycles per pixel
+                x = np.arange(w, dtype=np.float64)
+                sin = np.sin(2.0 * np.pi * fx * x)
+                img = np.zeros((h, w, 3), dtype=np.float64)
+                img[..., ch] = 1.0 + 0.5 * sin[None, :]
+                out = apply_scatter_mix(img, mm_per_px, stock)
+                # measured modulation via projection onto the input sinusoid
+                got = out[h // 2, :, ch] - np.mean(out[h // 2, :, ch])
+                mod = 2.0 * float(np.mean(got * sin)) / 0.5
+                s = stock.s[ch]
+                wgt = stock.w[ch]
+                sg = stock.sigma_um[ch] * 1e-3
+                g = np.exp(-2.0 * np.pi ** 2 * sg ** 2 * cycles_per_mm ** 2)
+                # sub-pixel tail contributes identity at this pitch
+                want = (1.0 - s) + s * ((1.0 - wgt) * g + wgt * 1.0)
+                self.assertLess(
+                    abs(mod - want), 0.03,
+                    f"ch{ch} f={cycles_per_mm}: got {mod:.4f} want {want:.4f}",
+                )
+
+    def test_uniform_patch_is_invariant(self) -> None:
+        stock, form = _kernels()
+        img = np.full((48, 200, 3), 0.63, dtype=np.float64)
+        for kernel in (stock, form):
+            out = apply_scatter_mix(img, 0.006, kernel)
+            self.assertLess(
+                float(np.max(np.abs(out - 0.63))) / 0.63, 1e-5,
+                "normalized kernels must leave a uniform patch unchanged",
+            )
+
+    def test_sub_resolving_pitch_is_exact_identity(self) -> None:
+        stock, form = _kernels()
+        rng = np.random.default_rng(3)
+        img = rng.uniform(0.1, 2.0, (32, 64, 3))
+        # 900px over the 36mm gate: 40 um pixels — every component of both
+        # media falls below the resolving scale and the mix must not touch
+        # the image (and must not pay halo rows). At a 1920px preview the
+        # 2383 G kernel (14.4 um) genuinely resolves, and applying it there
+        # is the physically consistent behaviour, not an error.
+        out = apply_scatter_mix(img, 36.0 / 900.0, stock)
+        np.testing.assert_allclose(out, img.astype(np.float32), rtol=2e-6)
+        out = apply_scatter_mix(img, 36.0 / 900.0, form)
+        np.testing.assert_allclose(out, img.astype(np.float32), rtol=2e-6)
+        self.assertEqual(scatter_halo_px((stock, form), 36.0 / 900.0), 0)
+
+    def test_halo_rows_cover_the_largest_kernel(self) -> None:
+        stock, form = _kernels()
+        mm_per_px = 0.006
+        r = scatter_halo_px((stock, form), mm_per_px)
+        sigmas = [v * 1e-3 / mm_per_px
+                  for v in stock.sigma_um + form.sigma_um]
+        self.assertGreaterEqual(r, int(np.ceil(3 * max(sigmas))) - 1)
+        self.assertLess(r, 40)
+
+    def test_gaussian_v1_rejects_tail_fields(self) -> None:
+        with self.assertRaises(Exception):
+            ScatterKernelAsset.from_json({
+                "provenance": "measured", "model": "gaussian_v1",
+                "channels": {n: {"s": 0.3, "sigma_um": 8.0, "w": 0.2,
+                                 "lambda_um": 2.0}
+                             for n in ("R", "G", "B")},
+            }, "t")
+
+
+class HaloBandProtocolTests(unittest.TestCase):
+    """Banded rendering with halo rows equals the full-frame oracle at a
+    pitch where the kernels resolve; partial bands without their declared
+    halo rows fail loudly instead of seaming silently."""
+
+    H, W = 64, 4096  # 8.8 um/px over the 36 mm gate
+
+    @staticmethod
+    def _plan(**kw):
+        from types import SimpleNamespace
+
+        base = dict(
+            curve_preset="portra400", film_mode="full",
+            film_crossover="datasheet", film_exposure_ev=0.0,
+            film_print_timing="fixed", film_print_medium="",
+            film_print_exposure_ev=0.0, color_head_y=0.0, color_head_m=0.0,
+            film_development="measured_default", film_dev_contrast=0.0,
+            film_dev_fog=0.0, film_dev_density=0.0, film_compression=0.0,
+            film_compression_knee=2.0, film_highlight_density=0.0,
+            film_grain=0.4, film_halation=0.0, film_bloom=0.0,
+            film_optics_seed=0,
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_banded_with_halo_matches_full_frame(self) -> None:
+        from dngscan.film_develop import apply_film_core, prepare_film_spatial
+
+        h, w = self.H, self.W
+        rng = np.random.default_rng(11)
+        img = rng.uniform(0.05, 0.6, (h, w, 3)).astype(np.float32)
+        img[20:28, 1000:1200] = 4.0
+        flat = img.reshape(-1, 3)
+        plan = self._plan()
+        full = apply_film_core(flat, plan, spatial_shape=(h, w))
+        ctx = prepare_film_spatial(plan, h, w)
+        self.assertGreater(ctx.scatter_halo_rows(), 0,
+                           "at 8.8 um/px the kernels must resolve")
+        halo = ctx.scatter_halo_rows()
+        out = np.empty_like(np.asarray(full))
+        for band in (16, 32):
+            for y0 in range(0, h, band):
+                y1 = min(y0 + band, h)
+                y0e, y1e = max(0, y0 - halo), min(h, y1 + halo)
+                got = apply_film_core(
+                    flat[y0e * w:y1e * w], plan,
+                    spatial=(ctx, y0, y1, y0e, y1e),
+                )
+                out[y0 * w:y1 * w] = got
+            np.testing.assert_allclose(
+                out, np.asarray(full), rtol=2e-5, atol=2e-6,
+                err_msg=f"band={band} must match the full-frame oracle",
+            )
+
+    def test_partial_band_without_halo_fails_loudly(self) -> None:
+        from dngscan.film_develop import apply_film_core, prepare_film_spatial
+
+        h, w = self.H, self.W
+        flat = np.full((h * w, 3), 0.2, dtype=np.float32)
+        plan = self._plan()
+        ctx = prepare_film_spatial(plan, h, w)
+        self.assertGreater(ctx.scatter_halo_rows(), 0)
+        with self.assertRaises(ValueError):
+            apply_film_core(flat[:16 * w], plan, spatial=(ctx, 0, 16))
+
+
+if __name__ == "__main__":
+    unittest.main()
