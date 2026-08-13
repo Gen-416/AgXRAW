@@ -365,11 +365,15 @@ class PrintOpticsAsset:
                  f"{where}: not a print_optics asset")
         _require(raw.get("formation_scatter") is None,
                  f"{where}: formation_scatter is a P3 field and must be null here")
-        _require(raw.get("positive_grain") is None,
-                 f"{where}: positive_grain is a P4 field and must be null here")
         _require(raw.get("viewing_scatter") is None,
                  f"{where}: viewing_scatter has no measured PSF and stays null")
         scatter = raw.get("legacy_print_scatter")
+        # P4 activated the reserved slot: the positive medium's own grain
+        # (2383 print film measured tables), applied on the PRINT dye
+        # amounts before B2 viewing. A paper/print asset without one simply
+        # contributes no grain — unlike the stock side, absence is not an
+        # error because grain is a stock-anchored user amount.
+        pos = raw.get("positive_grain")
         return cls(
             asset_id=str(raw["asset_id"]),
             provenance=_provenance(raw["provenance"], where),
@@ -377,6 +381,10 @@ class PrintOpticsAsset:
                 PrintScatterAsset.from_json(
                     scatter, f"{where}.legacy_print_scatter"
                 ) if scatter else None
+            ),
+            positive_grain=(
+                GrainAsset.from_json(pos, f"{where}.positive_grain")
+                if pos else None
             ),
             source_notes=tuple(str(s) for s in raw.get("source_notes", ())),
         )

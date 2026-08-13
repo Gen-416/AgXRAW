@@ -903,6 +903,22 @@ def _apply_film_core_v2(
         np.interp(lep2[:, c] + tau[c], b2["paper_le2"], b2["paper_amounts"][:, c])
         for c in range(3)
     ], axis=1)
+    if ctx is not None and ctx.grain > 0.0:
+        pos = ctx.optics.print_medium.positive_grain
+        if pos is not None:
+            from .film_optics import apply_density_grain
+
+            # P4 dual grain: the positive medium's OWN grain (2383 measured
+            # tables) modulates the PRINT dye amounts before B2 viewing —
+            # negative branch only; a directly-viewed reversal has no print
+            # stage. Same user amount as the stock grain (one dial, two
+            # media); the seed is decorrelated from the stock field's
+            # realization phase, and the master field itself is shared via
+            # the field-geometry cache key.
+            dye = apply_density_grain(
+                dye, b2["dye_lo"], b2["dye_hi"], ctx.band_geometry(y0, y1),
+                pos, ctx.grain, ctx.seed ^ 0x50524E54,
+            )
     u2 = amounts_to_unit(dye, b2["dye_lo"], b2["dye_hi"])
     developed = _tetrahedral(b2["volume"], u2.astype(np.float32), b2["n"])
     if bounded:

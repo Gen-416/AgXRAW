@@ -224,3 +224,78 @@ class MultiBandFieldTests(unittest.TestCase):
         # an asset without `bands` keeps the one-band behaviour
         g = GrainAsset.from_json(dict(GrainAssetContractTests.BASE), "t")
         self.assertEqual(g.bands, ())
+
+
+class DualGrainTests(unittest.TestCase):
+    """P4 dual grain: the positive medium's own measured 2383 grain rides
+    the print dye amounts before B2 (negative branch only)."""
+
+    def test_print_asset_declares_measured_2383_grain(self) -> None:
+        from dngscan.film_optics_assets import (
+            DEFAULT_PRINT_OPTICS,
+            load_print_optics,
+        )
+
+        pos = load_print_optics(DEFAULT_PRINT_OPTICS).positive_grain
+        self.assertIsNotNone(pos)
+        self.assertEqual(pos.model, "measured_sigma_v2")
+        self.assertEqual(pos.provenance, "measured")
+        self.assertEqual(pos.medium, "print_film")
+        # 2383 chart fact: the yellow-forming B layer dominates
+        b_end = pos.sigma_density[2][-1][1]
+        g_end = pos.sigma_density[1][-1][1]
+        self.assertGreater(b_end, 2.0 * g_end)
+
+    def test_print_grain_shares_the_stock_field_master(self) -> None:
+        from dngscan.film_optics import _field_geometry_key
+        from dngscan.film_optics_assets import (
+            DEFAULT_PRINT_OPTICS,
+            DEFAULT_STOCK_OPTICS,
+            load_print_optics,
+            load_stock_optics,
+        )
+
+        stock = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+        pos = load_print_optics(DEFAULT_PRINT_OPTICS).positive_grain
+        self.assertEqual(
+            _field_geometry_key(stock), _field_geometry_key(pos),
+            "shared field geometry keeps ONE master realization in cache",
+        )
+
+    def test_dual_grain_is_live_on_the_negative_branch(self) -> None:
+        import dataclasses
+
+        from dngscan import film_optics_assets as fa
+        from dngscan.film_develop import apply_film_core
+        from types import SimpleNamespace
+
+        def plan(**kw):
+            base = dict(
+                curve_preset="portra400", film_mode="full",
+                film_crossover="datasheet", film_exposure_ev=0.0,
+                film_print_timing="fixed", film_print_medium="",
+                film_print_exposure_ev=0.0, color_head_y=0.0,
+                color_head_m=0.0, film_development="measured_default",
+                film_dev_contrast=0.0, film_dev_fog=0.0, film_dev_density=0.0,
+                film_compression=0.0, film_compression_knee=2.0,
+                film_highlight_density=0.0, film_grain=0.8,
+                film_halation=0.0, film_bloom=0.0, film_optics_seed=0,
+            )
+            base.update(kw)
+            return SimpleNamespace(**base)
+
+        h, w = 40, 60
+        flat = np.full((h * w, 3), 0.18, dtype=np.float32)
+        got = apply_film_core(flat, plan(), spatial_shape=(h, w))
+        key = f"print:{fa.DEFAULT_PRINT_OPTICS}"
+        original = fa.load_print_optics(fa.DEFAULT_PRINT_OPTICS)
+        try:
+            fa._CACHE[key] = dataclasses.replace(original, positive_grain=None)
+            without = apply_film_core(flat, plan(), spatial_shape=(h, w))
+        finally:
+            fa._CACHE[key] = original
+        diff = np.abs(np.asarray(got, np.float64) - np.asarray(without, np.float64))
+        self.assertGreater(
+            float(diff.mean()), 1e-6,
+            "the paper-stage grain hook must actually reach the output",
+        )

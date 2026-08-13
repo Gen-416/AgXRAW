@@ -695,8 +695,8 @@
       "field_blob_fwhm_um": 12.323908531757816,
       "field_correlation_length_um": 6.161954265878908,
       "field_selwyn_slope": -0.9048066412710362,
-      "print_chroma_luma_ratio": 0.7128229428457129,
-      "print_luma_rms_code8": 0.9512364444217808,
+      "print_chroma_luma_ratio": 0.8394174459924524,
+      "print_luma_rms_code8": 0.9874901931842064,
       "rms_granularity_48um_at_span2": [
         5.566294557632458,
         6.633401786709118,
@@ -729,8 +729,8 @@
       "field_blob_fwhm_um": 12.323908531757816,
       "field_correlation_length_um": 6.161954265878908,
       "field_selwyn_slope": -0.9048066412710362,
-      "print_chroma_luma_ratio": 0.7166360319883216,
-      "print_luma_rms_code8": 1.895658505742496,
+      "print_chroma_luma_ratio": 0.8427740207539619,
+      "print_luma_rms_code8": 1.964185611068434,
       "rms_granularity_48um_at_span2": [
         5.566294557632458,
         6.633401786709118,
@@ -888,7 +888,7 @@
         "mtf50_cycles_per_px": 0.5,
         "mtf_at_0p25": 0.9070316008159118
       },
-      "edge_snr_with_grain": 644.807087482266,
+      "edge_snr_with_grain": 505.0688514398515,
       "light_spread_only": {
         "mtf50_cycles_per_px": 0.5,
         "mtf_at_0p25": 0.8892996285558509
@@ -899,7 +899,7 @@
         "mtf50_cycles_per_px": 0.5,
         "mtf_at_0p25": 0.9070316008159118
       },
-      "edge_snr_with_grain": 323.8613264269868,
+      "edge_snr_with_grain": 252.9299812100435,
       "standard_spread_only": {
         "mtf50_cycles_per_px": 0.5,
         "mtf_at_0p25": 0.8606150049244128

@@ -439,13 +439,23 @@ def grain_field_for(grain: GrainAsset, seed: int) -> np.ndarray:
     return _band_limited_field(grain, seed)
 
 
+def _field_geometry_key(grain: GrainAsset) -> tuple:
+    """The FIELD depends only on the synthesis geometry — pitch, size(s),
+    weights and cross-layer correlation — never on the sigma tables. Keying
+    the caches on this instead of the whole asset lets a stock and a print
+    medium with the same declared geometry share ONE master realization
+    (P4: the paper-stage grain would otherwise evict the stock's master
+    every row band through the single-entry cache)."""
+    return (grain.pitch_um, grain.size_um, grain.layer_corr, grain.bands)
+
+
 def _grain_ii_for(grain: GrainAsset, seed: int) -> np.ndarray:
     """The field's 2-D integral image, built ONCE per (profile, seed) and
     cached INSTEAD of the field (review batch 13): rebuilding the ~144 MB
     float64 integral every row band dominated the measured peak, and the
     field itself is never needed after the integral exists. The old entry is
     released before the replacement is built."""
-    key = (grain, int(seed))
+    key = (_field_geometry_key(grain), int(seed))
     got = _FIELD_CACHE.get(key)
     if got is None:
         _FIELD_CACHE.clear()
@@ -651,7 +661,7 @@ def _aperture_rms(grain: GrainAsset) -> float:
     way — and (physically) exceed it at finer pixel pitches. Computed
     numerically from the master realization rather than assuming the
     Selwyn sqrt-area law, which only holds for aperture >> grain size."""
-    key = (grain,)
+    key = (_field_geometry_key(grain), grain.aperture_um)
     got = _APERTURE_RMS_CACHE.get(key)
     if got is not None:
         return got
