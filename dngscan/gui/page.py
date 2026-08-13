@@ -450,12 +450,13 @@ FILM_CURVE_OPTIONS
     </div>
     <div id="filmOpticsBlock" style="flex:1;min-width:190px;display:none">
       <label>模拟光学</label>
-      <select id="filmOptics" title="胶片的空间成像（modelled profile）：颗粒在负片毫米坐标下调制显影密度——固定统计主场+每张照片随机的空间排布（预览/裁切/全尺寸共享同一实现，随机只改排布不改粒径/频谱/密度响应）；halation 把高亮场景曝光经红敏背散射回注层曝光；bloom 是正介质的守恒内在散射——能量在画幅内重新分布，高光核心变暗、邻域变亮，总光能不增加（非叠加 glow；不模拟观看环境 flare）。关闭=严格恒等。">
+      <select id="filmOptics" title="胶片的空间成像（V2）：颗粒=实测 σ(D)（5207 图表逐通道查表,48µm 孔径校准;负片+2383 印片双介质;粒子 oracle 多带频谱;预览/裁切/全尺寸共享同一实现,随机只改排布）；halation 把高亮场景曝光经红敏背散射回注层曝光（modelled 分量集）；bloom=editorial 捕获辉光（进乳剂前,声明为编辑性）；开启任意档位时,实测 MTF 拟合的乳剂/介质散射作为介质属性一并生效（预览分辨率下自动恒等）。关闭=严格恒等。">
         <option value="off">关闭 · 默认</option>
         <option value="light">轻 · 颗粒0.25/晕0.20/泛0.15</option>
         <option value="standard">标准 · 颗粒0.50/晕0.40/泛0.30</option>
         <option value="custom">自定义</option>
       </select>
+      <div id="filmOpticsSummary" class="hint" style="margin-top:2px">FILM_OPTICS_SUMMARY</div>
     </div>
     <div id="filmOpticsCustom" style="display:none;flex-basis:100%">
       <div class="row">
@@ -1911,6 +1912,43 @@ def _film_retimed_json() -> str:
     return json.dumps(out)
 
 
+
+def _optics_profile_summary() -> str:
+    """One provenance-honest line under the 模拟光学 select (plan §12.1):
+    read from the SAME assets the renderer compiles, so the summary can
+    never describe a profile the render path does not use."""
+    try:
+        from ..film_optics_assets import (
+            DEFAULT_CAPTURE_BLOOM,
+            DEFAULT_PRINT_OPTICS,
+            DEFAULT_STOCK_OPTICS,
+            load_capture_bloom,
+            load_print_optics,
+            load_stock_optics,
+        )
+
+        stock = load_stock_optics(DEFAULT_STOCK_OPTICS)
+        medium = load_print_optics(DEFAULT_PRINT_OPTICS)
+        bloom = load_capture_bloom(DEFAULT_CAPTURE_BLOOM)
+        parts = []
+        if stock.grain is not None:
+            dual = "×2介质" if medium.positive_grain is not None else ""
+            parts.append(f"颗粒:{stock.grain.provenance}{dual}")
+        if stock.halation is not None:
+            parts.append(f"halation:{stock.halation.provenance}")
+        scat = []
+        if stock.emulsion_scatter is not None:
+            scat.append(stock.emulsion_scatter.provenance)
+        if medium.formation_scatter is not None:
+            scat.append(medium.formation_scatter.provenance)
+        if scat:
+            parts.append(f"散射:{'/'.join(sorted(set(scat)))}")
+        parts.append(f"bloom:{bloom.provenance}")
+        return "profile · " + " · ".join(parts)
+    except Exception:
+        return "profile 摘要不可用（资产加载失败）"
+
+
 def _film_variants_json() -> str:
     """stock -> appearance variants beyond "reference" whose assets exist.
 
@@ -2044,5 +2082,6 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         .replace("FILM_RETIMED_JSON", _film_retimed_json())
         .replace("FILM_MEDIA_JSON", _film_media_json())
         .replace("FILM_VARIANTS_JSON", _film_variants_json())
+        .replace("FILM_OPTICS_SUMMARY", _optics_profile_summary())
     )
     return html.encode("utf-8")

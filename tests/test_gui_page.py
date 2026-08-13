@@ -524,3 +524,28 @@ class AppearanceFactoryDefaultTests(unittest.TestCase):
         self.assertIn(
             's.filmAppearanceMemo&&typeof s.filmAppearanceMemo==="object"', PAGE
         )
+
+
+class OpticsProfileSummaryTests(unittest.TestCase):
+    """P5 (§12.1): the 模拟光学 select shows a provenance-honest profile
+    summary read from the SAME assets the renderer compiles."""
+
+    def test_summary_is_injected_from_the_assets(self) -> None:
+        from dngscan.gui.page import _optics_profile_summary, render_page
+
+        line = _optics_profile_summary()
+        self.assertIn("颗粒:measured", line)
+        self.assertIn("散射:measured", line)
+        self.assertIn("bloom:editorial", line)
+        html = render_page("").decode("utf-8")
+        self.assertIn('id="filmOpticsSummary"', html)
+        self.assertIn(line, html)
+        self.assertNotIn("FILM_OPTICS_SUMMARY", html)
+
+    def test_tooltip_speaks_v2_semantics(self) -> None:
+        # the stale pre-V2 claims must be gone: bloom is editorial capture
+        # glow (P3), grain is measured sigma(D) (P4), scatter exists (P5)
+        self.assertNotIn("bloom 是正介质的守恒内在散射", PAGE)
+        self.assertIn("实测 σ(D)", PAGE)
+        self.assertIn("editorial 捕获辉光", PAGE)
+        self.assertIn("MTF 拟合", PAGE)
