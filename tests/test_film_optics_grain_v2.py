@@ -43,40 +43,45 @@ class MeasuredGrainKernelTests(unittest.TestCase):
     def test_default_stock_grain_is_measured_v2(self) -> None:
         g = self.grain
         self.assertEqual(g.model, "measured_sigma_v2")
-        self.assertEqual(g.provenance, "measured")
+        # R1 item 3/7: measured amplitude + modelled geometry on a
+        # GENERIC profile = derived, never the material's own measured
+        self.assertEqual(g.provenance, "derived")
         self.assertEqual(g.aperture_um, 48.0)
         self.assertEqual(len(g.sigma_density), 3)
         self.assertEqual(g.sigma0, 0.0)
 
     def test_gate14_flat_field_reproduces_chart_sigma(self) -> None:
+        # Density-native contract (review R1 item 1): the chain's amounts
+        # ARE net Status-family densities, so a flat field AT net density
+        # d sits at chart density base+d and the measured 48um box RMS of
+        # the OUTPUT amounts must equal the chart sigma directly — no
+        # affine span assumption on either side of the comparison.
         g = self.grain
         geometry = _flat_geometry(g.pitch_um)
         h, w = geometry.height, geometry.width
         lo = np.zeros(3)
         hi = np.ones(3)
-        for dn_level in (0.25, 0.5, 0.75):
-            amounts = np.full((h * w, 3), dn_level, dtype=np.float64)
+        for net_d in (0.3, 0.8, 1.4):
+            amounts = np.full((h * w, 3), net_d, dtype=np.float64)
             out = apply_density_grain(
                 amounts, lo, hi, geometry, g, 1.0, 0
             ).reshape(h, w, 3)
             n = int(round(g.aperture_um / g.pitch_um))
             for ch in range(3):
-                base, dmax = g.chart_density[ch]
-                d_chart = base + dn_level * (dmax - base)
+                base, _dmax = g.chart_density[ch]
                 tab = np.asarray(g.sigma_density[ch])
-                sigma_want = float(np.interp(d_chart, tab[:, 0], tab[:, 1]))
-                # measure the output the chart's way: 48 um box means,
-                # then rms, converted back to chart-density units
+                sigma_want = float(np.interp(base + net_d,
+                                             tab[:, 0], tab[:, 1]))
                 delta = (out[..., ch] - amounts.reshape(h, w, 3)[..., ch])
                 ii = np.zeros((h + 1, w + 1))
                 np.cumsum(np.cumsum(delta, axis=0), axis=1, out=ii[1:, 1:])
                 box = (ii[n:, n:] - ii[n:, :-n] - ii[:-n, n:]
                        + ii[:-n, :-n]) / (n * n)
                 box -= box.mean()  # bias term is deterministic, not grain
-                got = float(np.sqrt(np.mean(box * box))) * (dmax - base)
+                got = float(np.sqrt(np.mean(box * box)))
                 self.assertLess(
                     abs(got - sigma_want) / sigma_want, 0.12,
-                    f"ch{ch} Dn={dn_level}: got {got:.5f} want {sigma_want:.5f}",
+                    f"ch{ch} D={net_d}: got {got:.5f} want {sigma_want:.5f}",
                 )
 
     def test_gate15_amount_sweep_preserves_mean_transmittance(self) -> None:
@@ -85,14 +90,14 @@ class MeasuredGrainKernelTests(unittest.TestCase):
         h, w = geometry.height, geometry.width
         lo = np.zeros(3)
         hi = np.ones(3)
-        amounts = np.full((h * w, 3), 0.5, dtype=np.float64)
+        amounts = np.full((h * w, 3), 0.8, dtype=np.float64)
         # transmittance in CHART density units per channel
         ref = None
         for amt in (0.0, 0.5, 1.0):
             out = apply_density_grain(amounts, lo, hi, geometry, g, amt, 0)
             for ch in range(3):
-                base, dmax = g.chart_density[ch]
-                d = base + np.clip(out[:, ch], 0.0, 1.0) * (dmax - base)
+                base, _dmax = g.chart_density[ch]
+                d = base + out[:, ch]
                 t = float(np.mean(np.power(10.0, -d)))
                 if amt == 0.0 and ch == 0:
                     ref = t
@@ -112,10 +117,9 @@ class MeasuredGrainKernelTests(unittest.TestCase):
         out = apply_density_grain(
             amounts, np.zeros(3), np.ones(3), geometry, g, 1.0, 0
         )
+        # density-native: per-channel std IS chart-sigma scale directly
         std = [(out[:, ch] - amounts[:, ch]).std() for ch in range(3)]
-        b_chart = g.chart_density[2][1] - g.chart_density[2][0]
-        r_chart = g.chart_density[0][1] - g.chart_density[0][0]
-        self.assertGreater(std[2] * b_chart, std[0] * r_chart)
+        self.assertGreater(std[2], std[0])
 
     def test_aperture_rms_is_cached_and_below_unity(self) -> None:
         r1 = _aperture_rms(self.grain)
@@ -239,7 +243,7 @@ class DualGrainTests(unittest.TestCase):
         pos = load_print_optics(DEFAULT_PRINT_OPTICS).positive_grain
         self.assertIsNotNone(pos)
         self.assertEqual(pos.model, "measured_sigma_v2")
-        self.assertEqual(pos.provenance, "measured")
+        self.assertEqual(pos.provenance, "derived")
         self.assertEqual(pos.medium, "print_film")
         # 2383 chart fact: the yellow-forming B layer dominates
         b_end = pos.sigma_density[2][-1][1]
@@ -261,6 +265,45 @@ class DualGrainTests(unittest.TestCase):
             _field_geometry_key(stock), _field_geometry_key(pos),
             "shared field geometry keeps ONE master realization in cache",
         )
+
+    def test_print_realization_is_independent_of_the_stock_field(self) -> None:
+        """Review R1 item 6: the print grain must be an independent keyed
+        phase of the shared master — the old channel-roll+sign-flip
+        derivation made the print field fully predictable from the
+        negative's (per-channel cross-correlation exactly -layer_corr)."""
+        from dngscan.film_optics import (
+            MASTER_SEED,
+            FilmGeometry,
+            _grain_ii_for,
+            realization_phases,
+            sample_field,
+        )
+        from dngscan.film_optics_assets import (
+            DEFAULT_STOCK_OPTICS,
+            load_stock_optics,
+        )
+
+        grain = load_stock_optics(DEFAULT_STOCK_OPTICS).grain
+        master = _grain_ii_for(grain, MASTER_SEED)
+        gh, gw = master.shape[0] - 1, master.shape[1] - 1
+        geo = FilmGeometry(512, 768)
+        seed = 424242
+        f_neg = sample_field(
+            master, geo.rows(0, 512), phase=realization_phases(seed, gh, gw)
+        ).astype(np.float64)
+        f_pr = sample_field(
+            master, geo.rows(0, 512),
+            phase=realization_phases(seed ^ 0x50524E54, gh, gw),
+        ).astype(np.float64)
+        for ch in range(3):
+            a = f_neg[..., ch].ravel()
+            b = f_pr[..., ch].ravel()
+            corr = float(np.corrcoef(a, b)[0, 1])
+            self.assertLess(
+                abs(corr), 0.05,
+                f"channel {ch}: print/stock field correlation {corr:+.3f} "
+                "must be ~0 (independent keyed phase, R1 item 6)",
+            )
 
     def test_dual_grain_is_live_on_the_negative_branch(self) -> None:
         import dataclasses

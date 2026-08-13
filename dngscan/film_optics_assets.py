@@ -154,8 +154,9 @@ class GrainAsset:
                 s = _finite(row[1], f"{where}.{name}.sigma_density[{i}][1]")
                 _require(0.0 < s < 0.2,
                          f"{where}.{name}: sigma {s} outside (0, 0.2)")
-                _require(prev_d is None or d >= prev_d,
-                         f"{where}.{name}: sigma_density not sorted by D")
+                _require(prev_d is None or d > prev_d,
+                         f"{where}.{name}: sigma_density must be strictly "
+                         "increasing in D (fold duplicates at import)")
                 prev_d = d
                 tab.append((d, s))
             bases.append((base, dmax))
@@ -680,6 +681,12 @@ def compile_film_optics_plan(tone_plan: Any) -> FilmOpticsPlan | None:
     if grain <= 0.0 and halation <= 0.0 and bloom <= 0.0:
         return None
 
+    # R1 item 3: ONE generic profile serves every curve_preset and print
+    # medium today — deliberately, and honestly labelled: its 5207/2383-
+    # sourced blocks carry `derived` provenance, never the rendered
+    # material's own measurement. Per-material binding (keying these loads
+    # on curve_preset / film_print_medium, failing closed where no data
+    # exists) is the recorded follow-up.
     stock = load_stock_optics(DEFAULT_STOCK_OPTICS)
     medium = load_print_optics(DEFAULT_PRINT_OPTICS)
     bloom_asset = load_capture_bloom(DEFAULT_CAPTURE_BLOOM)

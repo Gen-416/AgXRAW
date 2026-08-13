@@ -510,15 +510,25 @@ def jpeg_tone_plan_cn(
             optics_plan = compile_film_optics_plan(plan)
             rep = optics_plan.report() if optics_plan is not None else {}
             prov = rep.get("provenance", {})
+            # Review R1 item 4: the media scatter state and the emulsion
+            # scatter's provenance are part of the line — both stages apply
+            # whenever this context is engaged (unless declared off), so a
+            # report that omitted them attributed their pixels to the look
+            # sliders.
+            _media = str(
+                getattr(plan, "film_media_scatter", "declared") or "declared"
+            )
             state += (
                 "模拟光学 " + "·".join(optics)
                 + f"·seed={int(rep.get('seed', 0))}"
                 + f"·胶片资产={rep.get('stock_optics', '?')}"
                 + f"(颗粒{prov.get('grain') or '—'}"
-                + f"/halation{prov.get('halation') or '—'})"
+                + f"/halation{prov.get('halation') or '—'}"
+                + f"/乳剂散射{prov.get('emulsion_scatter') or '—'})"
                 + f"·印相资产={rep.get('print_optics', '?')}"
                 + f"(散射{prov.get('formation_scatter') or '—'}"
                 + f"/颗粒{prov.get('positive_grain') or '—'})"
+                + f"·介质散射={_media}"
                 + f"·halation DC={rep.get('halation_dc_mode') or '—'}"
                 + f"·预算档={_optics_budget_mib_report()}MiB；"
             )

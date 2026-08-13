@@ -66,3 +66,17 @@ Selected camera sensitivities and training reflectances under
 
 That source repository is licensed under Apache-2.0. Derived CSV files retain
 source and measurement notes in `dngscan_assets/spectral/README.md`.
+
+## CBLD camera black levels (NOT redistributed)
+
+The advisory black-level report line can use CBLD (Camera Black Level
+Database, https://y-g-jiang.github.io/CBLD.html, by 知乎@姜尧耕). CBLD
+credits its author but carries no explicit redistribution license, and
+attribution is not authorization — so its data is **not** included in this
+repository or in released wheels. Users who want the advisory line fetch
+the data themselves for personal use:
+
+    python tools/import_cbld.py     # writes ~/.config/dngscan/cbld.json
+
+Without that local import the feature is silently absent. The upstream
+author's own caveat applies: 仅供参考，最好以自己机器的当次拍摄为准。

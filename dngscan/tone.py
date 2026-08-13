@@ -736,6 +736,7 @@ def build_render_plan(
     film_halation: float = 0.0,
     film_bloom: float = 0.0,
     film_optics_seed: int = 0,
+    film_media_scatter: str = "declared",
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
     # Full-mode input-domain normalization also lives HERE so hand callers of
@@ -894,6 +895,13 @@ def build_render_plan(
                 "手动印相曝光仅在 timing=custom 下有意义;fixed/retimed 的印相"
                 "由联合求解决定"
             )
+        # Review R1 item 4: media scatter enablement is a declared policy,
+        # not an amount — unknown values FAIL CLOSED like every other policy.
+        media_scatter_value = str(film_media_scatter or "declared")
+        if media_scatter_value not in ("declared", "off"):
+            raise ValueError(
+                f"未知介质散射策略:{media_scatter_value}(可选 declared/off)"
+            )
         # A4 item 2: the effective beta is resolved from the declared table
         # exactly ONCE per compile. Both plan copies (ToneCompressionPlan for
         # the runtime, FilmDevelopmentPlan for the audit surface) receive
@@ -929,6 +937,7 @@ def build_render_plan(
             film_halation=float(film_halation),
             film_bloom=float(film_bloom),
             film_optics_seed=int(film_optics_seed),
+            film_media_scatter=media_scatter_value,
         )
     if float(color_head_y) != 0.0 or float(color_head_m) != 0.0:
         # Enlarger colour head: a declared printing decision, valid only where a

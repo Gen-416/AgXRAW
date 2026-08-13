@@ -934,6 +934,52 @@ provenance。不得只输出“模拟光学 standard”。
 > （删除即修复）。⑤ 文档示例重渲：full 输出的颗粒/散射观感已变，展示图刷新
 > 需 owner 样张按 doc-showcase 风格另批执行（唯一遗留项）。
 
+> **审查 R1 整改记录（2026-08-13，八项）**：
+> ① 颗粒坐标系（P1）：链上染料量**就是** net Status 族密度（特性表最大值与
+> 图表 net span 一致，5207: 1.70/1.78/1.91 vs 1.78/2.06/1.98），cube [lo,hi]
+> 只是更宽的 editorial 包络——span 仿射映射把密度轴和幅度按 1.3–2.6× 拉扁。
+> 改为密度原生：D_chart = chart_base + amount，σ 以密度单位 1:1 应用；
+> 门 14/15 同步改为密度原生（不再共享同一仿射假设）。逐层染料密度与真实
+> Status 密度计的残余串扰未建模——这是 provenance 停在 `derived` 的原因。
+> ② 传递预算（P1）：0.4px 尺度跳过规则丢掉了 R 通道重权重指数尾（6µm/px 下
+> 50c/mm 响应差 5.6pp）；改为深度判据 s·w·(1−MTF(Nyquist)) < 1% 才可跳过；
+> σ<1px 用频率匹配 5-tap 核（ω=0,π/2,π 精确命中连续高斯传递）；门 13 的
+> want 补上指数尾解析式。新增 `mtf_residual` 报告节：以**出厂资产**计算
+> MTF_measured/MTF_explicit（逐图表频点），全部落在 |log r| ≤ log 1.15
+> （实测最坏 ±9.7%，与 ±5–8% 读数不确定度 + 3–8% 邻接峰一致），有界断言
+> 入 gate（tests/test_film_optics_scatter.py）。
+> ③⑦ 诚实标注（P1/P2）：5207/2383 测量属性对所有 stock/print 无条件套用，
+> 故 grain/乳剂散射/formation/印相颗粒 provenance 全部降为 `derived`，
+> source_notes 重写为 GENERIC profile 声明；用户指南 bloom 表述改为
+> editorial 捕获辉光（旧"守恒介质散射"描述清除）。
+> ④ 介质散射独立启用（P2）：新计划字段 `film_media_scatter`
+> （declared/off，失闭校验），FilmSpatialContext 持 media_scatter 并 gate
+> `scatter_halo_rows()` 与两段显影散射；CLI `--film-media-scatter`、GUI
+> service（parse/计划缓存键/像素键/导出指纹全链）、报告行打印乳剂散射
+> provenance 与介质散射状态。报告工具 measure_spread/grain/blockiness
+> 两侧一律 off 隔离单算子——P5b 曾以"formation scatter 扩散了金字塔阶跃"
+> 反转 P0 blockiness 门，实为散射搭车测量；门已回退为如实记录缺陷
+> （§11.1 NN expand 重新开账，上面 P5 记录第④点的"闭账"表述以此更正）。
+> ⑤ σ(D) 表单值化（P2）：加载器严格递增校验恢复；导入工具在写出前折叠
+> 重复 D（保留最低 logE 行），granularity_5207/2383.json 重生成。
+> ⑥ 印相颗粒独立相位（P2）：删除 channel-roll+sign-flip 派生（与负片场
+> 逐像素 corr = −layer_corr，完全可预测），改为同一 master 的独立 keyed
+> 相位（seed ^ 0x50524E54 → realization_phases），互协方差 ≈0（新 gate
+> 断言 |corr| < 0.05）。第二次采样的代价由 sample_field 共享角点重写吸收
+> （edge 网格查询一次、平移视图差分，4× 少插值、逐位恒等，61MP 带状
+> 6.8s→2.24s）。当日同机对照：R1 分支 standard 66.5s vs 整改前 main
+> 68.4s（更快 3%）；历史 61.3s 记录不再可复现（同日 main 也测不出，机器
+> 状态漂移 ~11%），门以同日对照口径成立。峰值 RSS 1712→2055 MiB
+> （macOS 分配器口径，CI 512 档预算门全绿）。
+> ⑧ CBLD 再分发（P2）：上游无明确再分发许可，署名≠授权——cbld.json 移出
+> 仓库与 wheel；`tools/import_cbld.py` 改写用户本地
+> `~/.config/dngscan/cbld.json`（$DNGSCAN_CBLD 可覆盖），缺文件静默;
+> 报告行如实标注启发式匹配（子串匹配/首个读出模式/最近 ISO），仅测量条目
+> 称"实测"，否则"推荐值"；NOTICE.md 记录；测试改用合成 fixture，不再收录
+> 上游数据。
+> 审查结论口径不变：optics 输出可作实验性外观使用，不标成按具体
+> stock/medium 测量复现（§14 第 6/7 条即此约束的成文）。
+
 ## 14. 明确暂不声称的内容
 
 1. 不声称复刻 Dehancer 或 Filmbox 的内部算法；公开文档只用于行为和标定方法参考。

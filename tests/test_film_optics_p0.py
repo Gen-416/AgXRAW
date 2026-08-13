@@ -343,18 +343,17 @@ class MeasuredBaselineTests(unittest.TestCase):
             "deleted_with_legacy_print_scatter",
         )
 
-        # INVERTED by P5: the P0 complaint was that nearest-neighbour
-        # pyramid expand left its block edges visible in the RENDERED
-        # output (step_8px ratio measured 3.0). The measured 2383
-        # formation scatter now stands between the spread map and the
-        # print, and its ~half-pixel kernel at this chart's pitch
-        # physically diffuses those step edges below the visibility
-        # ratio. The NN expand itself still exists upstream and its
-        # replacement stays on the §11.1 ledger for the legacy-deletion
-        # pass — this gate certifies the OUTPUT, not the map code.
+        # STILL OPEN (§11.1): nearest-neighbour pyramid expand leaves its
+        # block edges in the isolated bloom delta (P0 measured 3.0; the
+        # frequency-matched small-sigma kernels sharpen the |first-diff|
+        # metric further). P5b briefly certified an inverted gate (<1.15),
+        # but review R1 item 4 showed that pass was the formation scatter
+        # riding the measurement — any look amount silently engaged both
+        # scatter stages — not the NN expand being fixed. The measurement
+        # now isolates with the media scatter off, and this gate honestly
+        # records the defect until the §11.1 expand replacement lands.
         block = self.live["bloom"]["pyramid_blockiness"]
-        self.assertLess(block["step_8px_ratio"], 1.15)
-        self.assertLess(block["step_16px_ratio"], 2.0)
+        self.assertGreater(block["step_8px_ratio"], 1.15)
 
 
 if __name__ == "__main__":

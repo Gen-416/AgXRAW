@@ -350,7 +350,7 @@ class FilmSpatialContext:
     __slots__ = (
         "height", "width", "optics", "grain", "halation", "bloom", "seed",
         "hal_map", "hal_ref", "bloom_map", "geometry", "bloom_fine",
-        "spread_shape",
+        "spread_shape", "media_scatter",
     )
 
     def __init__(self, height: int, width: int, plan: Any) -> None:
@@ -358,6 +358,14 @@ class FilmSpatialContext:
 
         self.height = int(height)
         self.width = int(width)
+        # Review R1 item 4: the media scatter (emulsion §5.1 + formation
+        # §6.2) has its own enablement instead of riding whichever look
+        # slider first engages the spatial context. "declared" (default)
+        # applies the compiled profile's scatter; "off" renders without it.
+        self.media_scatter = (
+            str(getattr(plan, "film_media_scatter", "declared") or "declared")
+            != "off"
+        )
         # The compiled §7.2 plan, or None when nothing is engaged. Runtime
         # reads assets off this and never falls back to a module default:
         # an operator that can silently substitute constants is an operator
@@ -393,9 +401,13 @@ class FilmSpatialContext:
 
     def scatter_halo_rows(self) -> int:
         """Rows of context each band needs for the P5 scatter mixes (0 when
-        no kernel resolves at this pitch — previews stay unexpanded)."""
+        no kernel resolves at this pitch — previews stay unexpanded — or when
+        the media scatter is switched off; review R1 item 4: the media optics
+        must have their own enablement, not ride the look sliders)."""
         from .film_optics import scatter_halo_px
 
+        if not self.media_scatter:
+            return 0
         return scatter_halo_px(
             (self.optics.stock.emulsion_scatter,
              self.optics.print_medium.formation_scatter),
@@ -763,7 +775,7 @@ def _apply_film_core_v2(
     log_e = layer_log_exposure(rgb, stock["observer"]) + (
         exposure_ev + float(stock["anchor"])
     ) * _LOG10_2
-    if ctx is not None:
+    if ctx is not None and ctx.media_scatter:
         _scat = ctx.optics.stock.emulsion_scatter
         if _scat is not None:
             from .film_optics import apply_scatter_mix
@@ -891,11 +903,9 @@ def _apply_film_core_v2(
             (stock["lo"], stock["hi"]) if not stock["reversal"]
             else (media[medium][1]["dye_lo"], media[medium][1]["dye_hi"])
         )
-        _field_stash: dict = {}
         amounts = apply_density_grain(
             amounts, _g_lo, _g_hi, ctx.band_geometry(y0, y1),
             ctx.optics.stock.grain, ctx.grain, ctx.seed,
-            field_out=_field_stash,
         )
     # Three neutralization policies (appearance P3, plan §8):
     #   "off"       technical-neutral — per-pixel exposure-indexed cast
@@ -979,7 +989,7 @@ def _apply_film_core_v2(
         tau = ps["tau"][int(np.argmin(np.abs(ps["tau_nodes"])))]
         cast_key_ev = 0.0
     _le2_eff = np.stack([lep2[:, c] + tau[c] for c in range(3)], axis=1)
-    if ctx is not None:
+    if ctx is not None and ctx.media_scatter:
         _form = ctx.optics.print_medium.formation_scatter
         if _form is not None:
             from .film_optics import apply_scatter_mix
@@ -1008,10 +1018,6 @@ def _apply_film_core_v2(
         _sl = slice(_crop_rows[0] * _w, _crop_rows[1] * _w)
         _le2_eff = _le2_eff[_sl]
         rgb = rgb[_sl]
-        if "_field_stash" in dir() and _field_stash.get("field") is not None:
-            _field_stash["field"] = _field_stash["field"][
-                _crop_rows[0]:_crop_rows[1]
-            ]
         y0, y1 = y0 + _crop_rows[0], y0 + _crop_rows[1]
         _crop_rows = None
     dye = np.stack([
@@ -1028,23 +1034,17 @@ def _apply_film_core_v2(
             # tables) modulates the PRINT dye amounts before B2 viewing —
             # negative branch only; a directly-viewed reversal has no print
             # stage. Same user amount as the stock grain (one dial, two
-            # media); the seed is decorrelated from the stock field's
-            # realization phase, and the master field itself is shared via
-            # the field-geometry cache key.
-            _pf = None
-            _stash = locals().get("_field_stash")
-            if _stash and _stash.get("field") is not None:
-                # §11.2: derive instead of resampling — channel roll plus
-                # sign flip decorrelates the print realization from the
-                # negative's (per-channel cross-correlation -layer_corr,
-                # anti-aligned speckle) at zero sampling cost. A declared
-                # approximation of true independence, recorded here.
-                _f = _stash["field"]
-                _pf = np.ascontiguousarray(-_f[..., [2, 0, 1]])
+            # media). Review R1 item 6: the print realization is an
+            # INDEPENDENT keyed phase of the shared master (the derived
+            # seed below feeds realization_phases inside), replacing the
+            # old channel-roll+sign-flip derivation whose print field was
+            # fully predictable from the negative's (cross-correlation
+            # exactly -layer_corr). Cross-covariance with the stock field
+            # is now ~0 at all lags; the second sampling pass is paid for
+            # by the shared-corner sample_field rewrite (same batch).
             dye = apply_density_grain(
                 dye, b2["dye_lo"], b2["dye_hi"], ctx.band_geometry(y0, y1),
                 pos, ctx.grain, ctx.seed ^ 0x50524E54,
-                field_in=_pf,
             )
     u2 = amounts_to_unit(dye, b2["dye_lo"], b2["dye_hi"])
     developed = _tetrahedral(b2["volume"], u2.astype(np.float32), b2["n"])

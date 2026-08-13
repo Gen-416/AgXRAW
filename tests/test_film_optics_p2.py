@@ -310,9 +310,19 @@ class ExposureDirectionTests(unittest.TestCase):
             320, 480, diameter_mm=0.3, exposure_ev=5.0, background_ev=-4.0
         )
         energies = []
+        # Media scatter off on BOTH renders (review R1 item 4): the base
+        # render has no engaged optics and therefore no spatial context,
+        # while the halation render used to drag both scatter stages in
+        # with it — the isolated delta then measured scatter + halation
+        # and the exposure ordering inverted.
         for ev in (-1.0, 0.0, 1.0):
-            base = _develop(scene, film_exposure_ev=ev)
-            lit = _develop(scene, film_exposure_ev=ev, film_halation=0.6)
+            base = _develop(
+                scene, film_exposure_ev=ev, film_media_scatter="off"
+            )
+            lit = _develop(
+                scene, film_exposure_ev=ev, film_halation=0.6,
+                film_media_scatter="off",
+            )
             energies.append(float(np.sum(np.abs(lit - base))))
         self.assertLess(energies[0], energies[1])
         self.assertLess(energies[1], energies[2])

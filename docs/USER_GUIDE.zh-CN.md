@@ -139,8 +139,13 @@ RAW 也不会绕过这个分析前提。
   配方（对比/fog/色密度有界扰动，报告如实标注）、`--film-compression`
   （C1 高光压缩+高光色密度）与模拟光学 `--film-grain/--film-halation/
   --film-bloom`（GUI"模拟光学"档位；颗粒=固定统计主场+每张随机空间排布，
-  bloom=守恒介质散射——能量重分布不加光；预览与全尺寸共享同一实现，
-  `--film-optics-seed auto|N` 控制随机/复现，报告输出 effective seed）；
+  负片与相纸各自独立取相位（互不相关），
+  bloom=editorial 捕获辉光（进乳剂前的加性眩光,声明为编辑性,非守恒介质散射）；预览与全尺寸共享同一实现，
+  `--film-optics-seed auto|N` 控制随机/复现，报告输出 effective seed；
+  `--film-media-scatter declared|off` 单独声明介质自身的散射——乳剂散射
+  （§5.1）与相纸成像散射（§6.2）是所选介质的属性而非观感量：declared
+  （默认）在模拟光学链启用时按编译 profile 应用，off 显式关闭（也是
+  测量工具隔离单算子的口径），不再是观感滑杆的匿名副作用）；
 - 不加颗粒、不加暗角——改变的是"这台相机看世界的方式"；
 - **HDR 照常工作**：observe 模式一如既往；full 模式的 Ultra HDR 是
   "胶片印相 + scene HDR 扩展"——SDR 底图就是胶片印相（逐字节一致），

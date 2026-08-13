@@ -193,11 +193,22 @@ the reason this film simulation stays stable.
   contrast/fog/colour-density perturbations, honestly labelled in the
   report), `--film-compression` (C1 highlight compression plus highlight
   colour density), and the analog optics `--film-grain` / `--film-halation`
-  / `--film-bloom` (GUI: 模拟光学 tiers; grain = a fixed-statistics master
-  field with a per-photo random spatial arrangement, bloom = CONSERVATIVE
-  medium scatter that redistributes energy without adding light; preview
+  / `--film-bloom` (GUI: 模拟光学 tiers; grain = measured sigma(D) tables
+  on a fixed-statistics master field with a per-photo random spatial
+  arrangement — the negative and the print paper each take an independent
+  phase, so the two grain realizations are uncorrelated; bloom = the
+  EDITORIAL capture glow (additive, pre-emulsion,
+  declared as editorial — the old conservative medium scatter was retired);
+  preview
   and full-size export share one realization, --film-optics-seed auto|N
-  controls randomness/reproduction and the report prints the effective seed);
+  controls randomness/reproduction and the report prints the effective seed;
+  `--film-media-scatter declared|off` declares the media's OWN scatter
+  separately — the emulsion scatter (§5.1) and the print-formation scatter
+  (§6.2) are properties of the declared media, not look amounts: "declared"
+  (default) applies the compiled profile whenever the optics chain is
+  engaged, "off" disables both explicitly (also the operator-isolation
+  setting the measurement tooling uses) — no longer an anonymous side
+  effect of the look sliders);
 - No grain, no vignette — it changes *how the camera saw the world*;
 - **HDR keeps working**: observe mode as always; full-mode Ultra HDR is
   "film print + scene HDR extension" — the SDR base IS the film print

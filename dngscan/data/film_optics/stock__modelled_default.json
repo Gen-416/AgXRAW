@@ -9,7 +9,7 @@
  ],
  "anti_halation": "strong",
  "grain": {
-  "provenance": "measured",
+  "provenance": "derived",
   "medium": "negative",
   "model": "measured_sigma_v2",
   "pitch_um": 12.0,
@@ -27,30 +27,6 @@
      [
       0.23,
       0.005
-     ],
-     [
-      0.23,
-      0.004967
-     ],
-     [
-      0.23,
-      0.004933
-     ],
-     [
-      0.23,
-      0.0049
-     ],
-     [
-      0.23,
-      0.0052
-     ],
-     [
-      0.23,
-      0.0055
-     ],
-     [
-      0.23,
-      0.0058
      ],
      [
       0.2367,
@@ -159,18 +135,6 @@
      [
       0.66,
       0.0053
-     ],
-     [
-      0.66,
-      0.005267
-     ],
-     [
-      0.66,
-      0.005233
-     ],
-     [
-      0.66,
-      0.0052
      ],
      [
       0.6667,
@@ -291,18 +255,6 @@
      [
       1.02,
       0.0118
-     ],
-     [
-      1.02,
-      0.011767
-     ],
-     [
-      1.02,
-      0.011733
-     ],
-     [
-      1.02,
-      0.0117
      ],
      [
       1.0367,
@@ -427,7 +379,7 @@
   ]
  },
  "emulsion_scatter": {
-  "provenance": "measured",
+  "provenance": "derived",
   "model": "core_tail_v1",
   "source": "fitted from the digitized H-1-5207 MTF (dngscan/data/mtf/mtf_5207.json, tools/import_kodak_mtf.py); rms residuals 1-4.2%",
   "channels": {
@@ -565,11 +517,9 @@
   ]
  },
  "source_notes": [
-  "The default stock optics. Its halation block is the 35mm_strong_ah_modelled profile: P0 measured the first version's single-radius additive kernel at a 0.66-0.72 mm half-energy radius against its own declared 0.55 mm, a red-dominant halo even from a blue source, and +0.95% frame-wide red energy.",
-  "Grain constants are unchanged from the first version and are still known bad: 60 um blobs, Selwyn slope -0.44, 48 um RMS granularity 87 against ~4 for a real 400-speed stock. P4 replaces the model.",
-  "dc_mode is residual: the characteristic curve already contains the uniform-field reflection, so only the spatial part is reinjected.",
-  "2026-08-10 F1 fix: gate reference corrected to unity (layer exposure is already grey-normalized), so gate_ev now genuinely means scene EV above box-speed 18% grey. All gates shifted +2.2 EV to preserve the tuned look at film exposure 0; film exposure now moves the trigger in the physical direction.",
-  "grain V2 (P4): sigma(D) is measured (5207); per-curve binding (PGI-scaled Portra/Ektar, Velvia single-point) is recorded future work — one stock optics profile serves all curves today",
-  "optics V2 P5: emulsion_scatter activated with the measured 5207 MTF fit; engages with the spatial context (any optics amount > 0) as a medium property, not a user slider"
+  "GENERIC default profile (review R1 item 3): ONE stock optics asset serves every film curve today, so nothing here may claim to be the measured optics of the material being rendered. Blocks whose numbers come from Kodak 5207 measurements carry provenance `derived` — measured amplitude, generic binding; per-curve binding (true measured for vision3250d, PGI-scaled or own-scan for Portra/Ektar/Velvia) is the recorded follow-up.",
+  "halation: the 35mm_strong_ah_modelled component set (modelled; P2 geometry, dc_mode residual — the characteristic curve already holds the uniform-field reflection).",
+  "grain (V2 P4): sigma(D) amplitude digitized from H-1-5207 (measured source), field geometry pitch/size/layer_corr and the particle-oracle band mixture are modelled — hence `derived` overall. The dye-amount coordinate is treated as net Status-family density (R1 item 1); the residual densitometer crosstalk is not modelled.",
+  "emulsion_scatter (V2 P5): kernel fitted from the H-1-5207 MTF chart (measured source, fitted approximation -> `derived`); engages with the spatial context as a medium property."
  ]
 }

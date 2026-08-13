@@ -14,7 +14,6 @@ import unittest
 import numpy as np
 
 from dngscan.film_optics import (
-    _SCATTER_MIN_PX,
     apply_scatter_mix,
     scatter_halo_px,
 )
@@ -38,7 +37,8 @@ class ScatterMixTests(unittest.TestCase):
         stock, form = _kernels()
         self.assertIsNotNone(stock)
         self.assertIsNotNone(form)
-        self.assertEqual(stock.provenance, "measured")
+        # R1 item 7: a kernel FITTED from a measured chart is derived
+        self.assertEqual(stock.provenance, "derived")
         self.assertEqual(stock.model, "core_tail_v1")
         self.assertEqual(form.model, "gaussian_v1")
 
@@ -60,9 +60,14 @@ class ScatterMixTests(unittest.TestCase):
                 s = stock.s[ch]
                 wgt = stock.w[ch]
                 sg = stock.sigma_um[ch] * 1e-3
+                lm = stock.lambda_um[ch] * 1e-3
                 g = np.exp(-2.0 * np.pi ** 2 * sg ** 2 * cycles_per_mm ** 2)
-                # sub-pixel tail contributes identity at this pitch
-                want = (1.0 - s) + s * ((1.0 - wgt) * g + wgt * 1.0)
+                # review R1 item 2: the tail is IN the runtime now; the
+                # operator budget is checked against the exponential-form
+                # FIT, with the sqrt(3)*lambda Gaussian approximation's
+                # own error bounded (<=1.5 pp at 50 c/mm)
+                e = (1.0 + (2.0 * np.pi * lm * cycles_per_mm) ** 2) ** -1.5
+                want = (1.0 - s) + s * ((1.0 - wgt) * g + wgt * e)
                 self.assertLess(
                     abs(mod - want), 0.03,
                     f"ch{ch} f={cycles_per_mm}: got {mod:.4f} want {want:.4f}",
@@ -78,20 +83,30 @@ class ScatterMixTests(unittest.TestCase):
                 "normalized kernels must leave a uniform patch unchanged",
             )
 
-    def test_sub_resolving_pitch_is_exact_identity(self) -> None:
+    def test_inert_pitch_is_exact_identity(self) -> None:
         stock, form = _kernels()
         rng = np.random.default_rng(3)
         img = rng.uniform(0.1, 2.0, (32, 64, 3))
-        # 900px over the 36mm gate: 40 um pixels — every component of both
-        # media falls below the resolving scale and the mix must not touch
-        # the image (and must not pay halo rows). At a 1920px preview the
-        # 2383 G kernel (14.4 um) genuinely resolves, and applying it there
-        # is the physically consistent behaviour, not an error.
-        out = apply_scatter_mix(img, 36.0 / 900.0, stock)
+        # Review R1 item 2 changed the skip rule from kernel SCALE to mix
+        # DEPTH (s*w*(1-MTF@Nyquist) < 1%). At 180px over the gate
+        # (200 um pixels) every component's removable depth is
+        # sub-percent, so the mix is exact identity and pays no halo; at
+        # working pitches the components stay live even when sub-pixel —
+        # dropping the R tail at 6 um/px cost 5.6 pp at 50 c/mm.
+        out = apply_scatter_mix(img, 36.0 / 180.0, stock)
         np.testing.assert_allclose(out, img.astype(np.float32), rtol=2e-6)
-        out = apply_scatter_mix(img, 36.0 / 900.0, form)
+        out = apply_scatter_mix(img, 36.0 / 180.0, form)
         np.testing.assert_allclose(out, img.astype(np.float32), rtol=2e-6)
-        self.assertEqual(scatter_halo_px((stock, form), 36.0 / 900.0), 0)
+        self.assertEqual(scatter_halo_px((stock, form), 36.0 / 180.0), 0)
+
+    def test_tail_depth_is_present_at_working_pitch(self) -> None:
+        # the R channel's exponential tail must NOT collapse to identity
+        # at 6 um/px: its removal shifts 50 c/mm response by ~5.6 pp
+        stock, _ = _kernels()
+        from dngscan.film_optics import _scatter_components
+
+        comps = _scatter_components(stock, 0, 0.006)  # R channel
+        self.assertEqual(len(comps), 2, "core AND tail must both be live")
 
     def test_halo_rows_cover_the_largest_kernel(self) -> None:
         stock, form = _kernels()
@@ -176,6 +191,56 @@ class HaloBandProtocolTests(unittest.TestCase):
         self.assertGreater(ctx.scatter_halo_rows(), 0)
         with self.assertRaises(ValueError):
             apply_film_core(flat[:16 * w], plan, spatial=(ctx, 0, 16))
+
+    def test_media_scatter_off_disables_both_stages(self) -> None:
+        """Review R1 item 4: film_media_scatter="off" must silence the halo
+        demand and both develop stages — the media optics have their own
+        enablement instead of riding whichever look slider engages the
+        spatial context."""
+        from dngscan.film_develop import apply_film_core, prepare_film_spatial
+
+        h, w = self.H, self.W
+        plan_on = self._plan()
+        plan_off = self._plan()
+        plan_off.film_media_scatter = "off"
+        ctx_off = prepare_film_spatial(plan_off, h, w)
+        self.assertEqual(ctx_off.scatter_halo_rows(), 0)
+        # A halation render with scatter off differs from the same render
+        # with scatter on wherever the kernels resolve — and NOT through
+        # the halation operator itself (same seed, same maps).
+        rng = np.random.default_rng(7)
+        flat = rng.uniform(0.05, 0.6, size=(h * w, 3)).astype(np.float32)
+        ctx_on = prepare_film_spatial(plan_on, h, w)
+        self.assertGreater(ctx_on.scatter_halo_rows(), 0)
+        on = apply_film_core(flat, plan_on, spatial_shape=(h, w))
+        off = apply_film_core(flat, plan_off, spatial_shape=(h, w))
+        self.assertGreater(float(np.max(np.abs(on - off))), 1e-7)
+
+
+class MtfResidualBudgetTests(unittest.TestCase):
+    """Review R1 item 2: the transfer budget MTF_measured / MTF_explicit is
+    computed from the SHIPPED assets and bounded. The bound is the declared
+    chart read-off uncertainty (±5%, ±8% low-frequency) plus the documented
+    adjacency bump (a chemical edge effect a passive scatter mix cannot
+    reproduce, ~3-8%): |log residual| <= log(1.15). A regression past that
+    means the shipped kernel no longer explains the measurement it cites."""
+
+    def test_residual_stays_inside_declared_budget(self) -> None:
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        try:
+            import film_optics_report as report_tool
+        finally:
+            sys.path.pop(0)
+        res = report_tool.measure_mtf_residual()
+        for name in ("5207_emulsion", "2383_formation"):
+            with self.subTest(asset=name):
+                self.assertIsNotNone(res[name])
+                self.assertLess(
+                    res[name]["max_abs_log_residual"], float(np.log(1.15))
+                )
 
 
 if __name__ == "__main__":

@@ -376,6 +376,13 @@ class ToneCompressionPlan:
     film_halation: float = 0.0
     film_bloom: float = 0.0
     film_optics_seed: int = 0
+    # Review R1 item 4: the media scatter (emulsion §5.1 / formation §6.2)
+    # is a property of the declared media, not a look amount, so it gets its
+    # own enablement instead of riding whichever optics slider first engages
+    # the spatial context. "declared" applies the compiled profile's scatter;
+    # "off" renders without it (also the operator-isolation setting for
+    # measurement tooling).
+    film_media_scatter: str = "declared"
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0
