@@ -284,6 +284,10 @@ def build_raw_guidance_maps(
     masks = getattr(bundle, "clip_masks", None)
     if masks is None:
         return None
+    if getattr(bundle, "raw_image", None) is None:
+        # R4 F2: a cache-proxy bundle has no mosaic to measure; whatever maps
+        # it carries were built from the full mosaic at entry-build time.
+        return getattr(bundle, "raw_guidance", None)
     target_shape = np.asarray(masks).shape[:2]
     headroom = _raw_headroom_rgb(bundle, target_shape, analysis)
     clip_class = clip_class_from_masks(saturation_proximity_from_headroom(headroom).reshape(-1, 3)).reshape(target_shape)
@@ -307,10 +311,19 @@ def ensure_raw_guidance(bundle: RawBundle, analysis: Analysis | None = None) -> 
     # R3 item 4: maps built before the analysis existed measured headroom
     # against metadata white; once the resolved per-channel fullwell is
     # available they must be rebuilt on it, same upgrade rule as the
-    # sensor-SNR prior.
-    wants_resolved_fullwell = bool(getattr(analysis, "channel_fullwell", None))
+    # sensor-SNR prior. R4 F2: an upgrade demands the MOSAIC — cache-proxy
+    # bundles carry raw_image=None precisely because their guidance was
+    # already built (with the analysis) at entry-build time, so for them the
+    # cached maps ARE the upgraded maps and a forced rebuild would crash on
+    # the missing mosaic.
+    can_rebuild = getattr(bundle, "raw_image", None) is not None
+    wants_resolved_fullwell = (
+        bool(getattr(analysis, "channel_fullwell", None)) and can_rebuild
+    )
     if getattr(bundle, "raw_guidance", None) is not None and (
-        not wants_sensor_snr or getattr(bundle, "_raw_guidance_has_sensor_snr", False)
+        not wants_sensor_snr
+        or getattr(bundle, "_raw_guidance_has_sensor_snr", False)
+        or not can_rebuild
     ) and (
         not wants_resolved_fullwell
         or getattr(bundle, "_raw_guidance_has_resolved_fullwell", False)

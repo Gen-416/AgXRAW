@@ -174,7 +174,9 @@ class NamingMigrationTests(unittest.TestCase):
     def test_service_maps_names_and_rejects_unknown(self) -> None:
         from dngscan.gui.service import parse_film_params
 
-        base = {"film": "portra400", "filmMode": "full"}
+        # R4: filmMode=full without a filmCurve is now rejected (the "film"
+        # key is the GUI combo, not the parser's curve field).
+        base = {"film": "portra400", "filmCurve": "portra400", "filmMode": "full"}
         for name, expect in (
             ("technical-neutral", "off"), ("bounded", "off"),
             ("print-balanced", "print"), ("native", "datasheet"),

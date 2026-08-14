@@ -825,10 +825,13 @@ def scatter_halo_px(kernels, mm_per_px: float) -> int:
 
     The kernels CASCADE (emulsion scatter on layer exposure, formation
     scatter on print exposure), so their finite supports ADD: the halo is
-    the SUM over stages of each stage's largest kernel radius (the blur
-    truncates its taps at 3 sigma, so this bound is exact, not merely
-    asymptotic — taking the max across stages left a measurable 3.5e-5
-    band seam from the second stage reading the first stage's own halo)."""
+    the SUM over stages of each stage's largest ACTUAL kernel support —
+    ceil(3 sigma) for the slabbed Gaussian, but a hard +-2 taps for the
+    frequency-matched small-sigma kernel every component below 1 px routes
+    through (R4: the old ceil(3 sigma) bound under-counted exactly there —
+    a live sigma <= 1/3 px declared radius 1 while the 5-tap kernel reads 2,
+    a measured 4.0e-4 band seam at ~43 um/px; taking the max across stages
+    earlier left the same class of seam at 3.5e-5)."""
     total = 0.0
     for kernel in kernels:
         if kernel is None:
@@ -836,7 +839,8 @@ def scatter_halo_px(kernels, mm_per_px: float) -> int:
         stage = 0.0
         for ch in range(3):
             for scale, _w in _scatter_components(kernel, ch, mm_per_px):
-                stage = max(stage, np.ceil(3.0 * scale))
+                support = 2.0 if scale < 1.0 else float(np.ceil(3.0 * scale))
+                stage = max(stage, support)
         total += stage
     return int(total)
 

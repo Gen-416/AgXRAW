@@ -34,3 +34,9 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 mv -f "$STAGED_MODULE" "$TARGET_MODULE"
 echo "Installed native module into dngscan/"
+# R4: this dev copy lives INSIDE the package directory. scikit-build-core
+# packages the source tree, so a wheel built from this working tree would
+# ship the stale dev binary alongside the CMake-installed one (dead weight,
+# wrong ABI on other interpreters). Build release wheels from a clean
+# checkout: git stash -u / fresh clone, or delete dngscan/*.so first.
+echo "NOTE: remove dngscan/*.so before building a wheel (dev copy must not ship)."

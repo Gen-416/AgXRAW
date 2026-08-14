@@ -2,6 +2,7 @@
 """SDR and Apple ISO gain-map HDR JPEG export."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,20 @@ def save_jpeg_array(
     icc_profile = output_icc_profile_bytes(output_gamut)
     if icc_profile is not None:
         pil_kwargs["icc_profile"] = icc_profile
-    Image.fromarray(rgb_u8, mode="RGB").save(str(out_path), format="JPEG", **pil_kwargs)
+    # R4: temp-write + atomic replace, matching the HDR writer — a direct
+    # write destroyed a pre-existing good file the moment an interrupted run
+    # left a truncated JPEG behind.
+    tmp_path = out_path.with_name(f"{out_path.name}.{os.getpid()}.tmp")
+    try:
+        Image.fromarray(rgb_u8, mode="RGB").save(
+            str(tmp_path), format="JPEG", **pil_kwargs
+        )
+        os.replace(tmp_path, out_path)
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     return icc_profile is not None
 
 
@@ -62,6 +76,9 @@ def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
     untouched when ImageIO or the source metadata is unavailable (non-macOS
     hosts keep the previous pixels-only behaviour).
     """
+    tmp_path = out_jpeg.with_name(
+        f"{out_jpeg.name}.meta.{os.getpid()}.tmp"
+    )
     try:
         import Quartz  # type: ignore
         from Foundation import NSURL  # type: ignore
@@ -75,33 +92,67 @@ def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
         if meta is None:
             return False
         mutable = Quartz.CGImageMetadataCreateMutableCopy(meta)
-        if mutable is not None:
-            Quartz.CGImageMetadataSetValueMatchingImageProperty(
-                mutable,
-                Quartz.kCGImagePropertyTIFFDictionary,
-                Quartz.kCGImagePropertyTIFFOrientation,
-                1,
-            )
-            # The capture is a mosaic container; its FORMAT descriptors must
-            # not follow the capture metadata onto a rendered JPEG
-            # (PhotometricInterpretation=32803 means CFA, and a JPEG saying
-            # so is lying about its own encoding).
-            for tag_path in (
-                "tiff:PhotometricInterpretation",
-                "exif:CFAPattern",
-                "exif:SensingMethod",
-            ):
-                try:
-                    Quartz.CGImageMetadataRemoveTagWithPath(mutable, None, tag_path)
-                except Exception:
-                    pass
-            meta = mutable
+        if mutable is None:
+            # R4 F6a: without the mutable copy the scrubs below cannot run,
+            # and writing the ORIGINAL metadata would carry the capture's
+            # rotation tag and CFA descriptors — the exact lies this
+            # function's contract forbids. No scrub, no carry.
+            return False
+        Quartz.CGImageMetadataSetValueMatchingImageProperty(
+            mutable,
+            Quartz.kCGImagePropertyTIFFDictionary,
+            Quartz.kCGImagePropertyTIFFOrientation,
+            1,
+        )
+        # The capture is a mosaic container; its FORMAT descriptors must
+        # not follow the capture metadata onto a rendered JPEG
+        # (PhotometricInterpretation=32803 means CFA, and a JPEG saying
+        # so is lying about its own encoding). R4: the capture-container
+        # Exif descriptors join the scrub — PixelX/YDimension are mandatory
+        # fields that must equal the RENDERED dimensions (a 6000x4000 claim
+        # on a 2000px export fails validators; rotated captures would even
+        # transpose them), and compression/components/gamma/colour-space
+        # describe the RAW container, not this JPEG (whose gamut is declared
+        # by its embedded ICC).
+        for tag_path in (
+            "tiff:PhotometricInterpretation",
+            "exif:CFAPattern",
+            "exif:SensingMethod",
+            "exif:PixelXDimension",
+            "exif:PixelYDimension",
+            "exif:CompressedBitsPerPixel",
+            "exif:ComponentsConfiguration",
+            "exif:Gamma",
+            "exif:ColorSpace",
+        ):
+            try:
+                Quartz.CGImageMetadataRemoveTagWithPath(mutable, None, tag_path)
+            except Exception:
+                pass
+        # Rewrite the dimension fields with the JPEG's own geometry.
         jpeg_src = Quartz.CGImageSourceCreateWithURL(
             NSURL.fileURLWithPath_(str(out_jpeg)), None
         )
         if jpeg_src is None:
             return False
-        tmp_path = out_jpeg.with_name(out_jpeg.name + ".meta.tmp")
+        props = Quartz.CGImageSourceCopyPropertiesAtIndex(jpeg_src, 0, None)
+        if props:
+            width = props.get(Quartz.kCGImagePropertyPixelWidth)
+            height = props.get(Quartz.kCGImagePropertyPixelHeight)
+            if width and height:
+                Quartz.CGImageMetadataSetValueMatchingImageProperty(
+                    mutable,
+                    Quartz.kCGImagePropertyExifDictionary,
+                    Quartz.kCGImagePropertyExifPixelXDimension,
+                    int(width),
+                )
+                Quartz.CGImageMetadataSetValueMatchingImageProperty(
+                    mutable,
+                    Quartz.kCGImagePropertyExifDictionary,
+                    Quartz.kCGImagePropertyExifPixelYDimension,
+                    int(height),
+                )
+        meta = mutable
         dest = Quartz.CGImageDestinationCreateWithURL(
             NSURL.fileURLWithPath_(str(tmp_path)), "public.jpeg", 1, None
         )
@@ -116,12 +167,20 @@ def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
         )
         ok = bool(result[0] if isinstance(result, tuple) else result)
         if not ok or not tmp_path.is_file():
-            tmp_path.unlink(missing_ok=True)
             return False
         tmp_path.replace(out_jpeg)
         return True
     except Exception:
         return False
+    finally:
+        # R4 F6b: the tmp must not survive ANY failure path — the old code
+        # unlinked it only on the explicit not-ok branch, so an exception
+        # mid-write leaked it (and a fixed name collided across concurrent
+        # exports; the pid suffix above removes that).
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def export_ultrahdr_jpeg(

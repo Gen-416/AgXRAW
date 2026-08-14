@@ -91,7 +91,6 @@ def fullwell_note_cn(note: str) -> str:
     mapping = {
         "weak ceiling channels excluded from fullwell": "弱满阱通道已排除",
         "all channels have ceiling pile": "所有通道都有可靠满阱堆积",
-        "no strong ceiling pile; fullwell is uncertain": "没有可靠满阱堆积，满阱估计不确定",
         "no ceiling pile; fullwell from metadata white_level": "无满阱堆积，改用元数据 white_level 估计满阱",
     }
     return mapping.get(note, note)

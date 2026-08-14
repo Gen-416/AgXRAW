@@ -132,7 +132,9 @@ class CustomControlTests(unittest.TestCase):
     def test_service_guards_the_modifiers(self) -> None:
         from dngscan.gui.service import parse_film_params
 
-        base = {"film": "portra400", "filmMode": "full"}
+        # R4: filmMode=full without a filmCurve is now rejected (the "film"
+        # key is the GUI combo, not the parser's curve field).
+        base = {"film": "portra400", "filmCurve": "portra400", "filmMode": "full"}
         out = parse_film_params({
             **base, "filmAppearance": "custom", "filmRichness": 0.4,
         })

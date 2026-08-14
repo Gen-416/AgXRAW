@@ -504,7 +504,7 @@ def scene_render_to_display_linear(
         )
     halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
     if halo_rows > 0:
-        # amortize the halo redundancy: with 2x bands the extra rows fall
+        # amortize the halo redundancy: with 3x bands the extra rows fall
         # to half their share of the chain; the slab stays row-aligned
         chunk = min(chunk * 3, flat_scene.shape[0])
     for start in range(0, flat_scene.shape[0], chunk):

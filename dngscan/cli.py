@@ -624,8 +624,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--output-gamut",
         choices=("srgb", "p3"),
-        default="srgb",
-        help="JPEG 输出色彩空间: srgb=兼容优先；p3=Display P3 并嵌入 ICC",
+        default=None,
+        help=(
+            "JPEG 输出色彩空间: srgb=兼容优先；p3=Display P3 并嵌入 ICC。"
+            "缺省时:SDR 为 srgb,HDR 容器为 p3(合同固定)。HDR 下显式指定 "
+            "srgb 会报错而不是被静默改写"
+        ),
     )
     args = parser.parse_args(argv)
     if args.coreimage_scale is not None and args.decoder != "coreimage":
@@ -856,6 +860,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     args.delivery_profile = str(args.delivery.name)
     args.jpeg_quality = int(args.delivery.quality)
     args.chroma = str(args.delivery.chroma)
+    # R4: the HDR base-image gamut is a container contract (Display P3), and
+    # an explicit srgb used to be silently coerced — unlike every sibling
+    # contradiction, which fails loudly. The None default makes an explicit
+    # request distinguishable at last.
+    if is_hdr_output_format(args.output_format):
+        if args.output_gamut == "srgb":
+            parser.error(
+                "HDR gain-map 容器的底图合同固定为 Display P3；"
+                "--output-gamut srgb 与 HDR 输出互斥,请去掉该参数或改用 "
+                "--output-format sdr"
+            )
+        args.output_gamut = "p3"
+    elif args.output_gamut is None:
+        args.output_gamut = "srgb"
     if args.decoder == "coreimage" and args.tone_core == "gated":
         # gated is defined as "RAW evidence gates the colour path"; the Core Image
         # pipeline has no per-pixel CFA evidence, so the combination is meaningless
@@ -890,6 +908,16 @@ def main(argv: list[str]) -> int:
             raise FileNotFoundError(f"Input file does not exist: {args.path}")
         if not args.path.is_file():
             raise FileNotFoundError(f"Input path is not a file: {args.path}")
+        if args.support:
+            # R4: the support probe never plots — it must not demand
+            # matplotlib through the "no --jpeg/--csv means dashboard"
+            # default below (its own core deps still gate).
+            require_dependencies()
+            from .decode_support import probe_decode_support
+
+            for line in probe_decode_support(args.path)["lines"]:
+                print(line)
+            return 0
         # Mirrors scan_requested below: the six-panel dashboard also runs
         # by default when neither --jpeg nor --csv was asked for.
         require_dependencies(
@@ -898,12 +926,6 @@ def main(argv: list[str]) -> int:
                 or (args.jpeg is None and args.csv is None)
             )
         )
-        if args.support:
-            from .decode_support import probe_decode_support
-
-            for line in probe_decode_support(args.path)["lines"]:
-                print(line)
-            return 0
         if is_hdr_output_format(args.output_format):
             from .gainmap import apple_gainmap_backend_status
 
@@ -1131,6 +1153,12 @@ def main(argv: list[str]) -> int:
                 if isinstance(export_result, dict)
                 else bool(export_result)
             )
+            # R4: the HDR exporter may rewrite the suffix to match the actual
+            # container (any non-heic -> .heic for ultrahdr-heic, .heic ->
+            # .jpg for ultrahdr) beyond the narrow rewrite above. The report
+            # and CSV must name the file that EXISTS, not the one requested.
+            if isinstance(export_result, dict) and export_result.get("output_path"):
+                jpeg_path = Path(str(export_result["output_path"]))
 
         if args.csv is not None:
             # Only built on demand: without --scan/--csv the analysis deliberately
@@ -1151,6 +1179,7 @@ def main(argv: list[str]) -> int:
                 args.grade_strength,
                 args.scene_transform,
                 args.scene_transform_strength,
+                chroma=args.chroma if jpeg_path is not None else "444",
             )
             write_csv(args.csv, row)
         print_report(
@@ -1170,6 +1199,7 @@ def main(argv: list[str]) -> int:
             args.grade_strength,
             args.scene_transform,
             args.scene_transform_strength,
+            chroma=args.chroma if jpeg_path is not None else "444",
         )
         if jpeg_path is not None and is_hdr_output_format(args.output_format):
             container = "HEIC" if args.output_format == "ultrahdr-heic" else "JPEG"

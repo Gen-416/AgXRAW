@@ -249,6 +249,7 @@ def print_report(
     jpeg_grade_strength: float = 1.0,
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
+    chroma: str = "444",
 ) -> None:
     for line in summary_lines(bundle, analysis):
         print(line)
@@ -352,7 +353,7 @@ def print_report(
                 f"全图亮度参考：提升 {auto_ev.ev_boost:+.2f} EV（相对 EV 0）"
                 f"{limit_note}；应用 EV={auto_ev.ev:+.2f}"
             )
-        print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, 'curve_preset', 'none'), getattr(tone_plan, 'film_mode', 'observe'))}")
+        print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, 'curve_preset', 'none'), getattr(tone_plan, 'film_mode', 'observe'), chroma)}")
         plan_line = jpeg_tone_plan_cn(
             bundle,
             analysis,
@@ -368,9 +369,14 @@ def print_report(
 
 def jpeg_policy_cn(
     mode: str, output_gamut: str = "srgb", curve_preset: str = "none",
-    film_mode: str = "observe",
+    film_mode: str = "observe", chroma: str = "444",
 ) -> str:
     label = output_gamut_label(output_gamut)
+    # R4: the sampling is the delivery profile's, not a constant — a share
+    # export writes 4:2:0 and the policy line must say so.
+    _chroma = {"444": "4:4:4", "422": "4:2:2", "420": "4:2:0"}.get(
+        str(chroma), str(chroma)
+    )
     if mode == "agx":
         if film_mode == "full" and str(curve_preset or "none") != "none":
             # A8 item 5: the runtime is the FACTORISED film chain since
@@ -382,9 +388,9 @@ def jpeg_policy_cn(
                 f"颜色进入因式分解的胶片链（Stage A 观察者→层曝光→特性密度 "
                 f"→ B1 → 印相 timing → 相纸显影 → B2 → 灰阶中性化 → 可选参考"
                 f"印相外观层），AgX 仅保留交付侧色域安全；"
-                f"最后转 {label}；4:4:4 色度采样"
+                f"最后转 {label}；{_chroma} 色度采样"
             )
-        return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore→outset（负片色头档位>0 时后接 LMS 对角增益场）；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；4:4:4 色度采样"
+        return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore→outset（负片色头档位>0 时后接 LMS 对角增益场）；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；{_chroma} 色度采样"
     if mode == "lum":
         return f"lum: scene-linear Rec.2020 工作空间；逐像素 CFA mask 存在时驱动曲线前褪白；场景编译 C1 作用于标量亮度/norm，RGB 比例保持；显示白附近再温和褪色；无 AgX inset/outset，最后转 {label} 并做输出色域 fit"
     if mode == "gated":
@@ -500,15 +506,20 @@ def jpeg_tone_plan_cn(
             )
             if val > 0.0
         ]
-        if optics:
-            # §12.2 refuses a bare "模拟光学 standard": a reader must be able
-            # to tell which asset produced the halo and how honest each field
-            # is without opening the source. The compiled plan owns those
-            # answers, so the line is built from it rather than re-derived.
-            from .film_optics_assets import compile_film_optics_plan
+        # §12.2 refuses a bare "模拟光学 standard": a reader must be able
+        # to tell which asset produced the halo and how honest each field
+        # is without opening the source. The compiled plan owns those
+        # answers, so the line is built from it rather than re-derived.
+        # R4: the line prints whenever the compile ENGAGES — since R3 the
+        # scatter-only default (media scatter declared, all look amounts 0)
+        # applies two derived spatial stages, and gating this line on the
+        # look amounts made a default export and a --film-media-scatter off
+        # export print byte-identical reports for different pixels.
+        from .film_optics_assets import compile_film_optics_plan
 
-            optics_plan = compile_film_optics_plan(plan)
-            rep = optics_plan.report() if optics_plan is not None else {}
+        optics_plan = compile_film_optics_plan(plan)
+        if optics_plan is not None:
+            rep = optics_plan.report()
             prov = rep.get("provenance", {})
             # Review R1 item 4: the media scatter state and the emulsion
             # scatter's provenance are part of the line — both stages apply
@@ -519,7 +530,7 @@ def jpeg_tone_plan_cn(
                 getattr(plan, "film_media_scatter", "declared") or "declared"
             )
             state += (
-                "模拟光学 " + "·".join(optics)
+                "模拟光学 " + ("·".join(optics) if optics else "无观感量(仅介质散射)")
                 + f"·seed={int(rep.get('seed', 0))}"
                 + f"·胶片资产={rep.get('stock_optics', '?')}"
                 + f"(颗粒{prov.get('grain') or '—'}"
@@ -606,6 +617,7 @@ def csv_row(
     jpeg_grade_strength: float = 1.0,
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
+    chroma: str = "444",
 ) -> dict[str, Any]:
     reported_mode = (
         str(getattr(tone_plan, "tone_core", jpeg_mode))
@@ -694,7 +706,7 @@ def csv_row(
         "jpeg_exposure_gain": bundle.exposure_gain if jpeg_path is not None else "",
         "jpeg_icc_embedded": jpeg_icc_embedded if jpeg_path is not None else "",
         "jpeg_srgb_icc_embedded": jpeg_icc_embedded if jpeg_path is not None and output_gamut == "srgb" else "",
-        "jpeg_policy_cn": jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, "curve_preset", "none"), getattr(tone_plan, "film_mode", "observe")) if jpeg_path is not None else "",
+        "jpeg_policy_cn": jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, "curve_preset", "none"), getattr(tone_plan, "film_mode", "observe"), chroma) if jpeg_path is not None else "",
         "jpeg_tone_plan_cn": jpeg_tone_plan_cn(
             bundle,
             analysis,

@@ -384,8 +384,6 @@ def render_ultrahdr_film_pair(
     # error at a mere +0.15 EV headroom). Everything is banded float32 —
     # the previous full-frame float64 decode held ~1.4 GB at 60 MP.
     from .color import srgb_decode
-    from .film_develop import film_reference_white_ev
-    from .film_v2_math import film_hdr_gain_log2
 
     color_plan = plan.color
     gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05

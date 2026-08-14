@@ -558,7 +558,7 @@ class DarkSceneTonePlanTest(unittest.TestCase):
             camera_white_levels=[16383, 16383, 16383],
             exposure_gain=compute_exposure_gain("agx", 0.0),
         )
-        plan = build_tone_compression_plan(bundle, self._dark_analysis(), "Rec2020", ev_from_agx_inset=True)
+        plan = build_tone_compression_plan(bundle, self._dark_analysis(), "Rec2020")
         # The automatic path keeps the pivot at mid gray: measured on a real night frame,
         # relocating it either crushes the subject (EV0 anchored) or blows EV0 to white
         # (subject brightness preserved). See the pivot comment in tone.py.
@@ -594,7 +594,7 @@ class DarkSceneTonePlanTest(unittest.TestCase):
             camera_white_levels=[16383, 16383, 16383],
             exposure_gain=gain,
         )
-        plan = build_tone_compression_plan(bundle, self._dark_analysis(), "Rec2020", ev_from_agx_inset=True)
+        plan = build_tone_compression_plan(bundle, self._dark_analysis(), "Rec2020")
         inset, outset = formation_matrices(plan)
         boosted = (scene * gain).astype(np.float32)
         out = apply_core(boosted, plan, inset, outset)
