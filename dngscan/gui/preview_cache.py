@@ -23,7 +23,11 @@ from .constants import PROXY_LONG_EDGE
 # v11: RAW guidance gained the compiled permission map. Older entries can still
 # recompute it, but forcing one rebuild keeps the preview hot path and its exactness
 # contract independent of which cache version happened to be on disk.
-PREVIEW_CACHE_VERSION = 12
+# v13 (review R4): analyses always carry snr_curves now (R2 item 1 made the
+# SNR curve a render input), so the serializer must round-trip its ndarrays —
+# and entries written before that change hold empty curves that would compile
+# a silently NEUTRAL tail-SNR gate at export. Both demand invalidation.
+PREVIEW_CACHE_VERSION = 13
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -275,7 +279,20 @@ def _cache_identity(
 
 
 def _analysis_to_json(analysis: Analysis) -> dict[str, Any]:
-    return asdict(analysis)
+    data = asdict(analysis)
+    # R4 F1: snr_curves holds ndarrays ("stops"/"snr_db"/"count" per channel
+    # group) since the SNR curve became a render input; json.dumps refuses
+    # ndarrays, and _write_disk_entry's OSError guard would surface that as a
+    # failed preview build on every cold load. Serialize them as lists.
+    curves = data.get("snr_curves") or {}
+    data["snr_curves"] = {
+        group: {
+            key: (np.asarray(value).tolist() if key != "ids" else list(value))
+            for key, value in curve.items()
+        }
+        for group, curve in curves.items()
+    }
+    return data
 
 
 def _analysis_from_json(data: dict[str, Any]) -> Analysis:
@@ -284,6 +301,16 @@ def _analysis_from_json(data: dict[str, Any]) -> Analysis:
         values = restored.get(field)
         if isinstance(values, dict):
             restored[field] = {int(key): value for key, value in values.items()}
+    curves = restored.get("snr_curves") or {}
+    restored["snr_curves"] = {
+        group: {
+            "stops": np.asarray(curve.get("stops", ()), dtype=np.float32),
+            "snr_db": np.asarray(curve.get("snr_db", ()), dtype=np.float32),
+            "count": np.asarray(curve.get("count", ()), dtype=np.int32),
+            "ids": [int(v) for v in curve.get("ids", ())],
+        }
+        for group, curve in curves.items()
+    }
     return Analysis(**restored)
 
 

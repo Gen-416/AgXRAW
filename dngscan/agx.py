@@ -238,10 +238,12 @@ def formation_matrices(plan: Any) -> tuple[Any, Any]:
 def compute_pivot_ev_offset(body_ev_p50: float, black_ev: float, white_ev: float) -> float:
     """Move max-contrast pivot toward the scene body (darktable picker workflow).
 
-    Wired into build_tone_compression_plan for the AgX-family cores. curve_params holds
-    the calibrated EV0 -> 18% anchor via a bisection on the pivot output, so a negative
-    body_ev_p50 pulls the steep part of the curve onto the subject without changing the
-    frame's overall brightness mapping.
+    NOT wired into production (R4): build_tone_compression_plan hardcodes
+    pivot_ev_offset = 0.0 and documents why — a measured night-frame refutation
+    showed a lone automatic pivot knob crushes the subject or blows EV0 unless
+    contrast/toe/shoulder are re-solved jointly. This function stays compiled-in
+    and tested so the capability is ready if that 2-D solve is ever attempted;
+    curve_params can hold the EV0 -> 18% anchor while the pivot moves.
     """
     if body_ev_p50 >= -0.25:
         return 0.0

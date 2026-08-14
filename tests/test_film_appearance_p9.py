@@ -116,7 +116,7 @@ class VariantPlumbingTests(unittest.TestCase):
     def test_service_parses_and_guards_the_variant(self) -> None:
         from dngscan.gui.service import parse_film_params
 
-        base = {"film": "vision3250d", "filmMode": "full"}
+        base = {"film": "vision3250d", "filmCurve": "vision3250d", "filmMode": "full"}
         out = parse_film_params({
             **base, "filmAppearance": "reference",
             "filmAppearanceVariant": "extended",

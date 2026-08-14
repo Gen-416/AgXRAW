@@ -408,7 +408,6 @@ def build_tone_compression_plan(
     bundle: RawBundle,
     analysis: Analysis,
     target_gamut: str,
-    ev_from_agx_inset: bool = False,
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
     punch_scale: float = 1.0,
@@ -446,9 +445,6 @@ def build_tone_compression_plan(
     xyz = rec2020_to_xyz(rec2020)
     y = np.clip(xyz[:, 1], 0.0, None)
     ev_p1 = metrics.body_ev_p1
-    ev_p50 = metrics.body_ev_p50
-    ev_p99 = metrics.body_ev_p99
-    ev_p999 = metrics.body_ev_p999
     luma_p1, luma_p50, luma_p99, luma_p999 = [float(v) for v in np.percentile(y, [1.0, 50.0, 99.0, 99.9])]
 
     plan_dr = analysis.usable_dr_eff_ev if math.isfinite(analysis.usable_dr_eff_ev) else analysis.usable_dr_ev
@@ -468,7 +464,11 @@ def build_tone_compression_plan(
 
     # The complete tail describes topology (for example, sparse emitters), but has no
     # authority over the global white endpoint: reconstructed/RAW-clipped values are not
-    # measured scene radiometry. Only the reliable tail may set the shoulder endpoint.
+    # measured scene radiometry. The reliable tail sets the shoulder endpoint whenever
+    # it exists; when evidence is insufficient (reliable p9999 NaN), the complete tail
+    # is the DECLARED defensive fallback for the adaptive SDR endpoint — SDR may render
+    # with it, HDR headroom may not (reliable_scene_ev_selection's contract), and
+    # evidence-endpoint mode labels the same fallback in its endpoint note.
     white_margin = 0.50 if metrics.sparse_emitter_tail else 0.30
     min_white_ev = 3.50 if metrics.sparse_emitter_tail else 3.00
     reliable_white_tail = metrics.reliable_tail_ev_p9999
@@ -823,7 +823,6 @@ def build_render_plan(
         bundle,
         analysis,
         target_gamut,
-        ev_from_agx_inset=False,
         scene_transform=scene_transform if mode == "agx" else "none",
         scene_transform_strength=scene_transform_strength,
         punch_scale=punch_scale if mode == "agx" else 0.0,

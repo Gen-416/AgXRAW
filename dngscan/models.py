@@ -111,6 +111,10 @@ class RawBundle:
     _raw_guidance_cache_shape: tuple[int, int] | None = None
     _raw_guidance_resized: Any | None = None
     _raw_guidance_has_sensor_snr: bool = False
+    # R4 F5: declared as a field (like the sensor-SNR flag) so
+    # dataclasses.replace copies preserve it — an ad-hoc attribute was lost on
+    # every bundle stage transition, re-running full-frame guidance builds.
+    _raw_guidance_has_resolved_fullwell: bool = False
     # Scene-linear RGB producer. Mosaic and levels are always LibRaw-derived; per-pixel
     # clip_masks are LibRaw-derived on the libraw path and absent (None) on the coreimage
     # one, whose frame geometry cannot carry them.

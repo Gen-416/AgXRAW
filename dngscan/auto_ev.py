@@ -348,9 +348,26 @@ def max_safe_ev(
     step = max(1, int(math.ceil(flat.shape[0] / max_samples)))
     probe_tone = tone_plan.tone if isinstance(tone_plan, RenderPlan) else tone_plan
     spatial_shape = None
-    from .render import _film_spatial_engaged
 
-    if probe_tone is not None and _film_spatial_engaged(probe_tone):
+    def _probe_needs_spatial(tone: Any) -> bool:
+        # R4 F4: the probe's decimated image dilutes point speculars by the
+        # cell area (~277x at 61 MP), so it is only worth that cost for the
+        # LOOK amounts whose spread genuinely moves the safe-EV answer
+        # (bloom/halation/grain, review batch 14). The scatter-only default
+        # (R3: media scatter declared, all amounts 0) is a conservative
+        # sub-0.02 mm redistribution that cannot rescue a clipped highlight,
+        # while the decimation would blind the clip budgets to exactly the
+        # pinpoint emitters they police — so it keeps the strided real-pixel
+        # probe.
+        if tone is None or str(getattr(tone, "film_mode", "observe")) != "full" \
+                or str(getattr(tone, "curve_preset", "none")) == "none":
+            return False
+        return any(
+            float(getattr(tone, k, 0.0) or 0.0) > 0.0
+            for k in ("film_grain", "film_halation", "film_bloom")
+        )
+
+    if _probe_needs_spatial(probe_tone):
         # Decimated-image probe: strided flat samples cannot carry the
         # spatial operators, so bloom/halation silently sat out the safe-EV
         # answer (review batch 14).

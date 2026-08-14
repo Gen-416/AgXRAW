@@ -986,7 +986,7 @@ function saveSettings(){
     colorHeadY:$("#colorHeadY").value,colorHeadM:$("#colorHeadM").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
-    toneCore:$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
+    toneCore:$("#toneCore").dataset.librawValue||$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
     grade:$("#grade").value,gradeStrength:$("#gradeStrength").value,
     sceneTransform:$("#sceneTransform").value,sceneTransformStrength:$("#sceneTransformStrength").value,punch:$("#punch").value,
     midtoneBrightness:$("#midtoneBrightness").value,midtoneContrast:$("#midtoneContrast").value,
@@ -1052,7 +1052,7 @@ function restoreSettings(){
   if(s.filmPrintExposure!==undefined)$("#filmPrintExposure").value=s.filmPrintExposure;
   if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
   if(s.filmExposure!==undefined)$("#filmExposure").value=s.filmExposure;
-  if(s.filmPrintTiming&&["fixed","retimed"].includes(s.filmPrintTiming))$("#filmPrintTiming").value=s.filmPrintTiming;
+  if(s.filmPrintTiming&&["fixed","retimed","custom"].includes(s.filmPrintTiming))$("#filmPrintTiming").value=s.filmPrintTiming;
   if(s.filmOptics&&["off","light","standard","custom"].includes(s.filmOptics))$("#filmOptics").value=s.filmOptics;
   for(const [k,el] of [["filmGrain","#filmGrain"],["filmHalation","#filmHalation"],["filmBloom","#filmBloom"]]){
     const v=parseFloat(s[k]);if(Number.isFinite(v)&&v>=0&&v<=1)$(el).value=v;
@@ -1111,6 +1111,11 @@ $("#film").addEventListener("change",()=>{
     $("#wb").value="camera";$("#sceneTransform").value="none";$("#filmCurve").value="none";
     $("#sceneTransformStrength").value=1;setSceneTransformStrengthLabel();
     $("#agxPrimaries").value="base";
+    // R4: the mode row hides with the preset, but a hidden select still
+    // rides every payload — a stale "full" then rejects valid-looking tone
+    // cores server-side and mislabels exports. Deselecting film resets the
+    // takeover declaration with it.
+    $("#filmMode").value="observe";
   }
   updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();updateDecoderUi();updateSceneTransformUi();saveSettings();preparePreview();
 });
@@ -1376,7 +1381,11 @@ function updateColorHeadUi(){
 }
 ["colorHeadY","colorHeadM"].forEach(id=>$("#"+id).oninput=()=>{setColorHeadLabels();saveSettings();scheduleLivePreview();});
 $("#filmCurve").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();saveSettings();scheduleLivePreview();});
-$("#toneCore").addEventListener("change",()=>{updateToneCoreUi();updateToneCoreExportUi();saveSettings();preparePreview();});
+$("#toneCore").addEventListener("change",()=>{
+  // R4: an explicit user choice invalidates the R2 decoder stash — without
+  // this, switching decoders replayed a stale "gated" over the selection.
+  delete $("#toneCore").dataset.librawValue;
+  updateToneCoreUi();updateToneCoreExportUi();saveSettings();preparePreview();});
 $("#lumNorm").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#agxPrimaries").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#sceneTransform").addEventListener("change",()=>{updateSceneTransformUi();saveSettings();scheduleLivePreview();});
@@ -1524,6 +1533,13 @@ async function ensureRaw9Support(body){
     window.alert(message+"\\n\\n将改用 LibRaw。");
     $("#decoder").value="libraw";updateDecoderUi();saveSettings();
     body.decoder="libraw";body.coreimageVersion="auto";
+    // R4: the body was captured while the UI was coreimage-forced
+    // (highlight=reconstruct, demosaic=auto); updateDecoderUi just restored
+    // the user's stashed libraw values into the DOM, and the request must
+    // render what the UI now shows — not a one-off hybrid.
+    body.highlight=$("#highlight").value;
+    body.demosaic=$("#demosaic").value;
+    if(body.toneCore!==undefined)body.toneCore=$("#toneCore").value;
     setStatus(message+" 已改用 LibRaw。","warn");
   };
   if(!j.coreimage_available||j.probe_error){switchToLibRaw(j.message);return true;}

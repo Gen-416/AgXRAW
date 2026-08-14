@@ -209,7 +209,9 @@ class ServiceWiringTests(unittest.TestCase):
     def test_interpretation_group_parses_and_guards_mode(self) -> None:
         from dngscan.gui.service import parse_film_params
 
-        base = {"film": "portra400", "filmMode": "full"}
+        # R4: filmMode=full without a filmCurve is now rejected (the "film"
+        # key is the GUI combo, not the parser's curve field).
+        base = {"film": "portra400", "filmCurve": "portra400", "filmMode": "full"}
         out = parse_film_params({**base, "filmInterimage": "off",
                                  "filmAppearance": "reference",
                                  "filmAppearanceStrength": 0.8})

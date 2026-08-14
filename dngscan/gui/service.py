@@ -999,9 +999,12 @@ def export_preview_jpeg(
         )
         scene_hist = scene_ev_histogram(scene_hist_base, render_plan, ev)
         display_hist = display_histogram(rgb_u8)
+        # R4: metrics read the RENDERED frame — measuring after the auto-EV
+        # overlay counted the annotation box's own near-white text as clipped
+        # highlights, on exactly the path whose metrics judge headroom.
+        metrics = preview_metrics_from_u8(rgb_u8, gamut) if include_metrics else {}
         if auto_ev is not None:
             rgb_u8 = annotate_preview_rgb_u8(rgb_u8, dg.auto_ev_overlay_lines(auto_ev))
-        metrics = preview_metrics_from_u8(rgb_u8, gamut) if include_metrics else {}
         preview = preview_b64_from_u8(rgb_u8, icc_profile=icc_profile)
         ensure_current()
     payload = {
@@ -1081,6 +1084,17 @@ def parse_film_params(params: dict) -> tuple:
     film_mode = str(params.get("filmMode", params.get("film_mode", "observe")))
     if film_mode not in ("observe", "full"):
         raise ValueError(f"未知胶片分工模式：{film_mode}")
+    if film_mode == "full" and film_curve == "none":
+        # R4: full is a declaration to hand development to a FILM — with no
+        # curve preset there is no film to hand it to, the renderer would run
+        # the plain AgX path anyway, and the export suffix would still claim
+        # "filmfull". The GUI resets the hidden mode with the preset; a
+        # payload carrying the contradiction is a direct-API contract
+        # violation and fails closed like its siblings.
+        raise ValueError(
+            "filmMode=full 需要一个胶片曲线预设(当前 filmCurve=none);"
+            "请选择胶片或把 filmMode 切回 observe"
+        )
     _timing_req = str(params.get("filmPrintTiming", params.get("film_print_timing", "fixed")) or "fixed")
     if film_mode == "full" and _timing_req != "custom" and (
         color_head_y > 0.0 or color_head_m > 0.0
@@ -1749,7 +1763,6 @@ def run_export(params: dict) -> dict:
     outdir = outdir_arg if outdir_arg is not None else inp.parent
     outdir.mkdir(parents=True, exist_ok=True)
 
-    demosaic = str(params.get("demosaic", "auto"))
     chroma = str(params.get("chroma", "444"))
     delivery_name = str(params.get("deliveryProfile", params.get("delivery_profile", "archive")))
     try:
@@ -1783,9 +1796,13 @@ def run_export(params: dict) -> dict:
     if wb not in dg.WB_CHOICES:
         raise ValueError(f"未知白平衡模式：{wb}")
     decoder, coreimage_version = parse_decoder(params)
+    # R4: same validator as the preview path — a bogus demosaic used to fall
+    # through to load_raw's silent auto preference while the fingerprint
+    # baked the bogus string into the filename (parse_demosaic also resolves
+    # the coreimage-forced "auto").
+    demosaic = parse_demosaic(params, decoder)
     if decoder == "coreimage":
         highlight = "reconstruct"
-        demosaic = "auto"
     look, look_strength, display_filter, filter_strength = parse_grade(params)
     if dg.is_hdr_output_format(output_format) and (look != "none" or display_filter != "none"):
         raise RuntimeError(
@@ -2010,15 +2027,30 @@ def run_export(params: dict) -> dict:
         film_color_density=film_color_density,
         film_neutral_bias=film_neutral_bias,
         film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
+        # R4: the seed only reaches rendered bytes through the grain field
+        # (scatter/halation/bloom are deterministic), and it is auto-minted
+        # per session — carrying it unconditionally forked the names of
+        # byte-identical no-grain exports across restarts, silently
+        # duplicating instead of replacing (the unused-knob rule below).
+        film_optics_seed=(film_optics_seed if float(film_grain) > 0.0 else 0),
         film_media_scatter=film_media_scatter,
-        # The optics budget tier picks the spread-grid size since P3, so it
-        # changes rendered bytes whenever any spatial amount is engaged. It
-        # participates only then: an unused env var must not fork the names
-        # of identical non-optics exports (same rule as hdr_headroom below).
+        # The optics budget tier picks the spread-grid size (P3) and the
+        # band split whose per-band dither draw orders the output noise, so
+        # it changes rendered bytes whenever the SPATIAL PATH is engaged —
+        # which since R3 includes the scatter-only default (media scatter
+        # declared, film full, all look amounts 0). An unused env var must
+        # still not fork non-spatial exports (same rule as hdr_headroom).
         optics_budget_mib=(
             _optics_budget_mib_for_fingerprint()
-            if (film_grain or film_halation or film_bloom) else 0
+            if (
+                film_grain or film_halation or film_bloom
+                or (
+                    film_mode == "full"
+                    and film_curve != "none"
+                    and str(film_media_scatter) != "off"
+                )
+            )
+            else 0
         ),
         color_head_y=float(color_head_y),
         color_head_m=float(color_head_m),

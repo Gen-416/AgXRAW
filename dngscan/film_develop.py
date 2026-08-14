@@ -245,6 +245,17 @@ def _load_v2(name: str):
                 paper_amounts = np.asarray(z["paper_amounts"], dtype=np.float64)
                 if not bool(np.isfinite(paper_le2).all()) or                         not bool(np.isfinite(paper_amounts).all()):
                     raise ValueError(f"{b2_path.name}: paper tables non-finite")
+                # R4: paper_le2 feeds np.interp on the NEGATIVE path, and a
+                # non-increasing axis returns garbage silently — the module
+                # contract says corrupted tables raise. The reversal-direct
+                # assets ship a zeros(2) placeholder here (never consumed),
+                # so the check is scoped to the path that reads it.
+                if not stock["reversal"] and not bool(
+                    np.all(np.diff(paper_le2) > 0)
+                ):
+                    raise ValueError(
+                        f"{b2_path.name}: paper_le2 axis not strictly increasing"
+                    )
                 if not bool(np.isfinite(dye_lo).all()) or                         not bool(np.isfinite(dye_hi).all()):
                     raise ValueError(f"{b2_path.name}: dye domain non-finite")
                 b2 = {
@@ -285,6 +296,13 @@ def _load_v2(name: str):
                     casts = np.asarray(z["casts"], dtype=np.float32)
                     if casts.shape != (tau_nodes.size, cast_ev.size, 3):
                         raise ValueError(f"{ps_path.name}: casts mis-shaped")
+                    # R4: cast_ev is an np.interp axis too — same strict-
+                    # increase rule as char_le/tau_nodes, previously only
+                    # shape-checked.
+                    if cast_ev.size < 2 or not bool(np.all(np.diff(cast_ev) > 0)):
+                        raise ValueError(
+                            f"{ps_path.name}: cast_ev axis not strictly increasing"
+                        )
                     if not bool(np.isfinite(casts).all()) or \
                             float(casts.min()) < 0.25 - 1e-4 or \
                             float(casts.max()) > 4.0 + 1e-4:
@@ -674,8 +692,10 @@ def _appearance_for(plan) -> "object | None":
 
 
 def prepare_film_spatial(plan: Any, height: int, width: int) -> "FilmSpatialContext | None":
-    """Renderer entry: a context when the plan engages any optics amount,
-    else None (the chunk-stream fast path stays byte-identical).
+    """Renderer entry: a context when the plan engages any optics amount OR
+    the declared media scatter resolves at this pitch (R3 — a full-film plan
+    with every look amount at zero still applies the emulsion/formation
+    scatter); else None (the chunk-stream fast path stays byte-identical).
 
     The caller then drives whichever phases its amounts require — one scene
     pass serving ``begin_bloom_source`` / ``accumulate_bloom_source`` /

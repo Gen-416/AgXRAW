@@ -214,7 +214,9 @@ class NeutralizationDefaultTests(unittest.TestCase):
         from dngscan.tone import build_render_plan
         from tests.golden_support import all_scenes
 
-        base = {"film": "portra400", "filmMode": "full"}
+        # R4: filmMode=full without a filmCurve is now rejected (the "film"
+        # key is the GUI combo, not the parser's curve field).
+        base = {"film": "portra400", "filmCurve": "portra400", "filmMode": "full"}
         self.assertIsNone(parse_film_params(
             {**base, "filmAppearance": "reference"})[3])
         self.assertEqual(parse_film_params({
