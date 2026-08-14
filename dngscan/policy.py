@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 
 from . import constants as _c
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -149,6 +149,37 @@ ENTRIES: tuple[PolicyEntry, ...] = (
             "the noise estimate and the curve is flagged unreliable"
         ),
         constrained_by="tile-variance decomposition on graded exposures",
+    ),
+    PolicyEntry(
+        name="TAIL_SNR_WINDOW_EV",
+        value=float(_c.TAIL_SNR_WINDOW_EV),
+        unit="EV",
+        rationale=(
+            "width of the brightest still-reliable SNR-curve window (just "
+            "below SNR_BRIGHT_UNRELIABLE_STOP) read as the tail SNR for "
+            "HDR channel-separation confidence (review R2 item 1)"
+        ),
+        constrained_by="EDR corpus calibration (pending)",
+    ),
+    PolicyEntry(
+        name="TAIL_SNR_ZERO_DB",
+        value=float(_c.TAIL_SNR_ZERO_DB),
+        unit="dB",
+        rationale=(
+            "tail SNR at/below which per-channel highlight freedom is "
+            "fully withdrawn (2:1 amplitude — tail chroma is noise)"
+        ),
+        constrained_by="EDR corpus calibration (pending)",
+    ),
+    PolicyEntry(
+        name="TAIL_SNR_FULL_DB",
+        value=float(_c.TAIL_SNR_FULL_DB),
+        unit="dB",
+        rationale=(
+            "tail SNR at/above which the SNR factor withdraws nothing "
+            "(10:1 amplitude); linear confidence between the two anchors"
+        ),
+        constrained_by="EDR corpus calibration (pending)",
     ),
     PolicyEntry(
         name="DEFAULT_HDR_HEADROOM_EV",
@@ -290,6 +321,9 @@ def _fingerprint(entries: tuple[PolicyEntry, ...]) -> str:
 # a new pinned line here — a conscious, reviewable act.
 POLICY_FINGERPRINTS = {
     2: "de4a3ff468320ff60e213ca4895fcc7c2e3f0e657c56d34b857f4f01ea85c418",
+    # v3 (R2 item 1): TAIL_SNR_WINDOW_EV / TAIL_SNR_ZERO_DB / TAIL_SNR_FULL_DB
+    # registered — the HDR channel-separation tail-SNR factor goes live.
+    3: "96253a7904f41ff8da20d937b6066544c60cc0cc7f32756db5a85a154d6f71b8",
 }
 
 

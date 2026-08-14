@@ -171,6 +171,11 @@ def export_ultrahdr_jpeg(
         info["display_headroom_ev"] = float(hdr_plan.tone.display_headroom_ev)
         info["requested_headroom_ev"] = float(hdr_plan.tone.requested_headroom_ev)
         info["rendered_headroom_ev"] = float(hdr_plan.tone.rendered_headroom_ev)
+        # R2 item 17: two honest numbers, not one ambiguous "actual" — this is
+        # the render's p99.99 usage figure (one specular pixel is not usage);
+        # the container's declared ContentHeadroom (= alternate peak) arrives
+        # from the writer as file_headroom_ev and the two may legitimately
+        # differ by the sparse-highlight tail between p99.99 and max.
         info["actual_headroom_ev"] = float(actual)
         info["reliable_tail_ev"] = float(hdr_plan.tone.reliable_tail_ev)
         info["shoulder_start_ev"] = float(hdr_plan.tone.shoulder_start_ev)

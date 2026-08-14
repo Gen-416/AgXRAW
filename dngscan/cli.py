@@ -111,7 +111,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "交付编码档: archive=q100/4:4:4 严格 round-trip；"
             "share=q90/4:2:0 倾向，体积更小、门禁放宽。只影响最后编码，不重算 AgX/HDR。"
             "缺省时：未显式给 --jpeg-quality/--chroma 则为 archive；"
-            "给了则按参数值推断门禁档（q>=98 且 444 走 archive，其余走 share）。"
+            "给了则按参数值推断门禁档（恰好 q100 且 444 走 archive——严格档合同"
+            "只在其标定过的编码点成立，其余组合走 share）。"
         ),
     )
     parser.add_argument(

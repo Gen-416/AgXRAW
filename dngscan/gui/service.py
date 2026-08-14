@@ -495,6 +495,21 @@ def parse_tone_core(params: dict) -> tuple[str, str]:
     return core, norm
 
 
+def reject_gated_coreimage(tone_core: str, decoder: str) -> None:
+    """CLI contract parity (R2 item 2): gated means "per-pixel CFA evidence
+    gates the colour path", and the Core Image pipeline has no aligned mask —
+    the combination is meaningless rather than merely degraded, so the
+    service refuses it exactly like the CLI instead of letting gated decay
+    to raw_permission≈0 silently. The GUI hides the pair; a payload carrying
+    it is a direct-API contract violation."""
+    if str(decoder) == "coreimage" and str(tone_core) == "gated":
+        raise ValueError(
+            "toneCore=gated 需要逐像素 CFA 证据,而 decoder=coreimage 是独立"
+            "管线(Core Image 执行 DNG opcode,几何与 LibRaw 不可对齐);"
+            "请改用 agx/lum/neutral 或切回 libraw"
+        )
+
+
 def parse_agx_primaries(params: dict) -> str:
     value = str(params.get("agxPrimaries", params.get("agx_primaries", "base")))
     resolved = dg.agx_engine.resolve_agx_primaries(value)
@@ -1271,6 +1286,7 @@ def run_preview(params: dict) -> dict:
     punch_scale = parse_punch(params)
     adjustments = parse_render_adjustments(params)
     tone_core, lum_norm = parse_tone_core(params)
+    reject_gated_coreimage(tone_core, decoder)
     agx_primaries = parse_agx_primaries(params)
     (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
      color_head_m, film_exposure_ev, film_print_timing,
@@ -1476,6 +1492,7 @@ def prepare_preview(params: dict) -> dict:
     if decoder == "coreimage":
         highlight = "reconstruct"
     tone_core, lum_norm = parse_tone_core(params)
+    reject_gated_coreimage(tone_core, decoder)
     scene_transform, scene_transform_strength = parse_scene_transform(params)
     punch_scale = parse_punch(params)
     adjustments = parse_render_adjustments(params)
@@ -1781,6 +1798,7 @@ def run_export(params: dict) -> dict:
     if dg.is_hdr_output_format(output_format) and abs(float(adjustments.highlight_fade)) > 1e-9:
         raise RuntimeError("HDR 尚未定义显示侧高光褪白；请将该项恢复为自动")
     tone_core, lum_norm = parse_tone_core(params)
+    reject_gated_coreimage(tone_core, decoder)
     if dg.is_hdr_output_format(output_format) and tone_core != "agx":
         raise RuntimeError("HDR 输出当前只实现 AgX tone core")
     agx_primaries = parse_agx_primaries(params)

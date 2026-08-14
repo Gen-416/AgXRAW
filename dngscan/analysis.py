@@ -762,12 +762,15 @@ def analyze(
     ev, raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray = compute_ev_metrics(y)
     nf = estimate_raw_noise_floor(bundle, channel_fullwell)
     usable_dr = math.log2(1.0 / max(nf, NOISE_DR_EPS))
-    if diagnostics:
-        snr_curves, snr1_dr, snr1_stop = compute_snr_curves(
-            bundle, channel_ids, labels, channel_fullwell
-        )
-    else:
-        snr_curves, snr1_dr, snr1_stop = {}, {}, {}
+    # Review R2 item 1: the SNR curve is a RENDER input now, not a diagnostic.
+    # compile_channel_separation's design lists a tail-SNR confidence factor,
+    # and gating this behind `diagnostics` made the same photograph render
+    # differently depending on whether --csv/--scan happened to be passed.
+    # Always-on costs ~0.2 s at 61 MP (vectorized tile means/stds), which the
+    # one analyze() per loaded file absorbs.
+    snr_curves, snr1_dr, snr1_stop = compute_snr_curves(
+        bundle, channel_ids, labels, channel_fullwell
+    )
     gamut_pct, bright_pct = compute_gamut_metrics(
         bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names
     )

@@ -16,7 +16,14 @@ import math
 from dataclasses import replace
 
 from ._deps import np
-from .constants import DARKTABLE_BASE_GAMMA, OUTPUT_REFERENCE_WHITE_STOPS
+from .constants import (
+    DARKTABLE_BASE_GAMMA,
+    OUTPUT_REFERENCE_WHITE_STOPS,
+    SNR_BRIGHT_UNRELIABLE_STOP,
+    TAIL_SNR_FULL_DB,
+    TAIL_SNR_WINDOW_EV,
+    TAIL_SNR_ZERO_DB,
+)
 from .hdr_agx_math import (
     body_anchor_from_curve,
     compile_hdr_shoulder,
@@ -110,12 +117,11 @@ def compile_channel_separation(
         np.clip(1.0 - multi_pct / MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT, 0.0, 1.0)
     )
 
-    # The design also lists an SNR confidence factor, and it is deliberately not applied
-    # here. snr1_dr is only populated when analyze() runs with diagnostics=True, which a
-    # plain --jpeg export does not, so including it would make the same photograph render
-    # differently depending on whether --csv or --scan happened to be passed. A render
-    # must not depend on an unrelated diagnostic flag. Restore this factor once SNR is
-    # measured on the production path, not by inventing a fallback confidence for it.
+    # The design's SNR confidence factor lives in compile_tail_snr_gate below, carried
+    # separately as HdrColorGeometry.snr_gate (both consumers multiply it into the
+    # effective rho; keeping it a named field keeps it visible in reports). Since review
+    # R2 item 1 the SNR curve is computed on the production path unconditionally, so the
+    # factor no longer depends on any diagnostic flag.
 
     gamut = getattr(analysis, "gamut_out_pct", None) or {}
     out_pct = float(gamut.get("Display P3", gamut.get("P3", 0.0)) or 0.0)
@@ -127,6 +133,47 @@ def compile_channel_separation(
     if str(scene_decoder) != "libraw":
         rho = min(rho, UNALIGNED_DECODER_RHO_CAP)
     return float(np.clip(rho, 0.0, 1.0))
+
+
+def compile_tail_snr_gate(analysis: Analysis | None) -> float:
+    """The design's tail-SNR confidence factor, from the measured SNR curve.
+
+    Per-channel highlight expansion amplifies whatever noise the tail carries,
+    so confidence follows the SNR measured in the brightest still-reliable
+    window of the curve: the TAIL_SNR_WINDOW_EV just below
+    SNR_BRIGHT_UNRELIABLE_STOP (above that, tile statistics mix highlight
+    rolloff into the noise estimate). Per channel group the window's finite
+    bins are summarised by their median; the gate follows the WORST group,
+    because one noisy channel is enough to make expanded chroma read as noise.
+
+    Withdrawal requires a measurement. When the curve has no reliable bins in
+    the window (non-CFA layout, tiny frame, no coverage at those stops) the
+    factor is neutral 1.0 rather than an invented confidence — the clip,
+    gamut and unaligned-decoder factors still stand guard, and the
+    analysis-is-None case already compiles rho = 0 outright.
+    """
+    curves = getattr(analysis, "snr_curves", None) or {}
+    lo = SNR_BRIGHT_UNRELIABLE_STOP - TAIL_SNR_WINDOW_EV
+    hi = SNR_BRIGHT_UNRELIABLE_STOP
+    worst_db = float("inf")
+    for curve in curves.values():
+        stops = np.asarray(curve.get("stops", ()), dtype=np.float64)
+        snr_db = np.asarray(curve.get("snr_db", ()), dtype=np.float64)
+        if stops.size == 0 or snr_db.shape != stops.shape:
+            continue
+        m = (stops >= lo) & (stops <= hi) & np.isfinite(snr_db)
+        if not np.any(m):
+            continue
+        worst_db = min(worst_db, float(np.median(snr_db[m])))
+    if not math.isfinite(worst_db):
+        return 1.0
+    return float(
+        np.clip(
+            (worst_db - TAIL_SNR_ZERO_DB) / (TAIL_SNR_FULL_DB - TAIL_SNR_ZERO_DB),
+            0.0,
+            1.0,
+        )
+    )
 
 
 def compile_hdr_agx_plan(
@@ -253,9 +300,9 @@ def compile_hdr_agx_plan(
         raw_clip_retreat=float(scene_plan.color.raw_clip_retreat_strength)
         if getattr(scene_plan, "color", None) is not None
         else 0.0,
-        # Neutral until a production-path per-channel tail SNR metric exists. Keeping this
-        # explicit is safer than making render output depend on diagnostics=True.
-        snr_gate=1.0,
+        # Measured on the production path (R2 item 1): analyze() computes the
+        # SNR curve unconditionally now, so this cannot vary with --scan/--csv.
+        snr_gate=compile_tail_snr_gate(analysis) if analysis is not None else 1.0,
         hue_restore=float(scene_plan.tone.hue_restore),
         primaries_preset=str(scene_plan.tone.agx_primaries),
         gamut_fit_margin=0.0,
