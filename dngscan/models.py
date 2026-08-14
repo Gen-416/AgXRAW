@@ -662,7 +662,10 @@ class HdrColorGeometry:
     snr_gate: float
     hue_restore: float
     primaries_preset: str
-    gamut_fit_margin: float
+    # R2 item 10: gamut_fit_margin was removed — it compiled to 0.0
+    # unconditionally, which made it a dead knob wearing a live name. A
+    # future volume-fit margin must arrive with a calibration and a policy
+    # register entry, not as a field waiting to be believed.
 
 
 @dataclass(frozen=True)

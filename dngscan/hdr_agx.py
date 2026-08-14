@@ -75,8 +75,13 @@ def _hdr_tone_plan(hdr_plan: HdrAgxPlan) -> ToneCompressionPlan:
 
 
 def _pack_peak(hdr_plan: HdrAgxPlan) -> float:
-    peak = float(hdr_plan.tone.peak_linear)
-    return peak * max(0.0, 1.0 - float(hdr_plan.color.gamut_fit_margin))
+    """The alternate's packing ceiling — the scene-authorized content peak.
+
+    R2 item 10: the old gamut_fit_margin factor is gone; it compiled to 0.0
+    unconditionally, so this seam only ever returned the peak while the field
+    read like a calibrated knob. If a volume-fit margin is ever wanted, it
+    re-enters HERE, calibrated and policy-registered."""
+    return float(hdr_plan.tone.peak_linear)
 
 
 def _hdr_reference_needed(hdr_plan: HdrAgxPlan) -> bool:
