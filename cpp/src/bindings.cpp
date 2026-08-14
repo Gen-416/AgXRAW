@@ -34,6 +34,18 @@ void copy_matrix9(const py::object& seq, float out[9]) {
   }
 }
 
+// R2 item 6: the exact two-stage output matrices keep full float64 precision
+// so the kernel reproduces NumPy's stage arithmetic bit-for-bit.
+void copy_matrix9_f64(const py::object& seq, double out[9]) {
+  const py::sequence items = py::reinterpret_borrow<py::sequence>(seq);
+  if (py::len(items) != 9) {
+    throw std::invalid_argument("matrix must have 9 elements");
+  }
+  for (int i = 0; i < 9; ++i) {
+    out[i] = py::cast<double>(items[i]);
+  }
+}
+
 dngscan_fast::CurveParams curve_from_py(const py::object& obj) {
   dngscan_fast::CurveParams c{};
   c.black_ev = read_float(obj, "black_ev");
@@ -79,7 +91,8 @@ dngscan_fast::NativeAgxPlan plan_from_py(const py::object& obj) {
 
 dngscan_fast::NativeOutputPlan output_plan_from_py(const py::object& obj) {
   dngscan_fast::NativeOutputPlan plan{};
-  copy_matrix9(obj.attr("rec2020_to_output"), plan.rec2020_to_output);
+  copy_matrix9_f64(obj.attr("rec2020_to_xyz"), plan.rec2020_to_xyz);
+  copy_matrix9_f64(obj.attr("xyz_to_output"), plan.xyz_to_output);
   copy_matrix9(obj.attr("output_to_lms"), plan.output_to_lms);
   copy_matrix9(obj.attr("lms_to_output"), plan.lms_to_output);
   copy_matrix9(obj.attr("oklab_m2"), plan.oklab_m2);
@@ -430,9 +443,12 @@ PYBIND11_MODULE(_dngscan_fast, m) {
         float out[3] = {};
         dngscan_fast::apply_agx_core_f32(in, out, 1, plan);
         dngscan_fast::NativeOutputPlan output_plan{};
-        output_plan.rec2020_to_output[0] = 1.0f;
-        output_plan.rec2020_to_output[4] = 1.0f;
-        output_plan.rec2020_to_output[8] = 1.0f;
+        output_plan.rec2020_to_xyz[0] = 1.0;
+        output_plan.rec2020_to_xyz[4] = 1.0;
+        output_plan.rec2020_to_xyz[8] = 1.0;
+        output_plan.xyz_to_output[0] = 1.0;
+        output_plan.xyz_to_output[4] = 1.0;
+        output_plan.xyz_to_output[8] = 1.0;
         output_plan.output_to_lms[0] = 1.0f;
         output_plan.output_to_lms[4] = 1.0f;
         output_plan.output_to_lms[8] = 1.0f;

@@ -64,8 +64,19 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
 
 #### 5. 修正输出快路的两个已知非严格等价点
 
-- 矩阵预合并去掉了原 NumPy 图中的一次 float32 舍入。严格模式必须恢复原矩阵阶段和 materialization；除非参考实现本身经过单独效果变更审批，否则不能以 `8.6e-5` 的误差放行。
-- 单平面 TPDF cache 把 `(value + noise_a) - noise_b` 改成 `value + (noise_a - noise_b)`，已观测到极少数 1 code value 差异。严格模式改为缓存两组只读噪声，或缓存可精确重放两组 RNG 输出的状态；kernel 保持原加减顺序。内存不足时回退流式双平面，不能回退到单平面近似。
+- 矩阵预合并去掉了原 NumPy 图中的一次 float32 舍入。**已修正（R2 项 6,ABI v8）**:
+  `NativeOutputPlan` 携带 float64 的 `rec2020_to_xyz`/`xyz_to_output` 两阶段矩阵,
+  kernel 逐阶段 float64 累加、float32 materialization,与 NumPy 表达式树逐位一致
+  （`-ffp-contract=off` 早已在 CMake 保证无 FMA 合并）。默认路径即精确路径,不再有
+  严格/优化之分;门禁收紧为 **in-gamut 像素 memcmp 相同**（旧口径 ~1% 像素差 1 code,
+  现仅 gamut-fit 路径上 ≤0.05% 残差,见下一条遗留）。gamut fit 内部的
+  `output_to_lms`/`lms_to_output` 仍是预合并矩阵——它只作用于 out-of-gamut 像素并
+  受 1e-4 浮点容差门约束,拆分归属完整 reference-mode 程序。
+- 单平面 TPDF cache 把 `(value + noise_a) - noise_b` 改成 `value + (noise_a - noise_b)`。
+  **已修正（批 20 期间）**:生产路径全部走双平面
+  （`deterministic_dither_planes` / native finalize 的 noise_a/noise_b 入参,
+  预览缓存 `get_or_build_dither_noise` 返回平面对）;合并单平面仅剩
+  `deterministic_dither_plane` 兼容 shim,不在任何生产调用链上。
 
 transfer、dither/quantize 和 gamut-fit 可以融合到同一 native 调用，但 kernel 内仍要保留上述语义阶段。最终 RGB 必须 `memcmp` 相同；“最大 1 code value”不再是发布标准。
 

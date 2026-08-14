@@ -20,7 +20,10 @@ from .constants import (
 )
 from .models import ToneCompressionPlan
 
-NATIVE_ABI_VERSION = 7
+# v8 (R2 item 6): the SDR output plan carries the exact two-stage matrices
+# (rec2020_to_xyz + xyz_to_output, float64) instead of the pre-merged
+# rec2020_to_output that dropped one float32 rounding.
+NATIVE_ABI_VERSION = 8
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 
@@ -115,11 +118,18 @@ def _build_output_plan(output_gamut: str, alpha: float) -> Any:
     from types import SimpleNamespace
 
     space = OUTPUT_GAMUT_SPACES[output_gamut]
-    rec2020_to_output = XYZ_TO_RGB[space] @ RGB_TO_XYZ["Rec2020"]
+    # R2 item 6: NO pre-merge on the Rec.2020 -> output conversion — the
+    # kernel applies the two stages exactly as the NumPy graph does (float64
+    # accumulate, float32 materialization per stage), so in-gamut pixels are
+    # bit-exact against the NumPy path. The gamut fit's own matrices below
+    # REMAIN pre-merged: that path only runs on out-of-gamut pixels and is
+    # gated by its documented 1e-4 float tolerance, not the exact contract;
+    # unmerging it belongs to the full reference-mode program.
     output_to_lms = OKLAB_M1 @ RGB_TO_XYZ[space]
     lms_to_output = XYZ_TO_RGB[space] @ OKLAB_M1_INV
     return SimpleNamespace(
-        rec2020_to_output=_flat_matrix(rec2020_to_output),
+        rec2020_to_xyz=_flat_matrix(RGB_TO_XYZ["Rec2020"]),
+        xyz_to_output=_flat_matrix(XYZ_TO_RGB[space]),
         output_to_lms=_flat_matrix(output_to_lms),
         lms_to_output=_flat_matrix(lms_to_output),
         oklab_m2=_flat_matrix(OKLAB_M2),
