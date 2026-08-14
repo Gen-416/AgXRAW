@@ -13,6 +13,7 @@ from dngscan import policy
 class RegisterConsistencyTests(unittest.TestCase):
     def test_every_entry_matches_its_live_constant(self) -> None:
         from dngscan import hdr_agx_plan as h
+        from dngscan import tone as t
 
         live = {
             "RHO_BASE": h.RHO_BASE,
@@ -39,6 +40,19 @@ class RegisterConsistencyTests(unittest.TestCase):
             "TAIL_SNR_WINDOW_EV": c.TAIL_SNR_WINDOW_EV,
             "TAIL_SNR_ZERO_DB": c.TAIL_SNR_ZERO_DB,
             "TAIL_SNR_FULL_DB": c.TAIL_SNR_FULL_DB,
+            # R2 item 15: the closed registration backlog, named in tone.py.
+            "VIEW_BRIGHTNESS_MAX_GAIN": t.VIEW_BRIGHTNESS_MAX_GAIN,
+            "VIEW_BRIGHTNESS_DR_LO_EV": t.VIEW_BRIGHTNESS_DR_LO_EV,
+            "VIEW_BRIGHTNESS_DR_HI_EV": t.VIEW_BRIGHTNESS_DR_HI_EV,
+            "PUNCH_BODY_LO_EV": t.PUNCH_BODY_LO_EV,
+            "PUNCH_BODY_HI_EV": t.PUNCH_BODY_HI_EV,
+            "PUNCH_QUALITY_DR_LO_EV": t.PUNCH_QUALITY_DR_LO_EV,
+            "PUNCH_QUALITY_DR_HI_EV": t.PUNCH_QUALITY_DR_HI_EV,
+            "PUNCH_DR_LO_EV": t.PUNCH_DR_LO_EV,
+            "PUNCH_DR_HI_EV": t.PUNCH_DR_HI_EV,
+            "PUNCH_BASE_STRENGTH": t.PUNCH_BASE_STRENGTH,
+            "SPARSE_EMITTER_TAIL_MAX_PCT": t.SPARSE_EMITTER_TAIL_MAX_PCT,
+            "SPARSE_EMITTER_EXTREMITY_MIN": t.SPARSE_EMITTER_EXTREMITY_MIN,
             "DEFAULT_HDR_HEADROOM_EV": c.DEFAULT_HDR_HEADROOM_EV,
             "MAX_HDR_PEAK_NITS": c.MAX_HDR_PEAK_NITS,
         }

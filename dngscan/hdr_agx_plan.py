@@ -305,7 +305,6 @@ def compile_hdr_agx_plan(
         snr_gate=compile_tail_snr_gate(analysis) if analysis is not None else 1.0,
         hue_restore=float(scene_plan.tone.hue_restore),
         primaries_preset=str(scene_plan.tone.agx_primaries),
-        gamut_fit_margin=0.0,
     )
     return HdrAgxPlan(formation=formation, display=display, tone=tone, color=color)
 

@@ -17,11 +17,10 @@ version's value set is FINGERPRINTED (POLICY_FINGERPRINTS) — editing a
 value and the register together without bumping the version fails the
 suite, because the stored fingerprint no longer matches.
 
-Known candidates NOT yet registered (they first need names at their
-consuming sites): the view-brightness gate literals (tone.py — 0.30 gain,
-5.5/8.5 EV smoothstep), the punch gate family, and the sparse-emitter
-detection thresholds in analysis. The register is honest about being a
-growing inventory, not a completed one.
+R2 item 15 closed the known backlog: the view-brightness gate, the punch
+gate family and the sparse-emitter detection thresholds are named at
+their consuming sites (tone.py) and registered below. The register stays
+a growing inventory — new strategy numbers must land here with names.
 """
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ from dataclasses import dataclass, field
 
 from . import constants as _c
 
-POLICY_VERSION = 3
+POLICY_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -284,6 +283,103 @@ ENTRIES: tuple[PolicyEntry, ...] = (
         rationale="project ceiling for authored peaks, not a format limit",
         constrained_by="owner review; display availability",
     ),
+    # R2 item 15: the previously-unregistered backlog, named in tone.py.
+    PolicyEntry(
+        name="VIEW_BRIGHTNESS_MAX_GAIN",
+        value=0.30,
+        unit="fraction (display-referred gain)",
+        rationale=(
+            "maximum dark-scene view-brightness lift; applied only as "
+            "dark_body*shadow_quality scales it, never an exposure gain"
+        ),
+        constrained_by="night-frame corpus scored for subject legibility",
+    ),
+    PolicyEntry(
+        name="VIEW_BRIGHTNESS_DR_LO_EV",
+        value=5.5,
+        unit="EV plan dynamic range",
+        rationale="below this the shadows are too noisy to lift at all",
+        constrained_by="night-frame corpus; noise-floor measurements",
+    ),
+    PolicyEntry(
+        name="VIEW_BRIGHTNESS_DR_HI_EV",
+        value=8.5,
+        unit="EV plan dynamic range",
+        rationale="above this the shadow quality supports the full lift",
+        constrained_by="night-frame corpus; noise-floor measurements",
+    ),
+    PolicyEntry(
+        name="PUNCH_BODY_LO_EV",
+        value=-3.0,
+        unit="EV scene body median",
+        rationale="below this the scene is dark and auto punch stays off",
+        constrained_by="corpus scored for night-scene chroma restraint",
+    ),
+    PolicyEntry(
+        name="PUNCH_BODY_HI_EV",
+        value=-1.2,
+        unit="EV scene body median",
+        rationale="above this the bright-body punch gate is fully open",
+        constrained_by="corpus scored for night-scene chroma restraint",
+    ),
+    PolicyEntry(
+        name="PUNCH_QUALITY_DR_LO_EV",
+        value=7.5,
+        unit="EV plan dynamic range",
+        rationale="below this shadow quality withdraws auto punch",
+        constrained_by="corpus scored for shadow noise amplification",
+    ),
+    PolicyEntry(
+        name="PUNCH_QUALITY_DR_HI_EV",
+        value=9.5,
+        unit="EV plan dynamic range",
+        rationale="above this the quality punch gate is fully open",
+        constrained_by="corpus scored for shadow noise amplification",
+    ),
+    PolicyEntry(
+        name="PUNCH_DR_LO_EV",
+        value=6.5,
+        unit="EV plan dynamic range",
+        rationale="start of the DR bonus window on punch strength",
+        constrained_by="corpus A/B on flat vs deep scenes",
+    ),
+    PolicyEntry(
+        name="PUNCH_DR_HI_EV",
+        value=8.0,
+        unit="EV plan dynamic range",
+        rationale="end of the DR bonus window (full bonus)",
+        constrained_by="corpus A/B on flat vs deep scenes",
+    ),
+    PolicyEntry(
+        name="PUNCH_BASE_STRENGTH",
+        value=0.55,
+        unit="fraction of full punch",
+        rationale=(
+            "strength floor once the gates open; the remaining "
+            "1-base rides the DR bonus window"
+        ),
+        constrained_by="corpus A/B on flat vs deep scenes",
+    ),
+    PolicyEntry(
+        name="SPARSE_EMITTER_TAIL_MAX_PCT",
+        value=3.0,
+        unit="% of frame above EV 0",
+        rationale=(
+            "a bright area larger than this reads as a broad region, "
+            "not point emitters"
+        ),
+        constrained_by="night corpus with street lamps vs lit interiors",
+    ),
+    PolicyEntry(
+        name="SPARSE_EMITTER_EXTREMITY_MIN",
+        value=0.12,
+        unit="fraction (share of tail above +2 EV)",
+        rationale=(
+            "the small tail must also be extreme before the sparse-"
+            "emitter policies (white margin, shoulder start) engage"
+        ),
+        constrained_by="night corpus with street lamps vs lit interiors",
+    ),
 )
 
 def _fingerprint(entries: tuple[PolicyEntry, ...]) -> str:
@@ -324,6 +420,10 @@ POLICY_FINGERPRINTS = {
     # v3 (R2 item 1): TAIL_SNR_WINDOW_EV / TAIL_SNR_ZERO_DB / TAIL_SNR_FULL_DB
     # registered — the HDR channel-separation tail-SNR factor goes live.
     3: "96253a7904f41ff8da20d937b6066544c60cc0cc7f32756db5a85a154d6f71b8",
+    # v4 (R2 item 15): the register's known backlog closed — view-brightness
+    # gate, punch gate family and sparse-emitter detection registered with
+    # names at their tone.py consuming sites. No value moved.
+    4: "10d56455c4d098e4b53f5a318c23addb9c2e5bfc4701fc68b275afb201014863",
 }
 
 

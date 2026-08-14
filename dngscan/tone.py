@@ -24,6 +24,30 @@ TONE_CORE_CHOICES = ("gated", "agx", "lum", "neutral")
 LUM_NORM_CHOICES = ("y", "power", "max")
 ENDPOINT_MODE_CHOICES = ("adaptive", "evidence")
 
+# Empirical policy constants (R2 item 15: named at their consuming sites and
+# registered in dngscan/policy.py — these are project latitude strategy, not
+# standards; change values only with a POLICY_VERSION bump).
+#
+# View brightness: display-referred dark-scene lift, gain scaled by how dark
+# the scene body is and gated by shadow quality (plan dynamic range).
+VIEW_BRIGHTNESS_MAX_GAIN = 0.30
+VIEW_BRIGHTNESS_DR_LO_EV = 5.5
+VIEW_BRIGHTNESS_DR_HI_EV = 8.5
+# Scene-adaptive punch gates: bright-body window (scene median EV), shadow
+# quality window (plan DR), and the DR bonus window with its base strength.
+PUNCH_BODY_LO_EV = -3.0
+PUNCH_BODY_HI_EV = -1.2
+PUNCH_QUALITY_DR_LO_EV = 7.5
+PUNCH_QUALITY_DR_HI_EV = 9.5
+PUNCH_DR_LO_EV = 6.5
+PUNCH_DR_HI_EV = 8.0
+PUNCH_BASE_STRENGTH = 0.55
+# Sparse-emitter tail detection: a small bright area (tail0) that is
+# nevertheless extreme (share of it above +2 EV) reads as point emitters in a
+# dark scene rather than a broad bright region.
+SPARSE_EMITTER_TAIL_MAX_PCT = 3.0
+SPARSE_EMITTER_EXTREMITY_MIN = 0.12
+
 
 def exposure_mode_for_tone_core(tone_core: str) -> str:
     """Exposure anchor for every tone core.
@@ -309,7 +333,10 @@ def scene_tone_metrics(
     tail0 = float(np.mean(ev > 0.0) * 100.0)
     tail2 = float(np.mean(ev > 2.0) * 100.0)
     extremity = tail2 / max(tail0, 1e-4)
-    sparse_emitter = bool(tail0 < 3.0 and extremity > 0.12)
+    sparse_emitter = bool(
+        tail0 < SPARSE_EMITTER_TAIL_MAX_PCT
+        and extremity > SPARSE_EMITTER_EXTREMITY_MIN
+    )
     return SceneToneMetrics(
         reliable_sample_pct=reliable_sample_pct,
         body_ev_p1=p1,
@@ -497,18 +524,29 @@ def build_tone_compression_plan(
     # tested so the capability is ready if that 2-D solve is ever attempted.
     pivot_ev_offset = 0.0
     target_black_linear = 0.0
-    shadow_quality = _smoothstep_f(5.5, 8.5, plan_dr) if math.isfinite(plan_dr) else 0.5
-    view_brightness = 1.0 + 0.30 * dark_body * shadow_quality
+    shadow_quality = (
+        _smoothstep_f(VIEW_BRIGHTNESS_DR_LO_EV, VIEW_BRIGHTNESS_DR_HI_EV, plan_dr)
+        if math.isfinite(plan_dr)
+        else 0.5
+    )
+    view_brightness = 1.0 + VIEW_BRIGHTNESS_MAX_GAIN * dark_body * shadow_quality
     # Punch is a post-core chroma operator, not a tone decision: it is calculated after
     # endpoint selection and cannot feed back into pivot, toe, shoulder or exposure.
     # The luminance core deliberately stays at zero because it already retains the
     # original RGB ratio through the body; neutral is a diagnostic reference.
     if tone_core in ("agx", "gated"):
-        w_bright = _smoothstep_f(-3.0, -1.2, metrics.body_ev_p50)
-        w_quality = _smoothstep_f(7.5, 9.5, plan_dr) if math.isfinite(plan_dr) else 0.5
-        w_dr = _smoothstep_f(6.5, 8.0, dynamic_range_ev)
+        w_bright = _smoothstep_f(PUNCH_BODY_LO_EV, PUNCH_BODY_HI_EV, metrics.body_ev_p50)
+        w_quality = (
+            _smoothstep_f(PUNCH_QUALITY_DR_LO_EV, PUNCH_QUALITY_DR_HI_EV, plan_dr)
+            if math.isfinite(plan_dr)
+            else 0.5
+        )
+        w_dr = _smoothstep_f(PUNCH_DR_LO_EV, PUNCH_DR_HI_EV, dynamic_range_ev)
         punch_strength = clamp_float(
-            w_bright * w_quality * (0.55 + 0.45 * w_dr) * clamp_float(punch_scale, 0.0, 1.5),
+            w_bright
+            * w_quality
+            * (PUNCH_BASE_STRENGTH + (1.0 - PUNCH_BASE_STRENGTH) * w_dr)
+            * clamp_float(punch_scale, 0.0, 1.5),
             0.0,
             1.0,
         )

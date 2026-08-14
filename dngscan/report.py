@@ -532,9 +532,23 @@ def jpeg_tone_plan_cn(
                 + f"·halation DC={rep.get('halation_dc_mode') or '—'}"
                 + f"·预算档={_optics_budget_mib_report()}MiB；"
             )
+        # R2 item 23: the observer fit's residual is part of the user-facing
+        # line — the honest scale of "measured" for this preset's colour
+        # separation, straight off the asset the render loads.
+        _resid = ""
+        try:
+            from .film_develop import _load_v2
+
+            _stock, _ = _load_v2(str(plan.curve_preset))
+            _p99 = float(_stock.get("observer_p99_stop", float("nan")))
+            if _p99 == _p99:
+                _resid = f"观察者拟合残差p99={_p99:.2f}stop；"
+        except Exception:
+            pass
         return (
             f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
             f"→B1→τ→相纸曲线→B2)，{state}"
+            f"{_resid}"
             f"灰阶中性化={neutral}；"
             f"AgX endpoint/contrast/toe/shoulder/punch 不参与（接管核心整体替换 "
             f"formation，仅保留交付侧色域安全）；SDR 印相"

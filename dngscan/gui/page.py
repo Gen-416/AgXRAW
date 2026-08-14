@@ -828,8 +828,17 @@ function updateFormatUi(){
   $("#hdrBlock").style.display=hdr?"flex":"none";
   if(hdr)$("#gamut").value="p3";
   $("#gamut").disabled=hdr;
+  // R2 item 9: a value the backend would refuse never rides the payload —
+  // the same convention as display look. Disabling alone left a nonzero
+  // fade in the export request, which the HDR writer then rejected.
+  if(hdr&&+$("#highlightFade").value!==0){
+    $("#highlightFade").value=0;
+    $("#highlightFadeVal").textContent=fmtBias(0);
+    saveSettings();
+    setStatus("HDR 导出无 SDR 显示侧高光褪白定义，已重置为 0（仅 SDR 支持）。","warn");
+  }
   $("#highlightFade").disabled=hdr;
-  $("#highlightFadeBlock").title=hdr?"HDR 色彩几何独立处理高光，不使用 SDR 显示侧褪白。":"";
+  $("#highlightFadeBlock").title=hdr?"HDR 色彩几何独立处理高光，不使用 SDR 显示侧褪白（仅 SDR 导出支持此滑杆）。":"";
   applyDeliveryConstraints();
   updateToneCoreExportUi();
   updateToneCoreUi();

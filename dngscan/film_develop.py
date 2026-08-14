@@ -199,6 +199,13 @@ def _load_v2(name: str):
                 "reversal": bool(z["reversal"]),
                 "default_medium": str(np.asarray(z["default_medium"])),
                 "media": [str(m) for m in z["media"]],
+                # R2 item 23: the observer fit's own residual rides the asset
+                # into the user-facing report — a reader judging "how measured
+                # is this" gets the number, not just the provenance label.
+                "observer_p99_stop": (
+                    float(z["observer_p99_stop"])
+                    if "observer_p99_stop" in z.files else float("nan")
+                ),
             }
             if stock["reversal"]:
                 cast_ev = np.asarray(z["cast_ev"], dtype=np.float32)
