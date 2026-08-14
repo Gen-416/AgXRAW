@@ -110,6 +110,12 @@ def compile_channel_separation(
         clipped = float(getattr(analysis, "cell_union_pct", 0.0) or 0.0)
         conditional = float(getattr(analysis, "cell_ge2_of_clipped_pct", 0.0) or 0.0)
         multi_pct = clipped * conditional / 100.0
+    if not math.isfinite(multi_pct):
+        # R3 item 1: a non-2x2 CFA has no multi-channel cell decomposition, so
+        # the per-channel-freedom evidence simply does not exist. That is zero
+        # confidence — a neutral HDR is always defensible — never NaN riding
+        # the plan into the blend weights.
+        return 0.0
     # Multi-channel clipping is the decisive one: single-channel clipping still leaves two
     # measured channels to place the hue. 10 % of the frame is treated as total loss of
     # confidence, which is deliberately strict for a first cut.

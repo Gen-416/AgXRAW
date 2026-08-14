@@ -60,33 +60,62 @@ def anchored_scene_body_ev(plan: RenderPlan, ev: float) -> float:
     return float(plan.scene.body_ev_p50 + float(ev))
 
 
-def output_highlight_stats(rgb_linear: Any, gamut: str) -> tuple[float, float, float, float]:
-    """(p99.9 luma%, p99.9 max-channel%, clipped-pixel%, near-white%) of an output-linear buffer."""
+NEAR_WHITE_LINEAR = 0.956
+
+
+def output_highlight_stats(
+    rgb_linear: Any, gamut: str, percentile_mask: Any | None = None
+) -> tuple[float, float, float, float]:
+    """(p99.9 luma%, p99.9 max-channel%, clipped-pixel%, near-white%) of an output-linear buffer.
+
+    R3 item 5: `percentile_mask` restricts the two PERCENTILE figures to the
+    reliable body (samples that were not already near-white at the baseline
+    EV) — a scene's existing lamps and speculars are supposed to sit at the
+    top and must not smuggle themselves into the body-brightness reading.
+    The clip%/near-white% area figures always read the full sample: their
+    baseline-relative growth budgets are how pre-existing emitters are
+    excused, and masking them too would blind the search to NEW clipping
+    inside the excluded set.
+    """
     rgb = np.clip(np.nan_to_num(rgb_linear, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0)
     matrix = RGB_TO_XYZ[output_gamut_space(gamut)]
     y = matrix[1, 0] * rgb[:, 0] + matrix[1, 1] * rgb[:, 1] + matrix[1, 2] * rgb[:, 2]
     y = np.clip(np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0)
     max_channel = np.max(rgb, axis=1)
+    y_pct = y
+    max_pct = max_channel
+    if percentile_mask is not None and int(np.count_nonzero(percentile_mask)) >= 256:
+        y_pct = y[percentile_mask]
+        max_pct = max_channel[percentile_mask]
     return (
-        float(np.percentile(y, 99.9) * 100.0),
-        float(np.percentile(max_channel, 99.9) * 100.0),
+        float(np.percentile(y_pct, 99.9) * 100.0),
+        float(np.percentile(max_pct, 99.9) * 100.0),
         float(np.mean(np.any(rgb >= np.float32(0.999), axis=1)) * 100.0),
-        float(np.mean(max_channel >= np.float32(0.956)) * 100.0),
+        float(np.mean(max_channel >= np.float32(NEAR_WHITE_LINEAR)) * 100.0),
     )
 
 
 def output_highlight_margin(
-    rgb_linear: Any, gamut: str, baseline: tuple[float, float, float, float] | None = None
+    rgb_linear: Any,
+    gamut: str,
+    baseline: tuple[float, float, float, float] | None = None,
+    percentile_mask: Any | None = None,
 ) -> float:
     """Positive margin means headroom before highlight risk thresholds.
 
     With `baseline` (the stats at the starting EV), the clip/near-white limits become
     growth budgets relative to that baseline: clipping that already exists in the capture
     (lamps, speculars — light sources are SUPPOSED to clip) does not count against the
-    boost; only NEW clipping does. The luma/max-channel percentile limits stay absolute."""
+    boost; only NEW clipping does. The luma/max-channel percentile limits stay absolute,
+    but since R3 item 5 they are evaluated on the reliable body (`percentile_mask`,
+    derived at the baseline EV) — a handful of pre-existing emitters used to push the
+    absolute p99.9 gate past its limit at the STARTING EV, vetoing the whole search on
+    exactly the dark lamp-lit scenes the brightness reference exists for."""
     if np is None:
         return 0.0
-    y_p999, max_p999, clip_pct, near_pct = output_highlight_stats(rgb_linear, gamut)
+    y_p999, max_p999, clip_pct, near_pct = output_highlight_stats(
+        rgb_linear, gamut, percentile_mask
+    )
     clip_limit = 0.03
     near_limit = 0.25
     if baseline is not None:
@@ -355,6 +384,7 @@ def max_safe_ev(
             guidance = raw_guidance_for_shape(bundle, bundle.scene_rec2020_render.shape[:2], analysis)
             sample_raw_guidance = flatten_raw_guidance(guidance, 0, masks.shape[0], step=step)
     baseline_stats: tuple[float, float, float, float] | None = None
+    body_percentile_mask: Any | None = None
 
     def margin_at(ev: float) -> float:
         rgb = render_sample_linear_output(
@@ -379,7 +409,7 @@ def max_safe_ev(
             adjustments=adjustments,
             spatial_shape=spatial_shape,
         )
-        return output_highlight_margin(rgb, gamut, baseline_stats)
+        return output_highlight_margin(rgb, gamut, baseline_stats, body_percentile_mask)
 
     baseline_rgb = render_sample_linear_output(
         bundle,
@@ -403,8 +433,20 @@ def max_safe_ev(
         adjustments=adjustments,
         spatial_shape=spatial_shape,
     )
-    baseline_stats = output_highlight_stats(baseline_rgb, gamut)
-    if output_highlight_margin(baseline_rgb, gamut, baseline_stats) <= 0.0:
+    # R3 item 5: the reliable body is fixed at the BASELINE — the samples not
+    # already near-white before any boost. The same sample array renders at
+    # every probed EV, so the mask stays aligned across the whole search.
+    _base = np.clip(
+        np.nan_to_num(baseline_rgb, nan=0.0, posinf=1.0, neginf=0.0), 0.0, 1.0
+    )
+    _mask = np.max(_base, axis=1) < np.float32(NEAR_WHITE_LINEAR)
+    if int(np.count_nonzero(_mask)) >= 256:
+        body_percentile_mask = _mask
+    del _base, _mask
+    baseline_stats = output_highlight_stats(baseline_rgb, gamut, body_percentile_mask)
+    if output_highlight_margin(
+        baseline_rgb, gamut, baseline_stats, body_percentile_mask
+    ) <= 0.0:
         return float(from_ev)
 
     low = float(from_ev)

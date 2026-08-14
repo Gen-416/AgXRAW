@@ -615,6 +615,14 @@ class FilmOpticsPlan:
             or self.capture_bloom_amount > 0.0
         )
 
+    @property
+    def has_media_scatter(self) -> bool:
+        """Whether the declared media carry any scatter stage (R3 item 3)."""
+        return (
+            self.stock.emulsion_scatter is not None
+            or self.print_medium.formation_scatter is not None
+        )
+
     def report(self) -> dict:
         """What the render report must print: which asset, and how honest.
 
@@ -678,7 +686,19 @@ def compile_film_optics_plan(tone_plan: Any) -> FilmOpticsPlan | None:
     # not ride a look slider, and the two must never share a field or the
     # rename buys nothing.
     bloom = _amount(tone_plan, "film_bloom")
-    if grain <= 0.0 and halation <= 0.0 and bloom <= 0.0:
+    # R3 item 3: the media scatter (§5.1 emulsion / §6.2 formation) is a
+    # property of the DECLARED media, so under the default
+    # film_media_scatter="declared" a full-film plan engages it even with
+    # every look slider at zero — the contract that motivated the flag in
+    # review R1 item 4. Only "off" (or no full-film chain at all, where no
+    # media exists to scatter) compiles to the strict-identity fast path.
+    media_scatter_on = (
+        str(getattr(tone_plan, "film_media_scatter", "declared") or "declared")
+        != "off"
+        and str(getattr(tone_plan, "film_mode", "observe")) == "full"
+        and str(getattr(tone_plan, "curve_preset", "none")) != "none"
+    )
+    if grain <= 0.0 and halation <= 0.0 and bloom <= 0.0 and not media_scatter_on:
         return None
 
     # R1 item 3: ONE generic profile serves every curve_preset and print

@@ -176,6 +176,12 @@ def rank_trim_reconstructed_highlights(
     indices = np.flatnonzero(keep)
     if indices.size == 0:
         return keep
+    if not math.isfinite(float(clipped_cell_pct)):
+        # R3 item 1: NaN used to clamp to a silent 0% trim here. The union
+        # rate is now measured for any CFA period, so a non-finite value
+        # means the measurement itself failed — trim nothing, but do it as a
+        # stated decision rather than a NaN artefact.
+        return keep
     fraction = clamp_float(float(clipped_cell_pct) / 100.0, 0.0, 1.0)
     trim_count = int(math.ceil(indices.size * fraction))
     min_keep = max(256, indices.size // 20)

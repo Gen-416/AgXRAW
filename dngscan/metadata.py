@@ -349,6 +349,13 @@ class DngGainMap:
     left: int
     bottom: int
     right: int
+    # R3 item 2: Plane/Planes select which IMAGE planes the opcode touches
+    # (DNG SDK dng_opcode_GainMap: planes [plane, plane+planes)). They are
+    # part of the opcode's meaning and must survive parsing — the mosaic
+    # stage has exactly one image plane, so an opcode with plane > 0 simply
+    # does not apply there.
+    plane: int
+    planes: int
     row_pitch: int
     col_pitch: int
     points_v: int
@@ -367,7 +374,7 @@ def _parse_gain_map_payload(data: bytes) -> DngGainMap | None:
     if len(data) < 76:
         return None
     head = struct.unpack(">4L2L2L2L", data[:40])
-    top, left, bottom, right, _plane, _planes, row_pitch, col_pitch, pv, ph = head
+    top, left, bottom, right, plane, planes, row_pitch, col_pitch, pv, ph = head
     sv, sh, ov, oh = struct.unpack(">4d", data[40:72])
     (mp,) = struct.unpack(">L", data[72:76])
     n = pv * ph * mp
@@ -376,6 +383,7 @@ def _parse_gain_map_payload(data: bytes) -> DngGainMap | None:
     gains = _np.frombuffer(data, dtype=">f4", count=n, offset=76).astype(_np.float32)
     return DngGainMap(
         top=top, left=left, bottom=bottom, right=right,
+        plane=int(plane), planes=int(planes),
         row_pitch=max(1, row_pitch), col_pitch=max(1, col_pitch),
         points_v=pv, points_h=ph,
         spacing_v=sv, spacing_h=sh, origin_v=ov, origin_h=oh,

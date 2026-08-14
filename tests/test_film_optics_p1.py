@@ -150,10 +150,20 @@ class AssetLoadingTests(unittest.TestCase):
 
 
 class CompilerTests(unittest.TestCase):
-    def test_all_amounts_zero_compiles_to_nothing(self) -> None:
-        """The strict-identity fast path: no asset is read and no context is
-        built, so amount 0 cannot cost a file open."""
-        self.assertIsNone(fa.compile_film_optics_plan(_plan()))
+    def test_all_amounts_zero_compiles_media_scatter_only(self) -> None:
+        """R3 item 3: the declared media scatter is a media property, so the
+        default full-film plan compiles a scatter-only plan even with every
+        look amount at zero. The strict-identity fast path (no asset read)
+        now belongs to film_media_scatter="off" — and to observe mode, where
+        no media exists to scatter."""
+        got = fa.compile_film_optics_plan(_plan())
+        self.assertIsNotNone(got)
+        self.assertFalse(got.engaged)  # amount-based engagement stays false
+        self.assertTrue(got.has_media_scatter)
+        self.assertIsNone(
+            fa.compile_film_optics_plan(_plan(film_media_scatter="off"))
+        )
+        self.assertIsNone(fa.compile_film_optics_plan(_plan(film_mode="observe")))
 
     def test_engaged_plan_carries_assets_amounts_and_hashes(self) -> None:
         got = fa.compile_film_optics_plan(

@@ -850,9 +850,9 @@
     "light": {
       "baseline": {
         "mtf50_cycles_per_px": 0.5,
-        "mtf_at_0p25": 0.9070316008159118
+        "mtf_at_0p25": 0.878791263434079
       },
-      "edge_snr_with_grain": 280.2069188732602,
+      "edge_snr_with_grain": 524.9092045614192,
       "light_spread_only": {
         "mtf50_cycles_per_px": 0.5,
         "mtf_at_0p25": 0.8576422862862848
@@ -861,9 +861,9 @@
     "standard": {
       "baseline": {
         "mtf50_cycles_per_px": 0.5,
-        "mtf_at_0p25": 0.9070316008159118
+        "mtf_at_0p25": 0.878791263434079
       },
-      "edge_snr_with_grain": 203.74425138963986,
+      "edge_snr_with_grain": 262.15820095399204,
       "standard_spread_only": {
         "mtf50_cycles_per_px": 0.5,
         "mtf_at_0p25": 0.8272528508246374

@@ -450,7 +450,7 @@ FILM_CURVE_OPTIONS
     </div>
     <div id="filmOpticsBlock" style="flex:1;min-width:190px;display:none">
       <label>模拟光学</label>
-      <select id="filmOptics" title="胶片的空间成像（V2）：颗粒=实测 σ(D)（5207 图表逐通道查表,48µm 孔径校准;负片+2383 印片双介质;粒子 oracle 多带频谱;预览/裁切/全尺寸共享同一实现,随机只改排布）；halation 把高亮场景曝光经红敏背散射回注层曝光（modelled 分量集）；bloom=editorial 捕获辉光（进乳剂前,声明为编辑性）；开启任意档位时,MTF 拟合的乳剂/介质散射默认作为介质属性一并生效（filmMediaScatter=declared;API/CLI 可设 off 单独关闭;预览分辨率下自动恒等）。关闭=严格恒等。">
+      <select id="filmOptics" title="胶片的空间成像（V2）：颗粒=实测 σ(D)（5207 图表逐通道查表,48µm 孔径校准;负片+2383 印片双介质;粒子 oracle 多带频谱;预览/裁切/全尺寸共享同一实现,随机只改排布）；halation 把高亮场景曝光经红敏背散射回注层曝光（modelled 分量集）；bloom=editorial 捕获辉光（进乳剂前,声明为编辑性）；MTF 拟合的乳剂/相纸散射是所声明介质的属性,full 模式下默认始终生效,与本档位无关（filmMediaScatter=declared;API/CLI 可设 off 单独关闭）。关闭本档位=颗粒/halation/bloom 严格恒等。">
         <option value="off">关闭 · 默认</option>
         <option value="light">轻 · 颗粒0.25/晕0.20/泛0.15</option>
         <option value="standard">标准 · 颗粒0.50/晕0.40/泛0.30</option>
