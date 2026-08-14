@@ -63,8 +63,12 @@ def _glow(diameter_mm: float, amount: float = 0.5):
     scene, (cy, cx) = charts.single_emitter(
         H, W, diameter_mm=diameter_mm, exposure_ev=7.0, background_ev=-4.0
     )
-    base = _develop(scene)
-    got = _develop(scene, film_bloom=amount)
+    # Media scatter off on BOTH sides (R1 item 4 / R3 item 3): with the
+    # declared scatter now genuinely default, an amount-vs-base delta would
+    # otherwise measure the scatter of the bloom-brightened source too, and
+    # its conservative redistribution reads as "light taken from the core".
+    base = _develop(scene, film_media_scatter="off")
+    got = _develop(scene, film_bloom=amount, film_media_scatter="off")
     delta = diag.isolate(got, base)
     radii, prof, _ = diag.radial_profile(delta, (cy, cx), max_radius_px=H / 2)
     return base, delta, radii, np.clip(prof, 0.0, None)

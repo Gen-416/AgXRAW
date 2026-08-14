@@ -49,6 +49,81 @@ def save_jpeg_array(
     return icc_profile is not None
 
 
+def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
+    """Losslessly copy the capture's EXIF/TIFF/GPS/XMP metadata into a written JPEG.
+
+    R3 item 6: a final-photo converter that drops shot time, body, lens,
+    exposure and copyright is a delivery gap even when every pixel is right.
+    Uses ImageIO's CGImageDestinationCopyImageSource, which rewrites metadata
+    WITHOUT re-encoding the JPEG bitstream (the pixels and the embedded ICC
+    stay byte-identical). Orientation is forced to 1: the render writes
+    upright pixels, and carrying the RAW's rotation tag would double-rotate
+    in viewers. Best-effort by design — returns False and leaves the JPEG
+    untouched when ImageIO or the source metadata is unavailable (non-macOS
+    hosts keep the previous pixels-only behaviour).
+    """
+    try:
+        import Quartz  # type: ignore
+        from Foundation import NSURL  # type: ignore
+
+        src = Quartz.CGImageSourceCreateWithURL(
+            NSURL.fileURLWithPath_(str(src_raw)), None
+        )
+        if src is None:
+            return False
+        meta = Quartz.CGImageSourceCopyMetadataAtIndex(src, 0, None)
+        if meta is None:
+            return False
+        mutable = Quartz.CGImageMetadataCreateMutableCopy(meta)
+        if mutable is not None:
+            Quartz.CGImageMetadataSetValueMatchingImageProperty(
+                mutable,
+                Quartz.kCGImagePropertyTIFFDictionary,
+                Quartz.kCGImagePropertyTIFFOrientation,
+                1,
+            )
+            # The capture is a mosaic container; its FORMAT descriptors must
+            # not follow the capture metadata onto a rendered JPEG
+            # (PhotometricInterpretation=32803 means CFA, and a JPEG saying
+            # so is lying about its own encoding).
+            for tag_path in (
+                "tiff:PhotometricInterpretation",
+                "exif:CFAPattern",
+                "exif:SensingMethod",
+            ):
+                try:
+                    Quartz.CGImageMetadataRemoveTagWithPath(mutable, None, tag_path)
+                except Exception:
+                    pass
+            meta = mutable
+        jpeg_src = Quartz.CGImageSourceCreateWithURL(
+            NSURL.fileURLWithPath_(str(out_jpeg)), None
+        )
+        if jpeg_src is None:
+            return False
+        tmp_path = out_jpeg.with_name(out_jpeg.name + ".meta.tmp")
+        dest = Quartz.CGImageDestinationCreateWithURL(
+            NSURL.fileURLWithPath_(str(tmp_path)), "public.jpeg", 1, None
+        )
+        if dest is None:
+            return False
+        options = {
+            Quartz.kCGImageDestinationMetadata: meta,
+            Quartz.kCGImageDestinationMergeMetadata: True,
+        }
+        result = Quartz.CGImageDestinationCopyImageSource(
+            dest, jpeg_src, options, None
+        )
+        ok = bool(result[0] if isinstance(result, tuple) else result)
+        if not ok or not tmp_path.is_file():
+            tmp_path.unlink(missing_ok=True)
+            return False
+        tmp_path.replace(out_jpeg)
+        return True
+    except Exception:
+        return False
+
+
 def export_ultrahdr_jpeg(
     path: Path,
     out_path: Path,
@@ -220,6 +295,7 @@ def export_srgb_jpeg(
             tone_core, lum_norm, agx_primaries,
         )
         embedded = save_jpeg_array(rgb, out_path, quality, output_gamut, subsampling)
+        carry_capture_metadata(path, out_path)
         return (embedded, rgb) if return_rgb else embedded
     except Exception as exc:
         raise RuntimeError(f"Cannot export 8-bit {output_gamut_label(output_gamut)} JPEG: {exc}") from exc

@@ -216,6 +216,40 @@ def nan_cell_metrics() -> tuple[float, float, dict[int, float], dict[int, float]
     return nan, nan, {k: nan for k in range(1, 5)}, {k: nan for k in range(1, 5)}
 
 
+def compute_generic_cell_union(
+    raw_image: Any, raw_colors: Any, thresholds: dict[int, int],
+    raw_pattern: list[list[int]],
+) -> float:
+    """Clipped-sensel-area fraction for an arbitrary CFA period (R3 item 1).
+
+    A "cell" is one CFA pattern period (6x6 for X-Trans). The union metric —
+    the share of cells containing at least one clipped photosite — is
+    meaningful for any period and is what the RAW9 rank-domain highlight trim
+    consumes. The 2x2 multi-channel decomposition (ge2 / k-of-cell) stays
+    Bayer-only: on other periods those fields remain NaN and their consumers
+    must treat "no topology" as no evidence, never as zero clipping.
+    """
+    try:
+        pattern = np.asarray(raw_pattern)
+        ph, pw = int(pattern.shape[0]), int(pattern.shape[1])
+    except Exception:
+        return float("nan")
+    if ph <= 0 or pw <= 0:
+        return float("nan")
+    h, w = raw_image.shape
+    h2 = (h // ph) * ph
+    w2 = (w // pw) * pw
+    if h2 <= 0 or w2 <= 0:
+        return float("nan")
+    threshold_map = channel_threshold_map(raw_colors[:h2, :w2], thresholds)
+    clipped = raw_image[:h2, :w2] >= threshold_map
+    per_cell = clipped.reshape(h2 // ph, ph, w2 // pw, pw).sum(axis=(1, 3))
+    total = int(per_cell.size)
+    if total == 0:
+        return float("nan")
+    return float(np.count_nonzero(per_cell >= 1) / total * 100.0)
+
+
 def is_2x2_cfa(raw_pattern: list[list[int]]) -> bool:
     try:
         pattern = np.asarray(raw_pattern)
@@ -756,7 +790,16 @@ def analyze(
             raw_image, raw_colors, channel_thresholds
         )
     else:
-        cell_union, cell_ge2, cell_k_clipped, cell_k_all = nan_cell_metrics()
+        # R3 item 1: "not applicable" used to be spelled NaN across the board,
+        # and NaN flowed into the RAW9 highlight rank trim (clamping to a 0%
+        # trim) and the HDR channel-separation compile (NaN rho). The union
+        # metric generalises to any CFA period, so measure it; only the 2x2
+        # multi-channel decomposition stays NaN, and its consumers now treat
+        # missing topology as zero confidence rather than zero clipping.
+        _, cell_ge2, cell_k_clipped, cell_k_all = nan_cell_metrics()
+        cell_union = compute_generic_cell_union(
+            raw_image, raw_colors, channel_thresholds, bundle.raw_pattern
+        )
 
     y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
     ev, raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray = compute_ev_metrics(y)

@@ -396,7 +396,22 @@ class FilmSpatialContext:
 
     @property
     def engaged(self) -> bool:
-        return self.optics is not None and self.optics.engaged
+        # R3 item 3: a scatter-only context (all look amounts 0, media
+        # scatter declared) is engaged exactly when a scatter kernel
+        # resolves at this pitch. The R1 depth criterion keeps components
+        # live well into preview pitches (the R tail only drops below 1%
+        # depth around 200 um/px), so previews render the same declared
+        # media the export does; only very coarse thumbnails fall back to
+        # the byte-identical chunk-stream fast path.
+        if self.optics is None:
+            return False
+        if self.optics.engaged:
+            return True
+        return (
+            self.media_scatter
+            and self.optics.has_media_scatter
+            and self.scatter_halo_rows() > 0
+        )
 
     def band_geometry(self, y0: int, y1: int):
         return self.geometry.rows(y0, y1)

@@ -335,17 +335,26 @@ def _optics_band_rows(width: int) -> int:
 
 
 def _film_spatial_engaged(tone_plan: Any) -> bool:
-    """True when the full-mode film plan carries any §9 analog-optics amount.
-    Spatial operators need the whole image; the renderers precompute the tone
-    core full-frame in that case instead of chunk-streaming it."""
+    """True when the full-mode film plan MAY need the spatial path: any §9
+    analog-optics amount, or the declared media scatter (R3 item 3 — a media
+    property, engaged independently of the look sliders). The plan alone
+    cannot see the pitch, so the resolution decision stays with
+    prepare_film_spatial: where no scatter kernel resolves (very coarse
+    thumbnails) the context reports unengaged and the chunk-stream fast
+    path proceeds unchanged."""
     if (
         str(getattr(tone_plan, "film_mode", "observe")) != "full"
         or str(getattr(tone_plan, "curve_preset", "none")) == "none"
     ):
         return False
-    return any(
+    if any(
         float(getattr(tone_plan, k, 0.0) or 0.0) > 0.0
         for k in ("film_grain", "film_halation", "film_bloom")
+    ):
+        return True
+    return (
+        str(getattr(tone_plan, "film_media_scatter", "declared") or "declared")
+        != "off"
     )
 
 
@@ -401,7 +410,11 @@ def _prepare_spatial_pass1(
     ctx = prepare_film_spatial(tone_plan, h, w)
     band_rows = _optics_band_rows(w)
     if ctx is None:
-        raise RuntimeError("spatial pass-1 called without engaged optics")
+        # R3 item 3: a scatter-only plan (media scatter declared, all look
+        # amounts 0) resolves to exact identity at this coarse pitch — no
+        # context, and the caller's chunk streaming proceeds as if never
+        # gated.
+        return None, band_rows * w
     # Pass A exists ONLY for halation (review batch 19): since the bloom
     # source moved to the full-resolution pass B, decimating the scene for a
     # bloom-only render walked the whole frame and threw the result away.

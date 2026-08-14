@@ -177,9 +177,12 @@ class SpatialSafeEvTests(unittest.TestCase):
             return real(rgb, plan, spatial_shape=spatial_shape, spatial=spatial)
 
         with mock.patch.object(film_develop, "apply_film_core", spy):
+            # R3 item 3: the declared media scatter engages the spatial path
+            # by default now, so the flat-probe contract needs it off.
             safe_plain = auto_ev_mod.max_safe_ev(
                 scene.bundle, scene.analysis, "srgb",
                 film_curve=stock, film_mode="full", film_crossover="datasheet",
+                film_media_scatter="off",
             )
             self.assertEqual(spatial_calls, [], "no optics -> flat probe")
             safe_optics = auto_ev_mod.max_safe_ev(

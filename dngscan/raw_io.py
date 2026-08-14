@@ -56,24 +56,46 @@ def _fixed_asshot_wb_kwargs(camera_wb: Any) -> dict[str, Any]:
     return {"use_camera_wb": True}
 
 
-def _apply_gain_maps_mosaic(raw: Any, maps: list, black_levels: list[float], white_level: int) -> None:
+def _apply_gain_maps_mosaic(
+    raw: Any, maps: list, black_levels: list[float], white_level: int,
+    camera_white_levels: list[float] | None = None,
+) -> None:
     """Apply pre-demosaic GainMap opcodes to the live rawpy mosaic in place.
 
     Runs AFTER the evidence copies (bundle.raw_image, clip masks) are taken: clip
     evidence is sensor truth and must stay pre-correction. Values gain toward the
-    corners (fp measures up to x1.384); results clip at white_level — a corner pixel
-    pushed past white saturates exactly as the DNG rendering path intends.
+    corners (fp measures up to x1.384); results clip at the target sensel's own
+    channel white level — a corner pixel pushed past white saturates exactly as
+    the DNG rendering path intends.
+
+    R3 item 2 — plane semantics follow the DNG SDK (dng_opcode_GainMap /
+    dng_gain_map::Interpolate): the opcode applies to image planes
+    [plane, plane+planes), and the gain for image plane p reads map plane
+    min(p - plane, map_planes - 1). The mosaic stage has exactly ONE image
+    plane (index 0), so an opcode with plane > 0 does not apply here at all,
+    and an applicable opcode reads map plane 0 — never an average across
+    map planes, which is only coincidentally right for map_planes == 1.
     """
     img = raw.raw_image_visible
     colors = raw.raw_colors_visible
     h, w = img.shape
     blacks = np.asarray(black_levels or [0.0], dtype=np.float32)
+    whites = np.asarray(
+        [
+            float(v) if float(v) > 0 else float(white_level)
+            for v in (camera_white_levels or [])
+        ] or [float(white_level)],
+        dtype=np.float32,
+    )
     for m in maps:
+        if int(getattr(m, "plane", 0)) > 0 or int(getattr(m, "planes", 1)) < 1:
+            # Targets image planes the 1-plane mosaic does not have (or none).
+            continue
         rows = np.arange(m.top, min(m.bottom, h), m.row_pitch)
         cols = np.arange(m.left, min(m.right, w), m.col_pitch)
         if rows.size == 0 or cols.size == 0:
             continue
-        gains_grid = np.mean(np.asarray(m.gains, dtype=np.float64), axis=2)
+        gains_grid = np.asarray(m.gains, dtype=np.float64)[:, :, 0]
         iv = np.clip(((rows + 0.5) / h - m.origin_v) / max(m.spacing_v, 1e-9), 0, m.points_v - 1)
         ih = np.clip(((cols + 0.5) / w - m.origin_h) / max(m.spacing_h, 1e-9), 0, m.points_h - 1)
         v0 = np.clip(np.floor(iv).astype(int), 0, m.points_v - 2) if m.points_v > 1 else np.zeros(rows.size, int)
@@ -113,7 +135,11 @@ def _apply_gain_maps_mosaic(raw: Any, maps: list, black_levels: list[float], whi
                 blacks[np.clip(cidx[r0:r1], 0, blacks.size - 1)]
                 if blacks.size > 1 else np.float32(blacks[0])
             )
-            corrected = np.clip(b + (sub - b) * gains, 0.0, float(white_level))
+            wl = (
+                whites[np.clip(cidx[r0:r1], 0, whites.size - 1)]
+                if whites.size > 1 else np.float32(whites[0])
+            )
+            corrected = np.clip(b + (sub - b) * gains, 0.0, wl)
             img_view[r0:r1] = corrected.astype(img.dtype)
 
 
@@ -1249,6 +1275,7 @@ def load_raw(
                         shading_ops["gain_maps"],
                         [float(x) for x in black_levels],
                         white_level,
+                        [float(x) for x in camera_white_levels],
                     )
                     lens_shading = "gainmap"
                 # Demosaic/highlight always sees one immutable per-capture
@@ -1384,6 +1411,7 @@ def load_raw(
                             reference_shading["gain_maps"],
                             [float(x) for x in black_levels],
                             white_level,
+                            [float(x) for x in camera_white_levels],
                         )
                     reference_scene = render_to_scene_rec2020(
                         reference_raw,

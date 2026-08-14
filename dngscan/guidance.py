@@ -197,10 +197,23 @@ def _align_cfa_rgb_map(bundle: RawBundle, values: Any, target_shape: tuple[int, 
     return raw_io._resize_mask_to_shape(oriented, target_shape).astype(np.float32, copy=False)
 
 
-def _raw_headroom_rgb(bundle: RawBundle, target_shape: tuple[int, int]) -> Any:
-    """Actual pre-WB remaining well capacity for R/G/B CFA samples."""
+def _raw_headroom_rgb(
+    bundle: RawBundle,
+    target_shape: tuple[int, int],
+    analysis: Analysis | None = None,
+) -> Any:
+    """Actual pre-WB remaining well capacity for R/G/B CFA samples.
+
+    R3 item 4: the fullwell reference is the ANALYSIS-resolved per-channel
+    value (metadata white refined by the observed saturation pile) whenever
+    an Analysis rides along — the clip masks were rebuilt on exactly that
+    endpoint, and reading raw metadata here let the same pixel be "near
+    clip" to the mask and "has headroom" to this map at once. Without an
+    Analysis the metadata fallback stands, stated rather than implied.
+    """
     from . import raw_io
 
+    resolved = dict(getattr(analysis, "channel_fullwell", None) or {})
     raw = np.asarray(bundle.raw_image, dtype=np.float32)
     colors = np.asarray(bundle.raw_colors)
     headroom = np.ones(raw.shape + (3,), dtype=np.float32)
@@ -211,7 +224,12 @@ def _raw_headroom_rgb(bundle: RawBundle, target_shape: tuple[int, int]) -> Any:
         if out_idx is None:
             continue
         black = raw_io.channel_black_level(bundle.black_levels, cid_i)
-        fullwell = raw_io.channel_fullwell(bundle.white_level, bundle.camera_white_levels, cid_i)
+        fullwell = float(
+            resolved.get(cid_i)
+            or raw_io.channel_fullwell(
+                bundle.white_level, bundle.camera_white_levels, cid_i
+            )
+        )
         channel_headroom = np.clip((np.float32(fullwell) - raw) / np.float32(max(fullwell - black, 1.0)), 0.0, 1.0)
         plane = np.where(colors == cid_i, channel_headroom, np.float32(1.0))
         headroom[:, :, out_idx] = np.minimum(headroom[:, :, out_idx], plane)
@@ -267,7 +285,7 @@ def build_raw_guidance_maps(
     if masks is None:
         return None
     target_shape = np.asarray(masks).shape[:2]
-    headroom = _raw_headroom_rgb(bundle, target_shape)
+    headroom = _raw_headroom_rgb(bundle, target_shape, analysis)
     clip_class = clip_class_from_masks(saturation_proximity_from_headroom(headroom).reshape(-1, 3)).reshape(target_shape)
     snr = _raw_snr_confidence(bundle, analysis, target_shape)
     stored_headroom = headroom.astype(np.float16, copy=False)
@@ -286,13 +304,22 @@ def build_raw_guidance_maps(
 
 def ensure_raw_guidance(bundle: RawBundle, analysis: Analysis | None = None) -> RawGuidanceMaps | None:
     wants_sensor_snr = _has_sensor_snr_prior(analysis)
+    # R3 item 4: maps built before the analysis existed measured headroom
+    # against metadata white; once the resolved per-channel fullwell is
+    # available they must be rebuilt on it, same upgrade rule as the
+    # sensor-SNR prior.
+    wants_resolved_fullwell = bool(getattr(analysis, "channel_fullwell", None))
     if getattr(bundle, "raw_guidance", None) is not None and (
         not wants_sensor_snr or getattr(bundle, "_raw_guidance_has_sensor_snr", False)
+    ) and (
+        not wants_resolved_fullwell
+        or getattr(bundle, "_raw_guidance_has_resolved_fullwell", False)
     ):
         return bundle.raw_guidance
     maps = build_raw_guidance_maps(bundle, analysis)
     bundle.raw_guidance = maps
     bundle._raw_guidance_has_sensor_snr = wants_sensor_snr
+    bundle._raw_guidance_has_resolved_fullwell = wants_resolved_fullwell
     bundle._raw_guidance_cache_shape = None
     bundle._raw_guidance_resized = None
     return maps
