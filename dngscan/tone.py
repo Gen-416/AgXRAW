@@ -781,6 +781,7 @@ def build_render_plan(
     film_bloom: float = 0.0,
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
+    film_interimage_beta_dial: float | None = None,
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
     # Full-mode input-domain normalization also lives HERE so hand callers of
@@ -949,9 +950,31 @@ def build_render_plan(
         # exactly ONCE per compile. Both plan copies (ToneCompressionPlan for
         # the runtime, FilmDevelopmentPlan for the audit surface) receive
         # this one value, so a mid-compile table mutation cannot fork them.
+        # Taste-to-dial (2026-08-14): "custom" opens the beta itself — the
+        # declared table stays the mathematical default, the dial is the
+        # user's editorial latitude, and unknown modes fail closed.
+        _interimage_mode = str(film_interimage or "declared")
+        if _interimage_mode not in ("declared", "off", "custom"):
+            raise ValueError(
+                f"未知层间放大档:{_interimage_mode}(可选 declared/off/custom)"
+            )
+        _beta_dial = film_interimage_beta_dial
+        if _interimage_mode == "custom":
+            if _beta_dial is None or not (
+                math.isfinite(float(_beta_dial)) and 0.0 <= float(_beta_dial) <= 1.5
+            ):
+                raise ValueError(
+                    "film_interimage=custom 需要 film_interimage_beta_dial∈[0,1.5]"
+                )
+        elif _beta_dial is not None:
+            raise ValueError(
+                "film_interimage_beta_dial 只在 film_interimage=custom 下有意义"
+            )
         _effective_interimage_beta = (
             _interimage_beta_for(film_curve)
-            if str(film_interimage or "declared") == "declared" else 0.0
+            if _interimage_mode == "declared"
+            else float(_beta_dial) if _interimage_mode == "custom"
+            else 0.0
         )
         tone = _replace(
             tone,

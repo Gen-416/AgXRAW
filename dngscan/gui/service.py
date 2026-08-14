@@ -268,6 +268,7 @@ def estimate_ev_headroom(
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
+    film_interimage_beta: float | None = None,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
     lens_filter: str | None = None,
@@ -311,6 +312,7 @@ def estimate_ev_headroom(
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_interimage_beta_dial=film_interimage_beta,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
         lens_filter=lens_filter,
@@ -576,6 +578,7 @@ def _cached_render_plan(
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
+    film_interimage_beta: float | None = None,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     key = (
@@ -607,6 +610,7 @@ def _cached_render_plan(
         film_appearance_variant,
         int(film_optics_seed),
         str(film_media_scatter),
+        (None if film_interimage_beta is None else _cache_float(film_interimage_beta)),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
     )
@@ -642,6 +646,7 @@ def _cached_render_plan(
         film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_interimage_beta_dial=film_interimage_beta,
             adjustments=None,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
@@ -693,6 +698,7 @@ def _preview_pixel_key(
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
+    film_interimage_beta: float | None = None,
 ) -> tuple[Any, ...]:
     return (
         gamut,
@@ -729,6 +735,7 @@ def _preview_pixel_key(
         film_appearance_variant,
         int(film_optics_seed),
         str(film_media_scatter),
+        (None if film_interimage_beta is None else _cache_float(film_interimage_beta)),
         endpoint_mode,
         _adjustment_key(adjustments),
         # Exposure is represented by ``ev`` above; the scale contract guards against
@@ -826,6 +833,7 @@ def export_preview_jpeg(
     film_appearance_variant: str = "reference",
     film_optics_seed: int | None = None,
     film_media_scatter: str = "declared",
+    film_interimage_beta: float | None = None,
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -908,6 +916,7 @@ def export_preview_jpeg(
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_interimage_beta=film_interimage_beta,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
     if auto_ev is None:
@@ -967,6 +976,7 @@ def export_preview_jpeg(
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_interimage_beta=film_interimage_beta,
         )
         if rgb_u8 is None:
             ensure_current()
@@ -1032,6 +1042,31 @@ def export_preview_jpeg(
     if auto_ev is None:
         cached.put_frame(frame_key, payload)
     return payload
+
+
+def parse_hdr_dials(params: dict, output_format: str) -> tuple:
+    """HDR latitude dials (owner decision 2026-08-14, taste-to-dial): None =
+    the registered policy defaults, byte-identical; explicit values are the
+    user's latitude and are refused under SDR (a dial that silently does
+    nothing teaches the user it is broken). Evidence gates are not dials."""
+    out = []
+    for key, alt, name, lo, hi in (
+        ("hdrRho", "hdr_rho", "HDR 色度自由度基准", 0.0, 1.0),
+        ("hdrWhiteMargin", "hdr_white_margin", "HDR 白点余量", 0.0, 2.0),
+        ("hdrShoulderStart", "hdr_shoulder_start", "HDR 肩起点", -1.0, 3.0),
+    ):
+        raw = params.get(key, params.get(alt))
+        if raw in (None, "", "auto"):
+            out.append(None)
+            continue
+        val = _finite_number(raw, name, lo, hi)
+        if not dg.is_hdr_output_format(output_format):
+            raise ValueError(
+                f"{key} 属于 HDR 编码(ultrahdr/ultrahdr-heic);SDR 输出没有"
+                " HDR 肩部/色度模型"
+            )
+        out.append(float(val))
+    return tuple(out)
 
 
 def parse_grade(params: dict) -> tuple[str, float, str, float]:
@@ -1203,8 +1238,21 @@ def parse_film_params(params: dict) -> tuple:
         params.get("filmInterimage", params.get("film_interimage", "declared"))
         or "declared"
     )
-    if film_interimage not in ("declared", "off"):
-        raise ValueError(f"未知层间放大档:{film_interimage}(可选 declared/off)")
+    if film_interimage not in ("declared", "off", "custom"):
+        raise ValueError(
+            f"未知层间放大档:{film_interimage}(可选 declared/off/custom)"
+        )
+    # Taste-to-dial (2026-08-14): custom opens the beta itself; the declared
+    # table stays the default. Coupling is validated here AND in the compiler.
+    _beta_raw = params.get("filmInterimageBeta", params.get("film_interimage_beta"))
+    if film_interimage == "custom":
+        film_interimage_beta = _finite_number(
+            _beta_raw if _beta_raw is not None else -1.0, "层间放大beta", 0.0, 1.5
+        )
+    else:
+        if _beta_raw not in (None, ""):
+            raise ValueError("filmInterimageBeta 只在 filmInterimage=custom 下有意义")
+        film_interimage_beta = None
     film_appearance = str(
         params.get("filmAppearance", params.get("film_appearance", "technical"))
         or "technical"
@@ -1258,7 +1306,7 @@ def parse_film_params(params: dict) -> tuple:
             film_grain, film_halation, film_bloom,
             film_interimage, film_appearance, film_appearance_strength,
             film_richness, film_color_density, film_neutral_bias,
-            film_appearance_variant, film_media_scatter)
+            film_appearance_variant, film_media_scatter, film_interimage_beta)
 
 
 def effective_optics_seed(params: dict, entry) -> int:
@@ -1308,7 +1356,7 @@ def run_preview(params: dict) -> dict:
      film_grain, film_halation, film_bloom,
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant, film_media_scatter,
+     film_appearance_variant, film_media_scatter, film_interimage_beta,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1370,6 +1418,7 @@ def run_preview(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_interimage_beta_dial=film_interimage_beta,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,
@@ -1420,6 +1469,7 @@ def run_preview(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_interimage_beta=film_interimage_beta,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
@@ -1517,7 +1567,7 @@ def prepare_preview(params: dict) -> dict:
      film_grain, film_halation, film_bloom,
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant, film_media_scatter,
+     film_appearance_variant, film_media_scatter, film_interimage_beta,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1577,6 +1627,7 @@ def prepare_preview(params: dict) -> dict:
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_interimage_beta=film_interimage_beta,
         )
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
@@ -1764,6 +1815,9 @@ def run_export(params: dict) -> dict:
     outdir.mkdir(parents=True, exist_ok=True)
 
     chroma = str(params.get("chroma", "444"))
+    hdr_rho, hdr_white_margin, hdr_shoulder_start = parse_hdr_dials(
+        params, output_format
+    )
     delivery_name = str(params.get("deliveryProfile", params.get("delivery_profile", "archive")))
     try:
         delivery = dg.resolve_delivery_profile(
@@ -1825,7 +1879,7 @@ def run_export(params: dict) -> dict:
      film_grain, film_halation, film_bloom,
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant, film_media_scatter,
+     film_appearance_variant, film_media_scatter, film_interimage_beta,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1911,6 +1965,7 @@ def run_export(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_interimage_beta_dial=film_interimage_beta,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             lens_filter=lens_filter,
@@ -1948,6 +2003,7 @@ def run_export(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_interimage_beta_dial=film_interimage_beta,
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -2034,6 +2090,7 @@ def run_export(params: dict) -> dict:
         # duplicating instead of replacing (the unused-knob rule below).
         film_optics_seed=(film_optics_seed if float(film_grain) > 0.0 else 0),
         film_media_scatter=film_media_scatter,
+        film_interimage_beta_dial=film_interimage_beta,
         # The optics budget tier picks the spread-grid size (P3) and the
         # band split whose per-band dither draw orders the output noise, so
         # it changes rendered bytes whenever the SPATIAL PATH is engaged —
@@ -2061,6 +2118,14 @@ def run_export(params: dict) -> dict:
         # HDR — an unused slider value must not fork identical SDR exports.
         hdr_headroom=(
             float(hdr_headroom) if dg.is_hdr_output_format(output_format) else 0.0
+        ),
+        # HDR latitude dials: same participation rule as hdr_headroom.
+        hdr_rho=hdr_rho if dg.is_hdr_output_format(output_format) else None,
+        hdr_white_margin=(
+            hdr_white_margin if dg.is_hdr_output_format(output_format) else None
+        ),
+        hdr_shoulder_start=(
+            hdr_shoulder_start if dg.is_hdr_output_format(output_format) else None
         ),
         delivery=delivery_name,
         quality=int(quality),
@@ -2110,6 +2175,9 @@ def run_export(params: dict) -> dict:
                 output_gamut=gamut,
                 output_format=output_format,
                 hdr_headroom=hdr_headroom,
+                hdr_rho=hdr_rho,
+                hdr_white_margin=hdr_white_margin,
+                hdr_shoulder_start=hdr_shoulder_start,
                 subsampling=dg.chroma_to_subsampling(chroma),
                 look=look,
                 look_strength=look_strength,
@@ -2180,6 +2248,7 @@ def run_export(params: dict) -> dict:
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_interimage_beta=film_interimage_beta,
                     color_head_y=color_head_y,
                     color_head_m=color_head_m,
                     lens_filter=lens_filter,
