@@ -187,13 +187,42 @@ def compile_hdr_agx_plan(
     target: HdrDisplayTarget | None = None,
     analysis: Analysis | None = None,
     scene_decoder: str = "libraw",
+    rho_base: float | None = None,
+    white_margin_ev: float | None = None,
+    shoulder_start_ev: float | None = None,
 ) -> HdrAgxPlan:
-    """Compile scene-earned headroom into an independent native HDR AgX curve."""
+    """Compile scene-earned headroom into an independent native HDR AgX curve.
+
+    The three optional overrides are the HDR latitude DIALS (owner decision,
+    2026-08-14, taste-to-dial): rho_base (per-channel highlight freedom at
+    full confidence), white_margin_ev (EV above the reliable tail the white
+    endpoint sits), and shoulder_start_ev (where the HDR shoulder leaves the
+    body). They are subjective latitude; the registered policy constants stay
+    the mathematical defaults and an explicit dial wins over BOTH the normal
+    and sparse-emitter variants. The evidence gates (multi-clip, tail SNR,
+    gamut pressure, decoder cap) are measurement logic, not taste, and are
+    deliberately NOT dials. None -> policy, byte-identical to before.
+    """
+    for _name, _v, _lo, _hi in (
+        ("rho_base", rho_base, 0.0, 1.0),
+        ("white_margin_ev", white_margin_ev, 0.0, 2.0),
+        ("shoulder_start_ev", shoulder_start_ev, -1.0, 3.0),
+    ):
+        if _v is not None and not (
+            math.isfinite(float(_v)) and _lo <= float(_v) <= _hi
+        ):
+            raise ValueError(
+                f"HDR dial {_name}={_v} outside its declared domain [{_lo}, {_hi}]"
+            )
     display = target if target is not None else HdrDisplayTarget()
     tail = reliable_tail_ev(scene_plan)
     scene = getattr(scene_plan, "scene", None)
     sparse = bool(getattr(scene, "sparse_emitter_tail", False))
-    white_margin = SPARSE_EMITTER_WHITE_MARGIN_EV if sparse else NORMAL_WHITE_MARGIN_EV
+    white_margin = (
+        float(white_margin_ev)
+        if white_margin_ev is not None
+        else (SPARSE_EMITTER_WHITE_MARGIN_EV if sparse else NORMAL_WHITE_MARGIN_EV)
+    )
     minimum_white = SPARSE_EMITTER_MINIMUM_WHITE_EV if sparse else NORMAL_MINIMUM_WHITE_EV
     white = (
         float(
@@ -208,7 +237,11 @@ def compile_hdr_agx_plan(
     )
     headroom = float(display.display_headroom_ev)
     requested = requested_headroom_ev(tail, headroom)
-    knee = SPARSE_EMITTER_SHOULDER_START_EV if sparse else NORMAL_SHOULDER_START_EV
+    knee = (
+        float(shoulder_start_ev)
+        if shoulder_start_ev is not None
+        else (SPARSE_EMITTER_SHOULDER_START_EV if sparse else NORMAL_SHOULDER_START_EV)
+    )
     contrast = float(scene_plan.tone.contrast)
 
     # The shoulder is the only part of the curve headroom may touch, so the body is built
@@ -297,7 +330,11 @@ def compile_hdr_agx_plan(
     # evidence to justify per-channel freedom, so the answer is none rather than a guess:
     # a neutral HDR is always defensible, an invented highlight hue is not.
     rho = (
-        compile_channel_separation(analysis, scene_decoder)
+        compile_channel_separation(
+            analysis,
+            scene_decoder,
+            rho_base=RHO_BASE if rho_base is None else float(rho_base),
+        )
         if analysis is not None
         else 0.0
     )

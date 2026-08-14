@@ -191,6 +191,9 @@ def export_ultrahdr_jpeg(
     analysis: Analysis,
     tone_plan: ToneCompressionPlan | RenderPlan | None = None,
     hdr_headroom: float = DEFAULT_HDR_HEADROOM_EV,
+    hdr_rho: float | None = None,
+    hdr_white_margin: float | None = None,
+    hdr_shoulder_start: float | None = None,
     look: str = "none",
     look_strength: float = 1.0,
     display_filter: str = "none",
@@ -249,7 +252,13 @@ def export_ultrahdr_jpeg(
 
         target = HdrDisplayTarget(peak_nits=100.0 * float(2.0 ** float(hdr_headroom)))
         hdr_plan = compile_hdr_agx_plan(
-            plan, target, analysis=analysis, scene_decoder=str(bundle.scene_decoder)
+            plan,
+            target,
+            analysis=analysis,
+            scene_decoder=str(bundle.scene_decoder),
+            rho_base=hdr_rho,
+            white_margin_ev=hdr_white_margin,
+            shoulder_start_ev=hdr_shoulder_start,
         )
         if hdr_plan.tone.rendered_headroom_ev <= 0.0:
             raise RuntimeError(
@@ -317,6 +326,20 @@ def export_ultrahdr_jpeg(
         info["shoulder_alpha"] = float(hdr_plan.tone.shoulder_alpha)
         info["shoulder_segments"] = len(hdr_plan.tone.shoulder_segments)
         info["channel_separation"] = float(hdr_plan.color.channel_separation)
+        # Latitude dials (taste-to-dial): report which of the three the user
+        # moved off auto — the compiled values above already reflect them,
+        # but the reader must be able to tell a dialed render from policy.
+        _dials = {
+            k: float(v)
+            for k, v in (
+                ("hdr_rho", hdr_rho),
+                ("hdr_white_margin", hdr_white_margin),
+                ("hdr_shoulder_start", hdr_shoulder_start),
+            )
+            if v is not None
+        }
+        if _dials:
+            info["hdr_latitude_dials"] = _dials
         return info
     except RuntimeError:
         raise
@@ -370,6 +393,9 @@ def export_jpeg(
     output_gamut: str = "srgb",
     output_format: str = "sdr",
     hdr_headroom: float = DEFAULT_HDR_HEADROOM_EV,
+    hdr_rho: float | None = None,
+    hdr_white_margin: float | None = None,
+    hdr_shoulder_start: float | None = None,
     subsampling: int = 0,
     look: str = "none",
     look_strength: float = 1.0,
@@ -395,24 +421,30 @@ def export_jpeg(
             )
         elif profile.container != cont:
             profile = reprofile_for_container(profile, cont)
+        # Keyword forwarding (A13 lesson): the positional form silently
+        # shifted every argument after a signature grew — the HDR dials
+        # would have swallowed `look`.
         return export_ultrahdr_jpeg(
             path,
             out_path,
             quality,
             bundle,
             analysis,
-            tone_plan,
-            hdr_headroom,
-            look,
-            look_strength,
-            display_filter,
-            filter_strength,
-            scene_transform,
-            scene_transform_strength,
-            tone_core,
-            lum_norm,
-            agx_primaries,
-            punch_scale,
+            tone_plan=tone_plan,
+            hdr_headroom=hdr_headroom,
+            hdr_rho=hdr_rho,
+            hdr_white_margin=hdr_white_margin,
+            hdr_shoulder_start=hdr_shoulder_start,
+            look=look,
+            look_strength=look_strength,
+            display_filter=display_filter,
+            filter_strength=filter_strength,
+            scene_transform=scene_transform,
+            scene_transform_strength=scene_transform_strength,
+            tone_core=tone_core,
+            lum_norm=lum_norm,
+            agx_primaries=agx_primaries,
+            punch_scale=punch_scale,
             hdr_drt=hdr_drt,
             delivery=profile,
             chroma=chroma,

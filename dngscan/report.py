@@ -469,7 +469,12 @@ def jpeg_tone_plan_cn(
 
                 beta = interimage_beta(str(plan.curve_preset))
         if beta > 0.0:
-            state += f"层间放大β={beta:.2f}(modelled)；"
+            _im_mode = str(getattr(plan, "film_interimage", "declared") or "declared")
+            state += (
+                f"层间放大β={beta:.2f}"
+                + ("(editorial dial)" if _im_mode == "custom" else "(modelled)")
+                + "；"
+            )
         else:
             state += "层间放大=off(光谱底座)；"
         _app_mode = str(getattr(plan, "film_appearance", "technical") or "technical")

@@ -231,6 +231,19 @@ daylight". There is no strength slider — glass has no half-installed state.
   or use case allows at most. It is a **ceiling, not a target** — actual usage is
   decided by the earned headroom, whichever is smaller. The default +3.0 (roughly an
   800-nit screen) rarely needs changing.
+- **HDR latitude dials** (collapsed section on the output card; collapsed = auto):
+  three subjective quantities — **chroma freedom ρ** (how much per-channel highlight
+  colour at full evidence confidence, default 0.5), **white margin** (stops above the
+  reliable tail the white endpoint sits, default 0.30 normal / 0.50 sparse emitters),
+  and **shoulder start** (where the HDR shoulder leaves the body, default 0.20 / 0.00).
+  The defaults are the mathematical policy; measurement cannot decide these three, so
+  they are dials. The evidence gates (clip / noise / gamut pressure) always multiply
+  and cannot be bypassed. CLI: `--hdr-rho` / `--hdr-white-margin` /
+  `--hdr-shoulder-start`.
+- **Inter-image β** (film card, appears under "custom β"): the development-coupling
+  colour-difference amplification. Default "declared" = the stock's modelled table
+  value (0.32–1.05); a custom value is reported as an editorial dial. CLI:
+  `--film-interimage custom --film-interimage-beta`.
 
 ## 7. Tone card: endpoint mode and toe/shoulder offsets
 

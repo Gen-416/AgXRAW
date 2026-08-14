@@ -185,9 +185,10 @@ def validate_film_plans(
         raise ValueError(
             f"print_exposure_ev={print_plan.print_exposure_ev} 域为 [-8, 8]"
         )
-    if development.interimage_mode not in ("declared", "off"):
+    if development.interimage_mode not in ("declared", "off", "custom"):
         raise ValueError(
-            f"film_interimage={development.interimage_mode!r} 未知（可选 declared/off）"
+            f"film_interimage={development.interimage_mode!r} 未知"
+            "（可选 declared/off/custom）"
         )
     beta = development.interimage_beta
     if not (isinstance(beta, (int, float)) and math.isfinite(beta)) or beta < 0.0:
@@ -203,6 +204,11 @@ def validate_film_plans(
                 f"interimage_beta={beta} 与 stock '{exposure.stock_id}' 声明值 "
                 f"{expected} 不一致"
             )
+    # Taste-to-dial (2026-08-14): custom carries the USER's beta — bounded by
+    # the compiler's [0, 1.5] domain, checked again here so a hand-built plan
+    # cannot smuggle a wider value past the audit surface.
+    if development.interimage_mode == "custom" and not 0.0 <= beta <= 1.5:
+        raise ValueError(f"interimage_beta={beta} 域为 [0, 1.5]（custom 档）")
     if not (exposure_ev_min <= float(exposure.exposure_ev) <= exposure_ev_max):
         raise ValueError(
             f"film_exposure_ev={exposure.exposure_ev} 超出资产声明域 "

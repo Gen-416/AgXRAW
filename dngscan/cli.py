@@ -141,6 +141,36 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_HDR_DRT,
         help="HDR display rendering transform（当前仅 agx=dngscan 对 darktable AgX formation 的 HDR 扩展）",
     )
+    # HDR latitude 旋钮（taste-to-dial,2026-08-14 owner 决策）:默认 auto 保持
+    # 数学化政策默认逐位不变;显式值覆盖 normal 与 sparse-emitter 两档。证据
+    # 门控(多通道剪切/尾部SNR/色域压力/解码器cap)是测量逻辑,不开旋钮。
+    parser.add_argument(
+        "--hdr-rho",
+        default="auto",
+        metavar="R|auto",
+        help=(
+            "HDR 高光逐通道色度自由度基准 [0,1](仅 HDR 格式):证据置信满格时"
+            "允许的 rho;auto(默认)=政策值 0.5。证据门控仍然乘算,不受此旋钮绕过"
+        ),
+    )
+    parser.add_argument(
+        "--hdr-white-margin",
+        default="auto",
+        metavar="EV|auto",
+        help=(
+            "HDR 白端点在可靠尾部之上的余量 EV [0,2](仅 HDR 格式):auto(默认)="
+            "普通 0.30 / 稀疏光源 0.50;显式值同时覆盖两档"
+        ),
+    )
+    parser.add_argument(
+        "--hdr-shoulder-start",
+        default="auto",
+        metavar="EV|auto",
+        help=(
+            "HDR 肩部离开 SDR 主体的起点 EV [-1,3](仅 HDR 格式):auto(默认)="
+            "普通 0.20 / 稀疏光源 0.00;显式值同时覆盖两档"
+        ),
+    )
     parser.add_argument(
         "--hdr-debug-dir",
         type=Path,
@@ -418,11 +448,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--film-interimage",
-        choices=("declared", "off"),
+        choices=("declared", "off", "custom"),
         default="declared",
         help=(
-            "film v2 层间放大(仅 full):declared=该卷声明的 modelled beta(默认);"
-            "off=纯光谱底座(oracle 认证口径,调试用)"
+            "film v2 层间放大(仅 full):declared=该卷声明的 modelled beta(默认,"
+            "数学口径);off=纯光谱底座(oracle 认证口径,调试用);custom=显式 "
+            "--film-interimage-beta(taste-to-dial)"
+        ),
+    )
+    parser.add_argument(
+        "--film-interimage-beta",
+        default=None,
+        metavar="B",
+        help=(
+            "层间放大 beta [0,1.5],仅 --film-interimage custom 下有效"
+            "(声明表范围 0.32-1.05;0=等效 off)"
         ),
     )
     parser.add_argument(
@@ -765,6 +805,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ):
         if not 0.0 <= _v <= 1.0:
             parser.error(f"{_flag} 域为 [0,1]")
+    if args.film_interimage_beta is not None:
+        try:
+            args.film_interimage_beta = float(args.film_interimage_beta)
+        except ValueError:
+            parser.error("--film-interimage-beta 需要数值")
+        # Domain and mode coupling fail closed inside build_render_plan
+        # (custom requires the dial; the dial requires custom).
     # Seed lifecycle (batch 15): resolved ONCE here at load time; every
     # consumer (plan compile, auto-EV probe, both HDR legs, report) receives
     # the same effective value — build_render_plan never randomizes.
@@ -784,6 +831,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             f"--hdr-headroom must be between 0 and {MAX_HDR_HEADROOM_EV:.6f} EV "
             "(4000 nit @ 100 nit reference white)"
         )
+    # HDR latitude dials: "auto" -> None (policy defaults, byte-identical);
+    # explicit values are range-checked here and rejected outright when the
+    # output format has no HDR leg — a dial that silently does nothing
+    # teaches the user it is broken (same contract as the sibling HDR flags).
+    for _flag, _attr, _lo, _hi in (
+        ("--hdr-rho", "hdr_rho", 0.0, 1.0),
+        ("--hdr-white-margin", "hdr_white_margin", 0.0, 2.0),
+        ("--hdr-shoulder-start", "hdr_shoulder_start", -1.0, 3.0),
+    ):
+        _raw = str(getattr(args, _attr))
+        if _raw == "auto":
+            setattr(args, _attr, None)
+            continue
+        try:
+            _val = float(_raw)
+        except ValueError:
+            parser.error(f"{_flag} 需要数值或 auto")
+        if not (_lo <= _val <= _hi):
+            parser.error(f"{_flag} 域为 [{_lo}, {_hi}]")
+        if not is_hdr_output_format(args.output_format):
+            parser.error(
+                f"{_flag} 属于 HDR 编码(ultrahdr/ultrahdr-heic);"
+                "SDR 输出没有 HDR 肩部/色度模型"
+            )
+        setattr(args, _attr, _val)
     if not 0.0 <= args.grade_strength <= 1.5:
         parser.error("--grade-strength must be between 0 and 1.5")
     if not 0.0 <= args.scene_transform_strength <= 3.0:
@@ -1054,6 +1126,7 @@ def main(argv: list[str]) -> int:
                 film_bloom=args.film_bloom,
                 film_optics_seed=args.film_optics_seed,
                 film_media_scatter=args.film_media_scatter,
+                film_interimage_beta_dial=args.film_interimage_beta,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
             )
@@ -1109,6 +1182,7 @@ def main(argv: list[str]) -> int:
                 film_bloom=args.film_bloom,
                 film_optics_seed=args.film_optics_seed,
                 film_media_scatter=args.film_media_scatter,
+                film_interimage_beta_dial=args.film_interimage_beta,
                 endpoint_mode=args.endpoint_mode,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
@@ -1133,6 +1207,9 @@ def main(argv: list[str]) -> int:
                 output_gamut=jpeg_output_gamut,
                 output_format=args.output_format,
                 hdr_headroom=args.hdr_headroom,
+                hdr_rho=args.hdr_rho,
+                hdr_white_margin=args.hdr_white_margin,
+                hdr_shoulder_start=args.hdr_shoulder_start,
                 hdr_drt=args.hdr_drt,
                 subsampling=chroma_to_subsampling(args.chroma),
                 look=look,

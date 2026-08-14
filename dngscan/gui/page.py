@@ -407,7 +407,12 @@ FILM_CURVE_OPTIONS
       <select id="filmInterimage" title="层间放大（inter-image effect）：显影耦合对色差的有界放大 D'=N+sign(d)·h·t'，β 按卷声明，轨距内保界。声明=默认；关=光谱基线（oracle 口径）。">
         <option value="declared">声明 · 默认</option>
         <option value="off">关 · 光谱基线</option>
+        <option value="custom">自定义 β</option>
       </select>
+    </div>
+    <div class="sliderField" id="filmInterimageBetaBlock" style="display:none">
+      <div class="labelRow"><label title="层间放大 β [0,1.5]（taste-to-dial）：声明表范围 0.32–1.05；0=等效关。仅 自定义 β 档下生效。">层间 β</label><span class="val" id="filmInterimageBetaVal">0.60</span></div>
+      <input type="range" id="filmInterimageBeta" min="0" max="1.5" step="0.01" value="0.6">
     </div>
     <div class="sliderField" id="filmAppearanceStrengthBlock" style="display:none">
       <div class="labelRow"><label title="外观层强度：0=不施加，1=配方声明值，>1 外推（上限 3——数学安全域实测:无折叠/灰轴不动/clamp 增量可忽略;弱可见卷如 Velvia 靠这只旋钮到位,不重作配方）。">解释强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
@@ -637,6 +642,14 @@ GRADE_OPTIONS
         <input type="range" id="hdrHeadroom" min="1" max="MAX_HDR_HEADROOM_ATTR" step="0.02" value="3">
         <div class="ctlFact" id="hdrSceneFact"></div>
         <div class="muted" id="hdrHint">实际余量由场景决定；只恢复漫反射白以上的真实亮度档数。</div>
+        <details id="hdrAdvanced" style="margin-top:6px">
+          <summary class="muted" style="cursor:pointer">HDR latitude 旋钮（默认 auto=数学口径）</summary>
+          <div class="row" style="margin-top:6px">
+            <div style="min-width:110px"><label title="证据置信满格时允许的逐通道高光色度自由度 [0,1]。证据门控（多通道剪切/尾部SNR/色域压力/解码器cap）仍然乘算，不被此旋钮绕过。留空=政策值 0.5。">色度自由度 ρ</label><input type="number" id="hdrRho" min="0" max="1" step="0.05" placeholder="auto"></div>
+            <div style="min-width:110px"><label title="HDR 白端点在可靠尾部之上的余量 EV [0,2]。留空=普通 0.30 / 稀疏光源 0.50。">白点余量 EV</label><input type="number" id="hdrWhiteMargin" min="0" max="2" step="0.05" placeholder="auto"></div>
+            <div style="min-width:110px"><label title="HDR 肩部离开 SDR 主体的起点 EV [-1,3]。留空=普通 0.20 / 稀疏光源 0.00。">肩起点 EV</label><input type="number" id="hdrShoulderStart" min="-1" max="3" step="0.05" placeholder="auto"></div>
+          </div>
+        </details>
       </div>
     </div>
     <div style="margin-top:12px">
@@ -775,11 +788,15 @@ function applyDeliveryConstraints(){
   // profile's quality (q100→4:4:4, share→4:2:0): the control would otherwise promise a
   // subsampling the encoder cannot honour.
   const archive=$("#deliveryProfile").value==="archive";
+  const share=$("#deliveryProfile").value==="share";
   const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);
   if(archive){$("#quality").value="100";$("#chroma").value="444";}
+  else if(share){$("#quality").value="90";$("#chroma").value="420";}
   else if(hdr){$("#chroma").value="420";}
-  $("#quality").disabled=archive;
-  $("#chroma").disabled=archive||hdr;
+  // 档即工作点（owner 决策 2026-08-14）：share 与 archive 一样钉死自己的
+  // 编码点（q90/4:2:0——Core Image 在该 quality 下本就固定 4:2:0）。
+  $("#quality").disabled=archive||share;
+  $("#chroma").disabled=archive||share||hdr;
 }
 function applyDeliveryDefaults(){
   // Only on an explicit profile switch: seed share's calibrated defaults.
@@ -973,7 +990,7 @@ function saveSettings(){
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
     filmOptics:$("#filmOptics").value,filmGrain:$("#filmGrain").value,
     filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
-    filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
+    filmInterimage:$("#filmInterimage").value,filmInterimageBeta:$("#filmInterimage").value==="custom"?+$("#filmInterimageBeta").value:null,filmAppearance:$("#filmAppearance").value,
     filmAppearanceStrength:$("#filmAppearanceStrength").value,
     filmAppearanceVariant:$("#filmAppearanceVariant").value,
     filmAppearanceMemo:currentAppearanceMemo(),
@@ -993,7 +1010,9 @@ function saveSettings(){
     shadowTransition:$("#shadowTransition").value,highlightTransition:$("#highlightTransition").value,highlightFade:$("#highlightFade").value,
     endpointMode:$("#endpointMode").value,
     toeEndOffset:$("#toeEndOffset").value,shoulderWhiteOffset:$("#shoulderWhiteOffset").value,
-    hdrHeadroom:$("#hdrHeadroom").value,outdir:$("#outdir").value,png:$("#png").checked
+    hdrHeadroom:$("#hdrHeadroom").value,outdir:$("#outdir").value,png:$("#png").checked,
+    hdrRho:$("#hdrRho").value,hdrWhiteMargin:$("#hdrWhiteMargin").value,hdrShoulderStart:$("#hdrShoulderStart").value,
+    filmInterimageBeta:$("#filmInterimageBeta").value
   }));}catch(e){}
 }
 function restoreSettings(){
@@ -1042,7 +1061,10 @@ function restoreSettings(){
       variant:["reference","extended"].includes(s.filmAppearanceMemo.variant)?s.filmAppearanceMemo.variant:"reference"};
   }
   if(s.filmAppearanceVariant&&["reference","extended"].includes(s.filmAppearanceVariant))$("#filmAppearanceVariant").value=s.filmAppearanceVariant;
-  if(s.filmInterimage&&["declared","off"].includes(s.filmInterimage))$("#filmInterimage").value=s.filmInterimage;
+  if(s.filmInterimage&&["declared","off","custom"].includes(s.filmInterimage))$("#filmInterimage").value=s.filmInterimage;
+  if(s.filmInterimageBeta!==undefined&&s.filmInterimageBeta!=="")$("#filmInterimageBeta").value=s.filmInterimageBeta;
+  if($("#filmInterimageBetaVal"))$("#filmInterimageBetaVal").textContent=(+$("#filmInterimageBeta").value).toFixed(2);
+  for(const id of ["hdrRho","hdrWhiteMargin","hdrShoulderStart"]){if(s[id]!==undefined)$("#"+id).value=s[id];}
   if(s.filmAppearanceStrength!==undefined)$("#filmAppearanceStrength").value=s.filmAppearanceStrength;
   if(s.filmRichness!==undefined)$("#filmRichness").value=s.filmRichness;
   if(s.filmColorDensity!==undefined)$("#filmColorDensity").value=s.filmColorDensity;
@@ -1324,7 +1346,10 @@ function setFilmAppearanceLabels(){
 }
 setFilmAppearanceLabels();
 $("#filmAppearance").addEventListener("change",()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();});
-$("#filmInterimage").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+$("#filmInterimage").addEventListener("change",()=>{updateInterimageBetaUi();saveSettings();scheduleLivePreview();});
+function updateInterimageBetaUi(){$("#filmInterimageBetaBlock").style.display=$("#filmInterimage").value==="custom"?"block":"none";}
+$("#filmInterimageBeta").oninput=()=>{$("#filmInterimageBetaVal").textContent=(+$("#filmInterimageBeta").value).toFixed(2);saveSettings();scheduleLivePreview();};
+for(const id of ["hdrRho","hdrWhiteMargin","hdrShoulderStart"]){$("#"+id).addEventListener("change",saveSettings);}
 $("#filmAppearanceVariant").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 for(const id of ["filmAppearanceStrength","filmRichness","filmColorDensity","filmNeutralBias"]){
   $("#"+id).addEventListener("input",()=>{setFilmAppearanceLabels();saveSettings();scheduleLivePreview();});
@@ -1408,6 +1433,7 @@ $("#punch").oninput=()=>{setPunchLabel();saveSettings();scheduleLivePreview();};
 $("#endpointMode").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#sceneTransformStrength").oninput=()=>{setSceneTransformStrengthLabel();saveSettings();scheduleLivePreview();};
 restoreSettings();
+updateInterimageBetaUi();
 checkHdrBackend();
 document.querySelectorAll("button[data-ev]").forEach(b=>b.onclick=()=>{$("#ev").value=b.dataset.ev;setEvLabel();saveSettings();scheduleLivePreview();});
 let lastSavedPath="";
@@ -1477,7 +1503,7 @@ function payload(){
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
     filmOptics:$("#filmOptics").value,filmGrain:$("#filmGrain").value,
     filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
-    filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
+    filmInterimage:$("#filmInterimage").value,filmInterimageBeta:$("#filmInterimage").value==="custom"?+$("#filmInterimageBeta").value:null,filmAppearance:$("#filmAppearance").value,
     filmAppearanceStrength:+$("#filmAppearanceStrength").value,
     filmAppearanceVariant:$("#filmAppearanceVariant").value,
     filmRichness:+$("#filmRichness").value,filmColorDensity:+$("#filmColorDensity").value,
@@ -1494,7 +1520,11 @@ function payload(){
     highlightFade:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?0:+$("#highlightFade").value,
     endpointMode:$("#endpointMode").value,
     toeEndOffset:+$("#toeEndOffset").value,shoulderWhiteOffset:+$("#shoulderWhiteOffset").value,
-    hdrHeadroom:+$("#hdrHeadroom").value,ev:+$("#ev").value,quality:+$("#quality").value,
+    hdrHeadroom:+$("#hdrHeadroom").value,
+    hdrRho:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?($("#hdrRho").value||"auto"):"auto",
+    hdrWhiteMargin:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?($("#hdrWhiteMargin").value||"auto"):"auto",
+    hdrShoulderStart:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?($("#hdrShoulderStart").value||"auto"):"auto",
+    ev:+$("#ev").value,quality:+$("#quality").value,
     outdir:$("#outdir").value.trim(),png:$("#png").checked
   };
   // auto=不显式声明中性化,由编译器按胶片解释解析(A5 item 6:单一解析点)
