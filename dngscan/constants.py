@@ -33,6 +33,17 @@ SNR_LOW_PERCENTILE = 20.0
 
 SNR_BRIGHT_UNRELIABLE_STOP = -2.5
 
+# Review R2 item 1: the HDR channel-separation tail-SNR factor, measured on
+# the production path (analyze() always computes the SNR curve now). The
+# "tail" is the brightest still-reliable window of the curve — the stops just
+# below SNR_BRIGHT_UNRELIABLE_STOP — because that is where per-channel
+# expansion would amplify noise. Confidence is full at/above FULL_DB (10:1
+# amplitude), zero at/below ZERO_DB (2:1), linear between. Project latitude
+# policy awaiting EDR-corpus calibration, not sensor physics.
+TAIL_SNR_WINDOW_EV = 2.0
+TAIL_SNR_ZERO_DB = 6.0
+TAIL_SNR_FULL_DB = 20.0
+
 
 CEILING_MIN_PILE_PIXELS = 256
 # A8 item 1: a pile is only believable as SENSOR saturation when it sits

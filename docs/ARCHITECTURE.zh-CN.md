@@ -518,11 +518,12 @@ LibRaw 路径一样通过 `scene_scale` 恢复一次。这样交接像素本身�
 但两种解码器的颜色和几何并不完全一致，所以统计仍可能受内容影响；因此这里把它称作 A/B
 标尺，而不是物理标定。
 
-还有一处残余的不对称，看预览前值得知道。Core Image 的预览解码到 1280px 代理，而 LibRaw
-的预览做 2×2 超像素合并，两者看到的噪声量不同，因此各自编译出的黑端可能与自己的导出略有
-出入。三张片子实测，Core Image 的预览→导出黑端位移是 −0.01、−0.22、+0.01 EV，LibRaw
-一侧是 −0.05、+0.02、−0.04 EV：除了噪声大的那张之外量级相当，而在那张上，代理把噪声
-平均掉之后读出的阴影比导出实际会给的更干净。
+预览与导出的统计对齐（现状）：GUI 预览在两种解码器上都做**全分辨率解码**后再下采样显示，
+预览看到的噪声与导出同源；早年 Core Image 预览解码 1280px 代理、LibRaw 预览做 2×2 超像素
+合并的不对称已不存在（当时实测的预览→导出黑端位移 −0.01/−0.22/+0.01 EV 对
+−0.05/+0.02/−0.04 EV 仅作历史记录保留）。残余的已知边界只剩一条：预览的 tone 端点仍在
+下采样样本上编译，与导出在全分样本上编译可有微差；代理解码路径（`scene_half_size`）仍
+服务于 CLI 的半尺寸探测，不再是 GUI 预览的口径。
 
 **BaselineExposure 在两条管线上都被遵从。** Apple 明确把它定义为 RAW 文件请求的 baseline
 exposure，默认值可以随相机设置变化；ProRAW 还会随场景动态范围写入逐图配方。它不是快门/
@@ -555,11 +556,12 @@ ISO 12800 那张有 1.4%、ISO 25600 那张有 21.0% 的分量被压到恰好为
   发生变化。AgX 在下游有自己的色域处理，因此这一级的交接保持 scene-referred。
 
 像素交接尽量直接照 Apple 的示例：`RGBAh`、extended-linear Rec.2020、signed half-float，
-没有百分位归一化，也没有 unsigned clamp。预览通过 `CIRAWFilter.scaleFactor` 直接请求长边
-1280px，而不是先解出约 6MP 再缩小；交互 `CIContext` 复用并启用
-`cacheIntermediates=true`，全分辨率导出使用另一套复用 context，关闭中间缓存并给出 1024MB
-memory target。一张 24MP Sigma fp 的实测中，RAW 9 解码在 1280px 为 1.24s、6000x4000 为
-2.08s；完整全尺寸 decode + analyze + plan + render 在 JPEG 编码前约 5.1s。
+没有百分位归一化，也没有 unsigned clamp。半尺寸代理路径（CLI 探测用；GUI 预览是全分辨率
+解码，不走这里）通过 `CIRAWFilter.scaleFactor` 直接请求长边 1280px，而不是先解出约 6MP
+再缩小；交互 `CIContext` 复用并启用 `cacheIntermediates=true`，全分辨率导出使用另一套
+复用 context，关闭中间缓存并给出 1024MB memory target。历史实测（24MP Sigma fp）：RAW 9
+解码在 1280px 为 1.24s、6000x4000 为 2.08s；完整全尺寸 decode + analyze + plan + render
+在 JPEG 编码前约 5.1s。
 
 `extendedDynamicRangeAmount` 被显式设为 0，避免 Apple 的显示侧 HDR 映射先于 AgX 进入
 scene 缓冲。调到 1.0 确实在最顶端拉出更多分离度

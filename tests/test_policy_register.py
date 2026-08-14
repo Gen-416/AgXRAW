@@ -34,6 +34,11 @@ class RegisterConsistencyTests(unittest.TestCase):
             "SNR_TILE": c.SNR_TILE,
             "SNR_LOW_PERCENTILE": c.SNR_LOW_PERCENTILE,
             "SNR_BRIGHT_UNRELIABLE_STOP": c.SNR_BRIGHT_UNRELIABLE_STOP,
+            # R2 item 1: the tail-SNR gate constants consumed by
+            # hdr_agx_plan.compile_tail_snr_gate.
+            "TAIL_SNR_WINDOW_EV": c.TAIL_SNR_WINDOW_EV,
+            "TAIL_SNR_ZERO_DB": c.TAIL_SNR_ZERO_DB,
+            "TAIL_SNR_FULL_DB": c.TAIL_SNR_FULL_DB,
             "DEFAULT_HDR_HEADROOM_EV": c.DEFAULT_HDR_HEADROOM_EV,
             "MAX_HDR_PEAK_NITS": c.MAX_HDR_PEAK_NITS,
         }

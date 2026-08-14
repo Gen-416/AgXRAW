@@ -350,5 +350,89 @@ class Raw9HdrCouplingTests(unittest.TestCase):
         )
 
 
+class TailSnrGateTests(unittest.TestCase):
+    """Gate for R2 item 1: the tail-SNR confidence factor is live, measured
+    on the production path, and cannot vary with diagnostic flags."""
+
+    @staticmethod
+    def _curves(tail_db: float) -> dict:
+        from types import SimpleNamespace
+
+        from dngscan.constants import SNR_BRIGHT_UNRELIABLE_STOP
+
+        stops = np.linspace(-14.0, 0.0, 84)
+        snr = np.full(stops.shape, 30.0)
+        # Everything at/above the unreliable stop stays contaminated territory;
+        # the window below it carries the tail figure under test.
+        window = (stops >= SNR_BRIGHT_UNRELIABLE_STOP - 2.0) & (
+            stops <= SNR_BRIGHT_UNRELIABLE_STOP
+        )
+        snr[window] = tail_db
+        return {"G": {"stops": stops, "snr_db": snr, "count": np.full(stops.shape, 64)}}
+
+    def _gate(self, curves: dict) -> float:
+        from types import SimpleNamespace
+
+        from dngscan.hdr_agx_plan import compile_tail_snr_gate
+
+        return compile_tail_snr_gate(SimpleNamespace(snr_curves=curves))
+
+    def test_gate_follows_measured_tail_snr(self) -> None:
+        from dngscan.constants import TAIL_SNR_FULL_DB, TAIL_SNR_ZERO_DB
+
+        self.assertEqual(self._gate(self._curves(TAIL_SNR_FULL_DB + 5.0)), 1.0)
+        self.assertEqual(self._gate(self._curves(TAIL_SNR_ZERO_DB - 2.0)), 0.0)
+        mid = self._gate(
+            self._curves((TAIL_SNR_ZERO_DB + TAIL_SNR_FULL_DB) / 2.0)
+        )
+        self.assertAlmostEqual(mid, 0.5, places=6)
+        # Monotone: a noisier tail never earns more freedom.
+        self.assertLess(
+            self._gate(self._curves(8.0)), self._gate(self._curves(16.0))
+        )
+
+    def test_gate_follows_the_worst_group(self) -> None:
+        from dngscan.constants import TAIL_SNR_FULL_DB, TAIL_SNR_ZERO_DB
+
+        clean = self._curves(TAIL_SNR_FULL_DB + 5.0)["G"]
+        noisy = self._curves(TAIL_SNR_ZERO_DB - 2.0)["G"]
+        self.assertEqual(self._gate({"G": clean, "R": noisy}), 0.0)
+
+    def test_no_measurement_withdraws_nothing(self) -> None:
+        """Absent or windowless curves are neutral 1.0 — withdrawal requires a
+        measurement, and no invented fallback confidence is permitted."""
+        self.assertEqual(self._gate({}), 1.0)
+        stops = np.linspace(-14.0, 0.0, 84)
+        nan_curve = {
+            "G": {
+                "stops": stops,
+                "snr_db": np.full(stops.shape, np.nan),
+                "count": np.zeros(stops.shape),
+            }
+        }
+        self.assertEqual(self._gate(nan_curve), 1.0)
+
+    @unittest.skipUnless(FRAMES["daylight"].is_file(), "sample frames unavailable")
+    def test_render_plan_is_diagnostic_flag_independent(self) -> None:
+        """The same photograph must compile the identical HDR colour geometry
+        whether or not --scan/--csv diagnostics rode along."""
+        bundle = load_raw(FRAMES["daylight"], scene_half_size=True)
+        plans = {}
+        for diag in (False, True):
+            analysis, _, _ = analyze(bundle, margin=4, diagnostics=diag)
+            plan = build_render_plan(bundle, analysis, RENDER_MODE, "p3")
+            plans[diag] = compile_hdr_agx_plan(plan, analysis=analysis)
+            # The gate is measured (a real number the curve produced), not the
+            # old hardwired constant semantics.
+            self.assertTrue(0.0 <= plans[diag].color.snr_gate <= 1.0)
+        self.assertEqual(
+            plans[False].color.snr_gate, plans[True].color.snr_gate
+        )
+        self.assertEqual(
+            plans[False].color.channel_separation,
+            plans[True].color.channel_separation,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

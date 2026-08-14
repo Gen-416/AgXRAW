@@ -920,6 +920,8 @@ function updateDecoderUi(){
   $("#decoder").disabled=false;
   const raw9=$("#decoder").value==="coreimage";
   ver.style.display=raw9?"block":"none";
+  const toneCore=$("#toneCore");
+  const gatedOpt=[...toneCore.options].find(o=>o.value==="gated");
   if(raw9){
     if(!highlight.disabled)highlight.dataset.librawValue=highlight.value;
     if(!demosaic.disabled)demosaic.dataset.librawValue=demosaic.value;
@@ -927,17 +929,32 @@ function updateDecoderUi(){
     demosaic.value="auto";
     highlight.disabled=true;
     demosaic.disabled=true;
+    // R2 item 2, CLI contract parity: gated means "per-pixel CFA evidence
+    // gates the colour path" and RAW 9 has none — the pair is meaningless,
+    // not degraded, so the option goes away instead of silently decaying.
+    if(toneCore.value==="gated"){
+      toneCore.dataset.librawValue="gated";
+      toneCore.value="agx";
+      updateToneCoreUi();updateToneCoreExportUi();
+    }
+    if(gatedOpt)gatedOpt.disabled=true;
   }else{
     highlight.disabled=false;
     demosaic.disabled=false;
     if(highlight.dataset.librawValue){highlight.value=highlight.dataset.librawValue;delete highlight.dataset.librawValue;}
     if(demosaic.dataset.librawValue){demosaic.value=demosaic.dataset.librawValue;delete demosaic.dataset.librawValue;}
+    if(gatedOpt)gatedOpt.disabled=false;
+    if(toneCore.dataset.librawValue){
+      toneCore.value=toneCore.dataset.librawValue;
+      delete toneCore.dataset.librawValue;
+      updateToneCoreUi();updateToneCoreExportUi();
+      // Film full mode owns the tone core; its own updater re-asserts agx.
+      updateFilmModeUi();
+    }
   }
-  // RAW 9 accepts fixed-Kelvin declarations natively; only the LibRaw-metadata
-  // "daylight" anchor has no validated mapping there.
-  if(raw9 && $("#wb").value==="daylight"){
-    $("#wb").value="camera";
-  }
+  // R2 item 3: RAW 9 accepts the daylight anchor through the hot-WB matrix
+  // path now (A9), so the old silent reset to "camera" is gone — GUI, CLI
+  // and API expose the same capability.
 }
 function saveSettings(){
   try{localStorage.setItem(STORE_KEY,JSON.stringify({
@@ -1690,7 +1707,7 @@ function renderDeliveryReport(j){
   if(c.file_size_bytes!==undefined)add("文件大小",fmtMB(c.file_size_bytes));
   add("主图采样",c.chroma_subsampling,c.chroma_subsampling!=="4:4:4"&&c.delivery_profile==="archive");
   if(c.rendered_headroom_ev!==undefined){
-    add("HDR 余量","场景挣得 +"+(+c.rendered_headroom_ev).toFixed(2)+" EV · 实际使用 +"+(+c.actual_headroom_ev).toFixed(2)+" EV · 容量 +"+(+c.display_headroom_ev).toFixed(2)+" EV");
+    add("HDR 余量","场景挣得 +"+(+c.rendered_headroom_ev).toFixed(2)+" EV · 实际使用(p99.99) +"+(+c.actual_headroom_ev).toFixed(2)+" EV"+(isFinite(+c.file_headroom_ev)?" · 文件声明(峰值) +"+(+c.file_headroom_ev).toFixed(2)+" EV":"")+" · 容量 +"+(+c.display_headroom_ev).toFixed(2)+" EV");
   }
   if(c.shoulder_segments!==undefined){
     const shape=c.shoulder_segments<=1?"单段":"细分（"+c.shoulder_segments+" 段）";

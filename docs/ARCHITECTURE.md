@@ -612,13 +612,15 @@ The alignment belongs at the capture handoff, before the common fixed exposure a
 DRT. It changes how a decoder unit is interpreted; it does not compile or reshape the
 tone curve. Keeping it there prevents decoder comparison policy from leaking into AgX.
 
-One residual asymmetry is worth knowing before trusting a preview. The Core Image preview
-decodes to a 1280 px proxy while the LibRaw preview bins 2×2 superpixels, so the two see
-different amounts of noise and can compile slightly different black endpoints than their
-own exports. Measured across three frames the Core Image preview-to-export black shift
-was −0.01, −0.22 and +0.01 EV, against −0.05, +0.02 and −0.04 EV on the LibRaw path: the
-same order of magnitude except on a noisy frame, where the proxy's averaged-away noise
-reads as a cleaner shadow than the export will produce.
+Preview/export statistical alignment (current state): the GUI preview decodes at FULL
+resolution on both decoders and only downsamples for display, so the noise a preview's
+statistics see is the export's own. The old asymmetry — Core Image previews decoding a
+1280 px proxy while LibRaw previews binned 2×2 superpixels — is gone; the black-shift
+figures once measured for it (−0.01/−0.22/+0.01 EV vs −0.05/+0.02/−0.04 EV) are kept as
+historical record only. The one remaining known boundary: the preview's tone endpoints
+are still compiled on the downsampled sample and can differ slightly from the export's
+full-resolution compile. The proxy decode path (`scene_half_size`) still serves the
+CLI's half-size probes; it is no longer what the GUI preview runs.
 
 **BaselineExposure is honoured on both paths.** Apple defines it as baseline exposure to
 apply during RAW rendering; its default can vary with camera settings, and ProRAW can
@@ -661,12 +663,13 @@ explicitly so an OS default change cannot silently alter the contract:
 
 The pixel handoff follows Apple's example as closely as the Python bridge allows:
 `RGBAh`, extended-linear Rec.2020, signed half-float, no percentile normalisation and no
-unsigned clamp. Preview asks `CIRAWFilter.scaleFactor` for a 1280-pixel long edge instead
-of decoding a 6 MP intermediate and shrinking it later. The interactive `CIContext` is
-reused with `cacheIntermediates=true`; full export uses a separate reused context with
-intermediate caching disabled and a 1024 MB memory target. On a 24 MP Sigma fp sample,
-RAW 9 decode measured 1.24 s at 1280 px and 2.08 s at 6000x4000; the complete full-size
-decode, analysis, plan and render took about 5.1 s before JPEG encoding.
+unsigned clamp. The half-size proxy path (CLI probes; not the GUI preview, which decodes
+full-size) asks `CIRAWFilter.scaleFactor` for a 1280-pixel long edge instead of decoding
+a 6 MP intermediate and shrinking it later. The interactive `CIContext` is reused with
+`cacheIntermediates=true`; full export uses a separate reused context with intermediate
+caching disabled and a 1024 MB memory target. Historical timing on a 24 MP Sigma fp
+sample: RAW 9 decode 1.24 s at 1280 px and 2.08 s at 6000x4000; the complete full-size
+decode, analysis, plan and render about 5.1 s before JPEG encoding.
 
 `extendedDynamicRangeAmount` is explicitly set to 0 so Apple's display-side HDR mapping
 cannot precede AgX in the scene buffer. Raising it to 1.0 does

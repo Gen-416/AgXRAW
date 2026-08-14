@@ -787,6 +787,11 @@ def write_apple_gainmap_file(
             float(np.log2(max(float(info["headroom"]), 1e-9) / actual_headroom))
         )
         info["headroom_error_ev"] = headroom_error_ev
+        # R2 item 17: what the FILE declares (ContentHeadroom = the alternate's
+        # peak, the number a viewer's tone mapper reads) — reported alongside
+        # the render-usage percentile figure so "actual" and the container can
+        # never be silently conflated.
+        info["file_headroom_ev"] = float(np.log2(max(float(info["headroom"]), 1e-9)))
         if headroom_error_ev > 0.05:
             raise RuntimeError(
                 f"HDR {label} 声明余量与 alternate 峰值不一致："
