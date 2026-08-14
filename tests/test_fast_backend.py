@@ -184,7 +184,8 @@ class NativeOutputParityTests(unittest.TestCase):
         from dngscan import _dngscan_fast as ext
 
         self.assertEqual(ext.native_abi_version(), NATIVE_ABI_VERSION)
-        self.assertEqual(NATIVE_ABI_VERSION, 7)
+        # v8: exact two-stage output matrices (R2 item 6).
+        self.assertEqual(NATIVE_ABI_VERSION, 8)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_FIT_ITERS, 16)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_TOLERANCE, 1e-4)
         for gamut in ("srgb", "p3"):
@@ -219,6 +220,16 @@ class NativeOutputParityTests(unittest.TestCase):
             np.testing.assert_array_equal(out, np.clip(rgb, 0.0, 1.0))
 
     def test_fused_u8_matches_reference_with_same_noise(self) -> None:
+        """R2 item 6 tightened this gate: the Rec.2020 -> output stage is the
+        exact two-stage NumPy graph now (float64 accumulate, float32 per-stage
+        materialization), so IN-GAMUT pixels are bit-exact — the old merged
+        matrix's 8.6e-5 deviation moved ~1% of codes by one. Out-of-gamut
+        pixels go through the native gamut fit, which keeps its documented
+        1e-4 float tolerance (its matrices remain pre-merged; unmerging them
+        belongs to the reference-mode program), so a residual <=1-code
+        difference is permitted there only."""
+        from dngscan.color import _rgb_rows_in_unit_gamut
+
         rng = np.random.default_rng(41)
         rec2020 = rng.uniform(-1.0, 2.5, size=(200_000, 3)).astype(np.float32)
         noise_a = rng.random(rec2020.shape, dtype=np.float32)
@@ -234,9 +245,16 @@ class NativeOutputParityTests(unittest.TestCase):
                 rec2020, noise_a, noise_b, plan
             )
             delta = np.abs(out.astype(np.int16) - ref.astype(np.int16))
+            sanitized = np.nan_to_num(
+                linear, nan=0.0, posinf=1e6, neginf=-1e6
+            ).astype(np.float32, copy=False)
+            in_gamut = np.asarray(
+                _rgb_rows_in_unit_gamut(sanitized, np.float32(1e-4))
+            )
+            self.assertTrue(bool(np.any(in_gamut)))
+            self.assertEqual(int(delta[in_gamut].max()), 0)
             self.assertLessEqual(int(delta.max()), 1)
-            self.assertEqual(float(np.percentile(delta, 99)), 0.0)
-            self.assertLessEqual(float(np.mean(delta != 0)), 0.01)
+            self.assertLessEqual(float(np.mean(delta != 0)), 0.0005)
 
     def test_parallel_finalizer_is_deterministic(self) -> None:
         rng = np.random.default_rng(79)

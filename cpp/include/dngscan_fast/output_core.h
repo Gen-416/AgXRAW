@@ -12,7 +12,14 @@ inline constexpr int OUTPUT_GAMUT_FIT_ITERS = 16;
 inline constexpr float OUTPUT_GAMUT_TOLERANCE = 1e-4f;
 
 struct NativeOutputPlan {
-  float rec2020_to_output[9];
+  // R2 item 6 (ABI v8): the Rec.2020 -> output conversion is two exact
+  // stages, each a float64-accumulated product materialized to float32 —
+  // the NumPy graph's own operation order and rounding
+  // (apply_rgb_matrix3(rec2020_to_xyz(rgb), XYZ_TO_RGB[space])). The old
+  // pre-merged float matrix dropped one float32 rounding and was the
+  // recorded 8.6e-5 deviation of the output fast path.
+  double rec2020_to_xyz[9];
+  double xyz_to_output[9];
   float output_to_lms[9];
   float lms_to_output[9];
   float oklab_m2[9];

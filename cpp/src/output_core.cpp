@@ -35,6 +35,22 @@ inline Rgb mat3(const float matrix[9], const Rgb& value) {
   };
 }
 
+// R2 item 6: one exact NumPy matrix stage — float64 matrix entries times the
+// float32 value promoted to double, accumulated left-to-right in double, and
+// materialized to float32 exactly once (apply_rgb_matrix3's `out[:, r] =`
+// assignment). Left-associative double addition matches the NumPy expression
+// tree; -ffp-contract=off keeps FMA from skipping the product roundings.
+inline Rgb mat3_exact_f64(const double matrix[9], const Rgb& value) {
+  const double r = static_cast<double>(value.r);
+  const double g = static_cast<double>(value.g);
+  const double b = static_cast<double>(value.b);
+  return {
+      static_cast<float>(matrix[0] * r + matrix[1] * g + matrix[2] * b),
+      static_cast<float>(matrix[3] * r + matrix[4] * g + matrix[5] * b),
+      static_cast<float>(matrix[6] * r + matrix[7] * g + matrix[8] * b),
+  };
+}
+
 inline bool in_unit_gamut(const Rgb& value) {
   constexpr float low = -OUTPUT_GAMUT_TOLERANCE;
   constexpr float high = 1.0f + OUTPUT_GAMUT_TOLERANCE;
@@ -163,7 +179,11 @@ void finalize_u8(
     for (std::size_t i = begin; i < end; ++i) {
       Rgb rgb{input[i * 3], input[i * 3 + 1], input[i * 3 + 2]};
       if constexpr (InputIsRec2020) {
-        rgb = mat3(plan.rec2020_to_output, rgb);
+        // Two exact stages with a float32 materialization between them —
+        // the NumPy graph's own rounding (R2 item 6; the pre-merged matrix
+        // dropped one rounding and was the recorded 8.6e-5 deviation).
+        rgb = mat3_exact_f64(plan.rec2020_to_xyz, rgb);
+        rgb = mat3_exact_f64(plan.xyz_to_output, rgb);
       }
       const Rgb fitted = fit_output_pixel(rgb, plan);
       if constexpr (NoiseIsCombined) {

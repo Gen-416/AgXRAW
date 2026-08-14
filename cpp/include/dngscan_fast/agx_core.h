@@ -6,7 +6,9 @@
 
 namespace dngscan_fast {
 
-inline constexpr int NATIVE_ABI_VERSION = 7;
+// v8 (R2 item 6): NativeOutputPlan's pre-merged rec2020_to_output replaced by
+// the exact two-stage float64 matrices (rec2020_to_xyz + xyz_to_output).
+inline constexpr int NATIVE_ABI_VERSION = 8;
 inline constexpr float EPS = 1e-12f;
 
 struct CurveParams {
