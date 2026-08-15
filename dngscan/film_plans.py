@@ -134,6 +134,7 @@ def validate_film_plans(
     *,
     exposure_ev_min: float = FILM_EXPOSURE_EV_MIN,
     exposure_ev_max: float = FILM_EXPOSURE_EV_MAX,
+    film_mode: str = "full",
 ) -> None:
     """Fail-closed contract from plan §5.3 / §7.2. Raises ValueError."""
     # A8 item 4: every numeric field must be FINITE before any range check
@@ -242,7 +243,13 @@ def validate_film_plans(
         if print_plan.print_exposure_ev != 0.0:
             raise ValueError("reversal_direct 无印相曝光：print_exposure_ev 必须为 0")
     else:
-        if print_plan.timing_policy in ("fixed", "retimed") and (
+        # Joint-solve exclusivity is a FULL-chain statement: fixed/retimed
+        # print states are solved, so manual CC/exposure cannot ride them.
+        # In observe mode the print stage these dials touch is the declared
+        # AgX-side colour head (film_curve.py), timing is inert, and the
+        # audit tuple merely RECORDS the dials — rejecting them here broke
+        # the documented observe colour head outright (showcase regen R5).
+        if film_mode == "full" and print_plan.timing_policy in ("fixed", "retimed") and (
             print_plan.printer_y_cc != 0.0
             or print_plan.printer_m_cc != 0.0
             or print_plan.print_exposure_ev != 0.0

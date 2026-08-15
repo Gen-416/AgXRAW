@@ -337,3 +337,28 @@ class LmsOperatorLinearityTests(unittest.TestCase):
             out = agx.apply_film_color_rec2020(probe, probe, plan)
         err = np.abs(out - probe)
         self.assertLess(float(err.max()), 1e-4)
+
+
+class ObserveColorHeadRegressionTests(unittest.TestCase):
+    def test_observe_color_head_builds_a_plan(self) -> None:
+        """Showcase-regen R5 regression: the film-plans validator's
+        joint-solve exclusivity (fixed/retimed timing forbids CC) is a
+        FULL-chain statement; applied to observe it rejected the documented
+        observe colour head outright (tutorial §5 head_bowl, GUI dial,
+        look-grid park panel 5). Observe + CC must compile; full keeps the
+        exclusivity."""
+        from tests.golden_support import all_scenes
+        from dngscan.grade import RENDER_MODE
+        from dngscan.tone import build_render_plan
+
+        scene = all_scenes()["daylight_wide_dr"]
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, RENDER_MODE, "srgb",
+            film_curve="portra400", color_head_y=15.0,
+        )
+        self.assertEqual(float(plan.tone.color_head_y), 15.0)
+        with self.assertRaises(ValueError):  # full keeps joint-solve rule
+            build_render_plan(
+                scene.bundle, scene.analysis, RENDER_MODE, "srgb",
+                film_curve="portra400", film_mode="full", color_head_y=15.0,
+            )
