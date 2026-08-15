@@ -1150,7 +1150,10 @@ def build_render_plan(
             ),
         )
         tone = _replace(tone, film_appearance_compiled=_appearance_plan)
-        validate_film_plans(*film_plans)
+        validate_film_plans(
+            *film_plans,
+            film_mode=str(getattr(tone, "film_mode", "observe") or "observe"),
+        )
         # The compiled appearance plan rides as the fifth element — appended
         # INSIDE the film branch: non-film plans keep film=None.
         film_plans = (*film_plans, _appearance_plan)
