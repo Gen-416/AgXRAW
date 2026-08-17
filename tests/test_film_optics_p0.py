@@ -343,17 +343,20 @@ class MeasuredBaselineTests(unittest.TestCase):
             "deleted_with_legacy_print_scatter",
         )
 
-        # STILL OPEN (§11.1): nearest-neighbour pyramid expand leaves its
-        # block edges in the isolated bloom delta (P0 measured 3.0; the
-        # frequency-matched small-sigma kernels sharpen the |first-diff|
-        # metric further). P5b briefly certified an inverted gate (<1.15),
-        # but review R1 item 4 showed that pass was the formation scatter
-        # riding the measurement — any look amount silently engaged both
-        # scatter stages — not the NN expand being fixed. The measurement
-        # now isolates with the media scatter off, and this gate honestly
-        # records the defect until the §11.1 expand replacement lands.
+        # §11.1 CLOSED (ledger batch, 2026-08-14): the runtime honours the
+        # bilinear/area resample contract, and the old "still-open 4.73" was
+        # the METRIC aliasing the edge chart's single transition spike
+        # against the 8-px modulus on a chart too small for the resample to
+        # even run (ratio grew with ANY probe modulus; autocorrelation
+        # showed no periodicity). The measurement now engages decimation for
+        # real, excludes the edge's own neighbourhood, and reads both the
+        # legacy moduli and the true bilinear knot pitch. Contract: no
+        # modulus reads block-like, knots included (measured 0.78-1.03).
         block = self.live["bloom"]["pyramid_blockiness"]
-        self.assertGreater(block["step_8px_ratio"], 1.15)
+        for key in ("step_2px_ratio", "step_4px_ratio", "step_8px_ratio",
+                    "step_16px_ratio", "knot_aligned_ratio"):
+            self.assertLess(block[key], 1.30, f"{key} reads block-like")
+            self.assertGreater(block[key], 0.60, f"{key} implausibly low")
 
 
 if __name__ == "__main__":
