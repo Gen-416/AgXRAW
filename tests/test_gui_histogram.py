@@ -248,6 +248,10 @@ class PreviewPayloadFieldTests(unittest.TestCase):
         bundle.applied_wb = None
         bundle.daylight_wb = None
         bundle.clip_masks = None
+        # R2 item 20: real proxy bundles declare these; a MagicMock would
+        # hand the sampler a truthy child mock instead.
+        bundle._tone_plan_sample = None
+        bundle._tone_plan_sample_masks = None
         entry = PreviewEntry(bundle=bundle, analysis=MagicMock())
         pixels = dg.np.zeros((12, 18, 3), dtype=dg.np.uint8)
         plan = _plan(black=-8.0, white=3.5, tail=float(OUTPUT_REFERENCE_WHITE_STOPS) + 0.5)
