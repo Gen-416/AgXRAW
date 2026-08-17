@@ -63,120 +63,202 @@ def save_jpeg_array(
     return icc_profile is not None
 
 
+def _scrubbed_capture_metadata(src_raw: Path, out_path: Path):
+    """CGImageMetadata from the capture, scrubbed for a rendered delivery.
+
+    Orientation forced to 1 (the render writes upright pixels), mosaic and
+    capture-container descriptors removed, Exif pixel dimensions rewritten
+    to the DELIVERED file's own geometry. Returns None when the metadata
+    cannot be produced safely — the caller must then skip the carry rather
+    than write unscrubbed tags (R4 F6a).
+    """
+    import Quartz  # type: ignore
+    from Foundation import NSURL  # type: ignore
+
+    src = Quartz.CGImageSourceCreateWithURL(
+        NSURL.fileURLWithPath_(str(src_raw)), None
+    )
+    if src is None:
+        return None
+    meta = Quartz.CGImageSourceCopyMetadataAtIndex(src, 0, None)
+    if meta is None:
+        return None
+    mutable = Quartz.CGImageMetadataCreateMutableCopy(meta)
+    if mutable is None:
+        return None
+    Quartz.CGImageMetadataSetValueMatchingImageProperty(
+        mutable,
+        Quartz.kCGImagePropertyTIFFDictionary,
+        Quartz.kCGImagePropertyTIFFOrientation,
+        1,
+    )
+    # The capture is a mosaic container; its FORMAT descriptors must not
+    # follow the metadata onto a rendered file (PhotometricInterpretation=
+    # 32803 means CFA; PixelX/YDimension are mandatory fields that must
+    # equal the RENDERED geometry; compression/components/gamma/colour-space
+    # describe the RAW container, not this delivery, whose gamut is declared
+    # by its embedded ICC).
+    for tag_path in (
+        "tiff:PhotometricInterpretation",
+        "exif:CFAPattern",
+        "exif:SensingMethod",
+        "exif:PixelXDimension",
+        "exif:PixelYDimension",
+        "exif:CompressedBitsPerPixel",
+        "exif:ComponentsConfiguration",
+        "exif:Gamma",
+        "exif:ColorSpace",
+    ):
+        try:
+            Quartz.CGImageMetadataRemoveTagWithPath(mutable, None, tag_path)
+        except Exception:
+            pass
+    out_src = Quartz.CGImageSourceCreateWithURL(
+        NSURL.fileURLWithPath_(str(out_path)), None
+    )
+    if out_src is None:
+        return None
+    props = Quartz.CGImageSourceCopyPropertiesAtIndex(out_src, 0, None)
+    if props:
+        width = props.get(Quartz.kCGImagePropertyPixelWidth)
+        height = props.get(Quartz.kCGImagePropertyPixelHeight)
+        if width and height:
+            Quartz.CGImageMetadataSetValueMatchingImageProperty(
+                mutable,
+                Quartz.kCGImagePropertyExifDictionary,
+                Quartz.kCGImagePropertyExifPixelXDimension,
+                int(width),
+            )
+            Quartz.CGImageMetadataSetValueMatchingImageProperty(
+                mutable,
+                Quartz.kCGImagePropertyExifDictionary,
+                Quartz.kCGImagePropertyExifPixelYDimension,
+                int(height),
+            )
+    return mutable
+
+
+def _rewrite_with_metadata(
+    out_path: Path, tmp_path: Path, meta, uti: str, merge: bool = True
+) -> bool:
+    """Lossless metadata rewrite out_path -> tmp_path via ImageIO.
+
+    CGImageDestinationCopyImageSource forwards the encoded bitstream(s)
+    without re-encoding; True only when the destination finalized and the
+    tmp exists. The caller owns tmp cleanup and the final replace.
+
+    `merge` is container-specific, measured behaviour: JPEG maps merged
+    metadata back into APP1 EXIF correctly, but the HEIC writer DROPS the
+    exif/tiff namespaces under merge (only explicitly-set tags survive) —
+    replacing the metadata wholesale (merge=False) is what lands them, and
+    the caller's post-rewrite gate re-inspection is what makes that safe
+    (the ISO gain map, declared headroom, profile and chroma live in
+    container structures the metadata replacement does not touch —
+    verified, and re-verified per file before the tmp may replace)."""
+    import Quartz  # type: ignore
+    from Foundation import NSURL  # type: ignore
+
+    src = Quartz.CGImageSourceCreateWithURL(
+        NSURL.fileURLWithPath_(str(out_path)), None
+    )
+    if src is None:
+        return False
+    dest = Quartz.CGImageDestinationCreateWithURL(
+        NSURL.fileURLWithPath_(str(tmp_path)), uti, 1, None
+    )
+    if dest is None:
+        return False
+    options = {
+        Quartz.kCGImageDestinationMetadata: meta,
+        Quartz.kCGImageDestinationMergeMetadata: bool(merge),
+    }
+    result = Quartz.CGImageDestinationCopyImageSource(dest, src, options, None)
+    ok = bool(result[0] if isinstance(result, tuple) else result)
+    return ok and tmp_path.is_file()
+
+
 def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
     """Losslessly copy the capture's EXIF/TIFF/GPS/XMP metadata into a written JPEG.
 
     R3 item 6: a final-photo converter that drops shot time, body, lens,
     exposure and copyright is a delivery gap even when every pixel is right.
-    Uses ImageIO's CGImageDestinationCopyImageSource, which rewrites metadata
-    WITHOUT re-encoding the JPEG bitstream (the pixels and the embedded ICC
-    stay byte-identical). Orientation is forced to 1: the render writes
-    upright pixels, and carrying the RAW's rotation tag would double-rotate
-    in viewers. Best-effort by design — returns False and leaves the JPEG
-    untouched when ImageIO or the source metadata is unavailable (non-macOS
-    hosts keep the previous pixels-only behaviour).
+    Pixels and the embedded ICC stay byte-identical (no re-encode). Best-
+    effort by design — returns False and leaves the JPEG untouched when
+    ImageIO or the source metadata is unavailable (non-macOS hosts keep the
+    previous pixels-only behaviour).
     """
-    tmp_path = out_jpeg.with_name(
-        f"{out_jpeg.name}.meta.{os.getpid()}.tmp"
-    )
+    tmp_path = out_jpeg.with_name(f"{out_jpeg.name}.meta.{os.getpid()}.tmp")
     try:
-        import Quartz  # type: ignore
-        from Foundation import NSURL  # type: ignore
-
-        src = Quartz.CGImageSourceCreateWithURL(
-            NSURL.fileURLWithPath_(str(src_raw)), None
-        )
-        if src is None:
-            return False
-        meta = Quartz.CGImageSourceCopyMetadataAtIndex(src, 0, None)
+        meta = _scrubbed_capture_metadata(src_raw, out_jpeg)
         if meta is None:
             return False
-        mutable = Quartz.CGImageMetadataCreateMutableCopy(meta)
-        if mutable is None:
-            # R4 F6a: without the mutable copy the scrubs below cannot run,
-            # and writing the ORIGINAL metadata would carry the capture's
-            # rotation tag and CFA descriptors — the exact lies this
-            # function's contract forbids. No scrub, no carry.
-            return False
-        Quartz.CGImageMetadataSetValueMatchingImageProperty(
-            mutable,
-            Quartz.kCGImagePropertyTIFFDictionary,
-            Quartz.kCGImagePropertyTIFFOrientation,
-            1,
-        )
-        # The capture is a mosaic container; its FORMAT descriptors must
-        # not follow the capture metadata onto a rendered JPEG
-        # (PhotometricInterpretation=32803 means CFA, and a JPEG saying
-        # so is lying about its own encoding). R4: the capture-container
-        # Exif descriptors join the scrub — PixelX/YDimension are mandatory
-        # fields that must equal the RENDERED dimensions (a 6000x4000 claim
-        # on a 2000px export fails validators; rotated captures would even
-        # transpose them), and compression/components/gamma/colour-space
-        # describe the RAW container, not this JPEG (whose gamut is declared
-        # by its embedded ICC).
-        for tag_path in (
-            "tiff:PhotometricInterpretation",
-            "exif:CFAPattern",
-            "exif:SensingMethod",
-            "exif:PixelXDimension",
-            "exif:PixelYDimension",
-            "exif:CompressedBitsPerPixel",
-            "exif:ComponentsConfiguration",
-            "exif:Gamma",
-            "exif:ColorSpace",
-        ):
-            try:
-                Quartz.CGImageMetadataRemoveTagWithPath(mutable, None, tag_path)
-            except Exception:
-                pass
-        # Rewrite the dimension fields with the JPEG's own geometry.
-        jpeg_src = Quartz.CGImageSourceCreateWithURL(
-            NSURL.fileURLWithPath_(str(out_jpeg)), None
-        )
-        if jpeg_src is None:
-            return False
-        props = Quartz.CGImageSourceCopyPropertiesAtIndex(jpeg_src, 0, None)
-        if props:
-            width = props.get(Quartz.kCGImagePropertyPixelWidth)
-            height = props.get(Quartz.kCGImagePropertyPixelHeight)
-            if width and height:
-                Quartz.CGImageMetadataSetValueMatchingImageProperty(
-                    mutable,
-                    Quartz.kCGImagePropertyExifDictionary,
-                    Quartz.kCGImagePropertyExifPixelXDimension,
-                    int(width),
-                )
-                Quartz.CGImageMetadataSetValueMatchingImageProperty(
-                    mutable,
-                    Quartz.kCGImagePropertyExifDictionary,
-                    Quartz.kCGImagePropertyExifPixelYDimension,
-                    int(height),
-                )
-        meta = mutable
-        dest = Quartz.CGImageDestinationCreateWithURL(
-            NSURL.fileURLWithPath_(str(tmp_path)), "public.jpeg", 1, None
-        )
-        if dest is None:
-            return False
-        options = {
-            Quartz.kCGImageDestinationMetadata: meta,
-            Quartz.kCGImageDestinationMergeMetadata: True,
-        }
-        result = Quartz.CGImageDestinationCopyImageSource(
-            dest, jpeg_src, options, None
-        )
-        ok = bool(result[0] if isinstance(result, tuple) else result)
-        if not ok or not tmp_path.is_file():
+        if not _rewrite_with_metadata(out_jpeg, tmp_path, meta, "public.jpeg"):
             return False
         tmp_path.replace(out_jpeg)
         return True
     except Exception:
         return False
     finally:
-        # R4 F6b: the tmp must not survive ANY failure path — the old code
-        # unlinked it only on the explicit not-ok branch, so an exception
-        # mid-write leaked it (and a fixed name collided across concurrent
-        # exports; the pid suffix above removes that).
+        # R4 F6b: the tmp must not survive ANY failure path.
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def carry_capture_metadata_hdr(
+    src_raw: Path, out_path: Path, container: str
+) -> bool:
+    """EXIF/XMP carry for the ISO gain-map deliveries (JPEG MPF / HEIC).
+
+    The HDR writer's own verification gates already passed on out_path, and
+    metadata must NEVER cost them: the rewrite lands in a tmp which is
+    RE-INSPECTED (gain map present, base profile, chroma, gain-map pixel
+    format, declared headroom unchanged) before it may replace the verified
+    file. Any mismatch discards the tmp and keeps the un-carried delivery —
+    metadata is best-effort, the gates are not.
+    """
+    from .gainmap import inspect_gainmap_file
+
+    uti = "public.heic" if str(container) == "heic" else "public.jpeg"
+    tmp_path = out_path.with_name(f"{out_path.name}.meta.{os.getpid()}.tmp")
+    try:
+        pre = inspect_gainmap_file(out_path)
+        if not pre.get("has_iso_gainmap"):
+            return False
+        meta = _scrubbed_capture_metadata(src_raw, out_path)
+        if meta is None:
+            return False
+        if not _rewrite_with_metadata(
+            out_path, tmp_path, meta, uti, merge=(uti == "public.jpeg")
+        ):
+            return False
+        post = inspect_gainmap_file(tmp_path)
+        import math as _math
+
+        headroom_ok = (
+            float(post.get("headroom", 0.0)) > 1.0
+            and abs(
+                _math.log2(
+                    max(float(post.get("headroom", 0.0)), 1e-9)
+                    / max(float(pre.get("headroom", 0.0)), 1e-9)
+                )
+            )
+            < 1e-3
+        )
+        if not (
+            post.get("has_iso_gainmap")
+            and post.get("profile") == pre.get("profile")
+            and post.get("chroma_subsampling") == pre.get("chroma_subsampling")
+            and post.get("gainmap_pixel_format") == pre.get("gainmap_pixel_format")
+            and headroom_ok
+        ):
+            return False
+        tmp_path.replace(out_path)
+        return True
+    except Exception:
+        return False
+    finally:
         try:
             tmp_path.unlink(missing_ok=True)
         except OSError:
@@ -306,6 +388,15 @@ def export_ultrahdr_jpeg(
         # carries the float16 alternate from here on.
         del hdr_linear
         info = encode_finished_pair(pair, out_path, profile)
+        # EXIF/XMP carry AFTER the writer's own verification gates: the
+        # rewrite is re-inspected and may only replace the verified file
+        # when every gate quantity is unchanged (metadata never costs the
+        # delivery contract).
+        info["exif_carried"] = carry_capture_metadata_hdr(
+            path, out_path, profile.container
+        )
+        if info["exif_carried"] and out_path.is_file():
+            info["file_size_bytes"] = out_path.stat().st_size
         info["output_path"] = str(out_path)
         info["hdr_plan"] = (
             "胶片印相+scene HDR 扩展：" + describe_hdr_plan(hdr_plan)

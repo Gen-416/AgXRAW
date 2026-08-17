@@ -397,3 +397,74 @@ class EndToEndDeliveryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(SIGMA.is_file() and _BACKEND_OK, "sample frame or backend unavailable")
+class HdrExifCarryTests(unittest.TestCase):
+    """EXIF/XMP carry into the gain-map deliveries (engineering batch,
+    2026-08-14): the carry may only replace the verified file when every
+    delivery-gate quantity re-inspects unchanged — and it must actually
+    carry the capture identity into BOTH containers (the HEIC writer
+    drops merged exif/tiff namespaces; replacement mode is what lands
+    them, gated the same way)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        from dngscan.delivery import resolve_delivery_profile
+        from dngscan.export import export_ultrahdr_jpeg
+
+        cls.bundle = load_raw(SIGMA, scene_half_size=True)
+        cls.analysis, _, _ = analyze(cls.bundle, margin=4, diagnostics=False)
+        cls.td = tempfile.TemporaryDirectory()
+        cls.results = {}
+        for container, name in (("jpeg", "carry.jpg"), ("heic", "carry.heic")):
+            prof = resolve_delivery_profile("archive", container=container)
+            info = export_ultrahdr_jpeg(
+                SIGMA, Path(cls.td.name) / name, 100,
+                cls.bundle, cls.analysis, delivery=prof,
+            )
+            cls.results[container] = info
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.td.cleanup()
+
+    def _props(self, path: Path):
+        import Quartz
+        from Foundation import NSURL
+
+        src = Quartz.CGImageSourceCreateWithURL(
+            NSURL.fileURLWithPath_(str(path)), None
+        )
+        props = Quartz.CGImageSourceCopyPropertiesAtIndex(src, 0, None)
+        return (
+            dict(props.get(Quartz.kCGImagePropertyTIFFDictionary) or {}),
+            dict(props.get(Quartz.kCGImagePropertyExifDictionary) or {}),
+            props,
+        )
+
+    def test_both_containers_carry_and_keep_every_gate(self) -> None:
+        import Quartz
+
+        for container, info in self.results.items():
+            with self.subTest(container=container):
+                self.assertTrue(info.get("exif_carried"), "carry did not run")
+                out = Path(info["output_path"])
+                probe = inspect_gainmap_jpeg(out)
+                self.assertTrue(probe["has_iso_gainmap"])
+                self.assertEqual(probe["profile"], "Display P3")
+                self.assertEqual(probe["chroma_subsampling"], "4:4:4")
+                self.assertNotIn(str(probe["gainmap_pixel_format"]), ("", "L008"))
+                self.assertGreater(float(probe["headroom"]), 1.0)
+                tiff, exif, props = self._props(out)
+                self.assertEqual(str(tiff.get("Make", "")).strip(), "SIGMA")
+                self.assertIn("ExposureTime", exif)
+                # Upright pixels: the capture's rotation must not ride along.
+                self.assertIn(int(tiff.get("Orientation", 1)), (1,))
+                # Exif dims must describe THIS delivery, not the capture.
+                self.assertEqual(
+                    int(exif.get("PixelXDimension", -1)),
+                    int(props.get(Quartz.kCGImagePropertyPixelWidth)),
+                )
+                # Mosaic descriptors must not survive onto a rendered file.
+                self.assertNotIn("CFAPattern", exif)
