@@ -115,6 +115,15 @@ class RawBundle:
     # dataclasses.replace copies preserve it — an ad-hoc attribute was lost on
     # every bundle stage transition, re-running full-frame guidance builds.
     _raw_guidance_has_resolved_fullwell: bool = False
+    # R2 item 20: FULL-RESOLUTION tone-plan sample rows (storage RGB units,
+    # the exact `flat[::step]` stride the exporter takes) and the identically
+    # strided clip-mask rows, attached to cache-proxy bundles at entry build.
+    # Tone-plan compilation prefers these when present, so a preview plan's
+    # endpoints are compiled from the SAME statistics the export sees instead
+    # of the proxy's downsampled pixels. None on full bundles (which sample
+    # their own scene) and on pre-v14 cache entries.
+    _tone_plan_sample: Any | None = None
+    _tone_plan_sample_masks: Any | None = None
     # Scene-linear RGB producer. Mosaic and levels are always LibRaw-derived; per-pixel
     # clip_masks are LibRaw-derived on the libraw path and absent (None) on the coreimage
     # one, whose frame geometry cannot carry them.
