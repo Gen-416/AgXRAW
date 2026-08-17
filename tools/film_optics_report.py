@@ -247,32 +247,56 @@ def _rms_granularity_quote(field, pitch):
 
 
 def measure_pyramid_blockiness(stock: str, amount: float) -> dict:
-    """Does the spread map carry its pyramid's block edges?
+    """Does the spread-map resample leave grid artefacts in the render?
 
-    The spread-map pyramid used to expand each level with a
-    nearest-neighbour repeat, leaving a step every `factor` pixels in the
-    delta (the P0 recorded defect; §11.1 forbids NN expand). The measurement
-    compares the mean absolute first difference AT those step positions with
-    the mean everywhere else: a smooth result reads ~1.0. Measured with the
-    media scatter OFF (review R1 item 4): P5b briefly certified an inverted
-    gate here, but that pass was the formation scatter riding the
-    measurement, not the pyramid expand being fixed — the §11.1 NN-expand
-    item is still open and the gate must keep saying so.
+    History, in full (ledger §11.1): P0 recorded real 8-px blocks from a
+    nearest-neighbour pyramid expand; the runtime has since honoured the
+    §11.1 contract (area-decimate + bilinear resample, no NN anywhere).
+    P5b's "inverted" pass was scatter contamination (R1 item 4), and the
+    R1/R4-era 4.73 "still-open defect" reading was a METRIC artefact: the
+    chart (1152 px) sat under the spread cap so no resample ran at all,
+    and the single edge-transition spike aliased against the 8-px modulus
+    (the ratio grew monotonically with ANY probe modulus and the delta's
+    autocorrelation showed no periodicity).
+
+    The measurement now does what the gate always meant: render at a size
+    where decimation genuinely engages, take many rows, EXCLUDE the edge
+    transition's own neighbourhood, and read the |first-diff| ratio at the
+    legacy 8-px modulus AND at the true bilinear knot pitch. A clean
+    resample reads ~1.0 everywhere; NN blocks would read far above it at
+    the knot pitch.
     """
-    scene = charts.edge_chart(CHART_H, CHART_W, tilt_deg=5.0)
+    from dngscan.film_optics import spread_grid_shape
+
+    bh, bw = 1400, 2100  # long side above every tier's spread cap
+    grid = spread_grid_shape(bh, bw)
+    assert grid != (bh, bw), "blockiness chart must engage decimation"
+    scene = charts.edge_chart(bh, bw, tilt_deg=5.0)
     base = develop(scene, make_plan(stock, film_media_scatter="off"))
     got = develop(
         scene,
         make_plan(stock, film_bloom=amount, film_media_scatter="off"),
     )
-    row = diag.isolate(got, base)[CHART_H // 2, :, 1]
-    dif = np.abs(np.diff(row))
-    idx = np.arange(dif.size)
-    out = {}
+    delta = diag.isolate(got, base)
+    rows = delta[bh // 4 : 3 * bh // 4 : 7, :, 1]
+    dif = np.abs(np.diff(rows, axis=1))
+    edge_col = int(np.argmax(dif.mean(axis=0)))
+    mask = np.ones(dif.shape[1], bool)
+    mask[max(0, edge_col - 60) : edge_col + 60] = False
+    idx = np.arange(dif.shape[1])
+    out: dict = {"grid": list(grid), "chart": [bh, bw]}
     for factor in (2, 4, 8, 16):
-        on = float(dif[idx % factor == factor - 1].mean())
-        off = float(dif[idx % factor != factor - 1].mean())
+        on = float(dif[:, (idx % factor == factor - 1) & mask].mean())
+        off = float(dif[:, (idx % factor != factor - 1) & mask].mean())
         out[f"step_{factor}px_ratio"] = float(on / max(off, 1e-30))
+    pitch = bw / grid[1]
+    knots = np.round(np.arange(grid[1]) * pitch).astype(int)
+    knots = knots[(knots > 0) & (knots < dif.shape[1])]
+    on_k = float(dif[:, knots][:, mask[knots]].mean())
+    off_mask = mask.copy()
+    off_mask[knots] = False
+    out["knot_pitch_px"] = float(pitch)
+    out["knot_aligned_ratio"] = float(on_k / max(float(dif[:, off_mask].mean()), 1e-30))
     return out
 
 

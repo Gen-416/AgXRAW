@@ -573,10 +573,20 @@
       ]
     },
     "pyramid_blockiness": {
-      "step_16px_ratio": 6.387801029276022,
-      "step_2px_ratio": 0.6417316991481141,
-      "step_4px_ratio": 1.3764661601679131,
-      "step_8px_ratio": 3.0205048661684692
+      "chart": [
+        1400,
+        2100
+      ],
+      "grid": [
+        939,
+        1408
+      ],
+      "knot_aligned_ratio": 1.0326965451047416,
+      "knot_pitch_px": 1.4914772727272727,
+      "step_16px_ratio": 1.0042233612697584,
+      "step_2px_ratio": 0.9363926627157022,
+      "step_4px_ratio": 0.8895866183039787,
+      "step_8px_ratio": 0.7943295952445784
     },
     "source_gate": "deleted_with_legacy_print_scatter",
     "standard": {
