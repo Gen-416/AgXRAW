@@ -27,7 +27,10 @@ from .constants import PROXY_LONG_EDGE
 # SNR curve a render input), so the serializer must round-trip its ndarrays —
 # and entries written before that change hold empty curves that would compile
 # a silently NEUTRAL tail-SNR gate at export. Both demand invalidation.
-PREVIEW_CACHE_VERSION = 13
+# v14 (R2 item 20): entries carry the full-resolution tone-plan sample
+# rows (+ identically strided clip-mask rows), so preview plans compile
+# from the exporter's own statistics instead of proxy pixels.
+PREVIEW_CACHE_VERSION = 14
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -167,8 +170,11 @@ INT_KEY_ANALYSIS_FIELDS = {
     "clip_pct",
     "cell_k_of_clipped_pct",
     "cell_k_of_all_pct",
-    "snr1_dr",
-    "snr1_stop",
+    # NOT snr1_dr / snr1_stop: their keys are channel-GROUP strings
+    # ("R"/"G"/"B"), and int()-ing them made every disk read raise since the
+    # SNR curves went always-on (R2) — the broad read guard swallowed it, so
+    # entries were written and then silently never readable (permanent cache
+    # miss). Caught by the R2-item-20 round-trip gate.
 }
 
 
@@ -279,6 +285,7 @@ def _cache_identity(
 
 
 def _analysis_to_json(analysis: Analysis) -> dict[str, Any]:
+    np = dg.np
     data = asdict(analysis)
     # R4 F1: snr_curves holds ndarrays ("stops"/"snr_db"/"count" per channel
     # group) since the SNR curve became a render input; json.dumps refuses
@@ -296,6 +303,7 @@ def _analysis_to_json(analysis: Analysis) -> dict[str, Any]:
 
 
 def _analysis_from_json(data: dict[str, Any]) -> Analysis:
+    np = dg.np
     restored = dict(data)
     for field in INT_KEY_ANALYSIS_FIELDS:
         values = restored.get(field)
@@ -391,6 +399,8 @@ def _bundle_from_cache(
     scene: Any,
     masks: Any | None,
     guidance: RawGuidanceMaps | None,
+    tone_sample: Any | None = None,
+    tone_sample_masks: Any | None = None,
 ) -> RawBundle:
     np = dg.np
     evidence_shape = metadata.get("evidence_shape")
@@ -410,6 +420,8 @@ def _bundle_from_cache(
         raw_pattern=metadata["raw_pattern"],
         camera_white_levels=[float(value) for value in metadata["camera_white_levels"]],
         scene_highlight_mode=str(metadata["scene_highlight_mode"]),
+        _tone_plan_sample=tone_sample,
+        _tone_plan_sample_masks=tone_sample_masks,
         orientation_flip=int(metadata["orientation_flip"]),
         wb_mode=str(metadata["wb_mode"]),
         applied_wb=metadata.get("applied_wb"),
@@ -500,6 +512,28 @@ def build_proxy_entry(
 ) -> PreviewEntry:
     """Discard full RAW state after reducing the scene and evidence to proxy geometry."""
     np = dg.np
+    # R2 item 20: take the exporter's exact tone-plan sample stride from the
+    # FULL-resolution scene (and the same rows of the full-resolution clip
+    # masks) before the proxy discards them. ~10 MB per entry at the 800k
+    # sample cap, stored at source dtype so the compile is bit-identical.
+    from dngscan.tone import subsample_step as _subsample_step
+
+    _flat = source.scene_rec2020_render.reshape(
+        -1, source.scene_rec2020_render.shape[-1]
+    )
+    _step = _subsample_step(_flat.shape[0])
+    tone_sample = np.ascontiguousarray(_flat[::_step, :3])
+    tone_sample_masks = None
+    if source.clip_masks is not None:
+        from dngscan import retreat as _retreat
+
+        _masks = _retreat.clip_masks_for_shape(
+            source, source.scene_rec2020_render.shape[:2]
+        ).reshape(-1, 3)
+        tone_sample_masks = np.ascontiguousarray(
+            _masks[::_step].astype(np.float16, copy=False)
+        )
+    del _flat
     proxy_scene = downsample_mean(source.scene_rec2020_render, PROXY_LONG_EDGE)
     proxy_shape = proxy_scene.shape[:2]
     # Proxy masks are already in scene space after resize_clip_masks with the bundle crop.
@@ -524,6 +558,8 @@ def build_proxy_entry(
         proxy_scene,
         proxy_masks,
         proxy_guidance,
+        tone_sample=tone_sample,
+        tone_sample_masks=tone_sample_masks,
     )
     return PreviewEntry(bundle=bundle, analysis=analysis)
 
@@ -563,7 +599,19 @@ def _read_disk_entry(
                         payload["guidance_raw_permission"]
                     ).copy(),
                 )
-            bundle = _bundle_from_cache(source_path, metadata["bundle"], scene, masks, guidance)
+            tone_sample = (
+                np.asarray(payload["tone_sample"]).copy()
+                if "tone_sample" in payload.files else None
+            )
+            tone_sample_masks = (
+                np.asarray(payload["tone_sample_masks"]).copy()
+                if "tone_sample_masks" in payload.files else None
+            )
+            bundle = _bundle_from_cache(
+                source_path, metadata["bundle"], scene, masks, guidance,
+                tone_sample=tone_sample,
+                tone_sample_masks=tone_sample_masks,
+            )
             return PreviewEntry(bundle=bundle, analysis=_analysis_from_json(metadata["analysis"]))
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         try:
@@ -615,6 +663,12 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
                     ),
                     "metadata": np.asarray(json.dumps(metadata, allow_nan=True)),
                 }
+                if getattr(bundle, "_tone_plan_sample", None) is not None:
+                    values["tone_sample"] = np.asarray(bundle._tone_plan_sample)
+                if getattr(bundle, "_tone_plan_sample_masks", None) is not None:
+                    values["tone_sample_masks"] = np.asarray(
+                        bundle._tone_plan_sample_masks
+                    )
                 if maps is not None:
                     values["guidance_headroom"] = np.asarray(maps.headroom)
                     values["guidance_clip_class"] = np.asarray(maps.clip_class)

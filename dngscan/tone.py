@@ -201,10 +201,20 @@ def tone_plan_sample_scene_rec2020(
     scene_transform_strength: float = 1.0,
     exposure_gain: float | None = None,
 ) -> Any:
-    flat = bundle.scene_rec2020_render.reshape(-1, bundle.scene_rec2020_render.shape[-1])
-    step = subsample_step(flat.shape[0], max_samples)
     gain = bundle.exposure_gain if exposure_gain is None else exposure_gain
-    rec2020 = scene_intent_rec2020(flat[::step, :3], bundle, gain)
+    stored = getattr(bundle, "_tone_plan_sample", None)
+    if stored is not None:
+        # R2 item 20: a cache-proxy bundle carries the FULL-resolution sample
+        # rows taken at entry build with the exporter's own stride — the plan
+        # compiled here is statistics-identical to the export's.
+        rows = np.asarray(stored)[:, :3]
+    else:
+        flat = bundle.scene_rec2020_render.reshape(
+            -1, bundle.scene_rec2020_render.shape[-1]
+        )
+        step = subsample_step(flat.shape[0], max_samples)
+        rows = flat[::step, :3]
+    rec2020 = scene_intent_rec2020(rows, bundle, gain)
     wb_adapt = scene_transform_engine.window_transport(bundle)
     return scene_transform_engine.apply_scene_transform_rec2020(
         rec2020, scene_transform, scene_transform_strength, wb_adapt
@@ -247,8 +257,15 @@ def reliable_scene_ev_selection(
     reaches the floor too, and a clamped sample is not evidence whoever produced it —
     but it is a correctness guard, not a workaround for one back end.)
     """
-    flat = bundle.scene_rec2020_render.reshape(-1, bundle.scene_rec2020_render.shape[-1])
-    step = subsample_step(flat.shape[0], max_samples)
+    stored_sample = getattr(bundle, "_tone_plan_sample", None)
+    if stored_sample is not None:
+        expected_rows = np.asarray(stored_sample).shape[0]
+    else:
+        flat = bundle.scene_rec2020_render.reshape(
+            -1, bundle.scene_rec2020_render.shape[-1]
+        )
+        step = subsample_step(flat.shape[0], max_samples)
+        expected_rows = flat[::step, :3].shape[0]
     if rec2020_sample is None:
         gain = bundle.exposure_gain if exposure_gain is None else exposure_gain
         rec = tone_plan_sample_scene_rec2020(
@@ -260,10 +277,10 @@ def reliable_scene_ev_selection(
         )
     else:
         rec = np.asarray(rec2020_sample)
-        expected = flat[::step, :3].shape
-        if rec.shape != expected:
+        if rec.shape[0] != expected_rows:
             raise ValueError(
-                f"prepared tone-plan sample shape {rec.shape} does not match {expected}"
+                f"prepared tone-plan sample rows {rec.shape[0]} do not match "
+                f"{expected_rows}"
             )
     y = np.clip(rec2020_to_xyz(rec)[:, 1], 2.0 ** EV_REPORT_FLOOR, None)
     ev = np.log2(y) - GRAY_EV
@@ -271,7 +288,21 @@ def reliable_scene_ev_selection(
     floor_ev = float(EV_REPORT_FLOOR) - GRAY_EV
     above_floor = ev > (floor_ev + 1e-3)
     reliable = above_floor.copy()
-    if getattr(bundle, "clip_masks", None) is not None:
+    stored_masks = getattr(bundle, "_tone_plan_sample_masks", None)
+    if stored_sample is not None:
+        # R2 item 20: the entry-build stride sampled the FULL-resolution clip
+        # masks with the same indices as the scene rows; None means the full
+        # bundle carried no masks (the coreimage branch below still applies).
+        if stored_masks is not None:
+            reliable &= (
+                np.max(np.asarray(stored_masks, dtype=np.float32), axis=1)
+                < np.float32(0.10)
+            )
+        elif getattr(bundle, "scene_decoder", "libraw") == "coreimage":
+            reliable = rank_trim_reconstructed_highlights(
+                ev, reliable, analysis.cell_union_pct
+            )
+    elif getattr(bundle, "clip_masks", None) is not None:
         masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
         reliable &= np.max(masks.reshape(-1, 3)[::step], axis=1) < np.float32(0.10)
     elif getattr(bundle, "scene_decoder", "libraw") == "coreimage":

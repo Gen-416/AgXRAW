@@ -749,6 +749,15 @@ def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
 
     scene = apply_hot_wb_rec2020(bundle.scene_rec2020_render, transform)
     xyz = scene_rec2020_to_xyz_render(scene, bundle.scene_scale)
+    # R2 item 20: the stored full-resolution tone-plan sample is scene pixels
+    # in the same storage domain, so the SAME hot-WB transform applies — a
+    # replace() copy alone would compile balanced previews from the as-shot
+    # statistics.
+    tone_sample = getattr(bundle, "_tone_plan_sample", None)
+    if tone_sample is not None:
+        tone_sample = apply_hot_wb_rec2020(
+            np.asarray(tone_sample)[None, :, :], transform
+        )[0]
     return replace(
         bundle,
         scene_rec2020_render=scene,
@@ -757,6 +766,7 @@ def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
         wb_mode=wb_mode,
         applied_wb=[float(value) for value in target_wb],
         wb_degradation=note,
+        _tone_plan_sample=tone_sample,
         _clip_masks_cache_shape=None,
         _clip_masks_resized=None,
         _raw_guidance_cache_shape=None,
