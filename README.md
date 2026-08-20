@@ -23,7 +23,8 @@ same RAW evidence and validation instead of rebuilding the whole pipeline.
 [Editing tutorial](docs/EDITING_TUTORIAL.zh-CN.md) (a guided workflow from import to export, control by control; Chinese) ·
 [Film tutorial](docs/FILM_TUTORIAL.zh-CN.md) (what every film slider and choice does, with samples; Chinese) ·
 [User guide](docs/USER_GUIDE.md) (supported cameras, interface fields, export choices) ·
-[Sensor support](docs/SENSOR_SUPPORT.zh-CN.md) (per-body data, degradation policy, LibRaw upgrades; Chinese)
+[Sensor support](docs/SENSOR_SUPPORT.zh-CN.md) (per-body data, degradation policy, LibRaw upgrades; Chinese) ·
+[Full documentation index](docs/README.md) (architecture, plans with landing status, baselines)
 
 ## HDR in one frame
 

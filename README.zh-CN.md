@@ -21,7 +21,8 @@ LibRaw 或 Core Image 形成场景线性 Rec. 2020 图像，再把测量结果�
 [修图教程](docs/EDITING_TUTORIAL.zh-CN.md)（从导入到导出的完整流程，逐个控件讲用法）·
 [胶片教程](docs/FILM_TUTORIAL.zh-CN.md)（每个胶片滑条和选择到底有什么用，配样张）·
 [使用说明](docs/USER_GUIDE.zh-CN.md)（支持的相机、界面字段、导出选择）·
-[机型支持](docs/SENSOR_SUPPORT.zh-CN.md)（传感器数据、降级策略与 LibRaw 升级）
+[机型支持](docs/SENSOR_SUPPORT.zh-CN.md)（传感器数据、降级策略与 LibRaw 升级）·
+[完整文档索引](docs/README.md)（架构、计划书落地状态、基线记录）
 
 ## 一张图看 HDR
 
