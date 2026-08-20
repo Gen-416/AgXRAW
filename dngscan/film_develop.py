@@ -625,7 +625,11 @@ class FilmSpatialContext:
 # and Ektar differed by 0.46 dE00 median, a hue whisper with no chroma or
 # lightness difference at all. Reversals stay at 0: their direct-B2 chain
 # measured 1.16 already, the look is baked in the measured response.
-# Owner look review pending; these numbers are starting points, not claims.
+# Review resolution (owner, 2026-08-14, taste-to-dial): these declared
+# values STAY the mathematical defaults — no corpus re-pinning without
+# measurement material — and the adjustment path is the explicit dial
+# (`--film-interimage custom --film-interimage-beta`, R6-gated end to
+# end). They remain modelled starting points, not measured claims.
 INTERIMAGE_BETA: dict[str, float] = {
     # Kodak C-41 portrait family: gentle separation
     "portra160": 0.62, "portra400": 0.62, "portra800": 0.62,
