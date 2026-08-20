@@ -148,6 +148,9 @@ def wb_line_cn(bundle: RawBundle) -> str:
     degradation = getattr(bundle, "wb_degradation", None)
     if degradation:
         line += f"\n白平衡警示: {degradation}"
+    stage1 = getattr(bundle, "evidence_stage1_note", None)
+    if stage1:
+        line += f"\n证据层警示: {stage1}"
     support = getattr(bundle, "camera_data_support", None)
     if support:
         line += f"\n机型数据支撑: {support}"

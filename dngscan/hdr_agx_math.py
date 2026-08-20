@@ -56,9 +56,15 @@ from .models import HdrShoulderSegment
 MAX_SINGLE_SEGMENT_ALPHA = 3.0
 
 # Subdivision ceiling for monotone Hermite chains (authoritative low-headroom shoulders
-# and the reference-white chroma candidate alike). Each split roughly halves alpha, so the
-# reachable range grows exponentially; a request needing more than this is malformed
-# rather than demanding.
+# and the reference-white chroma candidate alike). R6 item 5 corrected the old
+# "each split roughly halves alpha / reachable range grows exponentially"
+# story — that is NOT a property of this quadratic knot allocation: the first
+# segment's alpha only ASYMPTOTES to about half the global alpha as segments
+# increase, so subdivision buys a bounded factor, not exponential reach. The
+# real reachable bound is what the tests pin (global alpha ~7.749 at this
+# ceiling, tests/test_hdr_agx_math.py), and every compiled chain still passes
+# the exact per-segment monotonicity check — the ceiling exists to refuse
+# requests malformed beyond that measured bound, not to promise growth.
 MAX_SHOULDER_SEGMENTS = 16
 
 _EPS = 1e-12

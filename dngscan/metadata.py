@@ -33,6 +33,26 @@ TAG_COLOR_MATRIX_1 = 50721
 TAG_COLOR_MATRIX_2 = 50722
 TAG_CALIBRATION_ILLUMINANT_1 = 50778
 TAG_CALIBRATION_ILLUMINANT_2 = 50779
+# R6 item 3: the DNG calibration composition inputs the old parser dropped.
+# Spec: XYZtoCamera_i = AnalogBalance x CameraCalibration_i x ColorMatrix_i,
+# CameraCalibration applied only when CameraCalibrationSignature equals
+# ProfileCalibrationSignature (both absent counts as a match). DNG 1.6 adds
+# a third calibration illuminant (tag ids verified against the rawler
+# registry mirroring the spec).
+TAG_CAMERA_CALIBRATION_1 = 50723
+TAG_CAMERA_CALIBRATION_2 = 50724
+TAG_ANALOG_BALANCE = 50727
+TAG_CAMERA_CALIBRATION_SIGNATURE = 50931
+TAG_PROFILE_CALIBRATION_SIGNATURE = 50932
+TAG_CALIBRATION_ILLUMINANT_3 = 52529
+TAG_CAMERA_CALIBRATION_3 = 52530
+TAG_COLOR_MATRIX_3 = 52531
+# R6 item 2: DNG stage-1 linearization tags the evidence layer must at least
+# DETECT — per-channel-black + linear-DN is an assumption, not a fact.
+TAG_LINEARIZATION_TABLE = 50712
+TAG_BLACK_LEVEL_DELTA_H = 50715
+TAG_BLACK_LEVEL_DELTA_V = 50716
+TAG_LINEAR_RESPONSE_LIMIT = 50734
 # DNG §4: presence of DNGVersion in IFD0 is what makes a TIFF container a DNG.
 # LibRaw keys its embedded-cmatrix adoption on the same fact (identify.cpp sets
 # dng_version from this tag), so the hot-WB rung-2 gate must test it too.
@@ -255,6 +275,34 @@ class DngColorCalibration:
     cct1: float
     matrix2: tuple[tuple[float, float, float], ...] | None = None
     cct2: float | None = None
+    # DNG 1.6 third calibration illuminant (R6 item 3). None when absent or
+    # when its illuminant needs IlluminantData spectral parsing (code 255,
+    # unmapped in _LIGHT_SOURCE_CCT and therefore skipped).
+    matrix3: tuple[tuple[float, float, float], ...] | None = None
+    cct3: float | None = None
+
+
+def _ascii_signature(vals) -> str:
+    """Signature string from an ASCII tag's decoded values.
+
+    _entry_values already decodes type-2 entries to one stripped string; the
+    byte/int branches cover writers that mistype the tag as UNDEFINED."""
+    if vals and isinstance(vals[0], str):
+        return vals[0].strip()
+    if isinstance(vals, (bytes, bytearray)):
+        raw = bytes(vals)
+    elif vals and isinstance(vals[0], (bytes, bytearray)):
+        raw = bytes(vals[0])
+    else:
+        raw = bytes(int(v) & 0xFF for v in vals if isinstance(v, (int, float)))
+    return raw.split(b"\x00")[0].decode("ascii", "replace").strip()
+
+
+def _mat3_mul(a, b):
+    return [
+        [sum(float(a[r][k]) * float(b[k][c]) for k in range(3)) for c in range(3)]
+        for r in range(3)
+    ]
 
 
 def _matrix_from_values(vals: list) -> tuple[tuple[float, float, float], ...] | None:
@@ -308,17 +356,60 @@ def read_dng_color_calibration(path: Path) -> DngColorCalibration | None:
             (ifd0_off,) = struct.unpack(endian + "L", head[4:8])
             matrices: dict[int, tuple[tuple[float, float, float], ...]] = {}
             illuminants: dict[int, float] = {}
+            camera_cal: dict[int, tuple[tuple[float, float, float], ...]] = {}
+            analog_balance = None
+            cc_signature = None
+            profile_signature = None
+            _cm_index = {TAG_COLOR_MATRIX_1: 1, TAG_COLOR_MATRIX_2: 2,
+                         TAG_COLOR_MATRIX_3: 3}
+            _ci_index = {TAG_CALIBRATION_ILLUMINANT_1: 1,
+                         TAG_CALIBRATION_ILLUMINANT_2: 2,
+                         TAG_CALIBRATION_ILLUMINANT_3: 3}
+            _cc_index = {TAG_CAMERA_CALIBRATION_1: 1,
+                         TAG_CAMERA_CALIBRATION_2: 2,
+                         TAG_CAMERA_CALIBRATION_3: 3}
             for tag, typ, num, raw in _read_ifd_entries(fh, ifd0_off, endian):
-                if tag in (TAG_COLOR_MATRIX_1, TAG_COLOR_MATRIX_2):
+                if tag in _cm_index:
                     matrix = _matrix_from_values(_entry_values(fh, typ, num, raw, endian))
                     if matrix is not None:
-                        matrices[1 if tag == TAG_COLOR_MATRIX_1 else 2] = matrix
-                elif tag in (TAG_CALIBRATION_ILLUMINANT_1, TAG_CALIBRATION_ILLUMINANT_2):
+                        matrices[_cm_index[tag]] = matrix
+                elif tag in _ci_index:
                     vals = _entry_values(fh, typ, num, raw, endian)
                     if vals:
                         cct = _LIGHT_SOURCE_CCT.get(int(vals[0]))
                         if cct is not None:
-                            illuminants[1 if tag == TAG_CALIBRATION_ILLUMINANT_1 else 2] = cct
+                            illuminants[_ci_index[tag]] = cct
+                elif tag in _cc_index:
+                    matrix = _matrix_from_values(_entry_values(fh, typ, num, raw, endian))
+                    if matrix is not None:
+                        camera_cal[_cc_index[tag]] = matrix
+                elif tag == TAG_ANALOG_BALANCE:
+                    vals = _entry_values(fh, typ, num, raw, endian)
+                    if len(vals) >= 3:
+                        analog_balance = tuple(float(v) for v in vals[:3])
+                elif tag == TAG_CAMERA_CALIBRATION_SIGNATURE:
+                    vals = _entry_values(fh, typ, num, raw, endian)
+                    cc_signature = _ascii_signature(vals)
+                elif tag == TAG_PROFILE_CALIBRATION_SIGNATURE:
+                    vals = _entry_values(fh, typ, num, raw, endian)
+                    profile_signature = _ascii_signature(vals)
+            # R6 item 3 — compose per DNG spec: AB x CC_i x CM_i. CC applies
+            # only when the calibration signatures MATCH (both absent = both
+            # default empty = match); AB always applies (identity default).
+            signatures_match = (cc_signature or "") == (profile_signature or "")
+            ab = None
+            if analog_balance is not None and all(
+                v > 0 and v == v and abs(v) != float("inf") for v in analog_balance
+            ):
+                ab = analog_balance
+            for idx in list(matrices):
+                m = [list(row) for row in matrices[idx]]
+                cc = camera_cal.get(idx) if signatures_match else None
+                if cc is not None:
+                    m = _mat3_mul(cc, m)
+                if ab is not None:
+                    m = [[ab[r] * m[r][c] for c in range(3)] for r in range(3)]
+                matrices[idx] = tuple(tuple(float(v) for v in row) for row in m)
     except (OSError, struct.error):
         return None
     if 1 in matrices and 1 in illuminants:
@@ -326,7 +417,9 @@ def read_dng_color_calibration(path: Path) -> DngColorCalibration | None:
             matrix1=matrices[1],
             cct1=illuminants[1],
             matrix2=matrices.get(2),
-            cct2=illuminants.get(2),
+            cct2=illuminants.get(2) if 2 in matrices else None,
+            matrix3=matrices.get(3),
+            cct3=illuminants.get(3) if 3 in matrices else None,
         )
     if 2 in matrices and 2 in illuminants:
         return DngColorCalibration(matrix1=matrices[2], cct1=illuminants[2])
@@ -489,3 +582,55 @@ def read_dng_shading_ops(path: Path) -> dict:
     except (OSError, struct.error):
         pass
     return {"gain_maps": gain_maps, "vignette": vignette}
+
+
+def read_dng_stage1_flags(path: Path) -> tuple[str, ...]:
+    """Names of DNG stage-1 linearization tags present in IFD0 or the SubIFDs.
+
+    R6 item 2: the evidence layer models the mosaic as "per-channel black +
+    linear DN". LinearizationTable, BlackLevelDeltaH/V and (a non-default)
+    LinearResponseLimit are the legal DNG features that break that model —
+    when any is present the evidence-derived quantities (noise floor, clip
+    statistics, reliable tail, RAW gating) may carry spatial or tonal bias,
+    and every consumer must degrade its precision claims instead of
+    silently proceeding. Detection only; parsing/applying these corrections
+    (or delegating to a decoder that has) is the recorded follow-up.
+    """
+    flags: set[str] = set()
+    watched = {
+        TAG_LINEARIZATION_TABLE: "LinearizationTable",
+        TAG_BLACK_LEVEL_DELTA_H: "BlackLevelDeltaH",
+        TAG_BLACK_LEVEL_DELTA_V: "BlackLevelDeltaV",
+        TAG_LINEAR_RESPONSE_LIMIT: "LinearResponseLimit",
+    }
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(8)
+            if len(head) < 8 or head[:2] not in (b"II", b"MM"):
+                return ()
+            endian = "<" if head[:2] == b"II" else ">"
+            (magic,) = struct.unpack(endian + "H", head[2:4])
+            if magic != 42:
+                return ()
+            (ifd0_off,) = struct.unpack(endian + "L", head[4:8])
+            offsets = [ifd0_off]
+            for tag, typ, num, raw in _read_ifd_entries(fh, ifd0_off, endian):
+                if tag == TAG_SUB_IFDS:
+                    offsets.extend(
+                        int(v) for v in _entry_values(fh, typ, num, raw, endian)[:4]
+                    )
+            for off in offsets:
+                for tag, typ, num, raw in _read_ifd_entries(fh, off, endian):
+                    name = watched.get(tag)
+                    if name is None:
+                        continue
+                    if tag == TAG_LINEAR_RESPONSE_LIMIT:
+                        vals = _entry_values(fh, typ, num, raw, endian)
+                        # Default 1.0 declares full-range linearity — only a
+                        # NON-default value narrows the linear region.
+                        if vals and abs(float(vals[0]) - 1.0) < 1e-9:
+                            continue
+                    flags.add(name)
+    except (OSError, struct.error):
+        return ()
+    return tuple(sorted(flags))

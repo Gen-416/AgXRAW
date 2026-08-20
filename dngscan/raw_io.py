@@ -1212,6 +1212,17 @@ def load_raw(
     # cannot change the source, values, provenance, or failure domain of analysis data.
     try:
         evidence = acquire_raw_evidence(path)
+        # R6 item 2: per-channel-black + linear-DN is an ASSUMPTION; these
+        # legal DNG features break it and the pipeline must say so instead
+        # of continuing to claim exact RAW gating.
+        _stage1 = dng_metadata.read_dng_stage1_flags(path)
+        evidence_stage1_note = (
+            "DNG 携带证据层未应用的 stage-1 校正标签("
+            + "/".join(_stage1)
+            + "):噪声底/剪切统计/可靠尾部与 RAW 门控按近似口径解读"
+            if _stage1
+            else None
+        )
     except EvidenceAcquisitionError as exc:
         if exc.unsupported_format or "unsupported file format" in str(exc).lower():
             message = _unsupported_format_guidance(path, shot, exc)
@@ -1506,6 +1517,7 @@ def load_raw(
         orientation_flip=orientation_flip,
         wb_mode="camera",
         wb_degradation=wb_degradation,
+        evidence_stage1_note=evidence_stage1_note,
         camera_data_support=camera_data_support,
         daylight_wb=daylight_wb,
         shot_make=shot.make,
