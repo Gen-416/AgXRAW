@@ -524,6 +524,15 @@ def group_tile_signal_noise(
 
 
 def interpolate_zero_db_stop(stops: Any, snr_db: Any) -> float:
+    """Stop position of the SNR curve's 0 dB crossing (linear interpolation).
+
+    Bins above SNR_BRIGHT_UNRELIABLE_STOP are excluded first. On a curve
+    with MULTIPLE crossings this returns the DARKEST one — the DR-optimistic
+    choice; real curves are monotone through the crossing, but a noise
+    wiggle can move the quote darker by up to the wiggle's width (math audit
+    R5 documented this previously unstated semantics). All-positive curves
+    return their darkest valid stop; all-negative return NaN.
+    """
     valid = np.isfinite(stops) & np.isfinite(snr_db) & (stops <= SNR_BRIGHT_UNRELIABLE_STOP)
     x = stops[valid]
     y = snr_db[valid]

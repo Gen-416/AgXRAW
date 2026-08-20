@@ -355,7 +355,17 @@ def _build_curve_params(
     toe_slope_to_limit = toe_dy / toe_length_x
     need_convex_toe = toe_slope_to_limit > slope
     toe_fallback_power = slope * toe_length_x / toe_dy
-    toe_fallback_coefficient = toe_dy / max(EPS, toe_length_x) ** toe_fallback_power
+    # Math audit R5: when toe_dy pins at EPS (a lifted black meeting a deep
+    # bisection probe of pivot_y), the exponent explodes and tx**power
+    # UNDERFLOWS to exactly 0.0 — a ZeroDivisionError for any pivot-shifted
+    # plan with a film black floor. Flooring the denominator at the smallest
+    # normal float changes nothing wherever the old expression was finite,
+    # and renders the degenerate limit as the step it mathematically is
+    # (flat at the black target below the transition).
+    toe_fallback_coefficient = toe_dy / max(
+        float(np.finfo(np.float64).tiny),
+        max(EPS, toe_length_x) ** toe_fallback_power,
+    )
 
     shoulder_transition_x = min(1.0 - MIN_SEGMENT_X, pivot_x + lat_hi_x)
     shoulder_transition_y = min(target_white - EPS, pivot_y + slope * (shoulder_transition_x - pivot_x))
@@ -365,7 +375,11 @@ def _build_curve_params(
     shoulder_slope_to_limit = shoulder_dy / shoulder_length_x
     need_concave_shoulder = shoulder_slope_to_limit > slope
     shoulder_fallback_power = slope * shoulder_length_x / shoulder_dy
-    shoulder_fallback_coefficient = shoulder_dy / max(EPS, shoulder_length_x) ** shoulder_fallback_power
+    # Same underflow guard as the toe fallback above (math audit R5).
+    shoulder_fallback_coefficient = shoulder_dy / max(
+        float(np.finfo(np.float64).tiny),
+        max(EPS, shoulder_length_x) ** shoulder_fallback_power,
+    )
     return {
         "black_ev": black_ev,
         "range_ev": range_ev,
