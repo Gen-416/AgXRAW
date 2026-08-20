@@ -5,11 +5,18 @@ from __future__ import annotations
 
 from ._deps import np
 
+# Math audit R5: re-derived from RED's published REDWideGamutRGB primaries
+# R(0.780308, 0.304253) G(0.121595, 1.493994) B(0.095612, -0.084589) with a
+# D65 white via the standard primaries-matrix method; matches RED's published
+# matrix. The previous [2][2] = 1.516745 was a transcription error (exact
+# 1.516082): its white point sat at xy (0.31263, 0.32893) instead of D65, a
+# constant ~0.013 8-bit-code warm tilt on every neutral through the
+# XYZ->RWG->Log3G10 PFE-LUT path. M @ [1,1,1] now reproduces D65 exactly.
 _RWG_TO_XYZ = np.array(
     [
         [0.735275, 0.068609, 0.146571],
         [0.286694, 0.842979, -0.129673],
-        [-0.079682, -0.347343, 1.516745],
+        [-0.079681, -0.347343, 1.516082],
     ],
     dtype=np.float64,
 )

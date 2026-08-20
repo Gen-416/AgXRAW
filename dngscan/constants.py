@@ -119,6 +119,12 @@ XYZ_TO_RGB = {
     )
     if np is not None
     else None,
+    # Frozen rounded matrix, same policy as the sRGB one: [0][0] = 2.4934 is
+    # one ulp-of-the-4th-decimal below the exact value's correct rounding
+    # (2.493497 -> 2.4935; math audit R5 measured the neutral consequence at
+    # 0.0095% linear, <=0.007 8-bit codes). Kept as-is for SDR pixel
+    # compatibility — changing it would drift every P3 golden for an
+    # invisible gain.
     "P3": np.array(  # type: ignore[union-attr]
         [[2.4934, -0.9314, -0.4027], [-0.8295, 1.7627, 0.0236], [0.0358, -0.0762, 0.9569]],
         dtype=np.float64,
