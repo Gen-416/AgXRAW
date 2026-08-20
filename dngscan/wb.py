@@ -122,16 +122,37 @@ def interpolated_color_matrix(calibration: Any, cct: float) -> Any:
     from an as-shot neutral, the DNG SDK's fixed-point iteration is unnecessary — the
     forward interpolation is exact for this use.
     """
-    m1 = np.asarray(calibration.matrix1, dtype=np.float64)
-    if calibration.matrix2 is None or calibration.cct2 is None:
-        return m1
-    m2 = np.asarray(calibration.matrix2, dtype=np.float64)
-    inv1, inv2 = 1.0 / float(calibration.cct1), 1.0 / float(calibration.cct2)
-    if abs(inv1 - inv2) < 1e-12:
-        return m1
-    w = (1.0 / float(cct) - inv2) / (inv1 - inv2)
-    w = min(1.0, max(0.0, w))
-    return w * m1 + (1.0 - w) * m2
+    # R6 item 3: generalized to the DNG 1.6 third illuminant — collect every
+    # (cct, matrix) pair the file declares, sort by reciprocal CCT, clamp
+    # outside the span, and interpolate linearly between the BRACKETING pair
+    # (the spec's dual-illuminant rule applied piecewise).
+    pairs = [(float(calibration.cct1), np.asarray(calibration.matrix1, dtype=np.float64))]
+    if calibration.matrix2 is not None and calibration.cct2 is not None:
+        pairs.append(
+            (float(calibration.cct2), np.asarray(calibration.matrix2, dtype=np.float64))
+        )
+    if getattr(calibration, "matrix3", None) is not None and getattr(
+        calibration, "cct3", None
+    ) is not None:
+        pairs.append(
+            (float(calibration.cct3), np.asarray(calibration.matrix3, dtype=np.float64))
+        )
+    if len(pairs) == 1:
+        return pairs[0][1]
+    pairs.sort(key=lambda p: 1.0 / p[0])
+    inv = 1.0 / float(cct)
+    if inv <= 1.0 / pairs[0][0]:
+        return pairs[0][1]
+    if inv >= 1.0 / pairs[-1][0]:
+        return pairs[-1][1]
+    for (cct_a, m_a), (cct_b, m_b) in zip(pairs, pairs[1:]):
+        inv_a, inv_b = 1.0 / cct_a, 1.0 / cct_b
+        if inv_a <= inv <= inv_b:
+            if abs(inv_b - inv_a) < 1e-12:
+                return m_a
+            w = (inv_b - inv) / (inv_b - inv_a)
+            return w * m_a + (1.0 - w) * m_b
+    return pairs[-1][1]
 
 
 def asshot_reference_cct(calibration: Any, camera_wb: Any) -> float:

@@ -91,6 +91,11 @@ class RawBundle:
     # Non-None when a declared WB could not be fully realised for this body (missing
     # colour calibration): the render stays usable, the report must carry this note.
     wb_degradation: str | None = None
+    # R6 item 2: set when the DNG carries stage-1 linearization tags
+    # (LinearizationTable / BlackLevelDeltaH/V / non-default
+    # LinearResponseLimit) the evidence layer does not apply — evidence
+    # precision claims must degrade, and the report says so.
+    evidence_stage1_note: str | None = None
     # Consolidated per-body data-support marker (raw_io.camera_data_support_note):
     # None = fully supported; otherwise a truthful label that rendering proceeds but
     # this model lacks the data to guarantee accuracy. Never a gate.

@@ -861,16 +861,16 @@ def _apply_film_core_v2(
     # compiled into FilmDevelopmentPlan.interimage_beta): the runtime never
     # consults mutable module state, tests toggle through the plan.
     interimage_mode = str(getattr(plan, "film_interimage", "declared") or "declared")
-    if interimage_mode not in ("declared", "off"):
+    if interimage_mode not in ("declared", "off", "custom"):
         raise ValueError(
-            f"film_interimage={interimage_mode!r} 未知（可选 declared/off）"
+            f"film_interimage={interimage_mode!r} 未知（可选 declared/off/custom）"
         )
     # A COMPILED plan carries the effective beta; the table is only the
     # fallback for hand-built plans that never went through the compiler
     # (probes, tests). This is what makes the compiled plan immutable: A3
     # measured 0.0726 max pixel drift from editing the module table after
     # compile while the runtime still consulted it.
-    if interimage_mode != "declared":
+    if interimage_mode == "off":
         # Same semantics as the plan validator (A4 item 3): a hand-built
         # plan claiming "off" while carrying a nonzero compiled beta is a
         # contradiction, and silently zeroing it would make the two entry
@@ -881,6 +881,22 @@ def _apply_film_core_v2(
                 f"film_interimage=off 但 film_interimage_beta={stray!r} 非零"
             )
         beta = 0.0
+    elif interimage_mode == "custom":
+        # R6 item 1: the runtime whitelist had not learned the latitude
+        # dial — the compiler, CLI, service and plan validator all accepted
+        # "custom" while THIS branch raised, so the dial never rendered.
+        # Custom beta comes exclusively from the compiled plan (no module-
+        # table fallback: a hand-built custom plan without a beta is a
+        # contradiction, same fail-closed rule as the compiler's).
+        compiled = getattr(plan, "film_interimage_beta", None)
+        if compiled is None or not np.isfinite(float(compiled)) or not (
+            0.0 <= float(compiled) <= 1.5
+        ):
+            raise ValueError(
+                f"film_interimage=custom 需要 film_interimage_beta∈[0,1.5],"
+                f"得到 {compiled!r}"
+            )
+        beta = float(compiled)
     else:
         compiled = getattr(plan, "film_interimage_beta", None)
         beta = float(compiled) if compiled is not None else interimage_beta(preset)

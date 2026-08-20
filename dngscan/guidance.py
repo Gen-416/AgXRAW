@@ -180,19 +180,40 @@ def sector_hue_multiplier(scene_rgb_rec2020: Any, scene_ev: Any) -> Any:
     ).astype(np.float32, copy=False)
 
 
-def _bin_2x2_min(arr: Any) -> Any:
+def _bin_period_min(arr: Any, ph: int, pw: int) -> Any:
     h, w = arr.shape[:2]
-    h2 = max(1, h // 2)
-    w2 = max(1, w // 2)
-    cropped = arr[: h2 * 2, : w2 * 2]
-    return cropped.reshape(h2, 2, w2, 2, arr.shape[2]).min(axis=(1, 3))
+    h2 = max(1, h // ph)
+    w2 = max(1, w // pw)
+    cropped = arr[: h2 * ph, : w2 * pw]
+    return cropped.reshape(h2, ph, w2, pw, arr.shape[2]).min(axis=(1, 3))
+
+
+def _cfa_bin_period(bundle: RawBundle) -> tuple[int, int]:
+    """The bin that guarantees every output cell saw every channel.
+
+    R6 item 4: a Bayer 2x2 contains all three channels, but an X-Trans 2x2
+    block can lack red entirely — its neutral 1.0 fill then read as FULL
+    headroom ("nothing near clip here") instead of unknown, so gated
+    under-weighted local clipping exactly where evidence was thinnest. The
+    honest bin is one CFA period: coarser guidance resolution on 6x6
+    sensors, but every cell's min is a real measurement of every channel.
+    """
+    try:
+        pattern = np.asarray(bundle.raw_pattern)
+        ph, pw = int(pattern.shape[0]), int(pattern.shape[1])
+        if ph >= 1 and pw >= 1:
+            return ph, pw
+    except Exception:
+        pass
+    return 2, 2
 
 
 def _align_cfa_rgb_map(bundle: RawBundle, values: Any, target_shape: tuple[int, int]) -> Any:
     """Reduce raw-CFA RGB evidence to scene geometry without changing its values."""
     from . import raw_io
 
-    binned = _bin_2x2_min(np.asarray(values, dtype=np.float32))
+    ph, pw = _cfa_bin_period(bundle)
+    binned = _bin_period_min(np.asarray(values, dtype=np.float32), ph, pw)
     oriented = raw_io._orient_like_libraw(binned, bundle.orientation_flip)
     return raw_io._resize_mask_to_shape(oriented, target_shape).astype(np.float32, copy=False)
 

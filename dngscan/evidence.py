@@ -45,6 +45,16 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
 
     Deliberately no scene-decoder argument: selecting Apple RAW, LibRaw, or a future
     renderer cannot affect evidence acquisition or its provenance.
+
+    R6 item 2 — the evidence MODEL is "per-channel black + linear DN", which
+    is an assumption, not a verified fact: a legal DNG may carry
+    LinearizationTable, BlackLevelDeltaH/V or a non-default
+    LinearResponseLimit, none of which this layer applies. load_raw detects
+    those tags (metadata.read_dng_stage1_flags) and stamps
+    bundle.evidence_stage1_note so every precision claim downstream (noise
+    floor, clip statistics, reliable tail, RAW gating) degrades honestly in
+    the report instead of silently proceeding. Applying the corrections (or
+    sourcing stage-1-corrected buffers) is the recorded follow-up.
     """
     path = Path(path)
     try:
