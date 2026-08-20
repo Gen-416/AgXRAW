@@ -204,8 +204,14 @@ def compile_hdr_curve_table(
     """Bake the analytic curve (body below K, shoulder above) onto a uniform EV grid.
 
     Sampling goes through the very functions the table replaces, so the table cannot
-    encode a different curve family than the oracle; only interpolation error remains,
-    and the §12.3 gates pin that below 2e-5 linear / 1e-3 output stops.
+    encode a different curve family than the oracle; only interpolation error remains.
+    Measured bounds (math audit R5, full plan grid): below reference white the worst
+    absolute linear error is 2e-6; above it the ABSOLUTE error can reach 8e-5 at the
+    most compressive corner (black -10 / white 8.5 / contrast 2 / H 5.32) — which is
+    2e-6 RELATIVE at that T~40 output level. The authoritative gate is the output-stop
+    bound the §12.3 tests pin at 1e-3 stops (worst measured 6.6e-5, ~15x margin); a
+    blanket "2e-5 linear" claim previously written here was only true of the
+    peak_linear=4 case the test samples.
     """
     e0 = float(tone.black_ev)
     e1 = float(tone.white_ev)

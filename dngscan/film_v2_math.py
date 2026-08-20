@@ -70,8 +70,14 @@ def amounts_to_unit(amounts: Any, lo: Any, hi: Any) -> Any:
     """Normalize dye amounts into the Stage B cube's [0,1] coordinates.
 
     Values outside the declared domain are clamped (the LUT contract's
-    declared edge semantics); the CALLER counts and reports clamped samples —
-    silent excursion is forbidden (plan §3)."""
+    declared edge semantics). Math audit R5 correction: the old "the caller
+    counts and reports clamped samples — silent excursion is forbidden"
+    claim described an accounting the runtime callers never implemented,
+    and a small excursion is in fact EXPECTED: every shipped characteristic
+    table dips slightly below the cube floor (fit residual vs the physical
+    amount>=0 floor, worst -1.6e-3 amounts; output effect <=0.004 stop).
+    That bound is enforced as an asset gate in the tests; anything beyond
+    it is a corrupt or mis-built asset, not normal operation."""
     lo = np.asarray(lo, dtype=np.float64)
     hi = np.asarray(hi, dtype=np.float64)
     span = np.maximum(hi - lo, 1e-12)

@@ -904,11 +904,18 @@ def _apply_film_core_v2(
         #     D' = N + sign(d) * h * t'
         #
         # Grey identity (d=0), beta=0 identity, slope 1+beta at the neutral
-        # axis, and Dmin/Dmax are fixed points — no sample can leave the
-        # domain, so nothing downstream ever clips. The rails are the
+        # axis, and Dmin/Dmax are fixed points — the MAP never pushes a
+        # sample beyond the effective table's own extrema. The rails are the
         # EFFECTIVE characteristic table's own extrema (including any
         # editorial developer perturbation), not the baked cube, which may
-        # be deliberately wider.
+        # be deliberately wider. Math audit R5 correction: this does NOT
+        # mean nothing downstream ever clips — every shipped table itself
+        # excurses slightly below the cube floor (fit residual vs the
+        # physical amount>=0 floor, worst -1.6e-3 amounts at deep toe /
+        # bright-highlight logE), so Stage B's edge clamp does engage there.
+        # The excursion is bounded by an asset gate (tests) and its output
+        # effect is <=0.004 stop — a bookkeeping fact, not a defect, but the
+        # old "nothing downstream ever clips" claim was false as written.
         le_mean = np.mean(
             np.asarray(log_e, dtype=np.float64), axis=1, keepdims=True
         )

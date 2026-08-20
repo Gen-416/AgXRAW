@@ -881,13 +881,19 @@ def _blur_small_sigma(chan: np.ndarray, sigma_px: float) -> np.ndarray:
     Neither classic discretization is honest here: point-sampled taps
     under-blur (0.93 at 0.3 cyc/px where the continuous response is 0.78
     at sigma 0.37), and pixel-integrated (erf) taps convolve an extra
-    pixel box, over-blurring by its sinc (measured 3.9 pp at 50 c/mm on
-    the 2383 B kernel). The symmetric 5-tap [c, b, a, b, c] instead hits
-    the CONTINUOUS Gaussian transfer exactly at omega = 0, pi/2 and pi:
+    pixel box, over-blurring by its sinc. The symmetric 5-tap
+    [c, b, a, b, c] instead hits the CONTINUOUS Gaussian transfer exactly
+    at omega = 0, pi/2 and pi:
         b = (1 - G(pi)) / 4,   c = ((1 + G(pi))/2 - G(pi/2)) / 4
-    with G(w) = exp(-sigma^2 w^2 / 2); in-band deviation stays under
-    ~1 pp for sigma <= 1 (tiny negative lobes below sigma ~0.7 are the
-    price of the in-band match and sum to zero energy)."""
+    with G(w) = exp(-sigma^2 w^2 / 2). Between the matched frequencies the
+    deviation is NOT ~1 pp (math audit R5 corrected an understated claim):
+    max |H - G| over the full band reaches 6.6 pp at sigma~0.45 (1.8 pp
+    below pi/2), and the measured end-to-end scatter-response deviation is
+    up to ~4.8 pp at 20 um/px pitches — the inherent cost of a 5-tap
+    band-limited match, accepted as the best available discretization at
+    this support. Gate 13's 3 pp tolerance samples 6 um/px, where the
+    deviation stays ~2.4 pp. Tiny negative lobes below sigma ~0.703 are
+    the price of the in-band match and sum to zero energy."""
     g_half = float(np.exp(-0.5 * sigma_px ** 2 * (np.pi / 2.0) ** 2))
     g_nyq = float(np.exp(-0.5 * sigma_px ** 2 * np.pi ** 2))
     b = (1.0 - g_nyq) / 4.0
