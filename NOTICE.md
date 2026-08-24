@@ -119,3 +119,16 @@ statistics; all derived quantities (gain, read noise, FWC, PRNU) are our
 fits with apertures and uncertainties declared in each entry. No explicit
 license is published for the measurement CSVs; the author is being
 contacted, and entries are single-file removable.
+
+## dngshell first-party shells (y-g-jiang)
+
+Six evidence shells (sony_ilce7m5, leica_q2, fujifilm_gfx100,
+hasselblad_x1d, canon_5d3, panasonic_s1rm2) were converted with
+`tools/import_dngshell.py` from the DNGSHL1 corpus at
+https://y-g-jiang.github.io/shells/. Their source files are the corpus
+author's own captures (hence no third-party sourceUrl); no explicit
+license is published and the author is being contacted — same posture as
+the JPTC measurements above. Each shell contains only container/metadata
+bytes (bulk pixel and preview regions removed upstream AND re-stripped by
+our walker); the manifest's `upstream` block records the true original's
+SHA-256. Deleting the six .evshell files removes the tier.

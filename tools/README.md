@@ -25,6 +25,7 @@
 | `import_cbld.py` | 用户本地 CBLD 黑电平参考导入(不随仓库分发) |
 | `import_jptc.py` | JPTC/2 一手实测 CSV → PTC 拟合 priors 条目(`--self-test` 合成传感器门禁) |
 | `import_p2p_pdr.py` | P2P 批量传感器表 → `data/priors/p2p_bulk.json`(135 台,许可状态见 NOTICE) |
+| `import_dngshell.py` | 上游 DNGSHL1 壳 → dngscan evshell(一手拍摄语料接入,来源块入清单) |
 
 ## 校准与拟合 / Calibration & Fitting
 

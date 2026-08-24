@@ -76,5 +76,161 @@
   },
   "stage1_flags": [],
   "gain_map_count": 0
+ },
+ "sony_ilce7m5": {
+  "is_dng": true,
+  "make": "SONY",
+  "model": "ILCE-7M5",
+  "iso": 100,
+  "baseline_exposure": 0.35,
+  "as_shot_neutral": [
+   0.381662,
+   1.0,
+   0.673241
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    1.1373491199999999,
+    -0.69515984,
+    0.10092343999999999
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ },
+ "leica_q2": {
+  "is_dng": true,
+  "make": "LEICA CAMERA AG",
+  "model": "LEICA Q2",
+  "iso": 100,
+  "baseline_exposure": 0.0,
+  "as_shot_neutral": [
+   0.457756,
+   1.0,
+   0.820513
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    1.5398,
+    -0.904,
+    0.0487
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ },
+ "fujifilm_gfx100": {
+  "is_dng": true,
+  "make": "FUJIFILM",
+  "model": "GFX 100",
+  "iso": 100,
+  "baseline_exposure": -0.01,
+  "as_shot_neutral": [
+   0.576336,
+   1.0,
+   0.547101
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    1.7392134700000002,
+    -1.1128700000000002,
+    0.12929526
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ },
+ "hasselblad_x1d": {
+  "is_dng": true,
+  "make": "Hasselblad",
+  "model": "Hasselblad X1D",
+  "iso": 100,
+  "baseline_exposure": 0.16,
+  "as_shot_neutral": [
+   0.341307,
+   1.0,
+   0.826984
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    0.5002,
+    -0.0878,
+    0.0111
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ },
+ "canon_5d3": {
+  "is_dng": true,
+  "make": "Canon",
+  "model": "Canon EOS 5D Mark III",
+  "iso": 100,
+  "baseline_exposure": 0.25,
+  "as_shot_neutral": [
+   0.475615,
+   1.0,
+   0.693297
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    0.74741688,
+    -0.14599115999999998,
+    -0.06199199999999999
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ },
+ "panasonic_s1rm2": {
+  "is_dng": true,
+  "make": "Panasonic",
+  "model": "DC-S1RM2",
+  "iso": 80,
+  "baseline_exposure": 0.15,
+  "as_shot_neutral": [
+   0.414911,
+   1.0,
+   0.673684
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    1.1913,
+    -0.699,
+    0.0497
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
  }
 }
