@@ -79,14 +79,93 @@ def _load_json_priors() -> list[dict[str, Any]]:
 
 PRIOR_TABLE = [SIGMA_FP] + _load_json_priors()
 
+# Secondary tables, loaded lazily on the first curated-table miss:
+#   tier 2 — JPTC/2 first-party bench measurements (data/priors/jptc/*.json),
+#            single-ISO PTC fits; gain/FWC are measured, read noise is a
+#            one-point curve (constant extrapolation), no PDR curve.
+#   tier 3 — P2P bulk table (data/priors/p2p_bulk.json), 135 cameras derived
+#            from PhotonsToPhotos chart data; provenance and the licensing
+#            decision live in that file's header and in NOTICE.md. Deleting
+#            the file removes the tier; everything degrades to None.
+_JPTC_CACHE: list[dict[str, Any]] | None = None
+_BULK_CACHE: list[dict[str, Any]] | None = None
+
+
+def _jptc_entries() -> list[dict[str, Any]]:
+    global _JPTC_CACHE
+    if _JPTC_CACHE is not None:
+        return _JPTC_CACHE
+    import json
+    from pathlib import Path
+
+    entries: list[dict[str, Any]] = []
+    for path in sorted((Path(__file__).parent / "data" / "priors" / "jptc").glob("*.json")):
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if item.get("format") != "dngscan-jptc-prior-1":
+            continue
+        iso = float(item["iso"])
+        gain = float(item["gain_e_per_dn"])
+        if iso <= 0 or gain <= 0:
+            continue
+        x = math.log2(iso)
+        entries.append({
+            "id": item["id"],
+            "make_contains": item["brand"],
+            "model_equals": {str(item["model"]).upper()},
+            "unity_gain_ev": math.log2(iso * gain),
+            "fwc_e": float(item["fwc_e"]),
+            "fwc_e_uncertainty": float(item.get("fwc_e_uncertainty", 0.0)),
+            "read_noise_log2iso_log2e": [(x, math.log2(float(item["read_noise_e"])))],
+            "pdr_log2iso_ev": [],
+            "measured_iso": int(iso),
+            "prnu": item.get("prnu"),
+            "source": f"JPTC/2 first-party measurement ({path.name})",
+        })
+    _JPTC_CACHE = entries
+    return entries
+
+
+def _bulk_entries() -> list[dict[str, Any]]:
+    global _BULK_CACHE
+    if _BULK_CACHE is not None:
+        return _BULK_CACHE
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).parent / "data" / "priors" / "p2p_bulk.json"
+    entries: list[dict[str, Any]] = []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    if raw.get("format") == "dngscan-p2p-bulk-priors-1":
+        for item in raw.get("entries", []):
+            entry = dict(item)
+            for key in ("pdr_log2iso_ev", "read_noise_log2iso_log2e"):
+                entry[key] = [(float(x), float(y)) for x, y in entry.get(key, [])]
+            entry["source"] = "PhotonsToPhotos via p2p_bulk.json (see its provenance header)"
+            entries.append(entry)
+    _BULK_CACHE = entries
+    return entries
+
 
 def find_priors(make: str | None, model: str | None) -> dict[str, Any] | None:
     if not make or not model:
         return None
     make_u = make.upper().strip()
     model_u = model.upper().strip()
-    for entry in PRIOR_TABLE:
+    # Tier 1: curated entries (hand-checked series, DCG annotations).
+    # Tier 2: first-party JPTC measurements. Tier 3: P2P bulk table.
+    for entry in PRIOR_TABLE + _jptc_entries():
         if str(entry["make_contains"]).upper() in make_u and model_u in entry["model_equals"]:
+            return entry
+    make_token = make_u.split()[0] if make_u.split() else make_u
+    for entry in _bulk_entries():
+        name_u = str(entry["make_model"]).upper()
+        if make_token in name_u and model_u in name_u:
             return entry
     return None
 
@@ -112,10 +191,16 @@ def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
 def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:
     if not iso or iso <= 0:
         return None
-    return float(2.0 ** _interp(priors["read_noise_log2iso_log2e"], math.log2(iso)))
+    curve = priors.get("read_noise_log2iso_log2e")
+    if not curve:
+        return None
+    return float(2.0 ** _interp(curve, math.log2(iso)))
 
 
 def pdr_ev(priors: dict[str, Any], iso: int) -> float | None:
     if not iso or iso <= 0:
         return None
-    return float(_interp(priors["pdr_log2iso_ev"], math.log2(iso)))
+    curve = priors.get("pdr_log2iso_ev")
+    if not curve:
+        return None
+    return float(_interp(curve, math.log2(iso)))
