@@ -1,0 +1,33 @@
+{
+ "format": "dngscan-jptc-prior-1",
+ "id": "NIKON CORPORATION NIKON Z 7 (JPTC)",
+ "brand": "NIKON CORPORATION",
+ "model": "NIKON Z 7",
+ "iso": 64,
+ "shutter": "mechanical",
+ "white_level_used": 16383.0,
+ "channel": "G1",
+ "black_level_g1": 1007.7873,
+ "noise_aperture": "single-frame spatial std (includes PRNU; fit restricted to the shot-noise decades)",
+ "source": {
+  "kind": "JPTC/2 first-party measurement",
+  "file": "nikon-z7-iso64-mech.csv",
+  "mode": "Independent",
+  "geometry": [
+   null,
+   "5504"
+  ]
+ },
+ "gain_e_per_dn": 3.6787896753180367,
+ "read_noise_dn": 1.1803688742653342,
+ "read_noise_e": 4.342328827714085,
+ "s_sat_dn": 14621.278849999999,
+ "s_sat_dn_uncertainty": 753.9338500000003,
+ "fwc_e": 53788.60967332597,
+ "fwc_e_uncertainty": 2773.564063252779,
+ "prnu": 0.0032201511198042933,
+ "fit_relative_rms": 0.009252724639406016,
+ "fit_points": 32,
+ "fit_points_excluded": 7,
+ "sat_plateau_dn": 15375.2127
+}

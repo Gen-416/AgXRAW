@@ -4,6 +4,8 @@
  "brand": "SONY",
  "model": "ILCE-7M5",
  "iso": 100,
+ "shutter": "electronic",
+ "white_level_used": 16383.0,
  "channel": "G1",
  "black_level_g1": 512.3174896240234,
  "noise_aperture": "single-frame spatial std (includes PRNU; fit restricted to the shot-noise decades)",
@@ -16,15 +18,16 @@
    "4672"
   ]
  },
- "gain_e_per_dn": 4.323767568201809,
- "read_noise_dn": 1.6662533448120693,
- "read_noise_e": 7.204492172706212,
+ "gain_e_per_dn": 4.4471614190006985,
+ "read_noise_dn": 1.814358100602418,
+ "read_noise_e": 8.068743345250462,
  "s_sat_dn": 14548.997060375976,
  "s_sat_dn_uncertainty": 1321.68545,
- "fwc_e": 62906.48163951711,
- "fwc_e_uncertainty": 5714.660684074213,
- "prnu": 0.0035083282211373834,
- "fit_relative_rms": 0.04980037371630561,
- "fit_points": 36,
+ "fwc_e": 64701.738412058614,
+ "fwc_e_uncertainty": 5877.748541294576,
+ "prnu": 0.003593842560750122,
+ "fit_relative_rms": 0.046470456883226055,
+ "fit_points": 33,
+ "fit_points_excluded": 3,
  "sat_plateau_dn": 15870.682510375977
 }

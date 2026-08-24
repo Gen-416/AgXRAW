@@ -91,14 +91,28 @@ def fit_ptc(
         fit_mask = unsat & (signal > 0) & (signal < 0.35 * s_sat)
     x = signal[fit_mask]
     y = var[fit_mask]
-    slope, intercept = np.polyfit(x, y, 1)
+    # Robust fit: some real ramps have mid-range variance kinks (e.g. G9 II's
+    # RW2 shows a variance dip around S~2-3k, likely tone-dependent
+    # quantization or PDAF-row correction) that drag a single least-squares
+    # pass. Two trimming rounds drop points beyond 2.5x the residual RMS; the
+    # exclusion count is DECLARED in the entry, never silent.
+    keep = np.ones(len(x), dtype=bool)
+    slope = intercept = 0.0
+    for _ in range(3):
+        slope, intercept = np.polyfit(x[keep], y[keep], 1)
+        r = y - np.polyval([slope, intercept], x)
+        rms = float(np.sqrt(np.mean(r[keep] ** 2)))
+        new_keep = np.abs(r) <= 2.5 * rms
+        if int(new_keep.sum()) < 4 or bool((new_keep == keep).all()):
+            break
+        keep = new_keep
     if slope <= 0:
         raise ValueError("non-physical PTC slope; measurement unusable")
     gain = 1.0 / float(slope)              # e- per DN
     var_read = max(float(intercept), 0.0)
     resid = float(
-        np.sqrt(np.mean((np.polyval([slope, intercept], x) - y) ** 2))
-        / max(np.mean(y), 1e-9)
+        np.sqrt(np.mean((np.polyval([slope, intercept], x[keep]) - y[keep]) ** 2))
+        / max(np.mean(y[keep]), 1e-9)
     )
     # PRNU from the top of the ramp: var_excess = var - S/g - var_read,
     # prnu = sqrt(var_excess)/S evaluated over the upper unsaturated decade.
@@ -119,17 +133,43 @@ def fit_ptc(
         "fwc_e_uncertainty": s_sat_unc * gain,
         "prnu": prnu,
         "fit_relative_rms": resid,
-        "fit_points": int(fit_mask.sum()),
+        "fit_points": int(keep.sum()),
+        "fit_points_excluded": int((~keep).sum()),
         "sat_plateau_dn": sat_plateau,
     }
 
 
-def import_csv(path: Path, brand: str, model: str, iso: int, white: float) -> dict:
+def infer_white(means: np.ndarray, stds: np.ndarray) -> float | None:
+    """Clip level from the data itself. Cameras differ (Sony 16383, Nikon
+    full-scale 14-bit, Panasonic RW2 scaled to ~65430 with dither), so a
+    hardcoded white silently skews the FWC bracket. A clip plateau shows as
+    repeated top means: the exposure ramp is geometric (adjacent steps >=5%
+    apart), so >=2 frames agreeing within 0.2% of the maximum can only be
+    saturation. Zero spatial std at the top is accepted as a plateau too
+    (hard clip without dither)."""
+    top = float(means.max())
+    plateau = means >= top * 0.998
+    if int(plateau.sum()) >= 2 or bool((stds[plateau] == 0.0).any()):
+        return top
+    return None
+
+
+def import_csv(
+    path: Path, brand: str, model: str, iso: int, white: float | None,
+    shutter: str = "",
+) -> dict:
     parsed = parse_jptc_csv(path)
     rows = parsed["rows"]
     g1_mean = np.asarray([float(r["G1_Mean"]) for r in rows])
     g1_std = np.asarray([float(r["G1_Std"]) for r in rows])
     black_g1 = parsed["black"][1] if len(parsed["black"]) >= 2 else parsed["black"][0]
+    if white is None:
+        white = infer_white(g1_mean, g1_std)
+        if white is None:
+            raise ValueError(
+                f"{path.name}: no saturated frames to infer the clip level "
+                "from; pass --white explicitly"
+            )
     fit = fit_ptc(g1_mean, g1_std, black_g1, white)
     return {
         "format": "dngscan-jptc-prior-1",
@@ -137,6 +177,8 @@ def import_csv(path: Path, brand: str, model: str, iso: int, white: float) -> di
         "brand": brand,
         "model": model,
         "iso": int(iso),
+        "shutter": shutter or None,
+        "white_level_used": white,
         "channel": "G1",
         "black_level_g1": black_g1,
         "noise_aperture": "single-frame spatial std (includes PRNU; fit "
@@ -197,7 +239,9 @@ def main() -> int:
     ap.add_argument("--brand", default="")
     ap.add_argument("--model", default="")
     ap.add_argument("--iso", type=int, default=0)
-    ap.add_argument("--white", type=float, default=16383.0)
+    ap.add_argument("--shutter", default="", help="mechanical / electronic (for tier dedup preference)")
+    ap.add_argument("--white", type=float, default=None,
+                    help="clip level in DN; default: inferred from zero-std saturated frames")
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
@@ -205,7 +249,7 @@ def main() -> int:
         return self_test()
     if args.csv is None:
         ap.error("csv path required (or --self-test)")
-    entry = import_csv(args.csv, args.brand, args.model, args.iso, args.white)
+    entry = import_csv(args.csv, args.brand, args.model, args.iso, args.white, args.shutter)
     text = json.dumps(entry, indent=1, ensure_ascii=False)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
