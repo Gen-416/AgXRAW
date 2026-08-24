@@ -12,6 +12,7 @@
 | `build_film_appearance_identity.py` | 外观层 identity 参考资产 |
 | `gen_film_v2_manifest.py` / `gen_film_optics_manifest.py` | 资产清单(哈希钉扎)再生成 |
 | `export_film_ssf.py` | 导出胶片光谱敏感度数据 |
+| `make_evidence_shell.py` | 证据壳:从 RAW 剥容器结构做 CI 元数据语料(CC0 来源,像素区剥除) |
 | `build_native.sh` | 本地编译原生 kernel(产物勿入 wheel,见脚本头) |
 | `build_libraw_master.sh` + `libraw-pin.env` | 固定版本 LibRaw 构建 |
 
@@ -41,7 +42,7 @@
 | `regen_optics_freeze.py` | 光学冻结 + BASELINE 再生成/校验(`--check`) |
 | `regen_sdr_freeze.py` | SDR 冻结再生成/校验 |
 | `regen_golden.py` | golden 语料再生成 |
-| `regen_showcases.py` | 文档展示图整表重渲清单(NCC 裁切恢复、拼板重建) |
+|  文档展示图整表重渲清单(NCC 裁切恢复、拼板重建) | 文档展示图整表重渲清单(NCC 裁切恢复、拼板重建) |
 
 ## 报告与探针 / Reports & Probes
 

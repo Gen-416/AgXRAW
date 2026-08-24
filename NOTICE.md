@@ -80,3 +80,13 @@ the data themselves for personal use:
 
 Without that local import the feature is silently absent. The upstream
 author's own caveat applies: 仅供参考，最好以自己机器的当次拍摄为准。
+
+## Evidence-shell test corpus (tests/data/evidence_shells)
+
+Container structures stripped from CC0 camera samples hosted by
+raw.pixls.us (bulk pixel data removed; each shell's manifest records the
+source URL and SHA-256 of the original). Sources: DJI FC6310 DJI_0220.DNG,
+DJI Osmo Action DJI_0254.DNG, PENTAX K-r IMGP4425.DNG — all published
+under CC0 by their contributors. The shell format
+(tools/make_evidence_shell.py) is an independent implementation of an
+idea credited to y-g-jiang's "dngshell" test-corpus format.
