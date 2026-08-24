@@ -7,7 +7,7 @@
    "model_equals": [
     "ILCE-7M5"
    ],
-   "unity_gain_ev": 7.16,
+   "unity_gain_ev": 8.76,
    "fwc_e": 71138,
    "pdr_log2iso_ev": [
     [
@@ -237,7 +237,7 @@
      0.04
     ]
    ],
-   "source": "PhotonsToPhotos PDR.htm / RN_e.htm (series Sony ILCE-7M5_14), retrieved 2026-07-30",
+   "source": "PhotonsToPhotos PDR.htm / RN_e.htm (series Sony ILCE-7M5_14, mechanical shutter; retrieved 2026-07-30). unity_gain_ev corrected 2026-08-24: the 7.16 extraction contradicted this entry's own fwc_e and PDR curve (3x inconsistency); 8.76 = log2(432) from a first-party JPTC PTC fit (gain 4.32 e-/DN @ISO100, e-shutter, same conversion chain), cross-checked vs P2P DxOMark-derived ILCE-7M4 unity ISO 427.8 (same 33MP sensor family). Read-noise curve is MECHANICAL shutter; e-shutter read noise is ~5x higher (P2P ILCE-7M5(ES)_14, and the JPTC entry in data/priors/jptc/).",
    "suspect_iso_min": 20595
   },
   {
