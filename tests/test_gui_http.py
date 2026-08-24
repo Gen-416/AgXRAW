@@ -15,9 +15,23 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+# R7: the GUI transport is an OPTIONAL extra (pyproject [gui]); a CLI-only
+# environment must SKIP these tests, not error unittest discovery.
+try:
+    from fastapi.testclient import TestClient
 
-from dngscan.gui.fastapi_app import _run_service_call, create_app
+    from dngscan.gui.fastapi_app import _run_service_call, create_app
+
+    _FASTAPI_OK = True
+    _FASTAPI_REASON = ""
+except Exception as _exc:  # pragma: no cover - environment dependent
+    TestClient = None  # type: ignore[assignment]
+    _run_service_call = create_app = None  # type: ignore[assignment]
+    _FASTAPI_OK = False
+    _FASTAPI_REASON = f"gui extra unavailable: {_exc}"
+
+if not _FASTAPI_OK:
+    raise unittest.SkipTest(_FASTAPI_REASON)
 
 
 TOKEN = "test-session-token"
@@ -145,6 +159,31 @@ class FastApiContractTests(unittest.TestCase):
                     response.json(), {"ok": False, "error": "unauthorized"}
                 )
         self.assertEqual(self.service.calls, [])
+
+    def test_host_must_be_the_expected_loopback_host(self) -> None:
+        """R7 hardening: a DNS-rebinding page suppresses Origin/Referer
+        (Referrer-Policy: no-referrer) and its rebound origin makes the
+        tokenless "/" same-origin — but it cannot suppress or forge the
+        Host header back to loopback. Every route, including "/", must
+        refuse a non-loopback or wrong-port Host outright."""
+        for path, headers in (
+            ("/", {}),
+            ("/hdr-status", {}),
+            ("/list?dir=%2Fx", self._token_headers()),
+        ):
+            with self.subTest(path=path):
+                rejected = self.client.get(
+                    path, headers={**headers, "Host": "evil.example:48765"}
+                )
+                self.assertEqual(rejected.status_code, 403)
+                wrong_port = self.client.get(
+                    path, headers={**headers, "Host": "127.0.0.1:1"}
+                )
+                self.assertEqual(wrong_port.status_code, 403)
+        ok = self.client.get(
+            "/list?dir=%2Fgood2", headers=self._token_headers()
+        )
+        self.assertEqual(ok.status_code, 200)
 
     def test_origin_must_be_the_expected_loopback_origin(self) -> None:
         accepted = self.client.get(
