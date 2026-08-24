@@ -111,6 +111,12 @@ def _jptc_entries() -> list[dict[str, Any]]:
         if iso <= 0 or gain <= 0:
             continue
         x = math.log2(iso)
+        # read_noise_e == 0 means "below the single-frame PTC's resolution"
+        # (mechanical-shutter floors of ~0.4 DN clamp the intercept at zero),
+        # not a measured value — omit the curve so consumers get None.
+        rn = float(item.get("read_noise_e") or 0.0)
+        rn_curve = [(x, math.log2(rn))] if rn > 0 else []
+        shutter = item.get("shutter")
         entries.append({
             "id": item["id"],
             "make_contains": item["brand"],
@@ -118,12 +124,22 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "unity_gain_ev": math.log2(iso * gain),
             "fwc_e": float(item["fwc_e"]),
             "fwc_e_uncertainty": float(item.get("fwc_e_uncertainty", 0.0)),
-            "read_noise_log2iso_log2e": [(x, math.log2(float(item["read_noise_e"])))],
+            "read_noise_log2iso_log2e": rn_curve,
             "pdr_log2iso_ev": [],
             "measured_iso": int(iso),
+            "shutter": shutter,
             "prnu": item.get("prnu"),
             "source": f"JPTC/2 first-party measurement ({path.name})",
         })
+    # One model can have several measurements (shutter modes, ISOs). Order
+    # decides which one find_priors returns: lowest ISO first (fwc_e is at
+    # the measured ISO, so only the lowest-ISO entry approximates native
+    # full well), then entries whose read noise resolved, then mechanical.
+    entries.sort(key=lambda e: (
+        e["measured_iso"],
+        0 if e["read_noise_log2iso_log2e"] else 1,
+        0 if e.get("shutter") == "mechanical" else 1,
+    ))
     _JPTC_CACHE = entries
     return entries
 

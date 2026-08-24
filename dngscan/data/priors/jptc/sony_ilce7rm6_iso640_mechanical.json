@@ -1,0 +1,33 @@
+{
+ "format": "dngscan-jptc-prior-1",
+ "id": "SONY ILCE-7RM6 (JPTC)",
+ "brand": "SONY",
+ "model": "ILCE-7RM6",
+ "iso": 640,
+ "shutter": "mechanical",
+ "white_level_used": 16383.0,
+ "channel": "G1",
+ "black_level_g1": 512.1375885009766,
+ "noise_aperture": "single-frame spatial std (includes PRNU; fit restricted to the shot-noise decades)",
+ "source": {
+  "kind": "JPTC/2 first-party measurement",
+  "file": "sony-a7rm6-iso640-mechanical.csv",
+  "mode": "Independent",
+  "geometry": [
+   "9984",
+   "6656"
+  ]
+ },
+ "gain_e_per_dn": 0.35265794069662654,
+ "read_noise_dn": 2.839274587988619,
+ "read_noise_e": 1.0012927292723293,
+ "s_sat_dn": 15480.340761499025,
+ "s_sat_dn_uncertainty": 390.5216499999997,
+ "fwc_e": 5459.265094232293,
+ "fwc_e_uncertainty": 137.72056088644862,
+ "prnu": 0.004765445356193926,
+ "fit_relative_rms": 0.003372143844486494,
+ "fit_points": 25,
+ "fit_points_excluded": 4,
+ "sat_plateau_dn": 15870.862411499023
+}

@@ -132,3 +132,12 @@ the JPTC measurements above. Each shell contains only container/metadata
 bytes (bulk pixel and preview regions removed upstream AND re-stripped by
 our walker); the manifest's `upstream` block records the true original's
 SHA-256. Deleting the six .evshell files removes the tier.
+
+## Lens/filter transmittance library (y-g-jiang)
+
+`dngscan/data/lens_transmittance.json` bundles 118 spectral transmittance
+measurements (84 lenses, 34 filters; 380-755 nm @ 1 nm) converted by
+`tools/import_lens_transmittance.py` from the author's first-party bench
+data at https://y-g-jiang.github.io/lens-transmittance-data/. Same posture
+as the JPTC measurements: no explicit license published, author being
+contacted, single-file removable.

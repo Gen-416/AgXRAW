@@ -1,0 +1,33 @@
+{
+ "format": "dngscan-jptc-prior-1",
+ "id": "Panasonic DC-S1M2 (JPTC)",
+ "brand": "Panasonic",
+ "model": "DC-S1M2",
+ "iso": 100,
+ "shutter": "electronic",
+ "white_level_used": 16383.0,
+ "channel": "G1",
+ "black_level_g1": 511.72174072265625,
+ "noise_aperture": "single-frame spatial std (includes PRNU; fit restricted to the shot-noise decades)",
+ "source": {
+  "kind": "JPTC/2 first-party measurement",
+  "file": "panasonic-s1m2-iso100-electronic.csv",
+  "mode": "Independent",
+  "geometry": [
+   "6000",
+   "4000"
+  ]
+ },
+ "gain_e_per_dn": 5.171742121767355,
+ "read_noise_dn": 2.2869526766982147,
+ "read_noise_e": 11.827529488568757,
+ "s_sat_dn": 14394.200109277343,
+ "s_sat_dn_uncertainty": 1477.0781500000003,
+ "fwc_e": 74443.0910142979,
+ "fwc_e_uncertainty": 7639.067285497202,
+ "prnu": 0.003062622066465606,
+ "fit_relative_rms": 0.008719546630709974,
+ "fit_points": 28,
+ "fit_points_excluded": 5,
+ "sat_plateau_dn": 15871.278259277344
+}
