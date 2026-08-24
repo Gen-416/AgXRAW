@@ -30,19 +30,49 @@ class TestJptcImporter(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("self-test: PASS", proc.stdout)
 
-    def test_a7m5_entry_loads_as_tier2_prior(self):
+    def test_a7m5_entries_load_as_tier2_priors(self):
         entries = priors._jptc_entries()
         hits = [e for e in entries if "ILCE-7M5" in e["model_equals"]]
-        self.assertEqual(len(hits), 1)
+        # Mechanical + electronic measurements coexist; the ELECTRONIC one is
+        # preferred because the mechanical floor (~0.4 DN) is below the PTC's
+        # resolution, so its read-noise curve is empty.
+        self.assertEqual(len(hits), 2)
         e = hits[0]
-        # gain 4.3238 e-/DN @ISO100 -> unity_gain_ev = log2(432.38)
-        self.assertAlmostEqual(e["unity_gain_ev"], math.log2(432.38), places=3)
-        self.assertAlmostEqual(e["fwc_e"], 62906, delta=5)
+        self.assertEqual(e["shutter"], "electronic")
+        # robust fit: gain 4.4472 e-/DN @ISO100 -> unity_gain_ev = log2(444.72)
+        self.assertAlmostEqual(e["unity_gain_ev"], 8.7967, places=3)
+        self.assertAlmostEqual(e["fwc_e"], 64702, delta=5)
         self.assertGreater(e["fwc_e_uncertainty"], 0)
         # Single-ISO entry: read noise extrapolates flat, PDR degrades to None.
-        self.assertAlmostEqual(priors.read_noise_e(e, 100), 7.204, places=2)
-        self.assertAlmostEqual(priors.read_noise_e(e, 6400), 7.204, places=2)
+        self.assertAlmostEqual(priors.read_noise_e(e, 100), 8.069, places=2)
+        self.assertAlmostEqual(priors.read_noise_e(e, 6400), 8.069, places=2)
         self.assertIsNone(priors.pdr_ev(e, 100))
+        # The mechanical entry's unresolved read noise degrades to None.
+        self.assertIsNone(priors.read_noise_e(hits[1], 100))
+        self.assertEqual(hits[1]["shutter"], "mechanical")
+
+    def test_multi_measurement_preference(self):
+        """A7RM6 has iso100 mech/elec + iso640 mech in the JPTC tier: lowest
+        ISO wins (fwc_e semantics), then the entry with resolved read noise
+        (electronic). Queried on the tier directly — in find_priors the
+        curated A7RM6 entry shadows all of these by design."""
+        hits = [e for e in priors._jptc_entries() if "ILCE-7RM6" in e["model_equals"]]
+        self.assertEqual(len(hits), 3)
+        e = hits[0]
+        self.assertEqual(e["measured_iso"], 100)
+        self.assertEqual(e["shutter"], "electronic")
+        self.assertIsNotNone(priors.read_noise_e(e, 100))
+
+    def test_new_makes_resolve(self):
+        for make, model in [
+            ("NIKON CORPORATION", "NIKON Z 7"),
+            ("Panasonic", "DC-G9M2"),
+            ("Panasonic", "DC-S1M2"),
+        ]:
+            e = priors.find_priors(make, model)
+            self.assertIsNotNone(e, model)
+            self.assertIn("JPTC", e["id"])
+            self.assertGreater(priors.gain_e_per_dn(e, 100), 0)
 
 
 class TestP2pBulk(unittest.TestCase):
@@ -94,6 +124,20 @@ class TestFallbackOrdering(unittest.TestCase):
         e = priors.find_priors("SONY", "ILCE-7M5")
         implied_fwc = priors.gain_e_per_dn(e, 100) * (16383 - 512)
         self.assertLess(abs(implied_fwc - e["fwc_e"]) / e["fwc_e"], 0.10)
+
+    def test_a7rm6_internal_consistency(self):
+        """Same defect class, fixed 2026-08-24: curated unity_gain_ev came
+        from reciprocal extrapolation through the extended-ISO segment and
+        contradicted fwc_e by ~3x; the corrected value must reproduce fwc_e
+        from the 14-bit range and agree with the first-party JPTC ramps."""
+        e = priors.find_priors("SONY", "ILCE-7RM6")
+        self.assertNotIn("measured_iso", e)  # curated, not the JPTC tier
+        implied_fwc = priors.gain_e_per_dn(e, 100) * (16383 - 512)
+        self.assertLess(abs(implied_fwc - e["fwc_e"]) / e["fwc_e"], 0.10)
+        jptc = [x for x in priors._jptc_entries() if "ILCE-7RM6" in x["model_equals"]]
+        self.assertAlmostEqual(
+            e["unity_gain_ev"], jptc[0]["unity_gain_ev"], delta=0.05
+        )
 
 
 if __name__ == "__main__":

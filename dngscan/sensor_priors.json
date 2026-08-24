@@ -517,7 +517,7 @@
    "model_equals": [
     "ILCE-7RM6"
    ],
-   "unity_gain_ev": 6.18,
+   "unity_gain_ev": 7.8,
    "fwc_e": 35938,
    "pdr_log2iso_ev": [
     [
@@ -699,7 +699,7 @@
      -0.18
     ]
    ],
-   "source": "PhotonsToPhotos PDR.htm / RN_e.htm (series Sony ILCE-7RM6_14), retrieved 2026-07-30",
+   "source": "PhotonsToPhotos PDR.htm / RN_e.htm (series Sony ILCE-7RM6_14, retrieved 2026-07-30). unity_gain_ev corrected 2026-08-24: 6.18 came from reciprocal extrapolation through the extended-ISO segment (32-80) and contradicted this entry's own fwc_e by ~3x; 7.80 = log2(223) from two independent first-party JPTC ramps (mech 2.23 / elec 2.21 e-/DN @ISO100, data/priors/jptc/), consistent with fwc_e at the 14-bit saturation. CAUTION: the read-noise curve below is P2P's published e- series and may carry the same gain-model issue near base ISO (audit pending); the JPTC tier holds a direct first-party rn measurement.",
    "suspect_iso_min": 5149
   },
   {
