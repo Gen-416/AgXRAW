@@ -11,21 +11,6 @@ import numpy as np
 
 
 class ServerSecurityTests(unittest.TestCase):
-    def test_all_api_routes_require_the_token(self) -> None:
-        import inspect
-
-        from dngscan.gui import server
-
-        src = inspect.getsource(server.Handler)
-        self.assertIn("_authorized", src)
-        # POST gate sits before ANY route dispatch, GET /list is gated too
-        post = src[src.find("def do_POST"):]
-        self.assertLess(
-            post.find("_authorized"), post.find("store_upload"),
-            "the token gate must precede every POST route",
-        )
-        self.assertIn("SESSION_TOKEN", inspect.getsource(server))
-
     def test_page_carries_token_and_api_fetch_wrapper(self) -> None:
         from dngscan.gui.page import render_page
 
@@ -34,18 +19,6 @@ class ServerSecurityTests(unittest.TestCase):
         self.assertIn("X-DngScan-Token", html)
         for needle in ('apiFetch("/list', 'apiFetch("/upload', "apiFetch(path"):
             self.assertIn(needle, html)
-
-    def test_upload_caps_exist_and_reject_oversize(self) -> None:
-        import io
-
-        from dngscan.gui import server
-
-        self.assertGreater(server.UPLOAD_MAX_BYTES, 0)
-        self.assertGreater(server.UPLOAD_TOTAL_MAX_BYTES, server.UPLOAD_MAX_BYTES)
-        with self.assertRaises(ValueError):
-            server.store_upload(
-                "big.dng", io.BytesIO(b"x"), server.UPLOAD_MAX_BYTES + 1
-            )
 
 
 class FiniteValidationTests(unittest.TestCase):

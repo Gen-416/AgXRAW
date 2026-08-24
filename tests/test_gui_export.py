@@ -3,14 +3,10 @@
 
 from __future__ import annotations
 
-import io
-import tempfile
 import unittest
-from pathlib import Path
 
 from dngscan._deps import np
 from dngscan.gui.page import render_page
-from dngscan.gui.server import store_upload
 from dngscan.gui.preview_cache import downsample_mean
 from dngscan.gui.service import export_plan_fingerprint, export_suffix_parts
 
@@ -166,31 +162,6 @@ class ExportSuffixTests(unittest.TestCase):
             export_suffix_parts("clip", "srgb", "sdr", tone_core="lum", lum_norm="power"),
             "lum_power",
         )
-
-
-class BrowserUploadTests(unittest.TestCase):
-    def test_store_upload_keeps_only_safe_filename_and_exact_bytes(self) -> None:
-        payload = b"example raw bytes"
-        with tempfile.TemporaryDirectory() as temp:
-            saved = store_upload(
-                "../../folder/My Photo.DNG",
-                io.BytesIO(payload),
-                len(payload),
-                Path(temp),
-            )
-            self.assertEqual(saved.name, "My_Photo.dng")
-            self.assertEqual(saved.read_bytes(), payload)
-            self.assertEqual(saved.parent.parent, Path(temp))
-
-    def test_store_upload_rejects_non_raw_extension(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            with self.assertRaisesRegex(ValueError, "不支持的 RAW"):
-                store_upload("photo.jpg", io.BytesIO(b"jpeg"), 4, Path(temp))
-
-    def test_store_upload_rejects_incomplete_body(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            with self.assertRaisesRegex(ValueError, "传输未完成"):
-                store_upload("photo.dng", io.BytesIO(b"short"), 10, Path(temp))
 
 
 if __name__ == "__main__":

@@ -2,4 +2,7 @@ numpy>=1.24
 rawpy @ git+https://github.com/Gen-416/rawpy.git@cc7b4748c7b3e87da319198fdfcdb46e17c9c2a6
 matplotlib>=3.6
 pillow>=9.2
+fastapi>=0.141.1,<0.142
+uvicorn>=0.52.2,<0.53
+httpx2>=2,<3
 pyobjc-framework-Quartz>=12.0; platform_system == "Darwin"
