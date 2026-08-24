@@ -77,6 +77,17 @@ X-E5 借 X100VI 矩阵、A7R VI 待上游、GR IV 走 DNG 自带标签）。0.22
   HE 格式使用 intoPIX **TicoRAW** 编码，授权原因 LibRaw（连 master）与
   darktable 的 rawspeed 都无法解码。同机身的『无损压缩』NEF 不受影响。
 
+  **已关闭的格式缺口：Sony cRAW HQ（ARW6/LLVC3，ILCE-7M5 世代）**——
+  y-g-jiang 的逆向解码器 `sony_arw6_load_raw()` 已于 2026-07-18 合并进
+  LibRaw master（[LibRaw#824](https://github.com/LibRaw/LibRaw/pull/824)，
+  上游随后调整了 ARW6 黑/白/线性上限点 e419de08）。本项目的 LibRaw pin
+  （`tools/libraw-pin.env`）自 e419de08 起即包含该解码器（venv 构建内
+  `libraw_r.dylib` 携带 `sony_arw6_load_raw` 已验证），Compression=32766
+  的 ARW6 IFD 自动分派——cRAW HQ 文件走完整管线（含 CFA 证据层与 HDR）。
+  逐位精度注记：逆向实现对官方解码 G 通道 0 差异、R/B 各 ~5 像素差 1 个
+  内部码值（作者实测），对证据统计无可见影响；本机尚无 cRAW HQ 样张，
+  首个真实文件到手时按惯例跑一遍全量对照。
+
 格式缺口的处置（`raw_io._unsupported_format_guidance`，报错即引导）：
 
 1. **Adobe DNG Converter**（免费，持有 TicoRAW 授权）把 HE NEF 转 DNG——
