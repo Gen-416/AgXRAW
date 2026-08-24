@@ -1,0 +1,80 @@
+{
+ "dji_fc6310": {
+  "is_dng": true,
+  "make": "DJI",
+  "model": "FC6310",
+  "iso": 100,
+  "baseline_exposure": 0.0,
+  "as_shot_neutral": [
+   0.46482,
+   1.0,
+   0.483646
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    0.7726,
+    -0.2915,
+    0.0118
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ },
+ "dji_osmo_action": {
+  "is_dng": true,
+  "make": "DJI",
+  "model": "DJI Osmo Action",
+  "iso": 100,
+  "baseline_exposure": 0.0,
+  "as_shot_neutral": [
+   0.455566,
+   1.0,
+   0.576982
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    1.4462,
+    -0.8273,
+    -0.1252
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ },
+ "pentax_kr": {
+  "is_dng": true,
+  "make": "PENTAX",
+  "model": "PENTAX K-r",
+  "iso": 400,
+  "baseline_exposure": -0.5228729248046875,
+  "as_shot_neutral": [
+   0.534446764091858,
+   1.0,
+   0.6464646464646465
+  ],
+  "cal": {
+   "cct1": 2856.0,
+   "cct2": 6504.0,
+   "cct3": null,
+   "matrix1_row0": [
+    1.20550537109375,
+    -0.581756591796875,
+    -0.146881103515625
+   ],
+   "has_matrix2": true,
+   "has_matrix3": false
+  },
+  "stage1_flags": [],
+  "gain_map_count": 0
+ }
+}
