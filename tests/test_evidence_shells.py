@@ -52,13 +52,25 @@ class EvidenceShellCorpusTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_manifests_declare_provenance(self) -> None:
+        """Two admitted origins, each with its own license contract:
+        raw.pixls.us shells must be CC0; y-g-jiang first-party shells must
+        declare the pending-permission status (NOTICE.md) and carry the
+        upstream DNGSHL1 block with the true original's SHA-256 (our outer
+        hash covers only the zero-filled reconstruction)."""
         for fid, exp in self.expect.items():
             m = exp["_manifest"]
             with self.subTest(shell=fid):
                 self.assertEqual(m["format"], "dngscan-evshell-1")
-                self.assertEqual(m["license"], "CC0")
-                self.assertTrue(m["source_url"].startswith("https://raw.pixls.us/"))
                 self.assertEqual(len(m["source_sha256"]), 64)
+                if m["source_url"].startswith("https://raw.pixls.us/"):
+                    self.assertEqual(m["license"], "CC0")
+                elif m["source_url"].startswith("https://y-g-jiang.github.io/shells/"):
+                    self.assertIn("first-party", m["license"])
+                    up = m["upstream"]
+                    self.assertEqual(up["format"], "DNGSHL1")
+                    self.assertEqual(len(up["source_sha256"]), 64)
+                else:
+                    self.fail(f"unknown provenance origin: {m['source_url']}")
 
     def test_parsers_match_the_pinned_original_answers(self) -> None:
         from dngscan.metadata import (
