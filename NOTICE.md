@@ -90,3 +90,32 @@ DJI Osmo Action DJI_0254.DNG, PENTAX K-r IMGP4425.DNG — all published
 under CC0 by their contributors. The shell format
 (tools/make_evidence_shell.py) is an independent implementation of an
 idea credited to y-g-jiang's "dngshell" test-corpus format.
+
+## PhotonsToPhotos-derived bulk sensor priors (permission pending)
+
+`dngscan/data/priors/p2p_bulk.json` holds derived sensor priors (unity gain,
+read noise in electrons, PDR) for 135 legacy 14-bit cameras. The chain has
+three layers: (1) chart data measured and published by Bill Claff at
+photonstophotos.net — © William J. Claff, **all rights reserved**, no
+published data-reuse policy; (2) a machine-generated compilation by
+y-g-jiang (`pdr_camera_data_14bit.js`, with hletrd pixel-pitch data);
+(3) our conversion (`tools/import_p2p_pdr.py`, derivations in its header).
+
+Status recorded honestly rather than laundered: the project owner decided on
+2026-08-24 to import now — dngscan is an open-source, non-commercial tool
+that recomputes and analyzes rather than republishing the database — while
+permission is being sought from the author. The entire footprint is that one
+JSON file plus its importer; deleting the file cleanly removes the tier
+(same reversibility discipline as CBLD above). The curated entries in
+`dngscan/sensor_priors.json` cite the same site per-entry.
+
+## JPTC first-party sensor measurements (y-g-jiang)
+
+`dngscan/data/priors/jptc/*.json` are photon-transfer fits computed by
+`tools/import_jptc.py` from JPTC/2 CSV measurements published by y-g-jiang
+(https://y-g-jiang.github.io/, first-party bench data, e.g.
+sony-a7m5-iso100-electronic.csv). The collector records only raw per-frame
+statistics; all derived quantities (gain, read noise, FWC, PRNU) are our
+fits with apertures and uncertainties declared in each entry. No explicit
+license is published for the measurement CSVs; the author is being
+contacted, and entries are single-file removable.

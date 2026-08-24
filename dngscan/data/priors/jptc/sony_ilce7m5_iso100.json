@@ -1,0 +1,30 @@
+{
+ "format": "dngscan-jptc-prior-1",
+ "id": "SONY ILCE-7M5 (JPTC)",
+ "brand": "SONY",
+ "model": "ILCE-7M5",
+ "iso": 100,
+ "channel": "G1",
+ "black_level_g1": 512.3174896240234,
+ "noise_aperture": "single-frame spatial std (includes PRNU; fit restricted to the shot-noise decades)",
+ "source": {
+  "kind": "JPTC/2 first-party measurement",
+  "file": "a7m5.csv",
+  "mode": "Independent",
+  "geometry": [
+   "7008",
+   "4672"
+  ]
+ },
+ "gain_e_per_dn": 4.323767568201809,
+ "read_noise_dn": 1.6662533448120693,
+ "read_noise_e": 7.204492172706212,
+ "s_sat_dn": 14548.997060375976,
+ "s_sat_dn_uncertainty": 1321.68545,
+ "fwc_e": 62906.48163951711,
+ "fwc_e_uncertainty": 5714.660684074213,
+ "prnu": 0.0035083282211373834,
+ "fit_relative_rms": 0.04980037371630561,
+ "fit_points": 36,
+ "sat_plateau_dn": 15870.682510375977
+}
