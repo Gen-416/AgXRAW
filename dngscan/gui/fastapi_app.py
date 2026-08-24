@@ -148,6 +148,27 @@ def create_app(
             {"ok": False, "error": "unauthorized"}, status_code=403
         )
 
+    @app.middleware("http")
+    async def require_loopback_host(request: Request, call_next):
+        # R7 hardening: the Origin/Referer check cannot stop a DNS-rebinding
+        # page (Referrer-Policy: no-referrer suppresses both headers), and a
+        # rebound origin makes the tokenless "/" SAME-origin — readable,
+        # token included. The Host header cannot be suppressed and a rebound
+        # request carries the attacker's hostname, so a loopback allowlist
+        # (port-exact when known) closes the read. Local processes were
+        # never in this threat model (same user, same machine).
+        host = (request.headers.get("host") or "").strip().lower()
+        hostname, _, port_text = host.partition(":")
+        port_ok = (
+            expected_port is None
+            or port_text == str(expected_port)
+        )
+        if hostname not in {"127.0.0.1", "localhost"} or not port_ok:
+            return JSONResponse(
+                {"ok": False, "error": "unauthorized"}, status_code=403
+            )
+        return await call_next(request)
+
     async def require_session(request: Request) -> None:
         origin = request.headers.get("Origin") or request.headers.get("Referer")
         if origin and not _origin_is_allowed(origin, expected_port):
