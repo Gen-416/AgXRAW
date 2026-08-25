@@ -18,14 +18,13 @@ therefore hashes the ZERO-FILLED reconstruction, not the true original;
 the true original's hash lives in ``upstream.source_sha256``.
 
 Licensing: the featured shells are first-party captures by the corpus
-author (no explicit license published; the author is being contacted —
-same posture as the JPTC measurements, see NOTICE.md). Pass the exact
-status text via --license.
+author. Permission granted 2026-08-25: no formal license, use permitted
+with credit (see NOTICE.md). Pass the exact status text via --license.
 
 Usage:
     python tools/import_dngshell.py SONY_ILCE-7M5.dngshell \\
         tests/data/evidence_shells/sony_ilce7m5.evshell \\
-        --license "first-party capture by y-g-jiang; no explicit license; author being contacted" \\
+        --license "first-party capture by y-g-jiang; permitted with credit (NOTICE.md)" \\
         --source-url https://y-g-jiang.github.io/shells/SONY_ILCE-7M5.dngshell
 """
 from __future__ import annotations
