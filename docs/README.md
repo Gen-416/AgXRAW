@@ -31,6 +31,7 @@
 | [FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md) | 已落地(外观层;配方覆盖仍窄) |
 | [FILM_OPTICS_V2_PLAN.zh-CN.md](FILM_OPTICS_V2_PLAN.zh-CN.md) | 已落地(光学 V2 P0–P5 + R1 整改;§11.1 已闭账) |
 | [FILM_OBSERVATION_PLAN.zh-CN.md](FILM_OBSERVATION_PLAN.zh-CN.md) | 已落地(observe 模式) |
+| [INTERIMAGE_LITERATURE.zh-CN.md](INTERIMAGE_LITERATURE.zh-CN.md) | 层间效应文献锚:专利定量转录、与 β 表对照分析、等效 IIE% 复现路线 |
 | [HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) | 已落地(HDR tone/color v2) |
 | [RENDER_SCHEDULER_PLAN.zh-CN.md](RENDER_SCHEDULER_PLAN.zh-CN.md) | 已落地(S1–S4) |
 | [HOT_WHITE_BALANCE_MIGRATION.zh-CN.md](HOT_WHITE_BALANCE_MIGRATION.zh-CN.md) | 已落地(固定 Kelvin 热 WB) |
