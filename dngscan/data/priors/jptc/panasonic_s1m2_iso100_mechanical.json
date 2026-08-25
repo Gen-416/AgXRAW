@@ -12,6 +12,7 @@
  "source": {
   "kind": "JPTC/2 first-party measurement",
   "file": "panasonic-s1m2-iso100-mech.csv",
+  "input_sha256": "8fa0fb0dbe57b278b217467fbee6e5ea92f2f80efeada1e6dfba0a6faea606cc",
   "mode": "Independent,,,,,,,,,,",
   "geometry": [
    null,
@@ -19,15 +20,31 @@
   ]
  },
  "gain_e_per_dn": 4.994973802733398,
+ "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+ "gain_alternatives": {
+  "linear-0.10": 4.994973802733398,
+  "quadratic-0.35": 5.256573742310929
+ },
+ "model_sensitivity": 0.05237263495443671,
  "read_noise_dn": 0.0,
  "read_noise_e": 0.0,
+ "read_noise_status": "below-resolution",
  "s_sat_dn": 15243.102900000002,
  "s_sat_dn_uncertainty": 628.29,
- "fwc_e": 76138.8996578695,
- "fwc_e_uncertainty": 3138.2920905193664,
+ "fwc_e": 79277.19174838885,
+ "fwc_e_uncertainty": 4151.955423651251,
+ "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; uncertainty = capacity x model_sensitivity (the dominant declared error is the fit-model choice); physical full well not claimed",
+ "clip_onset_e": 76138.8996578695,
+ "clip_onset_e_uncertainty": 3138.2920905193664,
  "prnu": NaN,
+ "prnu_quadratic_fit": 0.002866909500085178,
  "fit_relative_rms": 0.026889584497065796,
+ "fit_relative_rms_alternatives": {
+  "linear-0.10": 0.026889584497065796,
+  "quadratic-0.35": 0.007444207150482236
+ },
  "fit_points": 14,
  "fit_points_excluded": 0,
- "sat_plateau_dn": 15871.3929
+ "sat_plateau_dn": 15871.3929,
+ "quality": "ok"
 }

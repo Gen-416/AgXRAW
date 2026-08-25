@@ -39,13 +39,15 @@ class TestJptcImporter(unittest.TestCase):
         self.assertEqual(len(hits), 2)
         e = hits[0]
         self.assertEqual(e["shutter"], "electronic")
-        # robust fit: gain 4.4472 e-/DN @ISO100 -> unity_gain_ev = log2(444.72)
-        self.assertAlmostEqual(e["unity_gain_ev"], 8.7967, places=3)
-        self.assertAlmostEqual(e["fwc_e"], 64702, delta=5)
+        # PRNU-corrected primary (review R8): gain 4.641 e-/DN @ISO100;
+        # fwc_e is the ADC code-saturation capacity (white-black)*gain
+        self.assertAlmostEqual(e["unity_gain_ev"], 8.8586, places=3)
+        self.assertAlmostEqual(e["fwc_e"], 73655, delta=10)
         self.assertGreater(e["fwc_e_uncertainty"], 0)
+        self.assertEqual(e["quality"]["status"], "ok")
         # Single-ISO entry: read noise extrapolates flat, PDR degrades to None.
-        self.assertAlmostEqual(priors.read_noise_e(e, 100), 8.069, places=2)
-        self.assertAlmostEqual(priors.read_noise_e(e, 6400), 8.069, places=2)
+        self.assertAlmostEqual(priors.read_noise_e(e, 100), 8.801, places=2)
+        self.assertAlmostEqual(priors.read_noise_e(e, 6400), 8.801, places=2)
         self.assertIsNone(priors.pdr_ev(e, 100))
         # The mechanical entry's unresolved read noise degrades to None.
         self.assertIsNone(priors.read_noise_e(hits[1], 100))

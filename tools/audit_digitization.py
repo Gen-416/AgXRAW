@@ -3,7 +3,10 @@
 """Sampling-adequacy audit for chart-digitized curve assets.
 
 Question answered: are the recorded anchors dense enough that the choice of
-interpolant no longer matters? Metric: the maximum disagreement between the
+interpolant no longer matters? This is INTERPOLATION-DENSITY adequacy, not
+absolute digitization accuracy: it cannot detect a systematic offset of the
+whole anchor set from the printed curve (external review 4.5 — holdout
+anchors and a cross-renderer repeat are the recorded follow-ups for that). Metric: the maximum disagreement between the
 two reasonable reconstructions of the same anchors — piecewise-linear
 (np.interp, what the runtime uses) and monotone cubic (PCHIP). The truth
 lies between them, so this "sampling ambiguity" bounds the information loss

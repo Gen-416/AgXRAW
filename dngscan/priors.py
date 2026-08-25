@@ -150,6 +150,12 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "measured_iso": int(iso),
             "shutter": shutter,
             "prnu": item.get("prnu"),
+            "quality": {
+                "fit_relative_rms": item.get("fit_relative_rms"),
+                "fit_model": item.get("fit_model"),
+                "model_sensitivity": item.get("model_sensitivity"),
+                "status": item.get("quality", "ok"),
+            },
             "source": f"JPTC/2 first-party measurement ({path.name})",
         })
     # Collect sets (data/priors/jptc_collect/): multi-instrument entries with
@@ -175,14 +181,23 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "shutter": shutter_map.get(str(item.get("shutter")), item.get("shutter")),
             "measured_iso": int(item["ptc_anchor"]["iso"]) if item.get("ptc_anchor") else 10 ** 9,
             "noise_whiteness_h_log2iso": item.get("noise_whiteness_h_log2iso"),
-            "banding_log2iso": item.get("banding_log2iso"),
+            # raw within-row/col variance metrics; semantics UNCONFIRMED
+            # upstream — NOT a banding fraction (2026-08-25 review 4.4)
+            "within_var_raw_log2iso": item.get("within_var_raw_log2iso"),
             "source": f"JPTC collect set ({path.name})",
         }
         for k in ("unity_gain_ev", "fwc_e", "fwc_e_uncertainty"):
             if k in item:
                 entry[k] = item[k]
         if item.get("ptc_anchor"):
-            entry["prnu"] = item["ptc_anchor"].get("prnu")
+            a = item["ptc_anchor"]
+            entry["prnu"] = a.get("prnu")
+            entry["quality"] = {
+                "fit_relative_rms": a.get("fit_relative_rms"),
+                "fit_model": a.get("fit_model"),
+                "model_sensitivity": a.get("model_sensitivity"),
+                "status": a.get("quality", "ok"),
+            }
         entries.append(entry)
     # One model can have several measurements (shutter modes, ISOs). Order
     # decides which one find_priors returns: entries with a full gain curve
@@ -223,16 +238,37 @@ def _bulk_entries() -> list[dict[str, Any]]:
     return entries
 
 
-def find_priors(make: str | None, model: str | None) -> dict[str, Any] | None:
+def find_priors(make: str | None, model: str | None,
+                shutter: str | None = None) -> dict[str, Any] | None:
+    """Resolve a sensor prior. `shutter` ("mechanical"/"electronic"), when
+    the caller knows it, prefers a same-shutter tier-2 entry — gain and
+    especially read noise differ materially between readout modes (review
+    4.2: a mode-mismatched precise prior is worse than a vague one). The
+    returned entry carries `mode_match`: "exact-shutter", "model-only", or
+    "curated" so consumers can degrade confidence on inexact matches."""
     if not make or not model:
         return None
     make_u = make.upper().strip()
     model_u = model.upper().strip()
     # Tier 1: curated entries (hand-checked series, DCG annotations).
     # Tier 2: first-party JPTC measurements. Tier 3: P2P bulk table.
-    for entry in PRIOR_TABLE + _jptc_entries():
+    for entry in PRIOR_TABLE:
         if str(entry["make_contains"]).upper() in make_u and model_u in entry["model_equals"]:
+            entry = dict(entry)
+            entry["mode_match"] = "curated"
             return entry
+    tier2 = [e for e in _jptc_entries()
+             if str(e["make_contains"]).upper() in make_u and model_u in e["model_equals"]]
+    if tier2:
+        if shutter:
+            exact = [e for e in tier2 if e.get("shutter") == shutter]
+            if exact:
+                entry = dict(exact[0])
+                entry["mode_match"] = "exact-shutter"
+                return entry
+        entry = dict(tier2[0])
+        entry["mode_match"] = "model-only" if shutter else "model-only-unqueried"
+        return entry
     make_token = make_u.split()[0] if make_u.split() else make_u
     for entry in _bulk_entries():
         name_u = str(entry["make_model"]).upper()

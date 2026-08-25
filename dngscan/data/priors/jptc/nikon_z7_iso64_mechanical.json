@@ -12,22 +12,39 @@
  "source": {
   "kind": "JPTC/2 first-party measurement",
   "file": "nikon-z7-iso64-mech.csv",
+  "input_sha256": "d1c7cb8c8e38146c93d410390f88ced8cd321776bd06a64a5011ff2b343e9733",
   "mode": "Independent",
   "geometry": [
    null,
    "5504"
   ]
  },
- "gain_e_per_dn": 3.6787896753180367,
- "read_noise_dn": 1.1803688742653342,
- "read_noise_e": 4.342328827714085,
+ "gain_e_per_dn": 3.9044499990700516,
+ "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+ "gain_alternatives": {
+  "linear-0.10": 3.6787896753180367,
+  "quadratic-0.35": 3.852408295185744
+ },
+ "model_sensitivity": 0.057795675141380204,
+ "read_noise_dn": 1.3476862846073716,
+ "read_noise_e": 5.261973712681973,
+ "read_noise_status": "measured",
  "s_sat_dn": 14621.278849999999,
  "s_sat_dn_uncertainty": 753.9338500000003,
- "fwc_e": 53788.60967332597,
- "fwc_e_uncertainty": 2773.564063252779,
- "prnu": 0.0032201511198042933,
- "fit_relative_rms": 0.009252724639406016,
+ "fwc_e": 60031.74921221685,
+ "fwc_e_uncertainty": 3469.575475638092,
+ "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; uncertainty = capacity x model_sensitivity (the dominant declared error is the fit-model choice); physical full well not claimed",
+ "clip_onset_e": 57088.05219228546,
+ "clip_onset_e_uncertainty": 2943.697019931382,
+ "prnu": 0.00343826343055757,
+ "prnu_quadratic_fit": 0.003261584719001934,
+ "fit_relative_rms": 0.026351675250561035,
+ "fit_relative_rms_alternatives": {
+  "linear-0.10": 0.009252724639406016,
+  "quadratic-0.35": 0.03964053521147839
+ },
  "fit_points": 32,
  "fit_points_excluded": 7,
- "sat_plateau_dn": 15375.2127
+ "sat_plateau_dn": 15375.2127,
+ "quality": "ok"
 }

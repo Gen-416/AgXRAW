@@ -12,22 +12,39 @@
  "source": {
   "kind": "JPTC/2 first-party measurement",
   "file": "sony-a7rm6-iso640-mechanical.csv",
+  "input_sha256": "9026e2b0034d86c758662ac3f54f650aee76636176fddd277efe92b4fdbc1d5d",
   "mode": "Independent",
   "geometry": [
    "9984",
    "6656"
   ]
  },
- "gain_e_per_dn": 0.35265794069662654,
- "read_noise_dn": 2.839274587988619,
- "read_noise_e": 1.0012927292723293,
+ "gain_e_per_dn": 0.35615254004633284,
+ "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+ "gain_alternatives": {
+  "linear-0.10": 0.35265794069662654,
+  "quadratic-0.35": 0.3572836397455063
+ },
+ "model_sensitivity": 0.012987971525565991,
+ "read_noise_dn": 3.132208788341699,
+ "read_noise_e": 1.1155441159233426,
+ "read_noise_status": "measured",
  "s_sat_dn": 15480.340761499025,
  "s_sat_dn_uncertainty": 390.5216499999997,
- "fwc_e": 5459.265094232293,
- "fwc_e_uncertainty": 137.72056088644862,
- "prnu": 0.004765445356193926,
- "fit_relative_rms": 0.003372143844486494,
- "fit_points": 25,
- "fit_points_excluded": 4,
- "sat_plateau_dn": 15870.862411499023
+ "fwc_e": 5652.447960581245,
+ "fwc_e_uncertainty": 73.41383316177277,
+ "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; uncertainty = capacity x model_sensitivity (the dominant declared error is the fit-model choice); physical full well not claimed",
+ "clip_onset_e": 5513.36268299066,
+ "clip_onset_e_uncertainty": 139.08527759058487,
+ "prnu": 0.0050427058220788735,
+ "prnu_quadratic_fit": 0.005538246591172935,
+ "fit_relative_rms": 0.006113003224433699,
+ "fit_relative_rms_alternatives": {
+  "linear-0.10": 0.003372143844486494,
+  "quadratic-0.35": 0.004796286926796357
+ },
+ "fit_points": 28,
+ "fit_points_excluded": 1,
+ "sat_plateau_dn": 15870.862411499023,
+ "quality": "ok"
 }
