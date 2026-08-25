@@ -25,12 +25,24 @@
     1.0
    ],
    [
+    25,
+    0.932
+   ],
+   [
     30,
     0.8
    ],
    [
+    40,
+    0.71
+   ],
+   [
     50,
     0.6
+   ],
+   [
+    60,
+    0.523
    ],
    [
     70,
@@ -63,12 +75,24 @@
     0.97
    ],
    [
+    25,
+    0.846
+   ],
+   [
     30,
     0.72
    ],
    [
+    40,
+    0.615
+   ],
+   [
     50,
     0.52
+   ],
+   [
+    60,
+    0.45
    ],
    [
     70,
@@ -101,12 +125,24 @@
     0.74
    ],
    [
+    25,
+    0.668
+   ],
+   [
     30,
     0.51
    ],
    [
+    40,
+    0.409
+   ],
+   [
     50,
     0.27
+   ],
+   [
+    60,
+    0.239
    ],
    [
     70,
@@ -125,29 +161,29 @@
   "y100_py": 988.5,
   "px_per_decade_y": 262.5
  },
- "method": "manual anchor read-off against the chart's own log grid; see tools/import_kodak_mtf.py docstring",
+ "method": "manual anchor read-off against the chart's own log grid; see tools/import_kodak_mtf.py docstring; second-pass crossing-scan anchors merged 2026-08-25 (SECOND_PASS)",
  "uncertainty": "±5% response (±8% below 10 c/mm); adjacency bump >100% is a development edge effect the passive scatter model cannot and does not reproduce",
  "fit": {
   "B": {
-   "s": 0.6739,
+   "s": 0.6871,
    "w": 0.0,
-   "sigma_um": 4.097,
-   "lambda_um": 1.374,
-   "rms_residual": 0.0353
+   "sigma_um": 4.01,
+   "lambda_um": 1.459,
+   "rms_residual": 0.035
   },
   "G": {
    "s": 0.6499,
    "w": 0.0,
-   "sigma_um": 4.968,
-   "lambda_um": 2.004,
-   "rms_residual": 0.042
+   "sigma_um": 5.046,
+   "lambda_um": 2.207,
+   "rms_residual": 0.0378
   },
   "R": {
-   "s": 1.0,
-   "w": 0.2818,
-   "sigma_um": 7.594,
-   "lambda_um": 1.268,
-   "rms_residual": 0.01
+   "s": 0.8905,
+   "w": 0.6947,
+   "sigma_um": 7.271,
+   "lambda_um": 3.866,
+   "rms_residual": 0.0173
   }
  }
 }

@@ -113,7 +113,7 @@
   "y100_py": 1603.0,
   "px_per_decade_y": 265.0
  },
- "method": "manual anchor read-off against the chart's own log grid; see tools/import_kodak_mtf.py docstring",
+ "method": "manual anchor read-off against the chart's own log grid; see tools/import_kodak_mtf.py docstring; second-pass crossing-scan anchors merged 2026-08-25 (SECOND_PASS)",
  "uncertainty": "±5% response (±8% below 10 c/mm); adjacency bump >100% is a development edge effect the passive scatter model cannot and does not reproduce",
  "fit": {
   "G": {

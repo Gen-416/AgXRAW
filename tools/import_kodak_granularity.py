@@ -139,7 +139,7 @@ DATA_2383 = {
     "aperture_um": 48.0,
     "source": "H-1-2383, Eastman Kodak, (c) 2022, Revised 3-22, p.4 'Diffuse rms Granularity Curves'",
     "source_url": "https://www.kodak.com/content/products-brochures/Film/KODAK-VISION-Color-Print-Film-2383-3383-data-sheet.pdf",
-    "method": "manual anchor read-off against a programmatically calibrated grid overlay; see module docstring",
+    "method": "manual anchor read-off against a programmatically calibrated grid overlay; see module docstring. Second-pass crossing-scan anchors merged 2026-08-25 (SECOND_PASS_2383; toe D in [0.35,0.9] and R/G sigma above logE~1.4 are stroke-merged and keep first-pass reads)",
     "uncertainty": "±0.03 logE horizontal on the steep print sigmoid (density-line crossing scan; G/R split by ordering where merged), ±6% sigma; upstream notes curve shape varies with measuring equipment",
     "channels": {
         "B": {
@@ -190,9 +190,57 @@ DATA_2383 = {
     ],
 }
 
+# Second-pass anchors (2026-08-25 precision audit): programmatic
+# density-line/column crossing scan on the same 4x Quartz renders, channel
+# assignment by PCHIP prediction from the first-pass anchors with a
+# +-0.08 logE (resp. +-0.09 dex sigma) window, cross-channel duplicates and
+# curve-bundle zones REJECTED (2383 toe D in [0.35, 0.9] and the R/G sigma
+# curves above logE ~1.4 merge within the vector stroke width — irreducible
+# at any render scale; first-pass human reads stand there). Scan values at
+# first-pass anchor positions agreed within the declared uncertainty and
+# were kept as verification only. Estimated read precision +-2 px
+# (~0.008 logE / ~1% sigma).
+SECOND_PASS_2383 = {
+    "density_loge": {
+        "B": [(0.957, 0.25), (1.061, 0.35), (1.404, 1.0), (1.512, 1.4),
+              (1.610, 1.8), (1.717, 2.2), (1.809, 2.6)],
+        "G": [(1.014, 0.25), (1.091, 0.35)],
+        "R": [(0.921, 0.18), (1.075, 0.25), (1.179, 0.35), (1.264, 0.45),
+              (1.339, 0.60), (1.409, 0.80)],
+    },
+    "sigma_loge": {
+        "B": [(0.20, 0.00759), (0.35, 0.00843), (0.55, 0.01068),
+              (0.70, 0.01327), (0.85, 0.01749), (1.05, 0.02630),
+              (1.25, 0.03852), (1.45, 0.05012), (1.65, 0.05754),
+              (1.85, 0.05947)],
+        "G": [(0.20, 0.00222), (0.35, 0.00222), (0.70, 0.00281)],
+        "R": [(0.20, 0.00245), (0.35, 0.00245), (0.55, 0.00268),
+              (0.70, 0.00306), (0.85, 0.00338), (1.05, 0.00437),
+              (1.25, 0.00665)],
+    },
+}
+
+
+def _merge_second_pass(data: dict, second: dict) -> dict:
+    """Merge second-pass anchors into a deep copy (skip near-duplicate x)."""
+    import copy
+    out = copy.deepcopy(data)
+    for table, per_ch in second.items():
+        for ch, pts in per_ch.items():
+            rows = out["channels"][ch][table]
+            xs = [r[0] for r in rows]
+            for x, y in pts:
+                if all(abs(x - x0) > 0.015 for x0 in xs):
+                    rows.append([x, y])
+            rows.sort(key=lambda r: r[0])
+    return out
+
+
+DATA_2383_MERGED = _merge_second_pass(DATA_2383, SECOND_PASS_2383)
+
 DATASETS = {
     "5207": (DATA_5207, CAL_5207, "granularity_5207.json", 5.0),
-    "2383": (DATA_2383, CAL_2383, "granularity_2383.json", 1.95),
+    "2383": (DATA_2383_MERGED, CAL_2383, "granularity_2383.json", 1.95),
 }
 
 
