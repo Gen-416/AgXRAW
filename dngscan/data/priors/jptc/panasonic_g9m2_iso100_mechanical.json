@@ -12,22 +12,39 @@
  "source": {
   "kind": "JPTC/2 first-party measurement",
   "file": "panasonic-g9m2-iso100-mech.csv",
+  "input_sha256": "484c04cdb435b02fe55dd99e2c9b5684e0f96056d0d2526a9eefca3addedb8af",
   "mode": "Independent",
   "geometry": [
    null,
    "4344"
   ]
  },
- "gain_e_per_dn": 0.45121081353453085,
- "read_noise_dn": 11.49921870718665,
- "read_noise_e": 5.1885718278811845,
+ "gain_e_per_dn": 0.4715802675006276,
+ "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+ "gain_alternatives": {
+  "linear-0.10": 0.45121081353453085,
+  "quadratic-0.35": 0.4784768384403388
+ },
+ "model_sensitivity": 0.05781841774321408,
+ "read_noise_dn": 12.080179255031878,
+ "read_noise_e": 5.696774164543465,
+ "read_noise_status": "measured",
  "s_sat_dn": 60109.24677556152,
  "s_sat_dn_uncertainty": 3271.5606000000007,
- "fwc_e": 27121.94213854899,
- "fwc_e_uncertainty": 1476.1635198535182,
- "prnu": 0.004681250814108605,
- "fit_relative_rms": 0.07604837727317679,
+ "fwc_e": 29889.138096573053,
+ "fwc_e_uncertainty": 1728.1426724522753,
+ "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; uncertainty = capacity x model_sensitivity (the dominant declared error is the fit-model choice); physical full well not claimed",
+ "clip_onset_e": 28346.33467368054,
+ "clip_onset_e_uncertainty": 1542.803422892514,
+ "prnu": 0.004901722943313086,
+ "prnu_quadratic_fit": 0.006520428515908477,
+ "fit_relative_rms": 0.10651792207002304,
+ "fit_relative_rms_alternatives": {
+  "linear-0.10": 0.07604837727317679,
+  "quadratic-0.35": 0.13392260377018617
+ },
  "fit_points": 32,
  "fit_points_excluded": 7,
- "sat_plateau_dn": 63380.807375561526
+ "sat_plateau_dn": 63380.807375561526,
+ "quality": "high-residual"
 }

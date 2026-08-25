@@ -1,7 +1,19 @@
 {
  "format": "dngscan-chart-scan-1",
  "dataset": "2383",
- "render_scale": 8.0,
+ "input": {
+  "pdf_sha256": "181eecf54c11da2dab995ffc230a549d675883bd30cced41e7d823302c2c4db2",
+  "pdf_name": "2383.pdf",
+  "page": 4,
+  "media_box_pt": [
+   0.0,
+   0.0,
+   612.0,
+   792.0
+  ],
+  "renderer": "Quartz CGPDFDocument, macOS 27.0",
+  "render_scale": 8.0
+ },
  "channels": {
   "R": {
    "density_loge": [

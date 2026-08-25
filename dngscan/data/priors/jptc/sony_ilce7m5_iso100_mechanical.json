@@ -12,22 +12,39 @@
  "source": {
   "kind": "JPTC/2 first-party measurement",
   "file": "sony-a7m5-iso100-mechanical.csv",
+  "input_sha256": "fd83a775a8f7ee4a03a463c1869809de580e9be38ff802dcefef7d66babf536a",
   "mode": "Independent",
   "geometry": [
    "7008",
    "4672"
   ]
  },
- "gain_e_per_dn": 4.204003252707814,
+ "gain_e_per_dn": 4.451734909951164,
+ "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+ "gain_alternatives": {
+  "linear-0.10": 4.204003252707814,
+  "quadratic-0.35": 4.500973237730954
+ },
+ "model_sensitivity": 0.06670882050036488,
  "read_noise_dn": 0.0,
  "read_noise_e": 0.0,
+ "read_noise_status": "below-resolution",
  "s_sat_dn": 14565.418466235351,
  "s_sat_dn_uncertainty": 1305.3262999999997,
- "fwc_e": 61233.06660910387,
- "fwc_e_uncertainty": 5487.596011045054,
- "prnu": 0.0033827516849015025,
- "fit_relative_rms": 0.056221131311787145,
- "fit_points": 33,
- "fit_points_excluded": 0,
- "sat_plateau_dn": 15870.744766235352
+ "fwc_e": 70652.34852277464,
+ "fwc_e_uncertainty": 4713.134835534993,
+ "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; uncertainty = capacity x model_sensitivity (the dominant declared error is the fit-model choice); physical full well not claimed",
+ "clip_onset_e": 64841.38186418726,
+ "clip_onset_e_uncertainty": 5810.966658587386,
+ "prnu": 0.00356402901248463,
+ "prnu_quadratic_fit": 0.0037366636513638785,
+ "fit_relative_rms": 0.030856445026689532,
+ "fit_relative_rms_alternatives": {
+  "linear-0.10": 0.056221131311787145,
+  "quadratic-0.35": 0.010681854848263015
+ },
+ "fit_points": 32,
+ "fit_points_excluded": 1,
+ "sat_plateau_dn": 15870.744766235352,
+ "quality": "ok"
 }
