@@ -39,15 +39,17 @@ class TestJptcImporter(unittest.TestCase):
         self.assertEqual(len(hits), 2)
         e = hits[0]
         self.assertEqual(e["shutter"], "electronic")
-        # PRNU-corrected primary (review R8): gain 4.641 e-/DN @ISO100;
+        # PRNU-corrected primary at its converged fixed point (review R9:
+        # iteration cap raised 3->16; A7M5 converges in 5 rounds at 4.64148);
         # fwc_e is the ADC code-saturation capacity (white-black)*gain
-        self.assertAlmostEqual(e["unity_gain_ev"], 8.8586, places=3)
-        self.assertAlmostEqual(e["fwc_e"], 73655, delta=10)
+        self.assertAlmostEqual(e["unity_gain_ev"], 8.8588, places=3)
+        self.assertAlmostEqual(e["fwc_e"], 73663, delta=10)
         self.assertGreater(e["fwc_e_uncertainty"], 0)
         self.assertEqual(e["quality"]["status"], "ok")
+        self.assertEqual(e["quality"]["prnu_status"], "corrected")
         # Single-ISO entry: read noise extrapolates flat, PDR degrades to None.
-        self.assertAlmostEqual(priors.read_noise_e(e, 100), 8.801, places=2)
-        self.assertAlmostEqual(priors.read_noise_e(e, 6400), 8.801, places=2)
+        self.assertAlmostEqual(priors.read_noise_e(e, 100), 8.803, places=2)
+        self.assertAlmostEqual(priors.read_noise_e(e, 6400), 8.803, places=2)
         self.assertIsNone(priors.pdr_ev(e, 100))
         # The mechanical entry's unresolved read noise degrades to None.
         self.assertIsNone(priors.read_noise_e(hits[1], 100))
@@ -287,3 +289,66 @@ class TestCuratedAxisAudit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReviewR9Contracts(unittest.TestCase):
+    def test_strict_json_everywhere(self):
+        """RFC 8259 has no NaN/Infinity literal; every priors data file must
+        parse under a strict reader (review P2-2)."""
+        import json as _json
+
+        def _reject(tok):
+            raise ValueError(f"non-RFC constant {tok}")
+
+        for f in (REPO / "dngscan" / "data" / "priors").rglob("*.json"):
+            with self.subTest(file=f.name):
+                _json.loads(f.read_text(), parse_constant=_reject)
+
+    def test_guidance_gates_low_confidence_priors(self):
+        """high-residual or wide estimator spread must NOT build the
+        electron-domain SNR confidence (review P1-1)."""
+        from types import SimpleNamespace
+        from dngscan.guidance import _has_sensor_snr_prior
+
+        base = dict(gain_e_per_dn=2.0, prior_read_noise_e=3.0,
+                    prior_quality_status=None, prior_model_spread=None)
+        self.assertTrue(_has_sensor_snr_prior(SimpleNamespace(**base)))
+        self.assertFalse(_has_sensor_snr_prior(
+            SimpleNamespace(**{**base, "prior_quality_status": "high-residual"})))
+        self.assertFalse(_has_sensor_snr_prior(
+            SimpleNamespace(**{**base, "prior_model_spread": 0.154})))
+        self.assertTrue(_has_sensor_snr_prior(
+            SimpleNamespace(**{**base, "prior_model_spread": 0.04})))
+
+    def test_r6ii_prior_is_gated_end_to_end(self):
+        """The R6 II entry (rms 13.3%, spread 15.4%) must resolve with the
+        quality evidence that makes the guidance gate reject it."""
+        e = priors.find_priors("Canon", "Canon EOS R6 Mark II")
+        self.assertEqual(e["quality"]["status"], "high-residual")
+        self.assertGreater(e["quality"]["model_sensitivity"], 0.10)
+
+    def test_bulk_entries_carry_mode_match(self):
+        e = priors.find_priors("SONY", "SLT-A77V")
+        self.assertEqual(e["mode_match"], "bulk-model-only")
+
+    def test_collect_anchor_declares_effective_model(self):
+        """Collect ramps lack top-of-ramp samples: the prnu correction is
+        UNRESOLVED and the asset must say the effective path is plain linear
+        (review P2-1), with the full estimator evidence present."""
+        import json as _json
+        c = _json.loads((REPO / "dngscan" / "data" / "priors" / "jptc_collect"
+                         / "a7rm6-mech-20260818.json").read_text())
+        a = c["ptc_anchor"]
+        self.assertEqual(a["prnu_status"], "unresolved")
+        self.assertIn("plain linear", a["fit_model_effective"])
+        for k in ("gain_alternatives", "fit_relative_rms_alternatives",
+                  "gain_estimator_spread_rel", "last_unsaturated_signal_e"):
+            self.assertIn(k, a)
+
+    def test_undeclared_clip_factor_is_unresolved(self):
+        import json as _json
+        g = _json.loads((REPO / "dngscan" / "data" / "priors" / "jptc_collect"
+                         / "gfx100-mech-20260816.json").read_text())
+        self.assertEqual(g["acquisition_contract"]["sigma_clip_correction"],
+                         "unresolved")
+        self.assertNotIn("undone via the declared", g["noise_aperture"])

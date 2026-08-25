@@ -31,6 +31,13 @@
    "Panasonic-DC-S5M2_iso100-51200_机械快门_12bit_dark_20260820_spectrum-v.csv": "0600a5ee26dd462832839d9d1265d49c402738ca9dfd76951c0926a86bde000f"
   }
  },
+ "acquisition_contract": {
+  "adc_step": "1",
+  "linearisation_curve": "identity",
+  "clip_variance_factor": "0.9938883771107201",
+  "sigma_clip_correction": "applied",
+  "sheppard_assumption": "uniform quantisation step at black level; NOT verified against the companded linearisation curve (declared limitation)"
+ },
  "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
  "read_noise_dn_log2iso": [
   [

@@ -829,6 +829,10 @@ def analyze(
     # Priors layer: electron-domain calibration from public measurements (best-effort).
     prior = sensor_priors.find_priors(bundle.shot_make, bundle.shot_model)
     prior_id = prior["id"] if prior else None
+    _pq = prior.get("quality") if prior else None
+    prior_quality_status = (_pq or {}).get("status") if isinstance(_pq, dict) else None
+    prior_model_spread = (_pq or {}).get("model_sensitivity") if isinstance(_pq, dict) else None
+    prior_mode_match = prior.get("mode_match") if prior else None
     gain_e = sensor_priors.gain_e_per_dn(prior, bundle.shot_iso) if prior and bundle.shot_iso else None
     prior_rn_e = sensor_priors.read_noise_e(prior, bundle.shot_iso) if prior and bundle.shot_iso else None
     prior_pdr = sensor_priors.pdr_ev(prior, bundle.shot_iso) if prior and bundle.shot_iso else None
@@ -887,6 +891,9 @@ def analyze(
         survivor_channel=labels[survivor_id],
         container_bits_est=estimate_container_bits(bundle.white_level, raw_image),
         prior_id=prior_id,
+        prior_quality_status=prior_quality_status,
+        prior_model_spread=prior_model_spread,
+        prior_mode_match=prior_mode_match,
         gain_e_per_dn=gain_e,
         noise_floor_e=noise_e,
         prior_read_noise_e=prior_rn_e,

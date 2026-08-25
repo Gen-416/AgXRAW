@@ -6,13 +6,14 @@ Question answered: are the recorded anchors dense enough that the choice of
 interpolant no longer matters? This is INTERPOLATION-DENSITY adequacy, not
 absolute digitization accuracy: it cannot detect a systematic offset of the
 whole anchor set from the printed curve (external review 4.5 — holdout
-anchors and a cross-renderer repeat are the recorded follow-ups for that). Metric: the maximum disagreement between the
-two reasonable reconstructions of the same anchors — piecewise-linear
-(np.interp, what the runtime uses) and monotone cubic (PCHIP). The truth
-lies between them, so this "sampling ambiguity" bounds the information loss
-attributable to anchor density alone; it must stay comfortably below the
-declared read-off uncertainty (gate: ambiguity <= uncertainty), otherwise
-the digitization needs more anchors, not a fancier interpolant.
+anchors and a cross-renderer repeat are the recorded follow-ups for that).
+Metric: the INTERPOLANT DISAGREEMENT — the maximum difference between the
+piecewise-linear (np.interp, what the runtime uses) and monotone-cubic
+(PCHIP) reconstructions of the same anchors. There is NO guarantee the true
+curve lies between them (review P2-4); the number is a sampling-sensitivity
+indicator, gated to stay comfortably below the declared read-off
+uncertainty — meaning the runtime's interpolant choice cannot dominate the
+error budget, nothing more.
 
 Domain edges are excluded (5% each side): no interpolant has information
 beyond the first/last anchor, and toe endpoints divide by near-zero values.
