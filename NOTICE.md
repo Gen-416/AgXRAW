@@ -104,7 +104,9 @@ y-g-jiang (`pdr_camera_data_14bit.js`, with hletrd pixel-pitch data);
 Status recorded honestly rather than laundered: the project owner decided on
 2026-08-24 to import now — dngscan is an open-source, non-commercial tool
 that recomputes and analyzes rather than republishing the database — while
-permission is being sought from the author. The entire footprint is that one
+permission is being sought from the author. (The layer-2 compilation by
+y-g-jiang is covered by his 2026-08-25 credit-based grant; the pending
+question is solely Bill Claff's layer-1 chart data.) The entire footprint is that one
 JSON file plus its importer; deleting the file cleanly removes the tier
 (same reversibility discipline as CBLD above). The curated entries in
 `dngscan/sensor_priors.json` cite the same site per-entry.
@@ -116,9 +118,10 @@ JSON file plus its importer; deleting the file cleanly removes the tier
 (https://y-g-jiang.github.io/, first-party bench data, e.g.
 sony-a7m5-iso100-electronic.csv). The collector records only raw per-frame
 statistics; all derived quantities (gain, read noise, FWC, PRNU) are our
-fits with apertures and uncertainties declared in each entry. No explicit
-license is published for the measurement CSVs; the author is being
-contacted, and entries are single-file removable.
+fits with apertures and uncertainties declared in each entry.
+**Permission: granted by the author on 2026-08-25** — no formal license,
+use permitted with credit. Credit: measurement data by y-g-jiang (姜尧耕),
+https://y-g-jiang.github.io/. Entries remain single-file removable.
 
 ## dngshell first-party shells (y-g-jiang)
 
@@ -126,9 +129,11 @@ Six evidence shells (sony_ilce7m5, leica_q2, fujifilm_gfx100,
 hasselblad_x1d, canon_5d3, panasonic_s1rm2) were converted with
 `tools/import_dngshell.py` from the DNGSHL1 corpus at
 https://y-g-jiang.github.io/shells/. Their source files are the corpus
-author's own captures (hence no third-party sourceUrl); no explicit
-license is published and the author is being contacted — same posture as
-the JPTC measurements above. Each shell contains only container/metadata
+author's own captures (hence no third-party sourceUrl).
+**Permission: granted by the author on 2026-08-25** — no formal license,
+use permitted with credit (same grant as the JPTC measurements above).
+Credit: source captures and DNGSHL1 corpus by y-g-jiang (姜尧耕),
+https://y-g-jiang.github.io/. Each shell contains only container/metadata
 bytes (bulk pixel and preview regions removed upstream AND re-stripped by
 our walker); the manifest's `upstream` block records the true original's
 SHA-256. Deleting the six .evshell files removes the tier.
@@ -138,6 +143,8 @@ SHA-256. Deleting the six .evshell files removes the tier.
 `dngscan/data/lens_transmittance.json` bundles 118 spectral transmittance
 measurements (84 lenses, 34 filters; 380-755 nm @ 1 nm) converted by
 `tools/import_lens_transmittance.py` from the author's first-party bench
-data at https://y-g-jiang.github.io/lens-transmittance-data/. Same posture
-as the JPTC measurements: no explicit license published, author being
-contacted, single-file removable.
+data at https://y-g-jiang.github.io/lens-transmittance-data/.
+**Permission: granted by the author on 2026-08-25** — no formal license,
+use permitted with credit (same grant as the JPTC measurements).
+Credit: measurements by y-g-jiang (姜尧耕), https://y-g-jiang.github.io/.
+Single-file removable.
