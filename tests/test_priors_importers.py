@@ -126,10 +126,11 @@ class TestFallbackOrdering(unittest.TestCase):
         self.assertLess(abs(implied_fwc - e["fwc_e"]) / e["fwc_e"], 0.10)
 
     def test_a7rm6_internal_consistency(self):
-        """Same defect class, fixed 2026-08-24: curated unity_gain_ev came
-        from reciprocal extrapolation through the extended-ISO segment and
-        contradicted fwc_e by ~3x; the corrected value must reproduce fwc_e
-        from the 14-bit range and agree with the first-party JPTC ramps."""
+        """Same defect class, fixed 2026-08-24: the curated unity_gain_ev
+        inherited the chart-axis decoding error (P2P's x-axis is
+        ISO = 3.125*2^x, read as 2^x) and contradicted fwc_e by ~3x; the
+        corrected value must reproduce fwc_e from the 14-bit range and
+        agree with the first-party JPTC ramps."""
         e = priors.find_priors("SONY", "ILCE-7RM6")
         self.assertNotIn("measured_iso", e)  # curated, not the JPTC tier
         implied_fwc = priors.gain_e_per_dn(e, 100) * (16383 - 512)
@@ -138,6 +139,108 @@ class TestFallbackOrdering(unittest.TestCase):
         self.assertAlmostEqual(
             e["unity_gain_ev"], jptc[0]["unity_gain_ev"], delta=0.05
         )
+
+
+class TestCuratedAxisAudit(unittest.TestCase):
+    """Pins for the 2026-08-24 chart-axis audit.
+
+    Root cause: the curated extraction decoded the P2P PDR/RN_e x-axis as
+    log2(ISO) when the axis is actually ISO = 3.125 * 2^x (verified against
+    the chart's rendered tick labels — position 20 is labelled 3276800 —
+    and eight cameras' native ISO ranges lining up exactly once decoded).
+    Every curve x and every chart-anchored unity_gain_ev sat
+    log2(3.125) = 1.6439 EV low. Each pin below reproduces fwc_e from the
+    unity gain at the camera's NATIVE base ISO over its 14-bit DN range —
+    the invariant the old values violated by ~3x.
+    """
+
+    # id -> (make, model, native base ISO, black level)
+    BASES = {
+        "Sigma fp": ("SIGMA", "SIGMA FP", 100, 1024),
+        "Sony ILCE-7M5 (A7 V)": ("SONY", "ILCE-7M5", 100, 512),
+        "Sony ILCE-7SM3 (A7S III)": ("SONY", "ILCE-7SM3", 80, 512),
+        "Sony ILCE-7RM6 (A7R VI)": ("SONY", "ILCE-7RM6", 100, 512),
+        "Ricoh GR IV": ("RICOH IMAGING COMPANY, LTD.", "RICOH GR IV", 100, 0),
+        "Nikon Z f": ("NIKON CORPORATION", "Z f", 100, 1008),
+        "Fujifilm X100VI": ("FUJIFILM", "X100VI", 125, 1023),
+        "Fujifilm X-E5": ("FUJIFILM", "X-E5", 125, 1023),
+    }
+
+    def _entry(self, prior_id):
+        make, model, base, black = self.BASES[prior_id]
+        e = priors.find_priors(make, model)
+        self.assertIsNotNone(e, prior_id)
+        self.assertEqual(e["id"], prior_id)
+        return e, base, black
+
+    def _assert_fwc_consistent(self, prior_id, tol=0.10):
+        e, base, black = self._entry(prior_id)
+        implied_fwc = priors.gain_e_per_dn(e, base) * (16383 - black)
+        self.assertLess(abs(implied_fwc - e["fwc_e"]) / e["fwc_e"], tol, prior_id)
+
+    def test_sigma_fp_internal_consistency(self):
+        """7.29 -> 8.93. Anchors: fwc_e/14-bit range at base 100 (black 1024
+        measured on owner DNGs); first-party pair-difference PTC on three
+        owner ISO-100 frames (4.70-4.77 e-/DN vs 4.88 implied); pixel
+        density 2.1 ke-/um^2. The DCG switch decodes to the known IMX410
+        ISO 640 point."""
+        self._assert_fwc_consistent("Sigma fp")
+        e, _, _ = self._entry("Sigma fp")
+        self.assertEqual(e["dcg_switch_iso"], 640)
+
+    def test_a7sm3_internal_consistency(self):
+        """8.51 -> 10.15 = log2(1139.3), P2P's DxOMark-derived unity ISO for
+        this body — fully independent of the chart gain model — and
+        consistent with fwc_e at base 80 within ~1%."""
+        self._assert_fwc_consistent("Sony ILCE-7SM3 (A7S III)")
+        e, _, _ = self._entry("Sony ILCE-7SM3 (A7S III)")
+        self.assertAlmostEqual(e["unity_gain_ev"], math.log2(1139.3), delta=0.05)
+
+    def test_gr_iv_internal_consistency(self):
+        """5.73 -> 7.37 (fwc anchor at base 100; no DxO/JPTC data exists for
+        this body; density 1.9 ke-/um^2 physical, old value implied 0.6)."""
+        self._assert_fwc_consistent("Ricoh GR IV")
+
+    def test_zf_internal_consistency(self):
+        """7.42 -> 9.06 (fwc anchor at base 100, Nikon black 1008);
+        cross-checked vs the same-sensor Nikon Z 6II DxO-derived unity ISO
+        508.3 (ug_ev 8.99, delta 0.07)."""
+        self._assert_fwc_consistent("Nikon Z f")
+        e, _, _ = self._entry("Nikon Z f")
+        self.assertAlmostEqual(e["unity_gain_ev"], math.log2(508.3), delta=0.12)
+
+    def test_x100vi_internal_consistency(self):
+        """5.98 -> 7.61 (fwc anchor at base 125, RAF black 1023 verified on a
+        first-party file; owner ISO-250 RAF refutes the old value: its
+        shadow noise sits 4-5x below the old shot-noise floor)."""
+        self._assert_fwc_consistent("Fujifilm X100VI")
+
+    def test_xe5_internal_consistency(self):
+        """5.91 -> 7.54 (fwc anchor at base 125; same 40MP X-Trans HR
+        platform as the X100VI)."""
+        self._assert_fwc_consistent("Fujifilm X-E5")
+
+    def test_curated_curves_start_at_native_base_iso(self):
+        """Structural pin for the axis decode: after re-referencing, every
+        curated curve's first point is the camera's native base ISO (the
+        chart's solid-marker onset). A regression to raw chart x would miss
+        by 1.64EV; a future mis-extraction that includes extended-low
+        points would miss by the extension span."""
+        for prior_id, (_, _, base, _) in self.BASES.items():
+            with self.subTest(camera=prior_id):
+                e, _, _ = self._entry(prior_id)
+                x0 = e["pdr_log2iso_ev"][0][0]
+                self.assertLess(abs(x0 - math.log2(base)), 0.02, prior_id)
+                rn_x0 = e["read_noise_log2iso_log2e"][0][0]
+                self.assertLess(abs(rn_x0 - math.log2(base)), 0.02, prior_id)
+
+    def test_fuji_suspect_iso_decodes_to_extended_setting(self):
+        """suspect_iso_min was stored as 2^chart_x; decoded it must land on
+        the real hollow-marker onset — for both 40MP X-Trans bodies that is
+        exactly the extended ISO 25600 setting."""
+        for prior_id in ("Fujifilm X100VI", "Fujifilm X-E5"):
+            e, _, _ = self._entry(prior_id)
+            self.assertEqual(e["suspect_iso_min"], 25600, prior_id)
 
 
 if __name__ == "__main__":
