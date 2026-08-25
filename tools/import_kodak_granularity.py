@@ -139,7 +139,7 @@ DATA_2383 = {
     "aperture_um": 48.0,
     "source": "H-1-2383, Eastman Kodak, (c) 2022, Revised 3-22, p.4 'Diffuse rms Granularity Curves'",
     "source_url": "https://www.kodak.com/content/products-brochures/Film/KODAK-VISION-Color-Print-Film-2383-3383-data-sheet.pdf",
-    "method": "manual anchor read-off against a programmatically calibrated grid overlay; see module docstring",
+    "method": "manual anchor read-off against a programmatically calibrated grid overlay; see module docstring. Second-pass crossing-scan anchors merged 2026-08-25 (SECOND_PASS_2383; toe D in [0.35,0.9] and R/G sigma above logE~1.4 are stroke-merged and keep first-pass reads)",
     "uncertainty": "±0.03 logE horizontal on the steep print sigmoid (density-line crossing scan; G/R split by ordering where merged), ±6% sigma; upstream notes curve shape varies with measuring equipment",
     "channels": {
         "B": {
@@ -190,9 +190,125 @@ DATA_2383 = {
     ],
 }
 
+# Second-pass anchors (2026-08-25 precision audit): programmatic
+# density-line/column crossing scan on the same 4x Quartz renders, channel
+# assignment by PCHIP prediction from the first-pass anchors with a
+# +-0.08 logE (resp. +-0.09 dex sigma) window, cross-channel duplicates and
+# curve-bundle zones REJECTED (2383 toe D in [0.35, 0.9] and the R/G sigma
+# curves above logE ~1.4 merge within the vector stroke width — irreducible
+# at any render scale; first-pass human reads stand there). Scan values at
+# first-pass anchor positions agreed within the declared uncertainty and
+# were kept as verification only. Estimated read precision +-2 px
+# (~0.008 logE / ~1% sigma).
+SECOND_PASS_2383 = {
+    "density_loge": {
+        "B": [(0.957, 0.25), (1.061, 0.35), (1.404, 1.0), (1.512, 1.4),
+              (1.610, 1.8), (1.717, 2.2), (1.809, 2.6)],
+        "G": [(1.014, 0.25), (1.091, 0.35)],
+        "R": [(0.921, 0.18), (1.075, 0.25), (1.179, 0.35), (1.264, 0.45),
+              (1.339, 0.60), (1.409, 0.80)],
+    },
+    "sigma_loge": {
+        "B": [(0.20, 0.00759), (0.35, 0.00843), (0.55, 0.01068),
+              (0.70, 0.01327), (0.85, 0.01749), (1.05, 0.02630),
+              (1.25, 0.03852), (1.45, 0.05012), (1.65, 0.05754),
+              (1.85, 0.05947)],
+        "G": [(0.20, 0.00222), (0.35, 0.00222), (0.70, 0.00281)],
+        "R": [(0.20, 0.00245), (0.35, 0.00245), (0.55, 0.00268),
+              (0.70, 0.00306), (0.85, 0.00338), (1.05, 0.00437),
+              (1.25, 0.00665)],
+    },
+}
+
+
+def _merge_second_pass(data: dict, second: dict) -> dict:
+    """Merge second-pass anchors into a deep copy (skip near-duplicate x)."""
+    import copy
+    out = copy.deepcopy(data)
+    for table, per_ch in second.items():
+        for ch, pts in per_ch.items():
+            rows = out["channels"][ch][table]
+            xs = [r[0] for r in rows]
+            for x, y in pts:
+                if all(abs(x - x0) > 0.015 for x0 in xs):
+                    rows.append([x, y])
+            rows.sort(key=lambda r: r[0])
+    return out
+
+
+def _merge_chart_scan(data: dict, key: str) -> dict:
+    """Merge dense 8x sub-pixel scan anchors (tools/chart_scans/, third
+    precision pass 2026-08-25, see tools/scan_chart_curves.py).
+
+    Conservative: a scan point enters the asset only if it agrees with the
+    curve defined by the verified anchors (manual + targeted second pass)
+    within the declared read uncertainty (0.03 D / 5% sigma) — dense points
+    shrink interpolation ambiguity; disagreeing points are counted and left
+    out (dash gaps and half-merged stroke zones misassign occasionally, and
+    real deviations were already captured by the visually verified second
+    pass)."""
+    import copy
+    import json as _json
+
+    path = Path(__file__).parent / "chart_scans" / f"granularity_{key}_scan.json"
+    if not path.exists():
+        return data
+    try:
+        import numpy as _np
+        from scipy.interpolate import PchipInterpolator
+    except ImportError:
+        return data
+    scan = _json.loads(path.read_text())
+    out = copy.deepcopy(data)
+    for ch, node in out["channels"].items():
+        for table, tol_kind, tol in (("density_loge", "abs", 0.03),
+                                     ("sigma_loge", "rel", 0.05)):
+            rows = node[table]
+            base = sorted(rows, key=lambda r: r[0])
+            bx = [r[0] for r in base]
+            keep = [0] + [i for i in range(1, len(bx)) if bx[i] > bx[i - 1] + 1e-9]
+            f = PchipInterpolator([bx[i] for i in keep],
+                                  [base[i][1] for i in keep])
+            added = rejected = 0
+            cands = []
+            for x, y in scan["channels"].get(ch, {}).get(table, []):
+                if not (bx[0] <= x <= bx[-1]):
+                    continue
+                if any(abs(x - x0) <= 0.015 for x0 in bx):
+                    continue
+                ref = float(f(x))
+                dev = abs(y - ref) if tol_kind == "abs" else abs(y - ref) / max(abs(ref), 1e-9)
+                if dev <= tol:
+                    cands.append((dev, x, y))
+                else:
+                    rejected += 1
+            # best-agreement first; a candidate whose read noise would break
+            # the density curve's monotonicity is rejected rather than let
+            # +-0.01 D wiggle into the table (the asset contract requires
+            # strictly increasing density).
+            monotone = table == "density_loge"
+            for dev, x, y in sorted(cands):
+                if monotone:
+                    prev = max((r for r in rows if r[0] < x), key=lambda r: r[0], default=None)
+                    nxt = min((r for r in rows if r[0] > x), key=lambda r: r[0], default=None)
+                    if (prev is not None and y <= prev[1]) or (nxt is not None and y >= nxt[1]):
+                        rejected += 1
+                        continue
+                rows.append([x, y])
+                rows.sort(key=lambda r: r[0])
+                added += 1
+            if added or rejected:
+                print(f"  scan merge {key}.{ch}.{table}: +{added}, rejected {rejected}")
+    return out
+
+
+DATA_2383_MERGED = _merge_chart_scan(
+    _merge_second_pass(DATA_2383, SECOND_PASS_2383), "2383")
+DATA_5207_MERGED = _merge_chart_scan(DATA_5207, "5207")
+
 DATASETS = {
-    "5207": (DATA_5207, CAL_5207, "granularity_5207.json", 5.0),
-    "2383": (DATA_2383, CAL_2383, "granularity_2383.json", 1.95),
+    "5207": (DATA_5207_MERGED, CAL_5207, "granularity_5207.json", 5.0),
+    "2383": (DATA_2383_MERGED, CAL_2383, "granularity_2383.json", 1.95),
 }
 
 
