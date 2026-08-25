@@ -27,17 +27,26 @@ LibRaw 主解码对未知新机型的可用性事实：ARW/RAF/NEF 等容器格�
 
 | 机型 | 先验（P2P） | 颜色矩阵 | 备注 |
 |---|---|---|---|
-| Sony A7 V (ILCE-7M5) | ✓ unityEv 7.16 / FWC 71k | ✓ LibRaw master | |
-| Sony A7S III (ILCE-7SM3) | ✓ unityEv 8.51 / FWC 228k | ✓ LibRaw master | 大像素签名明显 |
-| Sony A7R VI (ILCE-7RM6) | ✓ unityEv 6.18 / FWC 36k | **无**（刻意缺席） | 未找到已发布系数；矩阵宁缺毋猜，降级路径覆盖 |
-| Ricoh GR IV | ✓ unityEv 5.73 / FWC 27k | 无需（DNG 自带 ColorMatrix） | |
-| Nikon Zf | ✓ unityEv 7.42 / FWC 82k | ✓ LibRaw master | |
-| Fujifilm X100VI | ✓ unityEv 5.98 / FWC 24k | ✓ LibRaw master | |
-| Fujifilm X-E5 | ✓ unityEv 5.91 / FWC 23k | ✓ 借自 X100VI | 同款 40MP X-Trans CMOS 5 HR，声明的借用 |
+| Sony A7 V (ILCE-7M5) | ✓ unityEv 8.76 / FWC 71k | ✓ LibRaw master | unityEv 为 JPTC 一手实测锚定 |
+| Sony A7S III (ILCE-7SM3) | ✓ unityEv 10.15 / FWC 228k | ✓ LibRaw master | 大像素签名明显；unityEv 为 DxO 派生表锚定 |
+| Sony A7R VI (ILCE-7RM6) | ✓ unityEv 7.80 / FWC 36k | **无**（刻意缺席） | 未找到已发布系数；矩阵宁缺毋猜，降级路径覆盖；unityEv 为 JPTC 一手实测锚定 |
+| Ricoh GR IV | ✓ unityEv 7.37 / FWC 27k | 无需（DNG 自带 ColorMatrix） | |
+| Nikon Zf | ✓ unityEv 9.06 / FWC 82k | ✓ LibRaw master | 同传感器 Z6II DxO unity 508.3 交叉印证 |
+| Fujifilm X100VI | ✓ unityEv 7.61 / FWC 24k | ✓ LibRaw master | |
+| Fujifilm X-E5 | ✓ unityEv 7.54 / FWC 23k | ✓ 借自 X100VI | 同款 40MP X-Trans CMOS 5 HR，声明的借用 |
 
 数据出处：PhotonsToPhotos PDR.htm / RN_e.htm（2026-07-30 提取，含 P2P 直接
 发布的 `fwc` 与 `unityEv` 字段；PDR 曲线只取实心点，三角标记起点记入
 `suspect_iso_min`）；矩阵出处逐条记录在 `camera_matrices.py`。
+
+> **2026-08-24 轴解码审计**：P2P 图表 x 轴的真实标签公式是 ISO = 3.125·2^x
+> （对渲染出的坐标轴刻度逐一验证，并与八台机型的原生 ISO 区间精确对齐），
+> 2026-07-30 的提取把 2^x 当成了 ISO，导致全部 curated 曲线 x、
+> `suspect_iso_min` 与图表锚定的 `unity_gain_ev` 系统性低了
+> log2(3.125)=1.6439 EV（unity 差 3.125 倍）。上表 unityEv 为修正后的值；
+> 每台的证据链写在 `sensor_priors.json` / `priors.py` 的 `source` 字段，
+> 回归钉在 `tests/test_priors_importers.py::TestCuratedAxisAudit`。
+> bulk 层（`p2p_bulk.json`，y-g-jiang 转换）经查解码正确，不受影响。
 
 ## LibRaw 项目依赖（2026-08-01，已执行）
 

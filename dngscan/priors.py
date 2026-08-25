@@ -8,9 +8,14 @@ when the camera or ISO is unknown.
 
 Data source: https://www.photonstophotos.net/Charts/PDR.htm and
 https://www.photonstophotos.net/Charts/RN_e.htm (series extracted 2026-07-06).
-x is log2(ISO); PDR y is EV; read-noise y is log2(input-referred electrons).
-Points P2P plots with hollow markers (suspect/NR-affected) are kept but the threshold
-is recorded in `suspect_iso_min`.
+x is log2(EXIF ISO setting); PDR y is EV; read-noise y is log2(input-referred
+electrons). NOTE (2026-08-24 axis audit): the P2P chart's own x-axis is
+ISO = 3.125 * 2^x — the original extraction read it as ISO = 2^x, which put
+every curve (and every chart-anchored unity_gain_ev) log2(3.125) = 1.6439 EV
+low. All curated curves have been re-referenced to EXIF ISO; they now start
+at each camera's native base ISO. Points P2P plots with hollow markers
+(suspect/NR-affected) are kept but the threshold is recorded in
+`suspect_iso_min`.
 """
 
 from __future__ import annotations
@@ -19,37 +24,53 @@ import math
 from typing import Any
 
 # Sigma fp (full-frame 24MP BSI, 14-bit). unity_gain_ev: ISO at which 1 DN = 1 e-
-# is 2**7.29 ~= 156. fwc_e is P2P's saturation at the lowest-gain point.
+# is 2**8.93 ~= 488. fwc_e is P2P's saturation at the lowest-gain point.
+# unity_gain_ev corrected 7.29 -> 8.93 in the 2026-08-24 axis audit (see module
+# docstring): 8.93 = log2(100 * 74884/15359) — fwc_e over the 14-bit range at
+# native base ISO 100 (DNG black 1024, measured on owner files) — identical to
+# the axis fix (7.29 + 1.6439). First-party confirmation: pair-difference PTC
+# envelopes on three owner ISO-100 DNG frames measure 4.70-4.77 e-/DN vs the
+# 4.88 implied (-3%; the estimator biases low on natural scenes), refuting the
+# old 1.56 e-/DN outright. Pixel density 74884/(5.98um)^2 = 2.1 ke-/um^2 is
+# physical; the old value implied 0.7 ke-/um^2.
 SIGMA_FP = {
     "id": "Sigma fp",
     "make_contains": "SIGMA",
     "model_equals": {"SIGMA FP", "FP"},
-    "unity_gain_ev": 7.29,
+    "unity_gain_ev": 8.93,
     "fwc_e": 74884,
     "pdr_log2iso_ev": [
-        (5.00, 11.02), (5.33, 10.98), (5.67, 11.00), (6.00, 11.00), (6.33, 10.70),
-        (6.67, 10.41), (7.00, 9.85), (7.33, 9.22), (7.67, 9.38), (8.00, 9.38),
-        (8.33, 9.41), (8.67, 9.38), (9.00, 9.07), (9.33, 8.73), (9.67, 8.40),
-        (10.00, 8.07), (10.33, 7.75), (10.67, 7.42), (11.00, 7.10), (11.33, 6.78),
-        (11.67, 6.46), (12.00, 6.09), (12.33, 5.79), (12.67, 5.46), (13.00, 5.10),
-        (13.33, 4.80), (13.67, 4.46), (14.00, 4.11), (14.33, 3.82), (14.67, 3.47),
-        (15.00, 3.13),
+        (6.6439, 11.02), (6.9739, 10.98), (7.3139, 11.0), (7.6439, 11.0),
+        (7.9739, 10.7), (8.3139, 10.41), (8.6439, 9.85), (8.9739, 9.22),
+        (9.3139, 9.38), (9.6439, 9.38), (9.9739, 9.41), (10.3139, 9.38),
+        (10.6439, 9.07), (10.9739, 8.73), (11.3139, 8.4), (11.6439, 8.07),
+        (11.9739, 7.75), (12.3139, 7.42), (12.6439, 7.1), (12.9739, 6.78),
+        (13.3139, 6.46), (13.6439, 6.09), (13.9739, 5.79), (14.3139, 5.46),
+        (14.6439, 5.1), (14.9739, 4.8), (15.3139, 4.46), (15.6439, 4.11),
+        (15.9739, 3.82), (16.3139, 3.47), (16.6439, 3.13),
     ],
     "read_noise_log2iso_log2e": [
-        (5.00, 2.76), (5.33, 2.41), (5.67, 2.09), (6.00, 1.78), (6.33, 1.68),
-        (6.67, 1.63), (7.00, 1.83), (7.33, 2.04), (7.67, 0.70), (8.00, 0.34),
-        (8.33, 0.01), (8.67, -0.35), (9.00, -0.40), (9.33, -0.43), (9.67, -0.46),
-        (10.00, -0.49), (10.33, -0.54), (10.67, -0.56), (11.00, -0.58), (11.33, -0.61),
-        (11.67, -0.63), (12.00, -0.65), (12.33, -0.68), (12.67, -0.68), (13.00, -0.71),
-        (13.33, -0.77), (13.67, -0.72), (14.00, -0.73), (14.33, -0.73), (14.67, -0.77),
-        (15.00, -0.72),
+        (6.6439, 2.76), (6.9739, 2.41), (7.3139, 2.09), (7.6439, 1.78), (7.9739, 1.68),
+        (8.3139, 1.63), (8.6439, 1.83), (8.9739, 2.04), (9.3139, 0.7), (9.6439, 0.34),
+        (9.9739, 0.01), (10.3139, -0.35), (10.6439, -0.4), (10.9739, -0.43),
+        (11.3139, -0.46), (11.6439, -0.49), (11.9739, -0.54), (12.3139, -0.56),
+        (12.6439, -0.58), (12.9739, -0.61), (13.3139, -0.63), (13.6439, -0.65),
+        (13.9739, -0.68), (14.3139, -0.68), (14.6439, -0.71), (14.9739, -0.77),
+        (15.3139, -0.72), (15.6439, -0.73), (15.9739, -0.73), (16.3139, -0.77),
+        (16.6439, -0.72),
     ],
-    # P2P marks values from here up with hollow markers. Note: fp's read noise below
-    # ~1 e- from ISO ~400 is widely attributed to spatial filtering baked into the DNG;
-    # the empirical RAW-health autocorrelation check is the per-frame verdict on that.
-    "suspect_iso_min": 10322,
-    "dcg_switch_iso": 200,  # read-noise curve drops sharply at log2(ISO)=7.67
-    "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06",
+    # P2P marks values from here up with hollow markers (decoded: the ISO 32000
+    # setting). Note: fp's read noise below ~1 e- from ISO ~1000 is widely
+    # attributed to spatial filtering baked into the DNG; the empirical
+    # RAW-health autocorrelation check is the per-frame verdict on that.
+    "suspect_iso_min": 32256,
+    # Read-noise curve drops sharply at the ISO 640 setting (stored x 9.3139) —
+    # the known IMX410 (A7 III / Z 6) dual-conversion-gain point. The audit's
+    # axis fix moved this from the previously recorded "ISO 200".
+    "dcg_switch_iso": 640,
+    "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; "
+              "x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored "
+              "2026-08-24 (see module docstring and the comments above)",
 }
 
 def _load_json_priors() -> list[dict[str, Any]]:
