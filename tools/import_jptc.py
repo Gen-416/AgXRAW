@@ -13,14 +13,19 @@ dngscan priors entry with the aperture and fit residuals declared.
 Method (standard photon-transfer analysis, G1 channel):
   - black level: from the CSV header (collector-measured, per channel);
   - saturation S_sat: the clip plateau (max mean at the declared white);
-  - shot-noise fit: var(DN) = var_read + S/g + prnu^2*S^2, a trimmed
-    CONSTRAINED QUADRATIC (c>=0) over S < 0.35*S_sat; the linear-model
-    gain is computed alongside and |delta|/gain is declared as
-    model_sensitivity (single-frame stds include PRNU — the quadratic
-    term models it instead of assuming it negligible);
+  - shot-noise fit: PRIMARY = linear-prnu-corrected (trimmed OLS over
+    S < 0.10*S_sat on var - prnu_top^2*S^2, iterated); when the ramp has
+    fewer than 3 unsaturated top points the correction is UNRESOLVED and
+    the effective path is plain linear — declared via prnu_status and
+    fit_model_effective, never implied. linear-0.10 and quadratic-0.35
+    are recorded as alternatives; gain_estimator_spread_rel is their
+    range over the primary (an estimator spread, NOT a statistical
+    uncertainty — the estimators share the data and the model set is
+    not exhaustive);
   - fwc_e = (white - black) * g: ADC code-saturation capacity (exact
-    given the fitted gain); the exposure-step bracket bounds only the
-    clip-onset exposure and is published separately as clip_onset_e.
+    given the fitted gain). No clip-onset field is published: JPTC/2
+    records no per-step exposure, so the scene-exposure onset is not
+    recoverable from this input (only last_unsaturated_signal_e is).
 
 Usage:
     python tools/import_jptc.py measurement.csv --brand Sony --model "A7 V" \\
@@ -137,24 +142,42 @@ def fit_ptc(
     if slope_a <= 0:
         raise ValueError("non-physical PTC slope; measurement unusable")
     gain_a = 1.0 / float(slope_a)
-    # C: PRNU-corrected linear (primary), iterated to convergence
+    # C: PRNU-corrected linear (primary), iterated to convergence (max 16;
+    # the review found 3 rounds left A7M5 0.011% short of its own gate)
+    n_top = int((unsat & (signal > 0.5 * s_sat)).sum())
     gain = gain_a
     var_read = max(float(icpt_a), 0.0)
     prnu = _prnu_top(gain, var_read)
     keep = np.ones(len(x), dtype=bool)
     resid = resid_a
-    for _ in range(3):
-        y_corr = y - (prnu * x) ** 2
-        slope, icpt, keep, resid = _trimmed_linear(x, y_corr)
-        if slope <= 0:
-            raise ValueError("non-physical PTC slope; measurement unusable")
-        gain_new = 1.0 / float(slope)
-        var_read = max(float(icpt), 0.0)
-        prnu_new = _prnu_top(gain_new, var_read)
-        if abs(gain_new - gain) / gain < 1e-4 and abs(prnu_new - prnu) < 1e-5:
+    prnu_iterations = 0
+    prnu_converged = False
+    prnu_final_delta = 0.0
+    if n_top >= 3:
+        for prnu_iterations in range(1, 17):
+            y_corr = y - (prnu * x) ** 2
+            slope, icpt, keep, resid = _trimmed_linear(x, y_corr)
+            if slope <= 0:
+                raise ValueError("non-physical PTC slope; measurement unusable")
+            gain_new = 1.0 / float(slope)
+            var_read = max(float(icpt), 0.0)
+            prnu_new = _prnu_top(gain_new, var_read)
+            prnu_final_delta = abs(gain_new - gain) / gain
+            converged = prnu_final_delta < 1e-4 and abs(prnu_new - prnu) < 1e-5
             gain, prnu = gain_new, prnu_new
-            break
-        gain, prnu = gain_new, prnu_new
+            if converged:
+                prnu_converged = True
+                break
+    if n_top < 3:
+        # top of ramp not sampled -> the correction cannot run at all
+        prnu_status = "unresolved"
+        fit_model_effective = "linear-0.10 (prnu unresolved -> plain linear)"
+    elif prnu == 0.0:
+        prnu_status = "zero"
+        fit_model_effective = "linear-prnu-corrected (correction = 0)"
+    else:
+        prnu_status = "corrected"
+        fit_model_effective = "linear-prnu-corrected"
     # B: constrained quadratic over the wide range (recorded, not primary)
     wide = unsat & (signal > 0) & (signal < 0.35 * s_sat)
     xw, yw = signal[wide], var[wide]
@@ -174,7 +197,10 @@ def fit_ptc(
             resid_q = float(np.sqrt(np.mean((predw - yw) ** 2))
                             / max(np.mean(yw), 1e-9))
     gains = [g for g in (gain, gain_a, gain_q) if math.isfinite(g)]
-    model_sensitivity = (max(gains) - min(gains)) / gain
+    # estimator RANGE over the primary — an estimator spread, not a
+    # statistical uncertainty (review P2-3): the estimators are correlated,
+    # share the data, and the model set is not exhaustive.
+    gain_estimator_spread_rel = (max(gains) - min(gains)) / gain
     # PRNU cross-estimate from the top of the ramp (median excess variance),
     # kept alongside the quadratic-coefficient estimate as a consistency
     # check between apertures.
@@ -199,24 +225,29 @@ def fit_ptc(
         # key name "fit_model", NOT "model": import_csv merges this dict
         # with **fit and a "model" key would overwrite the CAMERA model
         "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+        "fit_model_effective": fit_model_effective,
         "gain_alternatives": {"linear-0.10": gain_a,
                               "quadratic-0.35": gain_q},
-        "model_sensitivity": model_sensitivity,
+        "gain_estimator_spread_rel": gain_estimator_spread_rel,
+        "prnu_status": prnu_status,
+        "prnu_iterations": prnu_iterations,
+        "prnu_converged": prnu_converged,
+        "prnu_final_delta": prnu_final_delta,
         "read_noise_dn": math.sqrt(var_read),
         "read_noise_e": read_noise_e if read_noise_e is not None else 0.0,
         "read_noise_status": "measured" if var_read > 0 else "below-resolution",
-        "s_sat_dn": s_sat,
-        "s_sat_dn_uncertainty": s_sat_unc,
         "fwc_e": (white - black) * gain,
-        "fwc_e_uncertainty": (white - black) * gain * model_sensitivity,
+        "fwc_model_spread_e": (white - black) * gain * gain_estimator_spread_rel,
         "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; "
-                         "uncertainty = capacity x model_sensitivity (the "
-                         "dominant declared error is the fit-model choice); "
-                         "physical full well not claimed",
-        "clip_onset_e": s_sat * gain,
-        "clip_onset_e_uncertainty": s_sat_unc * gain,
-        "prnu": prnu,
-        "prnu_quadratic_fit": prnu_q,
+                         "fwc_model_spread_e = capacity x estimator spread "
+                         "(model-choice spread, not a statistical "
+                         "uncertainty); physical full well not claimed",
+        # No clip-onset field: JPTC/2 has no per-step exposure column, so
+        # the scene-exposure onset is unrecoverable (review P1-2). The last
+        # unsaturated observation is published as a lower bound only.
+        "last_unsaturated_signal_e": s_last * gain,
+        "prnu": (prnu if math.isfinite(prnu) and prnu_status != "unresolved" else None),
+        "prnu_quadratic_fit": prnu_q if math.isfinite(prnu_q) else None,
         "fit_relative_rms": resid,
         "fit_relative_rms_alternatives": {"linear-0.10": resid_a,
                                           "quadratic-0.35": resid_q},
@@ -225,6 +256,19 @@ def fit_ptc(
         "sat_plateau_dn": sat_plateau,
         "quality": "ok" if resid <= 0.05 else "high-residual",
     }
+
+
+def sanitize_json(obj):
+    """NaN/Inf -> None recursively: RFC 8259 has no NaN literal, and
+    Python's default json.dumps writes one anyway (review P2-2); dumps are
+    paired with allow_nan=False so a regression fails loudly."""
+    if isinstance(obj, dict):
+        return {k: sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_json(v) for v in obj]
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    return obj
 
 
 def infer_white(means: np.ndarray, stds: np.ndarray) -> float | None:
@@ -296,7 +340,6 @@ def self_test() -> int:
     gain_true, rn_e_true, black, white = 0.42, 3.1, 512.0, 16383.0
     prnu_true = 0.006
     fwc_true = (white - black) * gain_true          # code-saturation capacity
-    clip_onset_true = (white - black) * gain_true   # hard clip at white
     means, stds = [], []
     for step in np.geomspace(2.0, (white - black) * 1.15, 40):
         s_e = step * gain_true
@@ -319,16 +362,16 @@ def self_test() -> int:
         status = "ok" if rel <= tol else "FAIL"
         ok &= rel <= tol
         print(f"  {name}: got {got:.4g} want {want:.4g} rel {rel:.3f} [{status}]")
-    tol = 1e-3 * clip_onset_true  # allow the fitted-gain scale error at the edge
-    hi = fit["clip_onset_e"] + fit["clip_onset_e_uncertainty"] + tol
-    lo = fit["clip_onset_e"] - fit["clip_onset_e_uncertainty"] - tol
-    in_bracket = lo <= clip_onset_true <= hi
-    ok &= in_bracket
-    print(f"  clip_onset_e: {fit['clip_onset_e']:.4g} ± "
-          f"{fit['clip_onset_e_uncertainty']:.3g} truth {clip_onset_true:.4g} "
-          f"[{'ok' if in_bracket else 'FAIL'}]")
+    # No clip-onset assertion: the field was removed (unrecoverable from
+    # JPTC/2 inputs). The last unsaturated observation must be a strict
+    # lower bound on capacity, and the prnu path must actually run here.
+    ok &= 0 < fit["last_unsaturated_signal_e"] <= fit["fwc_e"]
+    ok &= fit["prnu_status"] == "corrected" and fit["prnu_converged"]
+    print(f"  last_unsaturated_signal_e: {fit['last_unsaturated_signal_e']:.4g} "
+          f"<= fwc {fit['fwc_e']:.4g} [ok]; prnu_status={fit['prnu_status']} "
+          f"iterations={fit['prnu_iterations']} converged={fit['prnu_converged']}")
     alts = fit["gain_alternatives"]
-    print(f"  model_sensitivity: {fit['model_sensitivity']:.4f} "
+    print(f"  gain_estimator_spread_rel: {fit['gain_estimator_spread_rel']:.4f} "
           f"(primary {fit['gain_e_per_dn']:.4g}, linear-0.10 "
           f"{alts['linear-0.10']:.4g}, quad-0.35 {alts['quadratic-0.35']:.4g})")
     print("self-test:", "PASS" if ok else "FAIL")
@@ -352,7 +395,8 @@ def main() -> int:
     if args.csv is None:
         ap.error("csv path required (or --self-test)")
     entry = import_csv(args.csv, args.brand, args.model, args.iso, args.white, args.shutter)
-    text = json.dumps(entry, indent=1, ensure_ascii=False)
+    entry = sanitize_json(entry)
+    text = json.dumps(entry, indent=1, ensure_ascii=False, allow_nan=False)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text)

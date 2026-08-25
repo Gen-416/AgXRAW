@@ -257,14 +257,29 @@ def _raw_headroom_rgb(
     return _align_cfa_rgb_map(bundle, headroom, target_shape)
 
 
+# A prior whose fit is high-residual or whose estimator spread exceeds this
+# fraction is not allowed to define per-pixel electron-domain confidence: the
+# scene-EV fallback is the safer floor (external review R9 P1-1 — R6 II's
+# 15.4% gain spread would otherwise silently reshape low-signal chroma
+# permission). The threshold is a declared constant, not a tuned value.
+PRIOR_MODEL_SPREAD_MAX = 0.10
+
+
 def _has_sensor_snr_prior(analysis: Analysis | None) -> bool:
     gain = getattr(analysis, "gain_e_per_dn", None)
     read_noise = getattr(analysis, "prior_read_noise_e", None)
-    return bool(
+    if not (
         gain is not None and read_noise is not None
         and math.isfinite(gain) and math.isfinite(read_noise)
         and gain > 0.0 and read_noise >= 0.0
-    )
+    ):
+        return False
+    if getattr(analysis, "prior_quality_status", None) == "high-residual":
+        return False
+    spread = getattr(analysis, "prior_model_spread", None)
+    if spread is not None and math.isfinite(spread) and spread > PRIOR_MODEL_SPREAD_MAX:
+        return False
+    return True
 
 
 def _raw_snr_confidence(bundle: RawBundle, analysis: Analysis | None, target_shape: tuple[int, int]) -> Any | None:

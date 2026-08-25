@@ -234,6 +234,11 @@ class Analysis:
     noise_floor_e: float | None = None
     prior_read_noise_e: float | None = None
     prior_pdr_ev: float | None = None
+    # prior evidence state (R9): consumers must degrade on these, not just
+    # carry them (external review P1-1)
+    prior_quality_status: str | None = None
+    prior_model_spread: float | None = None
+    prior_mode_match: str | None = None
     usable_dr_eff_ev: float = float("nan")
     health_lag1_corr: float = float("nan")
     health_hist_empty_pct: float = float("nan")
