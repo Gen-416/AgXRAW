@@ -1,0 +1,53 @@
+{
+ "format": "dngscan-jptc-collect-1",
+ "id": "Fujifilm GFX 100 (gfx100-mech-20260816)",
+ "camera": "Fujifilm GFX 100",
+ "make": "Fujifilm",
+ "model_candidates": [
+  "Fujifilm GFX 100",
+  "GFX 100"
+ ],
+ "shutter": "机械快门",
+ "compression": "无压缩",
+ "geometry": [
+  "11648",
+  "8736"
+ ],
+ "source": {
+  "kind": "JPTC collect set (first-party, credit-based grant, NOTICE.md)",
+  "set": "gfx100-mech-20260816",
+  "url": "https://y-g-jiang.github.io/data/collect/gfx100-mech-20260816/",
+  "tester": "姜尧耕",
+  "measured_at": "2026-08-16",
+  "formats": [
+   "JPTC-DARK/1",
+   "JPTC/2 (ptc anchor)"
+  ]
+ },
+ "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
+ "read_noise_dn_log2iso": [
+  [
+   6.643856189774724,
+   4.213040845370639
+  ]
+ ],
+ "banding_log2iso": [],
+ "ptc_anchor": {
+  "iso": 100,
+  "gain_e_per_dn": 0.6556494240163018,
+  "read_noise_e": 2.7756647503895553,
+  "fwc_e": 35213.30060440082,
+  "fwc_e_uncertainty": 7421.081720925931,
+  "prnu": NaN,
+  "fit_relative_rms": 0.011408965003270096
+ },
+ "unity_gain_ev": 6.0349,
+ "fwc_e": 35213.30060440082,
+ "fwc_e_uncertainty": 7421.081720925931,
+ "read_noise_log2iso_log2e": [
+  [
+   6.643856189774724,
+   1.4658584194355684
+  ]
+ ]
+}

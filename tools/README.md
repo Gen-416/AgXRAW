@@ -26,6 +26,7 @@
 | `import_jptc.py` | JPTC/2 一手实测 CSV → PTC 拟合 priors 条目(`--self-test` 合成传感器门禁) |
 | `import_p2p_pdr.py` | P2P 批量传感器表 → `data/priors/p2p_bulk.json`(135 台,许可状态见 NOTICE) |
 | `import_dngshell.py` | 上游 DNGSHL1 壳 → dngscan evshell(一手拍摄语料接入,来源块入清单) |
+| `import_jptc_collect.py` | JPTC collect 套件(dark/isogain/spectrum/ptc)→ 增益曲线+读噪曲线+白度/条带证据 |
 | `import_lens_transmittance.py` | 一手镜头/滤镜光谱透过率 → `data/lens_transmittance.json`(118 条,380–755nm@1nm) |
 
 ## 校准与拟合 / Calibration & Fitting

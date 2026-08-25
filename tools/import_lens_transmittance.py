@@ -45,7 +45,7 @@ def convert(path: Path) -> dict:
         "sheet": j.get("sheet"),
         "wavelength_start_nm": start,
         "step_nm": step,
-        "transmittance_percent": [round(v, 4) for v in data],
+        "transmittance_percent": data,  # verbatim upstream precision
     }
 
 

@@ -312,15 +312,30 @@ DATASETS = {
 }
 
 
-def sigma_of_density(channel: dict, loge_max: float, n: int = 61):
+def sigma_of_density(channel: dict, loge_max: float, n: int = 257):
     """Parametric join: sample logE, return (D, sigma) rows."""
     import numpy as np
 
     d_tab = np.array(channel["density_loge"], dtype=float)
     s_tab = np.array(channel["sigma_loge"], dtype=float)
     loge = np.linspace(0.0, loge_max, n)
-    dens = np.interp(loge, d_tab[:, 0], d_tab[:, 1])
-    sig = np.interp(loge, s_tab[:, 0], s_tab[:, 1])
+    # offline precision policy: monotone-cubic composition on the (dense,
+    # verified) anchors; the runtime consumes the composed table linearly,
+    # so the grid is dense enough (257) that the residual method ambiguity
+    # is far below the read uncertainty. Falls back to linear without scipy.
+    try:
+        from scipy.interpolate import PchipInterpolator
+
+        def _ip(tab, xs):
+            xcol = tab[:, 0]
+            keep = np.concatenate([[True], np.diff(xcol) > 1e-12])
+            return PchipInterpolator(xcol[keep], tab[keep, 1])(
+                np.clip(xs, xcol[keep][0], xcol[keep][-1]))
+        dens = _ip(d_tab, loge)
+        sig = _ip(s_tab, loge)
+    except ImportError:
+        dens = np.interp(loge, d_tab[:, 0], d_tab[:, 1])
+        sig = np.interp(loge, s_tab[:, 0], s_tab[:, 1])
     # The chart's toe holds density FLAT while sigma still moves with
     # exposure, so the parametric join is not single-valued in D. The
     # render queries by density alone, and a pixel AT base density is the
