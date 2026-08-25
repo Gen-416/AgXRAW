@@ -66,6 +66,10 @@ class EvidenceShellCorpusTests(unittest.TestCase):
                     self.assertEqual(m["license"], "CC0")
                 elif m["source_url"].startswith("https://y-g-jiang.github.io/shells/"):
                     self.assertIn("first-party", m["license"])
+                    # license state must track NOTICE.md (review 4.10):
+                    # the 2026-08-25 credit-based grant, not "being contacted"
+                    self.assertIn("permitted with credit", m["license"])
+                    self.assertNotIn("being contacted", m["license"])
                     up = m["upstream"]
                     self.assertEqual(up["format"], "DNGSHL1")
                     self.assertEqual(len(up["source_sha256"]), 64)

@@ -16,7 +16,8 @@
  "source": {
   "kind": "JPTC collect set (first-party, credit-based grant, NOTICE.md)",
   "set": "m11m-mech-20260820",
-  "url": "https://y-g-jiang.github.io/data/collect/m11m-mech-20260820/",
+  "url_base": "https://y-g-jiang.github.io/data/collect/m11m-mech-20260820/",
+  "url_note": "per-FILE urls are url_base + input file name (the directory itself is not a servable page)",
   "tester": "姜尧耕",
   "measured_at": "2026-08-20",
   "formats": [
@@ -25,7 +26,14 @@
    "JPTC/2 (ptc anchor)",
    "JPTC-SPECTRUM/1 (h)",
    "JPTC-SPECTRUM/1 (v)"
-  ]
+  ],
+  "inputs": {
+   "dark-scalars.csv": "0b07cff6041cb7b2e319636971c72ae3deccd014139ba3bd2e7cf913b0e5fc82",
+   "gain-levels.csv": "056fd781e0f3cabbc668df641d5ceec6ae620b798729b7d2c96956047fa1d4ee",
+   "ptc-iso125.csv": "c6713178892054898b89aaf6d3f77ab8a56d719c0fb299c3a343fa376cadfc34",
+   "spectrum-h.csv": "fd0a5011c3d8c26470d4c213a02ad99df1bc749010cdbaf2b42e1221299877f1",
+   "spectrum-v.csv": "8bc92e1010efd599f474cbe200cd94e2fa015500417a52a7f5a123f0e6f79771"
+  }
  },
  "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
  "read_noise_dn_log2iso": [
@@ -66,61 +74,114 @@
    64.31195360178592
   ]
  ],
- "banding_log2iso": [
+ "quantization_fraction_log2iso": [
   [
-   6.9658,
-   1.2304,
-   1.2408
+   6.965784284662087,
+   0.05115
   ],
   [
-   7.6439,
-   1.2422,
-   1.2533
+   7.643856189774724,
+   0.02466
   ],
   [
-   8.6439,
-   1.3939,
-   1.4011
+   8.643856189774725,
+   0.03625
   ],
   [
-   9.6439,
-   1.5049,
-   1.5147
+   9.643856189774725,
+   0.01144
   ],
   [
-   10.6439,
-   1.6067,
-   1.6129
+   10.643856189774725,
+   0.00348
   ],
   [
-   11.6439,
-   1.5704,
-   1.5753
+   11.643856189774725,
+   0.001
   ],
   [
-   12.6439,
-   1.317,
-   1.321
+   12.643856189774725,
+   0.00028
   ],
   [
-   13.6096,
-   1.1656,
-   1.1689
+   13.609640474436812,
+   8e-05
   ],
   [
-   14.6096,
-   1.0947,
-   1.0979
+   14.609640474436812,
+   2e-05
   ]
  ],
+ "within_var_raw_log2iso": {
+  "semantics": "UNCONFIRMED — WithinRow/ColVarDiff halved, verbatim; not a banding fraction (values may exceed the clipped total variance; upstream definition being confirmed)",
+  "rows": [
+   [
+    6.9658,
+    2.0047583876575423,
+    2.021737843947446,
+    1.6293554960412833
+   ],
+   [
+    7.6439,
+    4.198220492401973,
+    4.235718338916195,
+    3.379669774178303
+   ],
+   [
+    8.6439,
+    3.2046403002379247,
+    3.221261534449904,
+    2.299099156845444
+   ],
+   [
+    9.6439,
+    10.965499256837479,
+    11.036987333143898,
+    7.286733473685613
+   ],
+   [
+    10.6439,
+    38.50886492409346,
+    38.658303535697954,
+    23.96805115242303
+   ],
+   [
+    11.6439,
+    131.4391886448339,
+    131.84380512412656,
+    83.6961920815686
+   ],
+   [
+    12.6439,
+    392.2522978509856,
+    393.44991458623304,
+    297.8325886603149
+   ],
+   [
+    13.6096,
+    1205.0243787526056,
+    1208.3596811479392,
+    1033.7863569118354
+   ],
+   [
+    14.6096,
+    4529.606827974982,
+    4543.023824263555,
+    4137.901321596939
+   ]
+  ]
+ },
  "ptc_anchor": {
   "iso": 125,
   "gain_e_per_dn": 2.691467246266068,
   "read_noise_e": 2.461281041832589,
-  "fwc_e": 34192.00845539462,
-  "fwc_e_uncertainty": 7148.97346189566,
+  "fwc_e": 41340.98191729028,
+  "fwc_e_uncertainty": 1047.1071017280603,
   "prnu": NaN,
-  "fit_relative_rms": 0.019490203769586767
+  "fit_relative_rms": 0.019490203769586767,
+  "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+  "model_sensitivity": 0.025328549375604515,
+  "quality": "ok"
  },
  "gain_log2iso_log2epd": [
   [
@@ -200,8 +261,8 @@
  ],
  "gain_jump_isos": [],
  "unity_gain_ev": 8.3942,
- "fwc_e": 34192.00845539462,
- "fwc_e_uncertainty": 7148.97346189566,
+ "fwc_e": 41340.98191729028,
+ "fwc_e_uncertainty": 1047.1071017280603,
  "noise_whiteness_h_log2iso": [
   [
    6.9658,

@@ -16,13 +16,18 @@
  "source": {
   "kind": "JPTC collect set (first-party, credit-based grant, NOTICE.md)",
   "set": "gfx100-mech-20260816",
-  "url": "https://y-g-jiang.github.io/data/collect/gfx100-mech-20260816/",
+  "url_base": "https://y-g-jiang.github.io/data/collect/gfx100-mech-20260816/",
+  "url_note": "per-FILE urls are url_base + input file name (the directory itself is not a servable page)",
   "tester": "姜尧耕",
   "measured_at": "2026-08-16",
   "formats": [
    "JPTC-DARK/1",
    "JPTC/2 (ptc anchor)"
-  ]
+  ],
+  "inputs": {
+   "dark-scalars.csv": "ed66f495db564a7dc1b31168f6e051283e1fda4a82754484af910e031b7a0d4f",
+   "ptc-iso100.csv": "c9fa172c43aef3ec991973bb3dfdfa10ebc77262d46b404e99f06d3163b5a962"
+  }
  },
  "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
  "read_noise_dn_log2iso": [
@@ -31,19 +36,31 @@
    4.213040845370639
   ]
  ],
- "banding_log2iso": [],
+ "quantization_fraction_log2iso": [
+  [
+   6.643856189774724,
+   0.00468
+  ]
+ ],
+ "within_var_raw_log2iso": {
+  "semantics": "UNCONFIRMED — WithinRow/ColVarDiff halved, verbatim; not a banding fraction (values may exceed the clipped total variance; upstream definition being confirmed)",
+  "rows": []
+ },
  "ptc_anchor": {
   "iso": 100,
   "gain_e_per_dn": 0.6556494240163018,
   "read_noise_e": 2.7756647503895553,
-  "fwc_e": 35213.30060440082,
-  "fwc_e_uncertainty": 7421.081720925931,
+  "fwc_e": 42634.382325326755,
+  "fwc_e_uncertainty": 1182.779638400522,
   "prnu": NaN,
-  "fit_relative_rms": 0.011408965003270096
+  "fit_relative_rms": 0.011408965003270096,
+  "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+  "model_sensitivity": 0.027742389449322388,
+  "quality": "ok"
  },
  "unity_gain_ev": 6.0349,
- "fwc_e": 35213.30060440082,
- "fwc_e_uncertainty": 7421.081720925931,
+ "fwc_e": 42634.382325326755,
+ "fwc_e_uncertainty": 1182.779638400522,
  "read_noise_log2iso_log2e": [
   [
    6.643856189774724,

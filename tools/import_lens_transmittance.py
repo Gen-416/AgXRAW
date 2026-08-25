@@ -38,8 +38,10 @@ def convert(path: Path) -> dict:
         raise ValueError(f"{path.name}: grid {start}..{end}@{step} inconsistent with {n} samples")
     if not all(math.isfinite(v) and 0.0 < v <= 150.0 for v in data):
         raise ValueError(f"{path.name}: transmittance outside (0, 150]%")
+    import hashlib
     return {
         "id": str(j["id"]),
+        "input_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "name": str(j["name"]),
         "category": str(j["category"]),
         "sheet": j.get("sheet"),

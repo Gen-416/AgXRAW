@@ -80,7 +80,7 @@ def convert_camera(c: dict) -> dict | None:
         "pdr_log2iso_ev": pdr_pts,
         "read_noise_log2iso_log2e": rn_pts,
         "suspect_iso_min": suspect,
-        "derived": "PDR and rn_e derived per tools/import_p2p_pdr.py header",
+        "derived": "PDR and rn_e derived per tools/import_p2p_pdr.py header; FW(iso)=fwc_native*native_iso/iso is a declared MODEL ASSUMPTION (reciprocal scaling), not a per-ISO measurement — DCG/extended-ISO bodies deviate; bulk never overrides curated or JPTC tiers",
     }
 
 

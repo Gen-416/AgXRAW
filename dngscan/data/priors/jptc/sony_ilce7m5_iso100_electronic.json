@@ -12,22 +12,39 @@
  "source": {
   "kind": "JPTC/2 first-party measurement",
   "file": "a7m5.csv",
+  "input_sha256": "6aa7df5101cf5d466959a01e9b2d7892a8c50b871453fec55f94eea2645ca5c2",
   "mode": "Independent",
   "geometry": [
    "7008",
    "4672"
   ]
  },
- "gain_e_per_dn": 4.4471614190006985,
- "read_noise_dn": 1.814358100602418,
- "read_noise_e": 8.068743345250462,
+ "gain_e_per_dn": 4.640954004965183,
+ "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+ "gain_alternatives": {
+  "linear-0.10": 4.4471614190006985,
+  "quadratic-0.35": 4.629189391212589
+ },
+ "model_sensitivity": 0.04175705808701246,
+ "read_noise_dn": 1.8963704425984627,
+ "read_noise_e": 8.800968000474931,
+ "read_noise_status": "measured",
  "s_sat_dn": 14548.997060375976,
  "s_sat_dn_uncertainty": 1321.68545,
- "fwc_e": 64701.738412058614,
- "fwc_e_uncertainty": 5877.748541294576,
- "prnu": 0.003593842560750122,
- "fit_relative_rms": 0.046470456883226055,
- "fit_points": 33,
- "fit_points_excluded": 3,
- "sat_plateau_dn": 15870.682510375977
+ "fwc_e": 73655.10755806026,
+ "fwc_e_uncertainty": 3075.6206047070727,
+ "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; uncertainty = capacity x model_sensitivity (the dominant declared error is the fit-model choice); physical full well not claimed",
+ "clip_onset_e": 67521.22617557856,
+ "clip_onset_e_uncertainty": 6133.88138248171,
+ "prnu": 0.003715971325300599,
+ "prnu_quadratic_fit": 0.0038932029125528706,
+ "fit_relative_rms": 0.025476336091005816,
+ "fit_relative_rms_alternatives": {
+  "linear-0.10": 0.046470456883226055,
+  "quadratic-0.35": 0.011724718571983142
+ },
+ "fit_points": 32,
+ "fit_points_excluded": 4,
+ "sat_plateau_dn": 15870.682510375977,
+ "quality": "ok"
 }

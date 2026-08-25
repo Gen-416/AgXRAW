@@ -51,6 +51,29 @@ MAX_RUN_PX = 28             # reject grid lines / text (stroke ~8-12 px at 8x)
 SEP_FACTOR = 1.2            # min cross-channel separation, in stroke widths
 
 
+def pdf_provenance(pdf: Path, pageno: int) -> dict:
+    """Input identity for the scan file (review 4.10): the same URL can
+    serve a replaced PDF later; the hash proves which bytes produced the scan."""
+    import hashlib
+    import platform
+
+    import Quartz
+    from Foundation import NSURL
+
+    doc = Quartz.CGPDFDocumentCreateWithURL(NSURL.fileURLWithPath_(str(pdf)))
+    page = Quartz.CGPDFDocumentGetPage(doc, pageno)
+    box = Quartz.CGPDFPageGetBoxRect(page, Quartz.kCGPDFMediaBox)
+    return {
+        "pdf_sha256": hashlib.sha256(pdf.read_bytes()).hexdigest(),
+        "pdf_name": pdf.name,
+        "page": pageno,
+        "media_box_pt": [box.origin.x, box.origin.y,
+                         box.size.width, box.size.height],
+        "renderer": f"Quartz CGPDFDocument, macOS {platform.mac_ver()[0]}",
+        "render_scale": RENDER_SCALE,
+    }
+
+
 def render_page(pdf: Path, pageno: int) -> np.ndarray:
     import Quartz
     from Foundation import NSURL
@@ -188,6 +211,8 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     pages = {"5207": render_page(args.pdf_5207, 3),
              "2383": render_page(args.pdf_2383, 4)}
+    prov = {"5207": pdf_provenance(args.pdf_5207, 3),
+            "2383": pdf_provenance(args.pdf_2383, 4)}
 
     for key, gcal, gdata in (("5207", G.CAL_5207, G.DATA_5207),
                              ("2383", G.CAL_2383, G.DATA_2383)):
@@ -196,7 +221,7 @@ def main() -> int:
                for k, v in gcal.items()}
         loge_max = 5.0 if key == "5207" else 1.95
         out = {"format": "dngscan-chart-scan-1", "dataset": key,
-               "render_scale": RENDER_SCALE, "channels": {}}
+               "input": prov[key], "channels": {}}
 
         # density(logE): horizontal density-line crossings, targets by D
         dmaxes = {ch: max(r[1] for r in gdata["channels"][ch]["density_loge"])
@@ -279,7 +304,7 @@ def main() -> int:
         mtf = scan_mtf(seeds)
         mtf = scan_mtf({ch: sorted(seeds[ch] + mtf[ch]) for ch in mtf})
         out = {"format": "dngscan-chart-scan-1", "dataset": key,
-               "render_scale": RENDER_SCALE,
+               "input": prov[key],
                "channels": mtf}
         path = OUT_DIR / f"mtf_{key}_scan.json"
         path.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n")
