@@ -159,3 +159,16 @@ PTC fits, temporal read noise with the declared sigma-clip undone, banding
 decomposition, noise-whiteness ratios) are ours and documented in
 `tools/import_jptc_collect.py`. Same credit-based grant of 2026-08-25 as
 the other first-party data; the directory is removable as a unit.
+
+## Interimage literature anchors & external-dataset registry
+
+`dngscan/data/interimage_literature.json` transcribes quantitative
+interimage/DIR data from public sources — US patents 5,942,381; 6,004,737;
+4,830,954 (patent full texts are public records; tables transcribed with
+per-value provenance) and the Fuji IS&T 1997 paper's textual conclusions
+(figure not digitized, see the file's note). Method-definition citations:
+Mees & James 4th ed. pp.574/614, Hanson & Horton JOSA 1952 (cited, not
+transcribed). Analysis: docs/INTERIMAGE_LITERATURE.zh-CN.md.
+`dngscan/data/external_datasets.json` is a registry of surveyed public
+film datasets with per-item status, license, pollution chain and allowed
+use — no external dataset bytes enter this repository.

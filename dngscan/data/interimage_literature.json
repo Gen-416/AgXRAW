@@ -1,0 +1,86 @@
+{
+ "format": "dngscan-interimage-literature-1",
+ "provenance": {
+  "purpose": "文献锚集:彩色负片层间效应(interimage/DIR)的公开定量数据,用于给 film_develop.INTERIMAGE_BETA(声明为 modelled 的层间放大项)提供文献参照与未来收窄依据。转录自公开专利全文与免费论文,逐条标注出处;本文件为单文件可撤数据,不被渲染管线消费。",
+  "transcribed": "2026-08-25",
+  "method_definition": {
+   "name": "IIE(interimage effect)标准测量定义",
+   "source": "US4830954 引 T. H. James, The Theory of the Photographic Process, 4th ed., Macmillan (1977), pp. 574 & 614",
+   "definition": "分色曝光(以受层对应色光曝光)相对白光曝光时,色彩梯度(colour gradation)的百分比增量",
+   "note": "Mees & James 4th ed 在 archive.org 仅可借阅(https://archive.org/details/theoryofphotogra0004edmees);方法学原典 Hanson & Horton, JOSA 42, 663-669 (1952) 在付费墙内(https://opg.optica.org/josa/abstract.cfm?uri=josa-42-9-663)。两者记为出处,未转录内容。"
+  }
+ },
+ "entries": [
+  {
+   "id": "US5942381-example",
+   "system": "C-41 彩色负片(多层涂布实验,绿感 causer 层 + 红感 receiver 层)",
+   "source_url": "https://patents.google.com/patent/US5942381A/en",
+   "measurement": "D-logE 斜率(gamma);DIR coupler 涂布量 0.161 µmol/ft²",
+   "data": [
+    {"film": "A (无 DIR, 对照)", "causer_gamma_green": 1.00, "receiver_gamma_red": 0.99},
+    {"film": "B (对比 coupler C2)", "causer_gamma_green": 0.90, "receiver_gamma_red": 0.86},
+    {"film": "C (发明 coupler A1)", "causer_gamma_green": 0.88, "receiver_gamma_red": 0.65}
+   ],
+   "derived": {
+    "receiver_gamma_suppression": {"C2": 0.13, "A1": 0.34},
+    "note": "专利自述:C2 压 receiver gamma 13%,A1 压 34%;causer 自层仅小幅下降"
+   }
+  },
+  {
+   "id": "US6004737-tables-III-VI",
+   "system": "C-41 彩色负片(蓝感 causer/黄层 → 绿感 receiver)",
+   "source_url": "https://patents.google.com/patent/US6004737A/en",
+   "measurement": "D-logE 斜率;R = 绿层 gamma / 蓝层 gamma",
+   "data": [
+    {"table": "III", "film": "A (无 DIR)", "blue_gamma": 1.76, "green_gamma": 1.50, "R": 0.85},
+    {"table": "III", "film": "B (对比 C1)", "blue_gamma": 1.16, "green_gamma": 0.93, "R": 0.80},
+    {"table": "III", "film": "C (发明 A1)", "blue_gamma": 1.11, "green_gamma": 0.78, "R": 0.70},
+    {"table": "VI", "film": "A (无 DIR)", "blue_gamma": 1.69, "green_gamma": 1.42, "R": 0.84},
+    {"table": "VI", "film": "B (对比 C2)", "blue_gamma": 1.38, "green_gamma": 1.09, "R": 0.79},
+    {"table": "VI", "film": "C (发明 A1)", "blue_gamma": 1.11, "green_gamma": 0.78, "R": 0.70}
+   ],
+   "derived": {
+    "receiver_over_causer_ratio_range": [0.70, 0.85],
+    "note": "无 DIR 时 R≈0.84-0.85;商用负片常用 C1/C2 时 R≈0.79-0.80;发明剂 R≈0.70——蓝→绿层间抑制把 receiver/causer 比压低 6-18%"
+   }
+  },
+  {
+   "id": "US4830954-claims-and-examples",
+   "system": "C-41 彩色负片(整卷,含高低感双层结构)",
+   "source_url": "https://patents.google.com/patent/US4830954A/en",
+   "measurement": "IIE 按 Mees & James 4th ed pp.574,614 定义(分色 vs 白光曝光的色彩梯度增量百分比)",
+   "data": [
+    {"claim": "阈值(发明主张的'足量 DIR')", "yellow_iie_min": 0.10, "magenta_iie_min": 0.25, "cyan_iie_min": 0.15},
+    {"example": "Variation 1A(DIR 不足)", "yellow_iie": 0.05, "magenta_iie": 0.08, "cyan_iie": 0.10},
+    {"example": "Variation 1B(发明)", "yellow_iie": 0.15, "magenta_iie": 0.35, "cyan_iie": 0.30}
+   ],
+   "derived": {
+    "din_speed_unchanged": "Table 2:两个变体 B/G/R DIN 感光度 28.3/28.5/28.1 vs 28.2/28.4/28.1——IIE 提升不付感光度代价",
+    "note": "当代(1980s末)商用负片的 IIE 实际落区间约 5-35%,发明阈值 Y≥10%/M≥25%/C≥15%"
+   }
+  },
+  {
+   "id": "fuji-ist1997-reversal",
+   "system": "E-6 彩色反转片(机制与产品实例,非负片体系)",
+   "source_url": "https://www.imaging.org/common/uploaded%20files/pdfs/Papers/1997/IST-0-4/62.pdf",
+   "measurement": "文字结论与 Figure 2(ASTIA 100 / PROVIA 100 红感层,白光 vs 红滤镜分色 D-logE)",
+   "data": [],
+   "qualitative": [
+    "反转片 IIE 依赖第一显影液的卤化银溶剂(KSCN/亚硫酸钠)与 causer 层碘化银——机制与负片 DIR 不同源",
+    "DIR-HQ 可按显影银量成像性增强 IIE",
+    "Figure 2 文字结论:白光曝光下 ASTIA 高光梯度软于 PROVIA;红滤镜分色曝光下两者几乎无差——即 ASTIA 的红层高光 IIE 更大"
+   ],
+   "note": "Figure 2 四条细噪线两两重叠,程序化描图误指派风险高且属反转体系,按'并线区不猜'原则不数字化,仅引用文字结论"
+  },
+  {
+   "id": "spektrafilm-dir-defaults",
+   "system": "开源模型默认值(交叉验证点,非文献锚——作者未标注出处,应视为手调/据数据表反推)",
+   "source_url": "https://github.com/andreavolpato/spektrafilm",
+   "data": [
+    {"param": "同层 gamma 修正", "values": [0.341, 0.324, 0.273]},
+    {"param": "层间矩阵", "r_to_g": 0.355, "r_to_b": 0.305, "g_to_r": 0.154, "g_to_b": 0.358, "b_to_r": 0.171, "b_to_g": 0.225},
+    {"param": "扩散", "sigma_um": 20, "tail_um": 200, "tail_weight": 0.06}
+   ]
+  }
+ ]
+}
