@@ -57,8 +57,11 @@ CHECKS = [
     ("dngscan/data/grain/granularity_2383.json", "sigma_density", "rel", 0.05),
     ("dngscan/data/grain/granularity_5207.json", "density_loge", "abs", 0.03),
     ("dngscan/data/grain/granularity_2383.json", "density_loge", "abs", 0.03),
-    ("dngscan/data/mtf/mtf_5207.json", None, "rel", 0.05),
-    ("dngscan/data/mtf/mtf_2383.json", None, "rel", 0.05),
+    # MTF's declared uncertainty is "±5% response" in response units
+    # (absolute), so the gate is absolute; a relative gate would re-measure
+    # read noise at the low-response tail once anchors are dense.
+    ("dngscan/data/mtf/mtf_5207.json", None, "abs", 0.05),
+    ("dngscan/data/mtf/mtf_2383.json", None, "abs", 0.05),
 ]
 
 

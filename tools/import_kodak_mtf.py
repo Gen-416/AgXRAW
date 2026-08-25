@@ -169,6 +169,7 @@ SECOND_PASS = {
 
 def _merged_channels(key):
     import copy
+    import math
     chans = copy.deepcopy(DATA[key]["channels"])
     for ch, pts in SECOND_PASS.get(key, {}).items():
         xs = [r[0] for r in chans[ch]]
@@ -176,6 +177,58 @@ def _merged_channels(key):
             if all(abs(f - f0) > 0.5 for f0 in xs):
                 chans[ch].append([f, r])
         chans[ch].sort(key=lambda r: r[0])
+    # Dense 8x sub-pixel scan (third pass, tools/scan_chart_curves.py):
+    # accepted only where it agrees with the verified-anchor curve within
+    # the declared +-0.05 response (see the granularity importer's note).
+    scan_path = Path(__file__).parent / "chart_scans" / f"mtf_{key}_scan.json"
+    if scan_path.exists():
+        try:
+            from scipy.interpolate import PchipInterpolator
+        except ImportError:
+            return chans
+        scan = json.loads(scan_path.read_text())
+        for ch, rows in chans.items():
+            base = sorted(rows, key=lambda r: r[0])
+            lx = [math.log10(r[0]) for r in base]
+            fit = PchipInterpolator(lx, [r[1] for r in base])
+            added = rejected = 0
+            peak_f = max(base, key=lambda r: r[1])[0]
+            cands = []
+            for fq, resp in scan["channels"].get(ch, []):
+                x = math.log10(fq)
+                if not (lx[0] <= x <= lx[-1]):
+                    continue
+                if any(abs(x - x0) <= 0.01 for x0 in lx):
+                    continue
+                ref = float(fit(x))
+                dev = abs(resp - ref)
+                # dual tolerance: the read-noise gate is absolute (declared
+                # +-0.05 response), but the shipped-kernel residual budget is
+                # log-space (<= ln 1.15, test_film_optics_scatter), so accept
+                # only points that also stay within ln(1.10) of the verified
+                # curve — otherwise tail points (response ~0.2) can carry
+                # 25% log deviation into the anchor set.
+                logdev = abs(math.log(max(resp, 1e-6) / max(ref, 1e-6)))
+                if dev <= 0.05 and logdev <= math.log(1.10):
+                    cands.append((dev, fq, resp))
+                else:
+                    rejected += 1
+            # best-agreement first; past the adjacency-bump peak the anchor
+            # sequence must roll off monotonically (asset contract), so a
+            # candidate whose read noise would break that is rejected.
+            for dev, fq, resp in sorted(cands):
+                if fq > peak_f:
+                    prev = max((r for r in rows if r[0] < fq), key=lambda r: r[0], default=None)
+                    nxt = min((r for r in rows if r[0] > fq), key=lambda r: r[0], default=None)
+                    if (prev is not None and prev[0] > peak_f and resp > prev[1]) or \
+                       (nxt is not None and resp < nxt[1]):
+                        rejected += 1
+                        continue
+                rows.append([fq, resp])
+                rows.sort(key=lambda r: r[0])
+                added += 1
+            if added or rejected:
+                print(f"  scan merge mtf{key}.{ch}: +{added}, rejected {rejected}")
     return chans
 
 

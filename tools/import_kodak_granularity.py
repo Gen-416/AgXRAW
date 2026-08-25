@@ -236,10 +236,78 @@ def _merge_second_pass(data: dict, second: dict) -> dict:
     return out
 
 
-DATA_2383_MERGED = _merge_second_pass(DATA_2383, SECOND_PASS_2383)
+def _merge_chart_scan(data: dict, key: str) -> dict:
+    """Merge dense 8x sub-pixel scan anchors (tools/chart_scans/, third
+    precision pass 2026-08-25, see tools/scan_chart_curves.py).
+
+    Conservative: a scan point enters the asset only if it agrees with the
+    curve defined by the verified anchors (manual + targeted second pass)
+    within the declared read uncertainty (0.03 D / 5% sigma) — dense points
+    shrink interpolation ambiguity; disagreeing points are counted and left
+    out (dash gaps and half-merged stroke zones misassign occasionally, and
+    real deviations were already captured by the visually verified second
+    pass)."""
+    import copy
+    import json as _json
+
+    path = Path(__file__).parent / "chart_scans" / f"granularity_{key}_scan.json"
+    if not path.exists():
+        return data
+    try:
+        import numpy as _np
+        from scipy.interpolate import PchipInterpolator
+    except ImportError:
+        return data
+    scan = _json.loads(path.read_text())
+    out = copy.deepcopy(data)
+    for ch, node in out["channels"].items():
+        for table, tol_kind, tol in (("density_loge", "abs", 0.03),
+                                     ("sigma_loge", "rel", 0.05)):
+            rows = node[table]
+            base = sorted(rows, key=lambda r: r[0])
+            bx = [r[0] for r in base]
+            keep = [0] + [i for i in range(1, len(bx)) if bx[i] > bx[i - 1] + 1e-9]
+            f = PchipInterpolator([bx[i] for i in keep],
+                                  [base[i][1] for i in keep])
+            added = rejected = 0
+            cands = []
+            for x, y in scan["channels"].get(ch, {}).get(table, []):
+                if not (bx[0] <= x <= bx[-1]):
+                    continue
+                if any(abs(x - x0) <= 0.015 for x0 in bx):
+                    continue
+                ref = float(f(x))
+                dev = abs(y - ref) if tol_kind == "abs" else abs(y - ref) / max(abs(ref), 1e-9)
+                if dev <= tol:
+                    cands.append((dev, x, y))
+                else:
+                    rejected += 1
+            # best-agreement first; a candidate whose read noise would break
+            # the density curve's monotonicity is rejected rather than let
+            # +-0.01 D wiggle into the table (the asset contract requires
+            # strictly increasing density).
+            monotone = table == "density_loge"
+            for dev, x, y in sorted(cands):
+                if monotone:
+                    prev = max((r for r in rows if r[0] < x), key=lambda r: r[0], default=None)
+                    nxt = min((r for r in rows if r[0] > x), key=lambda r: r[0], default=None)
+                    if (prev is not None and y <= prev[1]) or (nxt is not None and y >= nxt[1]):
+                        rejected += 1
+                        continue
+                rows.append([x, y])
+                rows.sort(key=lambda r: r[0])
+                added += 1
+            if added or rejected:
+                print(f"  scan merge {key}.{ch}.{table}: +{added}, rejected {rejected}")
+    return out
+
+
+DATA_2383_MERGED = _merge_chart_scan(
+    _merge_second_pass(DATA_2383, SECOND_PASS_2383), "2383")
+DATA_5207_MERGED = _merge_chart_scan(DATA_5207, "5207")
 
 DATASETS = {
-    "5207": (DATA_5207, CAL_5207, "granularity_5207.json", 5.0),
+    "5207": (DATA_5207_MERGED, CAL_5207, "granularity_5207.json", 5.0),
     "2383": (DATA_2383_MERGED, CAL_2383, "granularity_2383.json", 1.95),
 }
 
