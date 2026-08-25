@@ -1,0 +1,59 @@
+{
+ "format": "dngscan-external-datasets-1",
+ "provenance": {
+  "purpose": "公开实拍/胶片相关外部数据资产登记册:逐项记录可获取性、许可、污染链与允许用途。owner 决策(2026-08-25):可以使用公开数据集,但必须标出处;实拍数据只做方向性检查(色相旋转方向、饱和度传递符号、高光行为),绝不当绝对真值——所有经过扫描链的数据都携带'胶片×扫描仪×反相软件'合成污染(经验测量立场研究,2026-08-25 五立场报告)。本文件是登记册,不含数据本体;数据不入库。",
+  "surveyed": "2026-08-25"
+ },
+ "entries": [
+  {
+   "id": "cinestill800t-paired",
+   "name": "CineStill 800T 数码-胶片成对数据集 (sillystill)",
+   "urls": ["https://arxiv.org/abs/2411.15967", "https://github.com/mikasenghaas/sillystill"],
+   "status": "宣称贡献但未发布:论文摘要称贡献对齐成对数据集,仓库 README 的 Zenodo/HuggingFace 链接为空占位(2026-08-25 核实,标注 Not yet available),仓库本身无数据目录、无许可声明",
+   "license": null,
+   "pollution": "若发布:胶片侧经冲洗+扫描链,反相语义未知",
+   "allowed_use": "watch——发布后重新评估;届时仅方向性检查",
+   "value": "若发布则是公开世界唯一的对齐数码-胶片成对集"
+  },
+  {
+   "id": "abpy-color-neg-resources",
+   "name": "abpy 彩色负片处理资源(反相 LUT 与脚本)",
+   "urls": ["https://github.com/abpy/color-neg-resources", "https://abpy.github.io/2023/08/20/color-neg.html"],
+   "status": "可获取",
+   "license": "MIT",
+   "pollution": "非测量数据——是反相工具本身;其博客对扫描链污染机制(背光×染料×传感器 metamerism)的记载是分析参考",
+   "allowed_use": "工具与方法参考;与'扫描件锚点'开放问题(五立场报告开放问题 1)直接相关;不是验证数据",
+   "value": "反相语义的公开实现样本;暗房印相=ground truth 立场的一手论述"
+  },
+  {
+   "id": "rawtherapee-haldclut",
+   "name": "RawTherapee/G'MIC Film Simulation HaldCLUT 集",
+   "urls": ["https://rawpedia.rawtherapee.com/Film_Simulation", "https://discuss.pixls.us/t/how-was-the-rawtherapee-film-simulation-collection-created-and-thanks/34265"],
+   "status": "可获取",
+   "license": "CC0(集合声明)",
+   "pollution": "非测量:作者自认手调审美预设(pixls.us 帖),名为胶片实为口味",
+   "allowed_use": "仅可作外观层(appearance recipes)口味语汇参考素材——owner 已裁决不得当任何形式的真值(2026-08-24 五立场裁决,不做类第 9 条)",
+   "value": "用户口味既有语汇的采样"
+  },
+  {
+   "id": "rff-it8-film-scans",
+   "name": "论坛散布的 IT8/ColorChecker 胶片实拍扫描件",
+   "urls": ["https://www.rangefinderforum.com/threads/looking-for-it8-colorchecker-scans-shot-on-film.4819895/"],
+   "status": "零散存在,无系统整理",
+   "license": null,
+   "pollution": "拍摄条件/冲洗批次/扫描链均不受控且不记录",
+   "allowed_use": "不使用:无许可、无污染声明,单件数据的方向性结论也不可靠",
+   "value": "低"
+  },
+  {
+   "id": "filmset-filmnet",
+   "name": "FilmSet 数据集 (FilmNet)",
+   "urls": ["https://arxiv.org/abs/2301.08880", "https://github.com/CXH-Research/FilmNet"],
+   "status": "可获取",
+   "license": "见仓库",
+   "pollution": "五立场研究(经验测量笔记)评估为可信度低:胶片标签与处理链存疑",
+   "allowed_use": "不使用(可信度不足)",
+   "value": "低"
+  }
+ ]
+}
