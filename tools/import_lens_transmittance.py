@@ -6,8 +6,8 @@ Upstream: https://y-g-jiang.github.io/lens-transmittance-data/ — one JSON
 per measurement sheet, spectral transmittance in percent on a uniform
 380-755 nm @ 1 nm grid (376 samples), covering lenses and filters. These
 are the author's own bench measurements (same licensing posture as the
-JPTC data: no explicit license published, author being contacted, see
-NOTICE.md).
+JPTC data: permission granted 2026-08-25, no formal license, use
+permitted with credit, see NOTICE.md).
 
 The importer validates every file (uniform grid, finite values, plausible
 percent range) and bundles them into ONE excisable data file
@@ -66,9 +66,10 @@ def main() -> int:
             "source": "https://y-g-jiang.github.io/lens-transmittance-data/",
             "nature": "first-party bench measurements by y-g-jiang "
                       "(spectral transmittance, percent, 1 nm grid)",
-            "license": "no explicit license published; author being "
-                       "contacted (NOTICE.md); this single file is the "
-                       "entire footprint",
+            "license": "permission granted by the author 2026-08-25: "
+                       "no formal license, use permitted with credit "
+                       "(NOTICE.md); this single file is the entire "
+                       "footprint",
         },
         "entries": entries,
     }
