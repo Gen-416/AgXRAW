@@ -148,3 +148,14 @@ data at https://y-g-jiang.github.io/lens-transmittance-data/.
 use permitted with credit (same grant as the JPTC measurements).
 Credit: measurements by y-g-jiang (姜尧耕), https://y-g-jiang.github.io/.
 Single-file removable.
+
+## JPTC collect sets (y-g-jiang)
+
+`dngscan/data/priors/jptc_collect/*.json` are derived from the author's
+first-party collect sets at https://y-g-jiang.github.io/data/collect/
+(formats JPTC-DARK/1, JPTC-ISOGAIN/1, JPTC-SPECTRUM/1, JPTC/2; 13 sets,
+9 camera bodies, tester 姜尧耕). All derivations (gain curves anchored on
+PTC fits, temporal read noise with the declared sigma-clip undone, banding
+decomposition, noise-whiteness ratios) are ours and documented in
+`tools/import_jptc_collect.py`. Same credit-based grant of 2026-08-25 as
+the other first-party data; the directory is removable as a unit.

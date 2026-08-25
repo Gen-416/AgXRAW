@@ -52,16 +52,56 @@ class TestJptcImporter(unittest.TestCase):
         self.assertEqual(hits[1]["shutter"], "mechanical")
 
     def test_multi_measurement_preference(self):
-        """A7RM6 has iso100 mech/elec + iso640 mech in the JPTC tier: lowest
-        ISO wins (fwc_e semantics), then the entry with resolved read noise
-        (electronic). Queried on the tier directly — in find_priors the
-        curated A7RM6 entry shadows all of these by design."""
+        """A7RM6 has three single-ISO PTC entries and three collect sets in
+        the JPTC tier: the collect entry with a full gain curve wins, and
+        among those the mechanical-shutter set. Queried on the tier directly
+        — in find_priors the curated A7RM6 entry shadows all of these."""
         hits = [e for e in priors._jptc_entries() if "ILCE-7RM6" in e["model_equals"]]
-        self.assertEqual(len(hits), 3)
+        self.assertEqual(len(hits), 6)
         e = hits[0]
-        self.assertEqual(e["measured_iso"], 100)
-        self.assertEqual(e["shutter"], "electronic")
+        self.assertTrue(e["gain_log2iso_log2epd"])
+        self.assertEqual(e["shutter"], "mechanical")
         self.assertIsNotNone(priors.read_noise_e(e, 100))
+
+    def test_collect_gain_curve_cross_instrument(self):
+        """The collect gain curve at ISO 640 must agree with the completely
+        independent iso640 PTC ramp (two instruments, same sensor): the
+        strongest internal-consistency pin the tier has."""
+        hits = [e for e in priors._jptc_entries()
+                if "ILCE-7RM6" in e["model_equals"] and e.get("gain_log2iso_log2epd")
+                and e["shutter"] == "mechanical"]
+        curve_gain = priors.gain_e_per_dn(hits[0], 640)
+        ptc640 = [e for e in priors._jptc_entries()
+                  if "ILCE-7RM6" in e["model_equals"] and e.get("measured_iso") == 640]
+        ptc_gain = priors.gain_e_per_dn(ptc640[0], 640)
+        self.assertLess(abs(curve_gain - ptc_gain) / ptc_gain, 0.06)
+
+    def test_collect_entries_resolve_new_makes(self):
+        for mk, md in [("Canon", "Canon EOS R5 Mark II"),
+                       ("Canon", "Canon EOS R6 Mark II"),
+                       ("Panasonic", "DC-S1RM2"),
+                       ("Leica", "M11 Monochrom")]:
+            e = priors.find_priors(mk, md)
+            self.assertIsNotNone(e, md)
+            self.assertIn("collect", e["source"])
+            self.assertGreater(priors.gain_e_per_dn(e, 100), 0)
+            self.assertIsNotNone(priors.read_noise_e(e, 100))
+
+    def test_collect_whiteness_evidence_present(self):
+        e = priors.find_priors("Canon", "Canon EOS R6 Mark II")
+        w = dict((round(2 ** x), v) for x, v in e["noise_whiteness_h_log2iso"])
+        # R6 II's base-ISO RAW carries visible spatial filtering (whiteness
+        # well below 1) that fades by high ISO — the oracle this field exists
+        # for; if this pin breaks, the derivation changed, not the camera.
+        self.assertLess(w[100], 0.75)
+        self.assertGreater(max(w.values()), 0.9)
+
+    def test_gain_none_without_anchor(self):
+        """Dark-only collect sets have no absolute gain: consumer -> None."""
+        darkonly = [e for e in priors._jptc_entries()
+                    if "s1r2-elec" in e["source"]]
+        self.assertTrue(darkonly)
+        self.assertIsNone(priors.gain_e_per_dn(darkonly[0], 100))
 
     def test_new_makes_resolve(self):
         for make, model in [

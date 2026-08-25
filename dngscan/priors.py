@@ -152,11 +152,45 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "prnu": item.get("prnu"),
             "source": f"JPTC/2 first-party measurement ({path.name})",
         })
+    # Collect sets (data/priors/jptc_collect/): multi-instrument entries with
+    # gain and read-noise CURVES (see tools/import_jptc_collect.py).
+    shutter_map = {"机械快门": "mechanical", "电子快门": "electronic"}
+    for path in sorted((Path(__file__).parent / "data" / "priors" / "jptc_collect").glob("*.json")):
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if item.get("format") != "dngscan-jptc-collect-1":
+            continue
+        entry: dict[str, Any] = {
+            "id": item["id"],
+            "make_contains": item["make"],
+            "model_equals": {str(m).upper() for m in item.get("model_candidates", [])},
+            "gain_log2iso_log2epd": [(float(x), float(y)) for x, y in
+                                     item.get("gain_log2iso_log2epd", [])],
+            "read_noise_log2iso_log2e": [(float(x), float(y)) for x, y in
+                                         item.get("read_noise_log2iso_log2e", [])],
+            "pdr_log2iso_ev": [],
+            "gain_jump_isos": item.get("gain_jump_isos", []),
+            "shutter": shutter_map.get(str(item.get("shutter")), item.get("shutter")),
+            "measured_iso": int(item["ptc_anchor"]["iso"]) if item.get("ptc_anchor") else 10 ** 9,
+            "noise_whiteness_h_log2iso": item.get("noise_whiteness_h_log2iso"),
+            "banding_log2iso": item.get("banding_log2iso"),
+            "source": f"JPTC collect set ({path.name})",
+        }
+        for k in ("unity_gain_ev", "fwc_e", "fwc_e_uncertainty"):
+            if k in item:
+                entry[k] = item[k]
+        if item.get("ptc_anchor"):
+            entry["prnu"] = item["ptc_anchor"].get("prnu")
+        entries.append(entry)
     # One model can have several measurements (shutter modes, ISOs). Order
-    # decides which one find_priors returns: lowest ISO first (fwc_e is at
-    # the measured ISO, so only the lowest-ISO entry approximates native
-    # full well), then entries whose read noise resolved, then mechanical.
+    # decides which one find_priors returns: entries with a full gain curve
+    # first (they encode extended-segment and conversion-gain structure the
+    # single-ISO reciprocal law cannot), then lowest anchor ISO (fwc_e is at
+    # the measured ISO), then resolved read noise, then mechanical shutter.
     entries.sort(key=lambda e: (
+        0 if e.get("gain_log2iso_log2epd") else 1,
         e["measured_iso"],
         0 if e["read_noise_log2iso_log2e"] else 1,
         0 if e.get("shutter") == "mechanical" else 1,
@@ -221,6 +255,14 @@ def _interp(curve: list[tuple[float, float]], x: float) -> float:
 
 def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
     if not iso or iso <= 0:
+        return None
+    # A measured gain curve (JPTC collect tier) wins over the reciprocal
+    # law: extended-ISO segments and conversion-gain switches break the
+    # unity-gain extrapolation, and the curve encodes both.
+    curve = priors.get("gain_log2iso_log2epd")
+    if curve:
+        return float(2.0 ** _interp(curve, math.log2(iso)))
+    if "unity_gain_ev" not in priors:
         return None
     return float(2.0 ** priors["unity_gain_ev"] / iso)
 

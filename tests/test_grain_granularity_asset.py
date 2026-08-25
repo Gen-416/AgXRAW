@@ -65,11 +65,14 @@ class GranularityAssetTests(unittest.TestCase):
                 self.assertAlmostEqual(
                     sd[0][1], ch["sigma_loge"][0][1], places=5,
                     msg=f"{key}/{name}")
-                # last join row sits at the declared logE coverage limit
+                # last join row sits at the declared logE coverage limit;
+                # composition is monotone-cubic (import 2026-08-25), so the
+                # linear expectation here matches only to read-uncertainty
+                # scale (±0.03 D declared), not float scale
                 import numpy as np
                 d_tab = np.array(ch["density_loge"], dtype=float)
                 expect_d = float(np.interp(loge_max, d_tab[:, 0], d_tab[:, 1]))
-                self.assertAlmostEqual(sd[-1][0], expect_d, places=3,
+                self.assertAlmostEqual(sd[-1][0], expect_d, delta=0.02,
                                        msg=f"{key}/{name}")
 
     def test_5207_chart_facts(self) -> None:

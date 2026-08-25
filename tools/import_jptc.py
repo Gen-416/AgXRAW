@@ -96,6 +96,15 @@ def fit_ptc(
     # quantization or PDAF-row correction) that drag a single least-squares
     # pass. Two trimming rounds drop points beyond 2.5x the residual RMS; the
     # exclusion count is DECLARED in the entry, never silent.
+    # Estimator note (2026-08-25 precision pass): a 1/y_hat weighted fit is
+    # nominally optimal for variance data (var of a sample variance scales
+    # with variance^2), but it concentrates weight on the dark end, where
+    # MODEL error dominates (quantisation, black-level drift) rather than
+    # sampling error with N~5.7M px/point — and it shifted A7M5's gain +5%
+    # AWAY from both independent anchors (P2P (ES) read noise 8.11 e-,
+    # A7M4 DxO-derived unity 427.8). Trimmed unweighted OLS across the
+    # shot-noise decade stays; precision policy does not mean adopting the
+    # estimator with the better nameplate.
     keep = np.ones(len(x), dtype=bool)
     slope = intercept = 0.0
     for _ in range(3):
