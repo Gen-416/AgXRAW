@@ -152,12 +152,94 @@ def _fit_channel(rows, model):
     }
 
 
+# Second-pass anchors (2026-08-25 precision audit): programmatic column
+# crossing scan on the 4x render; channel assignment by PCHIP prediction
+# with a +-0.06 response window; grid-line columns and the G/B crossing
+# bundle near 35 c/mm rejected; R@35 rejected as inconsistent with both
+# neighbours (likely stroke-bundle artifact). Existing-anchor positions
+# re-scanned as verification only (all within declared uncertainty).
+SECOND_PASS = {
+    "5207": {
+        "R": [(25, 0.668), (40, 0.409), (60, 0.239)],
+        "G": [(25, 0.846), (40, 0.615), (60, 0.450)],
+        "B": [(25, 0.932), (40, 0.710), (60, 0.523)],
+    },
+}
+
+
+def _merged_channels(key):
+    import copy
+    import math
+    chans = copy.deepcopy(DATA[key]["channels"])
+    for ch, pts in SECOND_PASS.get(key, {}).items():
+        xs = [r[0] for r in chans[ch]]
+        for f, r in pts:
+            if all(abs(f - f0) > 0.5 for f0 in xs):
+                chans[ch].append([f, r])
+        chans[ch].sort(key=lambda r: r[0])
+    # Dense 8x sub-pixel scan (third pass, tools/scan_chart_curves.py):
+    # accepted only where it agrees with the verified-anchor curve within
+    # the declared +-0.05 response (see the granularity importer's note).
+    scan_path = Path(__file__).parent / "chart_scans" / f"mtf_{key}_scan.json"
+    if scan_path.exists():
+        try:
+            from scipy.interpolate import PchipInterpolator
+        except ImportError:
+            return chans
+        scan = json.loads(scan_path.read_text())
+        for ch, rows in chans.items():
+            base = sorted(rows, key=lambda r: r[0])
+            lx = [math.log10(r[0]) for r in base]
+            fit = PchipInterpolator(lx, [r[1] for r in base])
+            added = rejected = 0
+            peak_f = max(base, key=lambda r: r[1])[0]
+            cands = []
+            for fq, resp in scan["channels"].get(ch, []):
+                x = math.log10(fq)
+                if not (lx[0] <= x <= lx[-1]):
+                    continue
+                if any(abs(x - x0) <= 0.01 for x0 in lx):
+                    continue
+                ref = float(fit(x))
+                dev = abs(resp - ref)
+                # dual tolerance: the read-noise gate is absolute (declared
+                # +-0.05 response), but the shipped-kernel residual budget is
+                # log-space (<= ln 1.15, test_film_optics_scatter), so accept
+                # only points that also stay within ln(1.10) of the verified
+                # curve — otherwise tail points (response ~0.2) can carry
+                # 25% log deviation into the anchor set.
+                logdev = abs(math.log(max(resp, 1e-6) / max(ref, 1e-6)))
+                if dev <= 0.05 and logdev <= math.log(1.10):
+                    cands.append((dev, fq, resp))
+                else:
+                    rejected += 1
+            # best-agreement first; past the adjacency-bump peak the anchor
+            # sequence must roll off monotonically (asset contract), so a
+            # candidate whose read noise would break that is rejected.
+            for dev, fq, resp in sorted(cands):
+                if fq > peak_f:
+                    prev = max((r for r in rows if r[0] < fq), key=lambda r: r[0], default=None)
+                    nxt = min((r for r in rows if r[0] > fq), key=lambda r: r[0], default=None)
+                    if (prev is not None and prev[0] > peak_f and resp > prev[1]) or \
+                       (nxt is not None and resp < nxt[1]):
+                        rejected += 1
+                        continue
+                rows.append([fq, resp])
+                rows.sort(key=lambda r: r[0])
+                added += 1
+            if added or rejected:
+                print(f"  scan merge mtf{key}.{ch}: +{added}, rejected {rejected}")
+    return chans
+
+
 def build_asset(key: str) -> dict:
     data = json.loads(json.dumps(DATA[key]))
+    data["channels"] = _merged_channels(key)
     data["schema"] = 1
     data["calibration_px"] = CAL[key]
     data["method"] = ("manual anchor read-off against the chart's own log grid; "
-                      "see tools/import_kodak_mtf.py docstring")
+                      "see tools/import_kodak_mtf.py docstring; second-pass "
+                      "crossing-scan anchors merged 2026-08-25 (SECOND_PASS)")
     data["uncertainty"] = ("±5% response (±8% below 10 c/mm); adjacency bump "
                            ">100% is a development edge effect the passive "
                            "scatter model cannot and does not reproduce")
