@@ -33,6 +33,13 @@
    "spectrum-v.csv": "e087f7500ac01e62f4805e7351d50e673b44dbaf4df8fe67eca033b130974b64"
   }
  },
+ "acquisition_contract": {
+  "adc_step": "1",
+  "linearisation_curve": "companded",
+  "clip_variance_factor": "0.9938883771107201",
+  "sigma_clip_correction": "applied",
+  "sheppard_assumption": "uniform quantisation step at black level; NOT verified against the companded linearisation curve (declared limitation)"
+ },
  "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
  "read_noise_dn_log2iso": [
   [
@@ -522,18 +529,36 @@
  "ptc_anchor": {
   "iso": 100,
   "gain_e_per_dn": 2.232841585033971,
-  "read_noise_e": 3.674296062640633,
-  "fwc_e": 35436.83646502497,
-  "fwc_e_uncertainty": 1608.9658678937071,
-  "prnu": NaN,
-  "fit_relative_rms": 0.005337647107985798,
   "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
-  "model_sensitivity": 0.04540376705131975,
+  "fit_model_effective": "linear-0.10 (prnu unresolved -> plain linear)",
+  "gain_alternatives": {
+   "linear-0.10": 2.232841585033971,
+   "quadratic-0.35": 2.334221004223353
+  },
+  "gain_estimator_spread_rel": 0.04540376705131975,
+  "prnu_status": "unresolved",
+  "prnu_iterations": 0,
+  "prnu_converged": false,
+  "read_noise_e": 3.674296062640633,
+  "read_noise_status": "measured",
+  "fwc_e": 35436.83646502497,
+  "fwc_model_spread_e": 1608.9658678937071,
+  "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; fwc_model_spread_e = capacity x estimator spread (model-choice spread, not a statistical uncertainty); physical full well not claimed",
+  "last_unsaturated_signal_e": 27053.75232132516,
+  "prnu": null,
+  "prnu_quadratic_fit": 0.003868653652894073,
+  "fit_relative_rms": 0.005337647107985798,
+  "fit_relative_rms_alternatives": {
+   "linear-0.10": 0.005337647107985798,
+   "quadratic-0.35": 0.005234415743371834
+  },
+  "fit_points": 11,
+  "fit_points_excluded": 0,
   "quality": "ok"
  },
  "unity_gain_ev": 7.8027,
  "fwc_e": 35436.83646502497,
- "fwc_e_uncertainty": 1608.9658678937071,
+ "fwc_model_spread_e": 1608.9658678937071,
  "read_noise_log2iso_log2e": [
   [
    6.643856189774724,

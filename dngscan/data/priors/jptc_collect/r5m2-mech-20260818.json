@@ -35,6 +35,13 @@
    "spectrum-v.csv": "52a36b57caf1afdba66cc786826b0480243caa00d335acb7b24d1325ad9c5339"
   }
  },
+ "acquisition_contract": {
+  "adc_step": "1",
+  "linearisation_curve": "identity",
+  "clip_variance_factor": "0.9938883771107201",
+  "sigma_clip_correction": "applied",
+  "sheppard_assumption": "uniform quantisation step at black level; NOT verified against the companded linearisation curve (declared limitation)"
+ },
  "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
  "read_noise_dn_log2iso": [
   [
@@ -440,13 +447,31 @@
  "ptc_anchor": {
   "iso": 100,
   "gain_e_per_dn": 2.7547799280028356,
-  "read_noise_e": 0.0,
-  "fwc_e": 43720.765283276654,
-  "fwc_e_uncertainty": 2914.559467936246,
-  "prnu": NaN,
-  "fit_relative_rms": 0.10004727206265226,
   "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
-  "model_sensitivity": 0.06666304784584993,
+  "fit_model_effective": "linear-0.10 (prnu unresolved -> plain linear)",
+  "gain_alternatives": {
+   "linear-0.10": 2.7547799280028356,
+   "quadratic-0.35": 2.9384219541480756
+  },
+  "gain_estimator_spread_rel": 0.06666304784584993,
+  "prnu_status": "unresolved",
+  "prnu_iterations": 0,
+  "prnu_converged": false,
+  "read_noise_e": 0.0,
+  "read_noise_status": "below-resolution",
+  "fwc_e": 43720.765283276654,
+  "fwc_model_spread_e": 2914.559467936246,
+  "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; fwc_model_spread_e = capacity x estimator spread (model-choice spread, not a statistical uncertainty); physical full well not claimed",
+  "last_unsaturated_signal_e": 41941.61305440709,
+  "prnu": null,
+  "prnu_quadratic_fit": 0.004765432892010298,
+  "fit_relative_rms": 0.10004727206265226,
+  "fit_relative_rms_alternatives": {
+   "linear-0.10": 0.10004727206265226,
+   "quadratic-0.35": 0.033170752675381825
+  },
+  "fit_points": 17,
+  "fit_points_excluded": 0,
   "quality": "high-residual"
  },
  "gain_log2iso_log2epd": [
@@ -680,7 +705,7 @@
  "gain_jump_isos": [],
  "unity_gain_ev": 8.1058,
  "fwc_e": 43720.765283276654,
- "fwc_e_uncertainty": 2914.559467936246,
+ "fwc_model_spread_e": 2914.559467936246,
  "noise_whiteness_h_log2iso": [
   [
    5.6439,

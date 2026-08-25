@@ -144,7 +144,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "model_equals": {str(item["model"]).upper()},
             "unity_gain_ev": math.log2(iso * gain),
             "fwc_e": float(item["fwc_e"]),
-            "fwc_e_uncertainty": float(item.get("fwc_e_uncertainty", 0.0)),
+            "fwc_e_uncertainty": float(item.get("fwc_model_spread_e", 0.0)),
             "read_noise_log2iso_log2e": rn_curve,
             "pdr_log2iso_ev": [],
             "measured_iso": int(iso),
@@ -152,8 +152,9 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "prnu": item.get("prnu"),
             "quality": {
                 "fit_relative_rms": item.get("fit_relative_rms"),
-                "fit_model": item.get("fit_model"),
-                "model_sensitivity": item.get("model_sensitivity"),
+                "fit_model": item.get("fit_model_effective") or item.get("fit_model"),
+                "prnu_status": item.get("prnu_status"),
+                "model_sensitivity": item.get("gain_estimator_spread_rel"),
                 "status": item.get("quality", "ok"),
             },
             "source": f"JPTC/2 first-party measurement ({path.name})",
@@ -186,16 +187,19 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "within_var_raw_log2iso": item.get("within_var_raw_log2iso"),
             "source": f"JPTC collect set ({path.name})",
         }
-        for k in ("unity_gain_ev", "fwc_e", "fwc_e_uncertainty"):
+        for k in ("unity_gain_ev", "fwc_e"):
             if k in item:
                 entry[k] = item[k]
+        if "fwc_model_spread_e" in item:
+            entry["fwc_e_uncertainty"] = item["fwc_model_spread_e"]
         if item.get("ptc_anchor"):
             a = item["ptc_anchor"]
             entry["prnu"] = a.get("prnu")
             entry["quality"] = {
                 "fit_relative_rms": a.get("fit_relative_rms"),
-                "fit_model": a.get("fit_model"),
-                "model_sensitivity": a.get("model_sensitivity"),
+                "fit_model": a.get("fit_model_effective") or a.get("fit_model"),
+                "prnu_status": a.get("prnu_status"),
+                "model_sensitivity": a.get("gain_estimator_spread_rel"),
                 "status": a.get("quality", "ok"),
             }
         entries.append(entry)
@@ -273,6 +277,8 @@ def find_priors(make: str | None, model: str | None,
     for entry in _bulk_entries():
         name_u = str(entry["make_model"]).upper()
         if make_token in name_u and model_u in name_u:
+            entry = dict(entry)
+            entry["mode_match"] = "bulk-model-only"
             return entry
     return None
 

@@ -18,10 +18,13 @@ holds up to four instruments for one camera+mode:
                   into the RAW, >1 = sharpening)
 
 Derived entry (format dngscan-jptc-collect-1): absolute gain curve
-gain(iso) anchored at the PTC fit, read-noise curves in DN and electrons,
-dual-conversion-gain switch detection (gain*iso jump >15%), FWC with the
-PTC bracket uncertainty, banding and whiteness evidence. Licensing: the
-author granted credit-based use 2026-08-25 (NOTICE.md).
+gain(iso) anchored at the PTC fit, read-noise curves in DN and electrons
+(Sheppard-corrected, unresolved when the correction floors), plateau
+gain-jump candidates (symmetric test; extended-ISO boundary vs DCG left
+undistinguished), fwc as ADC code capacity with estimator spread,
+noise-whiteness evidence, and raw within-row/col metrics (semantics
+unconfirmed upstream). Licensing: credit-based grant 2026-08-25
+(NOTICE.md).
 
 Usage:
     python tools/import_jptc_collect.py <set-dir> --out dngscan/data/priors/jptc_collect/<id>.json
@@ -67,10 +70,15 @@ def read_dark(path: Path) -> tuple[dict, dict]:
     """{iso: {"bl": mean green BL, "rn_dn": temporal read noise,
               "row_var": ..., "col_var": ..., "total_var": ...}}"""
     header, rows = _parse_rows(path)
+    clip_factor_status = "declared"
     try:
         factor = float(header.get("ClipVarianceFactor", 1.0))
     except ValueError:
-        factor = 1.0  # old collector wrote 'undefined'; clip left uncorrected
+        # old collector wrote 'undefined': the sigma-clip bias is NOT undone
+        # and every product must say so (review P2-5), not claim it was
+        factor = 1.0
+        clip_factor_status = "unresolved"
+    header["_clip_factor_status"] = clip_factor_status
     try:
         adc_step = float(header.get("AdcStep", 0.0))
     except ValueError:
@@ -193,6 +201,23 @@ def ptc_anchor(set_dir: Path, dark: dict) -> tuple[int, dict] | None:
     return iso, fit_ptc(g1_mean, g1_std, black, white)
 
 
+def _anchor_evidence(a_iso: int, fit: dict) -> dict:
+    """Complete estimator evidence for the anchor (review P2-2): all three
+    gains, both residual sets, both PRNU estimates, statuses — the model
+    dispute must be reconstructible from the asset alone."""
+    keys = ("gain_e_per_dn", "fit_model", "fit_model_effective",
+            "gain_alternatives", "gain_estimator_spread_rel",
+            "prnu_status", "prnu_iterations", "prnu_converged",
+            "read_noise_e", "read_noise_status", "fwc_e",
+            "fwc_model_spread_e", "fwc_semantics",
+            "last_unsaturated_signal_e", "prnu", "prnu_quadratic_fit",
+            "fit_relative_rms", "fit_relative_rms_alternatives",
+            "fit_points", "fit_points_excluded", "quality")
+    out = {"iso": a_iso}
+    out.update({k: fit.get(k) for k in keys})
+    return out
+
+
 def _sha256(path: Path) -> str:
     import hashlib
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -236,12 +261,30 @@ def build(set_dir: Path, meta: dict | None) -> dict:
             "formats": [],
             "inputs": {},
         },
-        "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip "
-                          "undone via the declared ClipVarianceFactor; Sheppard "
-                          "step^2/12 quantisation correction applied per frame",
     }
     entry["source"]["formats"].append("JPTC-DARK/1")
     entry["source"]["inputs"] = input_hashes
+    clip_status = header.get("_clip_factor_status", "declared")
+    entry["acquisition_contract"] = {
+        "adc_step": header.get("AdcStep"),
+        "linearisation_curve": header.get("LinearisationCurve"),
+        "clip_variance_factor": header.get("ClipVarianceFactor"),
+        "sigma_clip_correction": ("applied" if clip_status == "declared"
+                                  else "unresolved"),
+        "sheppard_assumption": "uniform quantisation step at black level; "
+                               "NOT verified against the companded "
+                               "linearisation curve (declared limitation)",
+    }
+    if clip_status == "declared":
+        entry["noise_aperture"] = (
+            "paired-frame temporal std (FPN excluded); sigma clip undone via "
+            "the declared ClipVarianceFactor; Sheppard step^2/12 quantisation "
+            "correction applied per frame")
+    else:
+        entry["noise_aperture"] = (
+            "paired-frame temporal std (FPN excluded); ClipVarianceFactor "
+            "undeclared upstream so the sigma-clip bias is NOT undone "
+            "(sigma_clip_correction=unresolved); Sheppard step^2/12 applied")
     rn_dn_curve = [[math.log2(iso), d["rn_dn"]]
                    for iso, d in sorted(dark.items()) if d["rn_dn"] is not None]
     entry_unresolved = sorted(iso for iso, d in dark.items() if d["rn_dn"] is None)
@@ -277,17 +320,10 @@ def build(set_dir: Path, meta: dict | None) -> dict:
     if anchor is not None and not rel:
         a_iso, fit = anchor
         entry["source"]["formats"].append("JPTC/2 (ptc anchor)")
-        entry["ptc_anchor"] = {
-            "iso": a_iso, "gain_e_per_dn": fit["gain_e_per_dn"],
-            "read_noise_e": fit["read_noise_e"], "fwc_e": fit["fwc_e"],
-            "fwc_e_uncertainty": fit["fwc_e_uncertainty"],
-            "prnu": fit["prnu"], "fit_relative_rms": fit["fit_relative_rms"],
-            "fit_model": fit["fit_model"], "model_sensitivity": fit["model_sensitivity"],
-            "quality": fit["quality"],
-        }
+        entry["ptc_anchor"] = _anchor_evidence(a_iso, fit)
         entry["unity_gain_ev"] = round(math.log2(a_iso * fit["gain_e_per_dn"]), 4)
         entry["fwc_e"] = fit["fwc_e"]
-        entry["fwc_e_uncertainty"] = fit["fwc_e_uncertainty"]
+        entry["fwc_model_spread_e"] = fit["fwc_model_spread_e"]
         if a_iso in dark:
             entry["read_noise_log2iso_log2e"] = [
                 [math.log2(a_iso),
@@ -313,14 +349,7 @@ def build(set_dir: Path, meta: dict | None) -> dict:
             rel_at_anchor = rel[a_iso]
         scale = fit["gain_e_per_dn"] / rel_at_anchor
         gain_curve = {iso: r * scale for iso, r in rel.items()}
-        entry["ptc_anchor"] = {
-            "iso": a_iso, "gain_e_per_dn": fit["gain_e_per_dn"],
-            "read_noise_e": fit["read_noise_e"], "fwc_e": fit["fwc_e"],
-            "fwc_e_uncertainty": fit["fwc_e_uncertainty"],
-            "prnu": fit["prnu"], "fit_relative_rms": fit["fit_relative_rms"],
-            "fit_model": fit["fit_model"], "model_sensitivity": fit["model_sensitivity"],
-            "quality": fit["quality"],
-        }
+        entry["ptc_anchor"] = _anchor_evidence(a_iso, fit)
         entry["gain_log2iso_log2epd"] = [
             [math.log2(i), math.log2(g)] for i, g in gain_curve.items()]
         entry["read_noise_log2iso_log2e"] = [
@@ -336,10 +365,11 @@ def build(set_dir: Path, meta: dict | None) -> dict:
         # Extended-ISO segments make u rise from the very start (flat gain),
         # so a jump only counts when both neighbours are plateau-like
         # (adjacent ratio < 1.08 on each side).
-        # A plateau-to-plateau jump is EITHER a conversion-gain switch OR
-        # the extended-to-native-base boundary; the ladder alone cannot tell
-        # them apart, so the field claims neither — it lists every jump and
-        # leaves the semantics to curation (声明失实才是缺陷).
+        # A plateau-to-plateau jump (symmetric flatness test on both sides)
+        # is EITHER a conversion-gain switch OR the extended-to-native-base
+        # boundary; the ladder alone cannot tell them apart, so the field
+        # claims neither — it lists every jump and leaves the semantics to
+        # curation (声明失实才是缺陷).
         isos = sorted(gain_curve)
         u = [gain_curve[i] * i for i in isos]
         if any(v <= 0 for v in u):
@@ -358,7 +388,7 @@ def build(set_dir: Path, meta: dict | None) -> dict:
         entry["gain_jump_isos"] = jumps
         entry["unity_gain_ev"] = round(math.log2(a_iso * fit["gain_e_per_dn"]), 4)
         entry["fwc_e"] = fit["fwc_e"]
-        entry["fwc_e_uncertainty"] = fit["fwc_e_uncertainty"]
+        entry["fwc_model_spread_e"] = fit["fwc_model_spread_e"]
     for ax in ("h", "v"):
         sp = _find(set_dir, f"spectrum-{ax}.csv", f"*spectrum-{ax}.csv")
         if sp is not None:
@@ -384,8 +414,11 @@ def main() -> int:
             if s.get("id") == args.set_dir.name:
                 meta = s
     entry = build(args.set_dir, meta)
+    from import_jptc import sanitize_json
+    entry = sanitize_json(entry)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(entry, ensure_ascii=False, indent=1) + "\n")
+    args.out.write_text(json.dumps(entry, ensure_ascii=False, indent=1,
+                                   allow_nan=False) + "\n")
     haves = ", ".join(entry["source"]["formats"])
     print(f"wrote {args.out.name}: {entry['camera']} [{haves}] "
           f"rn_pts={len(entry.get('read_noise_dn_log2iso', []))} "

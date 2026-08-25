@@ -35,6 +35,13 @@
    "spectrum-v.csv": "7f66049401623010d841e24c67e71632dd9652016e4027e2ad920f07a76b247a"
   }
  },
+ "acquisition_contract": {
+  "adc_step": "1",
+  "linearisation_curve": "identity",
+  "clip_variance_factor": "0.9938883771107201",
+  "sigma_clip_correction": "applied",
+  "sheppard_assumption": "uniform quantisation step at black level; NOT verified against the companded linearisation curve (declared limitation)"
+ },
  "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
  "read_noise_dn_log2iso": [
   [
@@ -271,13 +278,31 @@
  "ptc_anchor": {
   "iso": 100,
   "gain_e_per_dn": 5.597617561934526,
-  "read_noise_e": 6.324582229715255,
-  "fwc_e": 88842.35593682605,
-  "fwc_e_uncertainty": 2160.954790204089,
-  "prnu": NaN,
-  "fit_relative_rms": 0.013807967837596235,
   "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
-  "model_sensitivity": 0.02432347462443138,
+  "fit_model_effective": "linear-0.10 (prnu unresolved -> plain linear)",
+  "gain_alternatives": {
+   "linear-0.10": 5.597617561934526,
+   "quadratic-0.35": 5.733771070659512
+  },
+  "gain_estimator_spread_rel": 0.02432347462443138,
+  "prnu_status": "unresolved",
+  "prnu_iterations": 0,
+  "prnu_converged": false,
+  "read_noise_e": 6.324582229715255,
+  "read_noise_status": "measured",
+  "fwc_e": 88842.35593682605,
+  "fwc_model_spread_e": 2160.954790204089,
+  "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; fwc_model_spread_e = capacity x estimator spread (model-choice spread, not a statistical uncertainty); physical full well not claimed",
+  "last_unsaturated_signal_e": 49047.35935726971,
+  "prnu": null,
+  "prnu_quadratic_fit": 0.0026908214271783356,
+  "fit_relative_rms": 0.013807967837596235,
+  "fit_relative_rms_alternatives": {
+   "linear-0.10": 0.013807967837596235,
+   "quadratic-0.35": 0.0018410458103239723
+  },
+  "fit_points": 13,
+  "fit_points_excluded": 0,
   "quality": "ok"
  },
  "gain_log2iso_log2epd": [
@@ -511,7 +536,7 @@
  "gain_jump_isos": [],
  "unity_gain_ev": 9.1287,
  "fwc_e": 88842.35593682605,
- "fwc_e_uncertainty": 2160.954790204089,
+ "fwc_model_spread_e": 2160.954790204089,
  "noise_whiteness_h_log2iso": [
   [
    6.6439,

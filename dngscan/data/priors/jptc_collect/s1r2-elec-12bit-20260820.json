@@ -27,6 +27,13 @@
    "Panasonic-DC-S1RM2_iso80-51200_电子快门_12bit_dark_20260820_scalars.csv": "6bd16424b592dba3d8ed3f832a2e2f55092793d3034f261946390a30e9517651"
   }
  },
+ "acquisition_contract": {
+  "adc_step": "1",
+  "linearisation_curve": "identity",
+  "clip_variance_factor": "0.9938883771107201",
+  "sigma_clip_correction": "applied",
+  "sheppard_assumption": "uniform quantisation step at black level; NOT verified against the companded linearisation curve (declared limitation)"
+ },
  "noise_aperture": "paired-frame temporal std (FPN excluded); sigma clip undone via the declared ClipVarianceFactor; Sheppard step^2/12 quantisation correction applied per frame",
  "read_noise_dn_log2iso": [
   [
