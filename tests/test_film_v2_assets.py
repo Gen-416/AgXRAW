@@ -174,14 +174,15 @@ class StageAMathTests(unittest.TestCase):
 
 class FilmV2AssetTests(unittest.TestCase):
     def test_schema_and_provenance_per_kind(self) -> None:
-        """Every file in the modular family carries schema 6, its declared
-        kind, sane domains and full-length source hashes (plan §7.1)."""
+        """Every file in the modular family carries schema 7, its declared
+        kind, sane domains and full-length source hashes (plan §7.1; 7 =
+        route-C chromaticity-field Stage A joined the ABI)."""
         stocks = _stock_files()
         self.assertGreaterEqual(len(stocks), 25)
         for stock in stocks:
             with self.subTest(kind="stock", name=stock):
                 z = _load(stock)
-                self.assertEqual(int(z["schema"]), 6)
+                self.assertEqual(int(z["schema"]), 7)
                 self.assertEqual(str(np.asarray(z["kind"])), "stock")
                 self.assertTrue(np.all(z["amount_hi"] > z["amount_lo"]))
                 self.assertEqual(float(z["exposure_ev_min"]), -2.0)
@@ -194,7 +195,7 @@ class FilmV2AssetTests(unittest.TestCase):
         for path in _print_files():
             with self.subTest(kind="print_state", name=path.stem):
                 z = dict(np.load(path, allow_pickle=False))
-                self.assertEqual(int(z["schema"]), 6)
+                self.assertEqual(int(z["schema"]), 7)
                 self.assertEqual(str(np.asarray(z["kind"])), "print_state")
                 n = int(z["n"])
                 self.assertEqual(z["b1_volume"].shape, (n, n, n, 3))
@@ -208,7 +209,7 @@ class FilmV2AssetTests(unittest.TestCase):
         for path in _b2_files():
             with self.subTest(kind="b2", name=path.stem):
                 z = dict(np.load(path, allow_pickle=False))
-                self.assertEqual(int(z["schema"]), 6)
+                self.assertEqual(int(z["schema"]), 7)
                 self.assertEqual(str(np.asarray(z["kind"])), "b2")
                 n = int(z["n"])
                 vol = z["volume"].astype(np.float32)
