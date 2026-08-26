@@ -44,6 +44,89 @@ def layer_log_exposure(rgb_rec2020: Any, observer: Any) -> Any:
     return np.log10(np.maximum(e, 1e-12) / np.maximum(mid, 1e-12)[None, :])
 
 
+def chroma_field_log_exposure(
+    rgb_rec2020: Any,
+    lut: Any,
+    domain: Any,
+    xyz_from_rec2020: Any,
+    observer: Any,
+) -> Any:
+    """Per-layer log10 exposure through the chromaticity field (route C §2).
+
+    E = Y * 2^L(x, y), with L a bilinear sample of the per-layer LUT holding
+    log2(E/Y). The LUT was baked over the training chromaticity hull; cells
+    outside the hull already carry the 3x3 observer's own chromaticity
+    response with a smooth blend band, so the ONLY pixels that leave this
+    path are degenerate ones (non-positive/non-finite XYZ sum or luminance,
+    or chromaticity outside the LUT domain rectangle) — those evaluate the
+    exact 3x3 instead, never a clamped LUT edge that would answer for a
+    different colour. Neutral anchoring matches layer_log_exposure exactly:
+    the field is white-anchored, so grey ramps hit the same logE axis.
+    """
+    rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float64), 1e-9)
+    a_obs = np.asarray(observer, dtype=np.float64)
+    # Exact neutrals take the observer product: the field equals it there by
+    # the white anchor, but float chromaticity jitter (~1e-16 in (x,y)) would
+    # otherwise leak ~1e-15 inter-layer nonuniformity into the interimage
+    # term and break the mainline grey-ramp BIT-invariance contract.
+    neutral = (rgb[:, 0] == rgb[:, 1]) & (rgb[:, 1] == rgb[:, 2])
+    m = np.asarray(xyz_from_rec2020, dtype=np.float64)
+    xyz = rgb @ m.T
+    s = xyz.sum(axis=1)
+    lum = xyz[:, 1]
+    x0, x1, y0, y1 = (float(v) for v in np.asarray(domain, dtype=np.float64))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cx = xyz[:, 0] / s
+        cy = lum / s
+    ok = (
+        ~neutral
+        & np.isfinite(s) & (s > 1e-12) & np.isfinite(lum) & (lum > 1e-12)
+        & np.isfinite(cx) & np.isfinite(cy)
+        & (cx >= x0) & (cx <= x1) & (cy >= y0) & (cy <= y1)
+    )
+    table = np.asarray(lut, dtype=np.float64)
+    n = table.shape[0]
+    fx = np.clip((np.where(ok, cx, x0) - x0) / (x1 - x0), 0.0, 1.0) * (n - 1)
+    fy = np.clip((np.where(ok, cy, y0) - y0) / (y1 - y0), 0.0, 1.0) * (n - 1)
+    ix = np.minimum(fx.astype(np.int64), n - 2)
+    iy = np.minimum(fy.astype(np.int64), n - 2)
+    tx = (fx - ix)[:, None]
+    ty = (fy - iy)[:, None]
+    l00 = table[ix, iy]
+    l10 = table[ix + 1, iy]
+    l01 = table[ix, iy + 1]
+    l11 = table[ix + 1, iy + 1]
+    logratio = (
+        l00 * (1.0 - tx) * (1.0 - ty)
+        + l10 * tx * (1.0 - ty)
+        + l01 * (1.0 - tx) * ty
+        + l11 * tx * ty
+    )
+    e_field = lum[:, None] * np.exp2(logratio)
+    a = a_obs
+    mid = a @ np.full(3, SCENE_MID)
+    out = np.log10(np.maximum(e_field, 1e-12) / np.maximum(mid, 1e-12)[None, :])
+    if not bool(np.all(ok)):
+        fallback = layer_log_exposure(rgb, a)
+        out = np.where(ok[:, None], out, fallback)
+    return out
+
+
+def stage_a_log_exposure(rgb_rec2020: Any, stock: dict) -> Any:
+    """The Stage A dispatch: chromaticity field when the stock adopted one
+    (route-C CV selection, baked into the asset), 3x3 observer otherwise."""
+    lut = stock.get("chroma_lut")
+    if lut is not None:
+        return chroma_field_log_exposure(
+            rgb_rec2020,
+            lut,
+            stock["chroma_domain"],
+            stock["chroma_xyz_from_rec2020"],
+            stock["observer"],
+        )
+    return layer_log_exposure(rgb_rec2020, stock["observer"])
+
+
 def characteristic_amounts(
     log_e: Any,
     le_axis: Any,

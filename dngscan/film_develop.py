@@ -145,12 +145,14 @@ def _npz(path):
 
 
 def _check_common(z, kind: str, path) -> None:
-    # schema 6 (review batch 14): the identity fields (stock/medium) became
-    # part of the ABI, so pre-identity schema-5 files are refused by NUMBER
-    # with a real reason instead of a KeyError swallowed into "unreadable".
-    if int(z["schema"]) != 6:
+    # schema 7 (route C phase 2): Stage A may carry a chromaticity-field LUT
+    # (chroma_lut/chroma_domain/chroma_xyz_from_rec2020) selected per stock by
+    # the CV record. Schema 6 files predate the field and are refused by
+    # NUMBER, same doctrine as the 5->6 bump: a real reason, not a KeyError
+    # swallowed into "unreadable".
+    if int(z["schema"]) != 7:
         raise ValueError(
-            f"{path.name}: schema {int(z['schema'])}, expected 6 — "
+            f"{path.name}: schema {int(z['schema'])}, expected 7 — "
             "regenerate with tools/build_film_v2_assets.py"
         )
     if str(np.asarray(z["kind"])) != kind:
@@ -191,8 +193,38 @@ def _load_v2(name: str):
                 raise ValueError("logE axis not strictly increasing")
             if not bool(np.all(hi > lo)):
                 raise ValueError("amount domain degenerate")
+            chroma_lut = None
+            chroma_domain = None
+            chroma_xyz = None
+            if bool(np.asarray(z["chroma_selected"])):
+                chroma_lut = np.asarray(z["chroma_lut"], dtype=np.float64)
+                chroma_domain = np.asarray(z["chroma_domain"], dtype=np.float64)
+                chroma_xyz = np.asarray(
+                    z["chroma_xyz_from_rec2020"], dtype=np.float64
+                )
+                if (
+                    chroma_lut.ndim != 3
+                    or chroma_lut.shape[0] != chroma_lut.shape[1]
+                    or chroma_lut.shape[0] < 16
+                    or chroma_lut.shape[2] != 3
+                    or not bool(np.isfinite(chroma_lut).all())
+                ):
+                    raise ValueError("chroma_lut mis-shaped or non-finite")
+                if chroma_domain.shape != (4,) or not (
+                    bool(np.isfinite(chroma_domain).all())
+                    and chroma_domain[1] > chroma_domain[0]
+                    and chroma_domain[3] > chroma_domain[2]
+                ):
+                    raise ValueError("chroma_domain degenerate")
+                if chroma_xyz.shape != (3, 3) or not bool(
+                    np.isfinite(chroma_xyz).all()
+                ):
+                    raise ValueError("chroma_xyz_from_rec2020 mis-shaped")
             stock = {
                 "observer": observer,
+                "chroma_lut": chroma_lut,
+                "chroma_domain": chroma_domain,
+                "chroma_xyz_from_rec2020": chroma_xyz,
                 "char_le": char_le,
                 "char_amounts": char_amounts,
                 "lo": lo,
@@ -477,7 +509,7 @@ class FilmSpatialContext:
         from .film_optics import halation_spread_map
         from .film_v2_math import (
             film_compression_ev,
-            layer_log_exposure,
+            stage_a_log_exposure,
         )
 
         dh, dw = rgb_dec.shape[:2]
@@ -523,7 +555,7 @@ class FilmSpatialContext:
             # Same layer-exposure coordinate the emulsion sees (R1 §3.1), so
             # the spatial source moves with the film exposure exactly as the
             # density does. The two must not be able to disagree.
-            log_e = layer_log_exposure(part, stock["observer"]) + ev_offset * _LOG10_2
+            log_e = stage_a_log_exposure(part, stock) + ev_offset * _LOG10_2
             e_lin[r0:r1] = np.power(10.0, log_e).reshape(r1 - r0, dw, 3)
             del part, log_e
         # The gate reference is UNITY (review 2026-08-10 F1). layer_log_
@@ -722,7 +754,7 @@ def _apply_film_core_v2(
         characteristic_amounts,
         developer_perturbation,
         film_compression_ev,
-        layer_log_exposure,
+        stage_a_log_exposure,
     )
 
     stock, media = _load_v2(preset)
@@ -822,7 +854,7 @@ def _apply_film_core_v2(
     # operator looking at the same light. Since `ev_offset` was only ever a
     # translation of the lookup axis, moving it here is algebraically the
     # same transform; what changes is who else can see it.
-    log_e = layer_log_exposure(rgb, stock["observer"]) + (
+    log_e = stage_a_log_exposure(rgb, stock) + (
         exposure_ev + float(stock["anchor"])
     ) * _LOG10_2
     if ctx is not None and ctx.media_scatter:

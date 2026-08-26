@@ -72,7 +72,7 @@ def stimulus_and_exposures(stock: dict):
         white_xyz / max(float(white_xyz[1]), 1e-12)
     )
     rgb = xyz @ m.T
-    return xyz, rgb, exposures
+    return xyz, rgb, exposures, m
 
 
 def cv_folds(n_samples: int):
@@ -171,7 +171,7 @@ def summarize(err):
 def run() -> dict:
     stocks = {}
     for name, stock in ff.STOCKS.items():
-        xyz, rgb, exposures = stimulus_and_exposures(stock)
+        xyz, rgb, exposures, _m = stimulus_and_exposures(stock)
         folds_list = cv_folds(exposures.shape[0])
         entry = {"3x3": summarize(heldout_errors_3x3(rgb, exposures, folds_list))}
         for order in ORDERS:

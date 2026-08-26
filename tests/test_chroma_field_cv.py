@@ -32,7 +32,7 @@ class ChromaFieldRecordTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.xyz, cls.rgb, cls.exposures = fc.stimulus_and_exposures(
+        cls.xyz, cls.rgb, cls.exposures, cls.m = fc.stimulus_and_exposures(
             ff.STOCKS[cls.STOCK]
         )
         cls.folds = fc.cv_folds(cls.exposures.shape[0])

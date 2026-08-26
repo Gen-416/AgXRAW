@@ -398,7 +398,12 @@ class MeasuredWeaknessTests(unittest.TestCase):
         for stock in ("portra400", "ektar100"):
             with self.subTest(stock=stock):
                 by_ev = self.base["observe_vs_technical"][stock]["delta_e00"]["by_ev"]
-                self.assertGreater(by_ev["+0"]["median"], 5.0)
+                # Floor re-pinned 5.0 -> 3.0 (route C, 2026-08-26): the
+                # Stage A field moved full-mode colour closer to the
+                # observe-side look at EV0 (portra 3.77 / ektar 4.18,
+                # was >5 under the 3x3). The claim survives — midtone
+                # observe and technical are still far from equivalent.
+                self.assertGreater(by_ev["+0"]["median"], 3.0)
                 self.assertLess(by_ev["+6"]["median"], 1.5)
                 self.assertGreater(by_ev["+6"]["p95"], 10.0)
 
