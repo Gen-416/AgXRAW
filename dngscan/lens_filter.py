@@ -44,7 +44,7 @@ from ._deps import np
 from .constants import RGB_TO_XYZ
 from .wb import cct_to_xy
 
-# name -> (mired shift, published filter factor in stops, label, source note)
+# name -> (mired shift, published filter factor in stops, label)
 # Mired shifts and factors from Kodak's published Wratten filter data.
 LENS_FILTERS: dict[str, tuple[float, float, str]] = {
     "85b": (+131.0, 2.0 / 3.0, "85B · 日光转钨丝（5500K->3200K）"),
@@ -103,8 +103,9 @@ def lens_filter_matrix(name: str) -> Any | None:
     """Linear-Rec.2020 matrix for one declared filter; None for 'none'.
 
     A Bradford von Kries diagonal realising the published mired shift, anchored on a
-    fixed in-range CCT pair (see _ANCHOR_CCT) and luminance-normalized on the neutral
-    axis. Note the semantics: the shift acts on the *rendered* balance — a neutral in
+    CCT pair taken symmetrically about _WORKING_WHITE_CCT in mireds, and
+    luminance-normalized on the neutral axis.
+    Note the semantics: the shift acts on the *rendered* balance — a neutral in
     the working space picks up the cast of "working white shifted by delta mired" —
     which is exactly how a filter behaves on already-balanced film. Numbers like
     "85B turns 5500K light into 3200K" describe light, not the rendered cast; the

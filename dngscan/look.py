@@ -28,7 +28,7 @@ _LOOK_PARALLEL_MIN_PIXELS = 64 * 1024
 
 @dataclass(frozen=True)
 class LookField:
-    """Measured chromatic field relative to dngscan AgX (TypicalPlan reference)."""
+    """Measured chromatic field relative to the default dngscan AgX rendering."""
 
     hue_rotation_deg: tuple[float, ...]  # 12 sectors, Oklab hue
     chroma_ratio: tuple[float, ...]  # per-sector C ratio at mid-L

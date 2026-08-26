@@ -105,9 +105,9 @@ smoothly above the print's reference white). Above is
 something it renders that no grading filter can: the Verita 200D print chain's
 measured inter-layer crossover — the carved door and stone steps in shadow turn
 green-teal while the sunlit wall and pebbles sit still, at zero median luminance
-difference. Left is the default digitally neutralized variant (grays stay
-strictly neutral, `--film-neutralization bounded`); right is the datasheet
-served verbatim.
+difference. Left is the digitally neutralized variant (grays stay
+strictly neutral, `--film-neutralization technical-neutral`); right is the
+datasheet served verbatim (`native`).
 
 ## Features
 
@@ -155,7 +155,7 @@ python -m dngscan.gui
 ```
 
 Open the localhost address printed in the terminal. A practical starting point is EV 0 with `AgX`,
-`base` primaries, camera WB, and highlight reconstruction; adjust from there according to the
+`base` primaries, and camera WB; adjust from there according to the
 photograph.
 
 The RAW field uses the browser's native file picker. The selected file is sent only to the localhost

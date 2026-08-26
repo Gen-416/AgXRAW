@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """film v2 plan objects (FILM_PRINT_RENDERING_PLAN §4, §7.2).
 
-Four immutable plans that will be referenced from RenderPlan as the v2
-pipeline lands. In P1 every new field defaults to identity: compiling the
-defaults describes exactly the v1 behaviour (fixed timing at q(0), measured
-development, no analog finish). Field provenance is a declared table — the
-JSON report and debug output carry it; the GUI does not repeat it per widget.
+Four immutable plans carried on RenderPlan.film by the v2 pipeline. Every
+field defaults to identity: compiling the defaults describes exactly the
+v1 behaviour (fixed timing at q(0), measured development, no analog
+finish). Field provenance is a declared table — the JSON report and debug
+output carry it; the GUI does not repeat it per widget.
 
 Validation implements the per-medium field-validity contract (plan §7.2):
 `reversal_direct` admits only fixed timing, zero printer filtration and zero

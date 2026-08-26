@@ -7,10 +7,12 @@ adapts while you look); a declared reference has no eye in the loop — its accu
 property of the camera's colour calibration, not of anyone's judgement.
 
 LibRaw path: the target CCT becomes camera-RGB multipliers through the DNG relation
-``CameraNeutral = ColorMatrix @ XYZ(white)``. LibRaw exposes one ColorMatrix (Adobe's
-D65-referenced table), so this is the single-matrix solve; DNG dual-illuminant
-interpolation (ColorMatrix1/2 between CalibrationIlluminant1/2) is a documented future
-refinement, not silently faked. Daylight-family targets (>= 4000 K) sit on the CIE
+``CameraNeutral = ColorMatrix @ XYZ(white)``. Files carrying DNG calibration tags use
+the dual-illuminant interpolation between the calibration matrices
+(``interpolated_color_matrix``, generalized to the DNG 1.6 third illuminant); the
+single-matrix solve on LibRaw's one Adobe D65-referenced table is the fallback for
+formats without those tags, and no calibration at all is a refusal, not a guess
+(``solve_kelvin_wb``). Daylight-family targets (>= 4000 K) sit on the CIE
 daylight locus with the revised-c2 temperature correction; tungsten targets are true
 blackbodies on the Planckian locus (Kim et al. approximation), because Type A/B film is
 balanced for incandescent sources, not for D-series daylight.

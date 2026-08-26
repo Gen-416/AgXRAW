@@ -36,7 +36,9 @@ caught up (the A7 V / GR IV / X-E5 generation) are not refused — the tool degr
 gracefully and the report states plainly that calibration data is incomplete and
 results may deviate, while the photo exports normally. Several new bodies
 (A7 V / A7S III / A7R VI / GR IV / Nikon Zf / X100VI / X-E5) already ship with
-measured sensor data and colour matrices, matching the established-camera experience.
+measured sensor data, plus colour matrices where published coefficients exist —
+the A7R VI's matrix is deliberately absent rather than guessed (the declared
+degradation path covers it), and the GR IV's DNG carries its own calibration.
 
 **One known exception: Nikon High Efficiency (HE/HE\*) NEFs.** If a Z9/Z8/Z6III/
 Z50II-generation body shot with "High Efficiency" compression, that format cannot be
@@ -97,7 +99,7 @@ three stops brighter than middle gray, −5 EV five stops darker.
 | **Compiled curve** | The dark-to-bright range and contrast this render actually adopted | Reference values, so you know what the tool decided for this image |
 
 **A typical read of this card**: earned headroom +1.5 EV → worth exporting HDR; RAW
-clipping 8% → the sky may be burned, try the "reconstruct" highlight mode; subject
+clipping 8% → the sky may be burned; clipped regions are automatically trusted less; subject
 median −3 EV → this is a night scene, don't force the exposure up.
 
 ---
@@ -183,10 +185,16 @@ the reason this film simulation stays stable.
   `--film-print-medium` (print medium; cross-medium pairings re-print the
   same negative without double tone mapping), `--film-print-timing
   fixed|retimed|custom` (custom unlocks the modelled colour-head Δτ and
-  `--film-print-exposure`), `--film-neutralization bounded|datasheet`
-  (GUI: 灰阶中性化; the old `--film-crossover` is a deprecated alias —
-  bounded is the digitally neutralized variant with grays within two stops
-  of neutral held strictly neutral, datasheet serves the chain verbatim
+  `--film-print-exposure`), `--film-neutralization
+  technical-neutral|print-balanced|native`
+  (GUI: 灰阶中性化, defaulting to "follow the film interpretation" —
+  technical resolves to digital neutral, reference print to print-balanced;
+  `bounded`/`datasheet` and the old `--film-crossover` are deprecated
+  aliases — technical-neutral is the digitally neutralized variant with
+  grays within two stops of neutral held strictly neutral, print-balanced
+  solves one constant balance at the EV0 anchor so mid-grey is neutral by
+  construction while both ends of the grey scale keep the medium's own
+  exposure-dependent crossover, native serves the chain verbatim
   with shadows tinting per each stock's data: cine negatives green-teal,
   Kodachrome amber, Velvia mildly cool, mid-grey anchored by the print
   solve), `--film-development editorial_custom` developer recipes (bounded
@@ -260,11 +268,13 @@ daylight". There is no strength slider — glass has no half-installed state.
   Dragging left pushes that point deeper — deeper shadows stay readable and dive to
   black later, implemented by re-solving the toe shape; **the black point, white
   point and sky highlights do not move**. Dragging right closes the shadows earlier.
-- **Shoulder start** (EV slider): the scene EV where highlight compression begins.
-  Dragging right keeps bright subjects on the linear mid-slope longer before the
-  shoulder; **the white point does not move**.
+- **Shoulder white** (EV slider): the scene EV at which the curve reaches near-white
+  (90% of the black-floor-to-white span). Dragging right delays that point — highlight
+  gradations merge later and the roll-off softens; dragging left closes white earlier
+  and hardens the shoulder. Implemented by re-solving the shoulder curvature; **the
+  black point, white point and shoulder start do not move**.
 - The measured line at the bottom of the tone card reports the **compiled actual
-  values** (toe-end EV, shoulder-start EV, endpoint provenance). Out-of-range
+  values** (toe-end EV, shoulder-white EV, endpoint provenance). Out-of-range
   requests are clamped by the curve legality guards; the line always shows what
   actually took effect.
 

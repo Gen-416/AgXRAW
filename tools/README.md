@@ -49,7 +49,7 @@
 | `regen_optics_freeze.py` | 光学冻结 + BASELINE 再生成/校验(`--check`) |
 | `regen_sdr_freeze.py` | SDR 冻结再生成/校验 |
 | `regen_golden.py` | golden 语料再生成 |
-|  文档展示图整表重渲清单(NCC 裁切恢复、拼板重建) | 文档展示图整表重渲清单(NCC 裁切恢复、拼板重建) |
+| `regen_showcases.py` | 文档展示图整表重渲清单(NCC 裁切恢复、拼板重建) |
 
 ## 报告与探针 / Reports & Probes
 
