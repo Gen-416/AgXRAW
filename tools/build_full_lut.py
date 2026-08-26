@@ -263,10 +263,15 @@ def _neg_amounts_at(neg: dict, log_e: np.ndarray, e_offset: float = 0.0) -> np.n
     ], axis=1)
 
 
-def chain_eval(stock: dict, chain: _Chain, a: np.ndarray, rgb: np.ndarray) -> np.ndarray:
+def chain_eval(
+    stock: dict, chain: _Chain, a: np.ndarray, rgb: np.ndarray, stage_a=None
+) -> np.ndarray:
     """The full offline chain for arbitrary PLAIN scene Rec.2020 samples
-    (prefeed bypassed in full mode; the observer inverse owns separation)."""
-    log_e = _layer_log_exposure(rgb, a)
+    (prefeed bypassed in full mode; the observer inverse owns separation).
+    ``stage_a`` (rgb -> per-layer log10 exposure) overrides the observer
+    product so route-C field stocks bake oracles through the SAME Stage A
+    the runtime dispatches to; None keeps the legacy observer path."""
+    log_e = stage_a(rgb) if stage_a is not None else _layer_log_exposure(rgb, a)
     offset = chain.e0 if chain.reversal else 0.0
     amounts = _neg_amounts_at(chain.neg, log_e, offset)
     return chain.develop_amounts(amounts)

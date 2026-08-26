@@ -57,13 +57,17 @@ from dngscan.film_v2_math import (  # noqa: E402
     LOG10_2,
     SCENE_MID,
     amounts_to_unit,
+    characteristic_amounts,
     out_of_domain_share,
     stage_a_amounts,
+    stage_a_log_exposure,
 )
+
+import fit_chroma_field as fcf  # noqa: E402
 
 OUT_DIR = PROJECT_ROOT / "dngscan" / "data" / "film_v2"
 GRID_N = 65
-SCHEMA = 6  # 6: identity fields (stock/medium) are part of the ABI
+SCHEMA = 7  # 7: Stage A may carry a CV-selected chromaticity-field LUT (route C phase 2)
 EXPOSURE_EV_MIN, EXPOSURE_EV_MAX = -2.0, 2.0
 TAU_NODES = tuple(round(-2.0 + 0.25 * i, 4) for i in range(17))
 MIDPOINT_ORACLE_EVS = (-1.875, -0.625, 0.375, 1.625)
@@ -327,12 +331,140 @@ def build_b2_reversal(stock_key: str) -> dict:
     }
 
 
+CHROMA_LUT_N = 256
+# 5.0 (was 2.0): the palette fold gate caught beta-amplified hue folds on
+# rings crossing the hull boundary; widening the band flattens the cubic
+# field's edge curvature there (measured: folds back inside the gate,
+# in-hull CV wins essentially unchanged).
+CHROMA_BLEND_SIGMA_CELLS = 5.0
+# Selection rule stated in docs/FILM_STAGE_A_CHROMA_FIELD.zh-CN.md: adopt the
+# field only where the CV showed a real margin — held-out p95 down >=15% AND
+# p99 not worse. superia400 passes (p95 -27%), pro400h does not (p99 +3%).
+CHROMA_P95_ADOPT_RATIO = 0.85
+
+
+def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> dict:
+    """Bake the route-C Stage A chromaticity field for one stock, or declare
+    why the 3x3 stays. The LUT holds log2(E/Y) per layer over the Rec.2020
+    chromaticity triangle's bounding box in the training XYZ space; cells
+    inside the training-reflectance hull carry the cubic field, cells outside
+    carry the observer's own chromaticity response, blended smoothly (Gaussian
+    of the hull mask, sigma CHROMA_BLEND_SIGMA_CELLS). Runtime inputs are
+    channel-clamped positive, so their chromaticities cannot leave the
+    triangle. After filling, the whole LUT is re-anchored so a BILINEAR sample
+    at the white chromaticity reproduces the white board exactly — grey ramps
+    stay bit-anchored to the logE axis.
+    """
+    cv_key = stock_key.removesuffix("_theatrical")
+    record = json.loads(
+        (PROJECT_ROOT / "docs" / "chroma_field_cv.json").read_text()
+    )["stocks"]
+    entry = record[cv_key]
+    selected = (
+        entry["poly3"]["p95_stop"] <= CHROMA_P95_ADOPT_RATIO * entry["3x3"]["p95_stop"]
+        and entry["poly3"]["p99_stop"] <= entry["3x3"]["p99_stop"]
+    )
+    note = (
+        f"cv p95 {entry['3x3']['p95_stop']}->{entry['poly3']['p95_stop']}, "
+        f"p99 {entry['3x3']['p99_stop']}->{entry['poly3']['p99_stop']}; "
+        + ("adopted" if selected else "3x3 retained (margin rule)")
+    )
+    if not selected:
+        return {
+            "chroma_selected": np.bool_(False),
+            "chroma_lut": np.zeros((1, 1, 3), dtype=np.float32),
+            "chroma_domain": np.zeros(4, dtype=np.float64),
+            "chroma_xyz_from_rec2020": np.zeros((3, 3), dtype=np.float64),
+            "chroma_cv_note": np.asarray(note),
+        }
+    from scipy.ndimage import gaussian_filter
+    from scipy.spatial import Delaunay
+
+    xyz, _rgb, exposures, m = fcf.stimulus_and_exposures(stock)
+    n_samples = exposures.shape[0]
+    coefs = fcf.fit_field(xyz, exposures, np.arange(1, n_samples), 3)
+    m_inv = np.linalg.inv(m)
+
+    # Domain: bbox of the Rec.2020 primary triangle in training XYZ space.
+    prim_xyz = np.eye(3) @ m_inv.T
+    prim_s = prim_xyz.sum(axis=1)
+    tri_x = prim_xyz[:, 0] / prim_s
+    tri_y = prim_xyz[:, 1] / prim_s
+    pad = 0.02
+    x0, x1 = float(tri_x.min() - pad), float(tri_x.max() + pad)
+    y0, y1 = float(tri_y.min() - pad), float(tri_y.max() + pad)
+
+    n = CHROMA_LUT_N
+    gx = x0 + (x1 - x0) * np.arange(n) / (n - 1)
+    gy = y0 + (y1 - y0) * np.arange(n) / (n - 1)
+    cx, cy = np.meshgrid(gx, gy, indexing="ij")
+    # Field surface on the grid.
+    feats = fcf.poly_features(cx.ravel(), cy.ravel(), 3)
+    field = (feats @ coefs.T).reshape(n, n, 3)
+    # Observer chromaticity response on the grid: homogeneous xyz at s=1.
+    cz = 1.0 - cx - cy
+    xyz_grid = np.stack([cx, cy, cz], axis=-1).reshape(-1, 3)
+    rgb_grid = np.maximum(xyz_grid @ m.T, 1e-9)
+    e_obs = rgb_grid @ observer.T
+    with np.errstate(divide="ignore", invalid="ignore"):
+        obs = np.log2(
+            np.maximum(e_obs, 1e-12) / np.maximum(cy.ravel(), 1e-12)[:, None]
+        ).reshape(n, n, 3)
+    obs = np.nan_to_num(obs, nan=0.0, posinf=60.0, neginf=-60.0)
+    # Hull mask from the training chromaticities, smoothed into a blend band.
+    tx = xyz[:, 0] / xyz.sum(axis=1)
+    ty = xyz[:, 1] / xyz.sum(axis=1)
+    hull = Delaunay(np.stack([tx, ty], axis=1))
+    inside = (
+        hull.find_simplex(np.stack([cx.ravel(), cy.ravel()], axis=1)) >= 0
+    ).reshape(n, n).astype(np.float64)
+    w = gaussian_filter(inside, sigma=CHROMA_BLEND_SIGMA_CELLS)[..., None]
+    lut = w * field + (1.0 - w) * obs
+    # Bilinear re-anchor at the white chromaticity (row 0 is the white board).
+    wx, wy = float(tx[0]), float(ty[0])
+    fx = (wx - x0) / (x1 - x0) * (n - 1)
+    fy = (wy - y0) / (y1 - y0) * (n - 1)
+    ix, iy = min(int(fx), n - 2), min(int(fy), n - 2)
+    ax, ay = fx - ix, fy - iy
+    at_white = (
+        lut[ix, iy] * (1 - ax) * (1 - ay)
+        + lut[ix + 1, iy] * ax * (1 - ay)
+        + lut[ix, iy + 1] * (1 - ax) * ay
+        + lut[ix + 1, iy + 1] * ax * ay
+    )
+    true_white = np.log2(np.maximum(exposures[0], 1e-12) / 1.0)
+    lut = lut + (true_white - at_white)[None, None, :]
+    return {
+        "chroma_selected": np.bool_(True),
+        "chroma_lut": lut.astype(np.float32),
+        "chroma_domain": np.asarray([x0, x1, y0, y1], dtype=np.float64),
+        "chroma_xyz_from_rec2020": m_inv.astype(np.float64),
+        "chroma_cv_note": np.asarray(note),
+    }
+
+
+def _stage_a_stock_dict(observer: np.ndarray, chroma: dict) -> dict:
+    """The runtime-shaped dict stage_a_log_exposure dispatches on."""
+    if bool(chroma["chroma_selected"]):
+        return {
+            "observer": observer,
+            "chroma_lut": np.asarray(chroma["chroma_lut"], dtype=np.float64),
+            "chroma_domain": np.asarray(chroma["chroma_domain"], dtype=np.float64),
+            "chroma_xyz_from_rec2020": np.asarray(
+                chroma["chroma_xyz_from_rec2020"], dtype=np.float64
+            ),
+        }
+    return {"observer": observer, "chroma_lut": None}
+
+
 def build_print_state(stock_key: str, paper_name: str, theatrical: bool) -> dict:
     """B1 volume + tau/cast timing table + oracles for one stock x paper."""
     stock = dict(ff.STOCKS[stock_key.removesuffix("_theatrical")])
     stock["key"] = stock_key
     chain = _PrintChain(stock, paper_name, theatrical)
     observer, obs_p99, obs_cv = _observer(stock)
+    chroma = _chroma_field_block(stock, stock_key, observer)
+    sa_stock = _stage_a_stock_dict(observer, chroma)
     neg, char_le, char_amounts, lo, hi = _stage_a_tables(stock)
 
     grid_amounts = lo[None, :] + _grid_u() * (hi - lo)[None, :]
@@ -403,8 +535,10 @@ def build_print_state(stock_key: str, paper_name: str, theatrical: bool) -> dict
         if not retimed_ev_min <= e_mid <= retimed_ev_max:
             continue
         q_true = chain.solve_q(e_mid)
-        amounts_mid = stage_a_amounts(
-            mid_rgb, observer, char_le, char_amounts, film_exposure_ev=e_mid,
+        # Route C: the oracle's Stage A is the runtime's Stage A, whole.
+        amounts_mid = characteristic_amounts(
+            stage_a_log_exposure(mid_rgb, sa_stock),
+            char_le, char_amounts, ev_offset=e_mid,
         )
         truth = chain.develop_q(amounts_mid, q_true)
         truths.append(truth)
@@ -459,6 +593,9 @@ def build_stock_asset(stock_key: str) -> dict:
     stock["key"] = stock_key
     chain = v1._Chain(ff.STOCKS[stock_key.removesuffix("_theatrical")], theatrical)
     observer, obs_p99, obs_cv = _observer(stock)
+    chroma = _chroma_field_block(stock, stock_key, observer)
+    sa_stock = _stage_a_stock_dict(observer, chroma)
+    _sa = lambda r: stage_a_log_exposure(r, sa_stock)  # noqa: E731
     neg, char_le, char_amounts, lo, hi = _stage_a_tables(stock)
     reversal = bool(stock.get("positive"))
     default_medium = _medium_id(stock, theatrical)
@@ -472,7 +609,10 @@ def build_stock_asset(stock_key: str) -> dict:
     oracle_ev = rng.uniform(-9.0, 5.0, (96, 3))
     oracle_rgb = SCENE_MID * np.exp2(oracle_ev)
     a = observer
-    truth = v1.chain_eval(ff.STOCKS[stock_key.removesuffix("_theatrical")], chain, a, oracle_rgb)
+    truth = v1.chain_eval(
+        ff.STOCKS[stock_key.removesuffix("_theatrical")], chain, a, oracle_rgb,
+        stage_a=_sa,
+    )
     entry = {
         "kind": np.asarray("stock"),
         "stock": np.asarray(stock_key),
@@ -496,12 +636,13 @@ def build_stock_asset(stock_key: str) -> dict:
         "builder_commit": np.asarray(_builder_commit()),
         "input_space": np.asarray("scene_rec2020"),
         "schema": np.int32(SCHEMA),
+        **chroma,
     }
     if reversal:
         # Reversal cast (fixed path) stays with the stock.
         ramp_ev = np.linspace(v1.EV_MIN, v1.EV_MAX, 257)
         ramp_rgb = SCENE_MID * np.exp2(ramp_ev)[:, None].repeat(3, axis=1)
-        ramp_out = v1.chain_eval(ff.STOCKS[stock_key], chain, a, ramp_rgb)
+        ramp_out = v1.chain_eval(ff.STOCKS[stock_key], chain, a, ramp_rgb, stage_a=_sa)
         y = ramp_out @ _LUMA
         cast = ramp_out / np.maximum(y, 1e-9)[:, None]
         h_star = 1.0 / np.maximum(cast, 1e-9)
