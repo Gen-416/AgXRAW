@@ -57,13 +57,28 @@ def formation_luma_weights(outset_matrix: Any) -> Any:
     return weights.astype(np.float32)
 
 
-def raw_gated_channel_separation(rho: float, clip_masks_rgb: Any | None) -> Any:
+def raw_gated_channel_separation(
+    rho: float,
+    clip_masks_rgb: Any | None,
+    *,
+    y_native: Any | None = None,
+    peak: float = 1.0,
+) -> Any:
     """Turn global colour freedom into per-pixel/channel permission from CFA evidence.
 
     A single clipped CFA channel loses half of its independent path at a fully soft-clipped
     site while the two measured channels remain available. Once two channels clip, the
     second-largest mask continuously withdraws all independent separation; at full
     multi-channel clipping the pixel follows the common luminance path only.
+
+    Peak-proximity convergence (two-route doctrine, 2026-08-26): when ``y_native``
+    (formation-point luminance of the native path) and a ``peak`` above reference
+    white are supplied, clip-compromised pixels additionally converge to the
+    common path as their rendered luminance climbs from reference white (1.0 on
+    the formation scale) to the content peak — luminance stays the native curve's,
+    chroma authority shrinks to zero exactly where the RAW stopped measuring it.
+    Unclipped pixels are untouched at any luminance, so fully reliable highlights
+    keep their HDR chroma and material separation.
     """
     base = np.float32(np.clip(float(rho), 0.0, 1.0))
     if clip_masks_rgb is None:
@@ -72,7 +87,19 @@ def raw_gated_channel_separation(rho: float, clip_masks_rgb: Any | None) -> Any:
     second = np.partition(masks, 1, axis=-1)[..., 1]
     channel_permission = np.float32(1.0) - np.float32(0.5) * masks
     multi_permission = np.float32(1.0) - second
-    return base * channel_permission * multi_permission[..., None]
+    permission = base * channel_permission * multi_permission[..., None]
+    if y_native is None or float(peak) <= 1.0:
+        return permission
+    proximity = np.clip(
+        (np.asarray(y_native, dtype=np.float32) - np.float32(1.0))
+        / np.float32(float(peak) - 1.0),
+        0.0,
+        1.0,
+    )
+    clipness = np.max(masks, axis=-1)
+    return permission * (
+        np.float32(1.0) - proximity * clipness
+    )[..., None]
 
 
 def blend_native_hdr_paths(

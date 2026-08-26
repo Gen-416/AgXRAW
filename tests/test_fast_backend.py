@@ -192,8 +192,9 @@ class NativeOutputParityTests(unittest.TestCase):
         from dngscan import _dngscan_fast as ext
 
         self.assertEqual(ext.native_abi_version(), NATIVE_ABI_VERSION)
-        # v8: exact two-stage output matrices (R2 item 6).
-        self.assertEqual(NATIVE_ABI_VERSION, 8)
+        # v9: peak-proximity chroma convergence in the HDR gated blend
+        # (two-route doctrine item B).
+        self.assertEqual(NATIVE_ABI_VERSION, 9)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_FIT_ITERS, 16)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_TOLERANCE, 1e-4)
         for gamut in ("srgb", "p3"):

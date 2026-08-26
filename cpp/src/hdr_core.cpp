@@ -55,7 +55,8 @@ inline Rgb apply_table(const HdrCurveTableView& table, const Rgb& inset) {
   };
 }
 
-inline void gated_rho(const NativeHdrPlan& plan, const float* mask, float rho[3]) {
+inline void gated_rho(
+    const NativeHdrPlan& plan, const float* mask, float y_native, float rho[3]) {
   const float base = clampf(plan.global_rho, 0.0f, 1.0f);
   if (mask == nullptr) {
     rho[0] = rho[1] = rho[2] = base;
@@ -68,9 +69,21 @@ inline void gated_rho(const NativeHdrPlan& plan, const float* mask, float rho[3]
   const float second =
       std::max(std::min(m0, m1), std::min(std::max(m0, m1), m2));
   const float multi_permission = 1.0f - second;
-  rho[0] = base * (1.0f - 0.5f * m0) * multi_permission;
-  rho[1] = base * (1.0f - 0.5f * m1) * multi_permission;
-  rho[2] = base * (1.0f - 0.5f * m2) * multi_permission;
+  // Peak-proximity convergence (v9): clip-compromised pixels lose their
+  // remaining chroma authority continuously as the native formation luminance
+  // climbs from reference white to the content peak. Mirrors the keyword path
+  // of hdr_color.raw_gated_channel_separation exactly, including the float32
+  // evaluation order.
+  float converge = 1.0f;
+  if (plan.peak > 1.0f) {
+    const float proximity =
+        clampf((y_native - 1.0f) / (plan.peak - 1.0f), 0.0f, 1.0f);
+    const float clipness = std::max(m0, std::max(m1, m2));
+    converge = 1.0f - proximity * clipness;
+  }
+  rho[0] = base * (1.0f - 0.5f * m0) * multi_permission * converge;
+  rho[1] = base * (1.0f - 0.5f * m1) * multi_permission * converge;
+  rho[2] = base * (1.0f - 0.5f * m2) * multi_permission * converge;
 }
 
 inline Rgb blend_native_paths(
@@ -197,7 +210,7 @@ Rgb process_pixel(const Rgb& input, const float* mask, const NativeHdrPlan& plan
   if (plan.has_reference) {
     const Rgb reference = apply_table(plan.reference_table, inset);
     float rho[3];
-    gated_rho(plan, mask, rho);
+    gated_rho(plan, mask, dot3(plan.formation_luma, native), rho);
     const Rgb blended =
         blend_native_paths(reference, native, rho, plan.formation_luma);
     // The blend equalizes Y at the formation point, but hue restore and punch
