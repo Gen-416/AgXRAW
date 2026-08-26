@@ -463,6 +463,49 @@ def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
     return float("nan"), "none"
 
 
+def snr_ev_coordinates(analysis: Analysis) -> dict[str, float] | None:
+    """Scene EV of the SNR=1/10/20 electron levels under the fixed mid-gray anchor.
+
+    Route-A sensor coordinates (two-route doctrine, 2026-08-26): the electron
+    level at which shot+read SNR reaches S solves ``N/sqrt(N + r^2) = S``, i.e.
+
+        N_S = (S^2 + S*sqrt(S^2 + 4 r^2)) / 2
+
+    with ``r`` the prior's read noise in electrons, converted to scene EV by the
+    convention :func:`noise_floor_ev_estimate` documents. Prior-only and
+    fail-closed: the shot/read split needs a measured read noise, and a
+    single-frame tile sigma cannot provide it — None, never a guess. The SNR=1
+    coordinate solves the full equation, so it sits slightly above the
+    engineering floor (``N = r``) the evidence black endpoint uses; both are
+    stated definitions, not a disagreement.
+    """
+    noise_e = analysis.noise_floor_e
+    read_e = analysis.prior_read_noise_e
+    nf = float(analysis.noise_floor)
+    if not (
+        noise_e is not None
+        and read_e is not None
+        and nf > 0.0
+        and float(noise_e) > 0.0
+        and float(read_e) > 0.0
+    ):
+        return None
+    fullwell_e = float(noise_e) / nf
+    if not (math.isfinite(fullwell_e) and fullwell_e > 0.0):
+        return None
+    r2 = float(read_e) ** 2
+    out: dict[str, float] = {}
+    for s in (1.0, 10.0, 20.0):
+        n_s = 0.5 * (s * s + s * math.sqrt(s * s + 4.0 * r2))
+        frac = n_s / fullwell_e
+        if not 0.0 < frac < 1.0:
+            # A tier at or above the full well has no scene coordinate; a
+            # partial answer would invite mixing tiers from different sensors.
+            return None
+        out[f"snr{int(s)}"] = MIDGRAY_HEADROOM_STOPS + math.log2(frac)
+    return out
+
+
 def cfa_positions_for_channel(bundle: RawBundle, cid: int) -> list[tuple[int, int]]:
     try:
         pattern = np.asarray(bundle.raw_pattern)
