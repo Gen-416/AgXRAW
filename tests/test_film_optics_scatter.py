@@ -39,7 +39,7 @@ class ScatterMixTests(unittest.TestCase):
         self.assertIsNotNone(form)
         # R1 item 7: a kernel FITTED from a measured chart is derived
         self.assertEqual(stock.provenance, "derived")
-        self.assertEqual(stock.model, "core_tail_v1")
+        self.assertEqual(stock.model, "bi_gaussian_v1")
         self.assertEqual(form.model, "gaussian_v1")
 
     def test_gate13_operator_mtf_matches_the_analytic_mix(self) -> None:
@@ -60,13 +60,10 @@ class ScatterMixTests(unittest.TestCase):
                 s = stock.s[ch]
                 wgt = stock.w[ch]
                 sg = stock.sigma_um[ch] * 1e-3
-                lm = stock.lambda_um[ch] * 1e-3
+                ts = stock.tail_sigma_um[ch] * 1e-3
                 g = np.exp(-2.0 * np.pi ** 2 * sg ** 2 * cycles_per_mm ** 2)
-                # unified 2026-08-25: fit, report and operator all use the
-                # Gaussian-at-sqrt(3)*lambda tail, so this analytic form IS
-                # the executed one (no approximation gap left to budget)
-                e = np.exp(-2.0 * np.pi ** 2 * (3.0 * lm ** 2)
-                           * cycles_per_mm ** 2)
+                # bi_gaussian_v1: this analytic form IS the executed one
+                e = np.exp(-2.0 * np.pi ** 2 * ts ** 2 * cycles_per_mm ** 2)
                 want = (1.0 - s) + s * ((1.0 - wgt) * g + wgt * e)
                 self.assertLess(
                     abs(mod - want), 0.03,

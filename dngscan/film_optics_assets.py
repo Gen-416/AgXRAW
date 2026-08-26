@@ -192,23 +192,27 @@ class GrainAsset:
 class ScatterKernelAsset:
     """A per-channel energy-conserving scatter mix (P5, plan §5.1/§6.2).
 
-    E' = (1-s)E + s[(1-w)·G_sigma*E + w·Exp_lambda*E], kernels normalized,
-    scales in film-plane micrometres. Parameters come from the fitted
-    datasheet MTF curves (dngscan/data/mtf/, tools/import_kodak_mtf.py).
-    `w` and `lambda_um` are 0 for a pure-Gaussian fit (§6.2 K_form)."""
+    E' = (1-s)E + s[(1-w)·G_sigma*E + w·G_tail*E], kernels normalized,
+    scales in film-plane micrometres — a two-Gaussian mix, the exact form
+    the operator executes (R10 item 3: renamed from "core_tail"; no
+    exponential PSF was ever applied at runtime). Parameters come from the
+    fitted datasheet MTF curves (dngscan/data/mtf/,
+    tools/import_kodak_mtf.py). Identifiability contract: an active tail
+    (w > 0) must have tail_sigma_um >= 2*sigma_um, else the components are
+    degenerate; `w` and `tail_sigma_um` are 0 for a single-Gaussian fit."""
 
     provenance: str
-    model: str                    # core_tail_v1 | gaussian_v1
+    model: str                    # bi_gaussian_v1 | gaussian_v1
     s: tuple                      # (R, G, B) mix fractions
-    w: tuple                      # (R, G, B) exponential-tail weights
+    w: tuple                      # (R, G, B) tail weights
     sigma_um: tuple               # (R, G, B) Gaussian core scales
-    lambda_um: tuple              # (R, G, B) exponential tail scales
+    tail_sigma_um: tuple          # (R, G, B) Gaussian tail scales
     source: str = ""
 
     @classmethod
     def from_json(cls, raw: dict, where: str) -> "ScatterKernelAsset":
         model = str(raw.get("model", ""))
-        _require(model in ("core_tail_v1", "gaussian_v1"),
+        _require(model in ("bi_gaussian_v1", "gaussian_v1"),
                  f"{where}: unknown scatter model {model!r}")
         chans = raw["channels"]
         _require(set(chans) == {"R", "G", "B"},
@@ -222,16 +226,22 @@ class ScatterKernelAsset:
             _require(0.0 < sgv < 30.0, f"{where}.{name}: sigma_um implausible")
             wv = _finite(ch.get("w", 0.0), f"{where}.{name}.w")
             _require(0.0 <= wv <= 1.0, f"{where}.{name}: w outside [0, 1]")
-            lmv = _finite(ch.get("lambda_um", 0.0), f"{where}.{name}.lambda_um")
-            _require(0.0 <= lmv < 30.0, f"{where}.{name}: lambda_um implausible")
-            _require(model != "gaussian_v1" or (wv == 0.0 and lmv == 0.0),
+            tsv = _finite(ch.get("tail_sigma_um", 0.0), f"{where}.{name}.tail_sigma_um")
+            _require(0.0 <= tsv < 60.0, f"{where}.{name}: tail_sigma_um implausible")
+            _require((wv > 0.0) == (tsv > 0.0),
+                     f"{where}.{name}: tail weight and scale must be zero together")
+            # 0.1% tolerance: the fit may sit exactly on the 2x bound and
+            # 3-decimal rounding of both fields must not flip the contract
+            _require(wv == 0.0 or tsv >= 2.0 * sgv * 0.999,
+                     f"{where}.{name}: degenerate tail (tail_sigma < 2*sigma)")
+            _require(model != "gaussian_v1" or (wv == 0.0 and tsv == 0.0),
                      f"{where}.{name}: gaussian_v1 carries no tail fields")
-            s.append(sv); w.append(wv); sig.append(sgv); lam.append(lmv)
+            s.append(sv); w.append(wv); sig.append(sgv); lam.append(tsv)
         return cls(
             provenance=_provenance(raw["provenance"], where),
             model=model,
             s=tuple(s), w=tuple(w),
-            sigma_um=tuple(sig), lambda_um=tuple(lam),
+            sigma_um=tuple(sig), tail_sigma_um=tuple(lam),
             source=str(raw.get("source", "")),
         )
 

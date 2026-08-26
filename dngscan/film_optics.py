@@ -797,17 +797,14 @@ _SCATTER_MAX_SKIP_DEPTH = 0.01
 def _scatter_components(kernel, ch: int, mm_per_px: float):
     """((sigma_px, weight), ...) of ACTIVE blur components for one channel.
 
-    The exponential tail is approximated by a Gaussian of matching second
-    moment (sigma = sqrt(3)*lambda, per-axis variance of the isotropic
-    exponential PSF). The approximation is exact enough below Nyquist
-    (<=1.5 pp at 50 c/mm for the fitted lambdas) and the gate-13 budget
-    test bounds the residual against the exponential-form fit."""
+    Both components are Gaussian (bi_gaussian_v1, R10 item 3): the tail
+    scale is applied directly — fit, report and operator share one form,
+    so the gate-13 budget has no approximation term left."""
     px_per_mm = 1.0 / max(mm_per_px, 1e-12)
     s_mix = kernel.s[ch]
     comps = (
         (kernel.sigma_um[ch] * 1e-3 * px_per_mm, 1.0 - kernel.w[ch]),
-        (np.sqrt(3.0) * kernel.lambda_um[ch] * 1e-3 * px_per_mm,
-         kernel.w[ch]),
+        (kernel.tail_sigma_um[ch] * 1e-3 * px_per_mm, kernel.w[ch]),
     )
     out = []
     for sigma_px, w in comps:

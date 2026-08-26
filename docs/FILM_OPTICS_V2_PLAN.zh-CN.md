@@ -396,8 +396,13 @@ grain:
 
 ```text
 E^s_c = (1-s_c) E-_c
-      + s_c [(1-w_c) (G_sigma_c * E-_c) + w_c (Exp_lambda_c * E-_c)]
+      + s_c [(1-w_c) (G_sigma_c * E-_c) + w_c (G_tail_c * E-_c)]
 ```
+
+> 2026-08-25 修订(R10):tail 分量正名为高斯(`bi_gaussian_v1`,参数
+> `tail_sigma_um`)。历史上此处声明指数 PSF(Exp_lambda),但运行时始终
+> 以二阶矩匹配的高斯执行;统一算子家族后声明≡执行。可识别性契约:
+> 活跃 tail 必须满足 `tail_sigma >= 2*sigma`,否则折叠为单高斯(w=0)。
 
 `G` 和 `Exp` 都归一。该步骤不是红色 halo，而是乳剂内 wavelength-dependent
 irradiation/分辨率损失；它作用于所有曝光，只因后续特性曲线而呈现非线性观感。
