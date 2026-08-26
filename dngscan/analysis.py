@@ -831,11 +831,18 @@ def analyze(
     prior_id = prior["id"] if prior else None
     _pq = prior.get("quality") if prior else None
     prior_quality_status = (_pq or {}).get("status") if isinstance(_pq, dict) else None
-    prior_model_spread = (_pq or {}).get("model_sensitivity") if isinstance(_pq, dict) else None
+    prior_model_spread = (_pq or {}).get("estimator_spread") if isinstance(_pq, dict) else None
     prior_mode_match = prior.get("mode_match") if prior else None
-    gain_e = sensor_priors.gain_e_per_dn(prior, bundle.shot_iso) if prior and bundle.shot_iso else None
-    prior_rn_e = sensor_priors.read_noise_e(prior, bundle.shot_iso) if prior and bundle.shot_iso else None
-    prior_pdr = sensor_priors.pdr_ev(prior, bundle.shot_iso) if prior and bundle.shot_iso else None
+    # R10 item 1: ONE availability criterion gates every prior-derived
+    # quantity here, so noise floors / endpoint evidence / SNR guidance all
+    # degrade together — no consumer can bypass it via a raw field.
+    prior_usable, prior_gate_reason = sensor_priors.prior_usability(prior)
+    if not prior_usable:
+        prior_quality_status = prior_quality_status or prior_gate_reason
+    use = prior_usable and bundle.shot_iso
+    gain_e = sensor_priors.gain_e_per_dn(prior, bundle.shot_iso) if use else None
+    prior_rn_e = sensor_priors.read_noise_e(prior, bundle.shot_iso) if use else None
+    prior_pdr = sensor_priors.pdr_ev(prior, bundle.shot_iso) if use else None
     noise_e = None
     if gain_e is not None:
         mean_black = float(np.mean([bundle.black_levels[c] for c in channel_ids if c < len(bundle.black_levels)] or [0.0]))

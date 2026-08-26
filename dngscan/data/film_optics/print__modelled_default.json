@@ -6,7 +6,7 @@
  "formation_scatter": {
   "provenance": "derived",
   "model": "gaussian_v1",
-  "source": "scatter kernel fitted from the digitized MTF (dngscan/data/mtf/mtf_2383.json, tools/import_kodak_mtf.py); synced by tools/sync_film_optics_from_charts.py, input sha256 e47456124eb10f6b",
+  "source": "scatter kernel fitted from the digitized MTF (dngscan/data/mtf/mtf_2383.json, tools/import_kodak_mtf.py); compiled by tools/sync_film_optics_from_charts.py (see chart_sync)",
   "channels": {
    "G": {
     "s": 0.2204,
@@ -40,7 +40,7 @@
     0.15
    ]
   ],
-  "source": "sigma(D) digitized from Kodak charts (dngscan/data/grain/granularity_2383.json, tools/import_kodak_granularity.py); synced by tools/sync_film_optics_from_charts.py, input sha256 0a61dfb122ea9cec",
+  "source": "sigma(D) digitized from Kodak charts (dngscan/data/grain/granularity_2383.json, tools/import_kodak_granularity.py); compiled by tools/sync_film_optics_from_charts.py (see chart_sync)",
   "channels": {
    "R": {
     "chart_density": [
@@ -2279,5 +2279,12 @@
   "formation_scatter (V2 P5): single-Gaussian kernel fitted from the H-1-2383 MTF chart -> `derived`; normalized, uniform patches unchanged, Stage B calibration intact.",
   "viewing_scatter stays null: no paper PSF/CTF data exists, and the plan refuses to let a display-linear blur stand in for it.",
   "P5e: the legacy conservative print scatter (operator and asset) was deleted; assets still carrying legacy_print_scatter are refused."
- ]
+ ],
+ "chart_sync": {
+  "synced_on": "2026-08-26",
+  "granularity_file": "granularity_2383.json",
+  "granularity_sha256": "0a61dfb122ea9cec5a943f84e4c5ae06012948360675b76301cae109c2919a9e",
+  "mtf_file": "mtf_2383.json",
+  "mtf_sha256": "e47456124eb10f6b0d1564c3b2795d4a93c556ebe01e19bc08d0e2b0f9e60ce4"
+ }
 }

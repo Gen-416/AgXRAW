@@ -69,10 +69,10 @@ class MtfAssetTests(unittest.TestCase):
                 f = np.array([r[0] for r in rows if r[0] >= 15.0])
                 y = np.array([r[1] for r in rows if r[0] >= 15.0])
                 fit = a["fit"][name]
-                if a["model"] == "core_tail_v1":
-                    got = m.mtf_core_tail(
+                if a["model"] == "bi_gaussian_v1":
+                    got = m.mtf_bi_gaussian(
                         f, fit["s"], fit["w"],
-                        fit["sigma_um"] / 1000.0, fit["lambda_um"] / 1000.0)
+                        fit["sigma_um"] / 1000.0, fit["tail_sigma_um"] / 1000.0)
                 else:
                     got = m.mtf_gaussian(f, fit["s"], fit["sigma_um"] / 1000.0)
                 self.assertLess(float(np.max(np.abs(got - y))), 0.09,

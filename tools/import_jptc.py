@@ -86,9 +86,12 @@ def fit_ptc(
     # plateau itself; a stepped exposure ramp cannot see inside that bracket,
     # so report the midpoint WITH the half-bracket as declared uncertainty
     # instead of quoting the lower bound as if it were exact.
-    s_upper = float(min(sat_plateau, signal.max())) if bool((~unsat).any()) else s_last
-    s_sat = 0.5 * (s_last + s_upper)
-    s_sat_unc = 0.5 * (s_upper - s_last)
+    # No midpoint estimand survives (R10 item 2): the old s_sat midpoint was
+    # a function of the exposure-step density and silently steered the fit
+    # windows (S5M2 gain moved -2.7% between window conventions). All
+    # windows now reference the ADC code capacity (white - black), which is
+    # a property of the camera, not of the ramp; saturation exclusion stays
+    # with the unsat mask.
     # Model set (external review 2026-08-25, revised after re-validation):
     # the review falsified the old "PRNU two decades below shot noise"
     # comment — at 0.10*S_sat the PRNU term reaches ~4.5-8.4% of the shot
@@ -120,16 +123,16 @@ def fit_ptc(
             / max(np.mean(ya[keep]), 1e-9))
         return slope, intercept, keep, resid
 
-    lo_mask = unsat & (signal > 0) & (signal < 0.10 * s_sat)
+    lo_mask = unsat & (signal > 0) & (signal < 0.10 * sat_plateau)
     if int(lo_mask.sum()) < 4:
-        lo_mask = unsat & (signal > 0) & (signal < 0.35 * s_sat)
+        lo_mask = unsat & (signal > 0) & (signal < 0.35 * sat_plateau)
     x = signal[lo_mask]
     y = var[lo_mask]
     if int(lo_mask.sum()) < 4:
         raise ValueError("not enough points for a PTC fit")
 
     def _prnu_top(g, vr):
-        top_m = unsat & (signal > 0.5 * s_sat)
+        top_m = unsat & (signal > 0.5 * sat_plateau)
         if int(top_m.sum()) < 3:
             return 0.0
         excess = var[top_m] - signal[top_m] / g - vr
@@ -144,7 +147,7 @@ def fit_ptc(
     gain_a = 1.0 / float(slope_a)
     # C: PRNU-corrected linear (primary), iterated to convergence (max 16;
     # the review found 3 rounds left A7M5 0.011% short of its own gate)
-    n_top = int((unsat & (signal > 0.5 * s_sat)).sum())
+    n_top = int((unsat & (signal > 0.5 * sat_plateau)).sum())
     gain = gain_a
     var_read = max(float(icpt_a), 0.0)
     prnu = _prnu_top(gain, var_read)
@@ -172,6 +175,11 @@ def fit_ptc(
         # top of ramp not sampled -> the correction cannot run at all
         prnu_status = "unresolved"
         fit_model_effective = "linear-0.10 (prnu unresolved -> plain linear)"
+    elif not prnu_converged:
+        # 16 rounds without meeting the gate: fail closed (R10 item 5) —
+        # an unconverged correction must not be labelled corrected
+        prnu_status = "unconverged"
+        fit_model_effective = "linear-prnu-corrected (UNCONVERGED)"
     elif prnu == 0.0:
         prnu_status = "zero"
         fit_model_effective = "linear-prnu-corrected (correction = 0)"
@@ -179,7 +187,7 @@ def fit_ptc(
         prnu_status = "corrected"
         fit_model_effective = "linear-prnu-corrected"
     # B: constrained quadratic over the wide range (recorded, not primary)
-    wide = unsat & (signal > 0) & (signal < 0.35 * s_sat)
+    wide = unsat & (signal > 0) & (signal < 0.35 * sat_plateau)
     xw, yw = signal[wide], var[wide]
     gain_q = float("nan")
     prnu_q = float("nan")
@@ -204,7 +212,7 @@ def fit_ptc(
     # PRNU cross-estimate from the top of the ramp (median excess variance),
     # kept alongside the quadratic-coefficient estimate as a consistency
     # check between apertures.
-    top = unsat & (signal > 0.5 * s_sat)
+    top = unsat & (signal > 0.5 * sat_plateau)
     prnu = float("nan")
     if int(top.sum()) >= 3:
         excess = var[top] - signal[top] / gain - var_read
@@ -254,7 +262,9 @@ def fit_ptc(
         "fit_points": int(keep.sum()),
         "fit_points_excluded": int((~keep).sum()),
         "sat_plateau_dn": sat_plateau,
-        "quality": "ok" if resid <= 0.05 else "high-residual",
+        "quality": ("high-residual" if resid > 0.05
+                    else "unconverged" if prnu_status == "unconverged"
+                    else "ok"),
     }
 
 
@@ -374,6 +384,31 @@ def self_test() -> int:
     print(f"  gain_estimator_spread_rel: {fit['gain_estimator_spread_rel']:.4f} "
           f"(primary {fit['gain_e_per_dn']:.4g}, linear-0.10 "
           f"{alts['linear-0.10']:.4g}, quad-0.35 {alts['quadratic-0.35']:.4g})")
+    # R10 item 2: the gain estimate must be invariant to the exposure-step
+    # density of the ramp (the old midpoint-referenced windows were not —
+    # S5M2 moved -2.7% between conventions).
+    def _ramp(n_steps):
+        ms, sds = [], []
+        for step in np.geomspace(2.0, (white - black) * 1.15, n_steps):
+            s_e = step * gain_true
+            var_e = s_e + rn_e_true**2 + (prnu_true * s_e) ** 2
+            mean_dn = min(black + step, white)
+            sd = 0.0 if mean_dn >= white else math.sqrt(var_e) / gain_true
+            ms.append(mean_dn); sds.append(sd)
+        return fit_ptc(np.asarray(ms), np.asarray(sds), black, white)
+    f40, f80 = _ramp(40), _ramp(80)
+    dens_inv = (abs(f40["gain_e_per_dn"] - f80["gain_e_per_dn"])
+                / f80["gain_e_per_dn"] < 0.005)
+    ok &= dens_inv
+    print(f"  ramp-density invariance: gain(40) {f40['gain_e_per_dn']:.4f} vs "
+          f"gain(80) {f80['gain_e_per_dn']:.4f} [{'ok' if dens_inv else 'FAIL'}]")
+    # a ramp too sparse to sample the top must DECLARE the fallback, not
+    # silently blend paths (this is the fail-closed contract, not a bug)
+    f30 = _ramp(30)
+    sparse_ok = f30["prnu_status"] == "unresolved"
+    ok &= sparse_ok
+    print(f"  sparse-ramp declaration: prnu_status={f30['prnu_status']} "
+          f"[{'ok' if sparse_ok else 'FAIL'}]")
     print("self-test:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 

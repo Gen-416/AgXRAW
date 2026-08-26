@@ -44,7 +44,7 @@ class TestJptcImporter(unittest.TestCase):
         # fwc_e is the ADC code-saturation capacity (white-black)*gain
         self.assertAlmostEqual(e["unity_gain_ev"], 8.8588, places=3)
         self.assertAlmostEqual(e["fwc_e"], 73663, delta=10)
-        self.assertGreater(e["fwc_e_uncertainty"], 0)
+        self.assertGreater(e["fwc_model_spread_e"], 0)
         self.assertEqual(e["quality"]["status"], "ok")
         self.assertEqual(e["quality"]["prnu_status"], "corrected")
         # Single-ISO entry: read noise extrapolates flat, PDR degrades to None.
@@ -320,12 +320,25 @@ class TestReviewR9Contracts(unittest.TestCase):
         self.assertTrue(_has_sensor_snr_prior(
             SimpleNamespace(**{**base, "prior_model_spread": 0.04})))
 
-    def test_r6ii_prior_is_gated_end_to_end(self):
-        """The R6 II entry (rms 13.3%, spread 15.4%) must resolve with the
-        quality evidence that makes the guidance gate reject it."""
-        e = priors.find_priors("Canon", "Canon EOS R6 Mark II")
-        self.assertEqual(e["quality"]["status"], "high-residual")
-        self.assertGreater(e["quality"]["model_sensitivity"], 0.10)
+    def test_prior_usability_criterion(self):
+        """R10 item 1: ONE availability criterion for every consumer.
+        R6 II fails on quality; S1M2 without a known shutter fails on
+        readout-mode ambiguity (mech rn unresolved vs elec 12.6 e- — a
+        blind pick is worse than no prior); the same model with the
+        shutter known becomes usable; curated entries pass."""
+        r6 = priors.find_priors("Canon", "Canon EOS R6 Mark II")
+        usable, reason = priors.prior_usability(r6)
+        self.assertFalse(usable)
+        self.assertEqual(reason, "quality-high-residual")
+        s1_blind = priors.find_priors("Panasonic", "DC-S1M2")
+        self.assertEqual(s1_blind["mode_match"], "model-only-ambiguous-shutter")
+        self.assertFalse(priors.prior_usability(s1_blind)[0])
+        s1_known = priors.find_priors("Panasonic", "DC-S1M2", shutter="electronic")
+        self.assertEqual(s1_known["mode_match"], "exact-shutter")
+        self.assertTrue(priors.prior_usability(s1_known)[0])
+        fp = priors.find_priors("SIGMA", "SIGMA FP")
+        self.assertTrue(priors.prior_usability(fp)[0])
+        self.assertFalse(priors.prior_usability(None)[0])
 
     def test_bulk_entries_carry_mode_match(self):
         e = priors.find_priors("SONY", "SLT-A77V")

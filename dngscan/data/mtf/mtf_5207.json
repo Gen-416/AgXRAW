@@ -1,7 +1,7 @@
 {
  "film": "Kodak VISION3 250D 5207",
  "source": "H-1-5207, Eastman Kodak, (c) 2022, Revised 3-22, p.3 'Modulation-Transfer Function Curves' (5500K, ECN-2, Status M)",
- "model": "core_tail_v1",
+ "model": "bi_gaussian_v1",
  "channels": {
   "B": [
    [
@@ -340,22 +340,22 @@
    "s": 0.7394,
    "w": 0.0,
    "sigma_um": 3.717,
-   "lambda_um": 0.0,
+   "tail_sigma_um": 0.0,
    "rms_residual": 0.0384
   },
   "G": {
    "s": 0.654,
-   "w": 0.1063,
+   "w": 0.0,
    "sigma_um": 5.058,
-   "lambda_um": 2.92,
+   "tail_sigma_um": 0.0,
    "rms_residual": 0.0294
   },
   "R": {
-   "s": 0.8507,
-   "w": 0.4693,
-   "sigma_um": 5.026,
-   "lambda_um": 4.663,
-   "rms_residual": 0.017
+   "s": 0.8804,
+   "w": 0.7116,
+   "sigma_um": 3.656,
+   "tail_sigma_um": 7.311,
+   "rms_residual": 0.0171
   }
  }
 }

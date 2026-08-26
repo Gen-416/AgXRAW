@@ -61,7 +61,7 @@ DATA = {
     "5207": {
         "film": "Kodak VISION3 250D 5207",
         "source": "H-1-5207, Eastman Kodak, (c) 2022, Revised 3-22, p.3 'Modulation-Transfer Function Curves' (5500K, ECN-2, Status M)",
-        "model": "core_tail_v1",
+        "model": "bi_gaussian_v1",
         "channels": {
             "B": [[2, 1.00], [5, 1.01], [10, 1.03], [15, 1.03], [20, 1.00],
                   [30, 0.80], [50, 0.60], [70, 0.45], [85, 0.40]],
@@ -87,17 +87,18 @@ DATA = {
 }
 
 
-def mtf_core_tail(f, s, w, sigma_mm, lambda_mm):
+def mtf_bi_gaussian(f, s, w, sigma_mm, tail_sigma_mm):
+    """Energy-conserving two-Gaussian mix — the EXACT form the runtime
+    executes (R10 item 3: the old name "core_tail" declared an exponential
+    PSF the operator never applied; after unifying on the operator form the
+    two components are both Gaussian, so the model says so). Identifiability
+    contract: a fitted tail must satisfy tail_sigma >= 2*sigma, otherwise
+    the two components are degenerate (the G-channel fit had tail ==
+    core to 0.01 um and w was pure noise) and the fit collapses to a single
+    Gaussian with w = 0, tail_sigma = 0."""
     g = np.exp(-2.0 * np.pi ** 2 * sigma_mm ** 2 * f ** 2)
-    # OPERATOR-EFFECTIVE tail (2026-08-25): the runtime renders the tail as
-    # a Gaussian with sigma = sqrt(3)*lambda (film_optics.py second-moment
-    # approximation). Fitting the analytic exponential-tail MTF instead let
-    # a heavy-tailed fit (w~0.55) open a 7.1pp gap between the declared
-    # kernel and what a render actually applies (gate-13 failure). The fit,
-    # the report's explicit model and the operator now share ONE form, so
-    # declaration == execution by construction.
-    e = np.exp(-2.0 * np.pi ** 2 * (3.0 * lambda_mm ** 2) * f ** 2)
-    return (1.0 - s) + s * ((1.0 - w) * g + w * e)
+    t = np.exp(-2.0 * np.pi ** 2 * tail_sigma_mm ** 2 * f ** 2)
+    return (1.0 - s) + s * ((1.0 - w) * g + w * t)
 
 
 def mtf_gaussian(f, s, sigma_mm):
@@ -112,36 +113,35 @@ def _fit_channel(rows, model):
     y = np.minimum(np.array([r[1] for r in rows], dtype=float), 1.0)
     wgt = np.where(f >= 15.0, 1.0, 0.35)  # rolloff carries the fit
 
-    if model == "core_tail_v1":
+    if model == "bi_gaussian_v1":
         def loss(p):
-            s, w, sg, lm = p
+            s, w, sg, ts = p
             if not (0.0 < s < 1.0 and 0.0 <= w <= 1.0
-                    and 1e-4 < sg < 0.03 and 1e-4 < lm < 0.05):
+                    and 1e-4 < sg < 0.03 and 2.0 * sg <= ts < 0.06):
                 return 1e6
-            m = mtf_core_tail(f, s, w, sg, lm)
+            m = mtf_bi_gaussian(f, s, w, sg, ts)
             return float(np.sum(wgt * (m - y) ** 2))
         best = None
         for s0 in (0.5, 0.7, 0.9):
             for w0 in (0.2, 0.5):
-                r = minimize(loss, [s0, w0, 0.005, 0.01],
+                r = minimize(loss, [s0, w0, 0.005, 0.015],
                              method="Nelder-Mead",
                              options={"xatol": 1e-6, "fatol": 1e-10,
                                       "maxiter": 4000})
                 if best is None or r.fun < best.fun:
                     best = r
-        s, w, sg, lm = [float(v) for v in best.x]
-        # canonicalize the degenerate axis: with w == 0 the exponential-tail
-        # component is inert and lm is unconstrained by the loss — it can
-        # wander to implausible values (the asset loader's lambda gate caught
-        # a 34um one). An inert component is written as exactly zero.
+        s, w, sg, ts = [float(v) for v in best.x]
+        # canonicalize the degenerate axis: an inert tail (w == 0) is
+        # written as exactly zero — with zero weight ts is unconstrained by
+        # the loss and would wander (an asset gate once caught a 34um one)
         if round(w, 4) == 0.0:
             w = 0.0
-            lm = 0.0
-        m = mtf_core_tail(f, s, w, sg, lm)
+            ts = 0.0
+        m = mtf_bi_gaussian(f, s, w, sg, ts)
         return {
             "s": round(s, 4), "w": round(w, 4),
             "sigma_um": round(sg * 1000.0, 3),
-            "lambda_um": round(lm * 1000.0, 3),
+            "tail_sigma_um": round(ts * 1000.0, 3),
             "rms_residual": round(float(np.sqrt(np.mean((m - y) ** 2))), 4),
         }
     # gaussian_v1
