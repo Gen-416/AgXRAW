@@ -62,11 +62,11 @@ class ScatterMixTests(unittest.TestCase):
                 sg = stock.sigma_um[ch] * 1e-3
                 lm = stock.lambda_um[ch] * 1e-3
                 g = np.exp(-2.0 * np.pi ** 2 * sg ** 2 * cycles_per_mm ** 2)
-                # review R1 item 2: the tail is IN the runtime now; the
-                # operator budget is checked against the exponential-form
-                # FIT, with the sqrt(3)*lambda Gaussian approximation's
-                # own error bounded (<=1.5 pp at 50 c/mm)
-                e = (1.0 + (2.0 * np.pi * lm * cycles_per_mm) ** 2) ** -1.5
+                # unified 2026-08-25: fit, report and operator all use the
+                # Gaussian-at-sqrt(3)*lambda tail, so this analytic form IS
+                # the executed one (no approximation gap left to budget)
+                e = np.exp(-2.0 * np.pi ** 2 * (3.0 * lm ** 2)
+                           * cycles_per_mm ** 2)
                 want = (1.0 - s) + s * ((1.0 - wgt) * g + wgt * e)
                 self.assertLess(
                     abs(mod - want), 0.03,

@@ -43,6 +43,7 @@
 
 | 脚本 | 作用 |
 |---|---|
+| `sync_film_optics_from_charts.py` | 图表数字化 → 渲染资产编译器(`--check` 防陈旧;配 test_film_optics_chart_sync 门禁) |
 | `audit_digitization.py` | 图表数字化采样充分性审计(线性 vs PCHIP 歧义 ≤ 声明误差;测试门禁共用) |
 | `regen_appearance_freeze.py` | 外观冻结再生成/校验(`--check`) |
 | `regen_optics_freeze.py` | 光学冻结 + BASELINE 再生成/校验(`--check`) |
