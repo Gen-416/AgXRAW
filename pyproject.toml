@@ -32,9 +32,12 @@ gui = [
 # scipy: PCHIP interpolation in the importers and the digitization
 # precision gate (R11 item 3: without it CI silently SKIPPED
 # tests/test_digitization_precision.py); matplotlib for the report
-# tools exercised by tests.
+# tools exercised by tests; colour-science for the chroma-field CV
+# record gates (route C phase 1) — without it those gates would
+# silently skip on CI, the exact failure mode R11 closed.
 test = ["httpx2>=2,<3", "scipy>=1.10", "matplotlib>=3.6",
-        "fastapi>=0.141.1,<0.142", "uvicorn>=0.52.2,<0.53"]
+        "fastapi>=0.141.1,<0.142", "uvicorn>=0.52.2,<0.53",
+        "colour-science>=0.4.4"]
 
 [tool.setuptools.packages.find]
 where = ["."]
