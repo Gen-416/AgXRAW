@@ -8,10 +8,11 @@ exists in the assets" — these charts are that measurement:
 
   - H-1-5207 p.3 "Modulation-Transfer Function Curves" (5500K daylight,
     ECN-2, Status M): the camera stock's per-channel system MTF. Feeds
-    the §5.1 core/tail emulsion-scatter fit:
-        MTF(f) = (1-s) + s[(1-w)·Ĝ_sigma(f) + w·Êxp_lambda(f)]
-    with Ĝ(f)=exp(-2·pi^2·sigma^2·f^2) and the isotropic exponential
-    PSF transform Êxp(f)=(1+(2·pi·lambda·f)^2)^(-3/2), f in cycles/mm.
+    the §5.1 emulsion-scatter fit (bi_gaussian_v1; see `mtf_bi_gaussian`
+    for why the old core/tail exponential form was retired):
+        MTF(f) = (1-s) + s[(1-w)·Ĝ_sigma(f) + w·Ĝ_tail_sigma(f)]
+    with Ĝ(f)=exp(-2·pi^2·sigma^2·f^2) for both components, f in
+    cycles/mm; params s/w/sigma_um/tail_sigma_um, tail_sigma >= 2·sigma.
   - H-1-2383 p.4 (tungsten 3200K, ECP-2D, Status A, 35% modulation
     target): the print film's MTF. Feeds the §6.2 formation-scatter fit
     (single normalized Gaussian K_form):  MTF(f) = (1-s) + s·Ĝ_sigma(f).

@@ -351,8 +351,10 @@ def render_ultrahdr_film_pair(
     below the print's reference-white join (film_reference_white_ev probe),
     smoothstep up to the plan's solved reliable headroom. This extends
     reliable scene highlights above reference white; it never re-develops
-    the body and never claims physical film HDR. Costs a second film walk
-    (an honest first version; fusing the two walks is P7 material).
+    the body and never claims physical film HDR. The film chain runs once:
+    the base render captures its post-film Rec.2020 pixels as it quantizes
+    (review batch 17), and the alternate is built from that captured float
+    print plus the decoded base.
     """
     from .film_develop import film_reference_white_ev
     from .film_v2_math import film_hdr_gain_log2

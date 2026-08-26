@@ -13,8 +13,8 @@ and the C++ kernel dispatch with the NumPy path as correctness oracle.
 Contracts that hold from day one:
 
 - `technical` mode never touches an asset, never allocates, and returns the
-  developed frame object unchanged — the P1 exit gate is that every frozen
-  byte in the repo stays identical.
+  developed frame object unchanged — the standing appearance-freeze gate
+  requires every frozen byte in the repo to stay identical.
 - The compiled `FilmAppearancePlan` is the ONLY thing the runtime consults
   (the A3 lesson, inherited here rather than re-learned): recipe arrays ride
   the plan as immutable payload, resolved and hash-verified at compile time.
@@ -43,8 +43,8 @@ APPEARANCE_MODES = ("technical", "reference", "custom")
 # variant selects the recipe ASSET; the mode still selects the pipeline.
 APPEARANCE_VARIANTS = ("reference", "extended")
 
-# §6.6 axes the P2 kernel will interpolate over. Declared here so the loader
-# can validate shapes before any kernel exists to consume them.
+# §6.6 axes the palette kernel interpolates over. Declared here so the
+# loader validates shapes independently of the kernel.
 EV_KNOTS = (-6.0, -3.0, 0.0, 3.0, 6.0)
 HUE_KNOT_COUNT = 24
 # Owner policy (2026-08-11): taste decisions whose MATH is sound become
@@ -270,9 +270,9 @@ def load_recipe(recipe_id: str, *, stock_id: str, medium_id: str) -> dict:
             )
 
         # Identity detection decides the strict fast path: an all-zero
-        # recipe must stay BYTE-identical (the P1 exit gate), and the Oklab
-        # round trip alone would cost that. Any non-zero field engages the
-        # kernel.
+        # recipe must stay BYTE-identical (the standing appearance-freeze
+        # byte gate), and the Oklab round trip alone would cost that. Any
+        # non-zero field engages the kernel.
         is_identity = all(float(np.abs(fields[k]).max()) == 0.0 for k in fields)
 
         out = {
@@ -564,9 +564,10 @@ def apply_film_appearance(
     the full-frame oracle share it with no full-frame temporary.
 
     Strict fast paths: technical, strength 0 and IDENTITY recipes return the
-    same object (the P1 byte gate depends on it — the Oklab round trip alone
-    would cost byte identity). The engaged path runs float32 end to end with
-    the colour matrices pre-fused; measured at ~37% of the film core on a
+    same object (the standing appearance-freeze byte gate depends on it —
+    the Oklab round trip alone would cost byte identity). The engaged path
+    runs float32 end to end with the colour matrices pre-fused; measured
+    at ~37% of the film core on a
     1 MP chunk (float64 first cut: 66%); the 10% target belongs to the P6
     native kernel — this NumPy path stays the correctness oracle.
     """

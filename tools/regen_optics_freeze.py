@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Freeze the legacy analog-optics output and its measured baseline (V2 P0).
+"""Regenerate the standing analog-optics drift freeze and its measured baseline.
 
 Two artefacts, one command:
 
 1. **Byte freeze** — the rendered u8 and linear output of every freeze scene at
-   the GUI's `light` and `standard` optics tiers. Phase P1 rewrites the asset
-   and compiler layer without touching the maths; its exit gate is that these
-   bytes do not move. A later phase that intends to change them has to say so
-   and regenerate deliberately.
+   the GUI's `light` and `standard` optics tiers. First written before P1 as a
+   pin on the legacy bytes; P1-P7 landed and re-pinned it deliberately, so it
+   now gates drift in the CURRENT output. A change that intends to move these
+   bytes has to say so and regenerate deliberately.
 
 2. **Measured baseline** — `BASELINE.json`, the numbers from
    `tools/film_optics_report.py`. This is what turns "the grain looks bad" into
-   a value with a unit, so that P2-P4 can be judged rather than admired.
+   a value with a unit — the standing baseline each phase P2-P4 was judged
+   against rather than admired.
 
 Do not run this to make a failing test pass. A freeze that gets regenerated
 whenever it complains is not a freeze.

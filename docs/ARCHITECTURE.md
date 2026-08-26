@@ -119,10 +119,10 @@ flowchart TB
     subgraph DECODERS["2. Scene pixel formation - independent decoder choice"]
         direction TB
         SELECT{"Scene decoder"}
-        LR["LibRaw<br/>declared WB: as-shot or fixed Kelvin<br/>(DNG dual-illuminant solve)<br/>demosaic selection, clip / blend / reconstruct"]
+        LR["LibRaw<br/>fixed AsShot reconstruction precondition<br/>demosaic selection<br/>clip / blend / reconstruct"]
         LRRGB["Oriented linear Rec.2020 uint16<br/>no auto-bright"]
         CIPROBE["CIRAWFilter capability probe<br/>RAW 9 or explicit RAW 8/7 fallback"]
-        CI["Neutral Core Image RAW recipe<br/>RAW 9: CoreML reconstruction + denoise<br/>older versions: system decoder<br/>highlight recovery, lens correction, DNG opcodes"]
+        CI["Fixed-AsShot Core Image RAW recipe<br/>RAW 9: CoreML reconstruction + denoise<br/>older versions: system decoder<br/>highlight recovery, lens correction, DNG opcodes"]
         CIRGB["Extended-linear Rec.2020 RGBAh<br/>signed components and values above 1 retained"]
         LRREF["aligned mode only<br/>half-size LibRaw reconstruct reference"]
         ALIGN["Core Image scale policy<br/>aligned: decoded-G median ratio<br/>or unity / legacy measured"]
@@ -133,6 +133,7 @@ flowchart TB
 
     subgraph CONTRACT["3. Common scene contract and analysis"]
         direction TB
+        HOTWB["Project hot white balance<br/>ColorMatrix-recovered camera-linear gains<br/>shared by preview / export"]
         SCALE["Scene scale contract<br/>storage and WB headroom scale<br/>file BaselineExposure recipe<br/>optional Core Image alignment scalar"]
         SCENE["RawBundle scene frame<br/>scene_rec2020_render + scene_scale<br/>scene-linear Rec.2020 handoff"]
         ANALYSIS["Analysis<br/>resolve per-channel full well from saturation pile or metadata<br/>hard thresholds, clip%, 2x2 topology and ceilings<br/>noise floor / optional diagnostic SNR / usable DR<br/>decoded XYZ-Y-EV and output-gamut pressure"]
@@ -145,7 +146,7 @@ flowchart TB
         PLAN["Immutable RenderPlan"]
         REPORTS["Optional dashboard / CSV / text report"]
 
-        SCALE --> SCENE
+        HOTWB --> SCALE --> SCENE
         SCENE --> ANALYSIS
         ANALYSIS --> SPATIAL
         SCENE --> SAMPLE
@@ -165,8 +166,8 @@ flowchart TB
     RAW --> META
     RAW --> SELECT
     RAW --> LRREF
-    LRRGB --> SCALE
-    ALIGN --> SCALE
+    LRRGB --> HOTWB
+    ALIGN --> HOTWB
     CFA -.-> ANALYSIS
     META -.-> ANALYSIS
     CFA -.-> SPATIAL
@@ -189,7 +190,7 @@ flowchart TB
     class CFA,META evidence
     class LR,LRRGB,LRREF libraw
     class CIPROBE,CI,CIRGB,ALIGN apple
-    class SCALE,SCENE pixels
+    class HOTWB,SCALE,SCENE pixels
     class ANALYSIS,SPATIAL,METRICS,SAMPLE contract
     class EV,CONTROLS intent
     class COMPILE,PLAN plan
@@ -392,10 +393,10 @@ per-model Adobe matrix -> this project's fallback matrix table for bodies newer 
 the installed LibRaw (`camera_matrices.py`) -> and when every rung is missing, a
 **degradation to as-shot with an explicit warning** while the render proceeds (a
 declared degradation is usable; a silent one would be a hidden white balance).
-RAW 9 receives the same declaration through CIRAWFilter's native
-neutralTemperature/neutralTint interface with tint pinned to zero (so as-shot tint
-residue cannot leak into the declared reference). Both decoders realise one
-declaration with their own calibration; on the Sigma fp reference frame the solved
+RAW 9 honours the same declaration: both decoders decode at the fixed AsShot
+neutral, and the declared Kelvin reference is composed by the project hot-WB matrix
+after the linear handoff (the ladder-solved matrices are the input to that
+transform). On the Sigma fp reference frame the solved
 6500K multipliers match the manufacturer daylight metadata within 0.1%. Per-body
 support status, the sensor priors table (PhotonsToPhotos measured curves) and the
 LibRaw upgrade path are catalogued in
@@ -427,9 +428,11 @@ LibRaw's three choices affect the appearance after reconstruction:
   continuous structure, but its chroma is inferred.
 - Its hue often leans toward the surviving channel, so continuity is not color truth.
 
-For normal photographs, `reconstruct` is the practical default; `clip` is more useful when
-inspecting the sensor or the algorithm itself. The saved RAW clipping evidence is unchanged
-in every case.
+`clip` is the shipping default — honest white is never wrong, and the clip-evidence
+machinery decouples highlight trust from the fill choice, so on most photographs the
+difference is invisible. `blend`/`reconstruct` are worth trying on partially clipped
+flat light sources, where the reconstructed chroma remains an inference. The saved
+RAW clipping evidence is unchanged in every case.
 
 LibRaw stores `blend` and `reconstruct` darker in uint16 by exactly the normalized peak
 white-balance multiplier, reserving container codes for reconstructed values above

@@ -344,9 +344,9 @@ GUI/CLI 可手动指定 `dht / dcb / ahd / aahd / vng / ppg`；如果本机 LibR
 标定（ColorMatrix1/2 按倒数色温插值）→ LibRaw 的机型 Adobe 矩阵 → 本项目为
 "比安装版 LibRaw 还新"的机型准备的回退矩阵表（`camera_matrices.py`）→ 全部缺失时
 **退化为相机 AsShot 并显式警示**，渲染照常（声明的降级可用，静默的降级等于隐藏
-白平衡）。RAW 9 侧通过 CIRAWFilter 原生的 neutralTemperature/neutralTint 接口接收
-同一声明（tint 钉零，避免 AsShot tint 残留混入声明基准）。两种解码器各用自己的标定
-兑现同一个声明；在适马 fp 参考帧上，求解的 6500K 乘数与厂商日光元数据吻合在 0.1%
+白平衡）。RAW 9 侧兑现的是同一份声明：两种解码器都按固定 AsShot 中性解码，声明的
+色温参考在线性交接之后由项目热 WB 矩阵统一施加（阶梯求解出的矩阵正是这一变换的
+输入）。在适马 fp 参考帧上，求解的 6500K 乘数与厂商日光元数据吻合在 0.1%
 以内。逐机型支持状态、传感器先验表（PhotonsToPhotos 实测曲线）与 LibRaw 升级路径
 见 [SENSOR_SUPPORT.zh-CN.md](SENSOR_SUPPORT.zh-CN.md)。
 
@@ -369,8 +369,9 @@ LibRaw 的三种选择处理的是重建后的观感：
 - `reconstruct` 根据幸存通道估算丢失通道，可以恢复连续结构，但色度属于推断。
 - 重建色相往往会向幸存通道偏移，因此连续不等于色彩真实。
 
-日常出片通常以 `reconstruct` 为实用默认，检查传感器和算法本身时则更适合用 `clip`。
-无论选哪一个，RAW 剪切证据都不会改变。
+默认即 `clip`——诚实的白不会错，剪切证据机制又让高光信任与填充方式解耦，多数照片
+看不出差别；`blend`/`reconstruct` 在部分通道过曝的平坦光源上值得一试，重建色度始终
+属于推断。无论选哪一个，RAW 剪切证据都不会改变。
 
 LibRaw 会把 `blend` 和 `reconstruct` 的 uint16 整幅缩暗，倍数正好是归一化后的最大
 白平衡增益，目的是给名义白点以上的重建值留容器码值。dngscan 现在把这段余量记进
@@ -576,11 +577,12 @@ scene 缓冲。调到 1.0 确实在最顶端拉出更多分离度
 
 **需要留住的可调接口。** RAW 9 是计算导向的解码器，它的若干旋钮是对模型的**标定控制**，
 而不是可以关掉的处理级。`exposure` 已接线。白平衡接口（`neutralTemperature` /
-`neutralTint` / `neutralChromaticity` / `neutralLocation`）是移动白平衡的受支持途径，
-也正是 `--wb daylight` 在这条路径上被拒绝而非近似的原因。`linearSpaceFilter` 是 Apple
-自己提供的钩子，用于在图像仍处于线性状态时插入一个 CIFilter——任何想下沉进解码阶段的
-scene-referred 操作，架构上都该放在这里。在那套白平衡接口的温度/色调映射得到验证之前，
-`--wb daylight` 在这条路径上会被直接拒绝，而不是拿近似值糊弄过去。
+`neutralTint` / `neutralChromaticity` / `neutralLocation`）是在解码内部移动白平衡的
+受支持途径。`--wb daylight` 在这条路径上**受支持**（review A9）：帧按固定 AsShot
+中性解码，项目热 WB 变换随后以日光标定帧的逆组合出应用配平——与 LibRaw 路径同一套
+声明语义，而不要求 RAW 9 去近似一套它并未定义的元数据乘数映射。`linearSpaceFilter`
+仍是 Apple 自己提供的钩子，用于在图像仍处于线性状态时插入一个 CIFilter——任何想
+下沉进解码阶段的 scene-referred 操作，架构上都该放在这里。
 
 RAW 9 随系统分发，一次 macOS 更新就可能换掉模型，而 `decoderVersion` 仍然回答 "9"。
 现在报告会同时记录系统版本/build fingerprint，至少能把两次输出追溯到具体运行环境。金样本
@@ -654,7 +656,9 @@ EV 之所以感觉像“数字亮度”，是因为默认端点追随场景百�
 配套的两个有界偏移作用在编译后的 plan 上：`toe_end_offset` 移动曲线落到近黑
 （display-linear 0.002）的 EV 位置，通过重解 toe power 实现——刻意不用 latitude 下移，
 因为把线性 latitude 段向下延伸，会用中段直线替换本来抬起的趾部 sigmoid，实测反而压暗
-深阴影；`shoulder_start_offset` 则是真正的 latitude 上移，让线性中段更晚交给肩部。
+深阴影；`shoulder_white_offset` 移动曲线升到近白参考的 EV 位置，通过重解肩部曲率
+实现——刻意不做 latitude/肩部起点上移：起点移动会先被合法性钳制吸收，正是被替换
+掉的死控制。
 两者都不移动黑白端点与支点，编译后的实际值（含被钳制的请求）通过
 `drt.compiled_curve_transitions` 回报给 GUI 与报告。
 
@@ -671,7 +675,7 @@ contrast × white_ev / 16.5 − (1 − 0.18^(1/2.2))
 
 对比度 3 时这个量在白点 ≈ 2.98 EV 处恰好归零。防御性白点下限把逆光桥样张
 的白点钉在 3.0 EV（侧光人像样张 3.01），肩部因此被迫编译成一条贴着切线的
-直线，合法曲线族里没有任何成员能把它掰弯：`shoulder_start_offset` 从 −1
+直线，合法曲线族里没有任何成员能把它掰弯：`shoulder_white_offset` 从 −1
 拉到 +2，编译后的收白点仅从 2.726 移到 2.739 EV——0.013 EV，任何眼睛都
 看不见。白点被真实高光推高时同一滑块立即恢复行程：灯盘烧毁样张的白点在
 +5.15 EV，收白点从 +2.8 EV（−1）走到 +3.7（0）再到 +4.5（+2），共 1.7 EV
@@ -846,7 +850,7 @@ Dmax 并记录于 medium_floor_native_linear）：black −4.05 / white +7.59
 "证据界 + Velvia 曲线"与"自适应 + Velvia 曲线"逐字节相同，GUI/CLI 传入
 evidence 不报错也不生效。趾/肩偏移仍在预设坐标上重解曲线形状（抬黑地板
 相对化处理，预设声明的相纸 Dmax 地板保留）：后台样张实测 Velvia 曲线上
-`toe_end_offset` −2 移动约 39% 的像素，而 `shoulder_start_offset` +2 只移动
+`toe_end_offset` −2 移动约 39% 的像素，而 `shoulder_white_offset` +2 只移动
 约 4%——最硬的肩留给"更柔"的空间本来就小，与上文"肩部自由度的几何"同构。
 
 **放大机色头的光谱印相实现（v4 场，SHA-256 内容钉扎）**：负片预设的 Y/M 滑杆不是平坦 RGB 乘数。
