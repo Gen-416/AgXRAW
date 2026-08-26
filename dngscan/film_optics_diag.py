@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Measurement primitives for analog optics (FILM_OPTICS_V2 §9/§10, phase P0).
 
-Every number the V2 plan gates on is computed here, once, so that the tests,
-the report tool and the future calibration tool cannot disagree about what
-"the halo radius" or "the granularity" means. Nothing in the render path
-imports this module.
+Every number the V2 plan gates on is computed here, once, so that the tests
+and the report tool cannot disagree about what "the halo radius" or "the
+granularity" means. Nothing in the render path imports this module.
 
 The four measurements and why each exists:
 

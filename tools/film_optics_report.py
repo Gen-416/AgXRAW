@@ -16,7 +16,6 @@ renders a baseline with every amount at zero and subtracts.
 
     python tools/film_optics_report.py --json out.json
     python tools/film_optics_report.py --perf          # adds the 61 MP timing
-    python tools/film_optics_report.py --charts DIR    # also writes PNG panels
 """
 from __future__ import annotations
 
@@ -453,9 +452,10 @@ def build_report(stock: str = DEFAULT_STOCK, *, perf: bool = False) -> dict:
 def measure_perf(stock: str, megapixels: float = 61.0) -> dict:
     """Wall time and peak RSS of the banded production path at 61 MP.
 
-    Driven through the renderer's own three-phase lifecycle — pass A for the
-    halation maps, pass B for the bloom source, then the banded apply — not
-    the full-frame oracle. Two reasons: the oracle holds the whole frame and
+    Driven through the renderer's own lifecycle — one band-streamed scene
+    pass that accumulates the bloom source and decimates the scene for the
+    halation maps, then the banded apply — not the full-frame oracle. Two
+    reasons: the oracle holds the whole frame and
     reports a number no export can reproduce, and `apply_film_core` without a
     spatial context leaves the optics INERT by contract, so a naive timing
     loop measures the film curves twice and reports that the operators are

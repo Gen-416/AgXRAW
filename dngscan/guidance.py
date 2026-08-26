@@ -37,7 +37,7 @@ def clip_class_from_masks(masks_rgb: Any, threshold: float = 0.35) -> Any:
 
 
 def headroom_from_masks(masks_rgb: Any) -> Any:
-    """Legacy clip-mask proxy retained for callers without RAW headroom maps."""
+    """Legacy clip-mask -> pseudo-headroom inverse (1 - mask); currently unreferenced."""
     m = np.clip(np.asarray(masks_rgb, dtype=np.float32), 0.0, 1.0)
     return np.clip(np.float32(1.0) - m, 0.0, 1.0)
 

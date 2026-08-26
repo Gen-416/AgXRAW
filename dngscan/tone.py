@@ -1074,8 +1074,8 @@ def build_render_plan(
         # the colour head only adds its own dial values here.
         tone = _replace(tone, color_head_y=head_y, color_head_m=head_m)
     # film v2 plan objects (FILM_PRINT_RENDERING_PLAN §4): identity defaults,
-    # validated fail-closed whenever the film domain is active. P1 wires the
-    # structure; exposure/development/print state grows in later stages.
+    # validated fail-closed whenever the film domain is active; exposure,
+    # development, print and analog-finish state are all populated below.
     if film_curve == "none" and (
         str(film_development or "measured_default") != "measured_default"
         or float(film_dev_contrast) != 0.0 or float(film_dev_fog) != 0.0

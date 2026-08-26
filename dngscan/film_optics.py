@@ -20,7 +20,7 @@ The contracts that ARE hard here:
 - Halation extracts from the pre-emulsion highlight scene exposure and
   reinjects into the LAYER EXPOSURE before the characteristic curves, through
   a red-dominant backscatter kernel. It never shares a blur with bloom.
-- The measured scatter mixes (P5): emulsion scatter on linear layer
+- The derived scatter mixes (P5): emulsion scatter on linear layer
   exposure and the print medium's formation scatter on linear paper
   exposure — energy-conserving, MTF-fitted, full-resolution via the halo
   row-band protocol. (The old post-B2 "legacy print scatter" pyramid was

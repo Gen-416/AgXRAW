@@ -304,8 +304,8 @@ def _optics_budget_mib() -> int:
 # Fixed working-set costs of the analog-optics context, charged against the
 # budget BEFORE band sizing (review batch 13: the solver previously budgeted
 # only the band temporaries while the grain field build and the sampling
-# integral image dominated the real peak): the resident float32 grain field
-# (2000x3000x3), its float64 integral image during sampling, plus the
+# integral image dominated the real peak): the cached float32 grain integral
+# image (the field itself is dropped once the integral exists), plus the
 # decimated spread maps and blur temporaries.
 # Measured fixed context: the float32 grain integral (72 MiB), the decimated
 # scene accumulator and the capture bloom's float64 fine-source accumulator on
@@ -377,8 +377,10 @@ def apply_tone_core(
     ):
         from .film_develop import apply_film_core
 
-        # No colour head in full mode (refused at plan compile); the baked
-        # chain IS the development, nothing is appended after it.
+        # The colour head in full mode is consumed INSIDE the takeover chain
+        # (timing=custom converts it to per-layer delta-tau in film_develop;
+        # other timings refuse it at plan compile); the baked chain IS the
+        # development, nothing is appended after it.
         return apply_film_core(rgb_rec2020, plan)
     if core == "neutral":
         return neutral_engine.apply_neutral_core(rgb_rec2020, plan)

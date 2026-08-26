@@ -140,7 +140,7 @@ SHOULDER_WHITE_DISPLAY_RATIO = 0.90
 # shoulder meaningfully shaped (below ~0.7 the roll-off flattens toward its asymptote
 # so slowly that the near-white crossing pins to the white endpoint and the solve
 # loses conditioning); the upper bound must admit the hardest compiled film-preset
-# shoulder (kodachrome64 fits 9.1) with margin, so a zero offset never has to fight
+# shoulder (velvia100 fits 9.27) with margin, so a zero offset never has to fight
 # its own bounds. Requests whose target crossing is unreachable inside these bounds
 # clamp to the bound — softest for "later", hardest for "earlier" — and the compiled
 # shoulder-white fact reports the value actually achieved.

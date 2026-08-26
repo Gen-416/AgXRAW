@@ -2,7 +2,8 @@
 """Full display LUT filters (log encode -> .cube -> display).
 
 Unlike dngscan.look (chromatic geometry only, L untouched), these are output
-transforms: Kodak 2383 FPE (Cineon log in) and RED IPP2 (Log3G10/RWG in).
+transforms: Kodak 2383 FPE (Cineon log in), RED IPP2 (Log3G10/RWG in) and
+Sony LC-709TypeA (S-Log3/S-Gamut3.Cine in).
 """
 from __future__ import annotations
 
@@ -22,8 +23,8 @@ _ASSETS = Path(__file__).resolve().parents[1] / "dngscan_assets" / "vendor_luts"
 class DisplayFilter:
     label: str
     cube: Path
-    source: str  # cineon | log3g10
-    input_space: str  # rec709 | rwg — linear RGB space fed to the encoder
+    source: str  # cineon | log3g10 | slog3
+    input_space: str  # rec709 | rwg | sgamut3cine — linear RGB space fed to the encoder
     display_eotf: str = "gamma"  # gamma | bt1886 — how to decode LUT output to linear
     display_gamma: float = 2.4  # used when display_eotf == gamma
     # What the encoder is fed: "display" = the AgX display render (right for print film

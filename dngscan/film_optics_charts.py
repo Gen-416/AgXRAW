@@ -4,8 +4,8 @@
 
 These are the fixed, generated stimuli that make a spatial defect a NUMBER
 instead of an impression. Nothing in the render path imports this module; it
-exists so tests, `tools/film_optics_report.py` and the future
-`tools/calibrate_film_optics.py` all drive the operators with the same inputs.
+exists so tests and `tools/film_optics_report.py` drive the operators with
+the same inputs.
 
 Two conventions hold everywhere here:
 

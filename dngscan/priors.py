@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Static sensor priors from public measurements (PhotonsToPhotos, Bill Claff).
+"""Static sensor priors from third-party measurements (PhotonsToPhotos, JPTC).
 
-These are *published chart data*, not our own bench measurements: they calibrate the
-absolute scale (electrons, PDR) that a single frame cannot provide, while the empirical
-per-frame analysis remains the primary signal. Everything degrades gracefully to None
-when the camera or ISO is unknown.
+These are *third-party data* — Bill Claff's published P2P chart series plus
+y-g-jiang's first-party JPTC bench measurements (credit-based grant, see NOTICE.md) —
+not our own bench measurements: they calibrate the absolute scale (electrons, PDR)
+that a single frame cannot provide, while the empirical per-frame analysis remains
+the primary signal. Everything degrades gracefully to None when the camera or ISO is
+unknown.
 
 Data source: https://www.photonstophotos.net/Charts/PDR.htm and
 https://www.photonstophotos.net/Charts/RN_e.htm (series extracted 2026-07-06).
@@ -101,9 +103,12 @@ def _load_json_priors() -> list[dict[str, Any]]:
 PRIOR_TABLE = [SIGMA_FP] + _load_json_priors()
 
 # Secondary tables, loaded lazily on the first curated-table miss:
-#   tier 2 — JPTC/2 first-party bench measurements (data/priors/jptc/*.json),
-#            single-ISO PTC fits; gain/FWC are measured, read noise is a
-#            one-point curve (constant extrapolation), no PDR curve.
+#   tier 2 — JPTC first-party bench measurements, one merged table from two
+#            sources: JPTC/2 single-ISO PTC fits (data/priors/jptc/*.json;
+#            gain/FWC measured, read noise a one-point curve with constant
+#            extrapolation, no PDR curve) and JPTC collect sets
+#            (data/priors/jptc_collect/*.json; gain and read-noise CURVES —
+#            entries with a full gain curve sort first, see _jptc_entries).
 #   tier 3 — P2P bulk table (data/priors/p2p_bulk.json), 135 cameras derived
 #            from PhotonsToPhotos chart data; provenance and the licensing
 #            decision live in that file's header and in NOTICE.md. Deleting

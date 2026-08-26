@@ -9,8 +9,8 @@ from collections import OrderedDict
 class PreviewCoordinator:
     """Remember only the newest generation for a bounded set of browser sessions.
 
-    HTTP handlers may still be waiting on the render lock, but stale handlers become
-    constant-time no-ops before they compile a plan or touch pixels.  A running render
+    HTTP handlers may still be queued on a RenderScheduler slot, but stale handlers
+    become constant-time no-ops before they compile a plan or touch pixels.  A running render
     checks the same generation before metrics/encoding, so it can never publish late.
     """
 

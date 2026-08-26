@@ -237,8 +237,10 @@ def wb_adaptation_ratios(
     approximated by libraw's daylight multipliers). When the export uses a different
     balance (AsShot), a surface that sat at chromaticity (rg, bg) in the calibration
     render sits at ~(rg*rR, bg*rB) now, with r = G-normalized(applied/daylight) — a
-    von Kries transport of the anchor. Returns None (identity) for the daylight balance
-    or when either multiplier set is unusable."""
+    von Kries transport of the anchor. Identity cases (daylight balance, missing or
+    near-unity multipliers) return None on the libraw path; a non-libraw decoder gets
+    an identity (1.0, 1.0, decoder) triple instead, so the decoder tag survives for
+    decoder_window_ratios. Non-positive multipliers return None for every decoder."""
     if wb_mode == "daylight":
         return (1.0, 1.0, scene_decoder) if scene_decoder != "libraw" else None
     if not applied_wb or not daylight_wb or len(applied_wb) < 3 or len(daylight_wb) < 3:
@@ -431,7 +433,9 @@ def _region_weight_from_chroma(
     transport = _compose_transport(wb_adapt, region.name)
     if region.components:
         # Mixture window: MAX over components, not sum — overlapping lobes must not
-        # double-count. Each component transports through von Kries individually.
+        # double-count. Each component transports individually through the composed
+        # window transport (full-matrix projective when the hot-WB matrix is
+        # available, diagonal von Kries ratios as the fallback).
         weight = np.zeros((chroma.shape[0],), dtype=np.float32)
         for comp in region.components:
             comp_w = _gaussian_weight(chroma, comp.mu_rg_bg, comp.cov_rg_bg, region.scale, transport)

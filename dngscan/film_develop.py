@@ -49,9 +49,13 @@ instead of clipping, and in-domain recipes stay inside the cube by
 construction.
 
 Grey-scale neutralization (plan.film_crossover storage; surface name
---film-neutralization): "datasheet" serves the chain verbatim; "bounded"
-(off) divides the output per pixel by a BOUNDED neutral-cast curve indexed
-at the pixel's LUMINANCE exposure EV_Y — the correction multiplier walks
+--film-neutralization) has three policies: "datasheet" (native) serves the
+chain verbatim; "print" (print-balanced) divides by ONE constant
+per-channel balance, the cast table evaluated once at this exposure's
+mid-grey anchor, so mid grey prints neutral while the grey scale's own
+crossover survives at both ends; "off" (technical-neutral, the default)
+divides the output per pixel by a BOUNDED neutral-cast curve indexed at
+the pixel's LUMINANCE exposure EV_Y — the correction multiplier walks
 h(t) = 1 + t*(1/cast - 1) toward full neutralization at the largest
 t in [0,1] keeping every channel inside [0.25, 4], preserving neutral-axis
 luminance exactly; deeper tint (Kodachrome's floor) stays medium character.
@@ -60,8 +64,8 @@ pixel the quotient's visible-stop error equals the datasheet volume's own,
 while a baked composite put the EV_Y kink diagonal to the grid (1.73 EV
 worst off-axis, measured). For negatives the per-node cast tables ride the
 print_state asset and interpolate in exposure state; both cast families are
-solved against MEASURED development, which is why editorial recipes refuse
-bounded neutralization.
+solved against MEASURED development, which is why editorial recipes accept
+only datasheet neutralization.
 
 Loading is fail-closed end to end: schema, kind, identity (stock/medium/
 input space), shapes, monotone axes, finiteness and cast bounds all raise

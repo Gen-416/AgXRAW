@@ -77,15 +77,13 @@ def fit_ptc(
     var = stds**2
     sat_plateau = white - black
     # Clip plateau detection: points whose mean sits within 0.5% of white are
-    # saturated (their std collapses); S_sat is the highest UNSATURATED mean.
+    # saturated (their std collapses). s_last, the highest UNSATURATED signal,
+    # is published as a lower bound only; the fit windows reference
+    # sat_plateau = white - black, not any ramp statistic.
     unsat = means < white * 0.995
     if int(unsat.sum()) < 6:
         raise ValueError("not enough unsaturated exposure steps for a PTC fit")
     s_last = float(signal[unsat].max())
-    # The true clip plateau sits between the last unsaturated step and the
-    # plateau itself; a stepped exposure ramp cannot see inside that bracket,
-    # so report the midpoint WITH the half-bracket as declared uncertainty
-    # instead of quoting the lower bound as if it were exact.
     # No midpoint estimand survives (R10 item 2): the old s_sat midpoint was
     # a function of the exposure-step density and silently steered the fit
     # windows (S5M2 gain moved -2.7% between window conventions). All
@@ -225,8 +223,8 @@ def fit_ptc(
     #     fwc_e = (white - black) * gain,
     # exact given the fitted gain (no bracket needed); whether the PHYSICAL
     # full well or the ADC clips first is not knowable from clipped codes,
-    # so no physical-full-well claim is made. The clip-onset bracket stays
-    # available as s_sat_dn +/- s_sat_dn_uncertainty.
+    # so no physical-full-well claim is made. No clip-onset bracket is
+    # published; last_unsaturated_signal_e stands as the lower bound.
     read_noise_e = math.sqrt(var_read) * gain if var_read > 0 else None
     return {
         "gain_e_per_dn": gain,

@@ -23,7 +23,7 @@ dngscan 做一件事：把 RAW 照片转成尽量忠实的 JPEG——普通 JPEG
 
 装好就能用，不需要按机型安装插件。本工具的开发与校准主要在适马 fp 的 DNG 和 iPhone ProRAW 上完成，这些机型的体验经过最充分的验证；其余主流机型可以正常解码转换，遇到异常欢迎反馈样张。
 
-**太新的机型也能用**：刚发布、内置数据表还没跟上的相机（如 A7 V、GR IV、X-E5 这一代）不会被拒绝——工具会自动降级并在报告里明确提示"该机型标定数据不完整，结果可能有偏差"，照片照常导出。部分新机型（A7 V / A7S III / A7R VI / GR IV / 尼康 Zf / X100VI / X-E5）已内置实测传感器数据与颜色矩阵，体验与老机型一致。
+**太新的机型也能用**：刚发布、内置数据表还没跟上的相机（如 A7 V、GR IV、X-E5 这一代）不会被拒绝——工具会自动降级并在报告里明确提示"该机型标定数据不完整，结果可能有偏差"，照片照常导出。部分新机型（A7 V / A7S III / A7R VI / GR IV / 尼康 Zf / X100VI / X-E5）已内置实测传感器数据，并在有已发布系数的机型内置颜色矩阵——A7R VI 的矩阵宁缺毋猜（走声明降级路径），GR IV 由 DNG 自带标定。
 
 **一个已知例外：尼康高效压缩（HE/HE\*）NEF**。Z9/Z8/Z6III/Z50II 世代如果拍摄时选了"高效压缩"，该格式因编码授权问题无法被 LibRaw 解码（全行业开源工具皆如此），报错时工具会给出具体指引。解决办法：用免费的 Adobe DNG Converter 把文件转成 DNG（转换后全功能可用），或在相机里改用"无损压缩"RAW。同机身的无损 NEF 一切正常。
 
@@ -131,9 +131,13 @@ RAW 也不会绕过这个分析前提。
   互证；仅 AgX 压缩核心。full 的可声明状态：`--film-exposure`（乳剂曝光态
   ±2EV）、`--film-print-medium`（印相介质，跨介质配对换纸不重曝）、
   `--film-print-timing fixed|retimed|custom`（custom 解锁色头 Δτ 与
-  `--film-print-exposure`）、`--film-neutralization bounded|datasheet`
-  （GUI"灰阶中性化"；旧名 `--film-crossover` 为弃用别名——bounded 即
-  数字中性化变体，灰阶偏中性两档以内严格保持中性；datasheet 为链原样，
+  `--film-print-exposure`）、`--film-neutralization
+  technical-neutral|print-balanced|native`
+  （GUI"灰阶中性化"，默认"跟随胶片解释"——技术中和解析为数字中性、参考
+  印相解析为印相平衡；`bounded`/`datasheet` 与旧名 `--film-crossover` 均为
+  弃用别名——technical-neutral 即数字中性化变体，灰阶偏中性两档以内严格
+  保持中性；print-balanced 只在 EV0 锚点解一次常数平衡，中灰依构造中性、
+  灰阶两端保留介质自身曝光相关的 crossover；native 为链原样，
   阴影按各卷数据手册偏色，电影负片偏绿青、Kodachrome 偏琥珀、Velvia 温和
   偏冷，中灰由印相求解锚定）、`--film-development editorial_custom` 显影
   配方（对比/fog/色密度有界扰动，报告如实标注）、`--film-compression`

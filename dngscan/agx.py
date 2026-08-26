@@ -825,8 +825,10 @@ def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> 
     at zero keep the byte-exact fast path.
     """
     if str(getattr(plan, "film_mode", "observe")) == "full":
-        # Full mode refuses the head at plan compile; this guard keeps the
-        # operator honest even for hand-built plans.
+        # Full mode never routes the head through this observe-mode operator:
+        # timing=custom consumes it inside the takeover chain (per-layer
+        # delta-tau in film_develop), every other timing refuses it at plan
+        # compile; this guard keeps hand-built plans honest.
         return mapped_rec
     y_cc = float(getattr(plan, "color_head_y", 0.0))
     m_cc = float(getattr(plan, "color_head_m", 0.0))

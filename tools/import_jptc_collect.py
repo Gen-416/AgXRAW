@@ -357,19 +357,15 @@ def build(set_dir: Path, meta: dict | None) -> dict:
             for i in sorted(gain_curve)
             if i in dark and dark[i]["rn_dn"] is not None
             and dark[i]["rn_dn"] * gain_curve[i] > 0]
-        # DCG detection: gain*iso is constant under the reciprocal law;
-        # an upward jump >15% between adjacent ISOs is a conversion-gain
-        # switch (downward jumps are extended-ISO re-scaling, ignored).
-        # DCG detection: gain*iso is constant under the reciprocal law, so a
-        # conversion-gain switch is a jump BETWEEN two locally flat plateaus.
+        # Gain-jump candidates: gain*iso is constant under the reciprocal
+        # law, so the ladder is expected to sit on flat plateaus.
         # Extended-ISO segments make u rise from the very start (flat gain),
-        # so a jump only counts when both neighbours are plateau-like
-        # (adjacent ratio < 1.08 on each side).
-        # A plateau-to-plateau jump (symmetric flatness test on both sides)
-        # is EITHER a conversion-gain switch OR the extended-to-native-base
-        # boundary; the ladder alone cannot tell them apart, so the field
-        # claims neither — it lists every jump and leaves the semantics to
-        # curation (声明失实才是缺陷).
+        # so an upward jump (>15%) only counts when both neighbours are
+        # plateau-like (adjacent ratio < 1.08 on each side). A
+        # plateau-to-plateau jump is EITHER a conversion-gain switch OR the
+        # extended-to-native-base boundary; the ladder alone cannot tell
+        # them apart, so the field claims neither — it lists every jump and
+        # leaves the semantics to curation (声明失实才是缺陷).
         isos = sorted(gain_curve)
         u = [gain_curve[i] * i for i in isos]
         if any(v <= 0 for v in u):
