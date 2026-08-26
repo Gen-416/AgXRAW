@@ -615,7 +615,7 @@ def build_tone_compression_plan(
     # restoration. Its sigmoid-like smooth preset deliberately disables hue restoration.
     hue_restore = 0.0 if agx_primaries == "smooth" else 0.6
 
-    return ToneCompressionPlan(
+    tone_plan = ToneCompressionPlan(
         target_gamut=target_gamut,
         luma_p1=luma_p1,
         luma_p50=luma_p50,
@@ -647,6 +647,52 @@ def build_tone_compression_plan(
         endpoint_mode=endpoint_mode,
         endpoint_note=endpoint_note,
     )
+    if endpoint_mode == "evidence":
+        # Route-A toe binding (two-route doctrine, 2026-08-26): the toe should
+        # roll off across the sensor's own noisy band, EV_SNR1 -> EV_SNR10, so
+        # SNR>10 shadows sit on the body instead of being crushed into black
+        # and read-noise-only depths are never lifted toward gray. The black
+        # endpoint above already anchors near the engineering floor; here the
+        # compiled curve's near-black crossing is re-solved onto the SNR=10
+        # coordinate using the same monotone bisection the user's toe-end dial
+        # runs. Adaptive mode is untouched — this is part of the evidence
+        # endpoint declaration, not a global taste change.
+        from . import drt as drt_engine
+        from .analysis import snr_ev_coordinates
+
+        coords = snr_ev_coordinates(analysis)
+        if coords is not None:
+            solved = drt_engine.solve_toe_power_for_toe_end(
+                tone_plan, coords["snr10"]
+            )
+            note = (
+                f"toe 终点=EV_SNR10（{coords['snr10']:+.2f}EV；"
+                f"SNR1 {coords['snr1']:+.2f} / SNR20 {coords['snr20']:+.2f}）"
+            )
+            tone_plan = replace(
+                tone_plan,
+                toe_power=clamp_float(
+                    solved,
+                    drt_engine.TOE_POWER_SOLVE_MIN,
+                    drt_engine.TOE_POWER_SOLVE_MAX,
+                ),
+                endpoint_note=(
+                    f"{tone_plan.endpoint_note}；{note}"
+                    if tone_plan.endpoint_note
+                    else note
+                ),
+            )
+        else:
+            miss = "SNR 坐标证据缺席，toe 沿用场景自适应"
+            tone_plan = replace(
+                tone_plan,
+                endpoint_note=(
+                    f"{tone_plan.endpoint_note}；{miss}"
+                    if tone_plan.endpoint_note
+                    else miss
+                ),
+            )
+    return tone_plan
 
 
 def apply_render_adjustments(

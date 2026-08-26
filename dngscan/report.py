@@ -110,6 +110,14 @@ def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
         parts.append(f"PDR先验={analysis.prior_pdr_ev:.2f} EV")
     if math.isfinite(analysis.usable_dr_eff_ev) and abs(analysis.usable_dr_eff_ev - analysis.usable_dr_ev) > 0.01:
         parts.append(f"计划用DR={analysis.usable_dr_eff_ev:.2f}(先验收敛)")
+    from .analysis import snr_ev_coordinates
+
+    coords = snr_ev_coordinates(analysis)
+    if coords is not None:
+        parts.append(
+            "SNR坐标(EV): "
+            f"1={coords['snr1']:+.2f} 10={coords['snr10']:+.2f} 20={coords['snr20']:+.2f}"
+        )
     return "  ".join(parts)
 
 
