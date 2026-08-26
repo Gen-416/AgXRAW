@@ -353,7 +353,10 @@ def measure_mtf_residual() -> dict:
         sg = float(asset.sigma_um[ch_index]) * 1e-3   # um -> mm
         lm = float(asset.lambda_um[ch_index]) * 1e-3
         g = np.exp(-2.0 * np.pi ** 2 * sg ** 2 * f ** 2)
-        e = (1.0 + (2.0 * np.pi * lm * f) ** 2) ** -1.5
+        # operator-effective tail: Gaussian at sqrt(3)*lambda, the exact
+        # form the runtime executes (unified 2026-08-25; see
+        # tools/import_kodak_mtf.mtf_core_tail)
+        e = np.exp(-2.0 * np.pi ** 2 * (3.0 * lm ** 2) * f ** 2)
         return (1.0 - s) + s * ((1.0 - w) * g + w * e)
 
     out: dict = {}

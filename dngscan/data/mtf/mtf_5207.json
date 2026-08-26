@@ -340,21 +340,21 @@
    "s": 0.7394,
    "w": 0.0,
    "sigma_um": 3.717,
-   "lambda_um": 34.489,
+   "lambda_um": 0.0,
    "rms_residual": 0.0384
   },
   "G": {
    "s": 0.654,
-   "w": 0.0,
+   "w": 0.1063,
    "sigma_um": 5.058,
-   "lambda_um": 10.83,
+   "lambda_um": 2.92,
    "rms_residual": 0.0294
   },
   "R": {
-   "s": 0.8828,
-   "w": 0.5501,
-   "sigma_um": 6.623,
-   "lambda_um": 3.756,
+   "s": 0.8507,
+   "w": 0.4693,
+   "sigma_um": 5.026,
+   "lambda_um": 4.663,
    "rms_residual": 0.017
   }
  }

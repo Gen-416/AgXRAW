@@ -89,7 +89,14 @@ DATA = {
 
 def mtf_core_tail(f, s, w, sigma_mm, lambda_mm):
     g = np.exp(-2.0 * np.pi ** 2 * sigma_mm ** 2 * f ** 2)
-    e = (1.0 + (2.0 * np.pi * lambda_mm * f) ** 2) ** -1.5
+    # OPERATOR-EFFECTIVE tail (2026-08-25): the runtime renders the tail as
+    # a Gaussian with sigma = sqrt(3)*lambda (film_optics.py second-moment
+    # approximation). Fitting the analytic exponential-tail MTF instead let
+    # a heavy-tailed fit (w~0.55) open a 7.1pp gap between the declared
+    # kernel and what a render actually applies (gate-13 failure). The fit,
+    # the report's explicit model and the operator now share ONE form, so
+    # declaration == execution by construction.
+    e = np.exp(-2.0 * np.pi ** 2 * (3.0 * lambda_mm ** 2) * f ** 2)
     return (1.0 - s) + s * ((1.0 - w) * g + w * e)
 
 
@@ -123,6 +130,13 @@ def _fit_channel(rows, model):
                 if best is None or r.fun < best.fun:
                     best = r
         s, w, sg, lm = [float(v) for v in best.x]
+        # canonicalize the degenerate axis: with w == 0 the exponential-tail
+        # component is inert and lm is unconstrained by the loss — it can
+        # wander to implausible values (the asset loader's lambda gate caught
+        # a 34um one). An inert component is written as exactly zero.
+        if round(w, 4) == 0.0:
+            w = 0.0
+            lm = 0.0
         m = mtf_core_tail(f, s, w, sg, lm)
         return {
             "s": round(s, 4), "w": round(w, 4),

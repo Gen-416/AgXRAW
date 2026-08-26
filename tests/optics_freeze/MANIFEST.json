@@ -62,16 +62,16 @@
     }
   ],
   "fixture_sha256": {
-    "crop__SDI0150__portra400__light": "17dba264a1bdb53a8da7d145c2a55518035048e0206e218a3f64a425e6e2ada7",
-    "crop__SDI0150__portra400__standard": "4b8b0b462c4e6ec7e1725ee3c0fd0e39a8066d4e7fde59b08fae1628d50bcd97",
-    "crop__SDI0238__portra400__light": "3f358c9757c9fa456f6abe3b8ef4d6eff39328caebd6da4a655281cf9860a847",
-    "crop__SDI0238__portra400__standard": "17058ffed9e714223bb18bf2a696e4ad77001551a0b703c356652c67f6573a64",
-    "daylight_wide_dr__portra400__light": "4e50be41d989e401bb81e30e90ff2e203bba084424992c5ed8a6018ab462c241",
-    "daylight_wide_dr__portra400__standard": "434151622c1edf61dc5b4d7c5afb1dbe240086a63ec2ad92b40653f7ad7cf2fd",
-    "high_key__portra400__light": "626d951dc2fc6d438dca0bd2cd81a275c8fc6dc93bb8b392754f404da69fe6aa",
-    "high_key__portra400__standard": "018fbb4443ed46f792832ce9e88acb579f5a0df6d59bccc59bdc875ae105395b",
-    "night_sparse_lamps__portra400__light": "0b0f1e623729d2a0de6e085d041310052685e012a91acdfa91b407204ead3589",
-    "night_sparse_lamps__portra400__standard": "bfec3980a2d7ded33fd12536e19f5a0d666cf7be3fe3a8869d32117000095876"
+    "crop__SDI0150__portra400__light": "812e26fe359ba8f86533caf1712ba8dbc45d7375746d63227fbfded11d55c482",
+    "crop__SDI0150__portra400__standard": "adc1fdbc3af123b0e5a989ce7f04f729368229eab3d51f1ce3e7b7d5a2b7b285",
+    "crop__SDI0238__portra400__light": "9a799cfb89d47d621f5291057ecb552260ea10a4d1fcc8ece5230b12c300290f",
+    "crop__SDI0238__portra400__standard": "2ac95fa5025a1321d43a57b669af2e07e14d1eb7a1af11de76c2c09f25712da8",
+    "daylight_wide_dr__portra400__light": "ac8bfde9cc01cc1825795cf16f54ef00181195f74b47a40b36e0bcb41f6ee63e",
+    "daylight_wide_dr__portra400__standard": "cded9066d958143ef056652a5a1982c14d8da7df57f12f22347e6e67fad63825",
+    "high_key__portra400__light": "e5a654b535e79c20621df6fec3731661d4f69d42d0e276a1d89fe8109cbe7f11",
+    "high_key__portra400__standard": "4f1604abbdae412e6cc32c4ae763de70d0b49b85cc367affabc018abd8900223",
+    "night_sparse_lamps__portra400__light": "e9e376cddb7d635a2063f5d891387f4f6413d8a709f0e7a7d875bc7b6aa5134f",
+    "night_sparse_lamps__portra400__standard": "8cfd933ff4d239a1635e945d4274222a00ff8f4d707721734700056a3284866b"
   },
   "phase": "optics_v2_p0",
   "policy": "Regenerate only with an explicit decision recorded in docs/FILM_OPTICS_V2_PLAN.zh-CN.md. Never to silence a test.",
