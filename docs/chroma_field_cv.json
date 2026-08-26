@@ -1,0 +1,453 @@
+{
+  "adoption_criterion": "owner 2026-08-26: adopt only if held-out p95/p99 drop significantly; the residual after the field is the metamerism boundary proper and cannot be removed by any deterministic three-channel map",
+  "fold_seed": 20260826,
+  "folds": 5,
+  "median_p95_improvement_pct": 39.0,
+  "median_p99_improvement_pct": 31.0,
+  "purpose": "Route-C phase-1 measurement: held-out layer-exposure error of a Y-homogeneous chromaticity field E = Y*2^P(x,y) against the deployed 3x3 observer, identical folds/anchor/training set",
+  "ridge": 1e-06,
+  "runtime_caveat": "no runtime change in this phase; a cubic extrapolates dangerously outside the training chromaticity hull, so any runtime form must clamp to the hull or blend back to the 3x3 there",
+  "stocks": {
+    "c200": {
+      "3x3": {
+        "max_stop": 0.7797,
+        "p95_stop": 0.3932,
+        "p99_stop": 0.6154
+      },
+      "poly2": {
+        "max_stop": 1.4001,
+        "p95_stop": 0.3357,
+        "p99_stop": 0.6605
+      },
+      "poly3": {
+        "max_stop": 0.95,
+        "p95_stop": 0.274,
+        "p99_stop": 0.5664
+      },
+      "poly4": {
+        "max_stop": 0.8752,
+        "p95_stop": 0.2392,
+        "p99_stop": 0.5538
+      }
+    },
+    "ektachrome100": {
+      "3x3": {
+        "max_stop": 1.3895,
+        "p95_stop": 0.6298,
+        "p99_stop": 1.0779
+      },
+      "poly2": {
+        "max_stop": 1.4997,
+        "p95_stop": 0.4191,
+        "p99_stop": 0.8596
+      },
+      "poly3": {
+        "max_stop": 1.1623,
+        "p95_stop": 0.3714,
+        "p99_stop": 0.6088
+      },
+      "poly4": {
+        "max_stop": 1.1886,
+        "p95_stop": 0.3591,
+        "p99_stop": 0.6526
+      }
+    },
+    "ektar100": {
+      "3x3": {
+        "max_stop": 1.4696,
+        "p95_stop": 0.5841,
+        "p99_stop": 0.9822
+      },
+      "poly2": {
+        "max_stop": 1.4518,
+        "p95_stop": 0.425,
+        "p99_stop": 0.8392
+      },
+      "poly3": {
+        "max_stop": 1.0958,
+        "p95_stop": 0.3681,
+        "p99_stop": 0.6783
+      },
+      "poly4": {
+        "max_stop": 1.0529,
+        "p95_stop": 0.3486,
+        "p99_stop": 0.6862
+      }
+    },
+    "gold200": {
+      "3x3": {
+        "max_stop": 1.6449,
+        "p95_stop": 0.633,
+        "p99_stop": 1.0578
+      },
+      "poly2": {
+        "max_stop": 1.342,
+        "p95_stop": 0.4421,
+        "p99_stop": 0.8244
+      },
+      "poly3": {
+        "max_stop": 1.1575,
+        "p95_stop": 0.3916,
+        "p99_stop": 0.678
+      },
+      "poly4": {
+        "max_stop": 1.1191,
+        "p95_stop": 0.3899,
+        "p99_stop": 0.6523
+      }
+    },
+    "kodachrome64": {
+      "3x3": {
+        "max_stop": 1.5852,
+        "p95_stop": 0.6757,
+        "p99_stop": 1.1016
+      },
+      "poly2": {
+        "max_stop": 1.3943,
+        "p95_stop": 0.4522,
+        "p99_stop": 0.8852
+      },
+      "poly3": {
+        "max_stop": 1.191,
+        "p95_stop": 0.4052,
+        "p99_stop": 0.6928
+      },
+      "poly4": {
+        "max_stop": 1.1411,
+        "p95_stop": 0.3832,
+        "p99_stop": 0.6729
+      }
+    },
+    "portra160": {
+      "3x3": {
+        "max_stop": 0.7543,
+        "p95_stop": 0.3271,
+        "p99_stop": 0.5206
+      },
+      "poly2": {
+        "max_stop": 1.2951,
+        "p95_stop": 0.2963,
+        "p99_stop": 0.6255
+      },
+      "poly3": {
+        "max_stop": 0.8604,
+        "p95_stop": 0.235,
+        "p99_stop": 0.4898
+      },
+      "poly4": {
+        "max_stop": 0.8146,
+        "p95_stop": 0.2217,
+        "p99_stop": 0.4578
+      }
+    },
+    "portra400": {
+      "3x3": {
+        "max_stop": 0.983,
+        "p95_stop": 0.4862,
+        "p99_stop": 0.79
+      },
+      "poly2": {
+        "max_stop": 1.2628,
+        "p95_stop": 0.3668,
+        "p99_stop": 0.7049
+      },
+      "poly3": {
+        "max_stop": 0.8535,
+        "p95_stop": 0.3326,
+        "p99_stop": 0.6413
+      },
+      "poly4": {
+        "max_stop": 0.8161,
+        "p95_stop": 0.3147,
+        "p99_stop": 0.6177
+      }
+    },
+    "portra800": {
+      "3x3": {
+        "max_stop": 1.5976,
+        "p95_stop": 0.638,
+        "p99_stop": 1.034
+      },
+      "poly2": {
+        "max_stop": 1.405,
+        "p95_stop": 0.4552,
+        "p99_stop": 0.9008
+      },
+      "poly3": {
+        "max_stop": 1.1788,
+        "p95_stop": 0.3827,
+        "p99_stop": 0.7132
+      },
+      "poly4": {
+        "max_stop": 1.1327,
+        "p95_stop": 0.3774,
+        "p99_stop": 0.7232
+      }
+    },
+    "portra800push1": {
+      "3x3": {
+        "max_stop": 1.5976,
+        "p95_stop": 0.638,
+        "p99_stop": 1.034
+      },
+      "poly2": {
+        "max_stop": 1.405,
+        "p95_stop": 0.4552,
+        "p99_stop": 0.9008
+      },
+      "poly3": {
+        "max_stop": 1.1788,
+        "p95_stop": 0.3827,
+        "p99_stop": 0.7132
+      },
+      "poly4": {
+        "max_stop": 1.1327,
+        "p95_stop": 0.3774,
+        "p99_stop": 0.7232
+      }
+    },
+    "portra800push2": {
+      "3x3": {
+        "max_stop": 1.5976,
+        "p95_stop": 0.638,
+        "p99_stop": 1.034
+      },
+      "poly2": {
+        "max_stop": 1.405,
+        "p95_stop": 0.4552,
+        "p99_stop": 0.9008
+      },
+      "poly3": {
+        "max_stop": 1.1788,
+        "p95_stop": 0.3827,
+        "p99_stop": 0.7132
+      },
+      "poly4": {
+        "max_stop": 1.1327,
+        "p95_stop": 0.3774,
+        "p99_stop": 0.7232
+      }
+    },
+    "pro400h": {
+      "3x3": {
+        "max_stop": 1.0385,
+        "p95_stop": 0.3491,
+        "p99_stop": 0.4846
+      },
+      "poly2": {
+        "max_stop": 1.3886,
+        "p95_stop": 0.3044,
+        "p99_stop": 0.65
+      },
+      "poly3": {
+        "max_stop": 0.9628,
+        "p95_stop": 0.2573,
+        "p99_stop": 0.5004
+      },
+      "poly4": {
+        "max_stop": 0.9622,
+        "p95_stop": 0.2422,
+        "p99_stop": 0.4862
+      }
+    },
+    "provia100f": {
+      "3x3": {
+        "max_stop": 1.4445,
+        "p95_stop": 0.5948,
+        "p99_stop": 1.0862
+      },
+      "poly2": {
+        "max_stop": 1.3268,
+        "p95_stop": 0.417,
+        "p99_stop": 0.8015
+      },
+      "poly3": {
+        "max_stop": 1.1243,
+        "p95_stop": 0.3484,
+        "p99_stop": 0.6176
+      },
+      "poly4": {
+        "max_stop": 1.0743,
+        "p95_stop": 0.3377,
+        "p99_stop": 0.6138
+      }
+    },
+    "superia400": {
+      "3x3": {
+        "max_stop": 0.9643,
+        "p95_stop": 0.338,
+        "p99_stop": 0.4694
+      },
+      "poly2": {
+        "max_stop": 1.3492,
+        "p95_stop": 0.3086,
+        "p99_stop": 0.6531
+      },
+      "poly3": {
+        "max_stop": 0.925,
+        "p95_stop": 0.246,
+        "p99_stop": 0.4618
+      },
+      "poly4": {
+        "max_stop": 0.9012,
+        "p95_stop": 0.2212,
+        "p99_stop": 0.4663
+      }
+    },
+    "ultramax400": {
+      "3x3": {
+        "max_stop": 1.6544,
+        "p95_stop": 0.6388,
+        "p99_stop": 1.0554
+      },
+      "poly2": {
+        "max_stop": 1.3237,
+        "p95_stop": 0.4587,
+        "p99_stop": 0.9028
+      },
+      "poly3": {
+        "max_stop": 1.2117,
+        "p95_stop": 0.3943,
+        "p99_stop": 0.7219
+      },
+      "poly4": {
+        "max_stop": 1.1676,
+        "p95_stop": 0.3878,
+        "p99_stop": 0.6771
+      }
+    },
+    "velvia100": {
+      "3x3": {
+        "max_stop": 1.3933,
+        "p95_stop": 0.5772,
+        "p99_stop": 1.0216
+      },
+      "poly2": {
+        "max_stop": 1.3239,
+        "p95_stop": 0.4057,
+        "p99_stop": 0.7992
+      },
+      "poly3": {
+        "max_stop": 1.0503,
+        "p95_stop": 0.3316,
+        "p99_stop": 0.6042
+      },
+      "poly4": {
+        "max_stop": 1.0236,
+        "p95_stop": 0.3208,
+        "p99_stop": 0.5835
+      }
+    },
+    "verita200d": {
+      "3x3": {
+        "max_stop": 1.0864,
+        "p95_stop": 0.5014,
+        "p99_stop": 0.8385
+      },
+      "poly2": {
+        "max_stop": 1.3427,
+        "p95_stop": 0.3798,
+        "p99_stop": 0.7322
+      },
+      "poly3": {
+        "max_stop": 0.9135,
+        "p95_stop": 0.3193,
+        "p99_stop": 0.6093
+      },
+      "poly4": {
+        "max_stop": 0.8943,
+        "p95_stop": 0.2957,
+        "p99_stop": 0.5976
+      }
+    },
+    "vision3200t": {
+      "3x3": {
+        "max_stop": 1.2218,
+        "p95_stop": 0.5665,
+        "p99_stop": 0.9397
+      },
+      "poly2": {
+        "max_stop": 1.4939,
+        "p95_stop": 0.4054,
+        "p99_stop": 0.8217
+      },
+      "poly3": {
+        "max_stop": 1.0251,
+        "p95_stop": 0.331,
+        "p99_stop": 0.5954
+      },
+      "poly4": {
+        "max_stop": 1.0498,
+        "p95_stop": 0.3212,
+        "p99_stop": 0.6073
+      }
+    },
+    "vision3250d": {
+      "3x3": {
+        "max_stop": 1.6341,
+        "p95_stop": 0.6768,
+        "p99_stop": 1.1332
+      },
+      "poly2": {
+        "max_stop": 1.4918,
+        "p95_stop": 0.4746,
+        "p99_stop": 0.9416
+      },
+      "poly3": {
+        "max_stop": 1.1825,
+        "p95_stop": 0.4039,
+        "p99_stop": 0.7849
+      },
+      "poly4": {
+        "max_stop": 1.2007,
+        "p95_stop": 0.3851,
+        "p99_stop": 0.7744
+      }
+    },
+    "vision3500t": {
+      "3x3": {
+        "max_stop": 1.4418,
+        "p95_stop": 0.6211,
+        "p99_stop": 0.94
+      },
+      "poly2": {
+        "max_stop": 1.2844,
+        "p95_stop": 0.4256,
+        "p99_stop": 0.8374
+      },
+      "poly3": {
+        "max_stop": 1.0188,
+        "p95_stop": 0.3747,
+        "p99_stop": 0.6836
+      },
+      "poly4": {
+        "max_stop": 1.0222,
+        "p95_stop": 0.38,
+        "p99_stop": 0.7001
+      }
+    },
+    "vision350d": {
+      "3x3": {
+        "max_stop": 1.3904,
+        "p95_stop": 0.5773,
+        "p99_stop": 0.9978
+      },
+      "poly2": {
+        "max_stop": 1.508,
+        "p95_stop": 0.4311,
+        "p99_stop": 0.8658
+      },
+      "poly3": {
+        "max_stop": 1.0913,
+        "p95_stop": 0.359,
+        "p99_stop": 0.6287
+      },
+      "poly4": {
+        "max_stop": 1.0987,
+        "p95_stop": 0.3446,
+        "p99_stop": 0.631
+      }
+    }
+  },
+  "training_set": "rawtoaces_training_reflectance.csv (190 samples) + white board, D55"
+}
