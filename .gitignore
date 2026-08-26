@@ -50,3 +50,4 @@ test_output/compare_results.json
 build/
 *.so
 *.pyd
+dist/

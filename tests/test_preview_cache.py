@@ -392,10 +392,6 @@ class PreviewCacheTest(unittest.TestCase):
         self.assertGreater(float(restored.bundle.scene_rec2020_render.max()), 1.0)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class SceneDecoderRuntimeBindingTest(unittest.TestCase):
     """Core Image pixels are only valid for the OS build that decoded them."""
 
@@ -549,3 +545,7 @@ class DegradedBalanceOnProxyTests(unittest.TestCase):
         self.assertEqual(balanced.bundle.wb_mode, "daylight")
         self.assertIsNone(balanced.bundle.wb_degradation)
         self.assertIsNot(balanced.analysis, entry.analysis)
+
+
+if __name__ == "__main__":
+    unittest.main()

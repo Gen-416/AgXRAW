@@ -677,10 +677,6 @@ class AgxPlanStabilityTest(unittest.TestCase):
         self.assertAlmostEqual(plan0.target_black_linear, plan_boost.target_black_linear, places=5)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class Ev0AnchorSolverTest(unittest.TestCase):
     def test_shifted_pivot_holds_ev0_anchor(self) -> None:
         # The contrast pivot may move onto the subject, but calibrated EV 0 must keep
@@ -695,3 +691,7 @@ class Ev0AnchorSolverTest(unittest.TestCase):
         a = curve_params(-8.0, 4.0, 3.0, 1.5, 3.3)
         b = curve_params(-8.0, 4.0, 3.0, 1.5, 3.3, pivot_ev_offset=0.0)
         self.assertEqual(a, b)
+
+
+if __name__ == "__main__":
+    unittest.main()

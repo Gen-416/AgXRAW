@@ -106,10 +106,6 @@ class LookLayerTests(unittest.TestCase):
         self.assertLess(c_out, c * 0.95)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PeriodicInterpPortabilityTests(unittest.TestCase):
     def test_nan_hue_is_nan_out_without_platform_defined_indexing(self) -> None:
         # float->int of NaN is platform-defined (INT32_MIN on x86_64 Linux, an
@@ -123,3 +119,7 @@ class PeriodicInterpPortabilityTests(unittest.TestCase):
             out = _periodic_interp(tuple(float(i) for i in range(12)), hue)
         self.assertTrue(np.all(np.isnan(out[:3])))
         self.assertTrue(np.isfinite(out[3]))
+
+
+if __name__ == "__main__":
+    unittest.main()

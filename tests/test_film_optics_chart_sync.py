@@ -14,7 +14,13 @@ import sys
 import unittest
 from pathlib import Path
 
+# tools/ is needed only to import the sync module; pop it again so the
+# rest of the run cannot accidentally resolve imports from tools/.
 sys.path.insert(0, str(Path(__file__).parents[1] / "tools"))
+try:
+    import sync_film_optics_from_charts  # noqa: F401,E402
+finally:
+    sys.path.pop(0)
 
 
 class ChartSyncTests(unittest.TestCase):
@@ -35,6 +41,21 @@ class ChartSyncTests(unittest.TestCase):
                 self.assertEqual(asset[skey]["channels"], scatter_ch,
                                  f"{asset_name}.{skey} stale vs {mfile}")
                 self.assertEqual(asset[skey]["model"], scatter_model)
+
+    def test_sync_transaction_is_clean(self):
+        """R11 item 5: the tool's own --check covers channels, model AND
+        recorded input hashes; the manifest must match the assets on disk
+        (the transaction's last leg)."""
+        import hashlib
+        import json
+        from sync_film_optics_from_charts import OPTICS, sync
+
+        self.assertEqual(sync(check=True), 0)
+        manifest = json.loads((OPTICS / "MANIFEST.json").read_text())
+        for name, sha in manifest["files"].items():
+            self.assertEqual(
+                sha, hashlib.sha256((OPTICS / name).read_bytes()).hexdigest(),
+                f"MANIFEST stale for {name}")
 
     def test_tail_identifiability_contract(self):
         """w == 0 must come with tail_sigma_um == 0 (inert component), and

@@ -118,6 +118,13 @@ def apply_display_filter_rec2020(
     if filter_name not in DISPLAY_FILTERS:
         raise ValueError(f"unknown display filter: {filter_name}")
     spec = DISPLAY_FILTERS[filter_name]
+    # argument contract before environment (audit R11): a scene-feed filter
+    # called without the scene buffer is a caller bug regardless of whether
+    # the vendor cube is installed, and this keeps the contract testable
+    # without the (deliberately unbundled) LUT files
+    if spec.feed == "scene" and scene_rec2020 is None:
+        raise ValueError(
+            f"display filter {filter_name} needs the scene-linear buffer (feed='scene')")
     if not spec.cube.is_file():
         raise FileNotFoundError(f"缺少 display LUT：{spec.cube}")
 
@@ -126,8 +133,6 @@ def apply_display_filter_rec2020(
     agx_display = rec2020_to_output(flat, output_gamut)
 
     if spec.feed == "scene":
-        if scene_rec2020 is None:
-            raise ValueError(f"display filter {filter_name} needs the scene-linear buffer (feed='scene')")
         encoder_src = scene_rec2020.reshape(-1, 3).astype(np.float32, copy=False)
     else:
         encoder_src = flat

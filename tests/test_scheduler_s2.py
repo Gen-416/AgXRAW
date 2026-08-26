@@ -24,10 +24,12 @@ class SchedulerSlotTests(unittest.TestCase):
         def slow_export():
             with sched.slot("export"):
                 export_running.set()
-                release_export.wait(timeout=5)
+                self.assertTrue(release_export.wait(timeout=5),
+                                "export gate never released")
 
         def quick_preview():
-            export_running.wait(timeout=5)
+            self.assertTrue(export_running.wait(timeout=5),
+                            "export never started")
             with sched.slot("preview"):
                 preview_done.set()
 
@@ -47,19 +49,31 @@ class SchedulerSlotTests(unittest.TestCase):
         sched = self._scheduler()
         order: list[str] = []
 
+        errors: list[BaseException] = []
+
         def job(tag, fail=False):
-            with sched.slot("preview"):
-                order.append(tag)
-                time.sleep(0.05)
-                if fail:
-                    raise RuntimeError("boom")
+            # R11 item 6: an exception escaping a bare Thread target is
+            # printed by the interpreter and unittest still passes — the
+            # test must CATCH it and assert on it in the main thread.
+            try:
+                with sched.slot("preview"):
+                    order.append(tag)
+                    time.sleep(0.05)
+                    if fail:
+                        raise RuntimeError("boom")
+            except BaseException as exc:  # noqa: BLE001 - re-asserted below
+                errors.append(exc)
 
         t1 = threading.Thread(target=lambda: job("a", fail=True))
         t1.start(); t1.join()
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], RuntimeError)
         # the slot must be free again despite the exception
         t2 = threading.Thread(target=lambda: job("b"))
         t2.start(); t2.join(timeout=2)
+        self.assertFalse(t2.is_alive(), "slot was not released after the error")
         self.assertEqual(order, ["a", "b"])
+        self.assertEqual(len(errors), 1)
         snap = sched.snapshot()
         self.assertEqual(snap["active"]["preview"], 0)
         self.assertEqual(snap["completed"]["preview"], 2)

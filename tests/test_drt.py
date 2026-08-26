@@ -101,17 +101,28 @@ class C1EndpointDrtTest(unittest.TestCase):
         self.assertAlmostEqual(float(mapped[-1]), 1.0, places=6)
 
     def test_view_brightness_lifts_interior_without_moving_endpoints(self) -> None:
+        """Audit R11: the old body computed the power law on its own numbers
+        — a mathematical identity that passed even if the runtime dropped
+        view_brightness entirely. This drives the REAL tone path (agx
+        formation consumes plan.view_brightness) and asserts the lifted
+        render differs exactly as promised."""
+        from dngscan.agx import apply_core, formation_matrices
+
         plan = _plan()
         lifted = ToneCompressionPlan(**{**plan.__dict__, "view_brightness": 1.25})
-        ev = np.asarray([plan.black_ev, -3.0, 0.0, plan.white_ev], dtype=np.float32)
-        base = apply_c1_endpoints(ev, plan)
-        # The runtime applies this as a display-referred interior power, equivalent to
-        # darktable's look brightness after curve linearisation.
-        adjusted = np.power(base, 1.0 / lifted.view_brightness)
-        self.assertLess(float(adjusted[0]), 1e-6)
-        self.assertAlmostEqual(float(adjusted[-1]), 1.0, places=6)
-        self.assertGreater(float(adjusted[1]), float(base[1]))
-        self.assertGreater(float(adjusted[2]), float(base[2]))
+        rgb = np.asarray(
+            [[2.0 ** plan.black_ev * 0.18] * 3,
+             [0.02, 0.03, 0.025], [0.18, 0.18, 0.18],
+             [2.0 ** plan.white_ev * 0.18] * 3], dtype=np.float32)
+        inset, outset = formation_matrices(plan)
+        base = apply_core(rgb, plan, inset, outset)
+        out = apply_core(rgb, lifted, inset, outset)
+        # endpoints pinned...
+        self.assertLess(float(np.max(np.abs(out[0] - base[0]))), 1e-5)
+        self.assertLess(float(np.max(np.abs(out[-1] - base[-1]))), 1e-4)
+        # ...and the interior actually lifted through the runtime
+        self.assertGreater(float(np.mean(out[1])), float(np.mean(base[1])))
+        self.assertGreater(float(np.mean(out[2])), float(np.mean(base[2])))
 
 
 class LookOverrideC1InteractionTest(unittest.TestCase):

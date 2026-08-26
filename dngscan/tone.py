@@ -49,6 +49,22 @@ SPARSE_EMITTER_TAIL_MAX_PCT = 3.0
 SPARSE_EMITTER_EXTREMITY_MIN = 0.12
 
 
+def combine_punch_strength(w_bright: float, w_quality: float,
+                           w_dr: float, punch_scale: float) -> float:
+    """The punch strength composition, importable so tests exercise the
+    PRODUCTION formula instead of transcribing it (audit R11: the old test
+    re-implemented this expression with literals and stayed green when the
+    real composition changed)."""
+    return clamp_float(
+        w_bright
+        * w_quality
+        * (PUNCH_BASE_STRENGTH + (1.0 - PUNCH_BASE_STRENGTH) * w_dr)
+        * clamp_float(punch_scale, 0.0, 1.5),
+        0.0,
+        1.0,
+    )
+
+
 def exposure_mode_for_tone_core(tone_core: str) -> str:
     """Exposure anchor for every tone core.
 
@@ -579,14 +595,7 @@ def build_tone_compression_plan(
             else 0.5
         )
         w_dr = _smoothstep_f(PUNCH_DR_LO_EV, PUNCH_DR_HI_EV, dynamic_range_ev)
-        punch_strength = clamp_float(
-            w_bright
-            * w_quality
-            * (PUNCH_BASE_STRENGTH + (1.0 - PUNCH_BASE_STRENGTH) * w_dr)
-            * clamp_float(punch_scale, 0.0, 1.5),
-            0.0,
-            1.0,
-        )
+        punch_strength = combine_punch_strength(w_bright, w_quality, w_dr, punch_scale)
     else:
         punch_strength = 0.0
 

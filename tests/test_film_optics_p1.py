@@ -128,9 +128,13 @@ class AssetLoadingTests(unittest.TestCase):
                     fa.HalationAsset.from_json(dict(good_hal, **mutation), "probe")
                 self.assertIn(needle, str(ctx.exception))
 
-    def test_future_phase_fields_must_stay_empty(self) -> None:
-        """A P2/P3/P4 field that arrives early with data nobody implemented
-        would render silently; the loader refuses it by name."""
+    def test_optional_optics_blocks_refuse_malformed_or_unimplemented(self) -> None:
+        """Written when these were future-phase fields; emulsion_scatter,
+        formation_scatter and positive_grain have since SHIPPED (P4/P5), so
+        the stock/print injections below now exercise the loaders'
+        incomplete/unknown-key refusal, not a refusal by name.
+        viewing_scatter alone is still refused by name: it has no measured
+        PSF and stays null by design."""
         raw = json.loads(
             (fa.ASSET_DIR / f"stock__{fa.DEFAULT_STOCK_OPTICS}.json").read_text("utf-8")
         )
@@ -190,7 +194,17 @@ class CompilerTests(unittest.TestCase):
         self.assertEqual(rep["stock_optics"], fa.DEFAULT_STOCK_OPTICS)
         self.assertEqual(rep["provenance"]["halation"], "modelled")
         self.assertEqual(rep["halation_dc_mode"], "residual")
-        self.assertEqual(set(rep["asset_sha256"]), set(rep["asset_sha256"]))
+        # R11 item 4: the old assertion compared a set to itself. The
+        # report's hashes must match the actual asset files on disk.
+        import hashlib
+        from pathlib import Path as _P
+        optics_dir = _P(fa.__file__).parent / "data" / "film_optics"
+        self.assertTrue(rep["asset_sha256"])
+        for name, sha in rep["asset_sha256"].items():
+            f = optics_dir / f"{name}.json"
+            self.assertTrue(f.is_file(), name)
+            self.assertEqual(sha, hashlib.sha256(f.read_bytes()).hexdigest(),
+                             f"{name}: report hash != file hash")
 
     def test_the_render_report_states_asset_and_dc_mode(self) -> None:
         from dngscan.report import jpeg_tone_plan_cn
@@ -274,9 +288,10 @@ class LegacyByteFreezeTests(unittest.TestCase):
         else:
             os.environ["DNGSCAN_FAST"] = cls._fast
 
-    def test_p1_does_not_move_the_frozen_optics_render(self) -> None:
-        """The P1 exit gate. Restructuring the assets and relocating the
-        exposure offset must leave the recorded output untouched."""
+    def test_current_render_matches_the_declared_freeze(self) -> None:
+        """Once the P1 exit gate ("restructuring must not move bytes");
+        now the standing check that the CURRENT render still reproduces the
+        recorded freeze, which later phases re-pinned deliberately."""
         from tools.regen_optics_freeze import iter_cases, render_case
 
         cases = iter_cases()

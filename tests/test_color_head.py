@@ -303,10 +303,6 @@ class TestPlanGuards(unittest.TestCase):
             parse_film_params({"filmCurve": "portra400", "colorHeadY": 7})
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LmsOperatorLinearityTests(unittest.TestCase):
     """Batch-7 P1: clamping negative LMS components before the gain multiply
     was an UNDECLARED nonlinear projection (0.026 max channel error at unit
@@ -362,3 +358,7 @@ class ObserveColorHeadRegressionTests(unittest.TestCase):
                 scene.bundle, scene.analysis, RENDER_MODE, "srgb",
                 film_curve="portra400", film_mode="full", color_head_y=15.0,
             )
+
+
+if __name__ == "__main__":
+    unittest.main()

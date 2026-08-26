@@ -196,6 +196,21 @@ class RoundtripErrorTests(unittest.TestCase):
         self.assertGreater(metrics["block_median_relative_error"], 0.09)
         self.assertFalse(_hdr_roundtrip_is_acceptable(metrics))
 
+    def test_hdr_shape_mismatch_reports_infinite_error(self) -> None:
+        """Audit R11: the old shape-mismatch test fed an undecodable file,
+        so the decode raised BEFORE the shape check and the inf sentinel
+        branch had zero coverage. Mock the reader like the SDR twin does."""
+        from dngscan.gainmap import _roundtrip_error
+        with mock.patch(
+            "dngscan.gainmap._read_expanded_hdr_rgba_half",
+            return_value=np.zeros((2, 3, 4), dtype=np.float16),
+        ):
+            out = _roundtrip_error(
+                Path("unused.jpg"), np.zeros((3, 2, 3), dtype=np.float16)
+            )
+        self.assertEqual(out["chroma_error"], float("inf"))
+        self.assertEqual(out["block_p99_relative_error"], float("inf"))
+
     def test_sdr_base_shape_mismatch_cannot_pass(self) -> None:
         with mock.patch("PIL.Image.open") as opened:
             opened.return_value.__enter__.return_value.convert.return_value = np.zeros(
@@ -369,11 +384,20 @@ class EndToEndDeliveryTests(unittest.TestCase):
         Pillow and Core Image do not agree bit for bit, especially on high-ISO noise, so
         this asserts the pre-encoder rendition rather than compressed bytes.
         """
+        # R11 item 1: the old version compared render_output_u8 against a
+        # second identical call — a determinism tautology. The claim is that
+        # the ultrahdr pair's SDR LEG equals the standalone export; the
+        # CI-runnable synthetic version lives in test_hdr_agx_pair.py, this
+        # one repeats it on a real sample.
+        from dngscan.hdr_agx import render_ultrahdr_agx_pair
+        from dngscan.hdr_agx_plan import compile_hdr_agx_plan
+
         bundle = load_raw(SIGMA, scene_half_size=True)
         analysis, _, _ = analyze(bundle, margin=4, diagnostics=False)
         plan = build_render_plan(bundle, analysis, RENDER_MODE, "p3")
+        hdr_plan = compile_hdr_agx_plan(plan, analysis=analysis)
         a = render_output_u8(bundle, analysis, "p3", plan)
-        b = render_output_u8(bundle, analysis, "p3", plan)
+        b = render_ultrahdr_agx_pair(bundle, analysis, plan, hdr_plan)[0]
         self.assertTrue(bool(np.array_equal(a, b)))
 
     def test_a_scene_without_a_reliable_tail_is_refused(self) -> None:
@@ -393,10 +417,6 @@ class EndToEndDeliveryTests(unittest.TestCase):
             out = Path(td) / "flat.jpg"
             with self.assertRaises(RuntimeError):
                 export_ultrahdr_jpeg(SIGMA, out, 100, bundle, analysis, flat)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 @unittest.skipUnless(SIGMA.is_file() and _BACKEND_OK, "sample frame or backend unavailable")
@@ -468,3 +488,39 @@ class HdrExifCarryTests(unittest.TestCase):
                 )
                 # Mosaic descriptors must not survive onto a rendered file.
                 self.assertNotIn("CFAPattern", exif)
+
+
+class PerProfileToleranceContractTests(unittest.TestCase):
+    """Pure: the profile split must actually change verdicts. A pixel-scale
+    chroma error of 0.2 sits between archive's 0.10 gate and share's 0.35 —
+    if both profiles agree on it, the calibration collapsed into one gate."""
+
+    @staticmethod
+    def _metrics(chroma_error: float) -> dict[str, float]:
+        return {
+            "block_median_relative_error": 0.01,
+            "block_p95_relative_error": 0.03,
+            "block_p99_relative_error": 0.04,
+            "block_chroma_error": 0.01,
+            "chroma_error": chroma_error,
+        }
+
+    def test_mid_chroma_error_splits_archive_from_share(self) -> None:
+        from dngscan.delivery import ARCHIVE_TOLERANCES, SHARE_TOLERANCES
+        from dngscan.gainmap import _hdr_roundtrip_is_acceptable
+
+        m = self._metrics(0.2)
+        self.assertFalse(_hdr_roundtrip_is_acceptable(m, ARCHIVE_TOLERANCES))
+        self.assertTrue(_hdr_roundtrip_is_acceptable(m, SHARE_TOLERANCES))
+
+    def test_clean_metrics_pass_the_strictest_profile(self) -> None:
+        from dngscan.delivery import ARCHIVE_TOLERANCES
+        from dngscan.gainmap import _hdr_roundtrip_is_acceptable
+
+        self.assertTrue(
+            _hdr_roundtrip_is_acceptable(self._metrics(0.05), ARCHIVE_TOLERANCES)
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
