@@ -16,7 +16,7 @@
   "size_um": 18.0,
   "layer_corr": 0.35,
   "aperture_um": 48.0,
-  "source": "sigma(D) digitized from Kodak charts (dngscan/data/grain/granularity_5207.json, tools/import_kodak_granularity.py); synced by tools/sync_film_optics_from_charts.py, input sha256 d4a0604cc2f3f7b0",
+  "source": "sigma(D) digitized from Kodak charts (dngscan/data/grain/granularity_5207.json, tools/import_kodak_granularity.py); compiled by tools/sync_film_optics_from_charts.py (see chart_sync)",
   "channels": {
    "R": {
     "chart_density": [
@@ -2732,26 +2732,26 @@
  },
  "emulsion_scatter": {
   "provenance": "derived",
-  "model": "core_tail_v1",
-  "source": "scatter kernel fitted from the digitized MTF (dngscan/data/mtf/mtf_5207.json, tools/import_kodak_mtf.py); synced by tools/sync_film_optics_from_charts.py, input sha256 199189c177d250d4",
+  "model": "bi_gaussian_v1",
+  "source": "scatter kernel fitted from the digitized MTF (dngscan/data/mtf/mtf_5207.json, tools/import_kodak_mtf.py); compiled by tools/sync_film_optics_from_charts.py (see chart_sync)",
   "channels": {
    "B": {
     "s": 0.7394,
-    "sigma_um": 3.717,
     "w": 0.0,
-    "lambda_um": 0.0
+    "sigma_um": 3.717,
+    "tail_sigma_um": 0.0
    },
    "G": {
     "s": 0.654,
+    "w": 0.0,
     "sigma_um": 5.058,
-    "w": 0.1063,
-    "lambda_um": 2.92
+    "tail_sigma_um": 0.0
    },
    "R": {
-    "s": 0.8507,
-    "sigma_um": 5.026,
-    "w": 0.4693,
-    "lambda_um": 4.663
+    "s": 0.8804,
+    "w": 0.7116,
+    "sigma_um": 3.656,
+    "tail_sigma_um": 7.311
    }
   }
  },
@@ -2873,5 +2873,12 @@
   "halation: the 35mm_strong_ah_modelled component set (modelled; P2 geometry, dc_mode residual — the characteristic curve already holds the uniform-field reflection).",
   "grain (V2 P4): sigma(D) amplitude digitized from H-1-5207 (measured source), field geometry pitch/size/layer_corr and the particle-oracle band mixture are modelled — hence `derived` overall. The dye-amount coordinate is treated as net Status-family density (R1 item 1); the residual densitometer crosstalk is not modelled.",
   "emulsion_scatter (V2 P5): kernel fitted from the H-1-5207 MTF chart (measured source, fitted approximation -> `derived`); engages with the spatial context as a medium property."
- ]
+ ],
+ "chart_sync": {
+  "synced_on": "2026-08-26",
+  "granularity_file": "granularity_5207.json",
+  "granularity_sha256": "d4a0604cc2f3f7b05e8cbed67d375dd7987e244bc6dd18e74247493defc00fb4",
+  "mtf_file": "mtf_5207.json",
+  "mtf_sha256": "3ae91d49636a661bbb3c179ed4ed727fbfae08aea84102b42a29ee65158f80aa"
+ }
 }

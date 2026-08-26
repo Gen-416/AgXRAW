@@ -407,24 +407,24 @@
   "fit_model_effective": "linear-prnu-corrected (correction = 0)",
   "gain_alternatives": {
    "linear-0.10": 2.2324596831127512,
-   "quadratic-0.35": 2.2954256093575585
+   "quadratic-0.35": 2.273037544704987
   },
-  "gain_estimator_spread_rel": 0.02820473163350163,
+  "gain_estimator_spread_rel": 0.018176302084728955,
   "prnu_status": "zero",
   "prnu_iterations": 1,
   "prnu_converged": true,
   "read_noise_e": 2.262265738459723,
   "read_noise_status": "measured",
   "fwc_e": 35431.36763068248,
-  "fwc_model_spread_e": 999.3322154313358,
+  "fwc_model_spread_e": 644.011241330372,
   "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; fwc_model_spread_e = capacity x estimator spread (model-choice spread, not a statistical uncertainty); physical full well not claimed",
   "last_unsaturated_signal_e": 28942.593855807674,
   "prnu": 0.0,
-  "prnu_quadratic_fit": 0.003959008034065474,
+  "prnu_quadratic_fit": 0.0037515603784062084,
   "fit_relative_rms": 0.01855882428141516,
   "fit_relative_rms_alternatives": {
    "linear-0.10": 0.01855882428141516,
-   "quadratic-0.35": 0.014719116477727022
+   "quadratic-0.35": 0.013263257540452628
   },
   "fit_points": 27,
   "fit_points_excluded": 1,
@@ -432,7 +432,7 @@
  },
  "unity_gain_ev": 7.8025,
  "fwc_e": 35431.36763068248,
- "fwc_model_spread_e": 999.3322154313358,
+ "fwc_model_spread_e": 644.011241330372,
  "read_noise_log2iso_log2e": [
   [
    6.643856189774724,

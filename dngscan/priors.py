@@ -144,7 +144,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "model_equals": {str(item["model"]).upper()},
             "unity_gain_ev": math.log2(iso * gain),
             "fwc_e": float(item["fwc_e"]),
-            "fwc_e_uncertainty": float(item.get("fwc_model_spread_e", 0.0)),
+            "fwc_model_spread_e": float(item.get("fwc_model_spread_e", 0.0)),
             "read_noise_log2iso_log2e": rn_curve,
             "pdr_log2iso_ev": [],
             "measured_iso": int(iso),
@@ -154,7 +154,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
                 "fit_relative_rms": item.get("fit_relative_rms"),
                 "fit_model": item.get("fit_model_effective") or item.get("fit_model"),
                 "prnu_status": item.get("prnu_status"),
-                "model_sensitivity": item.get("gain_estimator_spread_rel"),
+                "estimator_spread": item.get("gain_estimator_spread_rel"),
                 "status": item.get("quality", "ok"),
             },
             "source": f"JPTC/2 first-party measurement ({path.name})",
@@ -191,7 +191,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
             if k in item:
                 entry[k] = item[k]
         if "fwc_model_spread_e" in item:
-            entry["fwc_e_uncertainty"] = item["fwc_model_spread_e"]
+            entry["fwc_model_spread_e"] = item["fwc_model_spread_e"]
         if item.get("ptc_anchor"):
             a = item["ptc_anchor"]
             entry["prnu"] = a.get("prnu")
@@ -199,7 +199,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
                 "fit_relative_rms": a.get("fit_relative_rms"),
                 "fit_model": a.get("fit_model_effective") or a.get("fit_model"),
                 "prnu_status": a.get("prnu_status"),
-                "model_sensitivity": a.get("gain_estimator_spread_rel"),
+                "estimator_spread": a.get("gain_estimator_spread_rel"),
                 "status": a.get("quality", "ok"),
             }
         entries.append(entry)
@@ -270,8 +270,18 @@ def find_priors(make: str | None, model: str | None,
                 entry = dict(exact[0])
                 entry["mode_match"] = "exact-shutter"
                 return entry
+        shutters = {e.get("shutter") for e in tier2 if e.get("shutter")}
         entry = dict(tier2[0])
-        entry["mode_match"] = "model-only" if shutter else "model-only-unqueried"
+        if shutter:
+            entry["mode_match"] = "model-only"
+        elif len(shutters) > 1:
+            # The model was measured in MORE THAN ONE readout mode with
+            # materially different noise (R10 item 1: S1M2 mech rn is
+            # unresolved while elec is 12.6 e-); picking one blind is worse
+            # than no prior — prior_usability() rejects this state.
+            entry["mode_match"] = "model-only-ambiguous-shutter"
+        else:
+            entry["mode_match"] = "model-only-single-mode"
         return entry
     make_token = make_u.split()[0] if make_u.split() else make_u
     for entry in _bulk_entries():
@@ -325,3 +335,22 @@ def pdr_ev(priors: dict[str, Any], iso: int) -> float | None:
     if not curve:
         return None
     return float(_interp(curve, math.log2(iso)))
+
+
+def prior_usability(entry: dict[str, Any] | None) -> tuple[bool, str]:
+    """SINGLE availability criterion for every rendering consumer
+    (R10 item 1): SNR guidance, noise floors, endpoint evidence and any
+    future consumer must go through this, not re-derive their own subset.
+    Returns (usable, reason)."""
+    if not entry:
+        return False, "no-prior"
+    q = entry.get("quality") or {}
+    status = q.get("status")
+    if status in ("high-residual", "unconverged"):
+        return False, f"quality-{status}"
+    spread = q.get("estimator_spread")
+    if spread is not None and math.isfinite(spread) and spread > 0.10:
+        return False, "estimator-spread"
+    if entry.get("mode_match") == "model-only-ambiguous-shutter":
+        return False, "ambiguous-shutter"
+    return True, entry.get("mode_match") or "ok"

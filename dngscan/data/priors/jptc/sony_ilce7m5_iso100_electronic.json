@@ -24,7 +24,7 @@
  "fit_model_effective": "linear-prnu-corrected",
  "gain_alternatives": {
   "linear-0.10": 4.4471614190006985,
-  "quadratic-0.35": 4.629189391212589
+  "quadratic-0.35": 4.59706408073068
  },
  "gain_estimator_spread_rel": 0.041864968250070765,
  "prnu_status": "corrected",
@@ -39,11 +39,11 @@
  "fwc_semantics": "ADC code-saturation capacity (white-black)*gain; fwc_model_spread_e = capacity x estimator spread (model-choice spread, not a statistical uncertainty); physical full well not claimed",
  "last_unsaturated_signal_e": 61394.25855594533,
  "prnu": 0.00371628115892529,
- "prnu_quadratic_fit": 0.0038932029125528706,
+ "prnu_quadratic_fit": 0.0038212424287949096,
  "fit_relative_rms": 0.025410747811080735,
  "fit_relative_rms_alternatives": {
   "linear-0.10": 0.046470456883226055,
-  "quadratic-0.35": 0.011724718571983142
+  "quadratic-0.35": 0.01023880719557392
  },
  "fit_points": 32,
  "fit_points_excluded": 4,
