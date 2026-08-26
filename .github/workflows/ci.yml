@@ -31,10 +31,16 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install Python dependencies
+      - name: Install Python dependencies (frozen from uv.lock)
+        # R11 item 8: requirements.txt floats with upstream releases while
+        # uv.lock sits in the repo unused — CI now installs the exact locked
+        # versions (all dependency groups; the editable self-install line is
+        # dropped because these jobs run from the source tree).
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip uv
+          uv export --frozen --all-groups --format requirements-txt --no-hashes \
+            | grep -v '^-e' > /tmp/requirements-lock.txt
+          pip install -r /tmp/requirements-lock.txt
 
       - name: Unit tests (NumPy reference path)
         run: DNGSCAN_FAST=0 python -m unittest discover -s tests -q
@@ -46,3 +52,41 @@ jobs:
 
       - name: Unit tests (strict native path)
         run: DNGSCAN_FAST=1 python -m unittest discover -s tests -q
+
+      - name: Digitization precision gate ran (not skipped)
+        # R11 item 3: this gate used to skip silently when SciPy was absent.
+        run: python -m unittest tests.test_digitization_precision -v 2>&1 | tee /tmp/dig.log; ! grep -qi "skipped" /tmp/dig.log
+
+  wheel-smoke:
+    name: Wheel install smoke (pure Python)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build wheel (native off)
+        # R11 item 8: the test jobs run from the source tree and never
+        # verify that a BUILT wheel carries the data assets (priors JSONs,
+        # film_optics assets, lens library, spectral data). This builds a
+        # pure-Python wheel and loads them from the INSTALLED package.
+        run: |
+          python -m pip install --upgrade pip build
+          SKBUILD_CMAKE_DEFINE="DNGSCAN_BUILD_NATIVE=OFF" python -m build --wheel
+      - name: Install into a clean environment and smoke the assets
+        run: |
+          python -m venv /tmp/smoke-venv
+          /tmp/smoke-venv/bin/pip install --quiet dist/*.whl
+          cd /tmp && /tmp/smoke-venv/bin/python - <<'PY'
+          import json
+          from importlib import resources
+          import dngscan
+          from dngscan import priors, lens_transmittance
+          e = priors.find_priors("SIGMA", "SIGMA FP")
+          assert e and priors.gain_e_per_dn(e, 100) > 0, "curated prior missing"
+          assert priors.find_priors("SONY", "SLT-A77V"), "bulk tier missing"
+          assert len(lens_transmittance.list_entries()) >= 100, "lens library missing"
+          from dngscan.film_optics_assets import load_stock_optics, DEFAULT_STOCK_OPTICS
+          load_stock_optics(DEFAULT_STOCK_OPTICS)
+          print("wheel smoke ok:", dngscan.__file__)
+          PY

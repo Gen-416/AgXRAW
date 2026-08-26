@@ -92,20 +92,24 @@ class MeasuredGrainKernelTests(unittest.TestCase):
         hi = np.ones(3)
         amounts = np.full((h * w, 3), 0.8, dtype=np.float64)
         # transmittance in CHART density units per channel
-        ref = None
+        # Audit R11: the old loop computed all three channels but recorded
+        # ref and asserted only ch==0 — G/B were dead code, and B carries the
+        # LARGEST sigma (the bias-compensation term grows with sigma^2), so
+        # the most exposed channel was the untested one.
+        refs: dict[int, float] = {}
         for amt in (0.0, 0.5, 1.0):
             out = apply_density_grain(amounts, lo, hi, geometry, g, amt, 0)
             for ch in range(3):
                 base, _dmax = g.chart_density[ch]
                 d = base + out[:, ch]
                 t = float(np.mean(np.power(10.0, -d)))
-                if amt == 0.0 and ch == 0:
-                    ref = t
-                if ch == 0:
-                    self.assertLess(
-                        abs(t - ref) / ref, 0.004,
-                        f"amount={amt}: mean transmittance drifted {t} vs {ref}",
-                    )
+                if amt == 0.0:
+                    refs[ch] = t
+                self.assertLess(
+                    abs(t - refs[ch]) / refs[ch], 0.004,
+                    f"amount={amt} ch{ch}: mean transmittance drifted "
+                    f"{t} vs {refs[ch]}",
+                )
 
     def test_grain_scales_with_declared_sigma_direction(self) -> None:
         # 5207 chart fact carried into the render: at low density the B
@@ -121,7 +125,7 @@ class MeasuredGrainKernelTests(unittest.TestCase):
         std = [(out[:, ch] - amounts[:, ch]).std() for ch in range(3)]
         self.assertGreater(std[2], std[0])
 
-    def test_aperture_rms_is_cached_and_below_unity(self) -> None:
+    def test_aperture_rms_is_deterministic_and_below_unity(self) -> None:
         r1 = _aperture_rms(self.grain)
         r2 = _aperture_rms(self.grain)
         self.assertEqual(r1, r2)
@@ -180,10 +184,6 @@ class GrainAssetContractTests(unittest.TestCase):
         }, "t")
         self.assertEqual(g.model, "band_limited_gaussian_v1")
         self.assertEqual(g.sigma_density, ())
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class MultiBandFieldTests(unittest.TestCase):
@@ -342,3 +342,7 @@ class DualGrainTests(unittest.TestCase):
             float(diff.mean()), 1e-6,
             "the paper-stage grain hook must actually reach the output",
         )
+
+
+if __name__ == "__main__":
+    unittest.main()

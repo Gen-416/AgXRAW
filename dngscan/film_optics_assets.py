@@ -218,8 +218,15 @@ class ScatterKernelAsset:
         _require(set(chans) == {"R", "G", "B"},
                  f"{where}: channels must be exactly R, G, B")
         s, w, sig, lam = [], [], [], []
+        _known = {"s", "sigma_um", "w", "tail_sigma_um"}
         for name in ("R", "G", "B"):
             ch = chans[name]
+            # Audit R11: an old-schema asset carrying lambda_um used to load
+            # SILENTLY with its tail dropped (fail-open). Unknown channel
+            # keys now refuse, so schema drift is loud.
+            unknown = set(ch) - _known
+            _require(not unknown,
+                     f"{where}.{name}: unknown scatter fields {sorted(unknown)}")
             sv = _finite(ch["s"], f"{where}.{name}.s")
             _require(0.0 < sv <= 1.0, f"{where}.{name}: s outside (0, 1]")
             sgv = _finite(ch["sigma_um"], f"{where}.{name}.sigma_um")

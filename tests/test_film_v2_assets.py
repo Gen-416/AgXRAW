@@ -440,8 +440,9 @@ class FilmV2RetimedTests(unittest.TestCase):
 
     def test_custom_timing_delta_tau_semantics(self) -> None:
         """+Y CC attenuates the blue-sensitive layer (print moves away from
-        yellow: b axis down); manual print exposure brightens the print;
-        custom + bounded neutralization is refused."""
+        yellow: b axis down); +1 EV manual print exposure DARKENS the print
+        (positive paper: more light, more density); custom + bounded
+        neutralization is refused."""
         from dngscan.film_develop import apply_film_core
 
         grey = np.full((1, 3), SCENE_MID, dtype=np.float32)
@@ -457,12 +458,12 @@ class FilmV2RetimedTests(unittest.TestCase):
             return float(rgb[0, 2] - 0.5 * (rgb[0, 0] + rgb[0, 1]))
 
         self.assertGreater(b_axis(y30), b_axis(base))
-        brighter = apply_film_core(
+        darker = apply_film_core(
             grey, self._plan("portra400", timing="custom", crossover="datasheet",
                              film_print_exposure_ev=1.0)
         ).astype(np.float64)
         luma = np.array([0.2627, 0.678, 0.0593])
-        self.assertLess(float(brighter[0] @ luma), float(base[0] @ luma))
+        self.assertLess(float(darker[0] @ luma), float(base[0] @ luma))
         with self.assertRaises(ValueError):
             apply_film_core(
                 grey, self._plan("portra400", timing="custom", crossover="off")

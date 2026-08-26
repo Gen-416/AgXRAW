@@ -66,7 +66,10 @@ class CacheIdentityTests(unittest.TestCase):
 
 
 class ExportDeadlineTests(unittest.TestCase):
-    def test_timeout_terminates_and_names_the_cause(self) -> None:
+    def test_timeout_source_pins_deadline_terminate_and_messages(self) -> None:
+        """Source pin only: real timeout termination is not exercised here
+        (it needs a hung child process); this keeps the deadline/terminate
+        path and its user-facing messages from being deleted silently."""
         import inspect
 
         from dngscan.gui import service

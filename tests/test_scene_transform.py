@@ -140,10 +140,6 @@ class FullMatrixWindowTransportTests(unittest.TestCase):
         )
         self.assertGreater(float(weight[0]), 0.999999)
 
-
-if __name__ == "__main__":
-    unittest.main()
-
     def test_region_confidence_scales_effect(self) -> None:
         from dataclasses import replace as dc_replace
 
@@ -322,3 +318,7 @@ class PerCameraTransportTests(unittest.TestCase):
                 for r in ratios:
                     self.assertGreater(r, 0.6)
                     self.assertLess(r, 1.35)
+
+
+if __name__ == "__main__":
+    unittest.main()

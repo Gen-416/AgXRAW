@@ -473,8 +473,14 @@ class LoadRawDecoderGuardTests(unittest.TestCase):
         self.assertEqual(bundle.applied_wb, bundle.daylight_wb)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class MoirePolicySourcePinTests(unittest.TestCase):
+    """Audit R11: this pin needs neither samples nor the Apple runtime, but
+    it used to live behind both gates, leaving the policy unguarded on CI."""
+
+    def test_module_exposes_no_moire_zeroing_path(self) -> None:
+        from dngscan import coreimage_decode
+        source = Path(coreimage_decode.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("setMoireReductionAmount_", source)
 
 
 class DecoderGuardTests(unittest.TestCase):
@@ -602,9 +608,8 @@ class SubjectiveControlTests(unittest.TestCase):
         default = float(filt.moireReductionAmount())
         coreimage_decode.configure_linear_filter(filt, version="9", scale_factor=0.1)
         self.assertAlmostEqual(float(filt.moireReductionAmount()), default, places=6)
-        # Policy pin: the module must not expose a path that zeros this control.
-        source = Path(coreimage_decode.__file__).read_text(encoding="utf-8")
-        self.assertNotIn("setMoireReductionAmount_", source)
+        # (the source-string policy pin moved to MoirePolicySourcePinTests
+        # so it runs on CI too — audit R11)
 
     def test_highlight_recovery_stays_on_and_keeps_clipped_highlights_neutral(
         self,
@@ -626,3 +631,7 @@ class SubjectiveControlTests(unittest.TestCase):
         mean = rgb[near_top].reshape(-1, 3).mean(axis=0)
         magenta_bias = float(mean[0] + mean[2] - 2.0 * mean[1])
         self.assertLess(abs(magenta_bias), 0.25 * float(mean[1]))
+
+
+if __name__ == "__main__":
+    unittest.main()

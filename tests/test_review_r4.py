@@ -41,46 +41,6 @@ class SnrCurveSerializationTests(unittest.TestCase):
     """F1: analyses always carry ndarray SNR curves now; the preview disk
     cache must round-trip them instead of dying in json.dumps."""
 
-    def _analysis_with_curves(self):
-        from dngscan.analysis import analyze  # noqa: F401 (import sanity)
-        from dngscan.gui import preview_cache as pc
-
-        stops = np.linspace(-14.0, 0.0, 84).astype(np.float32)
-        curves = {
-            "G": {
-                "stops": stops,
-                "snr_db": np.full(stops.shape, 20.0, dtype=np.float32),
-                "count": np.full(stops.shape, 64, dtype=np.int32),
-                "ids": [1, 2],
-            }
-        }
-        return pc, curves
-
-    def test_analysis_json_round_trips_ndarray_curves(self) -> None:
-        pc, curves = self._analysis_with_curves()
-        fake = SimpleNamespace(snr_curves=curves)
-        # _analysis_to_json operates on asdict output; emulate its curve
-        # handling directly on the dict form the dataclass produces.
-        data = {"snr_curves": curves}
-        encoded = {
-            group: {
-                key: (np.asarray(v).tolist() if key != "ids" else list(v))
-                for key, v in curve.items()
-            }
-            for group, curve in data["snr_curves"].items()
-        }
-        text = json.dumps({"snr_curves": encoded}, allow_nan=True)
-        back = json.loads(text)
-        restored = pc._analysis_from_json.__wrapped__ if hasattr(
-            pc._analysis_from_json, "__wrapped__"
-        ) else None
-        # The real functions: encode via _analysis_to_json on a minimal
-        # Analysis is heavy; assert the serializer helpers exist and the
-        # version was bumped so stale empty-curve entries cannot load.
-        self.assertGreaterEqual(pc.PREVIEW_CACHE_VERSION, 13)
-        self.assertIn("snr_curves", text)
-        self.assertEqual(len(back["snr_curves"]["G"]["stops"]), 84)
-
     def test_write_disk_entry_serializes_a_real_analysis(self) -> None:
         """End-to-end: a real analyze() product must pass json.dumps via
         _analysis_to_json (the exact call that crashed cold loads)."""

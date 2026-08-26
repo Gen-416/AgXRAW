@@ -67,10 +67,23 @@ class PunchOperatorTests(unittest.TestCase):
 
 class PunchStrengthGateTests(unittest.TestCase):
     def _strength(self, ev_p50: float, plan_dr: float, dr: float, scale: float = 1.0) -> float:
-        w_bright = _smoothstep_f(-3.0, -1.2, ev_p50)
-        w_quality = _smoothstep_f(7.5, 9.5, plan_dr)
-        w_dr = _smoothstep_f(6.5, 8.0, dr)
-        return min(1.0, max(0.0, w_bright * w_quality * (0.55 + 0.45 * w_dr) * scale))
+        # Audit R11: compose from the PRODUCTION formula and constants — the
+        # old helper transcribed the expression with literals and stayed green
+        # when tone.py's composition changed.
+        from dngscan.tone import (
+            PUNCH_BODY_HI_EV,
+            PUNCH_BODY_LO_EV,
+            PUNCH_DR_HI_EV,
+            PUNCH_DR_LO_EV,
+            PUNCH_QUALITY_DR_HI_EV,
+            PUNCH_QUALITY_DR_LO_EV,
+            combine_punch_strength,
+        )
+
+        w_bright = _smoothstep_f(PUNCH_BODY_LO_EV, PUNCH_BODY_HI_EV, ev_p50)
+        w_quality = _smoothstep_f(PUNCH_QUALITY_DR_LO_EV, PUNCH_QUALITY_DR_HI_EV, plan_dr)
+        w_dr = _smoothstep_f(PUNCH_DR_LO_EV, PUNCH_DR_HI_EV, dr)
+        return combine_punch_strength(w_bright, w_quality, w_dr, scale)
 
     def test_night_high_iso_gates_to_zero(self) -> None:
         # ISO 25600-ish: prior-clamped usable DR ~5, deep median

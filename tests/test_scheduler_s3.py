@@ -55,10 +55,6 @@ class BudgetArithmeticTests(unittest.TestCase):
         from dngscan import cpu_budget
 
         published: list[int] = []
-        with mock.patch.object(
-            cpu_budget, "_fast", create=True
-        ):
-            pass
         with mock.patch(
             "dngscan._fast.set_thread_budget", published.append
         ):

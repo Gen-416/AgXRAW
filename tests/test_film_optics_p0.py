@@ -194,7 +194,10 @@ class ChartContractTests(unittest.TestCase):
 
 
 class LegacyFreezeGateTests(unittest.TestCase):
-    """The frozen legacy behaviour. P1 rewrites structure, not maths."""
+    """The standing output freeze. Written before P1 as "structure, not
+    maths"; P1-P7 all landed, so today it is the drift gate for the CURRENT
+    analog-optics render — re-pinned only by a declared decision, never to
+    silence a test."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -248,7 +251,9 @@ class LegacyFreezeGateTests(unittest.TestCase):
 
 
 class MeasuredBaselineTests(unittest.TestCase):
-    """The numbers P2-P4 are judged against.
+    """The measured diagnostics baseline. Originally "the numbers P2-P4 are
+    judged against"; those phases landed and inverted their assertions in
+    place, so today it gates drift in the report pipeline itself.
 
     Pinned with a relative tolerance rather than exactly: these come out of
     FFTs and percentile reductions, and a byte-exact pin across platforms
@@ -308,7 +313,7 @@ class MeasuredBaselineTests(unittest.TestCase):
         # magnitude above any datasheet stock (>40 x1000); the measured
         # sigma(D) kernel now lands the as-rendered figures inside the
         # 5207 chart's own window (~4-17 x1000 across channels).
-        quotes = grain["rms_granularity_48um_at_span2"]
+        quotes = grain["rms_granularity_48um_x1000"]
         self.assertLess(max(quotes), 20.0)
         self.assertGreater(min(quotes), 3.0)
 

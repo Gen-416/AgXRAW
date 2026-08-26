@@ -3023,7 +3023,7 @@
       "field_selwyn_slope": -0.9048066412710362,
       "print_chroma_luma_ratio": 1.12964690253335,
       "print_luma_rms_code8": 0.6694281154367616,
-      "rms_granularity_48um_at_span2": [
+      "rms_granularity_48um_x1000": [
         5.609627431374628,
         6.586319294883397,
         13.414099527770771
@@ -3057,7 +3057,7 @@
       "field_selwyn_slope": -0.9048066412710362,
       "print_chroma_luma_ratio": 1.144762691749208,
       "print_luma_rms_code8": 1.3235422922891904,
-      "rms_granularity_48um_at_span2": [
+      "rms_granularity_48um_x1000": [
         5.609627431374628,
         6.586319294883397,
         13.414099527770771

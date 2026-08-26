@@ -28,7 +28,9 @@ def _stats_match(
         act_stats = actual.get(roi, {})
         for key, exp_val in exp_stats.items():
             act_val = float(act_stats.get(key, float("nan")))
-            if abs(act_val - float(exp_val)) > atol:
+            # inverted comparison: a missing key yields NaN, and NaN must
+            # FAIL the match, not slip through a False `>` comparison
+            if not abs(act_val - float(exp_val)) <= atol:
                 return False
     return True
 

@@ -17,21 +17,15 @@ from unittest.mock import patch
 
 # R7: the GUI transport is an OPTIONAL extra (pyproject [gui]); a CLI-only
 # environment must SKIP these tests, not error unittest discovery.
+# Audit R11: only the THIRD-PARTY import may skip this module — a broken
+# first-party fastapi_app used to be swallowed as "gui extra unavailable"
+# and CI showed a skip instead of a failure.
 try:
     from fastapi.testclient import TestClient
-
-    from dngscan.gui.fastapi_app import _run_service_call, create_app
-
-    _FASTAPI_OK = True
-    _FASTAPI_REASON = ""
 except Exception as _exc:  # pragma: no cover - environment dependent
-    TestClient = None  # type: ignore[assignment]
-    _run_service_call = create_app = None  # type: ignore[assignment]
-    _FASTAPI_OK = False
-    _FASTAPI_REASON = f"gui extra unavailable: {_exc}"
+    raise unittest.SkipTest(f"gui extra unavailable: {_exc}")
 
-if not _FASTAPI_OK:
-    raise unittest.SkipTest(_FASTAPI_REASON)
+from dngscan.gui.fastapi_app import _run_service_call, create_app  # noqa: E402
 
 
 TOKEN = "test-session-token"

@@ -29,7 +29,12 @@ gui = [
 ]
 
 [dependency-groups]
-test = ["httpx2>=2,<3"]
+# scipy: PCHIP interpolation in the importers and the digitization
+# precision gate (R11 item 3: without it CI silently SKIPPED
+# tests/test_digitization_precision.py); matplotlib for the report
+# tools exercised by tests.
+test = ["httpx2>=2,<3", "scipy>=1.10", "matplotlib>=3.6",
+        "fastapi>=0.141.1,<0.142", "uvicorn>=0.52.2,<0.53"]
 
 [tool.setuptools.packages.find]
 where = ["."]

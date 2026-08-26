@@ -219,8 +219,9 @@ def measure_grain(stock: str, amount: float) -> dict:
         # field's own 48 um aperture RMS — and then measured back through the
         # 48 um aperture. The number is therefore the as-rendered datasheet
         # figure (x1000), and closing the calibration loop is the point.
-        # (v1 profiles keep the historical sigma0*2 span quote.)
-        "rms_granularity_48um_at_span2": _rms_granularity_quote(field, pitch),
+        # (v1 profiles keep the historical sigma0*2 span quote, which is
+        # where the old "_at_span2" key name came from.)
+        "rms_granularity_48um_x1000": _rms_granularity_quote(field, pitch),
     }
 
 

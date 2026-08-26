@@ -113,10 +113,11 @@ def render_case(case: OpticsFreezeCase) -> tuple[np.ndarray, np.ndarray]:
 
 def write_manifest(cases: list[OpticsFreezeCase]) -> dict:
     manifest = {
-        "phase": "optics_v2_p0",
+        "phase": "film_optics_v2",
         "purpose": (
-            "Legacy analog-optics output frozen before the FILM_OPTICS_V2 "
-            "rewrite. P1 must not move these bytes."
+            "Standing freeze of the analog-optics render. First written "
+            "before P1 as a legacy byte pin; P1-P7 landed and re-pinned it "
+            "deliberately, so it now gates drift in the CURRENT output."
         ),
         "stock": FREEZE_STOCK,
         "seed": FREEZE_SEED,

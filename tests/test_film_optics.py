@@ -432,10 +432,6 @@ class P5PlanContractTests(unittest.TestCase):
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class P5cServiceTests(unittest.TestCase):
     def _parse(self, **params):
         from dngscan.gui.service import parse_film_params

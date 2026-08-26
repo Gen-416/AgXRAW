@@ -115,11 +115,24 @@ class ScatterMixTests(unittest.TestCase):
         self.assertLess(r, 40)
 
     def test_gaussian_v1_rejects_tail_fields(self) -> None:
-        with self.assertRaises(Exception):
+        """Audit R11: the old payload smuggled lambda_um and actually
+        tripped a DIFFERENT rule (w>0 with zero tail scale) — and a payload
+        with ONLY the legacy lambda_um key loaded silently with the tail
+        dropped. Two explicit contracts now: gaussian_v1 refuses tail
+        fields, and unknown channel keys refuse loudly."""
+        with self.assertRaisesRegex(Exception, "gaussian_v1 carries no tail"):
             ScatterKernelAsset.from_json({
                 "provenance": "measured", "model": "gaussian_v1",
                 "channels": {n: {"s": 0.3, "sigma_um": 8.0, "w": 0.2,
-                                 "lambda_um": 2.0}
+                                 "tail_sigma_um": 16.0}
+                             for n in ("R", "G", "B")},
+            }, "t")
+
+    def test_unknown_channel_fields_refuse_loudly(self) -> None:
+        with self.assertRaisesRegex(Exception, "unknown scatter fields"):
+            ScatterKernelAsset.from_json({
+                "provenance": "measured", "model": "gaussian_v1",
+                "channels": {n: {"s": 0.3, "sigma_um": 8.0, "lambda_um": 2.0}
                              for n in ("R", "G", "B")},
             }, "t")
 
