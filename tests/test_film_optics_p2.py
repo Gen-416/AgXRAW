@@ -10,10 +10,10 @@ The three defects P0 measured, each with the gate that now holds it shut:
     0.66-0.72 mm half-energy
     radius against a declared 0.55 -> the radius assertions below
 
-Gate 13 (the transfer budget) has nothing to check in P2: no explicit
-emulsion scatter ships, so `MTF_explicit` is identity and the residual is the
-measured MTF unchanged. The test that would enforce it arrives with the
-operator, in P5; asserting it now would be theatre.
+Gate 13 (the transfer budget) had nothing to check in P2 — no explicit
+emulsion scatter shipped yet, so `MTF_explicit` was identity. The operator
+landed in P5 (bi_gaussian_v1) and gate 13 is enforced where it lives now,
+in tests/test_film_optics_scatter.py.
 """
 from __future__ import annotations
 
@@ -292,10 +292,6 @@ class FreezeTests(unittest.TestCase):
                 np.testing.assert_array_equal(stored["u8"], u8)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ExposureDirectionTests(unittest.TestCase):
     """Review 2026-08-10 F1. The first gate reference multiplied the absolute
     grey layer exposure back into an already-normalized coordinate and scaled
@@ -344,3 +340,7 @@ class ExposureDirectionTests(unittest.TestCase):
             "portra400",
         )
         np.testing.assert_array_equal(ctx.hal_ref, np.ones(3, dtype=np.float32))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -276,10 +276,6 @@ class AutoEvTest(unittest.TestCase):
     )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ProbeNativeFinalizeTests(unittest.TestCase):
     """B5: the headroom probe's gamut fit routes native, within declared bounds."""
 
@@ -424,3 +420,7 @@ class AutoEvReferencePlanTests(unittest.TestCase):
         self.assertEqual(plan.tone.endpoint_mode, "adaptive")  # film preset supersedes
         self.assertEqual(plan.tone.curve_preset, "portra400")
         self.assertEqual(args[0].lens_filter, "85b")
+
+
+if __name__ == "__main__":
+    unittest.main()

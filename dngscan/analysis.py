@@ -764,6 +764,37 @@ def raw_health_verdict_cn(lag1: float, hist_empty: float) -> str:
     return verdict
 
 
+def sensor_prior_evidence(
+    make: str | None, model: str | None, iso: int | None,
+    *, nf: float, fullwell: float, mean_black: float,
+):
+    """EVERYTHING analyze() derives from sensor priors, in one place.
+
+    R10/R11: prior_usability() is the single availability criterion; when it
+    rejects, every derived quantity (gain, read noise, PDR, electron noise
+    floor) is None TOGETHER, so SNR guidance, endpoint evidence and the DR
+    clamp all degrade to frame-derived estimates. The prior's identity and
+    the gate reason are still reported for diagnostics."""
+    prior = sensor_priors.find_priors(make, model)
+    prior_id = prior["id"] if prior else None
+    _pq = prior.get("quality") if prior else None
+    quality_status = (_pq or {}).get("status") if isinstance(_pq, dict) else None
+    model_spread = (_pq or {}).get("estimator_spread") if isinstance(_pq, dict) else None
+    mode_match = prior.get("mode_match") if prior else None
+    usable, gate_reason = sensor_priors.prior_usability(prior)
+    if not usable:
+        quality_status = quality_status or gate_reason
+    use = usable and iso
+    gain_e = sensor_priors.gain_e_per_dn(prior, iso) if use else None
+    prior_rn_e = sensor_priors.read_noise_e(prior, iso) if use else None
+    prior_pdr = sensor_priors.pdr_ev(prior, iso) if use else None
+    noise_e = None
+    if gain_e is not None:
+        noise_e = float(nf * max(fullwell - mean_black, 1.0) * gain_e)
+    return (prior_id, quality_status, model_spread, mode_match,
+            gain_e, prior_rn_e, prior_pdr, noise_e)
+
+
 def analyze(
     bundle: RawBundle,
     margin: int,
@@ -826,27 +857,14 @@ def analyze(
         bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names
     )
 
-    # Priors layer: electron-domain calibration from public measurements (best-effort).
-    prior = sensor_priors.find_priors(bundle.shot_make, bundle.shot_model)
-    prior_id = prior["id"] if prior else None
-    _pq = prior.get("quality") if prior else None
-    prior_quality_status = (_pq or {}).get("status") if isinstance(_pq, dict) else None
-    prior_model_spread = (_pq or {}).get("estimator_spread") if isinstance(_pq, dict) else None
-    prior_mode_match = prior.get("mode_match") if prior else None
-    # R10 item 1: ONE availability criterion gates every prior-derived
-    # quantity here, so noise floors / endpoint evidence / SNR guidance all
-    # degrade together — no consumer can bypass it via a raw field.
-    prior_usable, prior_gate_reason = sensor_priors.prior_usability(prior)
-    if not prior_usable:
-        prior_quality_status = prior_quality_status or prior_gate_reason
-    use = prior_usable and bundle.shot_iso
-    gain_e = sensor_priors.gain_e_per_dn(prior, bundle.shot_iso) if use else None
-    prior_rn_e = sensor_priors.read_noise_e(prior, bundle.shot_iso) if use else None
-    prior_pdr = sensor_priors.pdr_ev(prior, bundle.shot_iso) if use else None
-    noise_e = None
-    if gain_e is not None:
-        mean_black = float(np.mean([bundle.black_levels[c] for c in channel_ids if c < len(bundle.black_levels)] or [0.0]))
-        noise_e = float(nf * max(fullwell - mean_black, 1.0) * gain_e)
+    # Priors layer: electron-domain calibration from public measurements
+    # (best-effort). Extracted into sensor_prior_evidence() so the whole
+    # analyze-level prior behaviour is testable at its real seam (R11 item 2).
+    mean_black = float(np.mean([bundle.black_levels[c] for c in channel_ids if c < len(bundle.black_levels)] or [0.0]))
+    (prior_id, prior_quality_status, prior_model_spread, prior_mode_match,
+     gain_e, prior_rn_e, prior_pdr, noise_e) = sensor_prior_evidence(
+        bundle.shot_make, bundle.shot_model, bundle.shot_iso,
+        nf=nf, fullwell=fullwell, mean_black=mean_black)
     # Effective DR for downstream tone planning: the empirical single-frame estimate,
     # gently bounded by the published PDR when available (never replaced by it).
     if prior_pdr is not None and math.isfinite(usable_dr):

@@ -287,10 +287,6 @@ class TestCuratedAxisAudit(unittest.TestCase):
             self.assertEqual(e["suspect_iso_min"], 25600, prior_id)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestReviewR9Contracts(unittest.TestCase):
     def test_strict_json_everywhere(self):
         """RFC 8259 has no NaN/Infinity literal; every priors data file must
@@ -339,6 +335,11 @@ class TestReviewR9Contracts(unittest.TestCase):
         fp = priors.find_priors("SIGMA", "SIGMA FP")
         self.assertTrue(priors.prior_usability(fp)[0])
         self.assertFalse(priors.prior_usability(None)[0])
+        # audit R11: the unconverged branch was implemented but never pinned
+        fake = {"quality": {"status": "unconverged"}}
+        usable, reason = priors.prior_usability(fake)
+        self.assertFalse(usable)
+        self.assertEqual(reason, "quality-unconverged")
 
     def test_bulk_entries_carry_mode_match(self):
         e = priors.find_priors("SONY", "SLT-A77V")
@@ -365,3 +366,49 @@ class TestReviewR9Contracts(unittest.TestCase):
         self.assertEqual(g["acquisition_contract"]["sigma_clip_correction"],
                          "unresolved")
         self.assertNotIn("undone via the declared", g["noise_aperture"])
+
+
+class TestAnalyzeLevelPriorGate(unittest.TestCase):
+    """R11 item 2: the usability predicate alone proves nothing about the
+    pipeline — this exercises analysis.sensor_prior_evidence(), the single
+    seam analyze() derives every prior quantity through, and asserts they
+    degrade TOGETHER for a gated prior (so noise floors, endpoint evidence,
+    SNR guidance and the DR clamp all fall back to frame-derived data)."""
+
+    @staticmethod
+    def _evidence(make, model, iso=100):
+        from dngscan.analysis import sensor_prior_evidence
+        return sensor_prior_evidence(make, model, iso,
+                                     nf=0.02, fullwell=16383.0,
+                                     mean_black=512.0)
+
+    def test_gated_prior_degrades_every_quantity(self):
+        (pid, status, spread, mode, gain, rn, pdr, noise_e) = self._evidence(
+            "Canon", "Canon EOS R6 Mark II")
+        self.assertIsNotNone(pid)              # identity still reported
+        self.assertEqual(status, "high-residual")
+        self.assertIsNone(gain)
+        self.assertIsNone(rn)
+        self.assertIsNone(pdr)                 # -> no DR clamp in analyze()
+        self.assertIsNone(noise_e)             # -> no endpoint noise floor
+
+    def test_ambiguous_shutter_degrades_like_no_prior(self):
+        (pid, status, spread, mode, gain, rn, pdr, noise_e) = self._evidence(
+            "Panasonic", "DC-S1M2")
+        self.assertEqual(mode, "model-only-ambiguous-shutter")
+        self.assertIsNone(gain)
+        self.assertIsNone(noise_e)
+
+    def test_usable_prior_populates_quantities(self):
+        (pid, status, spread, mode, gain, rn, pdr, noise_e) = self._evidence(
+            "SIGMA", "SIGMA FP")
+        self.assertEqual(mode, "curated")
+        self.assertIsNotNone(gain)
+        self.assertIsNotNone(rn)
+        self.assertIsNotNone(pdr)
+        self.assertIsNotNone(noise_e)
+        self.assertGreater(noise_e, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

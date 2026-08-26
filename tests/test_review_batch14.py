@@ -82,7 +82,10 @@ class ReferenceWhiteProbeTests(unittest.TestCase):
         early = film_reference_white_ev(_plan_ns(stock, film_exposure_ev=1.5))
         self.assertLess(early, base - 0.5, "overexposure must move the join down")
 
-    def test_headroom_is_capped_by_the_reliable_tail(self) -> None:
+    def test_headroom_source_references_the_reliable_tail(self) -> None:
+        """Source pin only: the cap BEHAVIOUR is asserted in
+        tests/test_film_hdr.py (upper-bound assertions); this just keeps the
+        reliable_tail_ev plumbing from being deleted silently."""
         import inspect
 
         from dngscan import hdr_agx

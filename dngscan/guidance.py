@@ -274,7 +274,8 @@ def _has_sensor_snr_prior(analysis: Analysis | None) -> bool:
         and gain > 0.0 and read_noise >= 0.0
     ):
         return False
-    if getattr(analysis, "prior_quality_status", None) == "high-residual":
+    if getattr(analysis, "prior_quality_status", None) in ("high-residual",
+                                                           "unconverged"):
         return False
     spread = getattr(analysis, "prior_model_spread", None)
     if spread is not None and math.isfinite(spread) and spread > PRIOR_MODEL_SPREAD_MAX:

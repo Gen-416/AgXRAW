@@ -106,7 +106,7 @@ def fit_ptc(
     #     S<0.10*S_sat on y - prnu_top^2*S^2; re-estimate prnu_top at the
     #     ramp top with the new gain} — removes the KNOWN bias term without
     #     granting the fit freedom to absorb unrelated structure.
-    # model_sensitivity = (max-min)/primary across the three gains.
+    # gain_estimator_spread_rel = (max-min)/primary across the three gains.
     def _trimmed_linear(xa, ya, min_keep=4):
         keep = np.ones(len(xa), dtype=bool)
         slope = intercept = 0.0

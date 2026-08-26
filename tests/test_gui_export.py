@@ -164,10 +164,6 @@ class ExportSuffixTests(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class MetricsSamplingTests(unittest.TestCase):
     """D10: the post-export display metrics run on a declared ~800k stride sample."""
 
@@ -210,3 +206,7 @@ class MetricsSamplingTests(unittest.TestCase):
         self.assertLess(
             abs(sampled["luma_p999_pct"] - float(np.percentile(y, 99.9)) * 100.0), 0.25
         )
+
+
+if __name__ == "__main__":
+    unittest.main()

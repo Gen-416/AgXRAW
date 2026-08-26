@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -62,8 +63,18 @@ class DisplayFilterTests(unittest.TestCase):
         np.testing.assert_allclose(out, expected, rtol=0, atol=1e-6)
 
     def test_vendor_cubes_are_not_bundled(self) -> None:
-        for name in DISPLAY_FILTERS:
-            self.assertFalse(filter_available(name), msg=name)
+        """Audit R11: the old assertion was filter_available()==False — i.e.
+        "not installed on THIS machine", which becomes a test failure the
+        moment a user installs a cube as designed, and made the cube
+        behaviour tests structurally unreachable in any environment where
+        this test passes. The actual contract is that the REPOSITORY does
+        not carry vendor cubes; installed cubes are fine."""
+        import subprocess
+        tracked = subprocess.run(
+            ["git", "ls-files", "*.cube"], capture_output=True, text=True,
+            cwd=str(Path(__file__).parents[1]),
+        ).stdout.strip()
+        self.assertEqual(tracked, "", f"vendor cubes tracked in repo: {tracked}")
 
     def test_kodak_filter_preserves_color(self) -> None:
         if not filter_available("kodak_2383_d65"):
@@ -87,8 +98,9 @@ class DisplayFilterTests(unittest.TestCase):
         self.assertGreater(spread, 0.05, "filter output should not be near grayscale")
 
     def test_scene_feed_requires_scene_buffer(self) -> None:
-        if not filter_available("red_ipp2_rec709_medium"):
-            self.skipTest("RED IPP2 cube missing")
+        """Audit R11: was skip-gated on the cube being installed, but the
+        missing-scene-buffer ValueError fires before any LUT I/O — this is
+        a pure contract test and now runs everywhere (incl. CI)."""
         mapped = np.array([[[0.3, 0.3, 0.3]]], dtype=np.float32)
         with self.assertRaises(ValueError):
             apply_display_filter_rec2020(mapped, "srgb", "red_ipp2_rec709_medium", 1.0)
@@ -97,10 +109,6 @@ class DisplayFilterTests(unittest.TestCase):
         x = np.linspace(0.0, 1.0, 32, dtype=np.float64)
         y = log3g10_encode(x)
         self.assertTrue(np.all(np.diff(y) >= -1e-6))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
     def test_slog3_anchors(self) -> None:
         import numpy as np
@@ -123,3 +131,7 @@ if __name__ == "__main__":
         self.assertEqual(spec.source, "slog3")
         if filter_available("sony_lc709a"):
             self.assertTrue(spec.cube.is_file())
+
+
+if __name__ == "__main__":
+    unittest.main()

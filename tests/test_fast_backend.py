@@ -142,10 +142,18 @@ class NativeAgxParityTests(unittest.TestCase):
         np.testing.assert_array_equal(rgb, before)
 
     def test_nan_inf_contract_matches_python(self) -> None:
+        # Audit R11: with non-finite input the dispatcher and the reference
+        # share the SAME NumPy path, so comparing them alone is a tautology.
+        # The real contract is the ROUTING: non-finite frames must never
+        # reach the native kernel, even when the backend claims support.
         plan = _sample_plan(punch_strength=0.8)
         rgb = np.asarray([[np.nan, 0.3, np.inf], [-np.inf, 0.2, 0.1]], dtype=np.float32)
         ref = _reference_agx_core(rgb, plan)
-        out = apply_agx_core(rgb, plan)
+        kernel = mock.Mock(side_effect=AssertionError("native kernel saw non-finite input"))
+        with mock.patch.object(fast_backend, "supports_agx", return_value=True), \
+                mock.patch.object(fast_backend, "apply_agx_core_f32", kernel):
+            out = apply_agx_core(rgb, plan)
+        kernel.assert_not_called()
         np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5)
 
 

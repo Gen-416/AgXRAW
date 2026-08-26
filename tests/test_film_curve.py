@@ -695,10 +695,6 @@ class WholeRollConsistencyTests(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class FilmFullCoreExclusivityTests(unittest.TestCase):
     """Batch-7 P1: full + lum/neutral/gated compiled fine but the render stage
     silently fell back to the requested core (measured 0.0 diff vs observe)
@@ -1013,3 +1009,7 @@ class UnchangedGroupRegressionTests(unittest.TestCase):
         for name, preset in FILM_CURVE_PRESETS.items():
             with self.subTest(preset=name):
                 self.assertLessEqual(float(preset["fit"]["rms_stop"]), 0.07)
+
+
+if __name__ == "__main__":
+    unittest.main()

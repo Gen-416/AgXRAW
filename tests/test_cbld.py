@@ -118,6 +118,33 @@ class LookupTests(_FixtureBase):
         self.assertIsNone(cbld.find_black_levels("SONY", "ILCE-7M3", 100))
         self.assertIsNone(cbld.find_black_levels(None, None, 100))
 
+    def test_bad_channel_order_fails_closed(self):
+        """Audit R11: cbld._load_db empties the whole library when the
+        fixture's channel_order is not R,G1,B,G2 — previously untested."""
+        import json
+        import os
+        import tempfile
+        from dngscan import cbld
+
+        with tempfile.TemporaryDirectory() as td:
+            bad = dict(FIXTURE)
+            bad["channel_order"] = ["G1", "R", "B", "G2"]
+            path = os.path.join(td, "cbld.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(bad, fh, ensure_ascii=False)
+            prev = os.environ.get("DNGSCAN_CBLD")
+            os.environ["DNGSCAN_CBLD"] = path
+            cbld._db_cached.cache_clear()
+            try:
+                self.assertEqual(cbld._db(), {"cameras": []},
+                                 "bad channel_order must fail closed")
+            finally:
+                if prev is None:
+                    os.environ.pop("DNGSCAN_CBLD", None)
+                else:
+                    os.environ["DNGSCAN_CBLD"] = prev
+                cbld._db_cached.cache_clear()
+
     def test_fixture_contract(self) -> None:
         payload = json.loads(cbld.data_path().read_text(encoding="utf-8"))
         self.assertEqual(payload["channel_order"], ["R", "G1", "B", "G2"])

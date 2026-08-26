@@ -12,7 +12,6 @@ without a RAW corpus on CI. Pixel decoding is deliberately out of scope.
 from __future__ import annotations
 
 import gzip
-import hashlib
 import json
 import tempfile
 import unittest
@@ -121,15 +120,28 @@ class EvidenceShellCorpusTests(unittest.TestCase):
                     len(read_dng_gain_maps(p)), exp["gain_map_count"]
                 )
 
-    def test_shell_bytes_are_source_bytes(self) -> None:
-        """Kept ranges must be byte-identical to the source: the manifest's
-        source hash re-verifies whenever the ORIGINAL is available locally
-        (skipped elsewhere), and the materialized geometry always checks."""
+    def test_materialized_geometry_matches_manifest(self) -> None:
+        """Audit R11: the old name promised byte-identity with the source
+        and a conditional hash re-verify that was never implemented (the
+        stray hashlib import was its fossil). Without the originals only
+        GEOMETRY is checkable, so that is what the name now claims — plus
+        the real internal consistency the old test skipped: the payload must
+        be exactly the concatenation the kept ranges describe, and ranges
+        must be sorted and non-overlapping."""
         for fid, exp in self.expect.items():
             m = exp["_manifest"]
             p = self.files[fid]
             with self.subTest(shell=fid):
                 self.assertEqual(p.stat().st_size, m["source_bytes"])
+                kept = [(int(o), int(n)) for o, n in m["kept"]]
+                self.assertEqual(kept, sorted(kept))
+                for (o1, n1), (o2, _n2) in zip(kept, kept[1:]):
+                    self.assertLessEqual(o1 + n1, o2, "overlapping kept ranges")
+                shell_path = SHELL_DIR / f"{fid}.evshell"
+                with shell_path.open("rb") as fh:
+                    fh.readline()
+                    payload = gzip.decompress(fh.read())
+                self.assertEqual(len(payload), sum(n for _, n in kept))
 
 
 if __name__ == "__main__":
