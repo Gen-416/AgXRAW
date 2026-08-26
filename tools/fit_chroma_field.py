@@ -54,14 +54,24 @@ RIDGE = 1e-6
 ORDERS = (2, 3, 4)
 
 
-def stimulus_and_exposures(stock: dict):
-    """Training stimulus exactly as observer_matrix builds it (D55, white row 0)."""
+def stimulus_and_exposures(stock: dict, illuminant: str = "D55"):
+    """Training stimulus exactly as observer_matrix builds it (white row 0).
+
+    ``illuminant`` generalizes the SPD (route D): the white board under the
+    SAME illuminant stays row 0, and the Bradford CAT to the working white
+    mirrors the runtime, where WB has already neutralized the scene — so a
+    non-D55 tier answers "the scene was LIT by I and white-balanced", not
+    "the pixels still carry I's cast".
+    """
     neg = ff._load_spectral(stock["negative"])
     wl = neg["wl"]
-    d55 = v1._d55_spd(wl)
+    if illuminant == "D55":
+        spd = v1._d55_spd(wl)
+    else:
+        spd = csm.illuminant_spd(illuminant, wl)
     refl = v1._training_set(wl)
     refl = np.concatenate([np.ones((wl.size, 1)), refl], axis=1)
-    stim = refl * d55[:, None]
+    stim = refl * spd[:, None]
     exposures = sb.trapezoid(stim[:, :, None] * neg["sens"][:, None, :], wl, axis=0)
     cmf = csm.cie_1931_cmf(sb.intersect_grid(wl))
     keep = np.isin(wl, sb.intersect_grid(wl))
