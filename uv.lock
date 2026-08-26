@@ -192,6 +192,7 @@ scan = [
 
 [package.dev-dependencies]
 test = [
+    { name = "colour-science" },
     { name = "fastapi" },
     { name = "httpx2" },
     { name = "matplotlib" },
@@ -216,6 +217,7 @@ provides-extras = ["scan", "native", "calibration", "gui"]
 
 [package.metadata.requires-dev]
 test = [
+    { name = "colour-science", specifier = ">=0.4.4" },
     { name = "fastapi", specifier = ">=0.141.1,<0.142" },
     { name = "httpx2", specifier = ">=2,<3" },
     { name = "matplotlib", specifier = ">=3.6" },
