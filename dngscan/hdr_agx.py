@@ -203,7 +203,14 @@ def _form_hdr_chunk(
         global_rho = float(hdr_plan.color.channel_separation) * float(
             hdr_plan.color.snr_gate
         )
-        rho = raw_gated_channel_separation(global_rho, clip_masks_chunk)
+        # Peak-proximity convergence: formation-point luminance of the native
+        # path feeds the gate so clip-compromised pixels lose chroma authority
+        # continuously as they climb toward the content peak (see
+        # raw_gated_channel_separation). Luminance itself stays native-owned.
+        y_native_form = np.tensordot(native_formation, formation_y, axes=([-1], [0]))
+        rho = raw_gated_channel_separation(
+            global_rho, clip_masks_chunk, y_native=y_native_form, peak=peak
+        )
         blended = blend_native_hdr_paths(
             reference_table.apply(inset),
             native_formation,
@@ -351,13 +358,18 @@ def render_ultrahdr_film_pair(
     below the print's reference-white join (film_reference_white_ev probe),
     smoothstep up to the plan's solved reliable headroom. This extends
     reliable scene highlights above reference white; it never re-develops
-    the body and never claims physical film HDR. The film chain runs once:
+    the body and never claims physical film HDR. The luminance gain is
+    scene-EV-driven; the COLOUR it amplifies is separately authorized by CFA
+    clip evidence (chroma-confidence lerp of the float print toward its own
+    luma axis), so reconstructed hues are extended as neutral light rather
+    than saturated blocks. The film chain runs once:
     the base render captures its post-film Rec.2020 pixels as it quantizes
     (review batch 17), and the alternate is built from that captured float
     print plus the decoded base.
     """
     from .film_develop import film_reference_white_ev
     from .film_v2_math import film_hdr_gain_log2
+    from .hdr_color import output_luma_weights
     from .render import _optics_band_rows, render_output_u8
 
     tone = plan.tone
@@ -402,6 +414,19 @@ def render_ultrahdr_film_pair(
     flat_scene = scene.reshape(-1, scene.shape[-1])
     flat_u8 = base_u8.reshape(-1, 3)
     luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
+    # Chroma confidence for the HDR increment (two-route doctrine, 2026-08-26):
+    # the luminance gain is scene-EV-driven and stays untouched, but the colour
+    # it amplifies must be RAW-vouched. Where CFA evidence says the hue is
+    # reconstructed, the increment converges to the print's own luminance axis
+    # — the same permission shape the AgX pair uses (half per clipped channel,
+    # second-largest mask withdraws the rest), collapsed to a scalar. This is
+    # what keeps the gain map from re-amplifying a faded print highlight into a
+    # saturated lamp block. No masks (Core Image path) means no per-pixel
+    # evidence, and the increment keeps the print colour unchanged.
+    flat_masks = None
+    if getattr(bundle, "clip_masks", None) is not None:
+        flat_masks = retreat_engine.clip_masks_for_shape(bundle, (h, w)).reshape(-1, 3)
+    w_out = output_luma_weights(output_gamut).astype(np.float32)
     hdr_out = np.empty((flat_u8.shape[0], 3), dtype=np.float32)
     band = max(_optics_band_rows(w), 1) * w
     for s0 in range(0, flat_u8.shape[0], band):
@@ -414,6 +439,17 @@ def render_ultrahdr_film_pair(
         fitted = fit_to_output_gamut(
             band_linear, output_gamut, alpha=gamut_alpha
         ).astype(np.float32, copy=False)
+        if flat_masks is not None:
+            m = np.clip(flat_masks[s0:e0], 0.0, 1.0)
+            second = np.partition(m, 1, axis=-1)[..., 1]
+            chroma_confidence = (
+                (np.float32(1.0) - np.float32(0.5) * np.max(m, axis=-1))
+                * (np.float32(1.0) - second)
+            )[..., None]
+            y_fit = np.tensordot(fitted, w_out, axes=([-1], [0]))[..., None]
+            # Lerp toward the luma axis: w_out is normalized, so the increment's
+            # luminance is preserved exactly while its chroma withdraws.
+            fitted = fitted * chroma_confidence + y_fit * (1.0 - chroma_confidence)
         rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
         ev = np.log2(
             np.maximum(np.asarray(rec, dtype=np.float32) @ luma, 1e-9)
