@@ -121,6 +121,34 @@ def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
     return "  ".join(parts)
 
 
+def matrix_health_line_cn(bundle: RawBundle) -> str:
+    """Route-E diagnostic: which colour matrix the declaration rides on and
+    its condition number at D65. A degraded WB declaration also lowers the
+    confidence of the gamut-pressure numbers, and says so here rather than
+    letting a decoder colour defect read as an AgX gamut problem."""
+    from .metadata import read_dng_color_calibration
+    from .wb import matrix_health
+
+    cal = None
+    try:
+        cal = read_dng_color_calibration(bundle.path)
+    except Exception:
+        cal = None
+    health = matrix_health(cal, getattr(bundle, "wb_xyz_to_cam", None))
+    if health is None:
+        return "色彩矩阵: 缺失（AsShot 降级；色域越界%仅供参考）"
+    src = {"dng-dual": "DNG双光源插值", "single-matrix": "单矩阵(Adobe/回退)"}[
+        health["source"]
+    ]
+    line = (
+        f"色彩矩阵: {src} @ {health['cct']:.0f}K  "
+        f"κ={health['kappa']:.2f}（{health['status']}，实测机队范围 2.4–4.2）"
+    )
+    if getattr(bundle, "wb_degradation", None):
+        line += "；白平衡声明已降级，色域越界%置信度降低"
+    return line
+
+
 def health_line_cn(analysis: Analysis) -> str:
     if not math.isfinite(analysis.health_lag1_corr):
         return "RAW 健康度: n/a"
@@ -223,6 +251,7 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
         f"中位亮度相对 18% 灰: {analysis.median_vs_gray_ev:+.2f} EV",
         f"RAW 噪声底: {analysis.noise_floor:.6g}  可用 DR 上限: {analysis.usable_dr_ev:.2f} 档",
         priors_line_cn(bundle, analysis),
+        matrix_health_line_cn(bundle),
         *(_cbld_line(bundle) or ()),
         health_line_cn(analysis),
         wb_line_cn(bundle),

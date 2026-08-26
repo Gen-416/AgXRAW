@@ -24,6 +24,7 @@ its own calibration, which is the point, not a defect.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from ._deps import np
@@ -199,6 +200,39 @@ def asshot_reference_cct(calibration: Any, camera_wb: Any) -> float:
             return candidate
         cct = candidate
     return cct
+
+
+def matrix_health(
+    dng_calibration: Any | None,
+    xyz_to_cam: Any | None,
+    cct: float = 6500.0,
+) -> dict[str, Any] | None:
+    """Diagnostic condition-number check of the active colour calibration.
+
+    Route-E (two-route doctrine, 2026-08-26): a decoder colour defect must not
+    be misread as an AgX gamut problem, so the report states which matrix the
+    declaration rides on and how well-conditioned it is. Thresholds derive
+    from measurement, not convention: the 18 real DNG matrices in the
+    evidence-shell corpus span kappa 2.40..4.23 (median 3.01) and the fallback
+    fleet 2.56..3.18, so >6 (1.5x the measured max) reads as 偏高 and >10 as
+    异常 — either means the tags deserve suspicion (digitization damage,
+    wrong matrix for the body), never a render refusal. Diagnostic only.
+    """
+    if dng_calibration is not None:
+        matrix = interpolated_color_matrix(dng_calibration, float(cct))
+        source = "dng-dual"
+    elif xyz_to_cam is not None:
+        matrix = np.asarray(xyz_to_cam, dtype=np.float64)[:3, :3]
+        source = "single-matrix"
+    else:
+        return None
+    kappa = float(np.linalg.cond(np.asarray(matrix, dtype=np.float64)))
+    status = "正常"
+    if not math.isfinite(kappa) or kappa > 10.0:
+        status = "异常"
+    elif kappa > 6.0:
+        status = "偏高"
+    return {"source": source, "cct": float(cct), "kappa": kappa, "status": status}
 
 
 def solve_kelvin_wb(
