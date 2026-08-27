@@ -588,17 +588,28 @@ def jpeg_tone_plan_cn(
                 + f"·halation DC={rep.get('halation_dc_mode') or '—'}"
                 + f"·预算档={_optics_budget_mib_report()}MiB；"
             )
-        # R2 item 23: the observer fit's residual is part of the user-facing
-        # line — the honest scale of "measured" for this preset's colour
-        # separation, straight off the asset the render loads.
+        # R2 item 23 / route D: the Stage A line names the model that
+        # ACTUALLY ran and its held-out residual, straight off the asset the
+        # render loads — the shipped D55 model (field or 3x3, the route-C
+        # decision), the 3x3 baseline for comparison, and what that same
+        # model measures on white-balanced tungsten / high-CRI LED scenes
+        # (the measured reason no illuminant tier exists).
         _resid = ""
         try:
             from .film_develop import _load_v2
 
             _stock, _ = _load_v2(str(plan.curve_preset))
-            _p99 = float(_stock.get("observer_p99_stop", float("nan")))
-            if _p99 == _p99:
-                _resid = f"观察者拟合残差p99={_p99:.2f}stop；"
+            _is_field = _stock.get("stage_a_model") == "field"
+            _p99 = float(_stock.get("stage_a_p99_stop", float("nan")))
+            _b99 = float(_stock.get("stage_a_3x3_p99_stop", float("nan")))
+            _ua = float(_stock.get("stage_a_p99_under_a", float("nan")))
+            _ul = float(_stock.get("stage_a_p99_under_led", float("nan")))
+            _line = f"StageA=D55{'色度场' if _is_field else '3×3'}(held-out p99 {_p99:.2f}stop"
+            if _is_field and _b99 == _b99:
+                _line += f"，3×3基线{_b99:.2f}"
+            if _ua == _ua and _ul == _ul:
+                _line += f"；白平衡后钨丝光下{_ua:.2f}、高显色LED下{_ul:.2f}"
+            _resid = _line + "；光源假设=D55（实测无需分档）；"
         except Exception:
             pass
         return (
