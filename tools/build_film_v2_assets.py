@@ -67,7 +67,7 @@ import fit_chroma_field as fcf  # noqa: E402
 
 OUT_DIR = PROJECT_ROOT / "dngscan" / "data" / "film_v2"
 GRID_N = 65
-SCHEMA = 8  # 8: the Stage A held-out numbers (route C/D records) join the ABI for the report
+SCHEMA = 9  # 9: Stage A provenance keys (stage_a_input_*/stage_a_params) join the ABI
 EXPOSURE_EV_MIN, EXPOSURE_EV_MAX = -2.0, 2.0
 TAU_NODES = tuple(round(-2.0 + 0.25 * i, 4) for i in range(17))
 MIDPOINT_ORACLE_EVS = (-1.875, -0.625, 0.375, 1.625)
@@ -331,55 +331,77 @@ def build_b2_reversal(stock_key: str) -> dict:
     }
 
 
-CHROMA_LUT_N = 256
-# 5.0 (was 2.0): the palette fold gate caught beta-amplified hue folds on
-# rings crossing the hull boundary; widening the band flattens the cubic
-# field's edge curvature there (measured: folds back inside the gate,
-# in-hull CV wins essentially unchanged).
-CHROMA_BLEND_SIGMA_CELLS = 5.0
-# Selection rule stated in docs/FILM_STAGE_A_CHROMA_FIELD.zh-CN.md: adopt the
-# field only where the CV showed a real margin — held-out p95 down >=15% AND
-# p99 not worse. superia400 passes (p95 -27%), pro400h does not (p99 +3%).
-CHROMA_P95_ADOPT_RATIO = 0.85
+def _stage_a_provenance() -> dict:
+    """Everything the baked field numerically depends on beyond the negative
+    profile (external review 2026-08-27, F8): the training reflectance
+    library, both CV records, the fit/bake parameters and the library
+    versions behind the CMF/SPD data. Stamped so a future drift can be
+    attributed to profile, data, library or code — not guessed."""
+    import importlib.metadata as md
+
+    names = [
+        str(v1.TRAINING_CSV.relative_to(PROJECT_ROOT)),
+        "docs/chroma_field_cv.json",
+        "docs/illuminant_tier_cv.json",
+    ]
+    shas = [hashlib.sha256((PROJECT_ROOT / n).read_bytes()).hexdigest() for n in names]
+    params = {
+        "order": 3,
+        "ridge": fcf.RIDGE,
+        "seeds": len(fcf.SEEDS),
+        "folds": fcf.FOLDS,
+        "lut_n": fcf.LUT_N,
+        "blend_sigma_cells": fcf.BLEND_SIGMA_CELLS,
+        "dilate_cells": fcf.DILATE_CELLS,
+        "edge_taper_cells": fcf.EDGE_TAPER_CELLS,
+        "adopt_frequency": fcf.ADOPT_FREQUENCY,
+        "p95_adopt_ratio": fcf.P95_ADOPT_RATIO,
+        "colour_science": md.version("colour-science"),
+        "numpy": np.__version__,
+        "scipy": md.version("scipy"),
+    }
+    return {
+        "stage_a_input_names": np.asarray(names),
+        "stage_a_input_sha256": np.asarray(shas),
+        "stage_a_params": np.asarray(json.dumps(params, sort_keys=True)),
+    }
 
 
 def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> dict:
     """Bake the route-C Stage A chromaticity field for one stock, or declare
-    why the 3x3 stays. The LUT holds log2(E/Y) per layer over the Rec.2020
-    chromaticity triangle's bounding box in the training XYZ space; cells
-    inside the training-reflectance hull carry the cubic field, cells outside
-    carry the observer's own chromaticity response, blended smoothly (Gaussian
-    of the hull mask, sigma CHROMA_BLEND_SIGMA_CELLS). Runtime inputs are
-    channel-clamped positive, so their chromaticities cannot leave the
-    triangle. After filling, the whole LUT is re-anchored so a BILINEAR sample
-    at the white chromaticity reproduces the white board exactly — grey ramps
-    stay bit-anchored to the logE axis.
+    why the 3x3 stays. The bake is fit_chroma_field.bake_lut — the SAME pure
+    function the CV record baked per fold — so the adoption decision in the
+    record describes exactly the operator shipped here. Selection is the
+    record's repeated-K-fold adoption frequency (fit_chroma_field.adopts).
     """
     cv_key = stock_key.removesuffix("_theatrical")
     record = json.loads(
         (PROJECT_ROOT / "docs" / "chroma_field_cv.json").read_text()
     )["stocks"]
     entry = record[cv_key]
-    selected = fcf.adopts(entry["poly3"], entry["3x3"], CHROMA_P95_ADOPT_RATIO)
-    shipped = entry["poly3"] if selected else entry["3x3"]
+    selected = fcf.adopts(entry)
+    runtime = entry["runtime"]
+    shipped = runtime["field"] if selected else runtime["3x3"]
     # Route D record: what THIS shipped model measures on white-balanced
-    # tungsten / high-CRI LED scenes (runtime lookup coordinates). The
-    # report prints them next to the daylight number; no illuminant tier is
-    # carried because none beat the D55 model on held-out data.
+    # tungsten / high-CRI LED scenes (runtime coordinates). The report
+    # prints them next to the daylight number; no illuminant tier is carried
+    # because none beat the D55 model on held-out data.
     illum = json.loads(
         (PROJECT_ROOT / "docs" / "illuminant_tier_cv.json").read_text()
     )["stocks"][cv_key]
     numbers = {
         "stage_a_p95_stop": np.float64(shipped["p95_stop"]),
         "stage_a_p99_stop": np.float64(shipped["p99_stop"]),
-        "stage_a_3x3_p99_stop": np.float64(entry["3x3"]["p99_stop"]),
+        "stage_a_3x3_p99_stop": np.float64(runtime["3x3"]["p99_stop"]),
         "stage_a_p99_under_a": np.float64(illum["A"]["shipped_assumed"]["p99_stop"]),
         "stage_a_p99_under_led": np.float64(illum["LED-B3"]["shipped_assumed"]["p99_stop"]),
+        **_stage_a_provenance(),
     }
     note = (
-        f"cv p95 {entry['3x3']['p95_stop']}->{entry['poly3']['p95_stop']}, "
-        f"p99 {entry['3x3']['p99_stop']}->{entry['poly3']['p99_stop']}; "
-        + ("adopted" if selected else "3x3 retained (margin rule)")
+        f"runtime-faithful cv p95 {runtime['3x3']['p95_stop']}->{runtime['field']['p95_stop']}, "
+        f"p99 {runtime['3x3']['p99_stop']}->{runtime['field']['p99_stop']}, "
+        f"adopt votes {runtime['adopt_votes']}; "
+        + ("adopted" if selected else "3x3 retained (frequency rule)")
     )
     if not selected:
         return {
@@ -390,68 +412,14 @@ def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> di
             "chroma_cv_note": np.asarray(note),
             **numbers,
         }
-    from scipy.ndimage import gaussian_filter
-    from scipy.spatial import Delaunay
-
     xyz, _rgb, exposures, m = fcf.stimulus_and_exposures(stock)
-    n_samples = exposures.shape[0]
-    coefs = fcf.fit_field(xyz, exposures, np.arange(1, n_samples), 3)
-    m_inv = np.linalg.inv(m)
-
-    # Domain: bbox of the Rec.2020 primary triangle in training XYZ space.
-    prim_xyz = np.eye(3) @ m_inv.T
-    prim_s = prim_xyz.sum(axis=1)
-    tri_x = prim_xyz[:, 0] / prim_s
-    tri_y = prim_xyz[:, 1] / prim_s
-    pad = 0.02
-    x0, x1 = float(tri_x.min() - pad), float(tri_x.max() + pad)
-    y0, y1 = float(tri_y.min() - pad), float(tri_y.max() + pad)
-
-    n = CHROMA_LUT_N
-    gx = x0 + (x1 - x0) * np.arange(n) / (n - 1)
-    gy = y0 + (y1 - y0) * np.arange(n) / (n - 1)
-    cx, cy = np.meshgrid(gx, gy, indexing="ij")
-    # Field surface on the grid.
-    feats = fcf.poly_features(cx.ravel(), cy.ravel(), 3)
-    field = (feats @ coefs.T).reshape(n, n, 3)
-    # Observer chromaticity response on the grid: homogeneous xyz at s=1.
-    cz = 1.0 - cx - cy
-    xyz_grid = np.stack([cx, cy, cz], axis=-1).reshape(-1, 3)
-    rgb_grid = np.maximum(xyz_grid @ m.T, 1e-9)
-    e_obs = rgb_grid @ observer.T
-    with np.errstate(divide="ignore", invalid="ignore"):
-        obs = np.log2(
-            np.maximum(e_obs, 1e-12) / np.maximum(cy.ravel(), 1e-12)[:, None]
-        ).reshape(n, n, 3)
-    obs = np.nan_to_num(obs, nan=0.0, posinf=60.0, neginf=-60.0)
-    # Hull mask from the training chromaticities, smoothed into a blend band.
-    tx = xyz[:, 0] / xyz.sum(axis=1)
-    ty = xyz[:, 1] / xyz.sum(axis=1)
-    hull = Delaunay(np.stack([tx, ty], axis=1))
-    inside = (
-        hull.find_simplex(np.stack([cx.ravel(), cy.ravel()], axis=1)) >= 0
-    ).reshape(n, n).astype(np.float64)
-    w = gaussian_filter(inside, sigma=CHROMA_BLEND_SIGMA_CELLS)[..., None]
-    lut = w * field + (1.0 - w) * obs
-    # Bilinear re-anchor at the white chromaticity (row 0 is the white board).
-    wx, wy = float(tx[0]), float(ty[0])
-    fx = (wx - x0) / (x1 - x0) * (n - 1)
-    fy = (wy - y0) / (y1 - y0) * (n - 1)
-    ix, iy = min(int(fx), n - 2), min(int(fy), n - 2)
-    ax, ay = fx - ix, fy - iy
-    at_white = (
-        lut[ix, iy] * (1 - ax) * (1 - ay)
-        + lut[ix + 1, iy] * ax * (1 - ay)
-        + lut[ix, iy + 1] * (1 - ax) * ay
-        + lut[ix + 1, iy + 1] * ax * ay
-    )
-    true_white = np.log2(np.maximum(exposures[0], 1e-12) / 1.0)
-    lut = lut + (true_white - at_white)[None, None, :]
+    model = fcf.fit_field(xyz, exposures, np.arange(1, exposures.shape[0]), 3)
+    lut, domain, m_inv = fcf.bake_lut(model, xyz, m, observer)
     return {
         "chroma_selected": np.bool_(True),
         "chroma_lut": lut.astype(np.float32),
-        "chroma_domain": np.asarray([x0, x1, y0, y1], dtype=np.float64),
-        "chroma_xyz_from_rec2020": m_inv.astype(np.float64),
+        "chroma_domain": np.asarray(domain, dtype=np.float64),
+        "chroma_xyz_from_rec2020": np.asarray(m_inv, dtype=np.float64),
         "chroma_cv_note": np.asarray(note),
         **numbers,
     }

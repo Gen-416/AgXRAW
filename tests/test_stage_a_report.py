@@ -7,6 +7,7 @@ exist in the ABI (route D: measured, withdrawn)."""
 from __future__ import annotations
 
 import json
+import sys
 import unittest
 from pathlib import Path
 
@@ -15,6 +16,10 @@ import numpy as np
 from dngscan.film_develop import _V2_DIR, _load_v2
 
 ROOT = Path(__file__).parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import fit_chroma_field as fcf  # noqa: E402
+
+sys.path.pop(0)
 
 
 def _line(preset: str) -> str:
@@ -39,17 +44,40 @@ class StageAAssetNumbersTests(unittest.TestCase):
                 z = np.load(_V2_DIR / f"{name}.npz", allow_pickle=False)
                 self.assertFalse([k for k in z.files if k.startswith("tier_")])
                 stock = _load_v2(name)[0]
-                key = "poly3" if stock["stage_a_model"] == "field" else "3x3"
-                self.assertAlmostEqual(stock["stage_a_p99_stop"], chroma[name][key]["p99_stop"])
-                self.assertAlmostEqual(stock["stage_a_3x3_p99_stop"], chroma[name]["3x3"]["p99_stop"])
+                # The asset's model is the record's frequency decision (F3).
+                self.assertEqual(
+                    stock["stage_a_model"], "field" if fcf.adopts(chroma[name]) else "3x3"
+                )
+                key = "field" if stock["stage_a_model"] == "field" else "3x3"
+                self.assertAlmostEqual(stock["stage_a_p99_stop"], chroma[name]["runtime"][key]["p99_stop"])
+                self.assertAlmostEqual(stock["stage_a_3x3_p99_stop"], chroma[name]["runtime"]["3x3"]["p99_stop"])
                 self.assertAlmostEqual(
                     stock["stage_a_p99_under_a"], illum[name]["A"]["shipped_assumed"]["p99_stop"]
                 )
                 self.assertAlmostEqual(
                     stock["stage_a_p99_under_led"], illum[name]["LED-B3"]["shipped_assumed"]["p99_stop"]
                 )
-        self.assertEqual(_load_v2("pro400h")[0]["stage_a_model"], "3x3")
         self.assertEqual(_load_v2("portra400")[0]["stage_a_model"], "field")
+
+    def test_provenance_covers_every_numerical_input(self) -> None:
+        """F8 (review 2026-08-27): the field depends on more than the
+        negative profile — the reflectance library, both CV records, the
+        fit/bake parameters and the CMF/SPD library version. Their hashes
+        must match the files in this tree."""
+        import hashlib
+
+        z = np.load(_V2_DIR / "portra400.npz", allow_pickle=False)
+        names = [str(n) for n in z["stage_a_input_names"]]
+        shas = [str(h) for h in z["stage_a_input_sha256"]]
+        self.assertEqual(len(names), 3)
+        for n, h in zip(names, shas):
+            self.assertEqual(hashlib.sha256((ROOT / n).read_bytes()).hexdigest(), h, n)
+        params = json.loads(str(np.asarray(z["stage_a_params"])))
+        for key in ("ridge", "seeds", "lut_n", "blend_sigma_cells", "dilate_cells",
+                    "colour_science", "numpy", "scipy", "adopt_frequency"):
+            self.assertIn(key, params)
+        self.assertEqual(params["lut_n"], fcf.LUT_N)
+        self.assertEqual(params["seeds"], len(fcf.SEEDS))
 
 
 class StageAReportLineTests(unittest.TestCase):
@@ -67,12 +95,33 @@ class StageAReportLineTests(unittest.TestCase):
         self.assertNotIn("观察者拟合残差", line)
 
     def test_3x3_stock_says_so_without_a_baseline_clause(self) -> None:
-        stock = _load_v2("pro400h")[0]
-        line = _line("pro400h")
-        self.assertIn("StageA=D553×3", line)
-        self.assertIn(f"held-out p99 {stock['stage_a_p99_stop']:.2f}stop", line)
-        self.assertNotIn("3×3基线", line)
+        """Every stock currently adopts the field, so the 3x3 branch of the
+        report line is exercised on a loaded stock with its field withdrawn
+        (the exact dict shape the loader builds for a retained stock) —
+        injected into the loader cache for the duration of the call, never
+        skipped."""
+        from dngscan import film_develop as fd
 
+        name = "portra400"
+        stock, media = fd._load_v2(name)
+        retained = dict(stock)
+        retained["chroma_lut"] = None
+        retained["chroma_domain"] = None
+        retained["chroma_xyz_from_rec2020"] = None
+        retained["stage_a_model"] = "3x3"
+        retained["stage_a_p99_stop"] = retained["stage_a_3x3_p99_stop"]
+        saved = fd._V2_CACHE.get(name)
+        fd._V2_CACHE[name] = (retained, media)
+        try:
+            line = _line(name)
+        finally:
+            if saved is not None:
+                fd._V2_CACHE[name] = saved
+            else:
+                fd._V2_CACHE.pop(name, None)
+        self.assertIn("StageA=D553×3", line)
+        self.assertIn(f"held-out p99 {retained['stage_a_p99_stop']:.2f}stop", line)
+        self.assertNotIn("3×3基线", line)
 
 if __name__ == "__main__":
     unittest.main()

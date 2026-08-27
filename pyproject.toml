@@ -21,7 +21,7 @@ dependencies = [
 # a plain conversion must install without it.
 scan = ["matplotlib>=3.6"]
 native = ["pybind11>=2.11"]
-calibration = ["colour-science>=0.4.4"]
+calibration = ["colour-science==0.4.7"]
 gui = [
     "fastapi>=0.141.1,<0.142",
     "uvicorn>=0.52.2,<0.53",
@@ -37,7 +37,7 @@ gui = [
 # silently skip on CI, the exact failure mode R11 closed.
 test = ["httpx2>=2,<3", "scipy>=1.10", "matplotlib>=3.6",
         "fastapi>=0.141.1,<0.142", "uvicorn>=0.52.2,<0.53",
-        "colour-science>=0.4.4"]
+        "colour-science==0.4.7"]
 
 [tool.setuptools.packages.find]
 where = ["."]

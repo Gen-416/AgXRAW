@@ -36,11 +36,21 @@ EDITORIAL_FOG_MAX = 0.3
 
 
 def layer_log_exposure(rgb_rec2020: Any, observer: Any) -> Any:
-    """Per-layer log10 exposure, neutral-anchored (grey ramps map exactly to
-    the profile's logE axis). [N,3] scene-linear Rec.2020 -> [N,3] logE."""
+    """Per-layer log10 exposure through the 3x3 observer, neutral-anchored
+    (grey ramps map exactly to the profile's logE axis). [N,3] scene-linear
+    Rec.2020 -> [N,3] logE.
+
+    The input is SIGNED (external review 2026-08-27, F4): a negative
+    Rec.2020 component produced by a colour matrix is a legal out-of-gamut
+    coordinate, not negative light, and the observer product of such a
+    pixel is usually a perfectly positive layer exposure. Clamping the
+    channel before the matrix (as the P1a code did) changed the hue of
+    every out-of-gamut pixel and put a kink at each zero crossing. Only the
+    RESULT is floored, at a numerical exposure floor.
+    """
     a = np.asarray(observer, dtype=np.float64)
     mid = a @ np.full(3, SCENE_MID)
-    e = np.maximum(np.asarray(rgb_rec2020, dtype=np.float64), 1e-9) @ a.T
+    e = np.asarray(rgb_rec2020, dtype=np.float64) @ a.T
     return np.log10(np.maximum(e, 1e-12) / np.maximum(mid, 1e-12)[None, :])
 
 
@@ -55,23 +65,28 @@ def chroma_field_log_exposure(
 
     E = Y * 2^L(x, y), with L a bilinear sample of the per-layer LUT holding
     log2(E/Y). The LUT was baked over the training chromaticity hull; cells
-    outside the hull already carry the 3x3 observer's own chromaticity
-    response with a smooth blend band, so the ONLY pixels that leave this
-    path are degenerate ones (non-positive/non-finite XYZ sum or luminance,
-    or chromaticity outside the LUT domain rectangle) — those evaluate the
-    exact 3x3 instead, never a clamped LUT edge that would answer for a
-    different colour. Neutral anchoring matches layer_log_exposure exactly:
-    the field is white-anchored, so grey ramps hit the same logE axis.
+    outside the hull carry the 3x3 observer's own chromaticity response
+    behind a blend band, so a strictly positive pixel — whose chromaticity
+    cannot leave the Rec.2020 triangle — always rides the LUT.
+
+    Domain contract (F4): a pixel with a non-positive or non-finite channel
+    is NOT clamped into the triangle; it leaves the field and evaluates the
+    signed 3x3 (layer_log_exposure) on its original coordinates, which is
+    also what the LUT converges to at the triangle edge (the out-of-hull
+    region IS the 3x3's response), so the hand-over is continuous. Exact
+    neutrals take the 3x3 product too: the field equals it there by the
+    white anchor, but float chromaticity jitter (~1e-16 in (x,y)) would
+    otherwise leak ~1e-15 inter-layer nonuniformity into the interimage
+    term and break the mainline grey-ramp BIT-invariance contract.
     """
-    rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float64), 1e-9)
+    rgb = np.asarray(rgb_rec2020, dtype=np.float64)
     a_obs = np.asarray(observer, dtype=np.float64)
-    # Exact neutrals take the observer product: the field equals it there by
-    # the white anchor, but float chromaticity jitter (~1e-16 in (x,y)) would
-    # otherwise leak ~1e-15 inter-layer nonuniformity into the interimage
-    # term and break the mainline grey-ramp BIT-invariance contract.
+    finite = np.isfinite(rgb).all(axis=1)
+    positive = finite & (rgb > 0.0).all(axis=1)
     neutral = (rgb[:, 0] == rgb[:, 1]) & (rgb[:, 1] == rgb[:, 2])
     m = np.asarray(xyz_from_rec2020, dtype=np.float64)
-    xyz = rgb @ m.T
+    safe_rgb = np.where(positive[:, None], rgb, 1.0)
+    xyz = safe_rgb @ m.T
     s = xyz.sum(axis=1)
     lum = xyz[:, 1]
     x0, x1, y0, y1 = (float(v) for v in np.asarray(domain, dtype=np.float64))
@@ -79,7 +94,7 @@ def chroma_field_log_exposure(
         cx = xyz[:, 0] / s
         cy = lum / s
     ok = (
-        ~neutral
+        positive & ~neutral
         & np.isfinite(s) & (s > 1e-12) & np.isfinite(lum) & (lum > 1e-12)
         & np.isfinite(cx) & np.isfinite(cy)
         & (cx >= x0) & (cx <= x1) & (cy >= y0) & (cy <= y1)
@@ -103,11 +118,10 @@ def chroma_field_log_exposure(
         + l11 * tx * ty
     )
     e_field = lum[:, None] * np.exp2(logratio)
-    a = a_obs
-    mid = a @ np.full(3, SCENE_MID)
+    mid = a_obs @ np.full(3, SCENE_MID)
     out = np.log10(np.maximum(e_field, 1e-12) / np.maximum(mid, 1e-12)[None, :])
     if not bool(np.all(ok)):
-        fallback = layer_log_exposure(rgb, a)
+        fallback = layer_log_exposure(rgb, a_obs)
         out = np.where(ok[:, None], out, fallback)
     return out
 

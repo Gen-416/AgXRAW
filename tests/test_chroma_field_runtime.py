@@ -22,20 +22,46 @@ from dngscan.film_v2_math import (
 )
 
 ADOPTED = "portra400"
-RETAINED = "pro400h"
 
 
 def _stock(name: str) -> dict:
     return _load_v2(name)[0]
 
 
+def _record():
+    import json
+    from pathlib import Path
+
+    return json.loads(
+        (Path(__file__).parents[1] / "docs" / "chroma_field_cv.json").read_text()
+    )["stocks"]
+
+
 class DispatchTests(unittest.TestCase):
     def test_adoption_matches_the_cv_selection(self) -> None:
-        self.assertIsNotNone(_stock(ADOPTED)["chroma_lut"])
-        self.assertIsNone(_stock(RETAINED)["chroma_lut"])
+        """Every shipped stock dispatches exactly as the record's frequency
+        rule decided (external review 2026-08-27, F3)."""
+        import sys
+        from pathlib import Path
 
-    def test_retained_stock_is_bit_identical_to_the_observer_path(self) -> None:
-        stock = _stock(RETAINED)
+        sys.path.insert(0, str(Path(__file__).parents[1] / "tools"))
+        try:
+            import fit_chroma_field as fcf
+        finally:
+            sys.path.pop(0)
+        record = _record()
+        for name, entry in record.items():
+            with self.subTest(stock=name):
+                has_field = _stock(name)["chroma_lut"] is not None
+                self.assertEqual(has_field, fcf.adopts(entry))
+
+    def test_a_3x3_stock_is_bit_identical_to_the_observer_path(self) -> None:
+        """The dispatcher's 3x3 branch is the plain signed observer product.
+        No stock currently retains the 3x3, so the branch is exercised on a
+        stock dict with the field withdrawn — the same shape the loader
+        builds for a retained stock."""
+        stock = dict(_stock(ADOPTED))
+        stock["chroma_lut"] = None
         rng = np.random.default_rng(20260826)
         rgb = 0.18 * np.exp2(rng.uniform(-9.0, 5.0, (256, 3)))
         np.testing.assert_array_equal(
@@ -80,14 +106,29 @@ class FieldContractTests(unittest.TestCase):
         obs = layer_log_exposure(grey, self.stock["observer"])
         np.testing.assert_allclose(field, obs, atol=5e-7)
 
-    def test_degenerate_inputs_take_the_exact_observer_path(self) -> None:
+    def test_negative_channels_take_the_signed_observer_exactly(self) -> None:
+        """F4 (review 2026-08-27): a negative Rec.2020 component is a legal
+        out-of-gamut coordinate, not negative light. Such pixels leave the
+        field and evaluate the SIGNED 3x3 on their original values — no
+        channel clamp anywhere; non-finite rows do the same."""
+        a = self.stock["observer"]
+        # Out-of-gamut rows built so every layer's SIGNED product stays
+        # positive: for the negative channel c, |delta| is half the smallest
+        # ratio (other weights)/(weight on c) over the layers that weight c.
+        rows = []
+        for c in range(3):
+            others = np.ones(3); others[c] = 0.0
+            ratios = [
+                float(a[l] @ others) / float(a[l, c]) for l in range(3) if a[l, c] > 0
+            ]
+            if not ratios or min(ratios) <= 0.0:
+                continue  # a pure-channel layer: no negative value keeps it positive
+            row = np.ones(3); row[c] = -0.5 * min(ratios)
+            rows.append(row)
+        self.assertGreaterEqual(len(rows), 1, "observer has no feasible out-of-gamut row")
+        n_neg = len(rows)
         rgb = np.asarray(
-            [
-                [0.0, 0.0, 0.0],          # channel clamp -> neutral, still fine
-                [-1.0, -1.0, -1.0],       # all-negative clamps to neutral floor
-                [np.nan, 0.2, 0.3],       # non-finite falls back
-            ],
-            dtype=np.float64,
+            rows + [[0.0, 0.0, 0.0], [np.nan, 0.2, 0.3]], dtype=np.float64
         )
         out = chroma_field_log_exposure(
             rgb,
@@ -96,11 +137,38 @@ class FieldContractTests(unittest.TestCase):
             self.stock["chroma_xyz_from_rec2020"],
             self.stock["observer"],
         )
-        obs = layer_log_exposure(rgb, self.stock["observer"])
-        # Rows 0/1 clamp to the neutral floor -> chromaticity is white, both
-        # paths agree to bilinear exactness; row 2 must be the exact fallback.
-        np.testing.assert_allclose(out[:2], obs[:2], atol=5e-7)
-        np.testing.assert_array_equal(out[2], obs[2])
+        np.testing.assert_array_equal(out, layer_log_exposure(rgb, self.stock["observer"]))
+        # ... and the signed product really is positive for the first two rows,
+        # i.e. the old clamp would have answered for a different colour.
+        e = rgb[:n_neg] @ self.stock["observer"].T
+        self.assertTrue(bool(np.all(e > 0.0)), e)
+        clamped = np.maximum(rgb[:n_neg], 1e-9)
+        self.assertGreater(
+            float(np.abs(layer_log_exposure(clamped, self.stock["observer"]) - out[:n_neg]).max()),
+            1e-3,
+        )
+
+    def test_hand_over_at_the_gamut_edge_is_continuous(self) -> None:
+        """Crossing a channel through zero must not step in LINEAR layer
+        exposure: just inside the triangle the LUT (whose out-of-hull region
+        IS the 3x3's response) and just outside the signed 3x3 agree to the
+        LUT's interpolation class. The comparison is linear because a layer
+        whose observer row weights only that channel legitimately receives
+        ZERO light at the crossing — its log is a cliff by construction, not
+        a discontinuity of the operator."""
+        mid = self.stock["observer"] @ np.full(3, 0.18)
+        eps = 1e-6
+        for ch in range(3):
+            for other in (0.3, 1.0):
+                base = np.full(3, other)
+                inside = base.copy(); inside[ch] = eps
+                outside = base.copy(); outside[ch] = -eps
+                a = 10.0 ** stage_a_log_exposure(inside[None, :], self.stock)[0] * mid
+                b = 10.0 ** stage_a_log_exposure(outside[None, :], self.stock)[0] * mid
+                self.assertLess(
+                    float(np.abs(a - b).max() / mid.max()), 2e-3,
+                    f"linear step at channel {ch} zero crossing: {a} vs {b}",
+                )
 
     def test_runtime_chromaticities_cannot_leave_the_lut_domain(self) -> None:
         """Channel-clamped positive Rec.2020 keeps chromaticity inside the

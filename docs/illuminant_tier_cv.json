@@ -1,7 +1,7 @@
 {
-  "adoption_rule": "fit_chroma_field.adopts (p95 <= 0.85 * baseline p95, p99 no worse): tier_model on the dedicated field vs 3x3; tier_adopted on the shipped tier vs the shipped D55 model",
-  "conclusion": "no illuminant tier earns its place: after white balance the D55 model is in the same held-out error class as a dedicated same-illuminant model under CIE A and LED-B3 (0/20 stocks adopt); the narrow-band LED-RGB1 case would recover ~0.12 stop but is unidentifiable from colour temperature \u2014 a confidence downgrade, not a tier",
-  "fold_seed": 20260826,
+  "adoption_rule": "fit_chroma_field.adopts_once per fold draw (p95 <= 0.85 * baseline p95, p99 no worse), adoption when >= ADOPT_FREQUENCY of the seeds pass: tier_model on the dedicated field vs 3x3; tier_adopted on the shipped tier vs the shipped D55 operator; a family-level tier needs >= 5 stocks",
+  "conclusion": "no illuminant tier earns its place under the shipping rule \u2014 A: D55 operator p99 0.74 vs would-be tier 0.6948 (recoverable +0.0385), 1/20 stocks adopt; LED-B3: D55 operator p99 0.6014 vs would-be tier 0.6018 (recoverable -0.004), 0/20 stocks adopt; LED-RGB1: D55 operator p99 1.4472 vs would-be tier 0.8405 (recoverable +0.5592), 20/20 stocks adopt; a fixed cubic family would sit at 0.7612 \u2014 a family number, not the shipping rule; a narrow tri-band source is UNIDENTIFIABLE from colour temperature, so this earns a profile-confidence downgrade, not a tier",
+  "family_threshold": 5,
   "folds": 5,
   "illuminants": {
     "A": "CIE A (tungsten 2856K)",
@@ -10,185 +10,228 @@
   },
   "median": {
     "A": {
-      "field_assumed_d55_raw_p99": 2.253,
-      "field_assumed_d55_unadapted_p99": 1.1381,
-      "recoverable_p99_stop": -0.0299,
-      "shipped_assumed_p95": 0.4308,
-      "shipped_assumed_p99": 0.6988,
-      "shipped_dedicated_p95": 0.3912,
-      "shipped_dedicated_p99": 0.7332,
+      "field_assumed_d55_raw_p99": 2.2728,
+      "field_assumed_d55_unadapted_p99": 1.1397,
+      "field_dedicated_p99": 0.6712,
+      "recoverable_p99_stop": 0.0385,
+      "shipped_assumed_p95": 0.4199,
+      "shipped_assumed_p99": 0.74,
+      "shipped_dedicated_p95": 0.3651,
+      "shipped_dedicated_p99": 0.6948,
       "stocks_adopting": 1
     },
     "LED-B3": {
-      "field_assumed_d55_raw_p99": 1.3746,
-      "field_assumed_d55_unadapted_p99": 0.7147,
-      "recoverable_p99_stop": 0.0092,
-      "shipped_assumed_p95": 0.3749,
-      "shipped_assumed_p99": 0.6738,
-      "shipped_dedicated_p95": 0.3313,
-      "shipped_dedicated_p99": 0.6799,
-      "stocks_adopting": 2
+      "field_assumed_d55_raw_p99": 1.4088,
+      "field_assumed_d55_unadapted_p99": 0.7276,
+      "field_dedicated_p99": 0.6018,
+      "recoverable_p99_stop": -0.004,
+      "shipped_assumed_p95": 0.331,
+      "shipped_assumed_p99": 0.6014,
+      "shipped_dedicated_p95": 0.3157,
+      "shipped_dedicated_p99": 0.6018,
+      "stocks_adopting": 0
     },
     "LED-RGB1": {
-      "field_assumed_d55_raw_p99": 4.0914,
-      "field_assumed_d55_unadapted_p99": 1.6452,
-      "recoverable_p99_stop": -0.233,
-      "shipped_assumed_p95": 0.6621,
-      "shipped_assumed_p99": 0.8777,
-      "shipped_dedicated_p95": 0.3762,
-      "shipped_dedicated_p99": 1.1108,
-      "stocks_adopting": 6
+      "field_assumed_d55_raw_p99": 4.1013,
+      "field_assumed_d55_unadapted_p99": 1.6273,
+      "field_dedicated_p99": 0.7612,
+      "recoverable_p99_stop": 0.5592,
+      "shipped_assumed_p95": 0.6699,
+      "shipped_assumed_p99": 1.4472,
+      "shipped_dedicated_p95": 0.3297,
+      "shipped_dedicated_p99": 0.8405,
+      "stocks_adopting": 20
     }
   },
-  "metric": "held-out |log2 layer-exposure error| AFTER subtracting each model's own white-board value per layer (the runtime normalizes every model by its own mid-grey), with the D55 model evaluated at the RUNTIME coordinate: the white-balanced Rec.2020 row through the D55 model's own xyz_from_rec2020. field_assumed_d55_unadapted (second record: un-adapted I-lit chromaticity) and field_assumed_d55_raw (first record: raw exposures, un-adapted) are kept for the audit trail; neither is a decision number.",
-  "purpose": "Route-D: cost of the D55 illuminant assumption per stock and per illuminant versus a dedicated same-illuminant model \u2014 identical folds/anchor/training discipline as the Stage A CV, with the metric the runtime can exhibit",
+  "metric": "held-out |log2 layer-exposure error| AFTER subtracting each model's own white-board value per layer (the runtime normalizes every model by its own mid-grey), every model being the SHIPPED operator (3x3 refit per fold, or the field baked per fold with fit_chroma_field.bake_lut and run through film_v2_math.stage_a_log_exposure) on the white-balanced Rec.2020 rows. field_assumed_d55_unadapted (second record) and field_assumed_d55_raw (first record) are kept for the audit trail; neither is a decision number.",
+  "purpose": "Route-D: cost of the D55 illuminant assumption per stock and per illuminant versus a dedicated same-illuminant model \u2014 identical folds/anchor/training discipline as the Stage A CV, with the metric the runtime can exhibit and the operator that would ship",
+  "seeds": [
+    20260826,
+    20261826,
+    20262826,
+    20263826,
+    20264826,
+    20265826,
+    20266826,
+    20267826,
+    20268826,
+    20269826,
+    20270826,
+    20271826,
+    20272826,
+    20273826,
+    20274826,
+    20275826,
+    20276826,
+    20277826,
+    20278826,
+    20279826,
+    20280826,
+    20281826,
+    20282826,
+    20283826,
+    20284826,
+    20285826,
+    20286826,
+    20287826,
+    20288826,
+    20289826
+  ],
   "stocks": {
     "c200": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.0715,
-          "p95_stop": 0.3266,
+          "p95_stop": 0.3272,
           "p99_stop": 0.5697
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.2421,
-          "p95_stop": 1.4748,
-          "p99_stop": 2.1382
+          "max_stop": 3.264,
+          "p95_stop": 1.4763,
+          "p99_stop": 2.1602
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.1376,
-          "p95_stop": 0.4183,
-          "p99_stop": 1.0844
+          "max_stop": 2.1437,
+          "p95_stop": 0.4207,
+          "p99_stop": 1.0805
         },
         "field_dedicated": {
-          "max_stop": 1.4016,
-          "p95_stop": 0.324,
-          "p99_stop": 0.6674
+          "max_stop": 3.1349,
+          "p95_stop": 0.2769,
+          "p99_stop": 0.4587
         },
-        "recoverable_p99_stop": 0.0169,
+        "recoverable_p99_stop": -0.0563,
         "shipped_assumed": {
-          "max_stop": 0.8431,
-          "p95_stop": 0.3336,
-          "p99_stop": 0.5866
+          "max_stop": 3.5371,
+          "p95_stop": 0.3213,
+          "p99_stop": 0.5134
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.0715,
-          "p95_stop": 0.3266,
+          "p95_stop": 0.3272,
           "p99_stop": 0.5697
         },
+        "tier_adopt_frequency": 0.2333,
         "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_model": "3x3",
+        "tier_model_votes": "17/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
-          "max_stop": 0.8677,
-          "p95_stop": 0.3684,
+          "max_stop": 0.8667,
+          "p95_stop": 0.3682,
           "p99_stop": 0.6177
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.0046,
-          "p95_stop": 0.8771,
-          "p99_stop": 1.2784
+          "max_stop": 2.0329,
+          "p95_stop": 0.8924,
+          "p99_stop": 1.2963
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.1693,
-          "p95_stop": 0.2462,
-          "p99_stop": 0.5936
+          "max_stop": 1.1938,
+          "p95_stop": 0.2341,
+          "p99_stop": 0.586
         },
         "field_dedicated": {
-          "max_stop": 0.944,
-          "p95_stop": 0.2871,
-          "p99_stop": 0.4687
+          "max_stop": 0.8248,
+          "p95_stop": 0.2326,
+          "p99_stop": 0.4531
         },
-        "recoverable_p99_stop": 0.026,
+        "recoverable_p99_stop": 0.0055,
         "shipped_assumed": {
-          "max_stop": 1.016,
-          "p95_stop": 0.2726,
-          "p99_stop": 0.4947
+          "max_stop": 0.792,
+          "p95_stop": 0.2387,
+          "p99_stop": 0.4586
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 0.944,
-          "p95_stop": 0.2871,
-          "p99_stop": 0.4687
+          "max_stop": 0.8248,
+          "p95_stop": 0.2326,
+          "p99_stop": 0.4531
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 3.2717,
-          "p95_stop": 0.306,
-          "p99_stop": 1.1253
+          "max_stop": 3.6096,
+          "p95_stop": 0.3116,
+          "p99_stop": 1.1042
         },
         "field_assumed_d55_raw": {
-          "max_stop": 4.9152,
-          "p95_stop": 3.0208,
-          "p99_stop": 3.863
+          "max_stop": 4.9097,
+          "p95_stop": 3.0648,
+          "p99_stop": 3.8677
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.5342,
-          "p95_stop": 0.7292,
-          "p99_stop": 1.4872
+          "max_stop": 2.4973,
+          "p95_stop": 0.7285,
+          "p99_stop": 1.4734
         },
         "field_dedicated": {
-          "max_stop": 1.2894,
-          "p95_stop": 0.3207,
-          "p99_stop": 0.6889
+          "max_stop": 3.6096,
+          "p95_stop": 0.2896,
+          "p99_stop": 0.7073
         },
-        "recoverable_p99_stop": -0.2967,
+        "recoverable_p99_stop": 0.2829,
         "shipped_assumed": {
-          "max_stop": 1.1452,
-          "p95_stop": 0.5266,
-          "p99_stop": 0.8286
+          "max_stop": 39.1019,
+          "p95_stop": 0.5071,
+          "p99_stop": 1.3871
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.2717,
-          "p95_stop": 0.306,
-          "p99_stop": 1.1253
+          "max_stop": 3.6096,
+          "p95_stop": 0.3116,
+          "p99_stop": 1.1042
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "3x3",
+        "tier_model_votes": "0/30"
       }
     },
     "ektachrome100": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.0602,
-          "p95_stop": 0.4953,
+          "p95_stop": 0.495,
           "p99_stop": 0.8012
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.3625,
-          "p95_stop": 1.6183,
-          "p99_stop": 2.2761
+          "max_stop": 3.3764,
+          "p95_stop": 1.6387,
+          "p99_stop": 2.2952
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.1897,
-          "p95_stop": 0.5445,
-          "p99_stop": 1.1166
+          "max_stop": 2.1917,
+          "p95_stop": 0.5446,
+          "p99_stop": 1.1206
         },
         "field_dedicated": {
-          "max_stop": 1.5388,
-          "p95_stop": 0.3576,
-          "p99_stop": 0.7329
+          "max_stop": 3.1236,
+          "p95_stop": 0.3567,
+          "p99_stop": 0.6137
         },
-        "recoverable_p99_stop": -0.0477,
+        "recoverable_p99_stop": 0.1271,
         "shipped_assumed": {
-          "max_stop": 0.8643,
-          "p95_stop": 0.4365,
-          "p99_stop": 0.6852
+          "max_stop": 3.5259,
+          "p95_stop": 0.4267,
+          "p99_stop": 0.7408
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5388,
-          "p95_stop": 0.3576,
-          "p99_stop": 0.7329
+          "max_stop": 3.1236,
+          "p95_stop": 0.3567,
+          "p99_stop": 0.6137
         },
+        "tier_adopt_frequency": 0.6,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -197,328 +240,346 @@
           "p99_stop": 1.1114
         },
         "field_assumed_d55_raw": {
-          "max_stop": 1.8437,
-          "p95_stop": 0.9085,
-          "p99_stop": 1.2829
+          "max_stop": 1.8623,
+          "p95_stop": 0.9221,
+          "p99_stop": 1.2966
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.1991,
-          "p95_stop": 0.3479,
-          "p99_stop": 0.7544
+          "max_stop": 1.2146,
+          "p95_stop": 0.3425,
+          "p99_stop": 0.7439
         },
         "field_dedicated": {
-          "max_stop": 1.1519,
-          "p95_stop": 0.3289,
-          "p99_stop": 0.7339
+          "max_stop": 1.2715,
+          "p95_stop": 0.3319,
+          "p99_stop": 0.633
         },
-        "recoverable_p99_stop": -0.0438,
+        "recoverable_p99_stop": -0.0039,
         "shipped_assumed": {
-          "max_stop": 1.2885,
-          "p95_stop": 0.3792,
-          "p99_stop": 0.6901
+          "max_stop": 1.3836,
+          "p95_stop": 0.3402,
+          "p99_stop": 0.6291
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1519,
-          "p95_stop": 0.3289,
-          "p99_stop": 0.7339
+          "max_stop": 1.2715,
+          "p95_stop": 0.3319,
+          "p99_stop": 0.633
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 47.8983,
-          "p95_stop": 0.4321,
-          "p99_stop": 1.0569
+          "max_stop": 37.9325,
+          "p95_stop": 0.4316,
+          "p99_stop": 1.1089
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.0203,
-          "p95_stop": 3.1039,
-          "p99_stop": 3.9523
+          "max_stop": 5.022,
+          "p95_stop": 3.1168,
+          "p99_stop": 3.9674
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.6911,
-          "p95_stop": 0.9097,
-          "p99_stop": 1.5889
+          "max_stop": 2.6668,
+          "p95_stop": 0.913,
+          "p99_stop": 1.5892
         },
         "field_dedicated": {
-          "max_stop": 1.2866,
-          "p95_stop": 0.3578,
-          "p99_stop": 0.8117
+          "max_stop": 37.9325,
+          "p95_stop": 0.3207,
+          "p99_stop": 0.7368
         },
-        "recoverable_p99_stop": 0.2347,
+        "recoverable_p99_stop": 0.5848,
         "shipped_assumed": {
-          "max_stop": 1.3667,
-          "p95_stop": 0.7001,
-          "p99_stop": 1.0464
+          "max_stop": 38.9073,
+          "p95_stop": 0.6865,
+          "p99_stop": 1.3216
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2866,
-          "p95_stop": 0.3578,
-          "p99_stop": 0.8117
+          "max_stop": 37.9325,
+          "p95_stop": 0.3207,
+          "p99_stop": 0.7368
         },
+        "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "ektar100": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 3.2115,
-          "p95_stop": 0.5253,
-          "p99_stop": 0.8707
+          "max_stop": 2.0718,
+          "p95_stop": 0.5262,
+          "p99_stop": 0.8615
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.6542,
-          "p95_stop": 1.5512,
-          "p99_stop": 2.2874
+          "max_stop": 3.6707,
+          "p95_stop": 1.5887,
+          "p99_stop": 2.3074
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.5,
-          "p95_stop": 0.5572,
-          "p99_stop": 1.1823
+          "max_stop": 2.503,
+          "p95_stop": 0.5549,
+          "p99_stop": 1.1805
         },
         "field_dedicated": {
-          "max_stop": 1.5493,
-          "p95_stop": 0.3931,
-          "p99_stop": 0.7673
+          "max_stop": 2.0843,
+          "p95_stop": 0.3862,
+          "p99_stop": 0.7127
         },
-        "recoverable_p99_stop": -0.0293,
+        "recoverable_p99_stop": 0.0842,
         "shipped_assumed": {
-          "max_stop": 1.1444,
-          "p95_stop": 0.4323,
-          "p99_stop": 0.738
+          "max_stop": 3.6771,
+          "p95_stop": 0.4259,
+          "p99_stop": 0.7969
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5493,
-          "p95_stop": 0.3931,
-          "p99_stop": 0.7673
+          "max_stop": 2.0843,
+          "p95_stop": 0.3862,
+          "p99_stop": 0.7127
         },
+        "tier_adopt_frequency": 0.0667,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
           "max_stop": 1.3835,
           "p95_stop": 0.4981,
-          "p99_stop": 0.9228
+          "p99_stop": 0.9224
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1629,
-          "p95_stop": 0.9333,
-          "p99_stop": 1.3934
+          "max_stop": 2.1848,
+          "p95_stop": 0.9506,
+          "p99_stop": 1.4227
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.3946,
-          "p95_stop": 0.3318,
-          "p99_stop": 0.7403
+          "max_stop": 1.4129,
+          "p95_stop": 0.3242,
+          "p99_stop": 0.7609
         },
         "field_dedicated": {
-          "max_stop": 1.1675,
-          "p95_stop": 0.348,
-          "p99_stop": 0.6786
+          "max_stop": 1.2056,
+          "p95_stop": 0.3156,
+          "p99_stop": 0.5988
         },
-        "recoverable_p99_stop": 0.0482,
+        "recoverable_p99_stop": -0.0114,
         "shipped_assumed": {
-          "max_stop": 1.1818,
-          "p95_stop": 0.3778,
-          "p99_stop": 0.7268
+          "max_stop": 1.2283,
+          "p95_stop": 0.3453,
+          "p99_stop": 0.5874
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1675,
-          "p95_stop": 0.348,
-          "p99_stop": 0.6786
+          "max_stop": 1.2056,
+          "p95_stop": 0.3156,
+          "p99_stop": 0.5988
         },
+        "tier_adopt_frequency": 0.0333,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 3.5361,
+          "max_stop": 3.6527,
           "p95_stop": 0.4624,
-          "p99_stop": 1.3395
+          "p99_stop": 1.3148
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.6309,
-          "p95_stop": 3.2707,
-          "p99_stop": 4.2726
+          "max_stop": 5.6455,
+          "p95_stop": 3.2812,
+          "p99_stop": 4.2873
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 3.1188,
-          "p95_stop": 0.8661,
-          "p99_stop": 1.8277
+          "max_stop": 3.1177,
+          "p95_stop": 0.8578,
+          "p99_stop": 1.8169
         },
         "field_dedicated": {
-          "max_stop": 1.8776,
-          "p95_stop": 0.3968,
-          "p99_stop": 0.8674
+          "max_stop": 3.6527,
+          "p95_stop": 0.3603,
+          "p99_stop": 0.9142
         },
-        "recoverable_p99_stop": -0.4069,
+        "recoverable_p99_stop": 0.6195,
         "shipped_assumed": {
-          "max_stop": 1.7149,
-          "p95_stop": 0.6666,
-          "p99_stop": 0.9326
+          "max_stop": 39.0915,
+          "p95_stop": 0.6849,
+          "p99_stop": 1.5337
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.5361,
-          "p95_stop": 0.4624,
-          "p99_stop": 1.3395
+          "max_stop": 3.6527,
+          "p95_stop": 0.3603,
+          "p99_stop": 0.9142
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "29/30"
       }
     },
     "gold200": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 2.0428,
-          "p95_stop": 0.6024,
-          "p99_stop": 0.9751
+          "max_stop": 1.4729,
+          "p95_stop": 0.6025,
+          "p99_stop": 0.957
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.5582,
-          "p95_stop": 1.4856,
-          "p99_stop": 2.2094
+          "max_stop": 3.5859,
+          "p95_stop": 1.5265,
+          "p99_stop": 2.2358
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.432,
-          "p95_stop": 0.5658,
-          "p99_stop": 1.1329
+          "max_stop": 2.4409,
+          "p95_stop": 0.5754,
+          "p99_stop": 1.1393
         },
         "field_dedicated": {
-          "max_stop": 1.493,
-          "p95_stop": 0.4249,
-          "p99_stop": 0.7246
+          "max_stop": 1.3837,
+          "p95_stop": 0.4306,
+          "p99_stop": 0.7264
         },
-        "recoverable_p99_stop": 0.0513,
+        "recoverable_p99_stop": 0.0243,
         "shipped_assumed": {
-          "max_stop": 1.0885,
-          "p95_stop": 0.4293,
-          "p99_stop": 0.7759
+          "max_stop": 3.1551,
+          "p95_stop": 0.4217,
+          "p99_stop": 0.7507
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.493,
-          "p95_stop": 0.4249,
-          "p99_stop": 0.7246
+          "max_stop": 1.3837,
+          "p95_stop": 0.4306,
+          "p99_stop": 0.7264
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
           "max_stop": 1.667,
-          "p95_stop": 0.5947,
-          "p99_stop": 1.0657
+          "p95_stop": 0.5891,
+          "p99_stop": 1.065
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1166,
-          "p95_stop": 1.0097,
-          "p99_stop": 1.3767
+          "max_stop": 2.152,
+          "p95_stop": 1.0397,
+          "p99_stop": 1.4161
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.3505,
-          "p95_stop": 0.3652,
-          "p99_stop": 0.7362
+          "max_stop": 1.3817,
+          "p95_stop": 0.3592,
+          "p99_stop": 0.761
         },
         "field_dedicated": {
-          "max_stop": 1.2503,
-          "p95_stop": 0.3563,
-          "p99_stop": 0.6488
+          "max_stop": 1.3788,
+          "p95_stop": 0.3679,
+          "p99_stop": 0.6541
         },
-        "recoverable_p99_stop": 0.1024,
+        "recoverable_p99_stop": 0.0047,
         "shipped_assumed": {
-          "max_stop": 1.2016,
-          "p95_stop": 0.4127,
-          "p99_stop": 0.7512
+          "max_stop": 1.3884,
+          "p95_stop": 0.3875,
+          "p99_stop": 0.6588
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2503,
-          "p95_stop": 0.3563,
-          "p99_stop": 0.6488
+          "max_stop": 1.3788,
+          "p95_stop": 0.3679,
+          "p99_stop": 0.6541
         },
+        "tier_adopt_frequency": 0.0333,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 2.7131,
-          "p95_stop": 0.4577,
-          "p99_stop": 1.3394
+          "max_stop": 2.7193,
+          "p95_stop": 0.4561,
+          "p99_stop": 1.3266
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.3979,
-          "p95_stop": 3.1788,
-          "p99_stop": 4.0931
+          "max_stop": 5.4225,
+          "p95_stop": 3.1929,
+          "p99_stop": 4.1288
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.9223,
-          "p95_stop": 0.8355,
-          "p99_stop": 1.6955
+          "max_stop": 2.9246,
+          "p95_stop": 0.8409,
+          "p99_stop": 1.7023
         },
         "field_dedicated": {
-          "max_stop": 1.7216,
-          "p95_stop": 0.3773,
-          "p99_stop": 0.8027
+          "max_stop": 2.7193,
+          "p95_stop": 0.3618,
+          "p99_stop": 0.8384
         },
-        "recoverable_p99_stop": 0.0594,
+        "recoverable_p99_stop": 0.7001,
         "shipped_assumed": {
-          "max_stop": 1.5313,
-          "p95_stop": 0.632,
-          "p99_stop": 0.8621
+          "max_stop": 39.3361,
+          "p95_stop": 0.6693,
+          "p99_stop": 1.5385
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.7216,
-          "p95_stop": 0.3773,
-          "p99_stop": 0.8027
+          "max_stop": 2.7193,
+          "p95_stop": 0.3618,
+          "p99_stop": 0.8384
         },
+        "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "kodachrome64": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.215,
-          "p95_stop": 0.5679,
-          "p99_stop": 0.8903
+          "p95_stop": 0.5714,
+          "p99_stop": 0.8784
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.3351,
-          "p95_stop": 1.5758,
-          "p99_stop": 2.3074
+          "max_stop": 3.3309,
+          "p95_stop": 1.5829,
+          "p99_stop": 2.3201
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.1467,
-          "p95_stop": 0.5641,
-          "p99_stop": 1.1703
+          "max_stop": 2.1391,
+          "p95_stop": 0.5608,
+          "p99_stop": 1.1706
         },
         "field_dedicated": {
-          "max_stop": 1.6886,
-          "p95_stop": 0.3894,
-          "p99_stop": 0.7725
+          "max_stop": 3.2784,
+          "p95_stop": 0.3957,
+          "p99_stop": 0.7192
         },
-        "recoverable_p99_stop": -0.033,
+        "recoverable_p99_stop": 0.0201,
         "shipped_assumed": {
-          "max_stop": 0.8499,
-          "p95_stop": 0.4521,
-          "p99_stop": 0.7395
+          "max_stop": 3.6806,
+          "p95_stop": 0.4546,
+          "p99_stop": 0.7393
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.6886,
-          "p95_stop": 0.3894,
-          "p99_stop": 0.7725
+          "max_stop": 3.2784,
+          "p95_stop": 0.3957,
+          "p99_stop": 0.7192
         },
+        "tier_adopt_frequency": 0.2667,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -527,218 +588,230 @@
           "p99_stop": 1.0773
         },
         "field_assumed_d55_raw": {
-          "max_stop": 1.9174,
-          "p95_stop": 0.9762,
-          "p99_stop": 1.4116
+          "max_stop": 1.914,
+          "p95_stop": 0.9849,
+          "p99_stop": 1.4238
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.1575,
-          "p95_stop": 0.3575,
-          "p99_stop": 0.7498
+          "max_stop": 1.1454,
+          "p95_stop": 0.3596,
+          "p99_stop": 0.756
         },
         "field_dedicated": {
-          "max_stop": 1.2396,
-          "p95_stop": 0.3474,
-          "p99_stop": 0.7184
+          "max_stop": 1.3662,
+          "p95_stop": 0.3483,
+          "p99_stop": 0.6712
         },
-        "recoverable_p99_stop": -0.0152,
+        "recoverable_p99_stop": -0.0328,
         "shipped_assumed": {
-          "max_stop": 1.3195,
-          "p95_stop": 0.3816,
-          "p99_stop": 0.7032
+          "max_stop": 1.4581,
+          "p95_stop": 0.3569,
+          "p99_stop": 0.6384
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2396,
-          "p95_stop": 0.3474,
-          "p99_stop": 0.7184
+          "max_stop": 1.3662,
+          "p95_stop": 0.3483,
+          "p99_stop": 0.6712
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 47.8789,
-          "p95_stop": 0.3761,
-          "p99_stop": 1.0717
+          "max_stop": 37.3961,
+          "p95_stop": 0.3829,
+          "p99_stop": 1.1189
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.1851,
-          "p95_stop": 3.097,
-          "p99_stop": 4.0094
+          "max_stop": 5.1867,
+          "p95_stop": 3.0912,
+          "p99_stop": 4.0062
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.7621,
-          "p95_stop": 0.8817,
-          "p99_stop": 1.5654
+          "max_stop": 2.747,
+          "p95_stop": 0.8822,
+          "p99_stop": 1.5568
         },
         "field_dedicated": {
-          "max_stop": 1.3347,
-          "p95_stop": 0.3458,
-          "p99_stop": 0.7337
+          "max_stop": 37.3961,
+          "p95_stop": 0.3158,
+          "p99_stop": 0.672
         },
-        "recoverable_p99_stop": -0.1623,
+        "recoverable_p99_stop": 0.7009,
         "shipped_assumed": {
-          "max_stop": 1.3201,
-          "p95_stop": 0.7017,
-          "p99_stop": 0.9094
+          "max_stop": 39.0349,
+          "p95_stop": 0.6828,
+          "p99_stop": 1.3729
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 47.8789,
-          "p95_stop": 0.3761,
-          "p99_stop": 1.0717
+          "max_stop": 37.3961,
+          "p95_stop": 0.3158,
+          "p99_stop": 0.672
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "26/30"
       }
     },
     "portra160": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.2556,
-          "p95_stop": 0.2694,
-          "p99_stop": 0.6072
+          "p95_stop": 0.2716,
+          "p99_stop": 0.6126
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.4985,
-          "p95_stop": 1.513,
-          "p99_stop": 2.2244
+          "max_stop": 3.512,
+          "p95_stop": 1.5384,
+          "p99_stop": 2.2505
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.3428,
-          "p95_stop": 0.415,
-          "p99_stop": 1.1192
+          "max_stop": 2.3443,
+          "p95_stop": 0.4307,
+          "p99_stop": 1.1258
         },
         "field_dedicated": {
-          "max_stop": 1.5156,
-          "p95_stop": 0.3275,
-          "p99_stop": 0.7021
+          "max_stop": 3.319,
+          "p95_stop": 0.294,
+          "p99_stop": 0.5687
         },
-        "recoverable_p99_stop": -0.0971,
+        "recoverable_p99_stop": -0.0756,
         "shipped_assumed": {
-          "max_stop": 1.0014,
-          "p95_stop": 0.3281,
-          "p99_stop": 0.5101
+          "max_stop": 3.7212,
+          "p95_stop": 0.2941,
+          "p99_stop": 0.537
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.2556,
-          "p95_stop": 0.2694,
-          "p99_stop": 0.6072
+          "p95_stop": 0.2716,
+          "p99_stop": 0.6126
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_model": "3x3",
+        "tier_model_votes": "0/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
-          "max_stop": 0.8219,
+          "max_stop": 0.8207,
           "p95_stop": 0.3449,
-          "p99_stop": 0.488
+          "p99_stop": 0.4829
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.0746,
-          "p95_stop": 0.8409,
-          "p99_stop": 1.2373
+          "max_stop": 2.0928,
+          "p95_stop": 0.8582,
+          "p99_stop": 1.271
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2918,
-          "p95_stop": 0.2464,
-          "p99_stop": 0.5709
+          "max_stop": 1.3066,
+          "p95_stop": 0.2296,
+          "p99_stop": 0.5651
         },
         "field_dedicated": {
-          "max_stop": 1.0713,
-          "p95_stop": 0.28,
-          "p99_stop": 0.4289
+          "max_stop": 0.7822,
+          "p95_stop": 0.2144,
+          "p99_stop": 0.3893
         },
-        "recoverable_p99_stop": 0.0426,
+        "recoverable_p99_stop": 0.0306,
         "shipped_assumed": {
-          "max_stop": 0.9068,
-          "p95_stop": 0.2847,
-          "p99_stop": 0.4715
+          "max_stop": 0.7409,
+          "p95_stop": 0.2444,
+          "p99_stop": 0.4199
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0713,
-          "p95_stop": 0.28,
-          "p99_stop": 0.4289
+          "max_stop": 0.7822,
+          "p95_stop": 0.2144,
+          "p99_stop": 0.3893
         },
+        "tier_adopt_frequency": 0.1667,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 2.0266,
+          "max_stop": 2.164,
           "p95_stop": 0.3335,
-          "p99_stop": 1.0337
+          "p99_stop": 0.9839
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.2124,
-          "p95_stop": 3.2318,
-          "p99_stop": 4.0896
+          "max_stop": 5.2243,
+          "p95_stop": 3.2472,
+          "p99_stop": 4.0929
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.7151,
-          "p95_stop": 0.8118,
-          "p99_stop": 1.6542
+          "max_stop": 2.7132,
+          "p95_stop": 0.8069,
+          "p99_stop": 1.6457
         },
         "field_dedicated": {
-          "max_stop": 1.5362,
-          "p95_stop": 0.3573,
-          "p99_stop": 0.7057
+          "max_stop": 2.164,
+          "p95_stop": 0.3151,
+          "p99_stop": 0.695
         },
-        "recoverable_p99_stop": -0.309,
+        "recoverable_p99_stop": 0.465,
         "shipped_assumed": {
-          "max_stop": 1.3263,
-          "p95_stop": 0.4311,
-          "p99_stop": 0.7247
+          "max_stop": 39.2963,
+          "p95_stop": 0.4379,
+          "p99_stop": 1.4489
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.0266,
+          "max_stop": 2.164,
           "p95_stop": 0.3335,
-          "p99_stop": 1.0337
+          "p99_stop": 0.9839
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "3x3",
+        "tier_model_votes": "0/30"
       }
     },
     "portra400": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.2482,
-          "p95_stop": 0.4476,
-          "p99_stop": 0.6871
+          "p95_stop": 0.4524,
+          "p99_stop": 0.6987
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.5194,
-          "p95_stop": 1.6426,
-          "p99_stop": 2.3571
+          "max_stop": 3.4941,
+          "p95_stop": 1.6403,
+          "p99_stop": 2.3434
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.2955,
-          "p95_stop": 0.5016,
-          "p99_stop": 1.177
+          "max_stop": 2.2763,
+          "p95_stop": 0.4916,
+          "p99_stop": 1.1685
         },
         "field_dedicated": {
-          "max_stop": 1.752,
-          "p95_stop": 0.3311,
-          "p99_stop": 0.69
+          "max_stop": 3.3116,
+          "p95_stop": 0.3323,
+          "p99_stop": 0.6597
         },
-        "recoverable_p99_stop": -0.0324,
+        "recoverable_p99_stop": -0.0393,
         "shipped_assumed": {
-          "max_stop": 0.9537,
-          "p95_stop": 0.3757,
-          "p99_stop": 0.6547
+          "max_stop": 3.7138,
+          "p95_stop": 0.3619,
+          "p99_stop": 0.6204
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.2482,
-          "p95_stop": 0.4476,
-          "p99_stop": 0.6871
+          "max_stop": 3.3116,
+          "p95_stop": 0.3323,
+          "p99_stop": 0.6597
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_model": "field",
+        "tier_model_votes": "27/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -747,108 +820,114 @@
           "p99_stop": 0.7702
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1295,
-          "p95_stop": 0.9556,
-          "p99_stop": 1.3577
+          "max_stop": 2.1004,
+          "p95_stop": 0.9615,
+          "p99_stop": 1.3345
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2706,
-          "p95_stop": 0.276,
-          "p99_stop": 0.6356
+          "max_stop": 1.2407,
+          "p95_stop": 0.2821,
+          "p99_stop": 0.6277
         },
         "field_dedicated": {
-          "max_stop": 1.0468,
-          "p95_stop": 0.3048,
-          "p99_stop": 0.5189
+          "max_stop": 0.9339,
+          "p95_stop": 0.265,
+          "p99_stop": 0.4798
         },
-        "recoverable_p99_stop": 0.0387,
+        "recoverable_p99_stop": 0.0185,
         "shipped_assumed": {
-          "max_stop": 0.9558,
-          "p95_stop": 0.3308,
-          "p99_stop": 0.5576
+          "max_stop": 0.9733,
+          "p95_stop": 0.2944,
+          "p99_stop": 0.4983
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0468,
-          "p95_stop": 0.3048,
-          "p99_stop": 0.5189
+          "max_stop": 0.9339,
+          "p95_stop": 0.265,
+          "p99_stop": 0.4798
         },
+        "tier_adopt_frequency": 0.0333,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 2.9284,
-          "p95_stop": 0.382,
-          "p99_stop": 1.1673
+          "max_stop": 3.1349,
+          "p95_stop": 0.3823,
+          "p99_stop": 1.1458
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.2926,
-          "p95_stop": 3.3527,
-          "p99_stop": 4.2289
+          "max_stop": 5.2955,
+          "p95_stop": 3.3334,
+          "p99_stop": 4.2126
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.7476,
-          "p95_stop": 0.8382,
-          "p99_stop": 1.6796
+          "max_stop": 2.7455,
+          "p95_stop": 0.8201,
+          "p99_stop": 1.6636
         },
         "field_dedicated": {
-          "max_stop": 1.4437,
-          "p95_stop": 0.3596,
-          "p99_stop": 0.7147
+          "max_stop": 3.1349,
+          "p95_stop": 0.3373,
+          "p99_stop": 0.74
         },
-        "recoverable_p99_stop": -0.3479,
+        "recoverable_p99_stop": 0.3124,
         "shipped_assumed": {
-          "max_stop": 1.3253,
-          "p95_stop": 0.5568,
-          "p99_stop": 0.8194
+          "max_stop": 39.2412,
+          "p95_stop": 0.5697,
+          "p99_stop": 1.4582
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.9284,
-          "p95_stop": 0.382,
-          "p99_stop": 1.1673
+          "max_stop": 3.1349,
+          "p95_stop": 0.3823,
+          "p99_stop": 1.1458
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "3x3",
+        "tier_model_votes": "2/30"
       }
     },
     "portra800": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 3.262,
-          "p95_stop": 0.553,
-          "p99_stop": 0.9098
+          "max_stop": 1.9506,
+          "p95_stop": 0.5529,
+          "p99_stop": 0.8939
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.419,
-          "p95_stop": 1.5293,
-          "p99_stop": 2.2555
+          "max_stop": 3.4263,
+          "p95_stop": 1.5521,
+          "p99_stop": 2.2774
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.2514,
-          "p95_stop": 0.5436,
-          "p99_stop": 1.1409
+          "max_stop": 2.2496,
+          "p95_stop": 0.5626,
+          "p99_stop": 1.14
         },
         "field_dedicated": {
-          "max_stop": 1.5845,
-          "p95_stop": 0.4171,
-          "p99_stop": 0.7478
+          "max_stop": 1.9604,
+          "p95_stop": 0.3915,
+          "p99_stop": 0.7142
         },
-        "recoverable_p99_stop": -0.0271,
+        "recoverable_p99_stop": 0.0385,
         "shipped_assumed": {
-          "max_stop": 0.9205,
-          "p95_stop": 0.4382,
-          "p99_stop": 0.7207
+          "max_stop": 3.7276,
+          "p95_stop": 0.4376,
+          "p99_stop": 0.7527
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5845,
-          "p95_stop": 0.4171,
-          "p99_stop": 0.7478
+          "max_stop": 1.9604,
+          "p95_stop": 0.3915,
+          "p99_stop": 0.7142
         },
+        "tier_adopt_frequency": 0.1,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -857,108 +936,114 @@
           "p99_stop": 0.9827
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1254,
-          "p95_stop": 1.0239,
-          "p99_stop": 1.5047
+          "max_stop": 2.136,
+          "p95_stop": 1.0493,
+          "p99_stop": 1.5298
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2163,
-          "p95_stop": 0.3432,
-          "p99_stop": 0.7476
+          "max_stop": 1.2239,
+          "p95_stop": 0.3278,
+          "p99_stop": 0.7363
         },
         "field_dedicated": {
-          "max_stop": 1.1956,
-          "p95_stop": 0.3382,
-          "p99_stop": 0.6889
+          "max_stop": 1.3078,
+          "p95_stop": 0.3287,
+          "p99_stop": 0.6351
         },
-        "recoverable_p99_stop": 0.0167,
+        "recoverable_p99_stop": -0.0137,
         "shipped_assumed": {
-          "max_stop": 1.219,
-          "p95_stop": 0.3851,
-          "p99_stop": 0.7056
+          "max_stop": 1.3537,
+          "p95_stop": 0.3548,
+          "p99_stop": 0.6214
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1956,
-          "p95_stop": 0.3382,
-          "p99_stop": 0.6889
+          "max_stop": 1.3078,
+          "p95_stop": 0.3287,
+          "p99_stop": 0.6351
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 3.6082,
-          "p95_stop": 0.4046,
-          "p99_stop": 1.1108
+          "max_stop": 3.6505,
+          "p95_stop": 0.4062,
+          "p99_stop": 1.106
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.1781,
-          "p95_stop": 3.2521,
-          "p99_stop": 4.1232
+          "max_stop": 5.1763,
+          "p95_stop": 3.2675,
+          "p99_stop": 4.1272
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.6617,
-          "p95_stop": 0.8552,
-          "p99_stop": 1.6036
+          "max_stop": 2.6359,
+          "p95_stop": 0.8549,
+          "p99_stop": 1.5948
         },
         "field_dedicated": {
-          "max_stop": 1.384,
-          "p95_stop": 0.3619,
-          "p99_stop": 0.7479
+          "max_stop": 3.6505,
+          "p95_stop": 0.3236,
+          "p99_stop": 0.7411
         },
-        "recoverable_p99_stop": -0.2331,
+        "recoverable_p99_stop": 0.7061,
         "shipped_assumed": {
-          "max_stop": 1.2483,
-          "p95_stop": 0.6858,
-          "p99_stop": 0.8777
+          "max_stop": 39.1207,
+          "p95_stop": 0.6704,
+          "p99_stop": 1.4472
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.6082,
-          "p95_stop": 0.4046,
-          "p99_stop": 1.1108
+          "max_stop": 3.6505,
+          "p95_stop": 0.3236,
+          "p99_stop": 0.7411
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "portra800push1": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 3.262,
-          "p95_stop": 0.553,
-          "p99_stop": 0.9098
+          "max_stop": 1.9506,
+          "p95_stop": 0.5529,
+          "p99_stop": 0.8939
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.419,
-          "p95_stop": 1.5293,
-          "p99_stop": 2.2555
+          "max_stop": 3.4263,
+          "p95_stop": 1.5521,
+          "p99_stop": 2.2774
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.2514,
-          "p95_stop": 0.5436,
-          "p99_stop": 1.1409
+          "max_stop": 2.2496,
+          "p95_stop": 0.5626,
+          "p99_stop": 1.14
         },
         "field_dedicated": {
-          "max_stop": 1.5845,
-          "p95_stop": 0.4171,
-          "p99_stop": 0.7478
+          "max_stop": 1.9604,
+          "p95_stop": 0.3915,
+          "p99_stop": 0.7142
         },
-        "recoverable_p99_stop": -0.0271,
+        "recoverable_p99_stop": 0.0385,
         "shipped_assumed": {
-          "max_stop": 0.9205,
-          "p95_stop": 0.4382,
-          "p99_stop": 0.7207
+          "max_stop": 3.7276,
+          "p95_stop": 0.4376,
+          "p99_stop": 0.7527
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5845,
-          "p95_stop": 0.4171,
-          "p99_stop": 0.7478
+          "max_stop": 1.9604,
+          "p95_stop": 0.3915,
+          "p99_stop": 0.7142
         },
+        "tier_adopt_frequency": 0.1,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -967,108 +1052,114 @@
           "p99_stop": 0.9827
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1254,
-          "p95_stop": 1.0239,
-          "p99_stop": 1.5047
+          "max_stop": 2.136,
+          "p95_stop": 1.0493,
+          "p99_stop": 1.5298
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2163,
-          "p95_stop": 0.3432,
-          "p99_stop": 0.7476
+          "max_stop": 1.2239,
+          "p95_stop": 0.3278,
+          "p99_stop": 0.7363
         },
         "field_dedicated": {
-          "max_stop": 1.1956,
-          "p95_stop": 0.3382,
-          "p99_stop": 0.6889
+          "max_stop": 1.3078,
+          "p95_stop": 0.3287,
+          "p99_stop": 0.6351
         },
-        "recoverable_p99_stop": 0.0167,
+        "recoverable_p99_stop": -0.0137,
         "shipped_assumed": {
-          "max_stop": 1.219,
-          "p95_stop": 0.3851,
-          "p99_stop": 0.7056
+          "max_stop": 1.3537,
+          "p95_stop": 0.3548,
+          "p99_stop": 0.6214
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1956,
-          "p95_stop": 0.3382,
-          "p99_stop": 0.6889
+          "max_stop": 1.3078,
+          "p95_stop": 0.3287,
+          "p99_stop": 0.6351
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 3.6082,
-          "p95_stop": 0.4046,
-          "p99_stop": 1.1108
+          "max_stop": 3.6505,
+          "p95_stop": 0.4062,
+          "p99_stop": 1.106
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.1781,
-          "p95_stop": 3.2521,
-          "p99_stop": 4.1232
+          "max_stop": 5.1763,
+          "p95_stop": 3.2675,
+          "p99_stop": 4.1272
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.6617,
-          "p95_stop": 0.8552,
-          "p99_stop": 1.6036
+          "max_stop": 2.6359,
+          "p95_stop": 0.8549,
+          "p99_stop": 1.5948
         },
         "field_dedicated": {
-          "max_stop": 1.384,
-          "p95_stop": 0.3619,
-          "p99_stop": 0.7479
+          "max_stop": 3.6505,
+          "p95_stop": 0.3236,
+          "p99_stop": 0.7411
         },
-        "recoverable_p99_stop": -0.2331,
+        "recoverable_p99_stop": 0.7061,
         "shipped_assumed": {
-          "max_stop": 1.2483,
-          "p95_stop": 0.6858,
-          "p99_stop": 0.8777
+          "max_stop": 39.1207,
+          "p95_stop": 0.6704,
+          "p99_stop": 1.4472
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.6082,
-          "p95_stop": 0.4046,
-          "p99_stop": 1.1108
+          "max_stop": 3.6505,
+          "p95_stop": 0.3236,
+          "p99_stop": 0.7411
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "portra800push2": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 3.262,
-          "p95_stop": 0.553,
-          "p99_stop": 0.9098
+          "max_stop": 1.9506,
+          "p95_stop": 0.5529,
+          "p99_stop": 0.8939
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.419,
-          "p95_stop": 1.5293,
-          "p99_stop": 2.2555
+          "max_stop": 3.4263,
+          "p95_stop": 1.5521,
+          "p99_stop": 2.2774
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.2514,
-          "p95_stop": 0.5436,
-          "p99_stop": 1.1409
+          "max_stop": 2.2496,
+          "p95_stop": 0.5626,
+          "p99_stop": 1.14
         },
         "field_dedicated": {
-          "max_stop": 1.5845,
-          "p95_stop": 0.4171,
-          "p99_stop": 0.7478
+          "max_stop": 1.9604,
+          "p95_stop": 0.3915,
+          "p99_stop": 0.7142
         },
-        "recoverable_p99_stop": -0.0271,
+        "recoverable_p99_stop": 0.0385,
         "shipped_assumed": {
-          "max_stop": 0.9205,
-          "p95_stop": 0.4382,
-          "p99_stop": 0.7207
+          "max_stop": 3.7276,
+          "p95_stop": 0.4376,
+          "p99_stop": 0.7527
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5845,
-          "p95_stop": 0.4171,
-          "p99_stop": 0.7478
+          "max_stop": 1.9604,
+          "p95_stop": 0.3915,
+          "p99_stop": 0.7142
         },
+        "tier_adopt_frequency": 0.1,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -1077,548 +1168,578 @@
           "p99_stop": 0.9827
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1254,
-          "p95_stop": 1.0239,
-          "p99_stop": 1.5047
+          "max_stop": 2.136,
+          "p95_stop": 1.0493,
+          "p99_stop": 1.5298
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2163,
-          "p95_stop": 0.3432,
-          "p99_stop": 0.7476
+          "max_stop": 1.2239,
+          "p95_stop": 0.3278,
+          "p99_stop": 0.7363
         },
         "field_dedicated": {
-          "max_stop": 1.1956,
-          "p95_stop": 0.3382,
-          "p99_stop": 0.6889
+          "max_stop": 1.3078,
+          "p95_stop": 0.3287,
+          "p99_stop": 0.6351
         },
-        "recoverable_p99_stop": 0.0167,
+        "recoverable_p99_stop": -0.0137,
         "shipped_assumed": {
-          "max_stop": 1.219,
-          "p95_stop": 0.3851,
-          "p99_stop": 0.7056
+          "max_stop": 1.3537,
+          "p95_stop": 0.3548,
+          "p99_stop": 0.6214
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1956,
-          "p95_stop": 0.3382,
-          "p99_stop": 0.6889
+          "max_stop": 1.3078,
+          "p95_stop": 0.3287,
+          "p99_stop": 0.6351
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 3.6082,
-          "p95_stop": 0.4046,
-          "p99_stop": 1.1108
+          "max_stop": 3.6505,
+          "p95_stop": 0.4062,
+          "p99_stop": 1.106
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.1781,
-          "p95_stop": 3.2521,
-          "p99_stop": 4.1232
+          "max_stop": 5.1763,
+          "p95_stop": 3.2675,
+          "p99_stop": 4.1272
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.6617,
-          "p95_stop": 0.8552,
-          "p99_stop": 1.6036
+          "max_stop": 2.6359,
+          "p95_stop": 0.8549,
+          "p99_stop": 1.5948
         },
         "field_dedicated": {
-          "max_stop": 1.384,
-          "p95_stop": 0.3619,
-          "p99_stop": 0.7479
+          "max_stop": 3.6505,
+          "p95_stop": 0.3236,
+          "p99_stop": 0.7411
         },
-        "recoverable_p99_stop": -0.2331,
+        "recoverable_p99_stop": 0.7061,
         "shipped_assumed": {
-          "max_stop": 1.2483,
-          "p95_stop": 0.6858,
-          "p99_stop": 0.8777
+          "max_stop": 39.1207,
+          "p95_stop": 0.6704,
+          "p99_stop": 1.4472
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.6082,
-          "p95_stop": 0.4046,
-          "p99_stop": 1.1108
+          "max_stop": 3.6505,
+          "p95_stop": 0.3236,
+          "p99_stop": 0.7411
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "pro400h": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 2.9549,
-          "p95_stop": 0.3276,
-          "p99_stop": 0.7081
+          "p95_stop": 0.3266,
+          "p99_stop": 0.707
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.3947,
-          "p95_stop": 1.5789,
-          "p99_stop": 2.1282
+          "max_stop": 3.438,
+          "p95_stop": 1.6107,
+          "p99_stop": 2.1819
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.294,
-          "p95_stop": 0.5355,
-          "p99_stop": 1.0783
+          "max_stop": 2.3114,
+          "p95_stop": 0.5433,
+          "p99_stop": 1.0959
         },
         "field_dedicated": {
-          "max_stop": 1.361,
-          "p95_stop": 0.3378,
-          "p99_stop": 0.6813
+          "max_stop": 3.0183,
+          "p95_stop": 0.2934,
+          "p99_stop": 0.5665
         },
-        "recoverable_p99_stop": -0.019,
+        "recoverable_p99_stop": -0.0881,
         "shipped_assumed": {
-          "max_stop": 2.9549,
-          "p95_stop": 0.3242,
-          "p99_stop": 0.6891
+          "max_stop": 3.4205,
+          "p95_stop": 0.3256,
+          "p99_stop": 0.6189
         },
-        "shipped_base": "3x3",
+        "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 2.9549,
-          "p95_stop": 0.3276,
-          "p99_stop": 0.7081
+          "p95_stop": 0.3266,
+          "p99_stop": 0.707
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_model": "3x3",
+        "tier_model_votes": "2/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
-          "max_stop": 1.2157,
-          "p95_stop": 0.3834,
-          "p99_stop": 0.6098
+          "max_stop": 1.214,
+          "p95_stop": 0.3846,
+          "p99_stop": 0.6113
         },
         "field_assumed_d55_raw": {
-          "max_stop": 1.9514,
-          "p95_stop": 0.7535,
-          "p99_stop": 1.1425
+          "max_stop": 2.0058,
+          "p95_stop": 0.7866,
+          "p99_stop": 1.1673
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2446,
-          "p95_stop": 0.2584,
-          "p99_stop": 0.5998
+          "max_stop": 1.2938,
+          "p95_stop": 0.2418,
+          "p99_stop": 0.6131
         },
         "field_dedicated": {
-          "max_stop": 1.0283,
-          "p95_stop": 0.2931,
-          "p99_stop": 0.5395
+          "max_stop": 1.155,
+          "p95_stop": 0.2364,
+          "p99_stop": 0.4444
         },
-        "recoverable_p99_stop": 0.0593,
+        "recoverable_p99_stop": 0.0225,
         "shipped_assumed": {
-          "max_stop": 1.2257,
-          "p95_stop": 0.3846,
-          "p99_stop": 0.5988
+          "max_stop": 1.1095,
+          "p95_stop": 0.2387,
+          "p99_stop": 0.4669
         },
-        "shipped_base": "3x3",
+        "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0283,
-          "p95_stop": 0.2931,
-          "p99_stop": 0.5395
+          "max_stop": 1.155,
+          "p95_stop": 0.2364,
+          "p99_stop": 0.4444
         },
-        "tier_adopted": true,
-        "tier_model": "field"
+        "tier_adopt_frequency": 0.0,
+        "tier_adopted": false,
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 2.85,
+          "max_stop": 3.2335,
           "p95_stop": 0.3715,
-          "p99_stop": 1.0216
+          "p99_stop": 0.973
         },
         "field_assumed_d55_raw": {
-          "max_stop": 4.9409,
-          "p95_stop": 3.0351,
-          "p99_stop": 3.913
+          "max_stop": 4.9794,
+          "p95_stop": 3.0769,
+          "p99_stop": 3.9236
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.5901,
-          "p95_stop": 0.7906,
-          "p99_stop": 1.5879
+          "max_stop": 2.5622,
+          "p95_stop": 0.7905,
+          "p99_stop": 1.5766
         },
         "field_dedicated": {
-          "max_stop": 1.415,
-          "p95_stop": 0.35,
-          "p99_stop": 0.7973
+          "max_stop": 3.2335,
+          "p95_stop": 0.315,
+          "p99_stop": 0.7838
         },
-        "recoverable_p99_stop": 0.4157,
+        "recoverable_p99_stop": 0.3911,
         "shipped_assumed": {
-          "max_stop": 49.0197,
-          "p95_stop": 0.4906,
-          "p99_stop": 1.4373
+          "max_stop": 39.0539,
+          "p95_stop": 0.5111,
+          "p99_stop": 1.3641
         },
-        "shipped_base": "3x3",
+        "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.85,
+          "max_stop": 3.2335,
           "p95_stop": 0.3715,
-          "p99_stop": 1.0216
+          "p99_stop": 0.973
         },
+        "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "3x3"
+        "tier_model": "3x3",
+        "tier_model_votes": "16/30"
       }
     },
     "provia100f": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.1759,
-          "p95_stop": 0.5055,
+          "p95_stop": 0.4988,
           "p99_stop": 0.8193
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.4779,
-          "p95_stop": 1.5501,
-          "p99_stop": 2.1431
+          "max_stop": 3.5293,
+          "p95_stop": 1.5582,
+          "p99_stop": 2.2042
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.3915,
-          "p95_stop": 0.5439,
-          "p99_stop": 1.1123
+          "max_stop": 2.4133,
+          "p95_stop": 0.5553,
+          "p99_stop": 1.1283
         },
         "field_dedicated": {
-          "max_stop": 1.4376,
-          "p95_stop": 0.3658,
-          "p99_stop": 0.7335
+          "max_stop": 3.2393,
+          "p95_stop": 0.3459,
+          "p99_stop": 0.5884
         },
-        "recoverable_p99_stop": -0.0353,
+        "recoverable_p99_stop": 0.1323,
         "shipped_assumed": {
-          "max_stop": 1.0348,
-          "p95_stop": 0.4404,
-          "p99_stop": 0.6982
+          "max_stop": 3.6415,
+          "p95_stop": 0.4152,
+          "p99_stop": 0.7207
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.4376,
-          "p95_stop": 0.3658,
-          "p99_stop": 0.7335
+          "max_stop": 3.2393,
+          "p95_stop": 0.3459,
+          "p99_stop": 0.5884
         },
+        "tier_adopt_frequency": 0.5667,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
           "max_stop": 1.5072,
-          "p95_stop": 0.5608,
+          "p95_stop": 0.5515,
           "p99_stop": 1.0655
         },
         "field_assumed_d55_raw": {
-          "max_stop": 1.8427,
-          "p95_stop": 0.9157,
-          "p99_stop": 1.2552
+          "max_stop": 1.907,
+          "p95_stop": 0.9116,
+          "p99_stop": 1.2912
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.3218,
-          "p95_stop": 0.3225,
-          "p99_stop": 0.6899
+          "max_stop": 1.3804,
+          "p95_stop": 0.335,
+          "p99_stop": 0.7
         },
         "field_dedicated": {
-          "max_stop": 1.1904,
-          "p95_stop": 0.3337,
-          "p99_stop": 0.7026
+          "max_stop": 1.3155,
+          "p95_stop": 0.3363,
+          "p99_stop": 0.6162
         },
-        "recoverable_p99_stop": -0.0354,
+        "recoverable_p99_stop": -0.004,
         "shipped_assumed": {
-          "max_stop": 1.3104,
-          "p95_stop": 0.3571,
-          "p99_stop": 0.6672
+          "max_stop": 1.4245,
+          "p95_stop": 0.3357,
+          "p99_stop": 0.6122
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1904,
-          "p95_stop": 0.3337,
-          "p99_stop": 0.7026
+          "max_stop": 1.3155,
+          "p95_stop": 0.3363,
+          "p99_stop": 0.6162
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 47.9726,
-          "p95_stop": 0.4594,
-          "p99_stop": 1.2116
+          "max_stop": 38.0068,
+          "p95_stop": 0.4667,
+          "p99_stop": 1.2012
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.034,
-          "p95_stop": 2.9178,
-          "p99_stop": 3.8059
+          "max_stop": 5.0797,
+          "p95_stop": 2.9372,
+          "p99_stop": 3.822
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.795,
-          "p95_stop": 0.87,
-          "p99_stop": 1.6474
+          "max_stop": 2.8045,
+          "p95_stop": 0.8734,
+          "p99_stop": 1.6203
         },
         "field_dedicated": {
-          "max_stop": 1.6103,
-          "p95_stop": 0.3764,
-          "p99_stop": 0.8036
+          "max_stop": 38.0068,
+          "p95_stop": 0.345,
+          "p99_stop": 0.8426
         },
-        "recoverable_p99_stop": 0.1563,
+        "recoverable_p99_stop": 0.5417,
         "shipped_assumed": {
-          "max_stop": 1.3883,
-          "p95_stop": 0.6934,
-          "p99_stop": 0.9599
+          "max_stop": 39.0154,
+          "p95_stop": 0.7054,
+          "p99_stop": 1.3843
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.6103,
-          "p95_stop": 0.3764,
-          "p99_stop": 0.8036
+          "max_stop": 38.0068,
+          "p95_stop": 0.345,
+          "p99_stop": 0.8426
         },
+        "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "superia400": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.0389,
-          "p95_stop": 0.3161,
-          "p99_stop": 0.6637
+          "p95_stop": 0.3229,
+          "p99_stop": 0.6459
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.4598,
-          "p95_stop": 1.4873,
-          "p99_stop": 2.0937
+          "max_stop": 3.5162,
+          "p95_stop": 1.5493,
+          "p99_stop": 2.1758
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.3945,
-          "p95_stop": 0.4876,
-          "p99_stop": 1.0834
+          "max_stop": 2.4188,
+          "p95_stop": 0.4992,
+          "p99_stop": 1.1304
         },
         "field_dedicated": {
-          "max_stop": 1.4552,
-          "p95_stop": 0.3433,
-          "p99_stop": 0.68
+          "max_stop": 3.1023,
+          "p95_stop": 0.2925,
+          "p99_stop": 0.5332
         },
-        "recoverable_p99_stop": -0.0762,
+        "recoverable_p99_stop": -0.0583,
         "shipped_assumed": {
-          "max_stop": 1.0625,
-          "p95_stop": 0.3142,
-          "p99_stop": 0.5875
+          "max_stop": 3.5045,
+          "p95_stop": 0.3044,
+          "p99_stop": 0.5876
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.0389,
-          "p95_stop": 0.3161,
-          "p99_stop": 0.6637
+          "p95_stop": 0.3229,
+          "p99_stop": 0.6459
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_model": "3x3",
+        "tier_model_votes": "1/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
-          "max_stop": 1.1456,
-          "p95_stop": 0.353,
-          "p99_stop": 0.5301
+          "max_stop": 1.1442,
+          "p95_stop": 0.3533,
+          "p99_stop": 0.5288
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.0616,
-          "p95_stop": 0.7469,
-          "p99_stop": 1.1852
+          "max_stop": 2.1318,
+          "p95_stop": 0.7842,
+          "p99_stop": 1.2176
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.3417,
-          "p95_stop": 0.2567,
-          "p99_stop": 0.5846
+          "max_stop": 1.4057,
+          "p95_stop": 0.2318,
+          "p99_stop": 0.5721
         },
         "field_dedicated": {
-          "max_stop": 1.1057,
-          "p95_stop": 0.2873,
-          "p99_stop": 0.4821
+          "max_stop": 1.0886,
+          "p95_stop": 0.2338,
+          "p99_stop": 0.4441
         },
-        "recoverable_p99_stop": -0.0196,
+        "recoverable_p99_stop": -0.0291,
         "shipped_assumed": {
-          "max_stop": 0.9541,
-          "p95_stop": 0.272,
-          "p99_stop": 0.4625
+          "max_stop": 1.0536,
+          "p95_stop": 0.2357,
+          "p99_stop": 0.415
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1057,
-          "p95_stop": 0.2873,
-          "p99_stop": 0.4821
+          "max_stop": 1.0886,
+          "p95_stop": 0.2338,
+          "p99_stop": 0.4441
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 2.4854,
+          "max_stop": 2.6629,
           "p95_stop": 0.3363,
-          "p99_stop": 1.1173
+          "p99_stop": 1.1213
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.299,
-          "p95_stop": 2.9836,
-          "p99_stop": 3.9697
+          "max_stop": 5.3492,
+          "p95_stop": 3.0302,
+          "p99_stop": 4.0021
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.923,
-          "p95_stop": 0.7698,
-          "p99_stop": 1.6669
+          "max_stop": 2.9339,
+          "p95_stop": 0.7794,
+          "p99_stop": 1.6504
         },
         "field_dedicated": {
-          "max_stop": 1.7433,
-          "p95_stop": 0.3591,
-          "p99_stop": 0.8699
+          "max_stop": 2.6629,
+          "p95_stop": 0.3352,
+          "p99_stop": 0.8081
         },
-        "recoverable_p99_stop": -0.2842,
+        "recoverable_p99_stop": 0.4374,
         "shipped_assumed": {
-          "max_stop": 1.5436,
-          "p95_stop": 0.4976,
-          "p99_stop": 0.8331
+          "max_stop": 39.1263,
+          "p95_stop": 0.5132,
+          "p99_stop": 1.5587
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.4854,
+          "max_stop": 2.6629,
           "p95_stop": 0.3363,
-          "p99_stop": 1.1173
+          "p99_stop": 1.1213
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "3x3",
+        "tier_model_votes": "0/30"
       }
     },
     "ultramax400": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 2.7602,
-          "p95_stop": 0.577,
-          "p99_stop": 0.9418
+          "max_stop": 1.6713,
+          "p95_stop": 0.5754,
+          "p99_stop": 0.9288
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.4949,
-          "p95_stop": 1.5244,
-          "p99_stop": 2.2428
+          "max_stop": 3.5056,
+          "p95_stop": 1.5644,
+          "p99_stop": 2.2682
         },
         "field_assumed_d55_unadapted": {
           "max_stop": 2.3325,
-          "p95_stop": 0.5628,
-          "p99_stop": 1.1333
+          "p95_stop": 0.5707,
+          "p99_stop": 1.1389
         },
         "field_dedicated": {
-          "max_stop": 1.5577,
-          "p95_stop": 0.4206,
-          "p99_stop": 0.7813
+          "max_stop": 1.6772,
+          "p95_stop": 0.4016,
+          "p99_stop": 0.7126
         },
-        "recoverable_p99_stop": -0.0628,
+        "recoverable_p99_stop": 0.0525,
         "shipped_assumed": {
-          "max_stop": 0.9915,
-          "p95_stop": 0.4469,
-          "p99_stop": 0.7185
+          "max_stop": 3.8,
+          "p95_stop": 0.4405,
+          "p99_stop": 0.7651
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5577,
-          "p95_stop": 0.4206,
-          "p99_stop": 0.7813
+          "max_stop": 1.6772,
+          "p95_stop": 0.4016,
+          "p99_stop": 0.7126
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
           "max_stop": 1.6063,
-          "p95_stop": 0.5355,
+          "p95_stop": 0.5368,
           "p99_stop": 1.0129
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1127,
-          "p95_stop": 1.0099,
-          "p99_stop": 1.4373
+          "max_stop": 2.1275,
+          "p95_stop": 1.0227,
+          "p99_stop": 1.4613
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2821,
-          "p95_stop": 0.3543,
-          "p99_stop": 0.7282
+          "max_stop": 1.2938,
+          "p95_stop": 0.336,
+          "p99_stop": 0.7402
         },
         "field_dedicated": {
-          "max_stop": 1.2446,
-          "p95_stop": 0.3492,
-          "p99_stop": 0.6812
+          "max_stop": 1.3624,
+          "p95_stop": 0.3468,
+          "p99_stop": 0.6522
         },
-        "recoverable_p99_stop": 0.0321,
+        "recoverable_p99_stop": -0.0091,
         "shipped_assumed": {
-          "max_stop": 1.2669,
-          "p95_stop": 0.4002,
-          "p99_stop": 0.7133
+          "max_stop": 1.4116,
+          "p95_stop": 0.365,
+          "p99_stop": 0.6431
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2446,
-          "p95_stop": 0.3492,
-          "p99_stop": 0.6812
+          "max_stop": 1.3624,
+          "p95_stop": 0.3468,
+          "p99_stop": 0.6522
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 3.1861,
-          "p95_stop": 0.4322,
-          "p99_stop": 1.1999
+          "max_stop": 3.2138,
+          "p95_stop": 0.4349,
+          "p99_stop": 1.1951
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.245,
-          "p95_stop": 3.2732,
-          "p99_stop": 4.1356
+          "max_stop": 5.2544,
+          "p95_stop": 3.2926,
+          "p99_stop": 4.1383
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.7077,
-          "p95_stop": 0.8554,
-          "p99_stop": 1.6562
+          "max_stop": 2.705,
+          "p95_stop": 0.854,
+          "p99_stop": 1.6476
         },
         "field_dedicated": {
-          "max_stop": 1.5265,
-          "p95_stop": 0.3657,
-          "p99_stop": 0.7607
+          "max_stop": 3.2138,
+          "p95_stop": 0.3422,
+          "p99_stop": 0.787
         },
-        "recoverable_p99_stop": 0.1148,
+        "recoverable_p99_stop": 0.7115,
         "shipped_assumed": {
-          "max_stop": 1.3193,
-          "p95_stop": 0.6756,
-          "p99_stop": 0.8755
+          "max_stop": 39.2139,
+          "p95_stop": 0.6759,
+          "p99_stop": 1.4985
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5265,
-          "p95_stop": 0.3657,
-          "p99_stop": 0.7607
+          "max_stop": 3.2138,
+          "p95_stop": 0.3422,
+          "p99_stop": 0.787
         },
+        "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "velvia100": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.2215,
-          "p95_stop": 0.4709,
-          "p99_stop": 0.7874
+          "p95_stop": 0.4723,
+          "p99_stop": 0.7866
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.0824,
-          "p95_stop": 1.5101,
-          "p99_stop": 2.1389
+          "max_stop": 3.128,
+          "p95_stop": 1.5366,
+          "p99_stop": 2.1777
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.9764,
-          "p95_stop": 0.5059,
-          "p99_stop": 1.0813
+          "max_stop": 2.0007,
+          "p95_stop": 0.5113,
+          "p99_stop": 1.0872
         },
         "field_dedicated": {
-          "max_stop": 1.342,
-          "p95_stop": 0.3162,
-          "p99_stop": 0.5925
+          "max_stop": 3.2849,
+          "p95_stop": 0.3005,
+          "p99_stop": 0.5127
         },
-        "recoverable_p99_stop": 0.069,
+        "recoverable_p99_stop": 0.1502,
         "shipped_assumed": {
-          "max_stop": 0.8181,
-          "p95_stop": 0.3983,
-          "p99_stop": 0.6615
+          "max_stop": 3.6872,
+          "p95_stop": 0.3894,
+          "p99_stop": 0.6629
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.342,
-          "p95_stop": 0.3162,
-          "p99_stop": 0.5925
+          "max_stop": 3.2849,
+          "p95_stop": 0.3005,
+          "p99_stop": 0.5127
         },
+        "tier_adopt_frequency": 0.9667,
         "tier_adopted": true,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -1627,328 +1748,346 @@
           "p99_stop": 1.0049
         },
         "field_assumed_d55_raw": {
-          "max_stop": 1.6145,
-          "p95_stop": 0.8909,
-          "p99_stop": 1.2437
+          "max_stop": 1.6386,
+          "p95_stop": 0.8989,
+          "p99_stop": 1.252
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.0457,
-          "p95_stop": 0.3068,
-          "p99_stop": 0.673
+          "max_stop": 1.0926,
+          "p95_stop": 0.3189,
+          "p99_stop": 0.6744
         },
         "field_dedicated": {
-          "max_stop": 1.0792,
-          "p95_stop": 0.3067,
-          "p99_stop": 0.6633
+          "max_stop": 1.189,
+          "p95_stop": 0.2992,
+          "p99_stop": 0.5726
         },
-        "recoverable_p99_stop": -0.0347,
+        "recoverable_p99_stop": 0.0017,
         "shipped_assumed": {
-          "max_stop": 1.1364,
-          "p95_stop": 0.3313,
-          "p99_stop": 0.6286
+          "max_stop": 1.2542,
+          "p95_stop": 0.3095,
+          "p99_stop": 0.5743
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0792,
-          "p95_stop": 0.3067,
-          "p99_stop": 0.6633
+          "max_stop": 1.189,
+          "p95_stop": 0.2992,
+          "p99_stop": 0.5726
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 48.0242,
-          "p95_stop": 0.3594,
-          "p99_stop": 1.091
+          "max_stop": 38.0584,
+          "p95_stop": 0.3559,
+          "p99_stop": 1.1145
         },
         "field_assumed_d55_raw": {
-          "max_stop": 4.632,
-          "p95_stop": 2.6329,
-          "p99_stop": 3.4
+          "max_stop": 4.6285,
+          "p95_stop": 2.6888,
+          "p99_stop": 3.4173
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.582,
-          "p95_stop": 0.7968,
-          "p99_stop": 1.3508
+          "max_stop": 2.5409,
+          "p95_stop": 0.7869,
+          "p99_stop": 1.3322
         },
         "field_dedicated": {
-          "max_stop": 1.2858,
-          "p95_stop": 0.2996,
-          "p99_stop": 0.5699
+          "max_stop": 38.0584,
+          "p95_stop": 0.2616,
+          "p99_stop": 0.6882
         },
-        "recoverable_p99_stop": 0.2904,
+        "recoverable_p99_stop": 0.6733,
         "shipped_assumed": {
-          "max_stop": 1.1622,
-          "p95_stop": 0.6537,
-          "p99_stop": 0.8603
+          "max_stop": 39.064,
+          "p95_stop": 0.6488,
+          "p99_stop": 1.3615
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2858,
-          "p95_stop": 0.2996,
-          "p99_stop": 0.5699
+          "max_stop": 38.0584,
+          "p95_stop": 0.2616,
+          "p99_stop": 0.6882
         },
+        "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "verita200d": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.1449,
-          "p95_stop": 0.4204,
-          "p99_stop": 0.6471
+          "p95_stop": 0.4252,
+          "p99_stop": 0.6551
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.5083,
-          "p95_stop": 1.5675,
-          "p99_stop": 2.2697
+          "max_stop": 3.5103,
+          "p95_stop": 1.5698,
+          "p99_stop": 2.2875
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.3327,
-          "p95_stop": 0.4861,
-          "p99_stop": 1.147
+          "max_stop": 2.3281,
+          "p95_stop": 0.487,
+          "p99_stop": 1.1491
         },
         "field_dedicated": {
-          "max_stop": 1.6041,
-          "p95_stop": 0.3358,
-          "p99_stop": 0.7779
+          "max_stop": 3.2083,
+          "p95_stop": 0.3338,
+          "p99_stop": 0.6254
         },
-        "recoverable_p99_stop": 0.012,
+        "recoverable_p99_stop": 0.0063,
         "shipped_assumed": {
-          "max_stop": 0.9928,
-          "p95_stop": 0.3873,
-          "p99_stop": 0.6591
+          "max_stop": 3.6106,
+          "p95_stop": 0.3817,
+          "p99_stop": 0.6317
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.1449,
-          "p95_stop": 0.4204,
-          "p99_stop": 0.6471
+          "max_stop": 3.2083,
+          "p95_stop": 0.3338,
+          "p99_stop": 0.6254
         },
+        "tier_adopt_frequency": 0.0333,
         "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_model": "field",
+        "tier_model_votes": "27/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
           "max_stop": 1.0507,
-          "p95_stop": 0.4539,
+          "p95_stop": 0.4536,
           "p99_stop": 0.8381
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1418,
-          "p95_stop": 0.9419,
-          "p99_stop": 1.4007
+          "max_stop": 2.146,
+          "p95_stop": 0.9532,
+          "p99_stop": 1.4176
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2848,
-          "p95_stop": 0.2794,
-          "p99_stop": 0.6373
+          "max_stop": 1.2864,
+          "p95_stop": 0.2743,
+          "p99_stop": 0.6509
         },
         "field_dedicated": {
-          "max_stop": 1.0618,
-          "p95_stop": 0.3121,
-          "p99_stop": 0.6234
+          "max_stop": 0.9753,
+          "p95_stop": 0.2705,
+          "p99_stop": 0.5349
         },
-        "recoverable_p99_stop": -0.0318,
+        "recoverable_p99_stop": 0.0127,
         "shipped_assumed": {
-          "max_stop": 1.0286,
-          "p95_stop": 0.3197,
-          "p99_stop": 0.5916
+          "max_stop": 1.0278,
+          "p95_stop": 0.2913,
+          "p99_stop": 0.5476
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0618,
-          "p95_stop": 0.3121,
-          "p99_stop": 0.6234
+          "max_stop": 0.9753,
+          "p95_stop": 0.2705,
+          "p99_stop": 0.5349
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 3.6832,
-          "p95_stop": 0.3594,
-          "p99_stop": 1.1645
+          "max_stop": 3.9868,
+          "p95_stop": 0.3589,
+          "p99_stop": 1.1561
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.2809,
-          "p95_stop": 3.3064,
-          "p99_stop": 4.1767
+          "max_stop": 5.2826,
+          "p95_stop": 3.3166,
+          "p99_stop": 4.1774
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.7156,
-          "p95_stop": 0.8533,
-          "p99_stop": 1.667
+          "max_stop": 2.7103,
+          "p95_stop": 0.8525,
+          "p99_stop": 1.6583
         },
         "field_dedicated": {
-          "max_stop": 1.528,
-          "p95_stop": 0.3697,
-          "p99_stop": 0.7442
+          "max_stop": 3.9868,
+          "p95_stop": 0.3278,
+          "p99_stop": 0.7813
         },
-        "recoverable_p99_stop": -0.2772,
+        "recoverable_p99_stop": 0.2369,
         "shipped_assumed": {
-          "max_stop": 1.3288,
-          "p95_stop": 0.6349,
-          "p99_stop": 0.8873
+          "max_stop": 39.0946,
+          "p95_stop": 0.5998,
+          "p99_stop": 1.393
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.6832,
-          "p95_stop": 0.3594,
-          "p99_stop": 1.1645
+          "max_stop": 3.9868,
+          "p95_stop": 0.3589,
+          "p99_stop": 1.1561
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "3x3",
+        "tier_model_votes": "0/30"
       }
     },
     "vision3200t": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.082,
-          "p95_stop": 0.4581,
-          "p99_stop": 0.7298
+          "p95_stop": 0.4582,
+          "p99_stop": 0.7296
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.4691,
-          "p95_stop": 1.5593,
-          "p99_stop": 2.2504
+          "max_stop": 3.4733,
+          "p95_stop": 1.572,
+          "p99_stop": 2.2656
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.3064,
-          "p95_stop": 0.5139,
-          "p99_stop": 1.1352
+          "max_stop": 2.3029,
+          "p95_stop": 0.5163,
+          "p99_stop": 1.1385
         },
         "field_dedicated": {
-          "max_stop": 1.5608,
-          "p95_stop": 0.347,
-          "p99_stop": 0.7783
+          "max_stop": 3.1454,
+          "p95_stop": 0.3476,
+          "p99_stop": 0.6488
         },
-        "recoverable_p99_stop": -0.0304,
+        "recoverable_p99_stop": 0.0338,
         "shipped_assumed": {
-          "max_stop": 0.9663,
-          "p95_stop": 0.4152,
-          "p99_stop": 0.6994
+          "max_stop": 3.5477,
+          "p95_stop": 0.4155,
+          "p99_stop": 0.6826
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.082,
-          "p95_stop": 0.4581,
-          "p99_stop": 0.7298
+          "max_stop": 3.1454,
+          "p95_stop": 0.3476,
+          "p99_stop": 0.6488
         },
+        "tier_adopt_frequency": 0.4667,
         "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
           "max_stop": 1.1869,
-          "p95_stop": 0.4999,
+          "p95_stop": 0.499,
           "p99_stop": 0.937
         },
         "field_assumed_d55_raw": {
-          "max_stop": 1.9987,
-          "p95_stop": 0.8744,
-          "p99_stop": 1.3329
+          "max_stop": 2.0055,
+          "p95_stop": 0.8824,
+          "p99_stop": 1.3428
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2799,
-          "p95_stop": 0.2837,
-          "p99_stop": 0.7012
+          "max_stop": 1.2841,
+          "p95_stop": 0.2855,
+          "p99_stop": 0.7189
         },
         "field_dedicated": {
-          "max_stop": 1.0538,
-          "p95_stop": 0.3103,
-          "p99_stop": 0.7083
+          "max_stop": 1.0738,
+          "p95_stop": 0.2932,
+          "p99_stop": 0.5748
         },
-        "recoverable_p99_stop": -0.0589,
+        "recoverable_p99_stop": 0.0183,
         "shipped_assumed": {
-          "max_stop": 1.1461,
-          "p95_stop": 0.3416,
-          "p99_stop": 0.6494
+          "max_stop": 1.1362,
+          "p95_stop": 0.3023,
+          "p99_stop": 0.5931
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0538,
-          "p95_stop": 0.3103,
-          "p99_stop": 0.7083
+          "max_stop": 1.0738,
+          "p95_stop": 0.2932,
+          "p99_stop": 0.5748
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 47.1204,
-          "p95_stop": 0.3799,
-          "p99_stop": 1.1121
+          "max_stop": 37.1546,
+          "p95_stop": 0.389,
+          "p99_stop": 1.108
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.0978,
-          "p95_stop": 3.1932,
-          "p99_stop": 4.0526
+          "max_stop": 5.1015,
+          "p95_stop": 3.2042,
+          "p99_stop": 4.0546
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.6774,
-          "p95_stop": 0.8892,
-          "p99_stop": 1.6513
+          "max_stop": 2.6563,
+          "p95_stop": 0.888,
+          "p99_stop": 1.6428
         },
         "field_dedicated": {
-          "max_stop": 1.4647,
-          "p95_stop": 0.3711,
-          "p99_stop": 0.7917
+          "max_stop": 37.1546,
+          "p95_stop": 0.3249,
+          "p99_stop": 0.7933
         },
-        "recoverable_p99_stop": -0.1114,
+        "recoverable_p99_stop": 0.5405,
         "shipped_assumed": {
-          "max_stop": 1.2798,
-          "p95_stop": 0.6575,
-          "p99_stop": 1.0007
+          "max_stop": 38.2291,
+          "p95_stop": 0.6484,
+          "p99_stop": 1.3338
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 47.1204,
-          "p95_stop": 0.3799,
-          "p99_stop": 1.1121
+          "max_stop": 37.1546,
+          "p95_stop": 0.3249,
+          "p99_stop": 0.7933
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "24/30"
       }
     },
     "vision3250d": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 3.2192,
-          "p95_stop": 0.5897,
-          "p99_stop": 0.9516
+          "max_stop": 2.1866,
+          "p95_stop": 0.5845,
+          "p99_stop": 0.9335
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.473,
-          "p95_stop": 1.5496,
-          "p99_stop": 2.2643
+          "max_stop": 3.471,
+          "p95_stop": 1.5623,
+          "p99_stop": 2.2784
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.3004,
-          "p95_stop": 0.5783,
-          "p99_stop": 1.1444
+          "max_stop": 2.2936,
+          "p95_stop": 0.5919,
+          "p99_stop": 1.1449
         },
         "field_dedicated": {
-          "max_stop": 1.5964,
-          "p95_stop": 0.4124,
-          "p99_stop": 0.7879
+          "max_stop": 2.2012,
+          "p95_stop": 0.4116,
+          "p99_stop": 0.7366
         },
-        "recoverable_p99_stop": -0.0227,
+        "recoverable_p99_stop": 0.0487,
         "shipped_assumed": {
-          "max_stop": 0.9679,
-          "p95_stop": 0.465,
-          "p99_stop": 0.7652
+          "max_stop": 3.6849,
+          "p95_stop": 0.4572,
+          "p99_stop": 0.7853
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5964,
-          "p95_stop": 0.4124,
-          "p99_stop": 0.7879
+          "max_stop": 2.2012,
+          "p95_stop": 0.4116,
+          "p99_stop": 0.7366
         },
+        "tier_adopt_frequency": 0.0667,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -1957,108 +2096,114 @@
           "p99_stop": 1.0592
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.0808,
-          "p95_stop": 1.0071,
-          "p99_stop": 1.5031
+          "max_stop": 2.0801,
+          "p95_stop": 1.0241,
+          "p99_stop": 1.5294
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.2721,
-          "p95_stop": 0.3642,
-          "p99_stop": 0.7904
+          "max_stop": 1.269,
+          "p95_stop": 0.3618,
+          "p99_stop": 0.8208
         },
         "field_dedicated": {
-          "max_stop": 1.1955,
-          "p95_stop": 0.3442,
-          "p99_stop": 0.768
+          "max_stop": 1.3178,
+          "p95_stop": 0.3496,
+          "p99_stop": 0.697
         },
-        "recoverable_p99_stop": 0.0016,
+        "recoverable_p99_stop": -0.051,
         "shipped_assumed": {
-          "max_stop": 1.2259,
-          "p95_stop": 0.4021,
-          "p99_stop": 0.7696
+          "max_stop": 1.363,
+          "p95_stop": 0.3667,
+          "p99_stop": 0.646
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1955,
-          "p95_stop": 0.3442,
-          "p99_stop": 0.768
+          "max_stop": 1.3178,
+          "p95_stop": 0.3496,
+          "p99_stop": 0.697
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 5.0813,
-          "p95_stop": 0.4124,
-          "p99_stop": 1.1349
+          "max_stop": 5.2703,
+          "p95_stop": 0.4123,
+          "p99_stop": 1.1304
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.1575,
-          "p95_stop": 3.25,
-          "p99_stop": 4.1115
+          "max_stop": 5.1556,
+          "p95_stop": 3.2549,
+          "p99_stop": 4.1097
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.676,
-          "p95_stop": 0.8914,
-          "p99_stop": 1.6429
+          "max_stop": 2.6579,
+          "p95_stop": 0.8841,
+          "p99_stop": 1.6342
         },
         "field_dedicated": {
-          "max_stop": 1.4601,
-          "p95_stop": 0.3734,
-          "p99_stop": 0.8034
+          "max_stop": 5.2703,
+          "p95_stop": 0.326,
+          "p99_stop": 0.7897
         },
-        "recoverable_p99_stop": -0.1823,
+        "recoverable_p99_stop": 0.5767,
         "shipped_assumed": {
-          "max_stop": 1.2544,
-          "p95_stop": 0.7097,
-          "p99_stop": 0.9526
+          "max_stop": 39.022,
+          "p95_stop": 0.7065,
+          "p99_stop": 1.3664
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 5.0813,
-          "p95_stop": 0.4124,
-          "p99_stop": 1.1349
+          "max_stop": 5.2703,
+          "p95_stop": 0.326,
+          "p99_stop": 0.7897
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       }
     },
     "vision3500t": {
       "A": {
         "3x3_dedicated": {
-          "max_stop": 1.7626,
-          "p95_stop": 0.5323,
-          "p99_stop": 0.9042
+          "max_stop": 1.2814,
+          "p95_stop": 0.5352,
+          "p99_stop": 0.8784
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.2419,
-          "p95_stop": 1.5841,
-          "p99_stop": 2.3309
+          "max_stop": 3.2093,
+          "p95_stop": 1.5789,
+          "p99_stop": 2.3253
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.0389,
-          "p95_stop": 0.5928,
-          "p99_stop": 1.1757
+          "max_stop": 2.0129,
+          "p95_stop": 0.5775,
+          "p99_stop": 1.1694
         },
         "field_dedicated": {
-          "max_stop": 1.7426,
-          "p95_stop": 0.3815,
-          "p99_stop": 0.8389
+          "max_stop": 1.2483,
+          "p95_stop": 0.3783,
+          "p99_stop": 0.7116
         },
-        "recoverable_p99_stop": -0.0898,
+        "recoverable_p99_stop": 0.0425,
         "shipped_assumed": {
-          "max_stop": 0.9922,
-          "p95_stop": 0.4338,
-          "p99_stop": 0.7491
+          "max_stop": 3.79,
+          "p95_stop": 0.418,
+          "p99_stop": 0.7541
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.7426,
-          "p95_stop": 0.3815,
-          "p99_stop": 0.8389
+          "max_stop": 1.2483,
+          "p95_stop": 0.3783,
+          "p99_stop": 0.7116
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -2067,108 +2212,114 @@
           "p99_stop": 0.8703
         },
         "field_assumed_d55_raw": {
-          "max_stop": 1.9894,
-          "p95_stop": 1.0294,
-          "p99_stop": 1.4574
+          "max_stop": 1.9551,
+          "p95_stop": 1.0274,
+          "p99_stop": 1.5001
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.0555,
-          "p95_stop": 0.2806,
-          "p99_stop": 0.6891
+          "max_stop": 1.0206,
+          "p95_stop": 0.2962,
+          "p99_stop": 0.6972
         },
         "field_dedicated": {
-          "max_stop": 1.0243,
-          "p95_stop": 0.3008,
-          "p99_stop": 0.6297
+          "max_stop": 1.1225,
+          "p95_stop": 0.28,
+          "p99_stop": 0.555
         },
-        "recoverable_p99_stop": 0.0,
+        "recoverable_p99_stop": -0.0088,
         "shipped_assumed": {
-          "max_stop": 1.1278,
-          "p95_stop": 0.372,
-          "p99_stop": 0.6297
+          "max_stop": 1.0825,
+          "p95_stop": 0.3217,
+          "p99_stop": 0.5462
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0243,
-          "p95_stop": 0.3008,
-          "p99_stop": 0.6297
+          "max_stop": 1.1225,
+          "p95_stop": 0.28,
+          "p99_stop": 0.555
         },
-        "tier_adopted": true,
-        "tier_model": "field"
+        "tier_adopt_frequency": 0.1333,
+        "tier_adopted": false,
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 2.7978,
-          "p95_stop": 0.3057,
-          "p99_stop": 1.1509
+          "max_stop": 3.0039,
+          "p95_stop": 0.308,
+          "p99_stop": 1.1262
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.187,
-          "p95_stop": 3.1341,
-          "p99_stop": 3.9323
+          "max_stop": 5.1872,
+          "p95_stop": 3.1209,
+          "p99_stop": 3.9329
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.703,
-          "p95_stop": 0.7466,
-          "p99_stop": 1.4483
+          "max_stop": 2.6976,
+          "p95_stop": 0.7325,
+          "p99_stop": 1.444
         },
         "field_dedicated": {
-          "max_stop": 1.2811,
-          "p95_stop": 0.316,
-          "p99_stop": 0.6623
+          "max_stop": 3.0039,
+          "p95_stop": 0.2704,
+          "p99_stop": 0.5768
         },
-        "recoverable_p99_stop": -0.343,
+        "recoverable_p99_stop": 0.3696,
         "shipped_assumed": {
-          "max_stop": 1.3285,
-          "p95_stop": 0.6125,
-          "p99_stop": 0.8079
+          "max_stop": 38.4866,
+          "p95_stop": 0.615,
+          "p99_stop": 1.4958
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.7978,
-          "p95_stop": 0.3057,
-          "p99_stop": 1.1509
+          "max_stop": 3.0039,
+          "p95_stop": 0.308,
+          "p99_stop": 1.1262
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "3x3",
+        "tier_model_votes": "4/30"
       }
     },
     "vision350d": {
       "A": {
         "3x3_dedicated": {
           "max_stop": 3.1126,
-          "p95_stop": 0.5053,
-          "p99_stop": 0.8096
+          "p95_stop": 0.5034,
+          "p99_stop": 0.8101
         },
         "field_assumed_d55_raw": {
-          "max_stop": 3.6046,
-          "p95_stop": 1.5497,
-          "p99_stop": 2.2319
+          "max_stop": 3.6305,
+          "p95_stop": 1.554,
+          "p99_stop": 2.2593
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 2.4743,
-          "p95_stop": 0.5332,
-          "p99_stop": 1.1514
+          "max_stop": 2.4822,
+          "p95_stop": 0.5408,
+          "p99_stop": 1.1506
         },
         "field_dedicated": {
-          "max_stop": 1.5295,
-          "p95_stop": 0.3691,
-          "p99_stop": 0.7584
+          "max_stop": 3.176,
+          "p95_stop": 0.3736,
+          "p99_stop": 0.6827
         },
-        "recoverable_p99_stop": -0.0677,
+        "recoverable_p99_stop": 0.0736,
         "shipped_assumed": {
-          "max_stop": 1.1253,
-          "p95_stop": 0.4232,
-          "p99_stop": 0.6907
+          "max_stop": 3.5782,
+          "p95_stop": 0.4309,
+          "p99_stop": 0.7563
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.5295,
-          "p95_stop": 0.3691,
-          "p99_stop": 0.7584
+          "max_stop": 3.176,
+          "p95_stop": 0.3736,
+          "p99_stop": 0.6827
         },
+        "tier_adopt_frequency": 0.3,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -2177,70 +2328,74 @@
           "p99_stop": 0.9909
         },
         "field_assumed_d55_raw": {
-          "max_stop": 2.1175,
-          "p95_stop": 0.9065,
-          "p99_stop": 1.3724
+          "max_stop": 2.1508,
+          "p95_stop": 0.9329,
+          "p99_stop": 1.4015
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 1.3769,
-          "p95_stop": 0.3112,
-          "p99_stop": 0.7367
+          "max_stop": 1.406,
+          "p95_stop": 0.3209,
+          "p99_stop": 0.7592
         },
         "field_dedicated": {
-          "max_stop": 1.1517,
-          "p95_stop": 0.3365,
-          "p99_stop": 0.7525
+          "max_stop": 1.2072,
+          "p95_stop": 0.3158,
+          "p99_stop": 0.6048
         },
-        "recoverable_p99_stop": -0.0721,
+        "recoverable_p99_stop": 0.0049,
         "shipped_assumed": {
-          "max_stop": 1.1907,
-          "p95_stop": 0.3595,
-          "p99_stop": 0.6804
+          "max_stop": 1.2832,
+          "p95_stop": 0.3263,
+          "p99_stop": 0.6097
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.1517,
-          "p95_stop": 0.3365,
-          "p99_stop": 0.7525
+          "max_stop": 1.2072,
+          "p95_stop": 0.3158,
+          "p99_stop": 0.6048
         },
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
-        "tier_model": "field"
+        "tier_model": "field",
+        "tier_model_votes": "30/30"
       },
       "LED-RGB1": {
         "3x3_dedicated": {
-          "max_stop": 47.7835,
+          "max_stop": 37.2643,
           "p95_stop": 0.446,
-          "p99_stop": 1.2789
+          "p99_stop": 1.2679
         },
         "field_assumed_d55_raw": {
-          "max_stop": 5.4943,
-          "p95_stop": 3.1716,
-          "p99_stop": 4.1579
+          "max_stop": 5.5173,
+          "p95_stop": 3.1867,
+          "p99_stop": 4.1768
         },
         "field_assumed_d55_unadapted": {
-          "max_stop": 3.0332,
-          "p95_stop": 0.9292,
-          "p99_stop": 1.7653
+          "max_stop": 3.0348,
+          "p95_stop": 0.9267,
+          "p99_stop": 1.7532
         },
         "field_dedicated": {
-          "max_stop": 1.8139,
-          "p95_stop": 0.3954,
-          "p99_stop": 0.844
+          "max_stop": 37.2643,
+          "p95_stop": 0.353,
+          "p99_stop": 0.9166
         },
-        "recoverable_p99_stop": -0.2329,
+        "recoverable_p99_stop": 0.5325,
         "shipped_assumed": {
-          "max_stop": 1.6362,
-          "p95_stop": 0.6896,
-          "p99_stop": 1.046
+          "max_stop": 38.9698,
+          "p95_stop": 0.6866,
+          "p99_stop": 1.4491
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 47.7835,
-          "p95_stop": 0.446,
-          "p99_stop": 1.2789
+          "max_stop": 37.2643,
+          "p95_stop": 0.353,
+          "p99_stop": 0.9166
         },
-        "tier_adopted": false,
-        "tier_model": "3x3"
+        "tier_adopt_frequency": 1.0,
+        "tier_adopted": true,
+        "tier_model": "field",
+        "tier_model_votes": "29/30"
       }
     }
   },
