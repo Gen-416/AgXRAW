@@ -350,7 +350,10 @@ class ToneCompressionPlan:
     color_head_y: float = 0.0
     color_head_m: float = 0.0
     # Declared crossover switch for the film chain's neutral-axis serving.
-    # Meaningful only with film_mode="full"; otherwise inert. "off"
+    # Meaningful only with film_mode="full"; otherwise inert. Three values:
+    # "off" / "print" / "datasheet" (build_render_plan); None resolves from
+    # the appearance recipe's neutralization_policy ("print" for the
+    # reference recipes). "off"
     # (default) is the DIGITAL NEUTRALIZED variant: the developed output is
     # divided per pixel by the shipped bounded neutral-cast curve at the
     # pixel's luminance exposure (grays neutral wherever the medium's own gray

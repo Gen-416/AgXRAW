@@ -267,6 +267,29 @@ def _grid_u() -> np.ndarray:
     return np.stack(np.meshgrid(axis, axis, axis, indexing="ij"), axis=-1).reshape(-1, 3)
 
 
+def _isotonic_rows(table: np.ndarray) -> np.ndarray:
+    """Non-decreasing fit of each column along the row axis (pool-adjacent-
+    violators, L2). Columns that decrease overall are fitted non-increasing."""
+    out = np.array(table, dtype=np.float64, copy=True)
+    for c in range(out.shape[1]):
+        col = out[:, c]
+        sign = 1.0 if col[-1] >= col[0] else -1.0
+        y = sign * col
+        # PAV
+        values = list(y)
+        weights = [1.0] * len(values)
+        blocks = []  # (value, weight, count)
+        for v, w in zip(values, weights):
+            blocks.append([v, w, 1])
+            while len(blocks) >= 2 and blocks[-2][0] > blocks[-1][0]:
+                v2, w2, n2 = blocks.pop()
+                v1, w1, n1 = blocks.pop()
+                blocks.append([(v1 * w1 + v2 * w2) / (w1 + w2), w1 + w2, n1 + n2])
+        fitted = np.concatenate([np.full(n, v) for v, _w, n in blocks])
+        out[:, c] = sign * fitted
+    return out
+
+
 def build_b2_negative(paper_name: str, theatrical: bool) -> dict:
     """Positive-medium density cube -> viewed Rec.2020 for a print paper."""
     medium_id = f"{paper_name}__{'native' if theatrical else 'translated'}"
@@ -290,7 +313,12 @@ def build_b2_negative(paper_name: str, theatrical: bool) -> dict:
         "medium": np.asarray(medium_id),
         "volume": volume.astype(np.float16),
         "paper_le2": (np.asarray(paper["le"], dtype=np.float64) / LOG10_2),
-        "paper_amounts": np.asarray(paper["amounts"], dtype=np.float64),
+        # Isotonic along logE per layer (self-review 2026-08-27): the fitted
+        # paper tables carry sub-0.3% wiggles on the Dmax plateau that made
+        # a full-mode grey ramp non-monotone above ~+5.5 EV (111 negative
+        # steps on portra400, min dY -4.9e-5). Trend-preserving PAV keeps
+        # every measured sample inside its own noise.
+        "paper_amounts": _isotonic_rows(np.asarray(paper["amounts"], dtype=np.float64)),
         "dye_lo": pd_lo,
         "dye_hi": pd_hi,
         "surround_exp": np.float64(exp),

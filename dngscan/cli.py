@@ -203,7 +203,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--scene-transform",
         choices=SCENE_TRANSFORM_CHOICES,
-        default="none",
+        default=None,  # None sentinel: filled by --film combo or the documented default (self-review 2026-08-27)
         help="AgX 前 scene-linear Rec.2020 前馈变换；none=关闭，arri_skin_d55=demo ARRI 式肤色前馈",
     )
     parser.add_argument(
@@ -292,7 +292,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--wb",
         choices=WB_CHOICES,
-        default="camera",
+        default=None,  # None sentinel: filled by --film combo or the documented default (self-review 2026-08-27)
         help=(
             "白平衡: camera=相机 AsShot（默认）；daylight=相机日光标定（兼容保留）；"
             "固定色温声明: 6500k=D65 显示标准白点，5500k=摄影日光/日光卷，"
@@ -304,7 +304,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--film-curve",
         choices=FILM_CURVE_CHOICES,
-        default="none",
+        default=None,  # None sentinel: filled by --film combo or the documented default (self-review 2026-08-27)
         help=(
             "胶片曲线预设：整条 AgX 曲线锁定到具名胶片坐标（数据手册特性曲线最小二乘解），"
             "场景自适应关闭、整卷一致；portra400=Kodak Portra 400 + Endura 相纸，"
@@ -688,12 +688,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # are ordinary per-layer settings the user could have typed.
     if args.film != "none":
         combo = FILM_CURVE_PRESETS.get(args.film, {}).get("combo", {})
-        if args.wb == "camera":
+        # None sentinels (self-review 2026-08-27): "the user typed the
+        # default" and "the user did not set it" are different intents — an
+        # explicit --wb camera / --scene-transform none / --film-curve none
+        # used to be overwritten by the combo.
+        if args.wb is None:
             args.wb = str(combo.get("wb", "5500k"))
         combo_st = str(combo.get("scene_transform", "none"))
-        if args.scene_transform == "none" and combo_st in SCENE_TRANSFORMS:
+        if args.scene_transform is None and combo_st in SCENE_TRANSFORMS:
             args.scene_transform = combo_st
-        if args.film_curve == "none":
+        if args.film_curve is None:
             args.film_curve = args.film
         # Editorial style pairing (observe mode's declared look layer): applied only
         # to layers the user did not give — encoded as a None SENTINEL, never as
@@ -712,6 +716,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                 args.agx_primaries = primaries
     # Sentinel resolution: anything the combo/pairing did not fill falls back to
     # the documented defaults here, in one place, before validation.
+    if args.wb is None:
+        args.wb = "camera"
+    if args.scene_transform is None:
+        args.scene_transform = "none"
+    if args.film_curve is None:
+        args.film_curve = "none"
     if args.scene_transform_strength is None:
         args.scene_transform_strength = 1.0
     # Full mode's input-domain contract, applied at the SOURCE so the plan,

@@ -55,6 +55,9 @@ class RegisterConsistencyTests(unittest.TestCase):
             "SPARSE_EMITTER_EXTREMITY_MIN": t.SPARSE_EMITTER_EXTREMITY_MIN,
             "DEFAULT_HDR_HEADROOM_EV": c.DEFAULT_HDR_HEADROOM_EV,
             "MAX_HDR_PEAK_NITS": c.MAX_HDR_PEAK_NITS,
+            # v5 (self-review 2026-08-27): noise-floor domain offsets, tone.py.
+            "BLACK_BELOW_NOISE_FLOOR_EV": t.BLACK_BELOW_NOISE_FLOOR_EV,
+            "GATED_BELOW_NOISE_FLOOR_EV": t.GATED_BELOW_NOISE_FLOOR_EV,
         }
         for e in policy.ENTRIES:
             if e.name == "CLIP_MARGIN_DN":

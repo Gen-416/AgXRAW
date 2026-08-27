@@ -145,8 +145,14 @@ def regen(check: bool = False) -> int:
         print("no freeze scenes available", file=sys.stderr)
         return 1
     drift = 0
+    missing = 0
     for case in cases:
         linear, u8 = render_case(case)
+        if check and not case.path.is_file():
+            # A missing fixture is drift, not silence (self-review 2026-08-27:
+            # --check could not fail — it returned 0 unconditionally).
+            missing += 1
+            print(f"{case.stem}: fixture missing")
         if case.path.is_file():
             prev = np.load(case.path, allow_pickle=False)
             changed = int(np.count_nonzero(prev["u8"] != u8))
@@ -176,6 +182,20 @@ def regen(check: bool = False) -> int:
         )
         print(f"wrote {BASELINE_PATH.name}")
     print(f"{len(cases)} cases, {drift} drifted")
+    if check:
+        manifest_ok = True
+        if MANIFEST_PATH.is_file():
+            stored = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+            for c in cases:
+                if c.path.is_file():
+                    digest = hashlib.sha256(c.path.read_bytes()).hexdigest()
+                    if stored.get("fixture_sha256", {}).get(c.stem) != digest:
+                        print(f"{c.stem}: MANIFEST fixture_sha256 mismatch")
+                        manifest_ok = False
+        else:
+            print("MANIFEST.json missing")
+            manifest_ok = False
+        return 0 if (drift == 0 and missing == 0 and manifest_ok) else 1
     return 0
 
 

@@ -495,7 +495,13 @@ def iter_cases() -> Iterator[GoldenCase]:
                     yield GoldenCase(scene_id, plan_kind, tone_core, agx_primaries)
 
 
-def oklab_stats(u8: np.ndarray, roi: np.ndarray | None = None) -> dict[str, float]:
+def encoded_lab_stats(u8: np.ndarray, roi: np.ndarray | None = None) -> dict[str, float]:
+    """Ad-hoc monotone statistic in the ENCODED domain — not Oklab: the sRGB-
+    encoded bytes are pushed through inv(XYZ_TO_RGB['Rec2020']) and the Oklab
+    matrices without decoding the transfer (grey u8 118 reads L 0.77 here vs
+    true Oklab 0.57). Kept as-is because the golden fixtures pin these exact
+    numbers; renamed so the name no longer claims Oklab (self-review
+    2026-08-27)."""
     rgb = u8.astype(np.float32) / 255.0
     if roi is not None:
         rgb = rgb[roi]

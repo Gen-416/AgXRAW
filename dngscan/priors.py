@@ -321,7 +321,17 @@ def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
         return float(2.0 ** _interp(curve, math.log2(iso)))
     if "unity_gain_ev" not in priors:
         return None
-    return float(2.0 ** priors["unity_gain_ev"] / iso)
+    # Reciprocal law only above the curve's native base ISO: below it the
+    # camera runs the base-ISO analogue gain and labels the exposure
+    # (extended ISO 50/64/80 on the A7R VI measure the same e-/DN as 100),
+    # so 2^ug/iso overstated the gain by up to 2x there (self-review
+    # 2026-08-27). The curated read-noise curve starts at the native base.
+    base_iso = float(priors.get("base_iso", 0.0) or 0.0)
+    rn_curve = priors.get("read_noise_log2iso_log2e")
+    if base_iso <= 0.0 and rn_curve:
+        base_iso = float(2.0 ** min(float(pt[0]) for pt in rn_curve))
+    iso_eff = max(float(iso), base_iso) if base_iso > 0.0 else float(iso)
+    return float(2.0 ** priors["unity_gain_ev"] / iso_eff)
 
 
 def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:

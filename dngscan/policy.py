@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 
 from . import constants as _c
 
-POLICY_VERSION = 4
+POLICY_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -351,6 +351,27 @@ ENTRIES: tuple[PolicyEntry, ...] = (
         constrained_by="corpus A/B on flat vs deep scenes",
     ),
     PolicyEntry(
+        name="BLACK_BELOW_NOISE_FLOOR_EV",
+        value=1.5,
+        unit="scene EV",
+        rationale=(
+            "adaptive black endpoint may sit this far below the declared "
+            "scene-EV noise floor (noise_floor_ev_estimate); the pre-v5 code "
+            "used an analysis-domain DR here and sat 4.5 EV too deep"
+        ),
+        constrained_by="self-review 2026-08-27; margin inherited from the old -1.5",
+    ),
+    PolicyEntry(
+        name="GATED_BELOW_NOISE_FLOOR_EV",
+        value=1.0,
+        unit="scene EV",
+        rationale=(
+            "gated colour path opens only above the noise floor less this "
+            "margin; pre-v5 used -DR-1.0 in the wrong domain"
+        ),
+        constrained_by="self-review 2026-08-27; margin inherited from the old -1.0",
+    ),
+    PolicyEntry(
         name="PUNCH_BASE_STRENGTH",
         value=0.55,
         unit="fraction of full punch",
@@ -424,6 +445,11 @@ POLICY_FINGERPRINTS = {
     # gate, punch gate family and sparse-emitter detection registered with
     # names at their tone.py consuming sites. No value moved.
     4: "10d56455c4d098e4b53f5a318c23addb9c2e5bfc4701fc68b275afb201014863",
+    # v5 (self-review 2026-08-27, P2): the noise-floor domain fix registers
+    # BLACK_BELOW_NOISE_FLOOR_EV / GATED_BELOW_NOISE_FLOOR_EV — the black
+    # endpoint and the gated floor now derive from the declared scene-EV
+    # noise floor instead of a plan-DR or midgray-anchored proxy.
+    5: "9f993b07cecf39dc778f2c0da64025db3b02dae4f3aa09a72af2bf55df15f3eb",
 }
 
 

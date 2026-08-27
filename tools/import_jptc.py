@@ -116,14 +116,23 @@ def fit_ptc(
             if int(new_keep.sum()) < min_keep or bool((new_keep == keep).all()):
                 break
             keep = new_keep
+        # The returned slope must be the one fitted on the returned keep set:
+        # when all three rounds changed the set, the loop used to exit with a
+        # slope from the previous set (self-review 2026-08-27).
+        slope, intercept = np.polyfit(xa[keep], ya[keep], 1)
         resid = float(np.sqrt(np.mean(
             (np.polyval([slope, intercept], xa[keep]) - ya[keep]) ** 2))
             / max(np.mean(ya[keep]), 1e-9))
         return slope, intercept, keep, resid
 
     lo_mask = unsat & (signal > 0) & (signal < 0.10 * sat_plateau)
+    fit_window_frac = 0.10
     if int(lo_mask.sum()) < 4:
+        # Sparse ramp: widen to 0.35 of capacity and SAY SO — the published
+        # fit_model used to claim the 0.10 window regardless (self-review
+        # 2026-08-27).
         lo_mask = unsat & (signal > 0) & (signal < 0.35 * sat_plateau)
+        fit_window_frac = 0.35
     x = signal[lo_mask]
     y = var[lo_mask]
     if int(lo_mask.sum()) < 4:
@@ -230,7 +239,12 @@ def fit_ptc(
         "gain_e_per_dn": gain,
         # key name "fit_model", NOT "model": import_csv merges this dict
         # with **fit and a "model" key would overwrite the CAMERA model
-        "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
+        "fit_model": (
+            f"linear-prnu-corrected over S<{fit_window_frac:.2f}*S_sat (primary)"
+        ),
+        # The window the fit ACTUALLY used (0.10 nominal; 0.35 when the ramp is
+        # too sparse below 0.10 — self-review 2026-08-27).
+        "fit_window_frac": fit_window_frac,
         "fit_model_effective": fit_model_effective,
         "gain_alternatives": {"linear-0.10": gain_a,
                               "quadratic-0.35": gain_q},

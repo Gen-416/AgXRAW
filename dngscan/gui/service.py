@@ -420,11 +420,18 @@ def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, i
 
 
 def parse_punch(params: dict) -> float:
+    """Fail closed like every sibling parser and the CLI (--punch 0..1.5):
+    a non-numeric or out-of-range punch used to be silently substituted, so a
+    payload of 3 rendered at 1.5 under a filename that did not say so
+    (self-review 2026-08-27)."""
+    raw = params.get("punch", 1.0)
     try:
-        value = float(params.get("punch", 1.0))
+        value = float(raw)
     except (TypeError, ValueError):
-        return 1.0
-    return max(0.0, min(1.5, value))
+        raise ValueError(f"punch 需为数字：{raw!r}") from None
+    if not (math.isfinite(value) and 0.0 <= value <= 1.5):
+        raise ValueError(f"punch 需在 0..1.5 之间：{raw!r}")
+    return value
 
 
 def parse_render_adjustments(params: dict) -> dg.RenderAdjustments:
@@ -1135,8 +1142,9 @@ def parse_film_params(params: dict) -> tuple:
         color_head_y > 0.0 or color_head_m > 0.0
     ):
         raise ValueError(
-            "full 模式暂不支持放大机色头：接管核心是完整烘焙的光谱链，"
-            "请切回 observe 或把色头归零"
+            "full 模式的色头只在 filmPrintTiming=custom 下可用（paper-layer "
+            "exposure model 内的逐层 Δτ）；fixed/retimed 的印相由联合求解决定——"
+            "请切到 custom 或把色头归零"
         )
     tone_core_req = str(params.get("toneCore", params.get("tone_core", "agx")))
     if film_mode == "full" and tone_core_req != "agx":
