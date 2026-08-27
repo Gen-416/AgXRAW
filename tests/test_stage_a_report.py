@@ -78,6 +78,16 @@ class StageAAssetNumbersTests(unittest.TestCase):
             self.assertIn(key, params)
         self.assertEqual(params["lut_n"], fcf.LUT_N)
         self.assertEqual(params["seeds"], len(fcf.SEEDS))
+        # Third review F2: the generator sources that produced this asset
+        # must be the ones in this tree, and the tree must have been clean.
+        src_names = [str(n) for n in z["builder_source_names"]]
+        src_shas = [str(h) for h in z["builder_source_sha256"]]
+        for n, h in zip(src_names, src_shas):
+            self.assertEqual(
+                hashlib.sha256((ROOT / n).read_bytes()).hexdigest(), h,
+                f"{n} changed since the assets were baked — rebake",
+            )
+        self.assertFalse(bool(z["builder_tree_dirty"]), "assets were baked from a dirty tree")
 
 
 class StageAReportLineTests(unittest.TestCase):

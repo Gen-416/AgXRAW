@@ -201,12 +201,31 @@ DILATE_CELLS = 10
 # hull sits closer to them than 25 cells) and the extrapolated field
 # leaked into the hand-over.
 EDGE_TAPER_CELLS = 12
+# ... and is EXACTLY zero within this many cells of the edge, so a bilinear
+# sample taken on the edge itself sees only zero nodes (a sub-cell position
+# between a zero node and a barely-tapered node would otherwise inherit a
+# few percent of the field-minus-3x3 difference: measured 1.2% of mid-grey
+# before this margin was added).
+EDGE_ZERO_CELLS = 2
 
 
 def bake_lut(model: dict, xyz_train, m, observer, n: int = LUT_N,
              sigma: float = BLEND_SIGMA_CELLS, dilate: int = DILATE_CELLS):
-    """Bake the runtime LUT for a fitted field: (lut[n,n,3] float32-ready,
-    domain[4], xyz_from_rec2020[3,3]). Pure: same inputs, same bytes."""
+    """Bake the runtime CORRECTION LUT for a fitted field:
+    (delta[n,n,3], domain[4], xyz_from_rec2020[3,3]). Pure: same inputs, same bytes.
+
+    Third review (2026-08-27, F1): the runtime evaluates the signed 3x3
+    analytically for EVERY pixel and multiplies by 2^delta(x,y); the LUT
+    holds only the field-minus-3x3 correction, weighted by w(x,y), which is
+    1 inside the (dilated) training hull, blends out through the Gaussian
+    band, and is C1-tapered to exactly 0 within EDGE_TAPER_CELLS of the
+    Rec.2020 triangle edge. Grid nodes outside the triangle (where the 3x3
+    response is singular) therefore hold exactly 0 and never leak into a
+    bilinear sample; at the gamut boundary the operator IS the analytic 3x3
+    on both sides of a channel's zero crossing. At the white chromaticity
+    the anchored field and the anchored 3x3 agree exactly, so delta is 0
+    there by construction.
+    """
     from scipy.ndimage import binary_dilation, gaussian_filter
     from scipy.spatial import Delaunay
 
@@ -222,7 +241,9 @@ def bake_lut(model: dict, xyz_train, m, observer, n: int = LUT_N,
     gy = y0 + (y1 - y0) * np.arange(n) / (n - 1)
     cx, cy = np.meshgrid(gx, gy, indexing="ij")
     field = eval_field(model, cx.ravel(), cy.ravel()).reshape(n, n, 3)
-    # 3x3 chromaticity response on the grid (homogeneous xyz at s=1).
+    # 3x3 log response on the grid (homogeneous xyz at s=1). Outside the
+    # triangle a channel is negative and a layer may be non-positive: those
+    # nodes get weight 0 below, so their value is irrelevant; keep it finite.
     cz = 1.0 - cx - cy
     xyz_grid = np.stack([cx, cy, cz], axis=-1).reshape(-1, 3)
     rgb_grid = xyz_grid @ m.T
@@ -231,7 +252,7 @@ def bake_lut(model: dict, xyz_train, m, observer, n: int = LUT_N,
         obs = np.log2(
             np.maximum(e_obs, 1e-12) / np.maximum(cy.ravel(), 1e-12)[:, None]
         ).reshape(n, n, 3)
-    obs = np.nan_to_num(obs, nan=0.0, posinf=60.0, neginf=-60.0)
+    obs = np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
     tx = xyz_train[:, 0] / xyz_train.sum(axis=1)
     ty = xyz_train[:, 1] / xyz_train.sum(axis=1)
     hull = Delaunay(np.stack([tx, ty], axis=1))
@@ -241,16 +262,16 @@ def bake_lut(model: dict, xyz_train, m, observer, n: int = LUT_N,
     if dilate > 0:
         inside = binary_dilation(inside, iterations=int(dilate))
     w = gaussian_filter(inside.astype(np.float64), sigma=float(sigma))
-    # Distance to the triangle edge in cells (barycentric coordinates of the
-    # grid chromaticities w.r.t. the primaries), smoothstepped to a taper.
+    # C1 taper to zero towards the triangle edge (barycentric distance in
+    # cells), and hard zero outside the triangle.
     tri = np.stack([tri_x, tri_y], axis=1)
     t_mat = np.array([[tri[0, 0] - tri[2, 0], tri[1, 0] - tri[2, 0]],
                       [tri[0, 1] - tri[2, 1], tri[1, 1] - tri[2, 1]]])
     rel = np.stack([cx.ravel() - tri[2, 0], cy.ravel() - tri[2, 1]], axis=0)
     lam01 = np.linalg.solve(t_mat, rel)
     lam = np.stack([lam01[0], lam01[1], 1.0 - lam01[0] - lam01[1]], axis=0)
-    # cells per unit barycentric coordinate along each edge's altitude
     cell = max((x1 - x0), (y1 - y0)) / (n - 1)
+
     def _cross2(a, b):
         return float(a[0] * b[1] - a[1] * b[0])
 
@@ -260,27 +281,12 @@ def bake_lut(model: dict, xyz_train, m, observer, n: int = LUT_N,
         abs(_cross2(tri[0] - tri[1], tri[2] - tri[1])) / np.linalg.norm(tri[0] - tri[1]),
     ])
     dist_cells = np.min(lam * alt[:, None], axis=0) / cell
-    tt = np.clip(dist_cells / float(EDGE_TAPER_CELLS), 0.0, 1.0)
+    tt = np.clip((dist_cells - float(EDGE_ZERO_CELLS)) / float(EDGE_TAPER_CELLS), 0.0, 1.0)
     taper = (tt * tt * (3.0 - 2.0 * tt)).reshape(n, n)
+    taper[(lam < 0.0).any(axis=0).reshape(n, n)] = 0.0
     w = (w * taper)[..., None]
-    # Anchor the FIELD term (w == 1 at the white chromaticity, deep inside
-    # the hull) so a bilinear sample at white is exact while the pure-3x3
-    # region stays the 3x3's own response — no global shift, no step at the
-    # gamut edge where negative-channel inputs hand over to the signed 3x3.
-    wx, wy = model["white_xy"]
-    fx = (wx - x0) / (x1 - x0) * (n - 1)
-    fy = (wy - y0) / (y1 - y0) * (n - 1)
-    ix, iy = min(int(fx), n - 2), min(int(fy), n - 2)
-    ax, ay = fx - ix, fy - iy
-    at_white = (
-        field[ix, iy] * (1 - ax) * (1 - ay)
-        + field[ix + 1, iy] * ax * (1 - ay)
-        + field[ix, iy + 1] * (1 - ax) * ay
-        + field[ix + 1, iy + 1] * ax * ay
-    )
-    field = field + (model["t_w"] - at_white)[None, None, :]
-    lut = w * field + (1.0 - w) * obs
-    return lut, np.asarray([x0, x1, y0, y1]), m_inv
+    delta = w * (field - obs)
+    return delta, np.asarray([x0, x1, y0, y1]), m_inv
 
 
 # --- runtime-faithful held-out evaluation --------------------------------
@@ -291,7 +297,7 @@ LOG10_2 = 0.30102999566398119521
 def _runtime_stock(lut, domain, m_inv, observer) -> dict:
     return {
         "observer": np.asarray(observer, dtype=np.float64),
-        "chroma_lut": np.asarray(lut, dtype=np.float32).astype(np.float64),
+        "chroma_delta_lut": np.asarray(lut, dtype=np.float32).astype(np.float64),
         "chroma_domain": np.asarray(domain, dtype=np.float64),
         "chroma_xyz_from_rec2020": np.asarray(m_inv, dtype=np.float64),
     }
@@ -322,7 +328,7 @@ def heldout_errors_runtime(xyz, rgb, exposures, m, folds_list, order: int = 3,
             lut, domain, m_inv = bake_lut(model, xyz[rows], m, observer)
             stock = _runtime_stock(lut, domain, m_inv, observer)
         else:
-            stock = {"observer": observer, "chroma_lut": None}
+            stock = {"observer": observer, "chroma_delta_lut": None}
         pred = stage_a_log_exposure(rgb[test], stock)
         truth = _truth_log10(exposures[test], observer)
         errs.append(np.abs(pred - truth) / LOG10_2)
@@ -380,6 +386,55 @@ def _median_summary(summaries):
     }
 
 
+def response_id(stock: dict) -> str:
+    """Identity of a stock's Stage A spectral response (wavelength grid +
+    layer sensitivities), so family statistics count each RESPONSE once:
+    portra800 and its push presets share one emulsion (third review, F5)."""
+    import hashlib
+
+    neg = ff._load_spectral(stock["negative"])
+    h = hashlib.sha256()
+    h.update(np.ascontiguousarray(neg["wl"], dtype=np.float64).tobytes())
+    h.update(np.ascontiguousarray(neg["sens"], dtype=np.float64).tobytes())
+    return h.hexdigest()[:16]
+
+
+def unique_by_response(stocks: dict) -> dict:
+    """One entry per distinct spectral response (first stock name wins)."""
+    seen: dict = {}
+    for name, entry in stocks.items():
+        seen.setdefault(entry["response_id"], (name, entry))
+    return {name: entry for name, entry in seen.values()}
+
+
+def generator_sources() -> tuple[list, list, bool]:
+    """Names + SHA-256 of every source file the bake depends on, and whether
+    the git tree is dirty (third review, F2): builder_commit alone cannot
+    prove which generator produced an asset."""
+    import hashlib
+    import subprocess
+
+    names = [
+        "tools/fit_chroma_field.py",
+        "tools/build_film_v2_assets.py",
+        "tools/build_full_lut.py",
+        "tools/fit_film_curve.py",
+        "tools/spectral_base.py",
+        "tools/calibrate_skin_matrix.py",
+        "dngscan/film_v2_math.py",
+    ]
+    shas = [hashlib.sha256((PROJECT_ROOT / n).read_bytes()).hexdigest() for n in names]
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, check=True,
+        ).stdout
+        dirty = bool(out.strip())
+    except Exception:
+        dirty = True
+    return names, shas, dirty
+
+
 def stock_record(stock: dict, seeds=SEEDS) -> dict:
     xyz, rgb, exposures, m = stimulus_and_exposures(stock)
     n = exposures.shape[0]
@@ -398,15 +453,19 @@ def stock_record(stock: dict, seeds=SEEDS) -> dict:
         folds_list = cv_folds(n, seed)
         train = np.setdiff1d(np.arange(1, n), folds_list[0])
         conds.append(fit_field(xyz, exposures, train, 3)["cond"])
-    # Ridge sensitivity (continuous evaluation, first seed): how much the
-    # regularization strength moves p99 — documented, not tuned.
+    # Ridge sensitivity through the DEPLOYED operator (third review, F6),
+    # first seed: how much the regularization strength moves p99 —
+    # documented, not tuned.
     folds0 = cv_folds(n, seeds[0])
     sensitivity = {
-        f"{lam:g}": summarize(heldout_errors_continuous(xyz, exposures, folds0, 3, lam))["p99_stop"]
+        f"{lam:g}": summarize(heldout_errors_runtime(
+            xyz, rgb, exposures, m, folds0, ridge=lam, use_field=True
+        ))["p99_stop"]
         for lam in (1e-6, 1e-4, 1e-2, 1.0)
     }
     freq = float(np.mean(votes))
     return {
+        "response_id": response_id(stock),
         "runtime": {
             "field": _median_summary(field_runs),
             "3x3": _median_summary(obs_runs),
@@ -434,11 +493,20 @@ def run(seeds=SEEDS) -> dict:
             f"{r['field']['p99_stop']:.3f}  adopt {r['adopt_votes']}"
             f" -> {'FIELD' if adopts(entry) else '3x3'}"
         )
-    p99_3 = np.array([s["runtime"]["3x3"]["p99_stop"] for s in stocks.values()])
-    p99_f = np.array([s["runtime"]["field"]["p99_stop"] for s in stocks.values()])
-    p95_3 = np.array([s["runtime"]["3x3"]["p95_stop"] for s in stocks.values()])
-    p95_f = np.array([s["runtime"]["field"]["p95_stop"] for s in stocks.values()])
+    uniq = unique_by_response(stocks)
+    p99_3 = np.array([s["runtime"]["3x3"]["p99_stop"] for s in uniq.values()])
+    p99_f = np.array([s["runtime"]["field"]["p99_stop"] for s in uniq.values()])
+    p95_3 = np.array([s["runtime"]["3x3"]["p95_stop"] for s in uniq.values()])
+    p95_f = np.array([s["runtime"]["field"]["p95_stop"] for s in uniq.values()])
     return {
+        "statistics_note": (
+            "family medians and counts are over UNIQUE spectral responses "
+            f"({len(uniq)} of {len(stocks)} stock presets; push presets share "
+            "their base emulsion), per-stock entries are kept for every preset"
+        ),
+        "unique_responses": len(uniq),
+        "median_field_p99_stop": round(float(np.median(p99_f)), 4),
+        "median_3x3_p99_stop": round(float(np.median(p99_3)), 4),
         "purpose": (
             "Route-C measurement, runtime-faithful: held-out layer-exposure "
             "error of the SHIPPED Stage A operator (per-fold baked LUT through "
@@ -450,7 +518,7 @@ def run(seeds=SEEDS) -> dict:
         "seeds": list(seeds),
         "ridge": RIDGE,
         "lut": {"n": LUT_N, "blend_sigma_cells": BLEND_SIGMA_CELLS, "dilate_cells": DILATE_CELLS,
-                "edge_taper_cells": EDGE_TAPER_CELLS},
+                "edge_taper_cells": EDGE_TAPER_CELLS, "edge_zero_cells": EDGE_ZERO_CELLS},
         "fit": "white anchor by parametrization; features centred at the white chromaticity and std-scaled; ridge on the slopes only",
         "adoption_rule": (
             f"margin rule (p95 <= {P95_ADOPT_RATIO} * 3x3 p95 AND p99 no worse) on each "
@@ -466,6 +534,7 @@ def run(seeds=SEEDS) -> dict:
         "median_p99_improvement_pct": round(float(np.median((p99_3 - p99_f) / p99_3 * 100.0)), 1),
         "median_p95_improvement_pct": round(float(np.median((p95_3 - p95_f) / p95_3 * 100.0)), 1),
         "stocks_adopting": int(sum(adopts(s) for s in stocks.values())),
+        "responses_adopting": int(sum(adopts(s) for s in uniq.values())),
         "stocks": stocks,
     }
 
@@ -478,7 +547,8 @@ def main() -> int:
     print(f"wrote {OUT_PATH}")
     print(
         f"median improvement: p95 {report['median_p95_improvement_pct']}%  "
-        f"p99 {report['median_p99_improvement_pct']}%  adopting {report['stocks_adopting']}/{len(report['stocks'])}"
+        f"p99 {report['median_p99_improvement_pct']}%  adopting {report['stocks_adopting']}/{len(report['stocks'])} "
+        f"presets, {report['responses_adopting']}/{report['unique_responses']} responses"
     )
     return 0
 

@@ -833,9 +833,10 @@ AgX tone core；色头仅在 timing=custom 下以 modelled Δτ 解锁），AgX 
 交付端色域安全。SDR 之上，Ultra HDR 以"胶片印相 + scene HDR 扩展"参与
 （SDR base=胶片印相逐字节不变，参考白之上按场景高光 C1 增益，封顶可靠
 余量）。资产为 `dngscan/data/film_v2/` 三分家族（stock / print_state /
-b2，schema 9：每卷 Stage A 按 runtime-faithful、重复折的 held-out CV 选色度场或
-3×3，携带报告用的 held-out 数字与 provenance 块（反射率库、CV 记录、拟合/烘焙
-参数与库版本的哈希），全部 fail-closed 加载）。关闭 `--film` 即纯 AgX。逐通道滚降本身就是颜色操作——这就是"AgX 只管拉伸滚降、颜色全给胶片"
+b2，schema 10：每卷 Stage A 按 runtime-faithful、重复折的 held-out CV 选色度场
+（以解析 3×3 之上的修正 LUT 发布）或 3×3，携带报告用的 held-out 数字与 provenance
+块（反射率库、CV 记录、拟合/烘焙参数、生成器源码与库版本的哈希），全部 fail-closed
+加载）。关闭 `--film` 即纯 AgX。逐通道滚降本身就是颜色操作——这就是"AgX 只管拉伸滚降、颜色全给胶片"
 无法折中切分、必须做成两极开关的结构原因。
 
 ### 曲线预设、色头与层间漂移的实现细节
