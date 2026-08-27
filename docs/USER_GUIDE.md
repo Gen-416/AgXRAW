@@ -175,8 +175,10 @@ the reason this film simulation stays stable.
   viewing-room flare is no longer baked into film curves;
 - **Two modes** (CLI `--film-mode`): the default **observe** is everything above —
   use it day to day. **full** is experimental: the film development model takes
-  over wholesale — scene colour passes through a constrained observer inverse
-  into three emulsion exposures, through each layer's characteristic curve, the
+  over wholesale — scene colour passes through the stock's Stage A (a
+  held-out CV-selected chromaticity field, or the constrained 3x3 observer
+  where the field did not earn its place; the report names which and its
+  held-out residual) into three emulsion exposures, through each layer's characteristic curve, the
   the characteristic curves into negative dye density, then through the
   FACTORIZED print chain (negative density -> paper-layer exposure -> print
   timing -> paper development -> viewing colour). Under the honest spectral

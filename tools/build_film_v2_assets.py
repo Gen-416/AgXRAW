@@ -67,7 +67,7 @@ import fit_chroma_field as fcf  # noqa: E402
 
 OUT_DIR = PROJECT_ROOT / "dngscan" / "data" / "film_v2"
 GRID_N = 65
-SCHEMA = 7  # 7: Stage A may carry a CV-selected chromaticity-field LUT (route C phase 2)
+SCHEMA = 8  # 8: the Stage A held-out numbers (route C/D records) join the ABI for the report
 EXPOSURE_EV_MIN, EXPOSURE_EV_MAX = -2.0, 2.0
 TAU_NODES = tuple(round(-2.0 + 0.25 * i, 4) for i in range(17))
 MIDPOINT_ORACLE_EVS = (-1.875, -0.625, 0.375, 1.625)
@@ -360,10 +360,22 @@ def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> di
         (PROJECT_ROOT / "docs" / "chroma_field_cv.json").read_text()
     )["stocks"]
     entry = record[cv_key]
-    selected = (
-        entry["poly3"]["p95_stop"] <= CHROMA_P95_ADOPT_RATIO * entry["3x3"]["p95_stop"]
-        and entry["poly3"]["p99_stop"] <= entry["3x3"]["p99_stop"]
-    )
+    selected = fcf.adopts(entry["poly3"], entry["3x3"], CHROMA_P95_ADOPT_RATIO)
+    shipped = entry["poly3"] if selected else entry["3x3"]
+    # Route D record: what THIS shipped model measures on white-balanced
+    # tungsten / high-CRI LED scenes (runtime lookup coordinates). The
+    # report prints them next to the daylight number; no illuminant tier is
+    # carried because none beat the D55 model on held-out data.
+    illum = json.loads(
+        (PROJECT_ROOT / "docs" / "illuminant_tier_cv.json").read_text()
+    )["stocks"][cv_key]
+    numbers = {
+        "stage_a_p95_stop": np.float64(shipped["p95_stop"]),
+        "stage_a_p99_stop": np.float64(shipped["p99_stop"]),
+        "stage_a_3x3_p99_stop": np.float64(entry["3x3"]["p99_stop"]),
+        "stage_a_p99_under_a": np.float64(illum["A"]["shipped_assumed"]["p99_stop"]),
+        "stage_a_p99_under_led": np.float64(illum["LED-B3"]["shipped_assumed"]["p99_stop"]),
+    }
     note = (
         f"cv p95 {entry['3x3']['p95_stop']}->{entry['poly3']['p95_stop']}, "
         f"p99 {entry['3x3']['p99_stop']}->{entry['poly3']['p99_stop']}; "
@@ -376,6 +388,7 @@ def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> di
             "chroma_domain": np.zeros(4, dtype=np.float64),
             "chroma_xyz_from_rec2020": np.zeros((3, 3), dtype=np.float64),
             "chroma_cv_note": np.asarray(note),
+            **numbers,
         }
     from scipy.ndimage import gaussian_filter
     from scipy.spatial import Delaunay
@@ -440,6 +453,7 @@ def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> di
         "chroma_domain": np.asarray([x0, x1, y0, y1], dtype=np.float64),
         "chroma_xyz_from_rec2020": m_inv.astype(np.float64),
         "chroma_cv_note": np.asarray(note),
+        **numbers,
     }
 
 

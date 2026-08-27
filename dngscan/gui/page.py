@@ -367,7 +367,7 @@ FILM_CURVE_OPTIONS
   <div class="row" id="filmModeRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
       <label>显影分工</label>
-      <select id="filmMode" title="observe=胶片声明观察者看见了什么，颜色由 AgX 显影（默认，已验证路径）；full=胶片显影模型整体接管（film v2 因式分解链：观察者逆矩阵→三层乳剂→特性曲线→B1→印相 timing→相纸显影→B2 观看；实验）。印相介质/timing/显影配方/模拟光学随之可声明;色头在 timing=custom 下解锁;Ultra HDR 下以'胶片印相+scene HDR 扩展'参与。">
+      <select id="filmMode" title="observe=胶片声明观察者看见了什么，颜色由 AgX 显影（默认，已验证路径）；full=胶片显影模型整体接管（film v2 因式分解链：Stage A（每卷按 held-out CV 选色度场或 3×3 观察者；光源假设 D55，实测白平衡后钨丝/高显色 LED 场景同级、无需分档）→三层乳剂→特性曲线→B1→印相 timing→相纸显影→B2 观看；实验）。印相介质/timing/显影配方/模拟光学随之可声明;色头在 timing=custom 下解锁;Ultra HDR 下以'胶片印相+scene HDR 扩展'参与。">
         <option value="observe">观察 · AgX 显影 · 默认</option>
         <option value="full">接管 · 胶片显影模型（实验）</option>
       </select>
