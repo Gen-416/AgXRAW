@@ -1,0 +1,2248 @@
+{
+  "adoption_rule": "fit_chroma_field.adopts (p95 <= 0.85 * baseline p95, p99 no worse): tier_model on the dedicated field vs 3x3; tier_adopted on the shipped tier vs the shipped D55 model",
+  "conclusion": "no illuminant tier earns its place: after white balance the D55 model is in the same held-out error class as a dedicated same-illuminant model under CIE A and LED-B3 (0/20 stocks adopt); the narrow-band LED-RGB1 case would recover ~0.12 stop but is unidentifiable from colour temperature \u2014 a confidence downgrade, not a tier",
+  "fold_seed": 20260826,
+  "folds": 5,
+  "illuminants": {
+    "A": "CIE A (tungsten 2856K)",
+    "LED-B3": "CIE LED-B3 (high-CRI phosphor LED ~4000K)",
+    "LED-RGB1": "CIE LED-RGB1 (narrow tri-band; pressure case)"
+  },
+  "median": {
+    "A": {
+      "field_assumed_d55_raw_p99": 2.253,
+      "field_assumed_d55_unadapted_p99": 1.1381,
+      "recoverable_p99_stop": -0.0299,
+      "shipped_assumed_p95": 0.4308,
+      "shipped_assumed_p99": 0.6988,
+      "shipped_dedicated_p95": 0.3912,
+      "shipped_dedicated_p99": 0.7332,
+      "stocks_adopting": 1
+    },
+    "LED-B3": {
+      "field_assumed_d55_raw_p99": 1.3746,
+      "field_assumed_d55_unadapted_p99": 0.7147,
+      "recoverable_p99_stop": 0.0092,
+      "shipped_assumed_p95": 0.3749,
+      "shipped_assumed_p99": 0.6738,
+      "shipped_dedicated_p95": 0.3313,
+      "shipped_dedicated_p99": 0.6799,
+      "stocks_adopting": 2
+    },
+    "LED-RGB1": {
+      "field_assumed_d55_raw_p99": 4.0914,
+      "field_assumed_d55_unadapted_p99": 1.6452,
+      "recoverable_p99_stop": -0.233,
+      "shipped_assumed_p95": 0.6621,
+      "shipped_assumed_p99": 0.8777,
+      "shipped_dedicated_p95": 0.3762,
+      "shipped_dedicated_p99": 1.1108,
+      "stocks_adopting": 6
+    }
+  },
+  "metric": "held-out |log2 layer-exposure error| AFTER subtracting each model's own white-board value per layer (the runtime normalizes every model by its own mid-grey), with the D55 model evaluated at the RUNTIME coordinate: the white-balanced Rec.2020 row through the D55 model's own xyz_from_rec2020. field_assumed_d55_unadapted (second record: un-adapted I-lit chromaticity) and field_assumed_d55_raw (first record: raw exposures, un-adapted) are kept for the audit trail; neither is a decision number.",
+  "purpose": "Route-D: cost of the D55 illuminant assumption per stock and per illuminant versus a dedicated same-illuminant model \u2014 identical folds/anchor/training discipline as the Stage A CV, with the metric the runtime can exhibit",
+  "stocks": {
+    "c200": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.0715,
+          "p95_stop": 0.3266,
+          "p99_stop": 0.5697
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.2421,
+          "p95_stop": 1.4748,
+          "p99_stop": 2.1382
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.1376,
+          "p95_stop": 0.4183,
+          "p99_stop": 1.0844
+        },
+        "field_dedicated": {
+          "max_stop": 1.4016,
+          "p95_stop": 0.324,
+          "p99_stop": 0.6674
+        },
+        "recoverable_p99_stop": 0.0169,
+        "shipped_assumed": {
+          "max_stop": 0.8431,
+          "p95_stop": 0.3336,
+          "p99_stop": 0.5866
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.0715,
+          "p95_stop": 0.3266,
+          "p99_stop": 0.5697
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 0.8677,
+          "p95_stop": 0.3684,
+          "p99_stop": 0.6177
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.0046,
+          "p95_stop": 0.8771,
+          "p99_stop": 1.2784
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.1693,
+          "p95_stop": 0.2462,
+          "p99_stop": 0.5936
+        },
+        "field_dedicated": {
+          "max_stop": 0.944,
+          "p95_stop": 0.2871,
+          "p99_stop": 0.4687
+        },
+        "recoverable_p99_stop": 0.026,
+        "shipped_assumed": {
+          "max_stop": 1.016,
+          "p95_stop": 0.2726,
+          "p99_stop": 0.4947
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 0.944,
+          "p95_stop": 0.2871,
+          "p99_stop": 0.4687
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 3.2717,
+          "p95_stop": 0.306,
+          "p99_stop": 1.1253
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 4.9152,
+          "p95_stop": 3.0208,
+          "p99_stop": 3.863
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.5342,
+          "p95_stop": 0.7292,
+          "p99_stop": 1.4872
+        },
+        "field_dedicated": {
+          "max_stop": 1.2894,
+          "p95_stop": 0.3207,
+          "p99_stop": 0.6889
+        },
+        "recoverable_p99_stop": -0.2967,
+        "shipped_assumed": {
+          "max_stop": 1.1452,
+          "p95_stop": 0.5266,
+          "p99_stop": 0.8286
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.2717,
+          "p95_stop": 0.306,
+          "p99_stop": 1.1253
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "ektachrome100": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.0602,
+          "p95_stop": 0.4953,
+          "p99_stop": 0.8012
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.3625,
+          "p95_stop": 1.6183,
+          "p99_stop": 2.2761
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.1897,
+          "p95_stop": 0.5445,
+          "p99_stop": 1.1166
+        },
+        "field_dedicated": {
+          "max_stop": 1.5388,
+          "p95_stop": 0.3576,
+          "p99_stop": 0.7329
+        },
+        "recoverable_p99_stop": -0.0477,
+        "shipped_assumed": {
+          "max_stop": 0.8643,
+          "p95_stop": 0.4365,
+          "p99_stop": 0.6852
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5388,
+          "p95_stop": 0.3576,
+          "p99_stop": 0.7329
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.4427,
+          "p95_stop": 0.5632,
+          "p99_stop": 1.1114
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 1.8437,
+          "p95_stop": 0.9085,
+          "p99_stop": 1.2829
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.1991,
+          "p95_stop": 0.3479,
+          "p99_stop": 0.7544
+        },
+        "field_dedicated": {
+          "max_stop": 1.1519,
+          "p95_stop": 0.3289,
+          "p99_stop": 0.7339
+        },
+        "recoverable_p99_stop": -0.0438,
+        "shipped_assumed": {
+          "max_stop": 1.2885,
+          "p95_stop": 0.3792,
+          "p99_stop": 0.6901
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1519,
+          "p95_stop": 0.3289,
+          "p99_stop": 0.7339
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 47.8983,
+          "p95_stop": 0.4321,
+          "p99_stop": 1.0569
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.0203,
+          "p95_stop": 3.1039,
+          "p99_stop": 3.9523
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.6911,
+          "p95_stop": 0.9097,
+          "p99_stop": 1.5889
+        },
+        "field_dedicated": {
+          "max_stop": 1.2866,
+          "p95_stop": 0.3578,
+          "p99_stop": 0.8117
+        },
+        "recoverable_p99_stop": 0.2347,
+        "shipped_assumed": {
+          "max_stop": 1.3667,
+          "p95_stop": 0.7001,
+          "p99_stop": 1.0464
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.2866,
+          "p95_stop": 0.3578,
+          "p99_stop": 0.8117
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      }
+    },
+    "ektar100": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.2115,
+          "p95_stop": 0.5253,
+          "p99_stop": 0.8707
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.6542,
+          "p95_stop": 1.5512,
+          "p99_stop": 2.2874
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.5,
+          "p95_stop": 0.5572,
+          "p99_stop": 1.1823
+        },
+        "field_dedicated": {
+          "max_stop": 1.5493,
+          "p95_stop": 0.3931,
+          "p99_stop": 0.7673
+        },
+        "recoverable_p99_stop": -0.0293,
+        "shipped_assumed": {
+          "max_stop": 1.1444,
+          "p95_stop": 0.4323,
+          "p99_stop": 0.738
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5493,
+          "p95_stop": 0.3931,
+          "p99_stop": 0.7673
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.3835,
+          "p95_stop": 0.4981,
+          "p99_stop": 0.9228
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1629,
+          "p95_stop": 0.9333,
+          "p99_stop": 1.3934
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.3946,
+          "p95_stop": 0.3318,
+          "p99_stop": 0.7403
+        },
+        "field_dedicated": {
+          "max_stop": 1.1675,
+          "p95_stop": 0.348,
+          "p99_stop": 0.6786
+        },
+        "recoverable_p99_stop": 0.0482,
+        "shipped_assumed": {
+          "max_stop": 1.1818,
+          "p95_stop": 0.3778,
+          "p99_stop": 0.7268
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1675,
+          "p95_stop": 0.348,
+          "p99_stop": 0.6786
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 3.5361,
+          "p95_stop": 0.4624,
+          "p99_stop": 1.3395
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.6309,
+          "p95_stop": 3.2707,
+          "p99_stop": 4.2726
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 3.1188,
+          "p95_stop": 0.8661,
+          "p99_stop": 1.8277
+        },
+        "field_dedicated": {
+          "max_stop": 1.8776,
+          "p95_stop": 0.3968,
+          "p99_stop": 0.8674
+        },
+        "recoverable_p99_stop": -0.4069,
+        "shipped_assumed": {
+          "max_stop": 1.7149,
+          "p95_stop": 0.6666,
+          "p99_stop": 0.9326
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.5361,
+          "p95_stop": 0.4624,
+          "p99_stop": 1.3395
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "gold200": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 2.0428,
+          "p95_stop": 0.6024,
+          "p99_stop": 0.9751
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.5582,
+          "p95_stop": 1.4856,
+          "p99_stop": 2.2094
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.432,
+          "p95_stop": 0.5658,
+          "p99_stop": 1.1329
+        },
+        "field_dedicated": {
+          "max_stop": 1.493,
+          "p95_stop": 0.4249,
+          "p99_stop": 0.7246
+        },
+        "recoverable_p99_stop": 0.0513,
+        "shipped_assumed": {
+          "max_stop": 1.0885,
+          "p95_stop": 0.4293,
+          "p99_stop": 0.7759
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.493,
+          "p95_stop": 0.4249,
+          "p99_stop": 0.7246
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.667,
+          "p95_stop": 0.5947,
+          "p99_stop": 1.0657
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1166,
+          "p95_stop": 1.0097,
+          "p99_stop": 1.3767
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.3505,
+          "p95_stop": 0.3652,
+          "p99_stop": 0.7362
+        },
+        "field_dedicated": {
+          "max_stop": 1.2503,
+          "p95_stop": 0.3563,
+          "p99_stop": 0.6488
+        },
+        "recoverable_p99_stop": 0.1024,
+        "shipped_assumed": {
+          "max_stop": 1.2016,
+          "p95_stop": 0.4127,
+          "p99_stop": 0.7512
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.2503,
+          "p95_stop": 0.3563,
+          "p99_stop": 0.6488
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 2.7131,
+          "p95_stop": 0.4577,
+          "p99_stop": 1.3394
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.3979,
+          "p95_stop": 3.1788,
+          "p99_stop": 4.0931
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.9223,
+          "p95_stop": 0.8355,
+          "p99_stop": 1.6955
+        },
+        "field_dedicated": {
+          "max_stop": 1.7216,
+          "p95_stop": 0.3773,
+          "p99_stop": 0.8027
+        },
+        "recoverable_p99_stop": 0.0594,
+        "shipped_assumed": {
+          "max_stop": 1.5313,
+          "p95_stop": 0.632,
+          "p99_stop": 0.8621
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.7216,
+          "p95_stop": 0.3773,
+          "p99_stop": 0.8027
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      }
+    },
+    "kodachrome64": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.215,
+          "p95_stop": 0.5679,
+          "p99_stop": 0.8903
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.3351,
+          "p95_stop": 1.5758,
+          "p99_stop": 2.3074
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.1467,
+          "p95_stop": 0.5641,
+          "p99_stop": 1.1703
+        },
+        "field_dedicated": {
+          "max_stop": 1.6886,
+          "p95_stop": 0.3894,
+          "p99_stop": 0.7725
+        },
+        "recoverable_p99_stop": -0.033,
+        "shipped_assumed": {
+          "max_stop": 0.8499,
+          "p95_stop": 0.4521,
+          "p99_stop": 0.7395
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.6886,
+          "p95_stop": 0.3894,
+          "p99_stop": 0.7725
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.5944,
+          "p95_stop": 0.5845,
+          "p99_stop": 1.0773
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 1.9174,
+          "p95_stop": 0.9762,
+          "p99_stop": 1.4116
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.1575,
+          "p95_stop": 0.3575,
+          "p99_stop": 0.7498
+        },
+        "field_dedicated": {
+          "max_stop": 1.2396,
+          "p95_stop": 0.3474,
+          "p99_stop": 0.7184
+        },
+        "recoverable_p99_stop": -0.0152,
+        "shipped_assumed": {
+          "max_stop": 1.3195,
+          "p95_stop": 0.3816,
+          "p99_stop": 0.7032
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.2396,
+          "p95_stop": 0.3474,
+          "p99_stop": 0.7184
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 47.8789,
+          "p95_stop": 0.3761,
+          "p99_stop": 1.0717
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.1851,
+          "p95_stop": 3.097,
+          "p99_stop": 4.0094
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.7621,
+          "p95_stop": 0.8817,
+          "p99_stop": 1.5654
+        },
+        "field_dedicated": {
+          "max_stop": 1.3347,
+          "p95_stop": 0.3458,
+          "p99_stop": 0.7337
+        },
+        "recoverable_p99_stop": -0.1623,
+        "shipped_assumed": {
+          "max_stop": 1.3201,
+          "p95_stop": 0.7017,
+          "p99_stop": 0.9094
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 47.8789,
+          "p95_stop": 0.3761,
+          "p99_stop": 1.0717
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "portra160": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.2556,
+          "p95_stop": 0.2694,
+          "p99_stop": 0.6072
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.4985,
+          "p95_stop": 1.513,
+          "p99_stop": 2.2244
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.3428,
+          "p95_stop": 0.415,
+          "p99_stop": 1.1192
+        },
+        "field_dedicated": {
+          "max_stop": 1.5156,
+          "p95_stop": 0.3275,
+          "p99_stop": 0.7021
+        },
+        "recoverable_p99_stop": -0.0971,
+        "shipped_assumed": {
+          "max_stop": 1.0014,
+          "p95_stop": 0.3281,
+          "p99_stop": 0.5101
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.2556,
+          "p95_stop": 0.2694,
+          "p99_stop": 0.6072
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 0.8219,
+          "p95_stop": 0.3449,
+          "p99_stop": 0.488
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.0746,
+          "p95_stop": 0.8409,
+          "p99_stop": 1.2373
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2918,
+          "p95_stop": 0.2464,
+          "p99_stop": 0.5709
+        },
+        "field_dedicated": {
+          "max_stop": 1.0713,
+          "p95_stop": 0.28,
+          "p99_stop": 0.4289
+        },
+        "recoverable_p99_stop": 0.0426,
+        "shipped_assumed": {
+          "max_stop": 0.9068,
+          "p95_stop": 0.2847,
+          "p99_stop": 0.4715
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.0713,
+          "p95_stop": 0.28,
+          "p99_stop": 0.4289
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 2.0266,
+          "p95_stop": 0.3335,
+          "p99_stop": 1.0337
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.2124,
+          "p95_stop": 3.2318,
+          "p99_stop": 4.0896
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.7151,
+          "p95_stop": 0.8118,
+          "p99_stop": 1.6542
+        },
+        "field_dedicated": {
+          "max_stop": 1.5362,
+          "p95_stop": 0.3573,
+          "p99_stop": 0.7057
+        },
+        "recoverable_p99_stop": -0.309,
+        "shipped_assumed": {
+          "max_stop": 1.3263,
+          "p95_stop": 0.4311,
+          "p99_stop": 0.7247
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 2.0266,
+          "p95_stop": 0.3335,
+          "p99_stop": 1.0337
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "portra400": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.2482,
+          "p95_stop": 0.4476,
+          "p99_stop": 0.6871
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.5194,
+          "p95_stop": 1.6426,
+          "p99_stop": 2.3571
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.2955,
+          "p95_stop": 0.5016,
+          "p99_stop": 1.177
+        },
+        "field_dedicated": {
+          "max_stop": 1.752,
+          "p95_stop": 0.3311,
+          "p99_stop": 0.69
+        },
+        "recoverable_p99_stop": -0.0324,
+        "shipped_assumed": {
+          "max_stop": 0.9537,
+          "p95_stop": 0.3757,
+          "p99_stop": 0.6547
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.2482,
+          "p95_stop": 0.4476,
+          "p99_stop": 0.6871
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 0.9774,
+          "p95_stop": 0.4358,
+          "p99_stop": 0.7702
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1295,
+          "p95_stop": 0.9556,
+          "p99_stop": 1.3577
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2706,
+          "p95_stop": 0.276,
+          "p99_stop": 0.6356
+        },
+        "field_dedicated": {
+          "max_stop": 1.0468,
+          "p95_stop": 0.3048,
+          "p99_stop": 0.5189
+        },
+        "recoverable_p99_stop": 0.0387,
+        "shipped_assumed": {
+          "max_stop": 0.9558,
+          "p95_stop": 0.3308,
+          "p99_stop": 0.5576
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.0468,
+          "p95_stop": 0.3048,
+          "p99_stop": 0.5189
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 2.9284,
+          "p95_stop": 0.382,
+          "p99_stop": 1.1673
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.2926,
+          "p95_stop": 3.3527,
+          "p99_stop": 4.2289
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.7476,
+          "p95_stop": 0.8382,
+          "p99_stop": 1.6796
+        },
+        "field_dedicated": {
+          "max_stop": 1.4437,
+          "p95_stop": 0.3596,
+          "p99_stop": 0.7147
+        },
+        "recoverable_p99_stop": -0.3479,
+        "shipped_assumed": {
+          "max_stop": 1.3253,
+          "p95_stop": 0.5568,
+          "p99_stop": 0.8194
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 2.9284,
+          "p95_stop": 0.382,
+          "p99_stop": 1.1673
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "portra800": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.262,
+          "p95_stop": 0.553,
+          "p99_stop": 0.9098
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.419,
+          "p95_stop": 1.5293,
+          "p99_stop": 2.2555
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.2514,
+          "p95_stop": 0.5436,
+          "p99_stop": 1.1409
+        },
+        "field_dedicated": {
+          "max_stop": 1.5845,
+          "p95_stop": 0.4171,
+          "p99_stop": 0.7478
+        },
+        "recoverable_p99_stop": -0.0271,
+        "shipped_assumed": {
+          "max_stop": 0.9205,
+          "p95_stop": 0.4382,
+          "p99_stop": 0.7207
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5845,
+          "p95_stop": 0.4171,
+          "p99_stop": 0.7478
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.5302,
+          "p95_stop": 0.5267,
+          "p99_stop": 0.9827
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1254,
+          "p95_stop": 1.0239,
+          "p99_stop": 1.5047
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2163,
+          "p95_stop": 0.3432,
+          "p99_stop": 0.7476
+        },
+        "field_dedicated": {
+          "max_stop": 1.1956,
+          "p95_stop": 0.3382,
+          "p99_stop": 0.6889
+        },
+        "recoverable_p99_stop": 0.0167,
+        "shipped_assumed": {
+          "max_stop": 1.219,
+          "p95_stop": 0.3851,
+          "p99_stop": 0.7056
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1956,
+          "p95_stop": 0.3382,
+          "p99_stop": 0.6889
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 3.6082,
+          "p95_stop": 0.4046,
+          "p99_stop": 1.1108
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.1781,
+          "p95_stop": 3.2521,
+          "p99_stop": 4.1232
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.6617,
+          "p95_stop": 0.8552,
+          "p99_stop": 1.6036
+        },
+        "field_dedicated": {
+          "max_stop": 1.384,
+          "p95_stop": 0.3619,
+          "p99_stop": 0.7479
+        },
+        "recoverable_p99_stop": -0.2331,
+        "shipped_assumed": {
+          "max_stop": 1.2483,
+          "p95_stop": 0.6858,
+          "p99_stop": 0.8777
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.6082,
+          "p95_stop": 0.4046,
+          "p99_stop": 1.1108
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "portra800push1": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.262,
+          "p95_stop": 0.553,
+          "p99_stop": 0.9098
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.419,
+          "p95_stop": 1.5293,
+          "p99_stop": 2.2555
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.2514,
+          "p95_stop": 0.5436,
+          "p99_stop": 1.1409
+        },
+        "field_dedicated": {
+          "max_stop": 1.5845,
+          "p95_stop": 0.4171,
+          "p99_stop": 0.7478
+        },
+        "recoverable_p99_stop": -0.0271,
+        "shipped_assumed": {
+          "max_stop": 0.9205,
+          "p95_stop": 0.4382,
+          "p99_stop": 0.7207
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5845,
+          "p95_stop": 0.4171,
+          "p99_stop": 0.7478
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.5302,
+          "p95_stop": 0.5267,
+          "p99_stop": 0.9827
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1254,
+          "p95_stop": 1.0239,
+          "p99_stop": 1.5047
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2163,
+          "p95_stop": 0.3432,
+          "p99_stop": 0.7476
+        },
+        "field_dedicated": {
+          "max_stop": 1.1956,
+          "p95_stop": 0.3382,
+          "p99_stop": 0.6889
+        },
+        "recoverable_p99_stop": 0.0167,
+        "shipped_assumed": {
+          "max_stop": 1.219,
+          "p95_stop": 0.3851,
+          "p99_stop": 0.7056
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1956,
+          "p95_stop": 0.3382,
+          "p99_stop": 0.6889
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 3.6082,
+          "p95_stop": 0.4046,
+          "p99_stop": 1.1108
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.1781,
+          "p95_stop": 3.2521,
+          "p99_stop": 4.1232
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.6617,
+          "p95_stop": 0.8552,
+          "p99_stop": 1.6036
+        },
+        "field_dedicated": {
+          "max_stop": 1.384,
+          "p95_stop": 0.3619,
+          "p99_stop": 0.7479
+        },
+        "recoverable_p99_stop": -0.2331,
+        "shipped_assumed": {
+          "max_stop": 1.2483,
+          "p95_stop": 0.6858,
+          "p99_stop": 0.8777
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.6082,
+          "p95_stop": 0.4046,
+          "p99_stop": 1.1108
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "portra800push2": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.262,
+          "p95_stop": 0.553,
+          "p99_stop": 0.9098
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.419,
+          "p95_stop": 1.5293,
+          "p99_stop": 2.2555
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.2514,
+          "p95_stop": 0.5436,
+          "p99_stop": 1.1409
+        },
+        "field_dedicated": {
+          "max_stop": 1.5845,
+          "p95_stop": 0.4171,
+          "p99_stop": 0.7478
+        },
+        "recoverable_p99_stop": -0.0271,
+        "shipped_assumed": {
+          "max_stop": 0.9205,
+          "p95_stop": 0.4382,
+          "p99_stop": 0.7207
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5845,
+          "p95_stop": 0.4171,
+          "p99_stop": 0.7478
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.5302,
+          "p95_stop": 0.5267,
+          "p99_stop": 0.9827
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1254,
+          "p95_stop": 1.0239,
+          "p99_stop": 1.5047
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2163,
+          "p95_stop": 0.3432,
+          "p99_stop": 0.7476
+        },
+        "field_dedicated": {
+          "max_stop": 1.1956,
+          "p95_stop": 0.3382,
+          "p99_stop": 0.6889
+        },
+        "recoverable_p99_stop": 0.0167,
+        "shipped_assumed": {
+          "max_stop": 1.219,
+          "p95_stop": 0.3851,
+          "p99_stop": 0.7056
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1956,
+          "p95_stop": 0.3382,
+          "p99_stop": 0.6889
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 3.6082,
+          "p95_stop": 0.4046,
+          "p99_stop": 1.1108
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.1781,
+          "p95_stop": 3.2521,
+          "p99_stop": 4.1232
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.6617,
+          "p95_stop": 0.8552,
+          "p99_stop": 1.6036
+        },
+        "field_dedicated": {
+          "max_stop": 1.384,
+          "p95_stop": 0.3619,
+          "p99_stop": 0.7479
+        },
+        "recoverable_p99_stop": -0.2331,
+        "shipped_assumed": {
+          "max_stop": 1.2483,
+          "p95_stop": 0.6858,
+          "p99_stop": 0.8777
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.6082,
+          "p95_stop": 0.4046,
+          "p99_stop": 1.1108
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "pro400h": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 2.9549,
+          "p95_stop": 0.3276,
+          "p99_stop": 0.7081
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.3947,
+          "p95_stop": 1.5789,
+          "p99_stop": 2.1282
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.294,
+          "p95_stop": 0.5355,
+          "p99_stop": 1.0783
+        },
+        "field_dedicated": {
+          "max_stop": 1.361,
+          "p95_stop": 0.3378,
+          "p99_stop": 0.6813
+        },
+        "recoverable_p99_stop": -0.019,
+        "shipped_assumed": {
+          "max_stop": 2.9549,
+          "p95_stop": 0.3242,
+          "p99_stop": 0.6891
+        },
+        "shipped_base": "3x3",
+        "shipped_dedicated": {
+          "max_stop": 2.9549,
+          "p95_stop": 0.3276,
+          "p99_stop": 0.7081
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.2157,
+          "p95_stop": 0.3834,
+          "p99_stop": 0.6098
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 1.9514,
+          "p95_stop": 0.7535,
+          "p99_stop": 1.1425
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2446,
+          "p95_stop": 0.2584,
+          "p99_stop": 0.5998
+        },
+        "field_dedicated": {
+          "max_stop": 1.0283,
+          "p95_stop": 0.2931,
+          "p99_stop": 0.5395
+        },
+        "recoverable_p99_stop": 0.0593,
+        "shipped_assumed": {
+          "max_stop": 1.2257,
+          "p95_stop": 0.3846,
+          "p99_stop": 0.5988
+        },
+        "shipped_base": "3x3",
+        "shipped_dedicated": {
+          "max_stop": 1.0283,
+          "p95_stop": 0.2931,
+          "p99_stop": 0.5395
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 2.85,
+          "p95_stop": 0.3715,
+          "p99_stop": 1.0216
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 4.9409,
+          "p95_stop": 3.0351,
+          "p99_stop": 3.913
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.5901,
+          "p95_stop": 0.7906,
+          "p99_stop": 1.5879
+        },
+        "field_dedicated": {
+          "max_stop": 1.415,
+          "p95_stop": 0.35,
+          "p99_stop": 0.7973
+        },
+        "recoverable_p99_stop": 0.4157,
+        "shipped_assumed": {
+          "max_stop": 49.0197,
+          "p95_stop": 0.4906,
+          "p99_stop": 1.4373
+        },
+        "shipped_base": "3x3",
+        "shipped_dedicated": {
+          "max_stop": 2.85,
+          "p95_stop": 0.3715,
+          "p99_stop": 1.0216
+        },
+        "tier_adopted": true,
+        "tier_model": "3x3"
+      }
+    },
+    "provia100f": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.1759,
+          "p95_stop": 0.5055,
+          "p99_stop": 0.8193
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.4779,
+          "p95_stop": 1.5501,
+          "p99_stop": 2.1431
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.3915,
+          "p95_stop": 0.5439,
+          "p99_stop": 1.1123
+        },
+        "field_dedicated": {
+          "max_stop": 1.4376,
+          "p95_stop": 0.3658,
+          "p99_stop": 0.7335
+        },
+        "recoverable_p99_stop": -0.0353,
+        "shipped_assumed": {
+          "max_stop": 1.0348,
+          "p95_stop": 0.4404,
+          "p99_stop": 0.6982
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.4376,
+          "p95_stop": 0.3658,
+          "p99_stop": 0.7335
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.5072,
+          "p95_stop": 0.5608,
+          "p99_stop": 1.0655
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 1.8427,
+          "p95_stop": 0.9157,
+          "p99_stop": 1.2552
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.3218,
+          "p95_stop": 0.3225,
+          "p99_stop": 0.6899
+        },
+        "field_dedicated": {
+          "max_stop": 1.1904,
+          "p95_stop": 0.3337,
+          "p99_stop": 0.7026
+        },
+        "recoverable_p99_stop": -0.0354,
+        "shipped_assumed": {
+          "max_stop": 1.3104,
+          "p95_stop": 0.3571,
+          "p99_stop": 0.6672
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1904,
+          "p95_stop": 0.3337,
+          "p99_stop": 0.7026
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 47.9726,
+          "p95_stop": 0.4594,
+          "p99_stop": 1.2116
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.034,
+          "p95_stop": 2.9178,
+          "p99_stop": 3.8059
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.795,
+          "p95_stop": 0.87,
+          "p99_stop": 1.6474
+        },
+        "field_dedicated": {
+          "max_stop": 1.6103,
+          "p95_stop": 0.3764,
+          "p99_stop": 0.8036
+        },
+        "recoverable_p99_stop": 0.1563,
+        "shipped_assumed": {
+          "max_stop": 1.3883,
+          "p95_stop": 0.6934,
+          "p99_stop": 0.9599
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.6103,
+          "p95_stop": 0.3764,
+          "p99_stop": 0.8036
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      }
+    },
+    "superia400": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.0389,
+          "p95_stop": 0.3161,
+          "p99_stop": 0.6637
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.4598,
+          "p95_stop": 1.4873,
+          "p99_stop": 2.0937
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.3945,
+          "p95_stop": 0.4876,
+          "p99_stop": 1.0834
+        },
+        "field_dedicated": {
+          "max_stop": 1.4552,
+          "p95_stop": 0.3433,
+          "p99_stop": 0.68
+        },
+        "recoverable_p99_stop": -0.0762,
+        "shipped_assumed": {
+          "max_stop": 1.0625,
+          "p95_stop": 0.3142,
+          "p99_stop": 0.5875
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.0389,
+          "p95_stop": 0.3161,
+          "p99_stop": 0.6637
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.1456,
+          "p95_stop": 0.353,
+          "p99_stop": 0.5301
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.0616,
+          "p95_stop": 0.7469,
+          "p99_stop": 1.1852
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.3417,
+          "p95_stop": 0.2567,
+          "p99_stop": 0.5846
+        },
+        "field_dedicated": {
+          "max_stop": 1.1057,
+          "p95_stop": 0.2873,
+          "p99_stop": 0.4821
+        },
+        "recoverable_p99_stop": -0.0196,
+        "shipped_assumed": {
+          "max_stop": 0.9541,
+          "p95_stop": 0.272,
+          "p99_stop": 0.4625
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1057,
+          "p95_stop": 0.2873,
+          "p99_stop": 0.4821
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 2.4854,
+          "p95_stop": 0.3363,
+          "p99_stop": 1.1173
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.299,
+          "p95_stop": 2.9836,
+          "p99_stop": 3.9697
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.923,
+          "p95_stop": 0.7698,
+          "p99_stop": 1.6669
+        },
+        "field_dedicated": {
+          "max_stop": 1.7433,
+          "p95_stop": 0.3591,
+          "p99_stop": 0.8699
+        },
+        "recoverable_p99_stop": -0.2842,
+        "shipped_assumed": {
+          "max_stop": 1.5436,
+          "p95_stop": 0.4976,
+          "p99_stop": 0.8331
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 2.4854,
+          "p95_stop": 0.3363,
+          "p99_stop": 1.1173
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "ultramax400": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 2.7602,
+          "p95_stop": 0.577,
+          "p99_stop": 0.9418
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.4949,
+          "p95_stop": 1.5244,
+          "p99_stop": 2.2428
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.3325,
+          "p95_stop": 0.5628,
+          "p99_stop": 1.1333
+        },
+        "field_dedicated": {
+          "max_stop": 1.5577,
+          "p95_stop": 0.4206,
+          "p99_stop": 0.7813
+        },
+        "recoverable_p99_stop": -0.0628,
+        "shipped_assumed": {
+          "max_stop": 0.9915,
+          "p95_stop": 0.4469,
+          "p99_stop": 0.7185
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5577,
+          "p95_stop": 0.4206,
+          "p99_stop": 0.7813
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.6063,
+          "p95_stop": 0.5355,
+          "p99_stop": 1.0129
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1127,
+          "p95_stop": 1.0099,
+          "p99_stop": 1.4373
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2821,
+          "p95_stop": 0.3543,
+          "p99_stop": 0.7282
+        },
+        "field_dedicated": {
+          "max_stop": 1.2446,
+          "p95_stop": 0.3492,
+          "p99_stop": 0.6812
+        },
+        "recoverable_p99_stop": 0.0321,
+        "shipped_assumed": {
+          "max_stop": 1.2669,
+          "p95_stop": 0.4002,
+          "p99_stop": 0.7133
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.2446,
+          "p95_stop": 0.3492,
+          "p99_stop": 0.6812
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 3.1861,
+          "p95_stop": 0.4322,
+          "p99_stop": 1.1999
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.245,
+          "p95_stop": 3.2732,
+          "p99_stop": 4.1356
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.7077,
+          "p95_stop": 0.8554,
+          "p99_stop": 1.6562
+        },
+        "field_dedicated": {
+          "max_stop": 1.5265,
+          "p95_stop": 0.3657,
+          "p99_stop": 0.7607
+        },
+        "recoverable_p99_stop": 0.1148,
+        "shipped_assumed": {
+          "max_stop": 1.3193,
+          "p95_stop": 0.6756,
+          "p99_stop": 0.8755
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5265,
+          "p95_stop": 0.3657,
+          "p99_stop": 0.7607
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      }
+    },
+    "velvia100": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.2215,
+          "p95_stop": 0.4709,
+          "p99_stop": 0.7874
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.0824,
+          "p95_stop": 1.5101,
+          "p99_stop": 2.1389
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.9764,
+          "p95_stop": 0.5059,
+          "p99_stop": 1.0813
+        },
+        "field_dedicated": {
+          "max_stop": 1.342,
+          "p95_stop": 0.3162,
+          "p99_stop": 0.5925
+        },
+        "recoverable_p99_stop": 0.069,
+        "shipped_assumed": {
+          "max_stop": 0.8181,
+          "p95_stop": 0.3983,
+          "p99_stop": 0.6615
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.342,
+          "p95_stop": 0.3162,
+          "p99_stop": 0.5925
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.3698,
+          "p95_stop": 0.5041,
+          "p99_stop": 1.0049
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 1.6145,
+          "p95_stop": 0.8909,
+          "p99_stop": 1.2437
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.0457,
+          "p95_stop": 0.3068,
+          "p99_stop": 0.673
+        },
+        "field_dedicated": {
+          "max_stop": 1.0792,
+          "p95_stop": 0.3067,
+          "p99_stop": 0.6633
+        },
+        "recoverable_p99_stop": -0.0347,
+        "shipped_assumed": {
+          "max_stop": 1.1364,
+          "p95_stop": 0.3313,
+          "p99_stop": 0.6286
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.0792,
+          "p95_stop": 0.3067,
+          "p99_stop": 0.6633
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 48.0242,
+          "p95_stop": 0.3594,
+          "p99_stop": 1.091
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 4.632,
+          "p95_stop": 2.6329,
+          "p99_stop": 3.4
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.582,
+          "p95_stop": 0.7968,
+          "p99_stop": 1.3508
+        },
+        "field_dedicated": {
+          "max_stop": 1.2858,
+          "p95_stop": 0.2996,
+          "p99_stop": 0.5699
+        },
+        "recoverable_p99_stop": 0.2904,
+        "shipped_assumed": {
+          "max_stop": 1.1622,
+          "p95_stop": 0.6537,
+          "p99_stop": 0.8603
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.2858,
+          "p95_stop": 0.2996,
+          "p99_stop": 0.5699
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      }
+    },
+    "verita200d": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.1449,
+          "p95_stop": 0.4204,
+          "p99_stop": 0.6471
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.5083,
+          "p95_stop": 1.5675,
+          "p99_stop": 2.2697
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.3327,
+          "p95_stop": 0.4861,
+          "p99_stop": 1.147
+        },
+        "field_dedicated": {
+          "max_stop": 1.6041,
+          "p95_stop": 0.3358,
+          "p99_stop": 0.7779
+        },
+        "recoverable_p99_stop": 0.012,
+        "shipped_assumed": {
+          "max_stop": 0.9928,
+          "p95_stop": 0.3873,
+          "p99_stop": 0.6591
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.1449,
+          "p95_stop": 0.4204,
+          "p99_stop": 0.6471
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.0507,
+          "p95_stop": 0.4539,
+          "p99_stop": 0.8381
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1418,
+          "p95_stop": 0.9419,
+          "p99_stop": 1.4007
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2848,
+          "p95_stop": 0.2794,
+          "p99_stop": 0.6373
+        },
+        "field_dedicated": {
+          "max_stop": 1.0618,
+          "p95_stop": 0.3121,
+          "p99_stop": 0.6234
+        },
+        "recoverable_p99_stop": -0.0318,
+        "shipped_assumed": {
+          "max_stop": 1.0286,
+          "p95_stop": 0.3197,
+          "p99_stop": 0.5916
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.0618,
+          "p95_stop": 0.3121,
+          "p99_stop": 0.6234
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 3.6832,
+          "p95_stop": 0.3594,
+          "p99_stop": 1.1645
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.2809,
+          "p95_stop": 3.3064,
+          "p99_stop": 4.1767
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.7156,
+          "p95_stop": 0.8533,
+          "p99_stop": 1.667
+        },
+        "field_dedicated": {
+          "max_stop": 1.528,
+          "p95_stop": 0.3697,
+          "p99_stop": 0.7442
+        },
+        "recoverable_p99_stop": -0.2772,
+        "shipped_assumed": {
+          "max_stop": 1.3288,
+          "p95_stop": 0.6349,
+          "p99_stop": 0.8873
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.6832,
+          "p95_stop": 0.3594,
+          "p99_stop": 1.1645
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "vision3200t": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.082,
+          "p95_stop": 0.4581,
+          "p99_stop": 0.7298
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.4691,
+          "p95_stop": 1.5593,
+          "p99_stop": 2.2504
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.3064,
+          "p95_stop": 0.5139,
+          "p99_stop": 1.1352
+        },
+        "field_dedicated": {
+          "max_stop": 1.5608,
+          "p95_stop": 0.347,
+          "p99_stop": 0.7783
+        },
+        "recoverable_p99_stop": -0.0304,
+        "shipped_assumed": {
+          "max_stop": 0.9663,
+          "p95_stop": 0.4152,
+          "p99_stop": 0.6994
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 3.082,
+          "p95_stop": 0.4581,
+          "p99_stop": 0.7298
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.1869,
+          "p95_stop": 0.4999,
+          "p99_stop": 0.937
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 1.9987,
+          "p95_stop": 0.8744,
+          "p99_stop": 1.3329
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2799,
+          "p95_stop": 0.2837,
+          "p99_stop": 0.7012
+        },
+        "field_dedicated": {
+          "max_stop": 1.0538,
+          "p95_stop": 0.3103,
+          "p99_stop": 0.7083
+        },
+        "recoverable_p99_stop": -0.0589,
+        "shipped_assumed": {
+          "max_stop": 1.1461,
+          "p95_stop": 0.3416,
+          "p99_stop": 0.6494
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.0538,
+          "p95_stop": 0.3103,
+          "p99_stop": 0.7083
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 47.1204,
+          "p95_stop": 0.3799,
+          "p99_stop": 1.1121
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.0978,
+          "p95_stop": 3.1932,
+          "p99_stop": 4.0526
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.6774,
+          "p95_stop": 0.8892,
+          "p99_stop": 1.6513
+        },
+        "field_dedicated": {
+          "max_stop": 1.4647,
+          "p95_stop": 0.3711,
+          "p99_stop": 0.7917
+        },
+        "recoverable_p99_stop": -0.1114,
+        "shipped_assumed": {
+          "max_stop": 1.2798,
+          "p95_stop": 0.6575,
+          "p99_stop": 1.0007
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 47.1204,
+          "p95_stop": 0.3799,
+          "p99_stop": 1.1121
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "vision3250d": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.2192,
+          "p95_stop": 0.5897,
+          "p99_stop": 0.9516
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.473,
+          "p95_stop": 1.5496,
+          "p99_stop": 2.2643
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.3004,
+          "p95_stop": 0.5783,
+          "p99_stop": 1.1444
+        },
+        "field_dedicated": {
+          "max_stop": 1.5964,
+          "p95_stop": 0.4124,
+          "p99_stop": 0.7879
+        },
+        "recoverable_p99_stop": -0.0227,
+        "shipped_assumed": {
+          "max_stop": 0.9679,
+          "p95_stop": 0.465,
+          "p99_stop": 0.7652
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5964,
+          "p95_stop": 0.4124,
+          "p99_stop": 0.7879
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.5586,
+          "p95_stop": 0.5783,
+          "p99_stop": 1.0592
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.0808,
+          "p95_stop": 1.0071,
+          "p99_stop": 1.5031
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.2721,
+          "p95_stop": 0.3642,
+          "p99_stop": 0.7904
+        },
+        "field_dedicated": {
+          "max_stop": 1.1955,
+          "p95_stop": 0.3442,
+          "p99_stop": 0.768
+        },
+        "recoverable_p99_stop": 0.0016,
+        "shipped_assumed": {
+          "max_stop": 1.2259,
+          "p95_stop": 0.4021,
+          "p99_stop": 0.7696
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1955,
+          "p95_stop": 0.3442,
+          "p99_stop": 0.768
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 5.0813,
+          "p95_stop": 0.4124,
+          "p99_stop": 1.1349
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.1575,
+          "p95_stop": 3.25,
+          "p99_stop": 4.1115
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.676,
+          "p95_stop": 0.8914,
+          "p99_stop": 1.6429
+        },
+        "field_dedicated": {
+          "max_stop": 1.4601,
+          "p95_stop": 0.3734,
+          "p99_stop": 0.8034
+        },
+        "recoverable_p99_stop": -0.1823,
+        "shipped_assumed": {
+          "max_stop": 1.2544,
+          "p95_stop": 0.7097,
+          "p99_stop": 0.9526
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 5.0813,
+          "p95_stop": 0.4124,
+          "p99_stop": 1.1349
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "vision3500t": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 1.7626,
+          "p95_stop": 0.5323,
+          "p99_stop": 0.9042
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.2419,
+          "p95_stop": 1.5841,
+          "p99_stop": 2.3309
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.0389,
+          "p95_stop": 0.5928,
+          "p99_stop": 1.1757
+        },
+        "field_dedicated": {
+          "max_stop": 1.7426,
+          "p95_stop": 0.3815,
+          "p99_stop": 0.8389
+        },
+        "recoverable_p99_stop": -0.0898,
+        "shipped_assumed": {
+          "max_stop": 0.9922,
+          "p95_stop": 0.4338,
+          "p99_stop": 0.7491
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.7426,
+          "p95_stop": 0.3815,
+          "p99_stop": 0.8389
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.2992,
+          "p95_stop": 0.4742,
+          "p99_stop": 0.8703
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 1.9894,
+          "p95_stop": 1.0294,
+          "p99_stop": 1.4574
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.0555,
+          "p95_stop": 0.2806,
+          "p99_stop": 0.6891
+        },
+        "field_dedicated": {
+          "max_stop": 1.0243,
+          "p95_stop": 0.3008,
+          "p99_stop": 0.6297
+        },
+        "recoverable_p99_stop": 0.0,
+        "shipped_assumed": {
+          "max_stop": 1.1278,
+          "p95_stop": 0.372,
+          "p99_stop": 0.6297
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.0243,
+          "p95_stop": 0.3008,
+          "p99_stop": 0.6297
+        },
+        "tier_adopted": true,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 2.7978,
+          "p95_stop": 0.3057,
+          "p99_stop": 1.1509
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.187,
+          "p95_stop": 3.1341,
+          "p99_stop": 3.9323
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.703,
+          "p95_stop": 0.7466,
+          "p99_stop": 1.4483
+        },
+        "field_dedicated": {
+          "max_stop": 1.2811,
+          "p95_stop": 0.316,
+          "p99_stop": 0.6623
+        },
+        "recoverable_p99_stop": -0.343,
+        "shipped_assumed": {
+          "max_stop": 1.3285,
+          "p95_stop": 0.6125,
+          "p99_stop": 0.8079
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 2.7978,
+          "p95_stop": 0.3057,
+          "p99_stop": 1.1509
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    },
+    "vision350d": {
+      "A": {
+        "3x3_dedicated": {
+          "max_stop": 3.1126,
+          "p95_stop": 0.5053,
+          "p99_stop": 0.8096
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 3.6046,
+          "p95_stop": 1.5497,
+          "p99_stop": 2.2319
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 2.4743,
+          "p95_stop": 0.5332,
+          "p99_stop": 1.1514
+        },
+        "field_dedicated": {
+          "max_stop": 1.5295,
+          "p95_stop": 0.3691,
+          "p99_stop": 0.7584
+        },
+        "recoverable_p99_stop": -0.0677,
+        "shipped_assumed": {
+          "max_stop": 1.1253,
+          "p95_stop": 0.4232,
+          "p99_stop": 0.6907
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.5295,
+          "p95_stop": 0.3691,
+          "p99_stop": 0.7584
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-B3": {
+        "3x3_dedicated": {
+          "max_stop": 1.364,
+          "p95_stop": 0.536,
+          "p99_stop": 0.9909
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 2.1175,
+          "p95_stop": 0.9065,
+          "p99_stop": 1.3724
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 1.3769,
+          "p95_stop": 0.3112,
+          "p99_stop": 0.7367
+        },
+        "field_dedicated": {
+          "max_stop": 1.1517,
+          "p95_stop": 0.3365,
+          "p99_stop": 0.7525
+        },
+        "recoverable_p99_stop": -0.0721,
+        "shipped_assumed": {
+          "max_stop": 1.1907,
+          "p95_stop": 0.3595,
+          "p99_stop": 0.6804
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 1.1517,
+          "p95_stop": 0.3365,
+          "p99_stop": 0.7525
+        },
+        "tier_adopted": false,
+        "tier_model": "field"
+      },
+      "LED-RGB1": {
+        "3x3_dedicated": {
+          "max_stop": 47.7835,
+          "p95_stop": 0.446,
+          "p99_stop": 1.2789
+        },
+        "field_assumed_d55_raw": {
+          "max_stop": 5.4943,
+          "p95_stop": 3.1716,
+          "p99_stop": 4.1579
+        },
+        "field_assumed_d55_unadapted": {
+          "max_stop": 3.0332,
+          "p95_stop": 0.9292,
+          "p99_stop": 1.7653
+        },
+        "field_dedicated": {
+          "max_stop": 1.8139,
+          "p95_stop": 0.3954,
+          "p99_stop": 0.844
+        },
+        "recoverable_p99_stop": -0.2329,
+        "shipped_assumed": {
+          "max_stop": 1.6362,
+          "p95_stop": 0.6896,
+          "p99_stop": 1.046
+        },
+        "shipped_base": "field",
+        "shipped_dedicated": {
+          "max_stop": 47.7835,
+          "p95_stop": 0.446,
+          "p99_stop": 1.2789
+        },
+        "tier_adopted": false,
+        "tier_model": "3x3"
+      }
+    }
+  },
+  "wb_semantics": "training white board under the SAME illuminant anchors row 0 and the Bradford CAT, mirroring a white-balanced runtime scene"
+}
