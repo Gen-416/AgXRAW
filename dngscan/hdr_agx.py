@@ -402,10 +402,12 @@ def render_ultrahdr_film_pair(
     color_plan = plan.color
     gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05
     join_ev = film_reference_white_ev(tone)
-    # The extension may only spend RELIABLE scene highlights above the join:
-    # the solved headroom is co-compiled with the reliable tail's distance
-    # from the join (review batch 14), so gain never engages content the
-    # RAW cannot vouch for.
+    # The reliable tail bounds HOW MANY stops the extension may spend (the
+    # solved headroom is co-compiled with the tail's distance from the join,
+    # review batch 14). The ramp itself is scene-EV driven with span
+    # 1.5*max(h, 1) above the join, so it reaches 2^h only at join+span —
+    # which can lie past the tail (self-review 2026-08-27; the old wording
+    # "gain never engages content the RAW cannot vouch for" overstated it).
     headroom_ev = min(
         float(hdr_plan.tone.rendered_headroom_ev),
         max(float(hdr_plan.tone.reliable_tail_ev) - join_ev, 0.0),

@@ -247,6 +247,31 @@ def _patch_dng_container(value: bool):
     )
 
 
+def _rendered_neutral_ratios(bundle, calib, cct, decode, target, target_wb):
+    """R/G and B/G of the declared white after the REAL reconstruction model:
+    camera response CM_t @ XYZ_t, as-shot multipliers G0, LibRaw's rgb_cam
+    (adopted cmatrix -> the D65-row-normalized selected matrix), then the
+    hot transform built from (decode, target, target_wb)."""
+    from dngscan.constants import RGB_TO_XYZ, XYZ_TO_RGB
+    from dngscan.raw_io import color_matrix_xyz_to_cam
+    from dngscan.wb import cct_to_xy, interpolated_color_matrix
+
+    x, y = cct_to_xy(cct)
+    xyz_t = np.array([x / y, 1.0, (1.0 - x - y) / y])
+    cam_white = np.asarray(interpolated_color_matrix(calib, cct), dtype=np.float64) @ xyz_t
+    g0 = np.asarray(bundle.decode_wb or bundle.camera_wb, dtype=np.float64)[:3]
+    g0 = g0 / g0[1]
+    applied = np.asarray(color_matrix_xyz_to_cam(bundle.wb_color_matrix), dtype=np.float64)
+    cam_to_rec2020 = np.asarray(XYZ_TO_RGB["Rec2020"], dtype=np.float64) @ np.linalg.pinv(applied)
+    decoded = cam_to_rec2020 @ (g0 * cam_white)
+    transform = np.asarray(
+        hot_wb_matrix_rec2020(decode, list(g0) + [g0[1]], list(target_wb), target),
+        dtype=np.float64,
+    )
+    out = transform @ decoded
+    return [out[0] / out[1], out[2] / out[1]]
+
+
 class HotWbC0LadderTests(unittest.TestCase):
     """The decode-side C0 ladder: evidence matrix -> LibRaw rgb_cam -> DNG tags ->
     project fallback table -> refusal."""
@@ -261,24 +286,29 @@ class HotWbC0LadderTests(unittest.TestCase):
         np.testing.assert_allclose(decode, _EVIDENCE_MATRIX)
         np.testing.assert_allclose(target, _EVIDENCE_MATRIX)
 
-    def test_rung1_with_calibration_anchors_both_sides_by_interpolation(self) -> None:
-        # Seam A fix: the evidence matrix (LibRaw cam_xyz, D65-pinned on DNGs) must
-        # not serve as decode C0 against a target interpolated at the declared CCT.
-        # With calibration tags present both sides interpolate from the file's own
-        # dual-illuminant tags — decode at the as-shot CCT, target at the declared
-        # CCT — the same anchoring rung 3 already used.
+    def test_rung1_with_calibration_renders_the_declared_white_neutral(self) -> None:
+        """Self-review 2026-08-27 (P1): the two sides of a hot-WB conjugation
+        may differ only in LibRaw's D65-row-normalized convention. Property,
+        not formula: simulate the fixed LibRaw decode of the declared white
+        (camera response CM_t @ XYZ_t, rendered through the adopted rgb_cam
+        and the as-shot multipliers), apply the hot transform, and require
+        the result neutral within 1e-3. The old pins froze an interpolated
+        as-shot/declared pair that rendered R/G 0.40, B/G 1.41 at 5500 K."""
+        from dngscan.wb import cct_to_xy, solve_kelvin_wb
+
+        calib = _synthetic_calibration()
         bundle = _ladder_bundle(
             wb_xyz_to_cam=_EVIDENCE_MATRIX.copy(), wb_color_matrix=_RGB_CAM.copy()
         )
-        calib = _synthetic_calibration()
-        with _patch_calibration(calib):
-            decode, target, source = resolve_hot_wb_c0(bundle, 5500.0)
-        self.assertEqual(source, "evidence+cct")
-        asshot_cct = asshot_reference_cct(calib, bundle.decode_wb)
-        np.testing.assert_allclose(
-            decode, interpolated_color_matrix(calib, asshot_cct)
-        )
-        np.testing.assert_allclose(target, interpolated_color_matrix(calib, 5500.0))
+        for cct in (3200.0, 5500.0, 6500.0):
+            with self.subTest(cct=cct), _patch_calibration(calib), _patch_dng_container(True):
+                decode, target, source = resolve_hot_wb_c0(bundle, cct)
+                self.assertEqual(source, "evidence+cct")
+                target_wb = solve_kelvin_wb(cct, dng_calibration=calib)
+                ratios = _rendered_neutral_ratios(
+                    bundle, calib, cct, decode, target, target_wb
+                )
+                np.testing.assert_allclose(ratios, [1.0, 1.0], atol=1e-3)
 
     def test_rung1_daylight_mode_stays_symmetric_on_evidence(self) -> None:
         # target_cct None (daylight): both sides keep the evidence matrix — never
@@ -290,10 +320,10 @@ class HotWbC0LadderTests(unittest.TestCase):
         np.testing.assert_allclose(decode, _EVIDENCE_MATRIX)
         np.testing.assert_allclose(target, _EVIDENCE_MATRIX)
 
-    def test_rung1_unsolvable_asshot_cct_falls_back_to_evidence_both_sides(self) -> None:
-        # A file with a usable evidence matrix whose as-shot multipliers cannot
-        # anchor a CCT must not degrade to camera: the self-consistent
-        # single-matrix convention is still available.
+    def test_rung1_does_not_consult_the_asshot_cct(self) -> None:
+        """The decode side is the matrix LibRaw applied, never an as-shot
+        interpolation, so degenerate as-shot multipliers cannot demote a file
+        with a usable evidence matrix (self-review 2026-08-27)."""
         bundle = _ladder_bundle(
             wb_xyz_to_cam=_EVIDENCE_MATRIX.copy(),
             decode_wb=[0.0, 1.0, 1.0, 0.0],
@@ -301,9 +331,14 @@ class HotWbC0LadderTests(unittest.TestCase):
         )
         with _patch_calibration(_synthetic_calibration()):
             decode, target, source = resolve_hot_wb_c0(bundle, 5500.0)
-        self.assertEqual(source, "evidence")
-        np.testing.assert_allclose(decode, _EVIDENCE_MATRIX)
-        np.testing.assert_allclose(target, _EVIDENCE_MATRIX)
+        self.assertEqual(source, "evidence+cct")
+        from dngscan.raw_io import d65_row_normalize
+
+        np.testing.assert_allclose(decode, d65_row_normalize(_EVIDENCE_MATRIX))
+        np.testing.assert_allclose(
+            target @ np.asarray(__import__("dngscan.raw_io", fromlist=["D65_XYZ"]).D65_XYZ),
+            [1.0, 1.0, 1.0],
+        )
 
     def test_rung2_libraw_decode_matrix_used_when_evidence_is_zero(self) -> None:
         bundle = _ladder_bundle(
@@ -338,17 +373,18 @@ class HotWbC0LadderTests(unittest.TestCase):
 
     def test_rung2_gate_rejects_sub_threshold_cmatrix(self) -> None:
         # LibRaw's pinned threshold: cmatrix[0][0] must exceed 0.125 to be adopted.
+        # Below it LibRaw rendered raw_color, so rung 3 is the identity basis.
         low = _RGB_CAM.copy()
         low[0, 0] = 0.1
         bundle = _ladder_bundle(wb_color_matrix=low)
         calib = _synthetic_calibration()
         with _patch_calibration(calib), _patch_dng_container(True):
-            decode, _target, source = resolve_hot_wb_c0(bundle, 5500.0)
+            decode, target, source = resolve_hot_wb_c0(bundle, 5500.0)
         self.assertEqual(source, "dng_calibration")
-        reference_cct = asshot_reference_cct(calib, bundle.decode_wb)
-        np.testing.assert_allclose(
-            decode, interpolated_color_matrix(calib, reference_cct)
-        )
+        from dngscan.raw_io import XYZ_TO_RGB_REC2020
+
+        np.testing.assert_allclose(decode, np.asarray(XYZ_TO_RGB_REC2020))
+        np.testing.assert_allclose(target, decode)
 
     def test_rung2_folds_the_second_green_column(self) -> None:
         base = _RGB_CAM.copy()
@@ -364,36 +400,46 @@ class HotWbC0LadderTests(unittest.TestCase):
         self.assertIsNone(color_matrix_xyz_to_cam(None))
         self.assertIsNone(color_matrix_xyz_to_cam(np.zeros((3, 4))))
 
-    def test_rung3_dng_tags_anchor_c0_at_the_asshot_white(self) -> None:
+    def test_rung3_identity_decode_rebalances_diagonally(self) -> None:
+        """Rung 3 is reached only when LibRaw rendered raw_color (no table
+        cam_xyz, no adopted cmatrix): the decoded buffer is camera RGB and the
+        only honest rebalance is the pure diagonal G_t * G0^-1 (self-review
+        2026-08-27). Both sides carry Rec.2020's own XYZ->RGB so the
+        conjugation basis is the identity."""
         calib = _synthetic_calibration()
         bundle = _ladder_bundle()
         with _patch_calibration(calib):
             decode, target, source = resolve_hot_wb_c0(bundle, 5500.0)
         self.assertEqual(source, "dng_calibration")
-        reference_cct = asshot_reference_cct(calib, bundle.decode_wb)
-        np.testing.assert_allclose(
-            decode, interpolated_color_matrix(calib, reference_cct)
+        np.testing.assert_allclose(decode, target)
+        transform = hot_wb_matrix_rec2020(
+            decode, [2.0, 1.0, 1.5, 1.0], [1.6, 1.0, 1.9, 1.0], target
         )
-        np.testing.assert_allclose(
-            target, interpolated_color_matrix(calib, 5500.0)
-        )
+        off_diagonal = transform - np.diag(np.diag(transform))
+        self.assertLess(float(np.abs(off_diagonal).max()), 1e-9)
+        np.testing.assert_allclose(np.diag(transform), [1.6 / 2.0, 1.0, 1.9 / 1.5], rtol=1e-6)
 
     def test_rung4_fallback_table_serves_bodies_newer_than_libraw(self) -> None:
         # A7R-VI-class scenario: non-DNG container, body absent from LibRaw's
-        # tables (empty evidence matrix, no usable rgb_cam, no DNG tags) — the
-        # same fallback matrix that already solves the target multipliers now
-        # also anchors C0, instead of degrading to camera.
+        # tables (empty evidence matrix, no usable rgb_cam, no DNG tags). The
+        # fallback matrix still solves the target MULTIPLIERS; LibRaw itself
+        # decoded raw_color, so the conjugation basis is the identity — the
+        # transform is the pure diagonal G_t * G0^-1 (self-review 2026-08-27),
+        # never a channel mix the decoder did not apply.
         from dngscan.camera_matrices import fallback_xyz_to_cam
+        from dngscan.raw_io import XYZ_TO_RGB_REC2020, solve_wb_for_mode
 
         bundle = _ladder_bundle(shot_make="FUJIFILM", shot_model="X-E5")
         with _patch_calibration(None):
             decode, target, source = resolve_hot_wb_c0(bundle, 5500.0)
+            mult, note = solve_wb_for_mode("5500k", bundle.path, None, make="FUJIFILM", model="X-E5")
         self.assertEqual(source, "fallback_table")
+        np.testing.assert_allclose(decode, np.asarray(XYZ_TO_RGB_REC2020))
+        np.testing.assert_allclose(target, decode)
+        self.assertIsNotNone(mult)
+        self.assertIn("回退矩阵表", note or "")
         matrix, _note = fallback_xyz_to_cam("FUJIFILM", "X-E5")
-        np.testing.assert_allclose(decode, np.asarray(matrix, dtype=np.float64))
-        # Single-illuminant rung: the same matrix serves both sides so the
-        # convention never mixes (diagonal gains commute through it).
-        np.testing.assert_allclose(target, decode, rtol=0.0, atol=0.0)
+        self.assertIsNotNone(matrix)
 
     def test_rung5_everything_missing_is_a_refusal(self) -> None:
         bundle = _ladder_bundle()
@@ -525,3 +571,77 @@ class CameraRebalanceDegradationNoteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlanckianSeamTests(unittest.TestCase):
+    def test_low_range_cubic_is_continuous_at_2222k(self) -> None:
+        """Self-review 2026-08-27: the 1667-2222 K branch reused the 2222-4000 K
+        cubic coefficient (0.027 y error at 1700 K, 0.019 jump at the seam);
+        Kim's fit is continuous to ~5e-6."""
+        from dngscan.wb import cct_to_xy
+
+        a = cct_to_xy(2221.9)
+        b = cct_to_xy(2222.0)
+        self.assertLess(abs(a[1] - b[1]), 2e-5)
+
+
+class LibRawOrientationTests(unittest.TestCase):
+    def test_flip_codes_follow_libraw_bits(self) -> None:
+        from dngscan.raw_io import _orient_like_libraw
+
+        arr = np.arange(2 * 3 * 3, dtype=np.float32).reshape(2, 3, 3)
+        np.testing.assert_array_equal(_orient_like_libraw(arr, 1), np.fliplr(arr))
+        np.testing.assert_array_equal(_orient_like_libraw(arr, 2), np.flipud(arr))
+        np.testing.assert_array_equal(_orient_like_libraw(arr, 4), np.transpose(arr, (1, 0, 2)))
+        np.testing.assert_array_equal(_orient_like_libraw(arr, 3), np.rot90(arr, 2))
+        np.testing.assert_array_equal(_orient_like_libraw(arr, 5), np.rot90(arr, 1))
+        np.testing.assert_array_equal(_orient_like_libraw(arr, 6), np.rot90(arr, 3))
+        with self.assertRaises(ValueError):
+            _orient_like_libraw(arr, 8)
+
+    def test_flip_codes_match_rawpy_postprocess_on_a_sample(self) -> None:
+        """Every code against rawpy.postprocess(user_flip=k) on a real file
+        (sample-gated; the mapping test above runs everywhere)."""
+        from pathlib import Path
+
+        sample = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
+        if not sample.is_file():
+            self.skipTest("sample RAW not available")
+        try:
+            import rawpy
+        except Exception:
+            self.skipTest("rawpy unavailable")
+        from dngscan.raw_io import _orient_like_libraw
+
+        with rawpy.imread(str(sample)) as raw:
+            base = raw.postprocess(user_flip=0, half_size=True, output_bps=8, no_auto_bright=True)
+        for code in (1, 2, 3, 4, 5, 6, 7):
+            with rawpy.imread(str(sample)) as raw:
+                ref = raw.postprocess(user_flip=code, half_size=True, output_bps=8, no_auto_bright=True)
+            with self.subTest(code=code):
+                np.testing.assert_array_equal(_orient_like_libraw(base, code), ref)
+
+
+class CoreImageAlignedScaleTests(unittest.TestCase):
+    def test_reference_scale_is_independent_of_the_requested_wb(self) -> None:
+        """Self-review 2026-08-27 (P1): the aligned-mode reference render is
+        decoded at as-shot WB, so its storage-scale contract must not change
+        with the requested Kelvin (it did: +0.053 EV at 3200 K, -0.234 EV at
+        5500 K on _SDI0150). Sample- and runtime-gated."""
+        from pathlib import Path
+
+        from dngscan import coreimage_decode
+        from dngscan.raw_io import load_raw
+
+        sample = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
+        if not sample.is_file():
+            self.skipTest("sample RAW not available")
+        if not coreimage_decode.runtime_available(interactive=False):
+            self.skipTest("Core Image runtime unavailable")
+        factors = {}
+        for wb in ("camera", "3200k", "5500k"):
+            bundle = load_raw(sample, decoder="coreimage", wb_mode=wb, coreimage_scale="aligned")
+            factors[wb] = float(getattr(bundle, "scene_align_factor", float("nan")))
+        self.assertTrue(all(np.isfinite(v) for v in factors.values()), factors)
+        self.assertAlmostEqual(factors["3200k"], factors["camera"], places=6, msg=str(factors))
+        self.assertAlmostEqual(factors["5500k"], factors["camera"], places=6, msg=str(factors))

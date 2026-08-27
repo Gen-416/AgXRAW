@@ -50,7 +50,8 @@ struct NativeHdrPlan {
   float punch_strength;
   // channel_separation * snr_gate; per-pixel rho is gated by the CFA clip masks.
   float global_rho;
-  // Scene-authorized native peak after the gamut-fit margin (_pack_peak).
+  // Scene-authorized content peak, 2^H_rendered (_pack_peak); no margin is
+  // applied (R2 item 10 removed it).
   float peak;
 
   HdrCurveTableView native_table;

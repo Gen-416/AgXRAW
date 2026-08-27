@@ -137,6 +137,16 @@ SPREAD_MAX_DIM = 2048
 _SPREAD_DIM_BY_TIER = {512: 1408, 1024: SPREAD_MAX_DIM}
 
 
+
+def light_source(rgb_rec2020):
+    """The non-negative part of a signed scene buffer: what the light-transport
+    operators (capture bloom, halation) may spread. A negative Rec.2020
+    component is a legal out-of-gamut chromaticity for the colour path, but it
+    is not light — feeding it to a spreading kernel subtracts energy from the
+    neighbourhood (measured -36 on a synthetic source before this boundary
+    was declared, self-review 2026-08-27)."""
+    return np.maximum(np.asarray(rgb_rec2020, dtype=np.float32), np.float32(0.0))
+
 def spread_max_dim() -> int:
     from .render import _optics_budget_mib
 
@@ -888,8 +898,9 @@ def _blur_small_sigma(chan: np.ndarray, sigma_px: float) -> np.ndarray:
     below pi/2), and the measured end-to-end scatter-response deviation is
     up to ~4.8 pp at 20 um/px pitches — the inherent cost of a 5-tap
     band-limited match, accepted as the best available discretization at
-    this support. Gate 13's 3 pp tolerance samples 6 um/px, where the
-    deviation stays ~2.4 pp. Tiny negative lobes below sigma ~0.703 are
+    this support. Gate 13 pins two frequencies at 6 um/px; the band-wide
+    end-to-end deviation there is ~3.7 pp (B channel, 67.6 c/mm), 4.9 pp at
+    8.8 um/px (self-review 2026-08-27 corrected the earlier ~2.4 pp figure). Tiny negative lobes below sigma ~0.703 are
     the price of the in-band match and sum to zero energy."""
     g_half = float(np.exp(-0.5 * sigma_px ** 2 * (np.pi / 2.0) ** 2))
     g_nyq = float(np.exp(-0.5 * sigma_px ** 2 * np.pi ** 2))

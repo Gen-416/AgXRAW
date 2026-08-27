@@ -52,7 +52,13 @@ def apply_lum_core(rgb_rec2020: Any, plan: Any) -> Any:
         mapped_norm = np.power(np.maximum(curved, 0.0), float(params["gamma"]))
     brightness = max(EPS, float(getattr(plan, "view_brightness", 1.0)))
     if abs(brightness - 1.0) > 1e-6:
-        mapped_norm = np.power(np.maximum(mapped_norm, 0.0), 1.0 / brightness)
+        # The same darktable brightness->power map the agx core uses
+        # (1/sqrt below 1, 1/b above): the lum core applied 1/b on both
+        # sides, so at view_brightness 0.84 it darkened 18% grey by -0.47 EV
+        # against agx's -0.22 EV (self-review 2026-08-27).
+        mapped_norm = np.power(
+            np.maximum(mapped_norm, 0.0), agx_engine.look_brightness_power(brightness)
+        )
     ratio = np.zeros_like(mapped_norm, dtype=np.float32)
     valid = norm > np.float32(EPS)
     ratio[valid] = mapped_norm[valid] / np.maximum(norm[valid], np.float32(EPS))

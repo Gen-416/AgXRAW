@@ -70,8 +70,11 @@ def curve_params_from_plan(plan: Any) -> dict[str, float | bool]:
     """Compile the darktable-style C1 curve for one scene plan.
 
     Endpoints stay scene-derived and EV=0 remains the calibrated mid-gray anchor for
-    exposure. When pivot_ev_offset is non-zero the contrast pivot moves toward the
-    scene body (brightness-preserving shifted pivot + adaptive gamma).
+    exposure. A non-zero pivot_ev_offset (not wired into production plans) moves
+    the contrast pivot with gamma FIXED at 2.2 and the EV0 output held; subject
+    brightness at the shifted pivot is allowed to move (measured -0.2 EV at
+    offset -0.9). It is not brightness-preserving and there is no adaptive gamma
+    (self-review 2026-08-27).
 
     Results are cached by the rounded parameter tuple: the hot path rebuilds the same
     plan for every chunk and every HDR candidate.

@@ -112,7 +112,15 @@ class MatrixHealthReportLineTests(unittest.TestCase):
             line = matrix_health_line_cn(dataclasses.replace(base, wb_mode="5500k"))
             self.assertIn("DNG双光源插值", line)
             self.assertIn("@ 5500K(声明)", line)
-            expected = float(np.linalg.cond(np.asarray(interpolated_color_matrix(cal, 5500.0))))
+            # Self-review 2026-08-27 (P1): the evidence+cct rung targets the
+            # D65-row-normalised interpolated matrix (the same normalisation
+            # the decode side carries), so the line reports κ of THAT matrix,
+            # not of the raw interpolation (2.33 vs 2.81 on the fallback set).
+            from dngscan.raw_io import d65_row_normalize
+
+            expected = float(np.linalg.cond(np.asarray(
+                d65_row_normalize(interpolated_color_matrix(cal, 5500.0))
+            )))
             self.assertIn(f"κ={expected:.2f}", line)
 
 

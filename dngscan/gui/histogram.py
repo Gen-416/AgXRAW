@@ -6,8 +6,9 @@ informs (the project's data-next-to-function rule):
 
 * **Scene EV** (exposure card): the same reliable-sample selection the tone
   planner compiles its percentiles from (:func:`dngscan.tone.
-  reliable_scene_ev_selection`), measured on the fixed 1920px proxy and viewed
-  through intent exposure. Moving the EV slider moves this population against
+  reliable_scene_ev_selection`), measured on the exporter's full-resolution
+  tone-plan sample rows carried by the cache-proxy bundle (R2 item 20; proxy
+  pixels only for pre-v14 entries) and viewed through intent exposure. Moving the EV slider moves this population against
   the plan's fixed compiled endpoints, so the user can watch the body cross the
   black/white points the render actually uses.
 * **Display code values** (preview card): the exact rendered 1920px u8 frame
