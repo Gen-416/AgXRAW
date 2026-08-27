@@ -174,15 +174,15 @@ class StageAMathTests(unittest.TestCase):
 
 class FilmV2AssetTests(unittest.TestCase):
     def test_schema_and_provenance_per_kind(self) -> None:
-        """Every file in the modular family carries schema 9, its declared
-        kind, sane domains and full-length source hashes (plan §7.1; 9 =
-        Stage A provenance keys joined the ABI, review 2026-08-27 F8)."""
+        """Every file in the modular family carries schema 10, its declared
+        kind, sane domains and full-length source hashes (plan §7.1; 10 =
+        Stage A correction-LUT form + generator provenance, third review 2026-08-27)."""
         stocks = _stock_files()
         self.assertGreaterEqual(len(stocks), 25)
         for stock in stocks:
             with self.subTest(kind="stock", name=stock):
                 z = _load(stock)
-                self.assertEqual(int(z["schema"]), 9)
+                self.assertEqual(int(z["schema"]), 10)
                 self.assertEqual(str(np.asarray(z["kind"])), "stock")
                 self.assertTrue(np.all(z["amount_hi"] > z["amount_lo"]))
                 self.assertEqual(float(z["exposure_ev_min"]), -2.0)
@@ -195,7 +195,7 @@ class FilmV2AssetTests(unittest.TestCase):
         for path in _print_files():
             with self.subTest(kind="print_state", name=path.stem):
                 z = dict(np.load(path, allow_pickle=False))
-                self.assertEqual(int(z["schema"]), 9)
+                self.assertEqual(int(z["schema"]), 10)
                 self.assertEqual(str(np.asarray(z["kind"])), "print_state")
                 n = int(z["n"])
                 self.assertEqual(z["b1_volume"].shape, (n, n, n, 3))
@@ -209,7 +209,7 @@ class FilmV2AssetTests(unittest.TestCase):
         for path in _b2_files():
             with self.subTest(kind="b2", name=path.stem):
                 z = dict(np.load(path, allow_pickle=False))
-                self.assertEqual(int(z["schema"]), 9)
+                self.assertEqual(int(z["schema"]), 10)
                 self.assertEqual(str(np.asarray(z["kind"])), "b2")
                 n = int(z["n"])
                 vol = z["volume"].astype(np.float32)

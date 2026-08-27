@@ -56,31 +56,39 @@ def layer_log_exposure(rgb_rec2020: Any, observer: Any) -> Any:
 
 def chroma_field_log_exposure(
     rgb_rec2020: Any,
-    lut: Any,
+    delta_lut: Any,
     domain: Any,
     xyz_from_rec2020: Any,
     observer: Any,
 ) -> Any:
     """Per-layer log10 exposure through the chromaticity field (route C §2).
 
-    E = Y * 2^L(x, y), with L a bilinear sample of the per-layer LUT holding
-    log2(E/Y). The LUT was baked over the training chromaticity hull; cells
-    outside the hull carry the 3x3 observer's own chromaticity response
-    behind a blend band, so a strictly positive pixel — whose chromaticity
-    cannot leave the Rec.2020 triangle — always rides the LUT.
+    Correction form (third review 2026-08-27, F1): the signed 3x3 observer
+    product E_obs = rgb @ A^T is evaluated analytically for EVERY pixel, and
+    the field enters only as a multiplicative correction
+
+        E = E_obs * 2^delta(x, y)
+
+    with ``delta`` a bilinear sample of the baked correction LUT — the
+    field-minus-3x3 log difference, weighted to 1 inside the training hull,
+    blended out through the band and C1-tapered to exactly 0 before the
+    Rec.2020 triangle edge (and 0 outside it). No 3x3 surface is ever
+    sampled from the grid, so nothing singular from outside the triangle
+    can leak into an interpolation; at the gamut boundary the operator IS
+    the analytic 3x3 on both sides of a channel's zero crossing.
 
     Domain contract (F4): a pixel with a non-positive or non-finite channel
-    is NOT clamped into the triangle; it leaves the field and evaluates the
-    signed 3x3 (layer_log_exposure) on its original coordinates, which is
-    also what the LUT converges to at the triangle edge (the out-of-hull
-    region IS the 3x3's response), so the hand-over is continuous. Exact
-    neutrals take the 3x3 product too: the field equals it there by the
-    white anchor, but float chromaticity jitter (~1e-16 in (x,y)) would
-    otherwise leak ~1e-15 inter-layer nonuniformity into the interimage
-    term and break the mainline grey-ramp BIT-invariance contract.
+    is not clamped into the triangle; delta is simply not applied (its
+    chromaticity is undefined or outside the LUT's support) and the signed
+    3x3 answers on the original coordinates. Exact neutrals also skip delta:
+    it is 0 at the white chromaticity by construction, but float jitter in
+    (x, y) would otherwise leak ~1e-15 inter-layer nonuniformity into the
+    interimage term and break the mainline grey-ramp BIT-invariance.
     """
     rgb = np.asarray(rgb_rec2020, dtype=np.float64)
     a_obs = np.asarray(observer, dtype=np.float64)
+    mid = a_obs @ np.full(3, SCENE_MID)
+    e_obs = rgb @ a_obs.T
     finite = np.isfinite(rgb).all(axis=1)
     positive = finite & (rgb > 0.0).all(axis=1)
     neutral = (rgb[:, 0] == rgb[:, 1]) & (rgb[:, 1] == rgb[:, 2])
@@ -99,7 +107,7 @@ def chroma_field_log_exposure(
         & np.isfinite(cx) & np.isfinite(cy)
         & (cx >= x0) & (cx <= x1) & (cy >= y0) & (cy <= y1)
     )
-    table = np.asarray(lut, dtype=np.float64)
+    table = np.asarray(delta_lut, dtype=np.float64)
     n = table.shape[0]
     fx = np.clip((np.where(ok, cx, x0) - x0) / (x1 - x0), 0.0, 1.0) * (n - 1)
     fy = np.clip((np.where(ok, cy, y0) - y0) / (y1 - y0), 0.0, 1.0) * (n - 1)
@@ -107,29 +115,22 @@ def chroma_field_log_exposure(
     iy = np.minimum(fy.astype(np.int64), n - 2)
     tx = (fx - ix)[:, None]
     ty = (fy - iy)[:, None]
-    l00 = table[ix, iy]
-    l10 = table[ix + 1, iy]
-    l01 = table[ix, iy + 1]
-    l11 = table[ix + 1, iy + 1]
-    logratio = (
-        l00 * (1.0 - tx) * (1.0 - ty)
-        + l10 * tx * (1.0 - ty)
-        + l01 * (1.0 - tx) * ty
-        + l11 * tx * ty
+    delta = (
+        table[ix, iy] * (1.0 - tx) * (1.0 - ty)
+        + table[ix + 1, iy] * tx * (1.0 - ty)
+        + table[ix, iy + 1] * (1.0 - tx) * ty
+        + table[ix + 1, iy + 1] * tx * ty
     )
-    e_field = lum[:, None] * np.exp2(logratio)
-    mid = a_obs @ np.full(3, SCENE_MID)
-    out = np.log10(np.maximum(e_field, 1e-12) / np.maximum(mid, 1e-12)[None, :])
-    if not bool(np.all(ok)):
-        fallback = layer_log_exposure(rgb, a_obs)
-        out = np.where(ok[:, None], out, fallback)
-    return out
+    delta = np.where(ok[:, None], delta, 0.0)
+    e = e_obs * np.exp2(delta)
+    return np.log10(np.maximum(e, 1e-12) / np.maximum(mid, 1e-12)[None, :])
 
 
 def stage_a_log_exposure(rgb_rec2020: Any, stock: dict) -> Any:
-    """The Stage A dispatch: chromaticity field when the stock adopted one
-    (route-C CV selection, baked into the asset), 3x3 observer otherwise."""
-    lut = stock.get("chroma_lut")
+    """The Stage A dispatch: chromaticity-field correction when the stock
+    adopted one (route-C CV selection, baked into the asset), the plain
+    signed 3x3 observer otherwise."""
+    lut = stock.get("chroma_delta_lut")
     if lut is not None:
         return chroma_field_log_exposure(
             rgb_rec2020,

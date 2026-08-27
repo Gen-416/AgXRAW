@@ -45,9 +45,23 @@ class ChromaFieldRecordTests(unittest.TestCase):
         self.assertEqual(r["lut"]["blend_sigma_cells"], fc.BLEND_SIGMA_CELLS)
         self.assertEqual(r["lut"]["dilate_cells"], fc.DILATE_CELLS)
         self.assertEqual(r["lut"]["edge_taper_cells"], fc.EDGE_TAPER_CELLS)
+        self.assertEqual(r["lut"]["edge_zero_cells"], fc.EDGE_ZERO_CELLS)
         self.assertEqual(tuple(r["seeds"]), fc.SEEDS)
         self.assertIn("residual_caveat", r)
         self.assertNotIn("cannot be removed", json.dumps(r["residual_caveat"]))
+        # third review F5/F6: family statistics over unique responses; ridge
+        # sensitivity measured on the deployed operator
+        self.assertLess(r["unique_responses"], len(r["stocks"]))
+        self.assertIn("response_id", self.entry)
+        self.assertEqual(
+            self.record["stocks"]["portra800"]["response_id"],
+            self.record["stocks"]["portra800push1"]["response_id"],
+        )
+        folds0 = fc.cv_folds(self.exposures.shape[0], fc.SEEDS[0])
+        runtime_1e2 = fc.summarize(fc.heldout_errors_runtime(
+            self.xyz, self.rgb, self.exposures, self.m, folds0, ridge=1e-2, use_field=True
+        ))["p99_stop"]
+        self.assertAlmostEqual(self.entry["ridge_sensitivity_p99"]["0.01"], runtime_1e2, delta=2e-3)
 
     def test_stored_runtime_numbers_reproduce_on_the_first_seeds(self) -> None:
         """A 3-seed re-run must land inside the recorded 30-seed IQR of the

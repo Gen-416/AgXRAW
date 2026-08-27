@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from ._deps import np
 from .analysis import (
     channel_list, format_channel_values, format_pct, format_snr_dr, format_wb_values,
     fullwell_note_cn, padded_channel_values, raw_health_verdict_cn,
@@ -122,42 +123,43 @@ def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
 
 
 def matrix_health_line_cn(bundle: RawBundle) -> str:
-    """Route-E diagnostic: which colour matrix the declaration rides on and
-    its condition number AT THE CCT THE RENDER ACTUALLY USED (external
-    review 2026-08-27, F7): the declared Kelvin for a Kelvin WB mode, the
-    as-shot fixed-point solve (wb.asshot_reference_cct) for camera WB with
-    DNG calibration, and D65 only as a labelled default when neither is
-    available. A degraded WB declaration also lowers the confidence of the
-    gamut-pressure numbers, and says so here rather than letting a decoder
-    colour defect read as an AgX gamut problem."""
-    from .metadata import read_dng_color_calibration
-    from .wb import asshot_reference_cct, kelvin_mode_cct, matrix_health
+    """Route-E diagnostic: the colour matrix the hot-WB stage ACTUALLY
+    targets for this bundle's WB mode, and its condition number.
 
-    cal = None
+    Third review (2026-08-27, F4): the matrix and its CCT come from the same
+    ladder the render resolves (raw_io.resolve_hot_wb_c0 with the mode's
+    own target CCT — None for daylight/camera, the declared Kelvin
+    otherwise), never from a parallel guess in the report. A degraded WB
+    declaration also lowers the confidence of the gamut-pressure numbers,
+    and says so here rather than letting a decoder colour defect read as an
+    AgX gamut problem."""
+    from .raw_io import resolve_hot_wb_c0
+    from .wb import kelvin_mode_cct
+
+    wb_mode = str(getattr(bundle, "wb_mode", "camera") or "camera")
+    cct = kelvin_mode_cct(wb_mode)
     try:
-        cal = read_dng_color_calibration(bundle.path)
+        _decode, target, source = resolve_hot_wb_c0(bundle, cct)
     except Exception:
-        cal = None
-    cct = kelvin_mode_cct(getattr(bundle, "wb_mode", "camera"))
-    cct_source = "声明"
-    if cct is None and cal is not None:
-        try:
-            cct = asshot_reference_cct(cal, getattr(bundle, "camera_wb", None))
-            cct_source = "AsShot解算"
-        except Exception:
-            cct = None
-    if cct is None:
-        cct = 6500.0
-        cct_source = "默认D65"
-    health = matrix_health(cal, getattr(bundle, "wb_xyz_to_cam", None), cct=float(cct))
-    if health is None:
         return "色彩矩阵: 缺失（AsShot 降级；色域越界%仅供参考）"
-    src = {"dng-dual": "DNG双光源插值", "single-matrix": "单矩阵(Adobe/回退)"}[
-        health["source"]
-    ]
+    matrix = np.asarray(target, dtype=np.float64)[:3, :3]
+    kappa = float(np.linalg.cond(matrix)) if np.all(np.isfinite(matrix)) else float("inf")
+    status = "正常"
+    if not math.isfinite(kappa) or kappa > 10.0:
+        status = "异常"
+    elif kappa > 6.0:
+        status = "偏高"
+    src_cn = {
+        "evidence+cct": "DNG双光源插值",
+        "evidence": "证据矩阵(LibRaw rgb_xyz)",
+        "color_matrix": "LibRaw color_matrix",
+        "dng_calibration": "DNG标定插值",
+        "fallback_table": "回退矩阵表",
+    }.get(source, source)
+    at = f"@ {cct:.0f}K(声明)" if cct is not None else f"({wb_mode}: 目标=解码矩阵)"
     line = (
-        f"色彩矩阵: {src} @ {health['cct']:.0f}K({cct_source})  "
-        f"κ={health['kappa']:.2f}（{health['status']}，实测机队范围 2.4–4.2）"
+        f"色彩矩阵: {src_cn} {at}  "
+        f"κ={kappa:.2f}（{status}，实测机队范围 2.4–4.2）"
     )
     if getattr(bundle, "wb_degradation", None):
         line += "；白平衡声明已降级，色域越界%置信度降低"

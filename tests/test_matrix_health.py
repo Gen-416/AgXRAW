@@ -83,27 +83,37 @@ class MatrixHealthReportLineTests(unittest.TestCase):
         if getattr(degraded, "wb_xyz_to_cam", None) is not None:
             self.assertIn("置信度降低", line2)
 
-    def test_kappa_is_evaluated_at_the_declared_kelvin(self) -> None:
-        """F7 (review 2026-08-27): the line must name the CCT the render
-        used — a 3200K declaration reads @3200K(声明), never a blanket
-        6500K — and camera WB without a DNG calibration says it defaulted.
-        The synthetic bundle carries no matrix, so one from the fallback
-        fleet is attached: this test must never skip."""
+    def test_kappa_is_evaluated_on_the_matrix_the_render_targets(self) -> None:
+        """Third review F4: the line must come from the SAME ladder the hot-WB
+        stage resolves. Declared Kelvin without DNG tags -> the evidence
+        matrix at the declared CCT; daylight and camera -> target == decode
+        matrix (no CCT); with DNG dual-illuminant tags a Kelvin mode reads
+        the interpolated matrix and says so. All three branches run on a
+        constructed bundle, none skips."""
+        from unittest import mock
+
         from tests.golden_support import build_daylight_wide_dr
         from dngscan.camera_matrices import _FALLBACK_MATRICES
         from dngscan.report import matrix_health_line_cn
 
         scene = build_daylight_wide_dr()
         m = np.asarray(_FALLBACK_MATRICES[0]["matrix"], dtype=np.float64) / 10000.0
-        with_matrix = dataclasses.replace(scene.bundle, wb_xyz_to_cam=m)
-        tungsten = dataclasses.replace(with_matrix, wb_mode="3200k")
-        line = matrix_health_line_cn(tungsten)
-        self.assertIn("@ 3200K(声明)", line)
-        self.assertIn("κ=", line)
-        daylight = dataclasses.replace(with_matrix, wb_mode="5500k")
-        self.assertIn("@ 5500K(声明)", matrix_health_line_cn(daylight))
-        camera = dataclasses.replace(with_matrix, wb_mode="camera")
-        self.assertIn("(默认D65)", matrix_health_line_cn(camera))
+        base = dataclasses.replace(scene.bundle, wb_xyz_to_cam=m)
+        with mock.patch("dngscan.raw_io.dng_metadata.read_dng_color_calibration", return_value=None):
+            line = matrix_health_line_cn(dataclasses.replace(base, wb_mode="3200k"))
+            self.assertIn("证据矩阵", line)
+            self.assertIn("@ 3200K(声明)", line)
+            day = matrix_health_line_cn(dataclasses.replace(base, wb_mode="daylight"))
+            self.assertIn("(daylight: 目标=解码矩阵)", day)
+            cam = matrix_health_line_cn(dataclasses.replace(base, wb_mode="camera"))
+            self.assertIn("(camera: 目标=解码矩阵)", cam)
+        cal = _dual_calibration()
+        with mock.patch("dngscan.raw_io.dng_metadata.read_dng_color_calibration", return_value=cal):
+            line = matrix_health_line_cn(dataclasses.replace(base, wb_mode="5500k"))
+            self.assertIn("DNG双光源插值", line)
+            self.assertIn("@ 5500K(声明)", line)
+            expected = float(np.linalg.cond(np.asarray(interpolated_color_matrix(cal, 5500.0))))
+            self.assertIn(f"κ={expected:.2f}", line)
 
 
 if __name__ == "__main__":

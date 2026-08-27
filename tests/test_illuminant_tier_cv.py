@@ -62,6 +62,30 @@ class IlluminantTierRecordTests(unittest.TestCase):
         # the conclusion is generated from the numbers
         for ill in fit.TIER_ILLUMINANTS:
             self.assertIn(f"{r['median'][ill]['stocks_adopting']}/", r["conclusion"])
+        # third review F3/F5: adoption is judged on the FIXED candidate, and
+        # family statistics count each spectral response once
+        self.assertIn("unique_responses", r)
+        self.assertLess(r["unique_responses"], len(r["stocks"]))
+        for ill in fit.TIER_ILLUMINANTS:
+            self.assertIn("presets_adopting", r["median"][ill])
+
+    def test_adoption_frequency_is_measured_on_the_fixed_candidate(self) -> None:
+        """Recompute the probe pair on the first three seeds: with the tier
+        model fixed by the record, every seed's vote compares THAT model —
+        a per-seed field/3x3 pick would not reproduce the stored votes."""
+        stored = self.record["stocks"][self.STOCK][self.ILL]
+        votes = []
+        for seed in fcf.SEEDS[:3]:
+            folds = fcf.cv_folds(self.exp_d.shape[0], seed)
+            a = fcf.summarize(fit.heldout_assumed(self.base, self.rgb_a, self.exp_a, folds))
+            if stored["tier_model"] == "field":
+                fx = fcf.summarize(fit.heldout_field(self.xyz_a, self.rgb_a, self.exp_a, self.m_a, folds))
+            else:
+                fx = fcf.summarize(fit.heldout_3x3(self.rgb_a, self.exp_a, folds))
+            votes.append(fcf.adopts_once(fx, a))
+        # three seeds of thirty: the sample frequency must be compatible
+        # with the recorded frequency (no per-seed candidate swap)
+        self.assertLessEqual(abs(float(np.mean(votes)) - stored["tier_adopt_frequency"]), 0.34)
 
     def test_stored_record_reproduces_on_the_first_seed(self) -> None:
         stored = self.record["stocks"][self.STOCK][self.ILL]

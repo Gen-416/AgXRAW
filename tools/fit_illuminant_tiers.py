@@ -206,21 +206,20 @@ def stock_record(name: str, stock: dict, chroma_entry: dict, seeds=fcf.SEEDS) ->
     per_ill = {}
     for ill in TIER_ILLUMINANTS:
         xyz_i, rgb_i, exp_i, m_i = fcf.stimulus_and_exposures(stock, ill)
-        assumed, ded_field, ded_obs, tier_votes, adopt_votes = [], [], [], [], []
+        assumed, ded_field, ded_obs, tier_votes = [], [], [], []
         for seed in seeds:
             folds_list = fcf.cv_folds(n, seed)
-            a = fcf.summarize(heldout_assumed(base, rgb_i, exp_i, folds_list))
-            f = fcf.summarize(heldout_field(xyz_i, rgb_i, exp_i, m_i, folds_list))
-            o = fcf.summarize(heldout_3x3(rgb_i, exp_i, folds_list))
-            assumed.append(a)
-            ded_field.append(f)
-            ded_obs.append(o)
-            tier_is_field = fcf.adopts_once(f, o)
-            tier_votes.append(tier_is_field)
-            shipped_tier = f if tier_is_field else o
-            adopt_votes.append(fcf.adopts_once(shipped_tier, a))
+            assumed.append(fcf.summarize(heldout_assumed(base, rgb_i, exp_i, folds_list)))
+            ded_field.append(fcf.summarize(heldout_field(xyz_i, rgb_i, exp_i, m_i, folds_list)))
+            ded_obs.append(fcf.summarize(heldout_3x3(rgb_i, exp_i, folds_list)))
+            tier_votes.append(fcf.adopts_once(ded_field[-1], ded_obs[-1]))
+        # Two passes (third review, F3): the tier's candidate is FIXED first
+        # by the vote across seeds, and only then is its adoption frequency
+        # measured — every seed judges the same model, never a per-seed pick.
         tier_field = float(np.mean(tier_votes)) >= fcf.ADOPT_FREQUENCY
-        dedicated = _median_summary(ded_field if tier_field else ded_obs)
+        fixed = ded_field if tier_field else ded_obs
+        adopt_votes = [fcf.adopts_once(fx, a) for fx, a in zip(fixed, assumed)]
+        dedicated = _median_summary(fixed)
         assumed_med = _median_summary(assumed)
         folds0 = fcf.cv_folds(n, seeds[0])
         per_ill[ill] = {
@@ -260,8 +259,15 @@ def run(seeds=fcf.SEEDS) -> dict:
             f"{l['shipped_dedicated']['p99_stop']:.3f} ({'adopt' if l['tier_adopted'] else 'no tier'})"
         )
 
+    # Family statistics over UNIQUE spectral responses (third review, F5):
+    # push presets share their base emulsion and must not vote twice.
+    uniq_names = list(fcf.unique_by_response(
+        {n: {"response_id": chroma[n]["response_id"]} for n in stocks_out}
+    ).keys())
+    uniq = {n: stocks_out[n] for n in uniq_names}
+
     def _median(fn):
-        return round(float(np.median([fn(s) for s in stocks_out.values()])), 4)
+        return round(float(np.median([fn(s) for s in uniq.values()])), 4)
 
     med = {
         ill: {
@@ -271,7 +277,8 @@ def run(seeds=fcf.SEEDS) -> dict:
             "shipped_dedicated_p99": _median(lambda s: s[ill]["shipped_dedicated"]["p99_stop"]),
             "field_dedicated_p99": _median(lambda s: s[ill]["field_dedicated"]["p99_stop"]),
             "recoverable_p99_stop": _median(lambda s: s[ill]["recoverable_p99_stop"]),
-            "stocks_adopting": int(sum(s[ill]["tier_adopted"] for s in stocks_out.values())),
+            "stocks_adopting": int(sum(s[ill]["tier_adopted"] for s in uniq.values())),
+            "presets_adopting": int(sum(s[ill]["tier_adopted"] for s in stocks_out.values())),
             "field_assumed_d55_unadapted_p99": _median(
                 lambda s: s[ill]["field_assumed_d55_unadapted"]["p99_stop"]
             ),
@@ -281,14 +288,14 @@ def run(seeds=fcf.SEEDS) -> dict:
         }
         for ill in TIER_ILLUMINANTS
     }
-    n_stocks = len(stocks_out)
+    n_stocks = len(uniq)
     verdict = []
     for ill in TIER_ILLUMINANTS:
         m = med[ill]
         verdict.append(
             f"{ill}: D55 operator p99 {m['shipped_assumed_p99']} vs would-be tier "
             f"{m['shipped_dedicated_p99']} (recoverable {m['recoverable_p99_stop']:+}), "
-            f"{m['stocks_adopting']}/{n_stocks} stocks adopt"
+            f"{m['stocks_adopting']}/{n_stocks} responses adopt"
             + ("; a fixed cubic family would sit at "
                f"{m['field_dedicated_p99']} — a family number, not the shipping rule"
                "; a narrow tri-band source is UNIDENTIFIABLE from colour temperature, "
@@ -331,6 +338,11 @@ def run(seeds=fcf.SEEDS) -> dict:
             f">= {FAMILY_THRESHOLD} stocks"
         ),
         "family_threshold": FAMILY_THRESHOLD,
+        "unique_responses": len(uniq),
+        "statistics_note": (
+            "medians and adoption counts are over unique spectral responses "
+            f"({len(uniq)} of {len(stocks_out)} presets); per-preset entries kept"
+        ),
         "conclusion": (
             ("an illuminant tier earns its place for at least one family" if any_family
              else "no illuminant tier earns its place under the shipping rule")
