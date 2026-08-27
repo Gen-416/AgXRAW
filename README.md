@@ -69,8 +69,11 @@ five theatrical variants are listed in the [film tutorial](docs/FILM_TUTORIAL.zh
 
 Since the appearance layer landed, a stock in full mode answers two separable
 questions. **technical** is the spectral base plus the modelled inter-image
-term — what the measured emulsion-and-paper system prints, with the grey scale
-digitally neutralized. **reference** adds the declared reference-print
+term — a tristimulus reconstruction constrained by public spectral data
+(emulsion sensitivities, dye densities, paper, illuminants) with the declared
+modelled inter-image term and the editorial appearance switched off, grey
+scale digitally neutralized. It is not a claim of having measured the print:
+the report carries the Stage A model that ran and its held-out residual. **reference** adds the declared reference-print
 appearance on top: a per-stock palette (hue paths and colour density authored
 as an Endura common base plus stock residuals — never a baked LUT), and the
 print-balanced grey policy that anchors mid grey while letting the paper's own
@@ -91,8 +94,9 @@ to the measured chain.
 | ![off](docs/assets/film-tutorial/crop_crossover_verita_off.jpg) | ![datasheet](docs/assets/film-tutorial/crop_crossover_verita_datasheet.jpg) |
 
 The experimental film-takeover mode (full) is no longer a per-channel-curve
-heuristic: scene colour passes through a constrained observer inverse into
-three emulsion exposures, through each layer's characteristic curve into
+heuristic: scene colour passes through the stock's Stage A — a held-out
+CV-selected chromaticity field, or the constrained 3x3 observer where the
+field did not earn its place — into three emulsion exposures, through each layer's characteristic curve into
 negative dye density, then through the FACTORIZED print chain — negative
 density to paper-layer exposure (B1), print timing (τ), the paper's
 development curves, and the viewing chain (B2). Print medium, timing
