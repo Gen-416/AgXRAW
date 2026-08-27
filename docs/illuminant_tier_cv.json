@@ -1,6 +1,6 @@
 {
   "adoption_rule": "fit_chroma_field.adopts_once per fold draw (p95 <= 0.85 * baseline p95, p99 no worse), adoption when >= ADOPT_FREQUENCY of the seeds pass: tier_model on the dedicated field vs 3x3; tier_adopted on the shipped tier vs the shipped D55 operator; a family-level tier needs >= 5 stocks",
-  "conclusion": "no illuminant tier earns its place under the shipping rule \u2014 A: D55 operator p99 0.74 vs would-be tier 0.6948 (recoverable +0.0385), 1/20 stocks adopt; LED-B3: D55 operator p99 0.6014 vs would-be tier 0.6018 (recoverable -0.004), 0/20 stocks adopt; LED-RGB1: D55 operator p99 1.4472 vs would-be tier 0.8405 (recoverable +0.5592), 20/20 stocks adopt; a fixed cubic family would sit at 0.7612 \u2014 a family number, not the shipping rule; a narrow tri-band source is UNIDENTIFIABLE from colour temperature, so this earns a profile-confidence downgrade, not a tier",
+  "conclusion": "no illuminant tier earns its place under the shipping rule \u2014 A: D55 operator p99 0.7268 vs would-be tier 0.6581 (recoverable +0.0251), 3/18 responses adopt; LED-B3: D55 operator p99 0.5875 vs would-be tier 0.5951 (recoverable -0.0022), 0/18 responses adopt; LED-RGB1: D55 operator p99 1.4315 vs would-be tier 1.0074 (recoverable +0.4615), 18/18 responses adopt; a fixed cubic family would sit at 0.882 \u2014 a family number, not the shipping rule; a narrow tri-band source is UNIDENTIFIABLE from colour temperature, so this earns a profile-confidence downgrade, not a tier",
   "family_threshold": 5,
   "folds": 5,
   "illuminants": {
@@ -10,37 +10,40 @@
   },
   "median": {
     "A": {
-      "field_assumed_d55_raw_p99": 2.2728,
-      "field_assumed_d55_unadapted_p99": 1.1397,
-      "field_dedicated_p99": 0.6712,
-      "recoverable_p99_stop": 0.0385,
-      "shipped_assumed_p95": 0.4199,
-      "shipped_assumed_p99": 0.74,
-      "shipped_dedicated_p95": 0.3651,
-      "shipped_dedicated_p99": 0.6948,
-      "stocks_adopting": 1
+      "field_assumed_d55_raw_p99": 2.2669,
+      "field_assumed_d55_unadapted_p99": 1.1391,
+      "field_dedicated_p99": 0.6413,
+      "presets_adopting": 3,
+      "recoverable_p99_stop": 0.0251,
+      "shipped_assumed_p95": 0.4168,
+      "shipped_assumed_p99": 0.7268,
+      "shipped_dedicated_p95": 0.3519,
+      "shipped_dedicated_p99": 0.6581,
+      "stocks_adopting": 3
     },
     "LED-B3": {
-      "field_assumed_d55_raw_p99": 1.4088,
-      "field_assumed_d55_unadapted_p99": 0.7276,
-      "field_dedicated_p99": 0.6018,
-      "recoverable_p99_stop": -0.004,
-      "shipped_assumed_p95": 0.331,
-      "shipped_assumed_p99": 0.6014,
-      "shipped_dedicated_p95": 0.3157,
-      "shipped_dedicated_p99": 0.6018,
+      "field_assumed_d55_raw_p99": 1.3721,
+      "field_assumed_d55_unadapted_p99": 0.7094,
+      "field_dedicated_p99": 0.5951,
+      "presets_adopting": 0,
+      "recoverable_p99_stop": -0.0022,
+      "shipped_assumed_p95": 0.3282,
+      "shipped_assumed_p99": 0.5875,
+      "shipped_dedicated_p95": 0.3071,
+      "shipped_dedicated_p99": 0.5951,
       "stocks_adopting": 0
     },
     "LED-RGB1": {
-      "field_assumed_d55_raw_p99": 4.1013,
-      "field_assumed_d55_unadapted_p99": 1.6273,
-      "field_dedicated_p99": 0.7612,
-      "recoverable_p99_stop": 0.5592,
-      "shipped_assumed_p95": 0.6699,
-      "shipped_assumed_p99": 1.4472,
-      "shipped_dedicated_p95": 0.3297,
-      "shipped_dedicated_p99": 0.8405,
-      "stocks_adopting": 20
+      "field_assumed_d55_raw_p99": 4.0738,
+      "field_assumed_d55_unadapted_p99": 1.6385,
+      "field_dedicated_p99": 0.882,
+      "presets_adopting": 20,
+      "recoverable_p99_stop": 0.4615,
+      "shipped_assumed_p95": 0.6614,
+      "shipped_assumed_p99": 1.4315,
+      "shipped_dedicated_p95": 0.3349,
+      "shipped_dedicated_p99": 1.0074,
+      "stocks_adopting": 18
     }
   },
   "metric": "held-out |log2 layer-exposure error| AFTER subtracting each model's own white-board value per layer (the runtime normalizes every model by its own mid-grey), every model being the SHIPPED operator (3x3 refit per fold, or the field baked per fold with fit_chroma_field.bake_lut and run through film_v2_math.stage_a_log_exposure) on the white-balanced Rec.2020 rows. field_assumed_d55_unadapted (second record) and field_assumed_d55_raw (first record) are kept for the audit trail; neither is a decision number.",
@@ -77,6 +80,7 @@
     20288826,
     20289826
   ],
+  "statistics_note": "medians and adoption counts are over unique spectral responses (18 of 20 presets); per-preset entries kept",
   "stocks": {
     "c200": {
       "A": {
@@ -96,15 +100,15 @@
           "p99_stop": 1.0805
         },
         "field_dedicated": {
-          "max_stop": 3.1349,
-          "p95_stop": 0.2769,
-          "p99_stop": 0.4587
+          "max_stop": 3.0715,
+          "p95_stop": 0.2879,
+          "p99_stop": 0.4468
         },
-        "recoverable_p99_stop": -0.0563,
+        "recoverable_p99_stop": -0.0626,
         "shipped_assumed": {
-          "max_stop": 3.5371,
-          "p95_stop": 0.3213,
-          "p99_stop": 0.5134
+          "max_stop": 3.0715,
+          "p95_stop": 0.3215,
+          "p99_stop": 0.5071
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -112,10 +116,10 @@
           "p95_stop": 0.3272,
           "p99_stop": 0.5697
         },
-        "tier_adopt_frequency": 0.2333,
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
         "tier_model": "3x3",
-        "tier_model_votes": "17/30"
+        "tier_model_votes": "9/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -134,21 +138,21 @@
           "p99_stop": 0.586
         },
         "field_dedicated": {
-          "max_stop": 0.8248,
-          "p95_stop": 0.2326,
-          "p99_stop": 0.4531
+          "max_stop": 0.8401,
+          "p95_stop": 0.2332,
+          "p99_stop": 0.4348
         },
-        "recoverable_p99_stop": 0.0055,
+        "recoverable_p99_stop": 0.0172,
         "shipped_assumed": {
-          "max_stop": 0.792,
-          "p95_stop": 0.2387,
-          "p99_stop": 0.4586
+          "max_stop": 0.8042,
+          "p95_stop": 0.2428,
+          "p99_stop": 0.452
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 0.8248,
-          "p95_stop": 0.2326,
-          "p99_stop": 0.4531
+          "max_stop": 0.8401,
+          "p95_stop": 0.2332,
+          "p99_stop": 0.4348
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -173,14 +177,14 @@
         },
         "field_dedicated": {
           "max_stop": 3.6096,
-          "p95_stop": 0.2896,
-          "p99_stop": 0.7073
+          "p95_stop": 0.2846,
+          "p99_stop": 0.7573
         },
-        "recoverable_p99_stop": 0.2829,
+        "recoverable_p99_stop": 0.3148,
         "shipped_assumed": {
           "max_stop": 39.1019,
-          "p95_stop": 0.5071,
-          "p99_stop": 1.3871
+          "p95_stop": 0.5066,
+          "p99_stop": 1.419
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -212,24 +216,24 @@
           "p99_stop": 1.1206
         },
         "field_dedicated": {
-          "max_stop": 3.1236,
-          "p95_stop": 0.3567,
-          "p99_stop": 0.6137
+          "max_stop": 3.0602,
+          "p95_stop": 0.3546,
+          "p99_stop": 0.6267
         },
-        "recoverable_p99_stop": 0.1271,
+        "recoverable_p99_stop": 0.1093,
         "shipped_assumed": {
-          "max_stop": 3.5259,
-          "p95_stop": 0.4267,
-          "p99_stop": 0.7408
+          "max_stop": 3.0602,
+          "p95_stop": 0.4325,
+          "p99_stop": 0.736
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.1236,
-          "p95_stop": 0.3567,
-          "p99_stop": 0.6137
+          "max_stop": 3.0602,
+          "p95_stop": 0.3546,
+          "p99_stop": 0.6267
         },
-        "tier_adopt_frequency": 0.6,
-        "tier_adopted": false,
+        "tier_adopt_frequency": 0.7333,
+        "tier_adopted": true,
         "tier_model": "field",
         "tier_model_votes": "30/30"
       },
@@ -250,21 +254,21 @@
           "p99_stop": 0.7439
         },
         "field_dedicated": {
-          "max_stop": 1.2715,
-          "p95_stop": 0.3319,
-          "p99_stop": 0.633
+          "max_stop": 1.2714,
+          "p95_stop": 0.33,
+          "p99_stop": 0.635
         },
-        "recoverable_p99_stop": -0.0039,
+        "recoverable_p99_stop": -0.0014,
         "shipped_assumed": {
           "max_stop": 1.3836,
-          "p95_stop": 0.3402,
-          "p99_stop": 0.6291
+          "p95_stop": 0.3422,
+          "p99_stop": 0.6336
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2715,
-          "p95_stop": 0.3319,
-          "p99_stop": 0.633
+          "max_stop": 1.2714,
+          "p95_stop": 0.33,
+          "p99_stop": 0.635
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -289,20 +293,20 @@
         },
         "field_dedicated": {
           "max_stop": 37.9325,
-          "p95_stop": 0.3207,
-          "p99_stop": 0.7368
+          "p95_stop": 0.3282,
+          "p99_stop": 0.7633
         },
-        "recoverable_p99_stop": 0.5848,
+        "recoverable_p99_stop": 0.5651,
         "shipped_assumed": {
           "max_stop": 38.9073,
-          "p95_stop": 0.6865,
-          "p99_stop": 1.3216
+          "p95_stop": 0.6857,
+          "p99_stop": 1.3284
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 37.9325,
-          "p95_stop": 0.3207,
-          "p99_stop": 0.7368
+          "p95_stop": 0.3282,
+          "p99_stop": 0.7633
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -328,23 +332,23 @@
           "p99_stop": 1.1805
         },
         "field_dedicated": {
-          "max_stop": 2.0843,
-          "p95_stop": 0.3862,
-          "p99_stop": 0.7127
+          "max_stop": 2.0718,
+          "p95_stop": 0.3911,
+          "p99_stop": 0.6958
         },
-        "recoverable_p99_stop": 0.0842,
+        "recoverable_p99_stop": 0.1015,
         "shipped_assumed": {
-          "max_stop": 3.6771,
-          "p95_stop": 0.4259,
-          "p99_stop": 0.7969
+          "max_stop": 3.2115,
+          "p95_stop": 0.423,
+          "p99_stop": 0.7973
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.0843,
-          "p95_stop": 0.3862,
-          "p99_stop": 0.7127
+          "max_stop": 2.0718,
+          "p95_stop": 0.3911,
+          "p99_stop": 0.6958
         },
-        "tier_adopt_frequency": 0.0667,
+        "tier_adopt_frequency": 0.0333,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -366,23 +370,23 @@
           "p99_stop": 0.7609
         },
         "field_dedicated": {
-          "max_stop": 1.2056,
-          "p95_stop": 0.3156,
-          "p99_stop": 0.5988
+          "max_stop": 1.2054,
+          "p95_stop": 0.3167,
+          "p99_stop": 0.6149
         },
-        "recoverable_p99_stop": -0.0114,
+        "recoverable_p99_stop": -0.0275,
         "shipped_assumed": {
           "max_stop": 1.2283,
-          "p95_stop": 0.3453,
+          "p95_stop": 0.3446,
           "p99_stop": 0.5874
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2056,
-          "p95_stop": 0.3156,
-          "p99_stop": 0.5988
+          "max_stop": 1.2054,
+          "p95_stop": 0.3167,
+          "p99_stop": 0.6149
         },
-        "tier_adopt_frequency": 0.0333,
+        "tier_adopt_frequency": 0.0667,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -405,25 +409,25 @@
         },
         "field_dedicated": {
           "max_stop": 3.6527,
-          "p95_stop": 0.3603,
-          "p99_stop": 0.9142
+          "p95_stop": 0.3695,
+          "p99_stop": 1.0999
         },
-        "recoverable_p99_stop": 0.6195,
+        "recoverable_p99_stop": 0.435,
         "shipped_assumed": {
           "max_stop": 39.0915,
-          "p95_stop": 0.6849,
-          "p99_stop": 1.5337
+          "p95_stop": 0.6856,
+          "p99_stop": 1.5349
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.6527,
-          "p95_stop": 0.3603,
-          "p99_stop": 0.9142
+          "p95_stop": 0.3695,
+          "p99_stop": 1.0999
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "field",
-        "tier_model_votes": "29/30"
+        "tier_model_votes": "27/30"
       }
     },
     "gold200": {
@@ -444,21 +448,21 @@
           "p99_stop": 1.1393
         },
         "field_dedicated": {
-          "max_stop": 1.3837,
-          "p95_stop": 0.4306,
-          "p99_stop": 0.7264
+          "max_stop": 1.3805,
+          "p95_stop": 0.4247,
+          "p99_stop": 0.7295
         },
-        "recoverable_p99_stop": 0.0243,
+        "recoverable_p99_stop": 0.018,
         "shipped_assumed": {
-          "max_stop": 3.1551,
-          "p95_stop": 0.4217,
-          "p99_stop": 0.7507
+          "max_stop": 2.9668,
+          "p95_stop": 0.4133,
+          "p99_stop": 0.7475
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.3837,
-          "p95_stop": 0.4306,
-          "p99_stop": 0.7264
+          "max_stop": 1.3805,
+          "p95_stop": 0.4247,
+          "p99_stop": 0.7295
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -482,23 +486,23 @@
           "p99_stop": 0.761
         },
         "field_dedicated": {
-          "max_stop": 1.3788,
-          "p95_stop": 0.3679,
-          "p99_stop": 0.6541
+          "max_stop": 1.3787,
+          "p95_stop": 0.3582,
+          "p99_stop": 0.6561
         },
-        "recoverable_p99_stop": 0.0047,
+        "recoverable_p99_stop": -0.003,
         "shipped_assumed": {
           "max_stop": 1.3884,
-          "p95_stop": 0.3875,
-          "p99_stop": 0.6588
+          "p95_stop": 0.3846,
+          "p99_stop": 0.6531
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.3788,
-          "p95_stop": 0.3679,
-          "p99_stop": 0.6541
+          "max_stop": 1.3787,
+          "p95_stop": 0.3582,
+          "p99_stop": 0.6561
         },
-        "tier_adopt_frequency": 0.0333,
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -520,26 +524,26 @@
           "p99_stop": 1.7023
         },
         "field_dedicated": {
-          "max_stop": 2.7193,
-          "p95_stop": 0.3618,
-          "p99_stop": 0.8384
+          "max_stop": 2.7194,
+          "p95_stop": 0.3624,
+          "p99_stop": 1.0248
         },
-        "recoverable_p99_stop": 0.7001,
+        "recoverable_p99_stop": 0.5195,
         "shipped_assumed": {
           "max_stop": 39.3361,
-          "p95_stop": 0.6693,
-          "p99_stop": 1.5385
+          "p95_stop": 0.6767,
+          "p99_stop": 1.5443
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.7193,
-          "p95_stop": 0.3618,
-          "p99_stop": 0.8384
+          "max_stop": 2.7194,
+          "p95_stop": 0.3624,
+          "p99_stop": 1.0248
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "field",
-        "tier_model_votes": "30/30"
+        "tier_model_votes": "28/30"
       }
     },
     "kodachrome64": {
@@ -560,23 +564,23 @@
           "p99_stop": 1.1706
         },
         "field_dedicated": {
-          "max_stop": 3.2784,
-          "p95_stop": 0.3957,
-          "p99_stop": 0.7192
+          "max_stop": 3.215,
+          "p95_stop": 0.4032,
+          "p99_stop": 0.7308
         },
-        "recoverable_p99_stop": 0.0201,
+        "recoverable_p99_stop": 0.0064,
         "shipped_assumed": {
-          "max_stop": 3.6806,
-          "p95_stop": 0.4546,
-          "p99_stop": 0.7393
+          "max_stop": 3.215,
+          "p95_stop": 0.4531,
+          "p99_stop": 0.7372
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.2784,
-          "p95_stop": 0.3957,
-          "p99_stop": 0.7192
+          "max_stop": 3.215,
+          "p95_stop": 0.4032,
+          "p99_stop": 0.7308
         },
-        "tier_adopt_frequency": 0.2667,
+        "tier_adopt_frequency": 0.1333,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -598,21 +602,21 @@
           "p99_stop": 0.756
         },
         "field_dedicated": {
-          "max_stop": 1.3662,
-          "p95_stop": 0.3483,
-          "p99_stop": 0.6712
+          "max_stop": 1.3661,
+          "p95_stop": 0.349,
+          "p99_stop": 0.6734
         },
-        "recoverable_p99_stop": -0.0328,
+        "recoverable_p99_stop": -0.0332,
         "shipped_assumed": {
           "max_stop": 1.4581,
-          "p95_stop": 0.3569,
-          "p99_stop": 0.6384
+          "p95_stop": 0.3609,
+          "p99_stop": 0.6402
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.3662,
-          "p95_stop": 0.3483,
-          "p99_stop": 0.6712
+          "max_stop": 1.3661,
+          "p95_stop": 0.349,
+          "p99_stop": 0.6734
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -637,25 +641,25 @@
         },
         "field_dedicated": {
           "max_stop": 37.3961,
-          "p95_stop": 0.3158,
-          "p99_stop": 0.672
+          "p95_stop": 0.3135,
+          "p99_stop": 0.6644
         },
-        "recoverable_p99_stop": 0.7009,
+        "recoverable_p99_stop": 0.7249,
         "shipped_assumed": {
           "max_stop": 39.0349,
-          "p95_stop": 0.6828,
-          "p99_stop": 1.3729
+          "p95_stop": 0.681,
+          "p99_stop": 1.3893
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 37.3961,
-          "p95_stop": 0.3158,
-          "p99_stop": 0.672
+          "p95_stop": 0.3135,
+          "p99_stop": 0.6644
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "field",
-        "tier_model_votes": "26/30"
+        "tier_model_votes": "24/30"
       }
     },
     "portra160": {
@@ -676,15 +680,15 @@
           "p99_stop": 1.1258
         },
         "field_dedicated": {
-          "max_stop": 3.319,
-          "p95_stop": 0.294,
-          "p99_stop": 0.5687
+          "max_stop": 3.2556,
+          "p95_stop": 0.2934,
+          "p99_stop": 0.5381
         },
-        "recoverable_p99_stop": -0.0756,
+        "recoverable_p99_stop": -0.0584,
         "shipped_assumed": {
-          "max_stop": 3.7212,
+          "max_stop": 3.2556,
           "p95_stop": 0.2941,
-          "p99_stop": 0.537
+          "p99_stop": 0.5542
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -714,23 +718,23 @@
           "p99_stop": 0.5651
         },
         "field_dedicated": {
-          "max_stop": 0.7822,
-          "p95_stop": 0.2144,
+          "max_stop": 0.7964,
+          "p95_stop": 0.2122,
           "p99_stop": 0.3893
         },
-        "recoverable_p99_stop": 0.0306,
+        "recoverable_p99_stop": 0.0311,
         "shipped_assumed": {
-          "max_stop": 0.7409,
-          "p95_stop": 0.2444,
-          "p99_stop": 0.4199
+          "max_stop": 0.7323,
+          "p95_stop": 0.2473,
+          "p99_stop": 0.4204
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 0.7822,
-          "p95_stop": 0.2144,
+          "max_stop": 0.7964,
+          "p95_stop": 0.2122,
           "p99_stop": 0.3893
         },
-        "tier_adopt_frequency": 0.1667,
+        "tier_adopt_frequency": 0.3333,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -753,14 +757,14 @@
         },
         "field_dedicated": {
           "max_stop": 2.164,
-          "p95_stop": 0.3151,
-          "p99_stop": 0.695
+          "p95_stop": 0.3156,
+          "p99_stop": 0.8481
         },
-        "recoverable_p99_stop": 0.465,
+        "recoverable_p99_stop": 0.488,
         "shipped_assumed": {
           "max_stop": 39.2963,
-          "p95_stop": 0.4379,
-          "p99_stop": 1.4489
+          "p95_stop": 0.4416,
+          "p99_stop": 1.4719
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -792,26 +796,26 @@
           "p99_stop": 1.1685
         },
         "field_dedicated": {
-          "max_stop": 3.3116,
-          "p95_stop": 0.3323,
-          "p99_stop": 0.6597
+          "max_stop": 3.2482,
+          "p95_stop": 0.3409,
+          "p99_stop": 0.644
         },
-        "recoverable_p99_stop": -0.0393,
+        "recoverable_p99_stop": -0.022,
         "shipped_assumed": {
-          "max_stop": 3.7138,
-          "p95_stop": 0.3619,
-          "p99_stop": 0.6204
+          "max_stop": 3.2482,
+          "p95_stop": 0.3651,
+          "p99_stop": 0.622
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.3116,
-          "p95_stop": 0.3323,
-          "p99_stop": 0.6597
+          "max_stop": 3.2482,
+          "p95_stop": 0.3409,
+          "p99_stop": 0.644
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
         "tier_model": "field",
-        "tier_model_votes": "27/30"
+        "tier_model_votes": "30/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -830,21 +834,21 @@
           "p99_stop": 0.6277
         },
         "field_dedicated": {
-          "max_stop": 0.9339,
-          "p95_stop": 0.265,
-          "p99_stop": 0.4798
+          "max_stop": 0.9448,
+          "p95_stop": 0.2654,
+          "p99_stop": 0.4692
         },
-        "recoverable_p99_stop": 0.0185,
+        "recoverable_p99_stop": 0.0245,
         "shipped_assumed": {
           "max_stop": 0.9733,
           "p95_stop": 0.2944,
-          "p99_stop": 0.4983
+          "p99_stop": 0.4937
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 0.9339,
-          "p95_stop": 0.265,
-          "p99_stop": 0.4798
+          "max_stop": 0.9448,
+          "p95_stop": 0.2654,
+          "p99_stop": 0.4692
         },
         "tier_adopt_frequency": 0.0333,
         "tier_adopted": false,
@@ -869,14 +873,14 @@
         },
         "field_dedicated": {
           "max_stop": 3.1349,
-          "p95_stop": 0.3373,
-          "p99_stop": 0.74
+          "p95_stop": 0.3327,
+          "p99_stop": 0.8717
         },
-        "recoverable_p99_stop": 0.3124,
+        "recoverable_p99_stop": 0.3312,
         "shipped_assumed": {
           "max_stop": 39.2412,
-          "p95_stop": 0.5697,
-          "p99_stop": 1.4582
+          "p95_stop": 0.5735,
+          "p99_stop": 1.477
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -887,7 +891,7 @@
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "3x3",
-        "tier_model_votes": "2/30"
+        "tier_model_votes": "3/30"
       }
     },
     "portra800": {
@@ -908,23 +912,23 @@
           "p99_stop": 1.14
         },
         "field_dedicated": {
-          "max_stop": 1.9604,
-          "p95_stop": 0.3915,
-          "p99_stop": 0.7142
+          "max_stop": 1.9507,
+          "p95_stop": 0.4,
+          "p99_stop": 0.7404
         },
-        "recoverable_p99_stop": 0.0385,
+        "recoverable_p99_stop": 0.0126,
         "shipped_assumed": {
-          "max_stop": 3.7276,
-          "p95_stop": 0.4376,
-          "p99_stop": 0.7527
+          "max_stop": 3.262,
+          "p95_stop": 0.4346,
+          "p99_stop": 0.753
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.9604,
-          "p95_stop": 0.3915,
-          "p99_stop": 0.7142
+          "max_stop": 1.9507,
+          "p95_stop": 0.4,
+          "p99_stop": 0.7404
         },
-        "tier_adopt_frequency": 0.1,
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -946,21 +950,21 @@
           "p99_stop": 0.7363
         },
         "field_dedicated": {
-          "max_stop": 1.3078,
-          "p95_stop": 0.3287,
-          "p99_stop": 0.6351
+          "max_stop": 1.3077,
+          "p95_stop": 0.3233,
+          "p99_stop": 0.6442
         },
-        "recoverable_p99_stop": -0.0137,
+        "recoverable_p99_stop": -0.0241,
         "shipped_assumed": {
           "max_stop": 1.3537,
-          "p95_stop": 0.3548,
-          "p99_stop": 0.6214
+          "p95_stop": 0.3568,
+          "p99_stop": 0.6201
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.3078,
-          "p95_stop": 0.3287,
-          "p99_stop": 0.6351
+          "max_stop": 1.3077,
+          "p95_stop": 0.3233,
+          "p99_stop": 0.6442
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -985,20 +989,20 @@
         },
         "field_dedicated": {
           "max_stop": 3.6505,
-          "p95_stop": 0.3236,
-          "p99_stop": 0.7411
+          "p95_stop": 0.3187,
+          "p99_stop": 0.8084
         },
-        "recoverable_p99_stop": 0.7061,
+        "recoverable_p99_stop": 0.6356,
         "shipped_assumed": {
           "max_stop": 39.1207,
-          "p95_stop": 0.6704,
-          "p99_stop": 1.4472
+          "p95_stop": 0.6735,
+          "p99_stop": 1.444
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.6505,
-          "p95_stop": 0.3236,
-          "p99_stop": 0.7411
+          "p95_stop": 0.3187,
+          "p99_stop": 0.8084
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -1024,23 +1028,23 @@
           "p99_stop": 1.14
         },
         "field_dedicated": {
-          "max_stop": 1.9604,
-          "p95_stop": 0.3915,
-          "p99_stop": 0.7142
+          "max_stop": 1.9507,
+          "p95_stop": 0.4,
+          "p99_stop": 0.7404
         },
-        "recoverable_p99_stop": 0.0385,
+        "recoverable_p99_stop": 0.0126,
         "shipped_assumed": {
-          "max_stop": 3.7276,
-          "p95_stop": 0.4376,
-          "p99_stop": 0.7527
+          "max_stop": 3.262,
+          "p95_stop": 0.4346,
+          "p99_stop": 0.753
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.9604,
-          "p95_stop": 0.3915,
-          "p99_stop": 0.7142
+          "max_stop": 1.9507,
+          "p95_stop": 0.4,
+          "p99_stop": 0.7404
         },
-        "tier_adopt_frequency": 0.1,
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -1062,21 +1066,21 @@
           "p99_stop": 0.7363
         },
         "field_dedicated": {
-          "max_stop": 1.3078,
-          "p95_stop": 0.3287,
-          "p99_stop": 0.6351
+          "max_stop": 1.3077,
+          "p95_stop": 0.3233,
+          "p99_stop": 0.6442
         },
-        "recoverable_p99_stop": -0.0137,
+        "recoverable_p99_stop": -0.0241,
         "shipped_assumed": {
           "max_stop": 1.3537,
-          "p95_stop": 0.3548,
-          "p99_stop": 0.6214
+          "p95_stop": 0.3568,
+          "p99_stop": 0.6201
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.3078,
-          "p95_stop": 0.3287,
-          "p99_stop": 0.6351
+          "max_stop": 1.3077,
+          "p95_stop": 0.3233,
+          "p99_stop": 0.6442
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1101,20 +1105,20 @@
         },
         "field_dedicated": {
           "max_stop": 3.6505,
-          "p95_stop": 0.3236,
-          "p99_stop": 0.7411
+          "p95_stop": 0.3187,
+          "p99_stop": 0.8084
         },
-        "recoverable_p99_stop": 0.7061,
+        "recoverable_p99_stop": 0.6356,
         "shipped_assumed": {
           "max_stop": 39.1207,
-          "p95_stop": 0.6704,
-          "p99_stop": 1.4472
+          "p95_stop": 0.6735,
+          "p99_stop": 1.444
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.6505,
-          "p95_stop": 0.3236,
-          "p99_stop": 0.7411
+          "p95_stop": 0.3187,
+          "p99_stop": 0.8084
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -1140,23 +1144,23 @@
           "p99_stop": 1.14
         },
         "field_dedicated": {
-          "max_stop": 1.9604,
-          "p95_stop": 0.3915,
-          "p99_stop": 0.7142
+          "max_stop": 1.9507,
+          "p95_stop": 0.4,
+          "p99_stop": 0.7404
         },
-        "recoverable_p99_stop": 0.0385,
+        "recoverable_p99_stop": 0.0126,
         "shipped_assumed": {
-          "max_stop": 3.7276,
-          "p95_stop": 0.4376,
-          "p99_stop": 0.7527
+          "max_stop": 3.262,
+          "p95_stop": 0.4346,
+          "p99_stop": 0.753
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.9604,
-          "p95_stop": 0.3915,
-          "p99_stop": 0.7142
+          "max_stop": 1.9507,
+          "p95_stop": 0.4,
+          "p99_stop": 0.7404
         },
-        "tier_adopt_frequency": 0.1,
+        "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -1178,21 +1182,21 @@
           "p99_stop": 0.7363
         },
         "field_dedicated": {
-          "max_stop": 1.3078,
-          "p95_stop": 0.3287,
-          "p99_stop": 0.6351
+          "max_stop": 1.3077,
+          "p95_stop": 0.3233,
+          "p99_stop": 0.6442
         },
-        "recoverable_p99_stop": -0.0137,
+        "recoverable_p99_stop": -0.0241,
         "shipped_assumed": {
           "max_stop": 1.3537,
-          "p95_stop": 0.3548,
-          "p99_stop": 0.6214
+          "p95_stop": 0.3568,
+          "p99_stop": 0.6201
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.3078,
-          "p95_stop": 0.3287,
-          "p99_stop": 0.6351
+          "max_stop": 1.3077,
+          "p95_stop": 0.3233,
+          "p99_stop": 0.6442
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1217,20 +1221,20 @@
         },
         "field_dedicated": {
           "max_stop": 3.6505,
-          "p95_stop": 0.3236,
-          "p99_stop": 0.7411
+          "p95_stop": 0.3187,
+          "p99_stop": 0.8084
         },
-        "recoverable_p99_stop": 0.7061,
+        "recoverable_p99_stop": 0.6356,
         "shipped_assumed": {
           "max_stop": 39.1207,
-          "p95_stop": 0.6704,
-          "p99_stop": 1.4472
+          "p95_stop": 0.6735,
+          "p99_stop": 1.444
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.6505,
-          "p95_stop": 0.3236,
-          "p99_stop": 0.7411
+          "p95_stop": 0.3187,
+          "p99_stop": 0.8084
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -1256,15 +1260,15 @@
           "p99_stop": 1.0959
         },
         "field_dedicated": {
-          "max_stop": 3.0183,
-          "p95_stop": 0.2934,
-          "p99_stop": 0.5665
+          "max_stop": 2.9549,
+          "p95_stop": 0.2967,
+          "p99_stop": 0.6009
         },
-        "recoverable_p99_stop": -0.0881,
+        "recoverable_p99_stop": -0.094,
         "shipped_assumed": {
-          "max_stop": 3.4205,
-          "p95_stop": 0.3256,
-          "p99_stop": 0.6189
+          "max_stop": 2.9549,
+          "p95_stop": 0.3264,
+          "p99_stop": 0.613
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -1294,21 +1298,21 @@
           "p99_stop": 0.6131
         },
         "field_dedicated": {
-          "max_stop": 1.155,
-          "p95_stop": 0.2364,
-          "p99_stop": 0.4444
+          "max_stop": 1.1769,
+          "p95_stop": 0.2391,
+          "p99_stop": 0.4286
         },
-        "recoverable_p99_stop": 0.0225,
+        "recoverable_p99_stop": 0.026,
         "shipped_assumed": {
-          "max_stop": 1.1095,
-          "p95_stop": 0.2387,
-          "p99_stop": 0.4669
+          "max_stop": 1.1286,
+          "p95_stop": 0.2412,
+          "p99_stop": 0.4546
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.155,
-          "p95_stop": 0.2364,
-          "p99_stop": 0.4444
+          "max_stop": 1.1769,
+          "p95_stop": 0.2391,
+          "p99_stop": 0.4286
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1333,25 +1337,25 @@
         },
         "field_dedicated": {
           "max_stop": 3.2335,
-          "p95_stop": 0.315,
-          "p99_stop": 0.7838
+          "p95_stop": 0.3129,
+          "p99_stop": 0.8456
         },
-        "recoverable_p99_stop": 0.3911,
+        "recoverable_p99_stop": 0.5452,
         "shipped_assumed": {
           "max_stop": 39.0539,
-          "p95_stop": 0.5111,
-          "p99_stop": 1.3641
+          "p95_stop": 0.511,
+          "p99_stop": 1.3908
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.2335,
-          "p95_stop": 0.3715,
-          "p99_stop": 0.973
+          "p95_stop": 0.3129,
+          "p99_stop": 0.8456
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "3x3",
-        "tier_model_votes": "16/30"
+        "tier_model": "field",
+        "tier_model_votes": "24/30"
       }
     },
     "provia100f": {
@@ -1372,24 +1376,24 @@
           "p99_stop": 1.1283
         },
         "field_dedicated": {
-          "max_stop": 3.2393,
-          "p95_stop": 0.3459,
-          "p99_stop": 0.5884
+          "max_stop": 3.1759,
+          "p95_stop": 0.3424,
+          "p99_stop": 0.6261
         },
-        "recoverable_p99_stop": 0.1323,
+        "recoverable_p99_stop": 0.0914,
         "shipped_assumed": {
-          "max_stop": 3.6415,
-          "p95_stop": 0.4152,
-          "p99_stop": 0.7207
+          "max_stop": 3.1759,
+          "p95_stop": 0.4189,
+          "p99_stop": 0.7175
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.2393,
-          "p95_stop": 0.3459,
-          "p99_stop": 0.5884
+          "max_stop": 3.1759,
+          "p95_stop": 0.3424,
+          "p99_stop": 0.6261
         },
-        "tier_adopt_frequency": 0.5667,
-        "tier_adopted": false,
+        "tier_adopt_frequency": 0.7333,
+        "tier_adopted": true,
         "tier_model": "field",
         "tier_model_votes": "30/30"
       },
@@ -1411,20 +1415,20 @@
         },
         "field_dedicated": {
           "max_stop": 1.3155,
-          "p95_stop": 0.3363,
-          "p99_stop": 0.6162
+          "p95_stop": 0.3303,
+          "p99_stop": 0.619
         },
-        "recoverable_p99_stop": -0.004,
+        "recoverable_p99_stop": 0.0084,
         "shipped_assumed": {
           "max_stop": 1.4245,
-          "p95_stop": 0.3357,
-          "p99_stop": 0.6122
+          "p95_stop": 0.3364,
+          "p99_stop": 0.6274
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 1.3155,
-          "p95_stop": 0.3363,
-          "p99_stop": 0.6162
+          "p95_stop": 0.3303,
+          "p99_stop": 0.619
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1448,21 +1452,21 @@
           "p99_stop": 1.6203
         },
         "field_dedicated": {
-          "max_stop": 38.0068,
-          "p95_stop": 0.345,
-          "p99_stop": 0.8426
+          "max_stop": 38.0069,
+          "p95_stop": 0.3566,
+          "p99_stop": 0.9901
         },
-        "recoverable_p99_stop": 0.5417,
+        "recoverable_p99_stop": 0.4043,
         "shipped_assumed": {
           "max_stop": 39.0154,
-          "p95_stop": 0.7054,
-          "p99_stop": 1.3843
+          "p95_stop": 0.7067,
+          "p99_stop": 1.3944
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 38.0068,
-          "p95_stop": 0.345,
-          "p99_stop": 0.8426
+          "max_stop": 38.0069,
+          "p95_stop": 0.3566,
+          "p99_stop": 0.9901
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -1488,15 +1492,15 @@
           "p99_stop": 1.1304
         },
         "field_dedicated": {
-          "max_stop": 3.1023,
-          "p95_stop": 0.2925,
-          "p99_stop": 0.5332
+          "max_stop": 3.0389,
+          "p95_stop": 0.301,
+          "p99_stop": 0.5435
         },
-        "recoverable_p99_stop": -0.0583,
+        "recoverable_p99_stop": -0.0731,
         "shipped_assumed": {
-          "max_stop": 3.5045,
-          "p95_stop": 0.3044,
-          "p99_stop": 0.5876
+          "max_stop": 3.0389,
+          "p95_stop": 0.3028,
+          "p99_stop": 0.5728
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -1507,7 +1511,7 @@
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
         "tier_model": "3x3",
-        "tier_model_votes": "1/30"
+        "tier_model_votes": "0/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -1526,21 +1530,21 @@
           "p99_stop": 0.5721
         },
         "field_dedicated": {
-          "max_stop": 1.0886,
-          "p95_stop": 0.2338,
-          "p99_stop": 0.4441
+          "max_stop": 1.1089,
+          "p95_stop": 0.239,
+          "p99_stop": 0.4367
         },
-        "recoverable_p99_stop": -0.0291,
+        "recoverable_p99_stop": -0.0233,
         "shipped_assumed": {
-          "max_stop": 1.0536,
-          "p95_stop": 0.2357,
-          "p99_stop": 0.415
+          "max_stop": 1.0698,
+          "p95_stop": 0.2388,
+          "p99_stop": 0.4134
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0886,
-          "p95_stop": 0.2338,
-          "p99_stop": 0.4441
+          "max_stop": 1.1089,
+          "p95_stop": 0.239,
+          "p99_stop": 0.4367
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1565,14 +1569,14 @@
         },
         "field_dedicated": {
           "max_stop": 2.6629,
-          "p95_stop": 0.3352,
-          "p99_stop": 0.8081
+          "p95_stop": 0.3225,
+          "p99_stop": 0.9667
         },
-        "recoverable_p99_stop": 0.4374,
+        "recoverable_p99_stop": 0.4336,
         "shipped_assumed": {
           "max_stop": 39.1263,
-          "p95_stop": 0.5132,
-          "p99_stop": 1.5587
+          "p95_stop": 0.5143,
+          "p99_stop": 1.5549
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -1604,21 +1608,21 @@
           "p99_stop": 1.1389
         },
         "field_dedicated": {
-          "max_stop": 1.6772,
-          "p95_stop": 0.4016,
-          "p99_stop": 0.7126
+          "max_stop": 1.6713,
+          "p95_stop": 0.4153,
+          "p99_stop": 0.7329
         },
-        "recoverable_p99_stop": 0.0525,
+        "recoverable_p99_stop": 0.0322,
         "shipped_assumed": {
-          "max_stop": 3.8,
-          "p95_stop": 0.4405,
+          "max_stop": 3.3344,
+          "p95_stop": 0.439,
           "p99_stop": 0.7651
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.6772,
-          "p95_stop": 0.4016,
-          "p99_stop": 0.7126
+          "max_stop": 1.6713,
+          "p95_stop": 0.4153,
+          "p99_stop": 0.7329
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1643,20 +1647,20 @@
         },
         "field_dedicated": {
           "max_stop": 1.3624,
-          "p95_stop": 0.3468,
-          "p99_stop": 0.6522
+          "p95_stop": 0.3454,
+          "p99_stop": 0.6532
         },
-        "recoverable_p99_stop": -0.0091,
+        "recoverable_p99_stop": -0.0138,
         "shipped_assumed": {
           "max_stop": 1.4116,
-          "p95_stop": 0.365,
-          "p99_stop": 0.6431
+          "p95_stop": 0.3619,
+          "p99_stop": 0.6394
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 1.3624,
-          "p95_stop": 0.3468,
-          "p99_stop": 0.6522
+          "p95_stop": 0.3454,
+          "p99_stop": 0.6532
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1681,20 +1685,20 @@
         },
         "field_dedicated": {
           "max_stop": 3.2138,
-          "p95_stop": 0.3422,
-          "p99_stop": 0.787
+          "p95_stop": 0.3383,
+          "p99_stop": 0.9192
         },
-        "recoverable_p99_stop": 0.7115,
+        "recoverable_p99_stop": 0.5776,
         "shipped_assumed": {
           "max_stop": 39.2139,
-          "p95_stop": 0.6759,
-          "p99_stop": 1.4985
+          "p95_stop": 0.6784,
+          "p99_stop": 1.4968
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 3.2138,
-          "p95_stop": 0.3422,
-          "p99_stop": 0.787
+          "p95_stop": 0.3383,
+          "p99_stop": 0.9192
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -1720,23 +1724,23 @@
           "p99_stop": 1.0872
         },
         "field_dedicated": {
-          "max_stop": 3.2849,
-          "p95_stop": 0.3005,
-          "p99_stop": 0.5127
+          "max_stop": 3.2216,
+          "p95_stop": 0.3053,
+          "p99_stop": 0.5497
         },
-        "recoverable_p99_stop": 0.1502,
+        "recoverable_p99_stop": 0.1169,
         "shipped_assumed": {
-          "max_stop": 3.6872,
-          "p95_stop": 0.3894,
-          "p99_stop": 0.6629
+          "max_stop": 3.2215,
+          "p95_stop": 0.3898,
+          "p99_stop": 0.6666
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.2849,
-          "p95_stop": 0.3005,
-          "p99_stop": 0.5127
+          "max_stop": 3.2216,
+          "p95_stop": 0.3053,
+          "p99_stop": 0.5497
         },
-        "tier_adopt_frequency": 0.9667,
+        "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -1758,21 +1762,21 @@
           "p99_stop": 0.6744
         },
         "field_dedicated": {
-          "max_stop": 1.189,
-          "p95_stop": 0.2992,
-          "p99_stop": 0.5726
+          "max_stop": 1.1889,
+          "p95_stop": 0.3002,
+          "p99_stop": 0.5752
         },
-        "recoverable_p99_stop": 0.0017,
+        "recoverable_p99_stop": 0.0066,
         "shipped_assumed": {
           "max_stop": 1.2542,
-          "p95_stop": 0.3095,
-          "p99_stop": 0.5743
+          "p95_stop": 0.3128,
+          "p99_stop": 0.5818
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.189,
-          "p95_stop": 0.2992,
-          "p99_stop": 0.5726
+          "max_stop": 1.1889,
+          "p95_stop": 0.3002,
+          "p99_stop": 0.5752
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1797,20 +1801,20 @@
         },
         "field_dedicated": {
           "max_stop": 38.0584,
-          "p95_stop": 0.2616,
-          "p99_stop": 0.6882
+          "p95_stop": 0.2707,
+          "p99_stop": 0.6948
         },
-        "recoverable_p99_stop": 0.6733,
+        "recoverable_p99_stop": 0.6861,
         "shipped_assumed": {
           "max_stop": 39.064,
-          "p95_stop": 0.6488,
-          "p99_stop": 1.3615
+          "p95_stop": 0.6494,
+          "p99_stop": 1.3809
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 38.0584,
-          "p95_stop": 0.2616,
-          "p99_stop": 0.6882
+          "p95_stop": 0.2707,
+          "p99_stop": 0.6948
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -1836,26 +1840,26 @@
           "p99_stop": 1.1491
         },
         "field_dedicated": {
-          "max_stop": 3.2083,
-          "p95_stop": 0.3338,
-          "p99_stop": 0.6254
+          "max_stop": 3.1449,
+          "p95_stop": 0.3362,
+          "p99_stop": 0.6135
         },
-        "recoverable_p99_stop": 0.0063,
+        "recoverable_p99_stop": 0.0072,
         "shipped_assumed": {
-          "max_stop": 3.6106,
-          "p95_stop": 0.3817,
-          "p99_stop": 0.6317
+          "max_stop": 3.1449,
+          "p95_stop": 0.3891,
+          "p99_stop": 0.6207
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.2083,
-          "p95_stop": 0.3338,
-          "p99_stop": 0.6254
+          "max_stop": 3.1449,
+          "p95_stop": 0.3362,
+          "p99_stop": 0.6135
         },
-        "tier_adopt_frequency": 0.0333,
+        "tier_adopt_frequency": 0.0667,
         "tier_adopted": false,
         "tier_model": "field",
-        "tier_model_votes": "27/30"
+        "tier_model_votes": "29/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -1874,21 +1878,21 @@
           "p99_stop": 0.6509
         },
         "field_dedicated": {
-          "max_stop": 0.9753,
-          "p95_stop": 0.2705,
-          "p99_stop": 0.5349
+          "max_stop": 0.9752,
+          "p95_stop": 0.2719,
+          "p99_stop": 0.5018
         },
-        "recoverable_p99_stop": 0.0127,
+        "recoverable_p99_stop": 0.0431,
         "shipped_assumed": {
           "max_stop": 1.0278,
-          "p95_stop": 0.2913,
-          "p99_stop": 0.5476
+          "p95_stop": 0.2933,
+          "p99_stop": 0.5449
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 0.9753,
-          "p95_stop": 0.2705,
-          "p99_stop": 0.5349
+          "max_stop": 0.9752,
+          "p95_stop": 0.2719,
+          "p99_stop": 0.5018
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -1913,14 +1917,14 @@
         },
         "field_dedicated": {
           "max_stop": 3.9868,
-          "p95_stop": 0.3278,
-          "p99_stop": 0.7813
+          "p95_stop": 0.3249,
+          "p99_stop": 0.9204
         },
-        "recoverable_p99_stop": 0.2369,
+        "recoverable_p99_stop": 0.2597,
         "shipped_assumed": {
           "max_stop": 39.0946,
-          "p95_stop": 0.5998,
-          "p99_stop": 1.393
+          "p95_stop": 0.6002,
+          "p99_stop": 1.4158
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -1931,7 +1935,7 @@
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "3x3",
-        "tier_model_votes": "0/30"
+        "tier_model_votes": "1/30"
       }
     },
     "vision3200t": {
@@ -1952,26 +1956,26 @@
           "p99_stop": 1.1385
         },
         "field_dedicated": {
-          "max_stop": 3.1454,
-          "p95_stop": 0.3476,
-          "p99_stop": 0.6488
+          "max_stop": 3.082,
+          "p95_stop": 0.3492,
+          "p99_stop": 0.6386
         },
-        "recoverable_p99_stop": 0.0338,
+        "recoverable_p99_stop": 0.0472,
         "shipped_assumed": {
-          "max_stop": 3.5477,
-          "p95_stop": 0.4155,
-          "p99_stop": 0.6826
+          "max_stop": 3.082,
+          "p95_stop": 0.4159,
+          "p99_stop": 0.6858
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.1454,
-          "p95_stop": 0.3476,
-          "p99_stop": 0.6488
+          "max_stop": 3.082,
+          "p95_stop": 0.3492,
+          "p99_stop": 0.6386
         },
-        "tier_adopt_frequency": 0.4667,
+        "tier_adopt_frequency": 0.5667,
         "tier_adopted": false,
         "tier_model": "field",
-        "tier_model_votes": "30/30"
+        "tier_model_votes": "29/30"
       },
       "LED-B3": {
         "3x3_dedicated": {
@@ -1990,21 +1994,21 @@
           "p99_stop": 0.7189
         },
         "field_dedicated": {
-          "max_stop": 1.0738,
-          "p95_stop": 0.2932,
-          "p99_stop": 0.5748
+          "max_stop": 1.0737,
+          "p95_stop": 0.2969,
+          "p99_stop": 0.575
         },
-        "recoverable_p99_stop": 0.0183,
+        "recoverable_p99_stop": 0.0126,
         "shipped_assumed": {
           "max_stop": 1.1362,
-          "p95_stop": 0.3023,
-          "p99_stop": 0.5931
+          "p95_stop": 0.3035,
+          "p99_stop": 0.5876
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.0738,
-          "p95_stop": 0.2932,
-          "p99_stop": 0.5748
+          "max_stop": 1.0737,
+          "p95_stop": 0.2969,
+          "p99_stop": 0.575
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -2029,25 +2033,25 @@
         },
         "field_dedicated": {
           "max_stop": 37.1546,
-          "p95_stop": 0.3249,
-          "p99_stop": 0.7933
+          "p95_stop": 0.3283,
+          "p99_stop": 0.9003
         },
-        "recoverable_p99_stop": 0.5405,
+        "recoverable_p99_stop": 0.2329,
         "shipped_assumed": {
           "max_stop": 38.2291,
-          "p95_stop": 0.6484,
-          "p99_stop": 1.3338
+          "p95_stop": 0.6482,
+          "p99_stop": 1.3409
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 37.1546,
-          "p95_stop": 0.3249,
-          "p99_stop": 0.7933
+          "p95_stop": 0.389,
+          "p99_stop": 1.108
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
-        "tier_model": "field",
-        "tier_model_votes": "24/30"
+        "tier_model": "3x3",
+        "tier_model_votes": "19/30"
       }
     },
     "vision3250d": {
@@ -2068,23 +2072,23 @@
           "p99_stop": 1.1449
         },
         "field_dedicated": {
-          "max_stop": 2.2012,
-          "p95_stop": 0.4116,
-          "p99_stop": 0.7366
+          "max_stop": 2.1867,
+          "p95_stop": 0.4108,
+          "p99_stop": 0.7467
         },
-        "recoverable_p99_stop": 0.0487,
+        "recoverable_p99_stop": 0.0405,
         "shipped_assumed": {
-          "max_stop": 3.6849,
-          "p95_stop": 0.4572,
-          "p99_stop": 0.7853
+          "max_stop": 3.2193,
+          "p95_stop": 0.4527,
+          "p99_stop": 0.7872
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 2.2012,
-          "p95_stop": 0.4116,
-          "p99_stop": 0.7366
+          "max_stop": 2.1867,
+          "p95_stop": 0.4108,
+          "p99_stop": 0.7467
         },
-        "tier_adopt_frequency": 0.0667,
+        "tier_adopt_frequency": 0.0333,
         "tier_adopted": false,
         "tier_model": "field",
         "tier_model_votes": "30/30"
@@ -2107,20 +2111,20 @@
         },
         "field_dedicated": {
           "max_stop": 1.3178,
-          "p95_stop": 0.3496,
-          "p99_stop": 0.697
+          "p95_stop": 0.3412,
+          "p99_stop": 0.7042
         },
-        "recoverable_p99_stop": -0.051,
+        "recoverable_p99_stop": -0.0614,
         "shipped_assumed": {
           "max_stop": 1.363,
-          "p95_stop": 0.3667,
-          "p99_stop": 0.646
+          "p95_stop": 0.3708,
+          "p99_stop": 0.6428
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 1.3178,
-          "p95_stop": 0.3496,
-          "p99_stop": 0.697
+          "p95_stop": 0.3412,
+          "p99_stop": 0.7042
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -2145,20 +2149,20 @@
         },
         "field_dedicated": {
           "max_stop": 5.2703,
-          "p95_stop": 0.326,
-          "p99_stop": 0.7897
+          "p95_stop": 0.3271,
+          "p99_stop": 0.8922
         },
-        "recoverable_p99_stop": 0.5767,
+        "recoverable_p99_stop": 0.5057,
         "shipped_assumed": {
-          "max_stop": 39.022,
-          "p95_stop": 0.7065,
-          "p99_stop": 1.3664
+          "max_stop": 39.0221,
+          "p95_stop": 0.7059,
+          "p99_stop": 1.3979
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 5.2703,
-          "p95_stop": 0.326,
-          "p99_stop": 0.7897
+          "p95_stop": 0.3271,
+          "p99_stop": 0.8922
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
@@ -2184,21 +2188,21 @@
           "p99_stop": 1.1694
         },
         "field_dedicated": {
-          "max_stop": 1.2483,
-          "p95_stop": 0.3783,
-          "p99_stop": 0.7116
+          "max_stop": 1.245,
+          "p95_stop": 0.3821,
+          "p99_stop": 0.7053
         },
-        "recoverable_p99_stop": 0.0425,
+        "recoverable_p99_stop": 0.0489,
         "shipped_assumed": {
-          "max_stop": 3.79,
-          "p95_stop": 0.418,
-          "p99_stop": 0.7541
+          "max_stop": 3.3244,
+          "p95_stop": 0.4178,
+          "p99_stop": 0.7542
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2483,
-          "p95_stop": 0.3783,
-          "p99_stop": 0.7116
+          "max_stop": 1.245,
+          "p95_stop": 0.3821,
+          "p99_stop": 0.7053
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -2224,19 +2228,19 @@
         "field_dedicated": {
           "max_stop": 1.1225,
           "p95_stop": 0.28,
-          "p99_stop": 0.555
+          "p99_stop": 0.5578
         },
-        "recoverable_p99_stop": -0.0088,
+        "recoverable_p99_stop": -0.0106,
         "shipped_assumed": {
           "max_stop": 1.0825,
-          "p95_stop": 0.3217,
-          "p99_stop": 0.5462
+          "p95_stop": 0.3244,
+          "p99_stop": 0.5472
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 1.1225,
           "p95_stop": 0.28,
-          "p99_stop": 0.555
+          "p99_stop": 0.5578
         },
         "tier_adopt_frequency": 0.1333,
         "tier_adopted": false,
@@ -2261,14 +2265,14 @@
         },
         "field_dedicated": {
           "max_stop": 3.0039,
-          "p95_stop": 0.2704,
-          "p99_stop": 0.5768
+          "p95_stop": 0.2581,
+          "p99_stop": 0.618
         },
-        "recoverable_p99_stop": 0.3696,
+        "recoverable_p99_stop": 0.368,
         "shipped_assumed": {
-          "max_stop": 38.4866,
-          "p95_stop": 0.615,
-          "p99_stop": 1.4958
+          "max_stop": 38.4867,
+          "p95_stop": 0.617,
+          "p99_stop": 1.4942
         },
         "shipped_base": "field",
         "shipped_dedicated": {
@@ -2279,7 +2283,7 @@
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "3x3",
-        "tier_model_votes": "4/30"
+        "tier_model_votes": "17/30"
       }
     },
     "vision350d": {
@@ -2300,21 +2304,21 @@
           "p99_stop": 1.1506
         },
         "field_dedicated": {
-          "max_stop": 3.176,
-          "p95_stop": 0.3736,
-          "p99_stop": 0.6827
+          "max_stop": 3.1126,
+          "p95_stop": 0.3691,
+          "p99_stop": 0.6702
         },
-        "recoverable_p99_stop": 0.0736,
+        "recoverable_p99_stop": 0.0932,
         "shipped_assumed": {
-          "max_stop": 3.5782,
-          "p95_stop": 0.4309,
-          "p99_stop": 0.7563
+          "max_stop": 3.1126,
+          "p95_stop": 0.4274,
+          "p99_stop": 0.7634
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 3.176,
-          "p95_stop": 0.3736,
-          "p99_stop": 0.6827
+          "max_stop": 3.1126,
+          "p95_stop": 0.3691,
+          "p99_stop": 0.6702
         },
         "tier_adopt_frequency": 0.3,
         "tier_adopted": false,
@@ -2338,21 +2342,21 @@
           "p99_stop": 0.7592
         },
         "field_dedicated": {
-          "max_stop": 1.2072,
-          "p95_stop": 0.3158,
-          "p99_stop": 0.6048
+          "max_stop": 1.2071,
+          "p95_stop": 0.314,
+          "p99_stop": 0.626
         },
-        "recoverable_p99_stop": 0.0049,
+        "recoverable_p99_stop": -0.0232,
         "shipped_assumed": {
           "max_stop": 1.2832,
-          "p95_stop": 0.3263,
-          "p99_stop": 0.6097
+          "p95_stop": 0.332,
+          "p99_stop": 0.6028
         },
         "shipped_base": "field",
         "shipped_dedicated": {
-          "max_stop": 1.2072,
-          "p95_stop": 0.3158,
-          "p99_stop": 0.6048
+          "max_stop": 1.2071,
+          "p95_stop": 0.314,
+          "p99_stop": 0.626
         },
         "tier_adopt_frequency": 0.0,
         "tier_adopted": false,
@@ -2377,27 +2381,28 @@
         },
         "field_dedicated": {
           "max_stop": 37.2643,
-          "p95_stop": 0.353,
-          "p99_stop": 0.9166
+          "p95_stop": 0.3605,
+          "p99_stop": 1.0752
         },
-        "recoverable_p99_stop": 0.5325,
+        "recoverable_p99_stop": 0.3992,
         "shipped_assumed": {
           "max_stop": 38.9698,
-          "p95_stop": 0.6866,
-          "p99_stop": 1.4491
+          "p95_stop": 0.6877,
+          "p99_stop": 1.4744
         },
         "shipped_base": "field",
         "shipped_dedicated": {
           "max_stop": 37.2643,
-          "p95_stop": 0.353,
-          "p99_stop": 0.9166
+          "p95_stop": 0.3605,
+          "p99_stop": 1.0752
         },
         "tier_adopt_frequency": 1.0,
         "tier_adopted": true,
         "tier_model": "field",
-        "tier_model_votes": "29/30"
+        "tier_model_votes": "26/30"
       }
     }
   },
+  "unique_responses": 18,
   "wb_semantics": "training white board under the SAME illuminant anchors row 0 and the Bradford CAT, mirroring a white-balanced runtime scene"
 }
