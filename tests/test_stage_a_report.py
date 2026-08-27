@@ -115,11 +115,23 @@ class StageAReportLineTests(unittest.TestCase):
         name = "portra400"
         stock, media = fd._load_v2(name)
         retained = dict(stock)
-        retained["chroma_lut"] = None
+        retained["chroma_delta_lut"] = None
         retained["chroma_domain"] = None
         retained["chroma_xyz_from_rec2020"] = None
         retained["stage_a_model"] = "3x3"
         retained["stage_a_p99_stop"] = retained["stage_a_3x3_p99_stop"]
+        # Fourth review (F4): prove the injected stock really dispatches to the
+        # 3x3 — the earlier version cleared a stale key and still ran the field.
+        from dngscan.film_v2_math import layer_log_exposure, stage_a_log_exposure
+
+        probe = 0.18 * np.exp2(np.random.default_rng(4).uniform(-4.0, 3.0, (64, 3)))
+        np.testing.assert_array_equal(
+            stage_a_log_exposure(probe, retained), layer_log_exposure(probe, retained["observer"])
+        )
+        self.assertGreater(
+            float(np.abs(stage_a_log_exposure(probe, stock) - stage_a_log_exposure(probe, retained)).max()),
+            1e-3,
+        )
         saved = fd._V2_CACHE.get(name)
         fd._V2_CACHE[name] = (retained, media)
         try:

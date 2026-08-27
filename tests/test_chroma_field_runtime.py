@@ -186,7 +186,10 @@ class FieldContractTests(unittest.TestCase):
         tint = np.stack([g * 1.0000001, g, g * 0.9999999], axis=1)
         field = stage_a_log_exposure(tint, self.stock)
         obs = layer_log_exposure(tint, self.stock["observer"])
-        np.testing.assert_allclose(field, obs, atol=1e-5)
+        # Fourth review (F3): the bake removes the bilinear residual at the
+        # white chromaticity along the weight field, so the seam between the
+        # exact-neutral shortcut and its neighbours is float noise, not 3e-5.
+        np.testing.assert_allclose(field, obs, atol=1e-9)
 
     def test_runtime_chromaticities_cannot_leave_the_lut_domain(self) -> None:
         """Channel-clamped positive Rec.2020 keeps chromaticity inside the
