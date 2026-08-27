@@ -67,7 +67,7 @@ import fit_chroma_field as fcf  # noqa: E402
 
 OUT_DIR = PROJECT_ROOT / "dngscan" / "data" / "film_v2"
 GRID_N = 65
-SCHEMA = 9  # 9: Stage A provenance keys (stage_a_input_*/stage_a_params) join the ABI
+SCHEMA = 10  # 10: Stage A field stored as a CORRECTION LUT (chroma_delta_lut) over the analytic 3x3; generator sources in provenance
 EXPOSURE_EV_MIN, EXPOSURE_EV_MAX = -2.0, 2.0
 TAU_NODES = tuple(round(-2.0 + 0.25 * i, 4) for i in range(17))
 MIDPOINT_ORACLE_EVS = (-1.875, -0.625, 0.375, 1.625)
@@ -331,6 +331,19 @@ def build_b2_reversal(stock_key: str) -> dict:
     }
 
 
+_SOURCES_ONCE: tuple | None = None
+
+
+def _generator_sources_once() -> tuple:
+    """Generator sources + tree state captured ONCE, before the first asset
+    is written — otherwise every stock after the first would see the tree
+    dirtied by the assets of the previous ones."""
+    global _SOURCES_ONCE
+    if _SOURCES_ONCE is None:
+        _SOURCES_ONCE = fcf.generator_sources()
+    return _SOURCES_ONCE
+
+
 def _stage_a_provenance() -> dict:
     """Everything the baked field numerically depends on beyond the negative
     profile (external review 2026-08-27, F8): the training reflectance
@@ -354,16 +367,23 @@ def _stage_a_provenance() -> dict:
         "blend_sigma_cells": fcf.BLEND_SIGMA_CELLS,
         "dilate_cells": fcf.DILATE_CELLS,
         "edge_taper_cells": fcf.EDGE_TAPER_CELLS,
+        "edge_zero_cells": fcf.EDGE_ZERO_CELLS,
         "adopt_frequency": fcf.ADOPT_FREQUENCY,
         "p95_adopt_ratio": fcf.P95_ADOPT_RATIO,
         "colour_science": md.version("colour-science"),
         "numpy": np.__version__,
         "scipy": md.version("scipy"),
     }
+    src_names, src_shas, dirty = _generator_sources_once()
     return {
         "stage_a_input_names": np.asarray(names),
         "stage_a_input_sha256": np.asarray(shas),
         "stage_a_params": np.asarray(json.dumps(params, sort_keys=True)),
+        # Third review (F2): builder_commit alone cannot prove the generator;
+        # the generator sources are hashed and the tree state recorded.
+        "builder_source_names": np.asarray(src_names),
+        "builder_source_sha256": np.asarray(src_shas),
+        "builder_tree_dirty": np.bool_(dirty),
     }
 
 
@@ -406,7 +426,7 @@ def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> di
     if not selected:
         return {
             "chroma_selected": np.bool_(False),
-            "chroma_lut": np.zeros((1, 1, 3), dtype=np.float32),
+            "chroma_delta_lut": np.zeros((1, 1, 3), dtype=np.float32),
             "chroma_domain": np.zeros(4, dtype=np.float64),
             "chroma_xyz_from_rec2020": np.zeros((3, 3), dtype=np.float64),
             "chroma_cv_note": np.asarray(note),
@@ -417,7 +437,7 @@ def _chroma_field_block(stock: dict, stock_key: str, observer: np.ndarray) -> di
     lut, domain, m_inv = fcf.bake_lut(model, xyz, m, observer)
     return {
         "chroma_selected": np.bool_(True),
-        "chroma_lut": lut.astype(np.float32),
+        "chroma_delta_lut": lut.astype(np.float32),
         "chroma_domain": np.asarray(domain, dtype=np.float64),
         "chroma_xyz_from_rec2020": np.asarray(m_inv, dtype=np.float64),
         "chroma_cv_note": np.asarray(note),
@@ -430,13 +450,13 @@ def _stage_a_stock_dict(observer: np.ndarray, chroma: dict) -> dict:
     if bool(chroma["chroma_selected"]):
         return {
             "observer": observer,
-            "chroma_lut": np.asarray(chroma["chroma_lut"], dtype=np.float64),
+            "chroma_delta_lut": np.asarray(chroma["chroma_delta_lut"], dtype=np.float64),
             "chroma_domain": np.asarray(chroma["chroma_domain"], dtype=np.float64),
             "chroma_xyz_from_rec2020": np.asarray(
                 chroma["chroma_xyz_from_rec2020"], dtype=np.float64
             ),
         }
-    return {"observer": observer, "chroma_lut": None}
+    return {"observer": observer, "chroma_delta_lut": None}
 
 
 def build_print_state(stock_key: str, paper_name: str, theatrical: bool) -> dict:

@@ -145,18 +145,17 @@ def _npz(path):
 
 
 def _check_common(z, kind: str, path) -> None:
-    # schema 9 (review 2026-08-27, F8): Stage A carries the route-C
-    # chromaticity-field LUT selected per stock by the runtime-faithful,
-    # repeated-K-fold CV record (7), the held-out numbers the report prints
-    # for the model that actually ships (8), AND the provenance block that
-    # names every numerical input beyond the negative profile — the
+    # schema 10 (third review 2026-08-27, F1/F2): the Stage A field ships as
+    # a CORRECTION LUT (chroma_delta_lut) over the analytic signed 3x3 — the
+    # runtime never samples a 3x3 surface from a grid — and the provenance
+    # block names the generator sources and tree state on top of the
     # reflectance library, both CV records, the fit/bake parameters and the
-    # CMF/SPD library version (stage_a_input_names/sha256, stage_a_params).
-    # Older schemas are refused by NUMBER, same doctrine as the 5->6 bump: a
-    # real reason, not a KeyError swallowed into "unreadable".
-    if int(z["schema"]) != 9:
+    # CMF/SPD library version. Older schemas are refused by NUMBER, same
+    # doctrine as the 5->6 bump: a real reason, not a KeyError swallowed
+    # into "unreadable".
+    if int(z["schema"]) != 10:
         raise ValueError(
-            f"{path.name}: schema {int(z['schema'])}, expected 9 — "
+            f"{path.name}: schema {int(z['schema'])}, expected 10 — "
             "regenerate with tools/build_film_v2_assets.py"
         )
     if str(np.asarray(z["kind"])) != kind:
@@ -201,7 +200,7 @@ def _load_v2(name: str):
             chroma_domain = None
             chroma_xyz = None
             if bool(np.asarray(z["chroma_selected"])):
-                chroma_lut = np.asarray(z["chroma_lut"], dtype=np.float64)
+                chroma_lut = np.asarray(z["chroma_delta_lut"], dtype=np.float64)
                 chroma_domain = np.asarray(z["chroma_domain"], dtype=np.float64)
                 chroma_xyz = np.asarray(
                     z["chroma_xyz_from_rec2020"], dtype=np.float64
@@ -213,7 +212,7 @@ def _load_v2(name: str):
                     or chroma_lut.shape[2] != 3
                     or not bool(np.isfinite(chroma_lut).all())
                 ):
-                    raise ValueError("chroma_lut mis-shaped or non-finite")
+                    raise ValueError("chroma_delta_lut mis-shaped or non-finite")
                 if chroma_domain.shape != (4,) or not (
                     bool(np.isfinite(chroma_domain).all())
                     and chroma_domain[1] > chroma_domain[0]
@@ -226,7 +225,7 @@ def _load_v2(name: str):
                     raise ValueError("chroma_xyz_from_rec2020 mis-shaped")
             stock = {
                 "observer": observer,
-                "chroma_lut": chroma_lut,
+                "chroma_delta_lut": chroma_lut,
                 "chroma_domain": chroma_domain,
                 "chroma_xyz_from_rec2020": chroma_xyz,
                 # What the shipped Stage A model IS and how it measured

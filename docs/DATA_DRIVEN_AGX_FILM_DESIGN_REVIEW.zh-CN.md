@@ -24,6 +24,25 @@
 >   重建 + 声明的 modelled 层间项，关闭编辑性外观"。
 > - P1.2–P1.4（AsShot 语义、假设/权重写入报告、混光语义）：随分档撤回而消解；报告
 >   固定声明"光源假设=D55（实测无需分档）"，窄带光源作为置信度降级依据记录在案。
+> **处置记录（第三轮审查，2026-08-27）**——审查正文附于文末 §13。
+> - **F1 LUT 色域边界不连续（P1）→ 已修。** 改为修正式 LUT：运行时对每个像素解析计算带符号
+>   3×3，LUT 只存 δ = w·(field − obs_log)，w 在训练凸包内为 1、经高斯带过渡、距三角形边 2 cell
+>   内恒为零、其外 12 cell 内 C1 锥升、三角形外恒为零；三角形外的奇异 observer 节点权重为零，
+>   不再被双线性混入；边界两侧算子同为解析 3×3。门改为全部 stock × 三条边随机边界点，
+>   线性域台阶 <1e-4（实测 ≈1e-5）。
+> - **F2 资产构建提交不可复现（P2）→ 已修。** provenance 新增生成器源码（7 个文件）的 SHA-256
+>   与 git 树 dirty 标志；测试校验源码哈希等于当前树且 dirty=False。提交顺序改为：代码 →
+>   记录 → 在干净树上烘资产（`builder_commit` 指向含生成器与记录的提交）。
+> - **F3 Route D 混用候选（P2）→ 已修。** 先按跨种子投票固定 tier_model，再用同一固定模型在全部
+>   种子上算 adoption frequency；门用首三个种子按固定候选复算并与记录对照。
+> - **F4 daylight 未检查实际矩阵（P2）→ 已修。** 报告改为调用渲染同一条阶梯 `resolve_hot_wb_c0`
+>   （目标 CCT 与渲染一致：daylight/camera 为 None，Kelvin 模式为声明值），对其返回的目标矩阵
+>   算 κ 并标注阶梯来源；测试以构造 bundle 与 mock 的 DNG 标定覆盖 Kelvin、daylight、camera、
+>   DNG 双光源四种分支，无跳过。
+> - **F5 同一光谱响应重复计数（P2）→ 已修。** 两份记录都按光谱响应哈希去重统计（18 个唯一响应），
+>   逐预设条目保留；家族门槛按唯一响应计。
+> - **F6 ridge 灵敏度测错算子（P3）→ 已修。** 灵敏度改在部署算子上测；门以 λ=0.01 复算对照。
+>
 > **处置记录（第二轮审查，2026-08-27，本 PR）**——审查正文附于文末 §12，以下只记录处置。
 > - **F1 CV 未验证部署的 LUT（P1）→ 已修。** `fit_chroma_field.bake_lut` 成为唯一的纯烘焙函数
 >   （builder 与 CV 共用）；每折用训练子集烘 LUT，held-out 行经运行时
@@ -505,3 +524,14 @@ technical 是可回退底座，reference/custom 承认编辑判断。
 9. **[P3] 文档仍写 σ=2，代码实际为 σ=5**——`build_film_v2_assets.py:334` 是 5.0，`FILM_STAGE_A_CHROMA_FIELD.zh-CN.md:50` 仍写 σ=2 cell。这个常数正是造成连续 CV 与部署 LUT 分离的关键参数。
 
 **已验证无问题的部分**：光谱积分（float64、显式波长、梯形积分）；TH-KG3、双网格与观看变换；HDR/SDR AgX 的 C1、单调性、锚点和 HDR table 精度。数值存储不是瓶颈：Stage A LUT float32 最坏半 ULP 约 9.5e-7 stop；B1/B2 float16 复合 oracle 最坏 p99 0.02252 stop、最大 0.04368 stop。全量测试 1246 passed，35 skipped。但 Stage A 测试目前主要验证"资产等于记录"和结构不变量，没有验证部署 LUT 对光谱 held-out oracle 的实际误差，所以无法覆盖前四项。
+
+## 13. 第三轮审查原文（2026-08-27，独立复算，未改文件）
+
+1. **[P1] Stage A 边界合同仍然失败。** 矩形 LUT 在 Rec.2020 三角形外计算 observer 响应并将负曝光 floor 后转入 log 域；边界内侧的双线性插值会混入这些异常节点。edge taper 只退回这张失真的 observer LUT，并未退回运行时精确 3×3。18 个独立 stock 全部存在 RGB 通道穿零时的有限跳变，最坏为中灰层曝光尺度的 1.61%–3.18%（gold200 第一层 0.000195 → 0.153600，相差 9.62 stop；portra400 近纯蓝输入经完整 film render 后最大跳变 0.0444，约 11.3/255）。当前测试只检查 portra400、两个等值通道比例。建议运行时始终解析计算 E_obs = RGB·Aᵀ，LUT 只保存 field/observer 修正量，并让修正在三角形边缘前于线性曝光域 C1 归零。
+2. **[P2] provenance 仍未真正闭环。** 所有新资产的 builder_commit 都是旧提交 f639f15，该提交不包含当前 bake_lut、约束参数化和重复折代码。应先提交构建代码再生成资产，或记录所有生成器源码哈希和 dirty tree 状态。
+3. **[P2] Route D 的固定候选语义仍不一致。** tier_model 由跨 seed 投票确定，但 tier_adopt_frequency 在每个 seed 内临时选择 field 或 3x3。CIE A 下 c200 当前记录为混合候选 7/30，按最终选中的固定 3×3 重算则是 0/30。
+4. **[P2] matrix-health 修复只覆盖固定 Kelvin。** daylight 不属于 Kelvin 模式，因此会拿 camera_wb 解 AsShot CCT 或标成 D65；实际 daylight 路径使用 LibRaw daylight multipliers 和固定 evidence matrix。应与 resolve_hot_wb_c0 的实际分支同源。daylight 与带 DNG calibration 的 AsShot 分支缺真实测试。
+5. **[P2] 汇总把同一 Stage A 光谱响应重复计数。** portra800 / push1 / push2 的敏感度数组完全相同，因此是 18 个独立响应而非 20 个；重复计数令 field p99 中位数从 0.6281 变成 0.6449。模型统计和 family threshold 应按敏感度哈希去重。
+6. **[P3] ridge sensitivity 仍测错算子。** 使用连续 polynomial 而非部署 LUT（portra400, λ=0.01：连续 0.5996，部署 0.6513）。当前 λ=1e-6 本身没有问题，建议只修正记录口径。
+
+白点约束、重复折、运行时一致 CV 和正规方程精度均已实证通过；正规方程与增广 lstsq 的最大预测差仅 6.2e-12 stop。全量 1253 项测试通过，35 项跳过，工作树保持干净。

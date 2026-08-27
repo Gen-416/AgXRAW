@@ -52,7 +52,7 @@ class DispatchTests(unittest.TestCase):
         record = _record()
         for name, entry in record.items():
             with self.subTest(stock=name):
-                has_field = _stock(name)["chroma_lut"] is not None
+                has_field = _stock(name)["chroma_delta_lut"] is not None
                 self.assertEqual(has_field, fcf.adopts(entry))
 
     def test_a_3x3_stock_is_bit_identical_to_the_observer_path(self) -> None:
@@ -61,7 +61,7 @@ class DispatchTests(unittest.TestCase):
         stock dict with the field withdrawn — the same shape the loader
         builds for a retained stock."""
         stock = dict(_stock(ADOPTED))
-        stock["chroma_lut"] = None
+        stock["chroma_delta_lut"] = None
         rng = np.random.default_rng(20260826)
         rgb = 0.18 * np.exp2(rng.uniform(-9.0, 5.0, (256, 3)))
         np.testing.assert_array_equal(
@@ -132,7 +132,7 @@ class FieldContractTests(unittest.TestCase):
         )
         out = chroma_field_log_exposure(
             rgb,
-            self.stock["chroma_lut"],
+            self.stock["chroma_delta_lut"],
             self.stock["chroma_domain"],
             self.stock["chroma_xyz_from_rec2020"],
             self.stock["observer"],
@@ -150,25 +150,43 @@ class FieldContractTests(unittest.TestCase):
 
     def test_hand_over_at_the_gamut_edge_is_continuous(self) -> None:
         """Crossing a channel through zero must not step in LINEAR layer
-        exposure: just inside the triangle the LUT (whose out-of-hull region
-        IS the 3x3's response) and just outside the signed 3x3 agree to the
-        LUT's interpolation class. The comparison is linear because a layer
-        whose observer row weights only that channel legitimately receives
-        ZERO light at the crossing — its log is a cliff by construction, not
-        a discontinuity of the operator."""
-        mid = self.stock["observer"] @ np.full(3, 0.18)
-        eps = 1e-6
-        for ch in range(3):
-            for other in (0.3, 1.0):
-                base = np.full(3, other)
-                inside = base.copy(); inside[ch] = eps
-                outside = base.copy(); outside[ch] = -eps
-                a = 10.0 ** stage_a_log_exposure(inside[None, :], self.stock)[0] * mid
-                b = 10.0 ** stage_a_log_exposure(outside[None, :], self.stock)[0] * mid
+        exposure — for EVERY shipped stock, over random boundary points on
+        all three edges (third review 2026-08-27, F1: the previous probe was
+        one stock and two channel ratios and missed 1.6-3.2%-of-mid-grey
+        steps elsewhere). In the correction form the operator at the edge
+        IS the analytic signed 3x3 on both sides, so the residual is the
+        bilinear interpolation of a delta that is 0 at the edge."""
+        rng = np.random.default_rng(20260827)
+        record = _record()
+        worst = 0.0
+        for name in record:
+            stock = _stock(name)
+            if stock["chroma_delta_lut"] is None:
+                continue
+            mid = stock["observer"] @ np.full(3, 0.18)
+            for _ in range(24):
+                ch = int(rng.integers(0, 3))
+                others = rng.uniform(0.02, 2.0, 3)
+                inside = others.copy(); inside[ch] = 1e-6
+                outside = others.copy(); outside[ch] = -1e-6
+                a = 10.0 ** stage_a_log_exposure(inside[None, :], stock)[0] * mid
+                b = 10.0 ** stage_a_log_exposure(outside[None, :], stock)[0] * mid
+                step = float(np.abs(a - b).max() / mid.max())
+                worst = max(worst, step)
                 self.assertLess(
-                    float(np.abs(a - b).max() / mid.max()), 2e-3,
-                    f"linear step at channel {ch} zero crossing: {a} vs {b}",
+                    step, 1e-4,
+                    f"{name}: linear step at channel {ch} zero crossing: {a} vs {b}",
                 )
+
+    def test_correction_is_zero_at_the_white_chromaticity(self) -> None:
+        """delta(white) == 0 by construction: the anchored field and the
+        anchored 3x3 agree there, so a near-neutral pixel is the 3x3 up to
+        bilinear interpolation of a vanishing correction."""
+        g = 0.18 * np.exp2(np.linspace(-6.0, 4.0, 11))
+        tint = np.stack([g * 1.0000001, g, g * 0.9999999], axis=1)
+        field = stage_a_log_exposure(tint, self.stock)
+        obs = layer_log_exposure(tint, self.stock["observer"])
+        np.testing.assert_allclose(field, obs, atol=1e-5)
 
     def test_runtime_chromaticities_cannot_leave_the_lut_domain(self) -> None:
         """Channel-clamped positive Rec.2020 keeps chromaticity inside the
