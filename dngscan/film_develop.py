@@ -145,14 +145,17 @@ def _npz(path):
 
 
 def _check_common(z, kind: str, path) -> None:
-    # schema 7 (route C phase 2): Stage A may carry a chromaticity-field LUT
-    # (chroma_lut/chroma_domain/chroma_xyz_from_rec2020) selected per stock by
-    # the CV record. Schema 6 files predate the field and are refused by
-    # NUMBER, same doctrine as the 5->6 bump: a real reason, not a KeyError
-    # swallowed into "unreadable".
-    if int(z["schema"]) != 7:
+    # schema 8 (route C/D records in the ABI): Stage A carries the route-C
+    # chromaticity-field LUT selected per stock by the CV record (schema 7)
+    # AND the held-out numbers the report prints for the model that actually
+    # ships — its own p95/p99, the 3x3 baseline, and what it measures on
+    # white-balanced tungsten / high-CRI LED scenes (route D: measured, no
+    # illuminant tier justified). Older schemas are refused by NUMBER, same
+    # doctrine as the 5->6 bump: a real reason, not a KeyError swallowed into
+    # "unreadable".
+    if int(z["schema"]) != 8:
         raise ValueError(
-            f"{path.name}: schema {int(z['schema'])}, expected 7 — "
+            f"{path.name}: schema {int(z['schema'])}, expected 8 — "
             "regenerate with tools/build_film_v2_assets.py"
         )
     if str(np.asarray(z["kind"])) != kind:
@@ -225,6 +228,17 @@ def _load_v2(name: str):
                 "chroma_lut": chroma_lut,
                 "chroma_domain": chroma_domain,
                 "chroma_xyz_from_rec2020": chroma_xyz,
+                # What the shipped Stage A model IS and how it measured
+                # (route C decision + held-out numbers; route D: the same
+                # model on white-balanced tungsten / LED scenes), so the
+                # report names the model that actually ran, not a baseline.
+                "stage_a_model": "field" if chroma_lut is not None else "3x3",
+                "stage_a_note": str(np.asarray(z["chroma_cv_note"])),
+                "stage_a_p95_stop": float(z["stage_a_p95_stop"]),
+                "stage_a_p99_stop": float(z["stage_a_p99_stop"]),
+                "stage_a_3x3_p99_stop": float(z["stage_a_3x3_p99_stop"]),
+                "stage_a_p99_under_a": float(z["stage_a_p99_under_a"]),
+                "stage_a_p99_under_led": float(z["stage_a_p99_under_led"]),
                 "char_le": char_le,
                 "char_amounts": char_amounts,
                 "lo": lo,

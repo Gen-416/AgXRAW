@@ -60,7 +60,9 @@ B2→灰阶中性化→可选参考印相外观层——没有单体、创意或
 ![AgX 观察、胶片技术链、胶片参考印相对比](docs/assets/film-three-interpretations.jpg)
 
 外观层落地后，full 模式下一卷胶片回答两个可分离的问题。**technical（技术链）**
-是光谱底座加 modelled 层间放大——测量的乳剂×相纸系统印出的样子，灰阶数字中性。
+是光谱底座加 modelled 层间放大——公开光谱数据（乳剂感度、染料密度、相纸、光源）
+约束下的三刺激重建，加声明的 modelled 层间项，关闭编辑性外观，灰阶数字中性。它不是
+"实测这张印相"的宣称：报告带着实际运行的 Stage A 模型及其 held-out 残差。
 **reference（参考印相）**在其上叠加声明的参考印相外观：按卷 author 的 palette
 （hue 路径与色密度，以 Endura 公共基调 + 每卷 residual 表达，从不是烘焙 LUT），
 以及 print-balanced 灰阶策略——锚定中灰、让相纸自己的两端 crossover 呼吸。每一层
