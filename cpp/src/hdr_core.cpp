@@ -72,8 +72,9 @@ inline void gated_rho(
   // Peak-proximity convergence (v9): clip-compromised pixels lose their
   // remaining chroma authority continuously as the native formation luminance
   // climbs from reference white to the content peak. Mirrors the keyword path
-  // of hdr_color.raw_gated_channel_separation exactly, including the float32
-  // evaluation order.
+  // of hdr_color.raw_gated_channel_separation; the denominator rounds in a
+  // different float32 order than NumPy's np.float32(peak - 1.0) (up to a few
+  // ulps), a rho difference below 3e-6 covered by the parity gates.
   float converge = 1.0f;
   if (plan.peak > 1.0f) {
     const float proximity =

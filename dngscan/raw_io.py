@@ -10,12 +10,20 @@ from ._deps import np, rawpy
 from . import metadata as dng_metadata
 from .wb import kelvin_mode_cct, solve_kelvin_wb
 from .constants import (
+    RGB_TO_XYZ as _RGB_TO_XYZ,
+    XYZ_TO_RGB as _XYZ_TO_RGB,
     COREIMAGE_SCALE_DEFAULT_MODE,
     DECODER_CHOICES,
     DEMOSAIC_AUTO_PREFERENCE,
     DEMOSAIC_CHOICES,
     WB_CHOICES,
 )
+
+# D65 white in XYZ (Rec.2020's own white) and Rec.2020's XYZ->RGB, used by the
+# hot-WB ladder: the former for LibRaw's row normalization, the latter as the
+# "identity decode" conjugation basis for rungs that LibRaw rendered raw_color.
+D65_XYZ = tuple(float(sum(row)) for row in _RGB_TO_XYZ["Rec2020"])
+XYZ_TO_RGB_REC2020 = tuple(tuple(float(v) for v in row) for row in _XYZ_TO_RGB["Rec2020"])
 from .models import RawBundle
 from .evidence import EvidenceAcquisitionError, acquire_raw_evidence
 
@@ -169,20 +177,6 @@ def _apply_vignette_render(render: Any, vignette: Any) -> Any:
             band = np.clip(band, 0.0, limit)
         out[y0:y1] = band.astype(render.dtype)
     return out
-
-def _applied_wb_for_mode(
-    wb_mode: str,
-    camera_wb: list[float] | None,
-    daylight_wb: list[float] | None,
-    kelvin_wb: list[float] | None,
-) -> list[float] | None:
-    """The multipliers this decode actually applied, by mode."""
-    if wb_mode == "daylight":
-        return daylight_wb
-    if kelvin_wb is not None:
-        return kelvin_wb
-    return camera_wb
-
 
 def solve_wb_for_mode(
     wb_mode: str,
@@ -411,6 +405,44 @@ def normalized_camera_wb(wb_values: list[float] | None) -> Any:
     )
 
 
+def d65_row_normalize(xyz_to_cam: Any) -> Any:
+    """Scale each XYZ->camera row so the D65 white maps to camera (1, 1, 1).
+
+    This is LibRaw's own convention (cam_rgb rows normalized to sum 1, i.e.
+    cam_xyz @ XYZ(sRGB white) == 1): a matrix in this convention maps the
+    balanced camera neutral to the Rec.2020/sRGB (D65) white, which is what
+    lets two DIFFERENT matrices sit on the two sides of a hot-WB conjugation.
+    """
+    m = np.asarray(xyz_to_cam, dtype=np.float64)[:3, :3].copy()
+    neutral = m @ np.asarray(D65_XYZ, dtype=np.float64)
+    if not np.all(np.isfinite(neutral)) or np.any(np.abs(neutral) <= 1e-12):
+        raise ValueError("colour matrix maps the D65 white to a zero channel")
+    return m / neutral[:, None]
+
+
+def _libraw_applied_xyz_to_cam(bundle: Any, evidence: Any) -> Any:
+    """The XYZ->camera matrix the fixed LibRaw decode actually applied, in
+    LibRaw's normalization: rgb_cam recovered exactly when LibRaw adopted the
+    embedded cmatrix, else the evidence cam_xyz row-normalized the way
+    LibRaw normalizes it before inverting."""
+    raw_cmatrix = getattr(bundle, "wb_color_matrix", None)
+    if raw_cmatrix is not None:
+        cmatrix = np.asarray(raw_cmatrix, dtype=np.float64)
+        adopted = (
+            cmatrix.ndim == 2
+            and cmatrix.shape[0] >= 1
+            and cmatrix.shape[1] >= 1
+            and np.isfinite(cmatrix[0, 0])
+            and float(cmatrix[0, 0]) > 0.125
+            and dng_metadata.is_dng_container(bundle.path)
+        )
+        if adopted:
+            derived = color_matrix_xyz_to_cam(raw_cmatrix)
+            if derived is not None:
+                return derived
+    return d65_row_normalize(evidence)
+
+
 def color_matrix_xyz_to_cam(color_matrix: Any | None) -> Any | None:
     """Equivalent XYZ->camera matrix from LibRaw's decode matrix (``rgb_cam``).
 
@@ -515,19 +547,24 @@ def resolve_hot_wb_c0(
             if target_cct is not None:
                 calibration = dng_metadata.read_dng_color_calibration(bundle.path)
                 if calibration is not None:
-                    from .wb import asshot_reference_cct, interpolated_color_matrix
+                    from .wb import interpolated_color_matrix
 
-                    try:
-                        decode_cct = asshot_reference_cct(
-                            calibration, bundle.decode_wb or bundle.camera_wb
-                        )
-                    except ValueError:
-                        # As-shot CCT unsolvable: fall back to the evidence matrix
-                        # on *both* sides (self-consistent single-matrix rung)
-                        # rather than degrading a file that has a usable matrix.
-                        return matrix, matrix, "evidence"
-                    decode = interpolated_color_matrix(calibration, decode_cct)
-                    target = interpolated_color_matrix(calibration, target_cct)
+                    # Self-review 2026-08-27 (P1): the two sides of a hot-WB
+                    # conjugation may differ ONLY in the same D65-row-normalized
+                    # convention LibRaw itself renders in. LibRaw does not
+                    # interpolate: it selects the daylight ColorMatrix and
+                    # row-normalizes it so the balanced camera neutral maps to
+                    # D65 (identify.cpp). The decode side must therefore be the
+                    # matrix the decoder APPLIED — rgb_cam when LibRaw adopted
+                    # the embedded cmatrix, else the evidence matrix in the same
+                    # normalization — and the interpolated target at the
+                    # declared CCT must be normalized the same way. The former
+                    # "interpolate both sides at as-shot/declared CCT" rendered
+                    # the declared white at R/G 0.40, B/G 1.41 (5500 K).
+                    decode = _libraw_applied_xyz_to_cam(bundle, matrix)
+                    target = d65_row_normalize(
+                        interpolated_color_matrix(calibration, target_cct)
+                    )
                     return decode, target, "evidence+cct"
             return matrix, matrix, "evidence"
     raw_cmatrix = getattr(bundle, "wb_color_matrix", None)
@@ -548,27 +585,25 @@ def resolve_hot_wb_c0(
             derived = color_matrix_xyz_to_cam(raw_cmatrix)
             if derived is not None:
                 return derived, derived, "color_matrix"
+    # Rungs 3 and 4 are reached only when LibRaw had neither a table cam_xyz
+    # nor an adopted embedded cmatrix — i.e. it decoded with identity colour
+    # (raw_color). The decoded "Rec.2020" buffer is then camera RGB, and the
+    # only transform the decoder's own output supports is the pure diagonal
+    # rebalance G_t * G0^-1 in that space (self-review 2026-08-27, P3):
+    # conjugating through a matrix the decoder never applied would mix
+    # channels it never mixed. Both sides carry Rec.2020's own XYZ->RGB so
+    # hot_wb_matrix_rec2020's C0 collapses to the identity. The declared
+    # Kelvin MULTIPLIERS still come from the DNG tags / fallback table via
+    # solve_wb_for_mode; only the conjugation is identity.
+    identity = np.asarray(XYZ_TO_RGB_REC2020, dtype=np.float64)
     calibration = dng_metadata.read_dng_color_calibration(bundle.path)
     if calibration is not None:
-        from .wb import asshot_reference_cct, interpolated_color_matrix
-
-        decode_cct = asshot_reference_cct(
-            calibration, bundle.decode_wb or bundle.camera_wb
-        )
-        decode = interpolated_color_matrix(calibration, decode_cct)
-        target = (
-            decode
-            if target_cct is None
-            else interpolated_color_matrix(calibration, target_cct)
-        )
-        return decode, target, "dng_calibration"
+        return identity, identity, "dng_calibration"
     from .camera_matrices import fallback_xyz_to_cam
 
     hit = fallback_xyz_to_cam(bundle.shot_make, bundle.shot_model)
     if hit is not None:
-        matrix, _note = hit
-        decode = np.asarray(matrix, dtype=np.float64)
-        return decode, decode, "fallback_table"
+        return identity, identity, "fallback_table"
     raise ValueError("camera ColorMatrix is unavailable for hot white balance")
 
 
@@ -859,26 +894,35 @@ def _bin_2x2_max(mask: Any) -> Any:
 
 
 def _orient_like_libraw(arr: Any, flip: int) -> Any:
-    # LibRaw/rawpy orientation values follow dcraw's common 0/3/5/6 codes.
-    # Keep support for the full EXIF-style range so synthetic tests and unusual RAWs work.
+    """Apply LibRaw's ``flip`` code the way ``postprocess`` does.
+
+    dcraw/LibRaw flip bits: 1 = mirror horizontally, 2 = mirror vertically,
+    4 = transpose, and the common combinations 3 (180 deg), 5 (90 deg CCW
+    here, i.e. rot90 k=1 on the row-major array), 6 (90 deg CW), 7 (transpose
+    + 180). Self-review 2026-08-27: codes 1/2/4 were previously mapped with
+    EXIF orientation semantics (1 = unchanged, 2 = mirror-H, 4 = mirror-V),
+    which disagrees with rawpy.postprocess(user_flip=k) — verified on
+    _SDI0150 for every code. No shipped camera writes 1/2/4, so the corpus
+    was unaffected. The non-LibRaw code 8 is no longer accepted.
+    """
     flip = int(flip or 0)
-    if flip == 0 or flip == 1:
+    if flip == 0:
         return arr
-    if flip == 2:
+    if flip == 1:
         return np.fliplr(arr)
+    if flip == 2:
+        return np.flipud(arr)
     if flip == 3:
         return np.rot90(arr, 2)
     if flip == 4:
-        return np.flipud(arr)
+        return np.transpose(arr, (1, 0, 2)) if arr.ndim == 3 else np.transpose(arr)
     if flip == 5:
         return np.rot90(arr, 1)
     if flip == 6:
         return np.rot90(arr, 3)
     if flip == 7:
         return np.fliplr(np.rot90(arr, 1))
-    if flip == 8:
-        return np.rot90(arr, 1)
-    return arr
+    raise ValueError(f"unknown LibRaw flip code {flip}")
 
 
 def _resize_mask_to_shape(mask: Any, shape: tuple[int, int]) -> Any:
@@ -1416,7 +1460,6 @@ def load_raw(
                 # Both decoders now compare the same fixed as-shot DecodeContext.  User
                 # WB happens only after this scalar alignment and therefore cannot make
                 # the A/B scale measurement cross illuminants.
-                reference_wb_mode = "camera"
                 with rawpy.imread(str(path)) as reference_raw:
                     # The reference must be the PRODUCTION LibRaw decode, not a
                     # bare one: the DNG's dark-field corrections (pre-demosaic
@@ -1448,12 +1491,17 @@ def load_raw(
                 # Decode the reference with the same storage-scale contract as the main
                 # LibRaw path. Normalising reconstruct by 65535 would lose its reserved
                 # WB headroom and can shift this statistic by more than one EV.
+                # Self-review 2026-08-27 (P1): the reference render above was
+                # decoded with camera_wb, so the storage-scale contract must
+                # use camera_wb's headroom too. The previous helper returned
+                # the requested Kelvin multipliers whenever any were present,
+                # which re-exposed every Core Image + Kelvin export by up to
+                # ~0.4 EV as a function of the WB choice alone (measured
+                # +0.053 EV at 3200K, -0.234 EV at 5500K on _SDI0150).
                 reference_scale = libraw_scene_scale(
                     float(np.iinfo(reference_scene.dtype).max),
                     effective_highlight_mode,
-                    _applied_wb_for_mode(
-                        reference_wb_mode, camera_wb, daylight_wb, kelvin_wb
-                    ),
+                    camera_wb,
                     baseline_exposure=effective_baseline_exposure,
                 )
                 reference_level = scene_green_median(

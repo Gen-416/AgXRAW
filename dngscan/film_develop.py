@@ -467,8 +467,8 @@ class FilmSpatialContext:
         # R3 item 3: a scatter-only context (all look amounts 0, media
         # scatter declared) is engaged exactly when a scatter kernel
         # resolves at this pitch. The R1 depth criterion keeps components
-        # live well into preview pitches (the R tail only drops below 1%
-        # depth around 200 um/px), so previews render the same declared
+        # live well into preview pitches (the shipped R tail drops below the
+        # 1% depth criterion at ~128 um/px), so previews render the same declared
         # media the export does; only very coarse thumbnails fall back to
         # the byte-identical chunk-stream fast path.
         if self.optics is None:
@@ -548,7 +548,7 @@ class FilmSpatialContext:
             + float(stock["anchor"])
         )
         compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
-        knee = float(getattr(plan, "film_compression_knee", 2.0) or 2.0)
+        knee = _compression_knee(plan)
         rho = float(getattr(plan, "film_highlight_density", 0.0) or 0.0)
         # Row slabs, and the result kept in float32. The whole-grid float64
         # chain (decimated scene, its logE and its linearisation) is three
@@ -704,6 +704,14 @@ def interimage_beta(preset: str) -> float:
     return float(INTERIMAGE_BETA.get(str(preset), 0.0))
 
 
+def _compression_knee(plan: Any) -> float:
+    """Knee EV of the film compression; 2.0 only when the plan does not carry
+    one. A knee of 0.0 EV is legal (validate_film_plans accepts 0..6) and
+    was silently turned into 2.0 by ``or 2.0`` (self-review 2026-08-27)."""
+    value = getattr(plan, "film_compression_knee", None)
+    return 2.0 if value is None else float(value)
+
+
 def _appearance_scene_ev(rgb_postcomp, exposure_ev: float = 0.0) -> "np.ndarray":
     """The recipe's exposure coordinate (A5 item 1, A6 item 1): SCENE
     luminance EV of the post-compression Rec.2020 entering Stage A PLUS the
@@ -831,7 +839,7 @@ def _apply_film_core_v2(
         rgb = film_compression_ev(
             rgb,
             impact=compression,
-            knee_ev=float(getattr(plan, "film_compression_knee", 2.0) or 2.0),
+            knee_ev=_compression_knee(plan),
             highlight_color_density=float(
                 getattr(plan, "film_highlight_density", 0.0) or 0.0
             ),
@@ -1232,21 +1240,30 @@ def apply_film_core(
     optics amounts are inert by contract (probes, map sources, tests).
     """
     preset = str(getattr(plan, "curve_preset", "") or "")
-    rgb = np.maximum(np.asarray(rgb_rec2020, dtype=np.float32), 0.0)
+    # Signed-Rec.2020 boundary, declared ONCE (self-review 2026-08-27, P2):
+    # the COLOUR path (Stage A onward) sees the signed coordinates — a
+    # negative out-of-gamut component is a legal chromaticity, not negative
+    # light (F4) — while the LIGHT-TRANSPORT sources (bloom, halation) see
+    # light_source(rgb), the non-negative part. The old np.maximum here
+    # clamped the colour path too (up to 0.83 stop on OOG pixels) while the
+    # renderer's pass A fed bloom from the signed scene; both halves now
+    # agree with the per-band renderer by construction.
+    rgb = np.asarray(rgb_rec2020, dtype=np.float32)
     if spatial is None and spatial_shape is not None:
         h, w = int(spatial_shape[0]), int(spatial_shape[1])
         ctx = prepare_film_spatial(plan, h, w)
         if ctx is not None:
-            from .film_optics import area_decimate, spread_grid_shape
+            from .film_optics import area_decimate, light_source, spread_grid_shape
 
             if ctx.halation > 0.0 or ctx.bloom > 0.0:
                 dh, dw = spread_grid_shape(h, w)
-                scene_dec = area_decimate(rgb.reshape(h, w, 3), dh, dw)
+                light = light_source(rgb)
+                scene_dec = area_decimate(light.reshape(h, w, 3), dh, dw)
                 # Bloom first: it changes the scene the halation source is
                 # then read from, exactly as it does per band.
                 if ctx.bloom > 0.0:
                     ctx.begin_bloom_source()
-                    ctx.accumulate_bloom_source(rgb, 0, h)
+                    ctx.accumulate_bloom_source(light, 0, h)
                     ctx.finish_bloom_map(scene_dec)
                 if ctx.halation > 0.0:
                     ctx.finish_maps(scene_dec, plan, preset)

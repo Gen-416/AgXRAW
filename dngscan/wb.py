@@ -17,10 +17,11 @@ daylight locus with the revised-c2 temperature correction; tungsten targets are 
 blackbodies on the Planckian locus (Kim et al. approximation), because Type A/B film is
 balanced for incandescent sources, not for D-series daylight.
 
-RAW 9 path: CIRAWFilter speaks Kelvin natively (``neutralTemperature``/``neutralTint``),
-so the declaration is handed to Apple's own calibration unchanged. The two decoders may
-therefore realise the same declared reference with slightly different colour — each uses
-its own calibration, which is the point, not a defect.
+RAW 9 path: since the hot-WB migration both decoders decode at the fixed as-shot
+neutral and receive the SAME project hot-WB matrix after the linear handoff
+(``raw_io.rebalance_raw_bundle``); Apple's own neutralTemperature/neutralTint interface
+is not part of the declaration. The two decoders still differ in reconstruction and in
+the colour matrix Apple applied, which is measured and reported, not hidden.
 """
 from __future__ import annotations
 
@@ -83,7 +84,11 @@ def cct_to_xy(cct: float) -> tuple[float, float]:
     if t >= 2222.0:
         y = -0.16748867 + 2.09137015 * x - 1.37418593 * x * x - 0.9549476 * x ** 3
     else:
-        y = -0.20219683 + 2.18555832 * x - 1.34811020 * x * x - 0.9549476 * x ** 3
+        # Kim et al. (2002) low-range cubic: -1.1063814, not the 2222-4000 K
+        # coefficient (self-review 2026-08-27: the copy-paste put a +0.027 y
+        # error at 1700 K and a 0.019 jump at the 2222 K seam; every declared
+        # mode is >= 3200 K, so nothing shipped was affected).
+        y = -0.20219683 + 2.18555832 * x - 1.34811020 * x * x - 1.1063814 * x ** 3
     return x, y
 
 

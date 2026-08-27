@@ -87,11 +87,14 @@ def dither_quantize_u8_with_tpdf(encoded: Any, noise: Any) -> Any:
 
 
 def deterministic_dither_planes(shape: Any) -> tuple[Any, Any]:
-    """Build the exact seed-0 TPDF source planes consumed by streamed SDR rendering.
+    """Build the seed-0 TPDF source planes consumed by the NON-film streamed SDR path.
 
-    The quantize-group ordering is part of the historical pixel contract. Preview
-    sessions reuse this immutable plane because shape and RNG seed do not change
-    between interactive frames; full-resolution exports keep their streamed path.
+    The quantize-group ordering is part of that path's pixel contract, so a
+    preview session can reuse one immutable plane across frames. It is NOT a
+    plane-equivalence claim for the film-optics band path: that path draws its
+    dither per band (a declared design, fingerprinted in gui/service), so its
+    bytes depend on the band tier — measured 32.7% of bytes differing by 1 LSB
+    against these planes at the 512 MiB tier (self-review 2026-08-27).
     """
     dimensions = tuple(int(value) for value in shape)
     if len(dimensions) != 3 or dimensions[-1] != 3:
@@ -407,7 +410,7 @@ def _prepare_spatial_pass1(
     matching what the film core sees per band). Returns (ctx, band_chunk)
     where band_chunk is row-aligned flat pixels per sequential band."""
     from .film_develop import prepare_film_spatial
-    from .film_optics import area_decimate_rows, spread_grid_shape
+    from .film_optics import area_decimate_rows, spread_grid_shape, light_source
 
     ctx = prepare_film_spatial(tone_plan, h, w)
     band_rows = _optics_band_rows(w)
@@ -441,8 +444,11 @@ def _prepare_spatial_pass1(
                 rec = retreat_engine.apply_clip_retreat_rec2020(
                     rec, clip_masks[s0:e0], retreat_strength
                 )
-            ctx.accumulate_bloom_source(rec, y0, y1)
-            area_decimate_rows(rec, y0, h, w, dh, dw, acc)
+            # Light-transport sources see the non-negative part only — the
+            # same boundary apply_film_core's full-frame oracle declares.
+            light = light_source(rec)
+            ctx.accumulate_bloom_source(light, y0, y1)
+            area_decimate_rows(light, y0, h, w, dh, dw, acc)
         scene_dec = acc.astype(np.float32)
         del acc
         if ctx.bloom > 0.0:

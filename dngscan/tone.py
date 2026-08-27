@@ -42,6 +42,11 @@ PUNCH_QUALITY_DR_HI_EV = 9.5
 PUNCH_DR_LO_EV = 6.5
 PUNCH_DR_HI_EV = 8.0
 PUNCH_BASE_STRENGTH = 0.55
+# How far below the scene-EV noise floor (analysis.noise_floor_ev_estimate)
+# the adaptive black endpoint and the gated colour-path floor may sit. Both
+# are declared margins in SCENE EV (self-review 2026-08-27).
+BLACK_BELOW_NOISE_FLOOR_EV = 1.5
+GATED_BELOW_NOISE_FLOOR_EV = 1.0
 # Sparse-emitter tail detection: a small bright area (tail0) that is
 # nevertheless extreme (share of it above +2 EV) reads as point emitters in a
 # dark scene rather than a broad bright region.
@@ -419,9 +424,18 @@ def build_color_geometry_plan(
     base_alpha = 0.045 if output_gamut == "p3" else 0.060
     alpha = base_alpha + 0.015 * clamp_float(pressure / 5.0, 0.0, 1.0)
     if tone_core == "gated":
+        # Scene EV below which SNR is too low to open the colour path: the
+        # declared noise floor less GATED_BELOW_NOISE_FLOOR_EV (self-review
+        # 2026-08-27, P2: "-DR - 1.0" was an analysis-domain number used as a
+        # scene EV, 4 EV too deep).
+        from .analysis import noise_floor_ev_estimate
+
+        floor_scene_ev, _src = noise_floor_ev_estimate(analysis)
         noise_floor = -12.0
-        if math.isfinite(analysis.usable_dr_eff_ev):
-            noise_floor = -float(analysis.usable_dr_eff_ev) - 1.0
+        if math.isfinite(floor_scene_ev):
+            noise_floor = floor_scene_ev - GATED_BELOW_NOISE_FLOOR_EV
+        elif math.isfinite(analysis.usable_dr_eff_ev):
+            noise_floor = MIDGRAY_HEADROOM_STOPS - float(analysis.usable_dr_eff_ev) - GATED_BELOW_NOISE_FLOOR_EV
         return ColorGeometryPlan(
             target_gamut=output_gamut,
             raw_clip_retreat_strength=0.0,
@@ -495,8 +509,18 @@ def build_tone_compression_plan(
     luma_p1, luma_p50, luma_p99, luma_p999 = [float(v) for v in np.percentile(y, [1.0, 50.0, 99.0, 99.9])]
 
     plan_dr = analysis.usable_dr_eff_ev if math.isfinite(analysis.usable_dr_eff_ev) else analysis.usable_dr_ev
-    if math.isfinite(plan_dr):
-        noise_limited_black = -plan_dr - 1.5
+    # Scene-EV noise floor from the single truth (self-review 2026-08-27,
+    # P2): the old "-plan_dr - 1.5" mixed the analysis-domain DR into the
+    # scene domain and sat 4.5 EV below the floor the design declares
+    # (MIDGRAY_HEADROOM_STOPS - DR). The black endpoint may sit
+    # BLACK_BELOW_NOISE_FLOOR_EV below that floor, no further.
+    from .analysis import noise_floor_ev_estimate
+
+    floor_scene_ev, _floor_source = noise_floor_ev_estimate(analysis)
+    if math.isfinite(floor_scene_ev):
+        noise_limited_black = floor_scene_ev - BLACK_BELOW_NOISE_FLOOR_EV
+    elif math.isfinite(plan_dr):
+        noise_limited_black = MIDGRAY_HEADROOM_STOPS - plan_dr - BLACK_BELOW_NOISE_FLOOR_EV
     else:
         noise_limited_black = -12.0
     black_ev = max(ev_p1 - 0.25, noise_limited_black)
@@ -737,12 +761,30 @@ def apply_render_adjustments(
     def _biased(value: float, bias: float, rate: float, low: float, high: float) -> float:
         if abs(bias) <= 1e-12:
             return float(value)
-        return clamp_float(float(value) * (2.0 ** (rate * bias)), low, high)
+        # The window belongs to the MOVED value but must contain the compiled
+        # one: film presets compile toe powers up to 3.5 and shoulder powers
+        # up to 9.3, and clamping them into the scene window snapped every
+        # bias — including the "deeper"/"more direct" direction — to the
+        # window edge, inverting the declared slider direction on 22/25
+        # presets (self-review 2026-08-27, P2). A compiled value outside the
+        # scene window gets the full +-|rate| stop span around itself on that
+        # side, so the slider stays live and sign-correct in BOTH directions;
+        # in-window plans keep the historical clamp byte-for-byte.
+        value = float(value)
+        span = 2.0 ** abs(rate)
+        lo = low if value >= low else value / span
+        hi = high if value <= high else value * span
+        return clamp_float(value * (2.0 ** (rate * bias)), lo, hi)
 
     tone = replace(
         plan.tone,
-        # At 18% gray this range is approximately -0.5 to +0.4 display EV. It is a
-        # darktable-style interior power, not scene exposure, so both endpoints hold.
+        # At base view_brightness 1.0 the agx core maps 18% grey to about -0.22
+        # (bias -1, 1/sqrt map) .. +0.39 (bias +1, 1/b map) display EV; a
+        # compiled base up to 1.3 shifts that window upward. It is a
+        # darktable-style interior power on the linear output, not scene
+        # exposure: the endpoints hold for zero-floor / unit-white plans, while
+        # a lifted target_black_linear (every film preset) is raised with the
+        # rest of the curve (self-review 2026-08-27).
         view_brightness=_biased(plan.tone.view_brightness, brightness_bias, 0.25, 0.65, 1.65),
         contrast=_biased(plan.tone.contrast, contrast_bias, 0.25, 1.5, 4.5),
         # Positive UI direction means a more open toe and a softer shoulder. Lower

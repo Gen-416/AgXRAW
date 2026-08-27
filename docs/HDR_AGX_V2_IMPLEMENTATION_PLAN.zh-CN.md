@@ -892,8 +892,8 @@ T_H1(e) == T_H2(e), for all e <= K
 若 runtime 使用 LUT：
 
 ```text
-max absolute linear error <= 2e-5
-max output-stop error <= 1e-3 EV  # 排除接近零的数值区
+max absolute linear error <= 2e-6   # 参考白以下（[0,1]）
+max output-stop error <= 1e-3 EV     # 参考白以上（线性绝对误差随峰值放大，实测 ~9e-5）；排除接近零的数值区
 endpoint/pivot 必须用精确值覆盖 table 插值
 ```
 

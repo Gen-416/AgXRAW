@@ -25,7 +25,7 @@ from tests.golden_support import (
     GoldenCase,
     all_scenes,
     iter_cases,
-    oklab_stats,
+    encoded_lab_stats,
     render_plan_for_case,
 )
 
@@ -41,7 +41,7 @@ def render_case(case: GoldenCase) -> tuple[np.ndarray, dict[str, dict[str, float
         tone_core=case.tone_core,
         agx_primaries=case.agx_primaries if case.tone_core == "agx" else "base",
     )
-    stats = {name: oklab_stats(u8, mask) for name, mask in scene.rois.items()}
+    stats = {name: encoded_lab_stats(u8, mask) for name, mask in scene.rois.items()}
     return u8.reshape(scene.bundle.scene_rec2020_render.shape), stats
 
 

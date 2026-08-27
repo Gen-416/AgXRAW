@@ -13,7 +13,7 @@ from tests.golden_support import (
     GoldenCase,
     all_scenes,
     iter_cases,
-    oklab_stats,
+    encoded_lab_stats,
     render_plan_for_case,
 )
 
@@ -95,7 +95,7 @@ class GoldenRenderTest(unittest.TestCase):
                 if np.array_equal(actual, expected):
                     continue
                 exp_stats = json.loads(str(fixture["stats"])) if "stats" in fixture else {}
-                act_stats = {name: oklab_stats(actual, mask) for name, mask in scene.rois.items()}
+                act_stats = {name: encoded_lab_stats(actual, mask) for name, mask in scene.rois.items()}
                 diff = np.abs(actual.astype(np.int16) - expected.astype(np.int16))
                 max_delta = int(diff.max())
                 # Cross-platform libm can move a handful of pixels by one dither LSB while
