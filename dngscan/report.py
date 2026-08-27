@@ -123,25 +123,40 @@ def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
 
 def matrix_health_line_cn(bundle: RawBundle) -> str:
     """Route-E diagnostic: which colour matrix the declaration rides on and
-    its condition number at D65. A degraded WB declaration also lowers the
-    confidence of the gamut-pressure numbers, and says so here rather than
-    letting a decoder colour defect read as an AgX gamut problem."""
+    its condition number AT THE CCT THE RENDER ACTUALLY USED (external
+    review 2026-08-27, F7): the declared Kelvin for a Kelvin WB mode, the
+    as-shot fixed-point solve (wb.asshot_reference_cct) for camera WB with
+    DNG calibration, and D65 only as a labelled default when neither is
+    available. A degraded WB declaration also lowers the confidence of the
+    gamut-pressure numbers, and says so here rather than letting a decoder
+    colour defect read as an AgX gamut problem."""
     from .metadata import read_dng_color_calibration
-    from .wb import matrix_health
+    from .wb import asshot_reference_cct, kelvin_mode_cct, matrix_health
 
     cal = None
     try:
         cal = read_dng_color_calibration(bundle.path)
     except Exception:
         cal = None
-    health = matrix_health(cal, getattr(bundle, "wb_xyz_to_cam", None))
+    cct = kelvin_mode_cct(getattr(bundle, "wb_mode", "camera"))
+    cct_source = "声明"
+    if cct is None and cal is not None:
+        try:
+            cct = asshot_reference_cct(cal, getattr(bundle, "camera_wb", None))
+            cct_source = "AsShot解算"
+        except Exception:
+            cct = None
+    if cct is None:
+        cct = 6500.0
+        cct_source = "默认D65"
+    health = matrix_health(cal, getattr(bundle, "wb_xyz_to_cam", None), cct=float(cct))
     if health is None:
         return "色彩矩阵: 缺失（AsShot 降级；色域越界%仅供参考）"
     src = {"dng-dual": "DNG双光源插值", "single-matrix": "单矩阵(Adobe/回退)"}[
         health["source"]
     ]
     line = (
-        f"色彩矩阵: {src} @ {health['cct']:.0f}K  "
+        f"色彩矩阵: {src} @ {health['cct']:.0f}K({cct_source})  "
         f"κ={health['kappa']:.2f}（{health['status']}，实测机队范围 2.4–4.2）"
     )
     if getattr(bundle, "wb_degradation", None):

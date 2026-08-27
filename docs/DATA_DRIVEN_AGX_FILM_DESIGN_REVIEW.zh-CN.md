@@ -24,6 +24,41 @@
 >   重建 + 声明的 modelled 层间项，关闭编辑性外观"。
 > - P1.2–P1.4（AsShot 语义、假设/权重写入报告、混光语义）：随分档撤回而消解；报告
 >   固定声明"光源假设=D55（实测无需分档）"，窄带光源作为置信度降级依据记录在案。
+> **处置记录（第二轮审查，2026-08-27，本 PR）**——审查正文附于文末 §12，以下只记录处置。
+> - **F1 CV 未验证部署的 LUT（P1）→ 已修。** `fit_chroma_field.bake_lut` 成为唯一的纯烘焙函数
+>   （builder 与 CV 共用）；每折用训练子集烘 LUT，held-out 行经运行时
+>   `film_v2_math.stage_a_log_exposure` 求值。同时把混合带先向包外膨胀 10 cell 再做 σ=5
+>   高斯（凸包顶点是训练点，原来在带内被 3×3 吃掉一半），并让场权重在距原色三角形边
+>   12 cell 内锥减到零（否则带会漏到青/品红边，与 F4 的带符号 3×3 交接出现台阶）：部署算子与连续多项式的 p99 差
+>   从 0.30 stop 中位降到 0.030（最大 0.069）。选型、资产报告数与 Route D 全部改读
+>   runtime-faithful 记录。
+> - **F2 白板锚未进入 ridge 约束（P1）→ 已修。** `fit_field` 改为 P = P_w + Σβ_j(f_j − f_j(w))，
+>   特征以白色度为中心并按训练标准差缩放，ridge 只作用于 β；锚由参数化保证。标准化设计
+>   条件数中位 6.9×10⁶ → 6.3×10⁴；λ 灵敏度（1e-6/1e-4/1e-2/1）逐卷记录在案，1e-6 与 1e-4 持平。
+> - **F3 单一固定折（P1）→ 已修。** 30 个确定性种子重复 5-fold，采纳看通过频率（≥2/3），
+>   边缘 stock 默认留 3×3。结果 20/20 采纳（pro400h 29/30，其余 30/30）——审查者用旧算子
+>   得到的 pro400h 10/30 与 superia400 21/30 在膨胀混合带 + 参数化锚下不再边缘。
+> - **F4 输入逐通道钳正（P1）→ 已修。** `layer_log_exposure` 与场路径都不再钳输入：严格正
+>   像素走 LUT；任一通道 ≤0 或非有限的像素以**原始带符号坐标**走 3×3，只对结果曝光设
+>   数值下限；白板锚只加在场项上，纯 3×3 区不平移，交接处连续（三条边零点穿越台阶 <5e-3
+>   logE，`test_chroma_field_runtime`）。旧 P1a 钳正（2026-08-07）无成文理由，属遗留而非有意边界。
+>   连带：palette fold 棘轮的色域射线端点环（chroma 1.0）62% 样本有通道恰为零，纯通道
+>   observer 层在那里收到零光，旧钳正曾从 LUT 裁剪边缘格插出一个中等曝光；现按带符号
+>   合同该环跨在场/3×3 交接缝上，改为单独的 watch 界（10°，实测最差 −9.05° 于 EV −4），
+>   包内环维持 0.035 rad 不动。
+> - **F5 LED-RGB1 混用候选（P2）→ 已修。** 记录、结论字符串、文档与门统一用 shipped 对
+>   （`shipped_assumed` vs `shipped_dedicated`）；固定场族数字单列为 family number。新口径下
+>   窄带差距远大于原述（1.45 vs 0.84，20/20 过规则），但从色温不可辨识——仍是 confidence
+>   降级依据，不设档；结论由数字生成，`test_illuminant_tier_cv` 钉住单一候选定义。
+> - **F6 "同色异谱下限"措辞（P2）→ 已修。** 记录 `residual_caveat`、工具 docstring、文档改为
+>   "本模型族在该数据集上的泛化残差；是否为同色异谱下限未证明"。
+> - **F7 矩阵健康度恒用 6500K（P2）→ 已修。** 报告按声明 Kelvin 模式取 CCT；camera 模式有 DNG
+>   标定时用 `asshot_reference_cct` 固定点；两者皆无才标注"默认D65"。行内注明 CCT 来源。
+> - **F8 provenance（P2）→ 已修。** schema 9：stock 资产记录反射率库、两份 CV 记录的 SHA-256，
+>   以及 ridge/种子数/LUT 尺寸/σ/膨胀/采纳阈值与 colour-science、numpy、scipy 版本；
+>   colour-science 锁定 `==0.4.7`；`test_stage_a_report` 校验哈希与当前树一致。
+> - **F9 文档 σ=2 vs 代码 σ=5（P3）→ 已修**，并连同膨胀参数一起写进文档与记录。
+>
 > - 未做（不属本轮）：7.3 负 Rec.2020 域外语义（P2.1）、外部反射谱库（P2.2）、
 >   逐 stock 误差分布发布（P2.3）、P3 AgX/HDR policy 标定、资产 provenance 扩展到
 >   CV 记录/反射率库/CMF/光源数据、`fit_film_curve` 的 ResourceWarning、CV 测试缺
@@ -440,3 +475,33 @@ technical 是可回退底座，reference/custom 承认编辑判断。
 相机/光源 profile。做到这些以后，可以严肃地称这套系统为“RAW 证据驱动的 AgX DRT，
 以及光谱数据约束、明确承认同色异谱边界的胶片转换”；仍不应称为某台相机或某卷胶片
 的严格物理复刻。
+
+## 12. 第二轮审查原文（2026-08-27，独立复算，未改文件）
+
+**Review 结论**
+
+当前主干通过全部测试，但仍有 4 个会影响数学结论或实际输出的高优先级问题。主要问题不在浮点精度，而在"拟合时验证的模型"和"最终运行的模型"并非同一个数学算子。
+
+**高优先级 Findings**
+
+1. **[P1] Stage A 的 CV 没有验证实际部署的 LUT**——连续多项式 CV 只计算 E=Y·2^P(x,y)（`fit_chroma_field.py:153`），但部署前又增加了训练凸包、Gaussian 回退带、3×3 混合、256² 网格和双线性采样（`build_film_v2_assets.py:346`），资产选型却仍直接使用连续多项式 CV 数字（同文件 :363）。按每一折重新烘完整 LUT 后复算：pro400h 0.2573/0.5004 → 0.2517/0.4180（3×3 → 应采纳 field）；portra160 0.2350/0.4898 → 0.2214/0.5473（field → 应保留 3×3）。19 个 field 资产中，部署 LUT 相对连续多项式在训练反射率上的 p99 差异中位数为 0.296 stop，最大约 0.378 stop。这不是 float32 误差，而是凸包混合改变了模型。修复方向：把 LUT 构建抽成纯函数，每折用训练子集重新烘 LUT，并让采纳、资产报告和 Route D 都使用这个 runtime-faithful CV。
+
+2. **[P1] 白板锚点并没有进入 ridge 求解约束**——当前先做无约束 ridge，再单独修改截距（`fit_chroma_field.py:119`）。它保证锚点数值精确，却不是"带白板约束的 ridge 最小二乘"的解。用 KKT 精确约束重算后，p99 变化中位数 +0.0106 stop、最大 +0.0436 stop，superia400 和 portra160 的连续模型采纳结果发生变化。建议改成 P(x,y)=P_w+Σβ_j(f_j(x,y)−f_j(x_w,y_w)) 直接拟合 β。另外三次原始单项式的 cond(AᵀA) 中位数约 6.9×10⁶；RIDGE=1e-6 没有特征标准化或灵敏度来源。
+
+3. **[P1] 单次固定折不足以支撑边缘 stock 的模型选型**——用 30 个确定性种子重复五折：pro400h 仅 10/30 次采纳；superia400 21/30；portra160 29/30；其他大部分为 30/30。建议 repeated K-fold，并以采纳频率或 bootstrap 置信区间决策；边缘项默认保留更简单的 3×3。
+
+4. **[P1] Stage A 在矩阵之前逐通道钳正，破坏合法负 Rec.2020 坐标**——两条 Stage A 路径都先执行 rgb = maximum(rgb_rec2020, 1e-9)（`film_v2_math.py:38`、:66）。颜色矩阵产生的负 Rec.2020 分量不一定代表负物理光量；输入端钳正会改变色相，并在通道穿越零点时引入不连续。现有测试反而把该行为钉成正确行为（`test_chroma_field_runtime.py:83`）。更合理的合同是：负通道输入退出 field，使用原始有符号 RGB 走 3×3 observer，只在最终层曝光小于等于零时钳到数值下限。
+
+**中优先级 Findings**
+
+5. **[P2] LED-RGB1 的 Route D 结论混用了两个不同候选**——正式记录的中位数：D55 assumed 0.8777；field_dedicated 0.7543；实际按 Route C 选择的 shipped_dedicated 1.1108；paired recoverable −0.2330；逐卷采纳 6/20。但工具和文档宣称 0.88 → 0.75、可回收约 0.12 stop（`fit_illuminant_tiers.py:274`），测试也刻意比较 field_dedicated 而不是正式决策使用的 shipped_dedicated（`test_illuminant_tier_cv.py:134`）。
+
+6. **[P2] "剩余误差是同色异谱理论下限"仍未被证明**——当前实验只能说明"三次色度多项式在这 190 条反射率上的 held-out 残差"。真正的 metamerism floor 需要证明存在相同或近似输入三刺激、但不同胶片层曝光的光谱对，或者使用独立光谱库验证。
+
+7. **[P2] 色彩矩阵健康度始终计算 6500 K，并非实际活动矩阵**——`report.py:124` 调用 `matrix_health()` 时不传 CCT，函数默认 6500 K（`wb.py:205`）。应按 Kelvin 模式传声明 CCT；camera 模式使用 `asshot_reference_cct()` 的固定点结果。
+
+8. **[P2] Stage A 资产的数值依赖没有完整进入 provenance**——stock 资产只哈希负片 profile（`build_film_v2_assets.py:648`），但 field 还依赖 rawtoaces_training_reflectance.csv、chroma_field_cv.json、illuminant_tier_cv.json、colour-science 的 CMF/SPD 数据版本、ridge、fold seed、LUT 尺寸与 blend sigma；而 colour-science 只有下界、没有重建版本锁定（`pyproject.toml:24`）。
+
+9. **[P3] 文档仍写 σ=2，代码实际为 σ=5**——`build_film_v2_assets.py:334` 是 5.0，`FILM_STAGE_A_CHROMA_FIELD.zh-CN.md:50` 仍写 σ=2 cell。这个常数正是造成连续 CV 与部署 LUT 分离的关键参数。
+
+**已验证无问题的部分**：光谱积分（float64、显式波长、梯形积分）；TH-KG3、双网格与观看变换；HDR/SDR AgX 的 C1、单调性、锚点和 HDR table 精度。数值存储不是瓶颈：Stage A LUT float32 最坏半 ULP 约 9.5e-7 stop；B1/B2 float16 复合 oracle 最坏 p99 0.02252 stop、最大 0.04368 stop。全量测试 1246 passed，35 skipped。但 Stage A 测试目前主要验证"资产等于记录"和结构不变量，没有验证部署 LUT 对光谱 held-out oracle 的实际误差，所以无法覆盖前四项。
