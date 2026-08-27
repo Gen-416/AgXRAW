@@ -54,14 +54,24 @@ RIDGE = 1e-6
 ORDERS = (2, 3, 4)
 
 
-def stimulus_and_exposures(stock: dict):
-    """Training stimulus exactly as observer_matrix builds it (D55, white row 0)."""
+def stimulus_and_exposures(stock: dict, illuminant: str = "D55"):
+    """Training stimulus exactly as observer_matrix builds it (white row 0).
+
+    ``illuminant`` generalizes the SPD (route D): the white board under the
+    SAME illuminant stays row 0, and the Bradford CAT to the working white
+    mirrors the runtime, where WB has already neutralized the scene — so a
+    non-D55 tier answers "the scene was LIT by I and white-balanced", not
+    "the pixels still carry I's cast".
+    """
     neg = ff._load_spectral(stock["negative"])
     wl = neg["wl"]
-    d55 = v1._d55_spd(wl)
+    if illuminant == "D55":
+        spd = v1._d55_spd(wl)
+    else:
+        spd = csm.illuminant_spd(illuminant, wl)
     refl = v1._training_set(wl)
     refl = np.concatenate([np.ones((wl.size, 1)), refl], axis=1)
-    stim = refl * d55[:, None]
+    stim = refl * spd[:, None]
     exposures = sb.trapezoid(stim[:, :, None] * neg["sens"][:, None, :], wl, axis=0)
     cmf = csm.cie_1931_cmf(sb.intersect_grid(wl))
     keep = np.isin(wl, sb.intersect_grid(wl))
@@ -158,6 +168,19 @@ def heldout_errors_field(xyz, exposures, folds_list, order: int):
             )
         )
     return np.concatenate([e.ravel() for e in errs])
+
+
+P95_ADOPT_RATIO = 0.85
+
+
+def adopts(candidate: dict, baseline: dict, ratio: float = P95_ADOPT_RATIO) -> bool:
+    """The owner's adoption rule (2026-08-26), shared by the asset builder and
+    the route-D tier decisions: a candidate replaces the baseline only when
+    its held-out p95 drops by at least (1 - ratio) AND its p99 is no worse."""
+    return bool(
+        candidate["p95_stop"] <= ratio * baseline["p95_stop"]
+        and candidate["p99_stop"] <= baseline["p99_stop"]
+    )
 
 
 def summarize(err):

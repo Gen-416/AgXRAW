@@ -11,6 +11,8 @@
 | `build_film_appearance_recipes.py` | 生成外观层配方资产 |
 | `build_film_appearance_identity.py` | 外观层 identity 参考资产 |
 | `gen_film_v2_manifest.py` / `gen_film_optics_manifest.py` | 资产清单(哈希钉扎)再生成 |
+| `fit_chroma_field.py` | 路线 C:Stage A 色度场 vs 3×3 的 held-out CV(`docs/chroma_field_cv.json`,资产选型依据) |
+| `fit_illuminant_tiers.py` | 路线 D:D55 光源假设的 held-out 代价 vs 同光源专档(`docs/illuminant_tier_cv.json`;运行时口径:白平衡像素经 D55 矩阵、按各模型自身白板归一;结论:不设档) |
 | `export_film_ssf.py` | 导出胶片光谱敏感度数据 |
 | `make_evidence_shell.py` | 证据壳:从 RAW 剥容器结构做 CI 元数据语料(CC0 来源,像素区剥除) |
 | `build_native.sh` | 本地编译原生 kernel(产物勿入 wheel,见脚本头) |
