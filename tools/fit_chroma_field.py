@@ -67,11 +67,6 @@ def stimulus_and_exposures(stock: dict, illuminant: str = "D55"):
     wl = neg["wl"]
     if illuminant == "D55":
         spd = v1._d55_spd(wl)
-    elif illuminant.startswith("BB") and illuminant.endswith("K"):
-        # Route-D interpolation oracle: a bare Planckian radiator at T kelvin
-        # (peak-normalized like the colour-science illuminants; the scale
-        # cancels under the neutral anchor anyway).
-        spd = sb.blackbody_spd(wl, float(illuminant[2:-1]))
     else:
         spd = csm.illuminant_spd(illuminant, wl)
     refl = v1._training_set(wl)
@@ -185,19 +180,6 @@ def adopts(candidate: dict, baseline: dict, ratio: float = P95_ADOPT_RATIO) -> b
     return bool(
         candidate["p95_stop"] <= ratio * baseline["p95_stop"]
         and candidate["p99_stop"] <= baseline["p99_stop"]
-    )
-
-
-def adopts_tail(candidate: dict, baseline: dict, ratio: float = P95_ADOPT_RATIO) -> bool:
-    """The same rule with p99 as the decision quantity: used for the route-D
-    illuminant TIERS, because the illuminant assumption's cost is a tail
-    phenomenon (median held-out p99 under CIE A 1.14 vs 0.73 same-illuminant,
-    while p95 moves 0.51 vs 0.40) — a p95-first rule rejects tiers that
-    remove 40% of the tail error. Candidate p99 <= ratio * baseline p99 AND
-    p95 no worse."""
-    return bool(
-        candidate["p99_stop"] <= ratio * baseline["p99_stop"]
-        and candidate["p95_stop"] <= baseline["p95_stop"]
     )
 
 
