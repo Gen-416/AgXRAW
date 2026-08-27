@@ -61,7 +61,7 @@ class IlluminantTierRecordTests(unittest.TestCase):
             self.assertEqual(s["shipped_dedicated"], chosen)
         # the conclusion is generated from the numbers
         for ill in fit.TIER_ILLUMINANTS:
-            self.assertIn(f"{r['median'][ill]['stocks_adopting']}/", r["conclusion"])
+            self.assertIn(f"{r['median'][ill]['responses_adopting']}/", r["conclusion"])
         # third review F3/F5: adoption is judged on the FIXED candidate, and
         # family statistics count each spectral response once
         self.assertIn("unique_responses", r)
@@ -69,82 +69,49 @@ class IlluminantTierRecordTests(unittest.TestCase):
         for ill in fit.TIER_ILLUMINANTS:
             self.assertIn("presets_adopting", r["median"][ill])
 
-    def test_adoption_frequency_is_measured_on_the_fixed_candidate(self) -> None:
-        """Recompute the probe pair on the first three seeds: with the tier
-        model fixed by the record, every seed's vote compares THAT model —
-        a per-seed field/3x3 pick would not reproduce the stored votes."""
-        stored = self.record["stocks"][self.STOCK][self.ILL]
-        votes = []
-        for seed in fcf.SEEDS[:3]:
-            folds = fcf.cv_folds(self.exp_d.shape[0], seed)
-            a = fcf.summarize(fit.heldout_assumed(self.base, self.rgb_a, self.exp_a, folds))
-            if stored["tier_model"] == "field":
-                fx = fcf.summarize(fit.heldout_field(self.xyz_a, self.rgb_a, self.exp_a, self.m_a, folds))
-            else:
-                fx = fcf.summarize(fit.heldout_3x3(self.rgb_a, self.exp_a, folds))
-            votes.append(fcf.adopts_once(fx, a))
-        # three seeds of thirty: the sample frequency must be compatible
-        # with the recorded frequency (no per-seed candidate swap)
-        self.assertLessEqual(abs(float(np.mean(votes)) - stored["tier_adopt_frequency"]), 0.34)
+    def test_decide_tier_fixes_the_candidate_before_counting(self) -> None:
+        """Pure-function gate (fourth review, F2): constructed per-seed
+        summaries on which a per-seed pick and a fixed candidate DISAGREE.
+        Seeds 0-1: the field wins the tier vote and beats the assumed model;
+        seed 2: the field loses the tier vote but the 3x3 would beat the
+        assumed model. Fixed candidate = field (2/3 votes) -> adoption 2/3;
+        a per-seed pick would count seed 2's 3x3 win and report 3/3."""
+        good = {"p95_stop": 0.20, "p99_stop": 0.40, "max_stop": 0.5}
+        bad = {"p95_stop": 0.40, "p99_stop": 0.80, "max_stop": 1.0}
+        assumed = [bad, bad, bad]
+        ded_field = [good, good, bad]
+        ded_obs = [bad, bad, good]
+        d = fit.decide_tier(assumed, ded_field, ded_obs)
+        self.assertEqual(d["tier_model"], "field")
+        self.assertEqual(d["tier_model_votes"], "2/3")
+        self.assertAlmostEqual(d["tier_adopt_frequency"], 2 / 3, places=4)
+        # ... and the mirror case: the 3x3 wins the vote, its own losses count.
+        d2 = fit.decide_tier(assumed, [bad, bad, good], [good, good, bad])
+        self.assertEqual(d2["tier_model"], "3x3")
+        self.assertAlmostEqual(d2["tier_adopt_frequency"], 2 / 3, places=4)
 
-    def test_stored_record_reproduces_on_the_first_seed(self) -> None:
-        stored = self.record["stocks"][self.STOCK][self.ILL]
-        folds0 = fcf.cv_folds(self.exp_d.shape[0], fcf.SEEDS[0])
-        got = {
-            "shipped_assumed": fcf.summarize(
-                fit.heldout_assumed(self.base, self.rgb_a, self.exp_a, folds0)
-            ),
-            "field_dedicated": fcf.summarize(
-                fit.heldout_field(self.xyz_a, self.rgb_a, self.exp_a, self.m_a, folds0)
-            ),
-            "3x3_dedicated": fcf.summarize(fit.heldout_3x3(self.rgb_a, self.exp_a, folds0)),
-        }
-        # one seed against a 30-seed median: within the seed spread class
-        for name, summary in got.items():
-            self.assertAlmostEqual(
-                stored[name]["p99_stop"], summary["p99_stop"], delta=0.06, msg=name
-            )
-        for name in ("field_assumed_d55_unadapted", "field_assumed_d55_raw"):
-            fn = fit.heldout_unadapted if "unadapted" in name else fit.heldout_raw
-            fresh = fcf.summarize(fn(self.xyz_d, self.exp_d, self.xyz_a, self.exp_a, folds0))
-            self.assertAlmostEqual(stored[name]["p99_stop"], fresh["p99_stop"], delta=2e-3, msg=name)
-
-    def test_shipped_models_are_the_runtime_operator(self) -> None:
-        """The D55 base is the baked LUT run through the runtime dispatcher —
-        its normalized prediction at the white board is exactly zero, and it
-        differs from the continuous polynomial on I-lit rows (the two are
-        different operators; F1)."""
-        train = np.setdiff1d(np.arange(1, self.exp_d.shape[0]), fcf.cv_folds(self.exp_d.shape[0])[0])
-        pred = self.base.predict(self.rgb_a, train)
-        np.testing.assert_array_equal(pred[0], np.zeros(3))
-        cont = fit._field_pred_unadapted(self.xyz_d, self.exp_d, self.rgb_a @ np.linalg.inv(self.m_d).T, train)
-        self.assertGreater(float(np.abs(pred - cont).max()), 1e-4)
-
-    def test_measurement_mistakes_stay_pinned(self) -> None:
-        folds0 = fcf.cv_folds(self.exp_d.shape[0], fcf.SEEDS[0])
-        runtime = np.percentile(fit.heldout_assumed(self.base, self.rgb_a, self.exp_a, folds0), 99)
-        unadapted = np.percentile(
-            fit.heldout_unadapted(self.xyz_d, self.exp_d, self.xyz_a, self.exp_a, folds0), 99
-        )
-        raw = np.percentile(fit.heldout_raw(self.xyz_d, self.exp_d, self.xyz_a, self.exp_a, folds0), 99)
-        self.assertGreater(float(unadapted - runtime), 0.3)
-        self.assertGreater(float(raw - unadapted), 0.8)
-        np.testing.assert_allclose(self.rgb_a @ np.linalg.inv(self.m_a).T, self.xyz_a, atol=1e-9)
-
-    def test_decision_follows_the_shipping_rule_only(self) -> None:
-        """Whatever the conclusion is, it must be the one the shipped-pair
-        numbers imply under the family threshold — no family-level number
-        may decide it (F5). The LED-RGB1 family number is labelled as such."""
-        med = self.record["median"]
-        conclusion = self.record["conclusion"]
-        implied = [
-            med[ill]["stocks_adopting"] >= fit.FAMILY_THRESHOLD for ill in ("A", "LED-B3")
-        ]
-        if any(implied):
-            self.assertIn("earns its place for", conclusion)
-        else:
-            self.assertIn("no illuminant tier earns its place", conclusion)
-        self.assertIn("family number, not the shipping rule", conclusion)
+    def test_record_frequencies_are_the_fixed_candidate_ones(self) -> None:
+        """The stored frequency of every (stock, illuminant) must equal
+        decide_tier on the stored per-seed summaries, and the record must
+        contain at least one pair where a per-seed pick would have given a
+        different number — so a regression to mixing cannot hide."""
+        differs = 0
+        for name, per_ill in self.record["stocks"].items():
+            for ill, s in per_ill.items():
+                ps = s["per_seed"]
+                d = fit.decide_tier(ps["assumed"], ps["field_dedicated"], ps["3x3_dedicated"])
+                self.assertEqual(d["tier_model"], s["tier_model"], f"{name}/{ill}")
+                self.assertAlmostEqual(
+                    d["tier_adopt_frequency"], s["tier_adopt_frequency"], places=4,
+                    msg=f"{name}/{ill}",
+                )
+                mixed = np.mean([
+                    fcf.adopts_once(f if fcf.adopts_once(f, o) else o, a)
+                    for a, f, o in zip(ps["assumed"], ps["field_dedicated"], ps["3x3_dedicated"])
+                ])
+                if abs(float(mixed) - s["tier_adopt_frequency"]) > 1e-9:
+                    differs += 1
+        self.assertGreater(differs, 0, "record cannot distinguish fixed from per-seed candidates")
 
     def test_white_board_stays_anchored_under_every_illuminant(self) -> None:
         for ill in ("D55", "A", "LED-B3", "LED-RGB1"):

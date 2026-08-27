@@ -13,6 +13,7 @@
   "median_field_p99_stop": 0.6309,
   "median_p95_improvement_pct": 37.4,
   "median_p99_improvement_pct": 32.4,
+  "presets_adopting": 20,
   "purpose": "Route-C measurement, runtime-faithful: held-out layer-exposure error of the SHIPPED Stage A operator (per-fold baked LUT through film_v2_math.stage_a_log_exposure) against the 3x3 observer refit per fold; repeated K-fold over listed seeds",
   "residual_caveat": "the field's remaining residual is this model family's generalization residual on this 190-reflectance set; whether it is the metamerism floor of ANY deterministic three-channel map is NOT established (that needs same-tristimulus/different-layer-exposure spectral pairs or an independent reflectance library)",
   "responses_adopting": 18,
@@ -75,7 +76,7 @@
         "adopt_votes": "30/30",
         "field": {
           "max_stop": 0.703,
-          "p95_stop": 0.2521,
+          "p95_stop": 0.252,
           "p99_stop": 0.4981
         },
         "field_p99_iqr": [
@@ -107,7 +108,7 @@
         "adopt_frequency": 1.0,
         "adopt_votes": "30/30",
         "field": {
-          "max_stop": 1.2014,
+          "max_stop": 1.2013,
           "p95_stop": 0.3734,
           "p99_stop": 0.6235
         },
@@ -140,7 +141,7 @@
         "adopt_frequency": 1.0,
         "adopt_votes": "30/30",
         "field": {
-          "max_stop": 1.1309,
+          "max_stop": 1.131,
           "p95_stop": 0.3758,
           "p99_stop": 0.6745
         },
@@ -159,10 +160,10 @@
       "design_cond_standardized": 62944.9,
       "response_id": "75bef4abd87b2ccb",
       "ridge_sensitivity_p99": {
-        "0.0001": 0.7532,
+        "0.0001": 0.7533,
         "0.01": 0.7658,
         "1": 0.7765,
-        "1e-06": 0.753
+        "1e-06": 0.7531
       },
       "runtime": {
         "3x3": {
@@ -305,7 +306,7 @@
         "adopt_frequency": 1.0,
         "adopt_votes": "30/30",
         "field": {
-          "max_stop": 1.2143,
+          "max_stop": 1.2144,
           "p95_stop": 0.4037,
           "p99_stop": 0.7026
         },
@@ -338,7 +339,7 @@
         "adopt_frequency": 1.0,
         "adopt_votes": "30/30",
         "field": {
-          "max_stop": 1.2143,
+          "max_stop": 1.2144,
           "p95_stop": 0.4037,
           "p99_stop": 0.7026
         },
@@ -371,7 +372,7 @@
         "adopt_frequency": 1.0,
         "adopt_votes": "30/30",
         "field": {
-          "max_stop": 1.2143,
+          "max_stop": 1.2144,
           "p95_stop": 0.4037,
           "p99_stop": 0.7026
         },
@@ -490,7 +491,7 @@
       "response_id": "94b357898886c5c6",
       "ridge_sensitivity_p99": {
         "0.0001": 0.7338,
-        "0.01": 0.7659,
+        "0.01": 0.766,
         "1": 0.7972,
         "1e-06": 0.7335
       },
@@ -557,7 +558,7 @@
       "ridge_sensitivity_p99": {
         "0.0001": 0.6697,
         "0.01": 0.6769,
-        "1": 0.7152,
+        "1": 0.7151,
         "1e-06": 0.6695
       },
       "runtime": {
@@ -712,7 +713,6 @@
       }
     }
   },
-  "stocks_adopting": 20,
   "training_set": "rawtoaces_training_reflectance.csv (190 samples) + white board, D55",
   "unique_responses": 18
 }

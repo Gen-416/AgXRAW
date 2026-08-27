@@ -186,7 +186,28 @@ class FieldContractTests(unittest.TestCase):
         tint = np.stack([g * 1.0000001, g, g * 0.9999999], axis=1)
         field = stage_a_log_exposure(tint, self.stock)
         obs = layer_log_exposure(tint, self.stock["observer"])
-        np.testing.assert_allclose(field, obs, atol=1e-5)
+        # Fourth review (F3): the bake removes the bilinear residual at the
+        # white chromaticity along the weight field. What remains at a 1e-7
+        # tint is the correction's gradient times the tint plus float32 LUT
+        # storage: measured 7.9e-9 log10 (2.6e-8 stop; was 3.5e-5 stop).
+        np.testing.assert_allclose(field, obs, atol=5e-8)
+        # ... and the stored LUT's bilinear sample AT the white chromaticity
+        # is zero to float32 node precision.
+        m = self.stock["chroma_xyz_from_rec2020"]
+        lut = self.stock["chroma_delta_lut"]
+        x0, x1, y0, y1 = self.stock["chroma_domain"]
+        xyz = np.ones(3) @ m.T
+        wx, wy = xyz[0] / xyz.sum(), xyz[1] / xyz.sum()
+        n = lut.shape[0]
+        fx = (wx - x0) / (x1 - x0) * (n - 1)
+        fy = (wy - y0) / (y1 - y0) * (n - 1)
+        ix, iy = min(int(fx), n - 2), min(int(fy), n - 2)
+        ax, ay = fx - ix, fy - iy
+        at_white = (
+            lut[ix, iy] * (1 - ax) * (1 - ay) + lut[ix + 1, iy] * ax * (1 - ay)
+            + lut[ix, iy + 1] * (1 - ax) * ay + lut[ix + 1, iy + 1] * ax * ay
+        )
+        self.assertLess(float(np.abs(at_white).max()), 1e-8)
 
     def test_runtime_chromaticities_cannot_leave_the_lut_domain(self) -> None:
         """Channel-clamped positive Rec.2020 keeps chromaticity inside the

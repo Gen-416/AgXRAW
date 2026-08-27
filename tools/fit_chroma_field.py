@@ -286,6 +286,30 @@ def bake_lut(model: dict, xyz_train, m, observer, n: int = LUT_N,
     taper[(lam < 0.0).any(axis=0).reshape(n, n)] = 0.0
     w = (w * taper)[..., None]
     delta = w * (field - obs)
+    # Fourth review (F3): the continuous correction is 0 at the white
+    # chromaticity, but a BILINEAR sample of delta there is not (the four
+    # surrounding nodes are off-white), which left a ~3e-5 stop seam against
+    # the exact-neutral shortcut. Remove the sampled residual along the
+    # weight field — delta' = delta - w * c with c = sample(delta)/sample(w)
+    # at white — so the bilinear sample at white is exactly 0 while the
+    # zero margin at the gamut edge (w == 0) is untouched.
+    wx, wy = model["white_xy"]
+    fx = (wx - x0) / (x1 - x0) * (n - 1)
+    fy = (wy - y0) / (y1 - y0) * (n - 1)
+    ix, iy = min(int(fx), n - 2), min(int(fy), n - 2)
+    ax, ay = fx - ix, fy - iy
+
+    def _sample(arr):
+        return (
+            arr[ix, iy] * (1 - ax) * (1 - ay)
+            + arr[ix + 1, iy] * ax * (1 - ay)
+            + arr[ix, iy + 1] * (1 - ax) * ay
+            + arr[ix + 1, iy + 1] * ax * ay
+        )
+
+    w_white = float(_sample(w[..., 0]))
+    if w_white > 1e-6:
+        delta = delta - w * (_sample(delta) / w_white)[None, None, :]
     return delta, np.asarray([x0, x1, y0, y1]), m_inv
 
 
@@ -533,7 +557,7 @@ def run(seeds=SEEDS) -> dict:
         ),
         "median_p99_improvement_pct": round(float(np.median((p99_3 - p99_f) / p99_3 * 100.0)), 1),
         "median_p95_improvement_pct": round(float(np.median((p95_3 - p95_f) / p95_3 * 100.0)), 1),
-        "stocks_adopting": int(sum(adopts(s) for s in stocks.values())),
+        "presets_adopting": int(sum(adopts(s) for s in stocks.values())),
         "responses_adopting": int(sum(adopts(s) for s in uniq.values())),
         "stocks": stocks,
     }
@@ -547,7 +571,7 @@ def main() -> int:
     print(f"wrote {OUT_PATH}")
     print(
         f"median improvement: p95 {report['median_p95_improvement_pct']}%  "
-        f"p99 {report['median_p99_improvement_pct']}%  adopting {report['stocks_adopting']}/{len(report['stocks'])} "
+        f"p99 {report['median_p99_improvement_pct']}%  adopting {report['presets_adopting']}/{len(report['stocks'])} "
         f"presets, {report['responses_adopting']}/{report['unique_responses']} responses"
     )
     return 0
