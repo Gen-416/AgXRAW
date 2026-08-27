@@ -75,7 +75,8 @@ OUT_PATH = PROJECT_ROOT / "docs" / "illuminant_tier_cv.json"
 CHROMA_RECORD = PROJECT_ROOT / "docs" / "chroma_field_cv.json"
 TIER_ILLUMINANTS = ("A", "LED-B3", "LED-RGB1")
 ORDER = 3
-# Family-level threshold (stocks adopting) set before the numbers were seen.
+# Family-level threshold, counted in unique spectral RESPONSES adopting
+# (not presets), set before the numbers were seen.
 FAMILY_THRESHOLD = 5
 
 
@@ -198,6 +199,29 @@ def _median_summary(summaries):
     }
 
 
+def decide_tier(assumed: list, ded_field: list, ded_obs: list) -> dict:
+    """The route-D decision on per-seed summaries — a PURE function so the
+    gate can exercise it directly (fourth review, F2).
+
+    Two passes: the tier's candidate is FIXED first by the vote across
+    seeds (field vs 3x3 on the dedicated pair), and only then is its
+    adoption measured, every seed judging that SAME model against the
+    shipped D55 operator. A per-seed pick would make the frequency describe
+    a model nobody ships."""
+    tier_votes = [fcf.adopts_once(f, o) for f, o in zip(ded_field, ded_obs)]
+    tier_field = float(np.mean(tier_votes)) >= fcf.ADOPT_FREQUENCY
+    fixed = ded_field if tier_field else ded_obs
+    adopt_votes = [fcf.adopts_once(fx, a) for fx, a in zip(fixed, assumed)]
+    freq = float(np.mean(adopt_votes))
+    return {
+        "tier_model": "field" if tier_field else "3x3",
+        "tier_model_votes": f"{int(sum(tier_votes))}/{len(tier_votes)}",
+        "tier_adopt_frequency": round(freq, 4),
+        "tier_adopted": bool(freq >= fcf.ADOPT_FREQUENCY),
+        "shipped_dedicated": _median_summary(fixed),
+    }
+
+
 def stock_record(name: str, stock: dict, chroma_entry: dict, seeds=fcf.SEEDS) -> dict:
     xyz_d, rgb_d, exp_d, m_d = fcf.stimulus_and_exposures(stock, "D55")
     n = exp_d.shape[0]
@@ -206,20 +230,13 @@ def stock_record(name: str, stock: dict, chroma_entry: dict, seeds=fcf.SEEDS) ->
     per_ill = {}
     for ill in TIER_ILLUMINANTS:
         xyz_i, rgb_i, exp_i, m_i = fcf.stimulus_and_exposures(stock, ill)
-        assumed, ded_field, ded_obs, tier_votes = [], [], [], []
+        assumed, ded_field, ded_obs = [], [], []
         for seed in seeds:
             folds_list = fcf.cv_folds(n, seed)
             assumed.append(fcf.summarize(heldout_assumed(base, rgb_i, exp_i, folds_list)))
             ded_field.append(fcf.summarize(heldout_field(xyz_i, rgb_i, exp_i, m_i, folds_list)))
             ded_obs.append(fcf.summarize(heldout_3x3(rgb_i, exp_i, folds_list)))
-            tier_votes.append(fcf.adopts_once(ded_field[-1], ded_obs[-1]))
-        # Two passes (third review, F3): the tier's candidate is FIXED first
-        # by the vote across seeds, and only then is its adoption frequency
-        # measured — every seed judges the same model, never a per-seed pick.
-        tier_field = float(np.mean(tier_votes)) >= fcf.ADOPT_FREQUENCY
-        fixed = ded_field if tier_field else ded_obs
-        adopt_votes = [fcf.adopts_once(fx, a) for fx, a in zip(fixed, assumed)]
-        dedicated = _median_summary(fixed)
+        decision = decide_tier(assumed, ded_field, ded_obs)
         assumed_med = _median_summary(assumed)
         folds0 = fcf.cv_folds(n, seeds[0])
         per_ill[ill] = {
@@ -227,14 +244,17 @@ def stock_record(name: str, stock: dict, chroma_entry: dict, seeds=fcf.SEEDS) ->
             "shipped_assumed": assumed_med,
             "field_dedicated": _median_summary(ded_field),
             "3x3_dedicated": _median_summary(ded_obs),
-            "tier_model": "field" if tier_field else "3x3",
-            "tier_model_votes": f"{int(sum(tier_votes))}/{len(tier_votes)}",
-            "shipped_dedicated": dedicated,
-            "tier_adopt_frequency": round(float(np.mean(adopt_votes)), 4),
-            "tier_adopted": bool(float(np.mean(adopt_votes)) >= fcf.ADOPT_FREQUENCY),
+            **decision,
             "recoverable_p99_stop": round(
-                float(assumed_med["p99_stop"] - dedicated["p99_stop"]), 4
+                float(assumed_med["p99_stop"] - decision["shipped_dedicated"]["p99_stop"]), 4
             ),
+            # Per-seed summaries so the decision can be re-derived from the
+            # record itself (fourth review, F2).
+            "per_seed": {
+                "assumed": assumed,
+                "field_dedicated": ded_field,
+                "3x3_dedicated": ded_obs,
+            },
             "field_assumed_d55_unadapted": fcf.summarize(
                 heldout_unadapted(xyz_d, exp_d, xyz_i, exp_i, folds0)
             ),
@@ -277,7 +297,7 @@ def run(seeds=fcf.SEEDS) -> dict:
             "shipped_dedicated_p99": _median(lambda s: s[ill]["shipped_dedicated"]["p99_stop"]),
             "field_dedicated_p99": _median(lambda s: s[ill]["field_dedicated"]["p99_stop"]),
             "recoverable_p99_stop": _median(lambda s: s[ill]["recoverable_p99_stop"]),
-            "stocks_adopting": int(sum(s[ill]["tier_adopted"] for s in uniq.values())),
+            "responses_adopting": int(sum(s[ill]["tier_adopted"] for s in uniq.values())),
             "presets_adopting": int(sum(s[ill]["tier_adopted"] for s in stocks_out.values())),
             "field_assumed_d55_unadapted_p99": _median(
                 lambda s: s[ill]["field_assumed_d55_unadapted"]["p99_stop"]
@@ -295,14 +315,14 @@ def run(seeds=fcf.SEEDS) -> dict:
         verdict.append(
             f"{ill}: D55 operator p99 {m['shipped_assumed_p99']} vs would-be tier "
             f"{m['shipped_dedicated_p99']} (recoverable {m['recoverable_p99_stop']:+}), "
-            f"{m['stocks_adopting']}/{n_stocks} responses adopt"
+            f"{m['responses_adopting']}/{n_stocks} responses adopt"
             + ("; a fixed cubic family would sit at "
                f"{m['field_dedicated_p99']} — a family number, not the shipping rule"
                "; a narrow tri-band source is UNIDENTIFIABLE from colour temperature, "
                "so this earns a profile-confidence downgrade, not a tier"
                if ill == "LED-RGB1" else "")
         )
-    any_family = any(med[i]["stocks_adopting"] >= FAMILY_THRESHOLD for i in ("A", "LED-B3"))
+    any_family = any(med[i]["responses_adopting"] >= FAMILY_THRESHOLD for i in ("A", "LED-B3"))
     return {
         "purpose": (
             "Route-D: cost of the D55 illuminant assumption per stock and per "
@@ -334,8 +354,10 @@ def run(seeds=fcf.SEEDS) -> dict:
             "fit_chroma_field.adopts_once per fold draw (p95 <= 0.85 * baseline "
             "p95, p99 no worse), adoption when >= ADOPT_FREQUENCY of the seeds "
             "pass: tier_model on the dedicated field vs 3x3; tier_adopted on the "
-            "shipped tier vs the shipped D55 operator; a family-level tier needs "
-            f">= {FAMILY_THRESHOLD} stocks"
+            "shipped tier vs the shipped D55 operator (candidate FIXED by the "
+            "cross-seed vote first, then every seed judges that one model); a "
+            f"family-level tier needs >= {FAMILY_THRESHOLD} unique spectral RESPONSES "
+            "(responses_adopting; presets_adopting is informational)"
         ),
         "family_threshold": FAMILY_THRESHOLD,
         "unique_responses": len(uniq),
