@@ -83,6 +83,28 @@ class MatrixHealthReportLineTests(unittest.TestCase):
         if getattr(degraded, "wb_xyz_to_cam", None) is not None:
             self.assertIn("置信度降低", line2)
 
+    def test_kappa_is_evaluated_at_the_declared_kelvin(self) -> None:
+        """F7 (review 2026-08-27): the line must name the CCT the render
+        used — a 3200K declaration reads @3200K(声明), never a blanket
+        6500K — and camera WB without a DNG calibration says it defaulted.
+        The synthetic bundle carries no matrix, so one from the fallback
+        fleet is attached: this test must never skip."""
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan.camera_matrices import _FALLBACK_MATRICES
+        from dngscan.report import matrix_health_line_cn
+
+        scene = build_daylight_wide_dr()
+        m = np.asarray(_FALLBACK_MATRICES[0]["matrix"], dtype=np.float64) / 10000.0
+        with_matrix = dataclasses.replace(scene.bundle, wb_xyz_to_cam=m)
+        tungsten = dataclasses.replace(with_matrix, wb_mode="3200k")
+        line = matrix_health_line_cn(tungsten)
+        self.assertIn("@ 3200K(声明)", line)
+        self.assertIn("κ=", line)
+        daylight = dataclasses.replace(with_matrix, wb_mode="5500k")
+        self.assertIn("@ 5500K(声明)", matrix_health_line_cn(daylight))
+        camera = dataclasses.replace(with_matrix, wb_mode="camera")
+        self.assertIn("(默认D65)", matrix_health_line_cn(camera))
+
 
 if __name__ == "__main__":
     unittest.main()

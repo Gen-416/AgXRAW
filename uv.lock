@@ -203,7 +203,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "colour-science", marker = "extra == 'calibration'", specifier = ">=0.4.4" },
+    { name = "colour-science", marker = "extra == 'calibration'", specifier = "==0.4.7" },
     { name = "fastapi", marker = "extra == 'gui'", specifier = ">=0.141.1,<0.142" },
     { name = "matplotlib", marker = "extra == 'scan'", specifier = ">=3.6" },
     { name = "numpy", specifier = ">=1.24" },
@@ -217,7 +217,7 @@ provides-extras = ["scan", "native", "calibration", "gui"]
 
 [package.metadata.requires-dev]
 test = [
-    { name = "colour-science", specifier = ">=0.4.4" },
+    { name = "colour-science", specifier = "==0.4.7" },
     { name = "fastapi", specifier = ">=0.141.1,<0.142" },
     { name = "httpx2", specifier = ">=2,<3" },
     { name = "matplotlib", specifier = ">=3.6" },

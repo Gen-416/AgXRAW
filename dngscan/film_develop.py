@@ -145,17 +145,18 @@ def _npz(path):
 
 
 def _check_common(z, kind: str, path) -> None:
-    # schema 8 (route C/D records in the ABI): Stage A carries the route-C
-    # chromaticity-field LUT selected per stock by the CV record (schema 7)
-    # AND the held-out numbers the report prints for the model that actually
-    # ships — its own p95/p99, the 3x3 baseline, and what it measures on
-    # white-balanced tungsten / high-CRI LED scenes (route D: measured, no
-    # illuminant tier justified). Older schemas are refused by NUMBER, same
-    # doctrine as the 5->6 bump: a real reason, not a KeyError swallowed into
-    # "unreadable".
-    if int(z["schema"]) != 8:
+    # schema 9 (review 2026-08-27, F8): Stage A carries the route-C
+    # chromaticity-field LUT selected per stock by the runtime-faithful,
+    # repeated-K-fold CV record (7), the held-out numbers the report prints
+    # for the model that actually ships (8), AND the provenance block that
+    # names every numerical input beyond the negative profile — the
+    # reflectance library, both CV records, the fit/bake parameters and the
+    # CMF/SPD library version (stage_a_input_names/sha256, stage_a_params).
+    # Older schemas are refused by NUMBER, same doctrine as the 5->6 bump: a
+    # real reason, not a KeyError swallowed into "unreadable".
+    if int(z["schema"]) != 9:
         raise ValueError(
-            f"{path.name}: schema {int(z['schema'])}, expected 8 — "
+            f"{path.name}: schema {int(z['schema'])}, expected 9 — "
             "regenerate with tools/build_film_v2_assets.py"
         )
     if str(np.asarray(z["kind"])) != kind:
