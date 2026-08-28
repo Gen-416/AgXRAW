@@ -390,10 +390,13 @@ class ServiceDialParsingTests(unittest.TestCase):
         s = export_suffix_parts("clip", "p3", "sdr", film_mode="full", film_development="editorial_custom",
                                 film_dev_contrast=-0.2, film_dev_fog=0.1, film_dev_density=0.3,
                                 film_compression=0.5, film_compression_knee=2.0, film_highlight_density=1.0,
-                                film_media_scatter="off", explicit_optics_seed=7,
+                                film_media_scatter="off", explicit_optics_seed=7, film_grain=0.5,
                                 coreimage_scale="unity", clip_margin=8, decoder="coreimage")
         for tok in ("dev-c", "comp0_5k2hd1", "scatteroff", "seed7", "ciscale-unity", "margin8"):
             self.assertIn(tok, s)
+        # R7 item 6: without grain the seed changes no pixel — no token
+        no_grain = export_suffix_parts("clip", "p3", "sdr", film_mode="full", explicit_optics_seed=7)
+        self.assertNotIn("seed", no_grain)
         plain = export_suffix_parts("clip", "p3", "sdr", film_mode="full")
         for tok in ("dev-", "comp", "scatteroff", "seed", "ciscale", "margin"):
             self.assertNotIn(tok, plain)
@@ -450,3 +453,81 @@ class GreyingGapWires(unittest.TestCase):
         i = PAGE.index("function saveSettings("); j = PAGE.index("}));}catch(e){}", i)
         keys = re.findall(r"(?:^|[{,\n]\s*)([a-zA-Z]+):", PAGE[i:j])
         self.assertEqual(sorted(k for k in set(keys) if keys.count(k) > 1), [])
+
+
+class ReviewR7Tests(unittest.TestCase):
+    def test_headroom_estimate_forwards_every_film_dial(self) -> None:
+        # R7 item 1: the exported "EV still safe" figure must come from the
+        # SAME film chain as the export, dials included.
+        from dngscan.gui import service
+
+        seen = {}
+
+        def fake_max_safe_ev(*args, **kwargs):
+            seen.update(kwargs)
+            return 1.0
+
+        import inspect
+
+        sig = inspect.signature(service.estimate_ev_headroom)
+        defaults = {
+            "bundle": SimpleNamespace(scene_rec2020_render=np.full((4, 4, 3), 0.18, dtype=np.float32), lens_filter="none"),
+            "analysis": SimpleNamespace(),  # non-None: the function returns {} without an analysis
+            "gamut": "p3", "current_ev": 0.0,
+        }
+        required = {
+            name: defaults.get(name, 0.0 if p.annotation in (float, "float") else "none")
+            for name, p in sig.parameters.items()
+            if p.default is inspect.Parameter.empty and p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+        }
+        with mock.patch.object(service.dg, "max_safe_ev", side_effect=fake_max_safe_ev):
+            service.estimate_ev_headroom(
+                **required,
+                film_development="editorial_custom", film_dev_contrast=0.2, film_dev_fog=0.1,
+                film_dev_density=-0.3, film_compression=0.5, film_compression_knee=3.0,
+                film_highlight_density=1.0,
+            )
+        for k, v in (("film_development", "editorial_custom"), ("film_dev_contrast", 0.2), ("film_dev_fog", 0.1),
+                     ("film_dev_density", -0.3), ("film_compression", 0.5), ("film_compression_knee", 3.0),
+                     ("film_highlight_density", 1.0)):
+            self.assertEqual(seen.get(k), v, k)
+
+    def test_peek_uses_the_same_identity_as_get(self) -> None:
+        # R7 item 2: an export must find the preview's entry (and its grain
+        # realization) under non-default decode dials too.
+        from dngscan.gui import preview_cache as pc
+
+        calls = []
+
+        def fake_identity(*args):
+            calls.append(args)
+            return (("k",) + tuple(str(a) for a in args[1:]), "digest")
+
+        store = pc.PreviewCache.__new__(pc.PreviewCache)
+        store.entries = {}
+        import threading
+        store.lock = threading.Lock()
+        with mock.patch.object(pc, "_cache_identity", side_effect=fake_identity):
+            store.peek(ROOT / "README.md", "clip", "camera", False, "coreimage", "auto", "auto",
+                       coreimage_scale="unity", margin=8)
+        self.assertEqual(calls[-1][6:], ("unity", 8))
+        with mock.patch.object(pc, "_cache_identity", side_effect=fake_identity):
+            store.peek(ROOT / "README.md", "clip", "camera", False, "libraw", "auto", "auto",
+                       coreimage_scale="unity", margin=8)
+        self.assertEqual(calls[-1][6:], ("aligned", 8))
+
+    def test_clip_margin_rejects_non_integers_like_the_cli(self) -> None:
+        from dngscan.gui.service import parse_decode_extras
+
+        with self.assertRaises(ValueError):
+            parse_decode_extras({"clipMargin": 4.9}, "libraw")
+        with self.assertRaises(ValueError):
+            parse_decode_extras({"clipMargin": "4.9"}, "libraw")
+        self.assertEqual(parse_decode_extras({"clipMargin": "6"}, "libraw"), ("aligned", 6))
+        self.assertEqual(parse_decode_extras({"clipMargin": 6.0}, "libraw"), ("aligned", 6))
+
+    def test_export_checks_the_export_runtime_context(self) -> None:
+        body = PAGE[PAGE.index('$("#exportConfirm").onclick'):]
+        body = body[: body.index('postJob("/export"')]
+        self.assertIn("pj.runtime_export===false", body)
+        self.assertIn("导出上下文", body)
