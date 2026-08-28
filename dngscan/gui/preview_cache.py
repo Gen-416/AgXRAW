@@ -263,8 +263,19 @@ def _cache_identity(
     decoder: str = "libraw",
     coreimage_version: str = "auto",
     demosaic: str = "auto",
+    coreimage_scale: str = "aligned",
+    margin: int = 4,
 ) -> tuple[tuple, str]:
     evidence_key = _evidence_cache_identity(path)
+    # GUI-exposed decode dials (owner 2026-08-28): the Core Image scale
+    # policy changes the decoded scene, the clip margin changes the
+    # analysis — both are identity. Defaults add NOTHING to the key so
+    # every existing cache entry keeps its digest.
+    extras: list[str] = []
+    if str(decoder) == "coreimage" and str(coreimage_scale) != "aligned":
+        extras.append(f"ciscale={coreimage_scale}")
+    if int(margin) != 4:
+        extras.append(f"margin={int(margin)}")
     key = (
         *evidence_key,
         highlight,
@@ -272,6 +283,7 @@ def _cache_identity(
         str(coreimage_version),
         str(demosaic),
         _scene_decoder_runtime_id(decoder),
+        *extras,
     )
     encoded = "\0".join(
         (
@@ -747,12 +759,17 @@ class PreviewCache:
         decoder: str = "libraw",
         coreimage_version: str = "auto",
         demosaic: str = "auto",
+        coreimage_scale: str = "aligned",
+        margin: int = 4,
     ) -> PreviewEntry:
         if decoder == "coreimage":
             highlight = "reconstruct"
             demosaic = "auto"
+        else:
+            coreimage_scale = "aligned"
         key, digest = _cache_identity(
-            path, highlight, wb, decoder, coreimage_version, demosaic
+            path, highlight, wb, decoder, coreimage_version, demosaic,
+            coreimage_scale, int(margin),
         )
         cached: PreviewEntry | None = None
         with self.lock:
@@ -817,8 +834,9 @@ class PreviewCache:
                             wb_mode="camera",
                             decoder=decoder,
                             coreimage_version=coreimage_version,
+                            coreimage_scale=coreimage_scale,
                         )
-                        analysis, _, _ = dg.analyze(source, 4, diagnostics=False)
+                        analysis, _, _ = dg.analyze(source, int(margin), diagnostics=False)
                         built = build_proxy_entry(source, analysis, require_guidance)
                         _write_disk_entry(cache_path, built)
                 with self.lock:

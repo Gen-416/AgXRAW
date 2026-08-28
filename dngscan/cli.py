@@ -287,7 +287,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--tone-core",
         choices=TONE_CORE_CHOICES,
         default="agx",
-        help="tone 核: agx=默认全图 AgX；gated=RAW 门控实验；lum=对照·场景 C1 仅亮度；neutral=诊断·固定 Y 比例曲线",
+        help="tone 核: agx=默认全图 AgX；gated=RAW 门控·保真(逐像素 CFA 证据门控色彩路径)；lum=对照·场景 C1 仅亮度；neutral=诊断·固定 Y 比例曲线",
     )
     parser.add_argument(
         "--lum-norm",
@@ -386,7 +386,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--film-crossover",
-        choices=("off", "datasheet"),
+        choices=("off", "print", "datasheet"),
         default=None,
         help=(
             "胶片层间漂移（crossover）声明开关，仅 --film-mode full 有意义"
@@ -773,7 +773,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # pair (film print as SDR base, C1 scene-highlight gain above reference
     # white) — no CLI-level exclusion remains.
     # film v2 P3 迁移(§7.2 表):--film-neutralization 是正名,--film-crossover
-    # 为弃用别名;同时给出硬失败,不做优先级猜测。内部存储沿用 off|datasheet。
+    # 为弃用别名;同时给出硬失败,不做优先级猜测。内部存储为 off|print|datasheet 三值(models.film_crossover)。
     if args.film_crossover is not None and args.film_neutralization is not None:
         parser.error(
             "--film-crossover 已弃用为 --film-neutralization 的别名;两者不能"
@@ -787,7 +787,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if args.film_print_timing == "custom" and args.film_crossover != "datasheet":
         parser.error(
             "custom timing 与有界灰阶中性化互斥:手动印相的意义是保留印出的"
-            "样子;请配 --film-neutralization datasheet"
+            "样子;请配 --film-neutralization native"
         )
     if args.film_development == "measured_default" and (
         args.film_dev_contrast != 0.0
@@ -804,7 +804,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         if args.film_crossover != "datasheet":
             parser.error(
                 "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 "
-                "measured 显影求解;请配 --film-neutralization datasheet"
+                "measured 显影求解;请配 --film-neutralization native"
             )
         if args.film_print_timing == "retimed":
             parser.error(

@@ -104,7 +104,8 @@ held-out 交叉验证选出的色度场修正 LUT，或在场没有胜出时的�
   方法。曝光、白平衡、高光处理、场景变换、镜前滤镜和胶片观察都可以明确选择。
 - **分别生成 SDR 与 HDR**：SDR 输出到 sRGB 或 Display P3；HDR 则从同一份场景图像
   重新显影，只使用 RAW 中未过曝高光真正支持的额外亮度。
-- **观察并复现实验**：本地图形界面和命令行使用同一套设置。图形界面的"RAW 满阱"开关
+- **观察并复现实验**：本地图形界面和命令行使用同一套设置，图形界面覆盖命令行全部
+  可调项（报告/诊断输出除外）。图形界面的"RAW 满阱"开关
   把 RAW 里达到满阱 97% 以上的像素（色度退让区，未必已溢出）按 CFA 通道标在预览上，并列出全尺寸硬剪切百分比；命令行默认只打印写出的文件，完整分析
   报告按需用 `--report` 打印（`--scan` / `--csv` 诊断运行自动附带），诊断图与 CSV 让
   测量结果可查、对照过程可复现；RAW 文件不会上传。
@@ -167,7 +168,7 @@ python -m dngscan photo.dng --jpeg photo_hdr.jpg \
 # RAW 分析图和 CSV（诊断运行自动附带分析报告）
 python -m dngscan photo.dng --jpeg photo.jpg --scan --csv photo.csv
 
-# 对比实验性的 RAW 门控明暗压缩
+# 对比 RAW 门控（保真）明暗压缩
 python -m dngscan photo.dng --jpeg photo_gated.jpg --tone-core gated
 
 # 使用胶片观察位置（默认 observe：胶片声明观察者，AgX 显影）

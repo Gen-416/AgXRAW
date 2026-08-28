@@ -222,6 +222,18 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
         <option value="7">7</option>
       </select>
     </div>
+    <div style="flex:1;min-width:150px;display:none" id="coreimageScaleBlock">
+      <label>CI 尺度</label>
+      <select id="coreimageScale" title="Apple RAW 的 scene-linear 尺度：对齐=逐文件对齐 LibRaw 解码（默认）；原生=保留 Core Image 单位；实测=旧的固定补偿。">
+        <option value="aligned">对齐 LibRaw · 默认</option>
+        <option value="unity">原生单位</option>
+        <option value="measured">实测补偿</option>
+      </select>
+    </div>
+    <div style="flex:1;min-width:140px" id="clipMarginBlock">
+      <label>剪切回退 DN</label>
+      <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重做分析。">
+    </div>
     <div style="flex:1;min-width:170px">
       <label>解拜耳</label>
       <select id="demosaic" title="仅 LibRaw；RAW 9 使用 Apple 的 CoreML 解拜耳与降噪模型。">
@@ -439,6 +451,43 @@ FILM_CURVE_OPTIONS
       </div>
     </div>
   </div>
+  <div class="row" id="filmDevelopmentRow" style="margin-top:12px;display:none">
+    <div style="flex:1;min-width:190px">
+      <label>显影配方</label>
+      <select id="filmDevelopment" title="实测默认=数据手册显影；自定义=对比/灰雾/色密度三个有界扰动（需灰阶中性化=数据手册漂移，不与重定时并用）。">
+        <option value="measured_default">实测默认</option>
+        <option value="editorial_custom">自定义显影</option>
+      </select>
+    </div>
+    <div id="filmDevCustom" style="display:none;flex-basis:100%">
+      <div class="row">
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="绕中灰锚缩放特性曲线的 logE 轴 [-0.5, 0.5]。">显影对比</label><span class="val" id="filmDevContrastVal">0.00</span></div>
+          <input type="range" id="filmDevContrast" min="-0.5" max="0.5" step="0.01" value="0">
+        </div>
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="三层均匀加密度（化学灰雾）[0, 0.3]，会整体提亮中灰。">显影灰雾</label><span class="val" id="filmDevFogVal">0.00</span></div>
+          <input type="range" id="filmDevFog" min="0" max="0.3" step="0.01" value="0">
+        </div>
+        <div class="sliderField" style="flex:1;min-width:150px">
+          <div class="labelRow"><label title="绕中灰锚缩放染料量幅度 [-0.5, 0.5]。">显影色密度</label><span class="val" id="filmDevDensityVal">0.00</span></div>
+          <input type="range" id="filmDevDensity" min="-0.5" max="0.5" step="0.01" value="0">
+        </div>
+      </div>
+    </div>
+    <div class="sliderField" style="flex:1;min-width:150px">
+      <div class="labelRow"><label title="乳剂之前对场景亮度 EV 的饱和压缩 [0, 1]；0=关闭。">胶片压缩</label><span class="val" id="filmCompressionVal">0.00</span></div>
+      <input type="range" id="filmCompression" min="0" max="1" step="0.05" value="0">
+    </div>
+    <div class="sliderField" id="filmCompressionKneeBlock" style="flex:1;min-width:150px;display:none">
+      <div class="labelRow"><label title="压缩起点，中灰之上 EV [0, 6]，默认 2。">压缩 knee</label><span class="val" id="filmCompressionKneeVal">2.00</span></div>
+      <input type="range" id="filmCompressionKnee" min="0" max="6" step="0.1" value="2">
+    </div>
+    <div class="sliderField" id="filmHighlightDensityBlock" style="flex:1;min-width:150px;display:none">
+      <div class="labelRow"><label title="被压缩高光的色密度回落 [0, 2]；只在压缩 > 0 时有意义。">高光色密度</label><span class="val" id="filmHighlightDensityVal">0.00</span></div>
+      <input type="range" id="filmHighlightDensity" min="0" max="2" step="0.05" value="0">
+    </div>
+  </div>
   <div class="row" id="filmExposureRow" style="margin-top:12px;display:none">
     <div class="sliderField">
       <div class="labelRow"><label title="乳剂相对标称 EI 的曝光状态，不是输出曝光；域 ±2 EV。">胶片曝光</label><span class="val" id="filmExposureVal">0.00 EV</span></div>
@@ -459,13 +508,26 @@ FILM_CURVE_OPTIONS
     </div>
     <div id="filmOpticsBlock" style="flex:1;min-width:190px;display:none">
       <label>模拟光学</label>
-      <select id="filmOptics" title="胶片空间成像：颗粒、halation、bloom 三档预设或自定义；介质散射按所选介质始终生效。">
+      <select id="filmOptics" title="胶片空间成像：颗粒、halation、bloom 三档预设或自定义；介质散射默认按所选介质生效，块内可关闭。">
         <option value="off">关闭 · 默认</option>
         <option value="light">轻 · 颗粒0.25/晕0.20/泛0.15</option>
         <option value="standard">标准 · 颗粒0.50/晕0.40/泛0.30</option>
         <option value="custom">自定义</option>
       </select>
       <div id="filmOpticsSummary" class="hint" style="margin-top:2px">FILM_OPTICS_SUMMARY</div>
+      <div class="row" style="margin-top:6px">
+        <div style="flex:1;min-width:130px">
+          <label>介质散射</label>
+          <select id="filmMediaScatter" title="所选介质的乳剂/相纸散射：按声明启用（默认）或关闭。">
+            <option value="declared">按声明 · 默认</option>
+            <option value="off">关闭</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:130px">
+          <label>光学种子</label>
+          <input type="number" id="filmOpticsSeed" min="0" step="1" placeholder="auto" title="颗粒/光学随机排布的种子；留空=本次载入的固定种子（预览与导出一致）。">
+        </div>
+      </div>
     </div>
     <div id="filmOpticsCustom" style="display:none;flex-basis:100%">
       <div class="row">
@@ -478,7 +540,7 @@ FILM_CURVE_OPTIONS
           <input type="range" id="filmHalation" min="0" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="进乳剂前的捕获辉光（editorial）；介质散射另按介质始终生效。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
+          <div class="labelRow"><label title="进乳剂前的捕获辉光（editorial）；介质散射是另一项，默认按介质生效、块内可关闭。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
           <input type="range" id="filmBloom" min="0" max="1" step="0.05" value="0">
         </div>
       </div>
@@ -754,6 +816,8 @@ const V5_STORE_KEY="dngscan.settings.v5";
 const LEGACY_STORE_KEY="dngscan.settings.v4";
 const COREIMAGE_AVAILABLE=COREIMAGE_AVAILABLE_FLAG;
 const MATPLOTLIB_AVAILABLE=MATPLOTLIB_AVAILABLE_FLAG;
+const CORE_DEPS_MISSING=CORE_DEPS_MISSING_JSON;
+const FILM_OPTICS_OK=FILM_OPTICS_OK_FLAG;
 function setGradeStrengthLabel(){const v=+$("#gradeStrength").value;$("#gradeStrengthVal").textContent=v.toFixed(2);}
 function updateGradeUi(){$("#gradeStrengthBlock").style.display=$("#grade").value!=="none"?"block":"none";}
 function setPunchLabel(){const v=+$("#punch").value;$("#punchVal").textContent=v.toFixed(2);}
@@ -945,6 +1009,7 @@ function updateDecoderUi(){
     block.classList.add("dim");
     $("#decoder").disabled=true;
     ver.style.display="none";
+    const scl0=$("#coreimageScaleBlock");if(scl0)scl0.style.display="none";
     highlight.disabled=false;
     demosaic.disabled=false;
     return;
@@ -952,6 +1017,7 @@ function updateDecoderUi(){
   block.classList.remove("dim");
   $("#decoder").disabled=false;
   const raw9=$("#decoder").value==="coreimage";
+  const scl=$("#coreimageScaleBlock");if(scl)scl.style.display=raw9?"":"none";
   ver.style.display=raw9?"block":"none";
   const toneCore=$("#toneCore");
   const gatedOpt=[...toneCore.options].find(o=>o.value==="gated");
@@ -992,12 +1058,12 @@ function updateDecoderUi(){
 function saveSettings(){
   try{localStorage.setItem(STORE_KEY,JSON.stringify({
     ev:$("#ev").value,quality:$("#quality").value,
-    lensFilter:$("#lensFilter").value,filmCurve:$("#filmCurve").value,film:$("#film").value,
+    film:$("#film").value,
     filmMode:$("#filmMode").value,filmNeutralization:$("#filmNeutralization").value,
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
     filmOptics:$("#filmOptics").value,filmGrain:$("#filmGrain").value,
     filmHalation:$("#filmHalation").value,filmBloom:$("#filmBloom").value,
-    filmInterimage:$("#filmInterimage").value,filmInterimageBeta:$("#filmInterimage").value==="custom"?+$("#filmInterimageBeta").value:null,filmAppearance:$("#filmAppearance").value,
+    filmInterimage:$("#filmInterimage").value,filmAppearance:$("#filmAppearance").value,
     filmAppearanceStrength:$("#filmAppearanceStrength").value,
     filmAppearanceVariant:$("#filmAppearanceVariant").value,
     filmAppearanceMemo:currentAppearanceMemo(),
@@ -1020,7 +1086,12 @@ function saveSettings(){
     hdrHeadroom:$("#hdrHeadroom").value,outdir:$("#outdir").value,png:$("#png").checked,
     hdrRho:$("#hdrRho").value,hdrWhiteMargin:$("#hdrWhiteMargin").value,hdrShoulderStart:$("#hdrShoulderStart").value,
     filmInterimageBeta:$("#filmInterimageBeta").value,
-    clipOverlay:$("#clipOverlayToggle").checked
+    clipOverlay:$("#clipOverlayToggle").checked,
+    filmDevelopment:$("#filmDevelopment").value,filmDevContrast:$("#filmDevContrast").value,
+    filmDevFog:$("#filmDevFog").value,filmDevDensity:$("#filmDevDensity").value,
+    filmCompression:$("#filmCompression").value,filmCompressionKnee:$("#filmCompressionKnee").value,
+    filmHighlightDensity:$("#filmHighlightDensity").value,filmMediaScatter:$("#filmMediaScatter").value,
+    filmOpticsSeed:$("#filmOpticsSeed").value,coreimageScale:$("#coreimageScale").value,clipMargin:$("#clipMargin").value
   }));}catch(e){}
 }
 function restoreSettings(){
@@ -1116,6 +1187,9 @@ function restoreSettings(){
   if(s.outdir)$("#outdir").value=s.outdir;
   if(s.png!==undefined)$("#png").checked=MATPLOTLIB_AVAILABLE&&!!s.png;
   if(s.clipOverlay!==undefined)$("#clipOverlayToggle").checked=!!s.clipOverlay;
+  for(const id of ["filmDevelopment","filmDevContrast","filmDevFog","filmDevDensity","filmCompression","filmCompressionKnee","filmHighlightDensity","filmMediaScatter","filmOpticsSeed","coreimageScale","clipMargin"]){
+    if(s[id]!==undefined&&s[id]!==null){const el=$("#"+id);if(el&&(el.tagName!=="SELECT"||[...el.options].some(o=>o.value===String(s[id]))))el.value=s[id];}
+  }
   setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();
   if(migrated)saveSettings();
 }
@@ -1128,6 +1202,13 @@ $("#grade").addEventListener("change",()=>{updateGradeUi();saveSettings();schedu
 $("#deliveryProfile").addEventListener("change",()=>{applyDeliveryDefaults();saveSettings();});
 $("#decoder").addEventListener("change",()=>{updateDecoderUi();saveSettings();preparePreview();});
 $("#coreimageVersion").addEventListener("change",()=>{RAW9_APPROVALS.delete($("#input").value.trim());saveSettings();preparePreview();});
+$("#coreimageScale").addEventListener("change",()=>{saveSettings();preparePreview();});
+$("#clipMargin").addEventListener("change",()=>{
+  const el=$("#clipMargin");let v=Math.round(Number(el.value));
+  if(!Number.isFinite(v)){v=4;}
+  const c=Math.min(64,Math.max(0,v));if(c!==Number(el.value)){el.value=c;setStatus("剪切回退：域 [0,64] DN，已钳到 "+c,"err");}
+  saveSettings();preparePreview();
+});
 $("#wb").addEventListener("change",()=>{updateDecoderUi();updateGradeUi();saveSettings();preparePreview();});
 const FILM_COMBOS=FILM_COMBOS_JSON;
 $("#film").addEventListener("change",()=>{
@@ -1202,6 +1283,7 @@ function updateFilmModeUi(){
           variant:$("#filmAppearanceVariant").value};
       }
       $("#filmAppearance").value="technical";$("#filmInterimage").value="declared";
+      if(typeof updateInterimageBetaUi==="function")updateInterimageBetaUi();
       $("#filmAppearanceStrength").value=1;$("#filmAppearanceVariant").value="reference";
       $("#filmRichness").value=0;$("#filmColorDensity").value=0;$("#filmNeutralBias").value=1;
     }else if(filmWasFull===false){
@@ -1244,6 +1326,14 @@ function updateFilmModeUi(){
       $("#filmExposure").value=0;$("#filmPrintTiming").value="fixed";
       $("#filmPrintMedium").value="";$("#filmPrintExposure").value=0;
       $("#filmOptics").value="off";
+      // developer recipe / film compression / optics policy: full-only dials
+      // (owner 2026-08-28), cleared like their siblings so no stale value rides
+      $("#filmDevelopment").value="measured_default";
+      $("#filmDevContrast").value=0;$("#filmDevFog").value=0;$("#filmDevDensity").value=0;
+      $("#filmCompression").value=0;$("#filmCompressionKnee").value=2;$("#filmHighlightDensity").value=0;
+      $("#filmMediaScatter").value="declared";$("#filmOpticsSeed").value="";
+      const devRow=$("#filmDevelopmentRow");if(devRow)devRow.style.display="none";
+      if(typeof setFilmDevLabels==="function")setFilmDevLabels();
       $("#filmGrain").value=0;$("#filmHalation").value=0;$("#filmBloom").value=0;
       if(typeof setFilmOpticsLabels==="function")setFilmOpticsLabels();
       if(typeof setFilmExposureLabel==="function")setFilmExposureLabel();
@@ -1251,7 +1341,8 @@ function updateFilmModeUi(){
     } else {
       const preset=$("#filmCurve").value;
       const isNeg=!!FILM_COLOR_HEADS[preset];
-      const canRetime=FILM_RETIMED.includes(preset);
+      const devCustom=$("#filmDevelopment").value==="editorial_custom";
+      const canRetime=FILM_RETIMED.includes(preset)&&!devCustom;
       const timing=$("#filmPrintTiming");
       const retimedOpt=[...timing.options].find(o=>o.value==="retimed");
       const customOpt=[...timing.options].find(o=>o.value==="custom");
@@ -1263,13 +1354,29 @@ function updateFilmModeUi(){
         reason="反转片无印相环节——timing 一律 fixed";
         if(timing.value!=="fixed"){timing.value="fixed";}
       } else if(!canRetime&&timing.value==="retimed"){
-        reason="该卷尚无 retimed 印相资产";
+        reason=devCustom?"自定义显影下 retimed τ 表不适用——已切回固定":"该卷尚无 retimed 印相资产";
         timing.value="fixed";
       }
       if(hint){hint.textContent=reason;hint.style.display=reason?"":"none";}
-      // custom timing 需要数据手册漂移(互斥合同);GUI 直接联动
-      if(timing.value==="custom"&&$("#filmNeutralization").value!=="native"){
-        $("#filmNeutralization").value="native";
+      // custom timing / 自定义显影 需要数据手册漂移(互斥合同);GUI 直接联动并说明
+      const neut=$("#filmNeutralization");
+      const forceNative=timing.value==="custom"||devCustom;
+      if(forceNative&&neut.value!=="native"){
+        neut.value="native";
+        setStatus((devCustom?"自定义显影":"自定义印相")+"要求灰阶中性化=数据手册漂移，已自动切换","err");
+      }
+      for(const o of neut.options){if(o.value!=="native")o.disabled=forceNative;}
+      // developer recipe + film compression row (full only)
+      const devRow=$("#filmDevelopmentRow");
+      if(devRow){
+        devRow.style.display="";
+        $("#filmDevCustom").style.display=devCustom?"":"none";
+        if(!devCustom){$("#filmDevContrast").value=0;$("#filmDevFog").value=0;$("#filmDevDensity").value=0;}
+        const comp=Number($("#filmCompression").value)>0;
+        $("#filmCompressionKneeBlock").style.display=comp?"":"none";
+        $("#filmHighlightDensityBlock").style.display=comp?"":"none";
+        if(!comp){$("#filmHighlightDensity").value=0;}
+        if(typeof setFilmDevLabels==="function")setFilmDevLabels();
       }
       const peb=$("#filmPrintExposureBlock");
       if(peb){
@@ -1426,6 +1533,19 @@ function updateColorHeadUi(){
   setColorHeadLabels();
 }
 ["colorHeadY","colorHeadM"].forEach(id=>$("#"+id).oninput=()=>{setColorHeadLabels();saveSettings();scheduleLivePreview();});
+function setFilmDevLabels(){
+  const f=(id,d)=>{const el=$("#"+id);const v=$("#"+id+"Val");if(el&&v)v.textContent=Number(el.value).toFixed(d);};
+  f("filmDevContrast",2);f("filmDevFog",2);f("filmDevDensity",2);f("filmCompression",2);f("filmCompressionKnee",2);f("filmHighlightDensity",2);
+}
+["filmDevContrast","filmDevFog","filmDevDensity","filmCompressionKnee","filmHighlightDensity"].forEach(id=>$("#"+id).oninput=()=>{setFilmDevLabels();saveSettings();scheduleLivePreview();});
+$("#filmCompression").oninput=()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();};
+$("#filmDevelopment").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
+$("#filmMediaScatter").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+$("#filmOpticsSeed").addEventListener("change",()=>{
+  const el=$("#filmOpticsSeed");const t=el.value.trim();
+  if(t!==""&&!/^[0-9]+$/.test(t)){el.value="";setStatus("光学种子需为非负整数，已清空为 auto","err");}
+  saveSettings();scheduleLivePreview();
+});
 $("#filmCurve").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();saveSettings();scheduleLivePreview();});
 $("#toneCore").addEventListener("change",()=>{
   // R4: an explicit user choice invalidates the R2 decoder stash — without
@@ -1454,6 +1574,21 @@ $("#punch").oninput=()=>{setPunchLabel();saveSettings();scheduleLivePreview();};
 $("#endpointMode").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#sceneTransformStrength").oninput=()=>{setSceneTransformStrengthLabel();saveSettings();scheduleLivePreview();};
 restoreSettings();
+if(CORE_DEPS_MISSING.length){
+  // rawpy/numpy/Pillow are hard dependencies of every path: say so on the
+  // page (not only in the server terminal) and grey the actions.
+  setStatus("依赖未就绪，预览与导出不可用："+CORE_DEPS_MISSING.join("；")+" — 请安装 rawpy/numpy/pillow 后重启。","err");
+  $("#go").disabled=true;$("#go").title="依赖未就绪";
+}
+if(!FILM_OPTICS_OK){
+  // The takeover chain compiles the optics assets even at tier "off"
+  // (declared media scatter): without them full mode fails closed, so the
+  // option is greyed with the reason instead of failing at render time.
+  const fullOpt=[...$("#filmMode").options].find(o=>o.value==="full");
+  if(fullOpt){fullOpt.disabled=true;fullOpt.title="胶片光学资产缺失或校验失败，接管模式不可用";}
+  if($("#filmMode").value==="full")$("#filmMode").value="observe";
+  const opt=$("#filmOptics");if(opt){opt.disabled=true;}
+}
 if(!MATPLOTLIB_AVAILABLE){
   // The dashboard PNG is an optional extra: grey it with the reason instead
   // of failing the export after the full-resolution analysis (GUI review 2026-08-27).
@@ -1535,6 +1670,13 @@ function payload(){
     filmAppearanceVariant:$("#filmAppearanceVariant").value,
     filmRichness:+$("#filmRichness").value,filmColorDensity:+$("#filmColorDensity").value,
     filmNeutralBias:+$("#filmNeutralBias").value,
+    filmDevelopment:$("#filmDevelopment").value,
+    filmDevContrast:+$("#filmDevContrast").value,filmDevFog:+$("#filmDevFog").value,filmDevDensity:+$("#filmDevDensity").value,
+    filmCompression:+$("#filmCompression").value,filmCompressionKnee:+$("#filmCompressionKnee").value,
+    filmHighlightDensity:+$("#filmHighlightDensity").value,
+    filmMediaScatter:$("#filmMediaScatter").value,
+    filmOpticsSeed:$("#filmOpticsSeed").value.trim()===""?"auto":$("#filmOpticsSeed").value.trim(),
+    coreimageScale:$("#coreimageScale").value,clipMargin:+$("#clipMargin").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
@@ -1599,8 +1741,16 @@ async function ensureRaw9Support(body){
     if(body.toneCore!==undefined)body.toneCore=$("#toneCore").value;
     setStatus(message+" 已改用 LibRaw。","warn");
   };
-  if(!j.coreimage_available||j.probe_error){switchToLibRaw(j.message);return true;}
+  if(!j.coreimage_available||j.probe_error||j.runtime_interactive===false){switchToLibRaw(j.message);return true;}
   const offered=(j.versions_offered||[]).map(v=>String(v).replace(/\\.dng$/i,""));
+  // Per-file greying (GUI review 2026-08-27): versions this file does not
+  // offer are disabled in the select with the reason, not merely rejected
+  // at submit time.
+  for(const o of $("#coreimageVersion").options){
+    if(o.value==="auto")continue;
+    const ok=offered.includes(o.value);
+    o.disabled=!ok;o.title=ok?"":"此文件不提供 RAW "+o.value;
+  }
   if(body.coreimageVersion!=="auto"){
     if(!offered.includes(String(body.coreimageVersion))){
       setStatus(j.message+" 当前指定的 RAW "+body.coreimageVersion+" 也不可用。","err");
@@ -2213,6 +2363,29 @@ def _film_options_html() -> tuple[str, str, str, str]:
     )
 
 
+def _core_import_errors() -> list[str]:
+    from dngscan._deps import IMPORT_ERRORS
+
+    return list(IMPORT_ERRORS)
+
+
+def _film_optics_assets_ok() -> bool:
+    """Whether the takeover chain's optics assets load and verify — the
+    condition under which the page may offer full mode at all."""
+    try:
+        from ..film_optics_assets import (
+            DEFAULT_CAPTURE_BLOOM, DEFAULT_PRINT_OPTICS, DEFAULT_STOCK_OPTICS,
+            load_capture_bloom, load_print_optics, load_stock_optics,
+        )
+
+        load_stock_optics(DEFAULT_STOCK_OPTICS)
+        load_print_optics(DEFAULT_PRINT_OPTICS)
+        load_capture_bloom(DEFAULT_CAPTURE_BLOOM)
+        return True
+    except Exception:
+        return False
+
+
 def _dashboard_import_errors() -> list[str]:
     from dngscan._deps import DASHBOARD_IMPORT_ERRORS
 
@@ -2241,6 +2414,8 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         # The dashboard PNG needs matplotlib (optional extra): the page greys
         # the checkbox with the reason instead of failing the export late.
         .replace("MATPLOTLIB_AVAILABLE_FLAG", "true" if not _dashboard_import_errors() else "false")
+        .replace("CORE_DEPS_MISSING_JSON", json.dumps(list(_core_import_errors()), ensure_ascii=False))
+        .replace("FILM_OPTICS_OK_FLAG", "true" if _film_optics_assets_ok() else "false")
         # Keep the slider ceiling on the same source of truth as the CLI's
         # --hdr-headroom bound (log2(4000/100) = 5.32); step 0.02 lands on it exactly.
         .replace("MAX_HDR_HEADROOM_ATTR", f"{MAX_HDR_HEADROOM_EV:.2f}")

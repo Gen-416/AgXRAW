@@ -149,8 +149,8 @@ class ServiceDialParsingTests(unittest.TestCase):
         out = parse_film_params(
             {**base, "filmInterimage": "custom", "filmInterimageBeta": 0.8}
         )
-        self.assertEqual(out[-1], 0.8)
-        self.assertIsNone(parse_film_params(base)[-1])
+        self.assertEqual(out[21], 0.8)  # film_interimage_beta's position
+        self.assertIsNone(parse_film_params(base)[21])
         with self.assertRaises(ValueError):  # beta without custom
             parse_film_params({**base, "filmInterimageBeta": 0.8})
         with self.assertRaises(ValueError):  # custom without beta
