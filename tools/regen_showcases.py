@@ -236,6 +236,10 @@ def _grid_boxes(cols: tuple[tuple[int, int], ...], rows: tuple[tuple[int, int], 
 
 
 # Measured from the published plates (flat-run gutter/caption detection).
+# Plates drawn from scratch by tools/compose_plate.py (manifest key
+# "composed_plates": {asset, cols:[{key,label}], rows:[{key,label,renders:{colkey: render name}}]}).
+COMPOSED_PLATES: list[dict] = []
+
 PLATES: list[PlateSpec] = [
     PlateSpec(
         "film-tutorial/look_grid_hk.jpg",
@@ -459,6 +463,8 @@ def main() -> int:
             for pl in data.get("plates", []):
                 PLATES.append(PlateSpec(pl["asset"], tuple(pl["panels"]),
                                         tuple(tuple(int(v) for v in box) for box in pl["boxes"])))
+            for cp in data.get("composed_plates", []):
+                COMPOSED_PLATES.append(cp)
     if args.list:
         for spec in RENDERS:
             print(f"{spec.name:32s} {spec.source:16s} {' '.join(spec.args)}")
@@ -502,6 +508,20 @@ def main() -> int:
                 continue
             info = build_plate(pspec, scratch)
             print(info, flush=True)
+        for cp in COMPOSED_PLATES:
+            names = {r for row in cp["rows"] for r in row["renders"].values()}
+            if wanted and not (names & wanted):
+                continue
+            import importlib.util as _ilu
+
+            spec = _ilu.spec_from_file_location("compose_plate", REPO / "tools" / "compose_plate.py")
+            mod = _ilu.module_from_spec(spec); spec.loader.exec_module(mod)
+            plate_spec = {"cols": cp["cols"], "rows": [
+                {"key": row["key"], "label": row["label"],
+                 "files": {ck: str(scratch / f"{rn}.jpg") for ck, rn in row["renders"].items()}}
+                for row in cp["rows"]]}
+            mod.compose(str(ASSETS / cp["asset"]), plate_spec)
+            print({"composed": cp["asset"]}, flush=True)
     print("scratch:", scratch)
     return 0
 

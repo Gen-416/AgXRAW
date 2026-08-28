@@ -38,32 +38,50 @@ The additional brightness stays around lamps and reflections instead of lifting 
 HDR-capable devices display those highlights; an ordinary screen still receives a normal SDR JPEG.
 If the RAW contains no reliable highlight information, AgXRAW does not invent HDR headroom.
 
-## Film observation in one frame
+## Observe versus takeover in one frame
 
-![AgX baseline, Portra 400, Velvia 100, and Vision3 250D theatrical compared](docs/assets/film-observation-showcase.jpg)
+![One RAW, three stocks: AgX baseline, observe, takeover, and takeover pushed](docs/assets/film-observe-vs-full.jpg)
 
-One RAW, four observation positions: the AgX baseline (no film), Kodak Portra 400
-(negative + paper), Fujifilm Velvia 100 (reversal), and Vision3 250D in its theatrical
-quotation.
+One RAW (the park squirrel, `--wb 5500k --highlight-mode reconstruct`), three stocks,
+four columns. The gap between these columns is the single most important thing about
+the film chain: **who forms the colour**.
 
-**Two modes, two semantics** (A13 correction — the previous text blended them into
-one default film base). The default ``--film <stock>`` is **observe** mode: the film
-declares what its observer sees — the WB Kelvin, the layer-separation prefeed, the
-development curve — while colour is still formed by AgX; it does NOT run the paper
-simulation. A stock's default look then adds two declarations that are explicitly
-editorial, not measured: a separation-strength pairing and an AgX primaries pairing,
-chosen by stock reputation — visible in the UI, freely adjustable, never overriding
-a value you set yourself. **full** takeover mode (``--film-mode full``)
-is what runs the factorised spectral chain — Stage A (a chromaticity-field
-correction LUT over the 3x3 observer; each stock keeps the field or only the
-3x3 according to held-out cross-validation) -> layer exposure ->
-characteristic density -> B1 -> print timing -> paper development -> B2 -> grey-axis
-neutralization -> optional reference-print appearance — with no monolithic, creative
-or opaque LUT: the chain factorises into traceable B1/B2 interpolation assets (65^3
-volumes solved offline from the same declared data). Inter-image amplification and
-the reference recipes belong to full mode only. All twenty stocks and
-five theatrical variants are listed in the [film tutorial](docs/FILM_TUTORIAL.zh-CN.md)
-(Chinese); the technical base lives in the [architecture notes](docs/ARCHITECTURE.md).
+- **AgX baseline**: no film; AgX forms the image directly.
+- **Observe (default)**: `--film portra400`. The film only declares what its observer
+  sees — the 5500K calibration white, the layer-separation prefeed, the stock's fixed
+  characteristic curve — plus a style pairing that is explicitly editorial (a
+  separation-strength multiplier and an AgX primaries choice, visible and adjustable in
+  the UI). Colour is still formed by AgX; the paper is never simulated. It is the most
+  thoroughly verified path and the most restrained: mean ΔE against the baseline
+  5.6 / 6.4 / 5.8 (Portra / Velvia / Ektar), living in the shaded greens and shadow density.
+- **Takeover (full, default)**: `--film portra400 --film-mode full`. Colour formation
+  itself is replaced by the factorised spectral chain: Stage A observer → three-layer
+  emulsion exposure → characteristic density → B1 → print timing → paper development →
+  B2 viewing → grey-axis neutralization → reference-print appearance recipe (default @1.0).
+  The default is pinned to the datasheet calibration, so it is restrained too: ΔE against
+  observe 2.8 / 4.0 / 2.6, visible pixels 5% / 30% / 16%, Velvia's greens rotate about 8°.
+- **Takeover · recipe ×3 + inter-image β 1.5**: the same chain with its two explicitly
+  editorial layers pushed to the edge of the mathematically safe domain:
+  `--film-mode full --film-neutralization native --film-appearance reference
+  --film-appearance-strength 3 --film-interimage custom --film-interimage-beta 1.5
+  --film-grain 0.5 --film-halation 0.4 --film-bloom 0.3`. ΔE against the baseline
+  8.3 / 14.2 / 10.2: Portra goes amber-warm, Velvia into deep green density, Ektar in
+  between — this is how far the takeover chain can go.
+
+Where the gap comes from: in observe mode the film layers only change the scene that
+enters AgX (white balance, separation, curve); the developer is always AgX, whose
+convergence rules decide how highlights fade to white and how saturated colours are
+pulled in. In takeover mode the layered emulsion exposure, dye density and paper
+re-development are computed by the chain itself, so hue paths, inter-layer shadow drift
+and print density are no longer bound by AgX. The defaults pin the chain to the datasheet
+calibration — a measured base, not the ceiling of the "film look"; the appearance recipe
+and inter-image amplification are the chain's two explicitly editorial layers, ranged by
+the mathematically safe domain (no folding, grey axis untouched), and how far to push
+them is your call — the GUI and CLI expose both dials. There is no monolithic, creative
+or opaque LUT: B1/B2 are traceable interpolation assets solved offline from the same
+declared data. All twenty stocks and five theatrical variants are listed in the
+[film tutorial](docs/FILM_TUTORIAL.zh-CN.md) (Chinese); the technical base lives in the
+[architecture notes](docs/ARCHITECTURE.md).
 
 ## Three film interpretations in one frame
 
