@@ -76,7 +76,7 @@ integer 0–64, default 4) is how many DN below full well each channel's clippin
 threshold sits. It does not change the reconstruction; it changes the analysis
 criterion — the RAW clipping share, the hard-clip numbers next to the RAW 满阱 toggle
 and the whole Detected Parameters card are recomputed against it, so changing it
-re-runs the analysis. Neither needs attention day to day; exported filenames carry
+re-decodes and re-analyses this RAW (a few seconds) in the current implementation. Neither needs attention day to day; exported filenames carry
 `ciscale-unity` / `ciscale-measured` or `margin{n}` only when the value is not the
 default.
 

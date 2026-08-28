@@ -320,6 +320,12 @@ def estimate_ev_headroom(
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
         film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
         film_interimage_beta_dial=film_interimage_beta,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -980,9 +986,14 @@ def parse_decode_extras(params: dict, decoder: str) -> tuple[str, int]:
         scale = COREIMAGE_SCALE_DEFAULT_MODE
     raw = params.get("clipMargin", params.get("margin", 4))
     try:
-        margin = int(raw)
+        as_float = float(raw)
     except (TypeError, ValueError):
         raise ValueError(f"clipMargin 需为整数 DN：{raw!r}") from None
+    # R7 item 5: the CLI's type=int rejects "4.9"; int() here silently
+    # truncated it — same entry, same verdict.
+    if not (math.isfinite(as_float) and as_float == int(as_float)):
+        raise ValueError(f"clipMargin 需为整数 DN：{raw!r}")
+    margin = int(as_float)
     if not 0 <= margin <= 64:
         raise ValueError(f"clipMargin 域为 [0, 64] DN：{raw!r}")
     return scale, margin
@@ -2071,7 +2082,10 @@ def export_suffix_parts(
             parts.append(tok.replace(".", "_"))
         if str(film_media_scatter) == "off":
             parts.append("scatteroff")
-        if explicit_optics_seed is not None:
+        if explicit_optics_seed is not None and float(film_grain) > 0.0:
+            # R7 item 6: the seed only changes pixels through grain — the
+            # fingerprint already counts it under that condition; without
+            # grain a byte-identical file must not get a different name.
             parts.append(f"seed{int(explicit_optics_seed)}")
     if str(decoder) == "coreimage" and str(coreimage_scale) != "aligned":
         parts.append(f"ciscale-{coreimage_scale}")
@@ -2266,6 +2280,7 @@ def run_export(params: dict) -> dict:
         entry = PREVIEW_STORE.peek(
             inp, highlight, wb, tone_core == "gated",
             decoder, coreimage_version, demosaic,
+            coreimage_scale=coreimage_scale, margin=clip_margin,
         ) if hasattr(PREVIEW_STORE, "peek") else None
         if entry is not None:
             film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
@@ -2769,10 +2784,12 @@ def run_export_isolated(params: dict) -> dict:
             wb = str(params.get("wb", "camera"))
             decoder, coreimage_version = parse_decoder(params)
             demosaic = parse_demosaic(params, decoder)
+            coreimage_scale, clip_margin = parse_decode_extras(params, decoder)
             tone_core, _ = parse_tone_core(params)
             entry = PREVIEW_STORE.peek(
                 inp, "reconstruct" if decoder == "coreimage" else highlight,
                 wb, tone_core == "gated", decoder, coreimage_version, demosaic,
+                coreimage_scale=coreimage_scale, margin=clip_margin,
             )
         except Exception:
             entry = None
