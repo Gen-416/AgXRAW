@@ -14,6 +14,15 @@ same-generation re-rendering of whole tables is the only honest refresh).
 Usage:
     python tools/regen_showcases.py --list
     python tools/regen_showcases.py [--only NAME ...] [--samples DIR]
+    python tools/regen_showcases.py --manifest tools/showcase_manifests/*.json --install
+
+2026-08-28 refresh: the tutorial images that predate this script are declared
+in tools/showcase_manifests/{readme,editing_tutorial,film_tutorial}.json
+(same RenderSpec/AssetSpec/PlateSpec vocabulary, JSON) — README plates, the
+editing tutorial (X100VI RAF + two iPhone ProRAW DNGs by absolute path) and
+the film tutorial's curve/WB/strength/primaries/colour-head tables. Crops
+whose published full frame has a different name declare `old_full`; a table
+whose published halves came from an older chain state declares `max_delta`.
 
 Renders land in a scratch directory first; --install resizes to each
 published asset's exact dimensions and replaces docs/assets files. Crops are
@@ -64,6 +73,16 @@ class AssetSpec:
     # Both halves of a comparison table share one crop window; the group
     # installs with the window recovered from its best-matching member.
     crop_group: str | None = None
+    # 2026-08-28 refresh: the pristine published FULL frame the crop's window
+    # is recovered against, as a path under docs/assets. Optional — the
+    # film-tutorial convention (crop_<name>.jpg next to <name>.jpg) stays the
+    # default; the editing tutorial names its crops differently.
+    old_full: str | None = None
+    # Post-cut delta guard (mean |new - pristine| over the crop). 25 codes
+    # catches a mislocated window; a table whose published halves came from
+    # an older, darker chain state legitimately sits near it and declares a
+    # wider bound in its manifest instead of silently loosening the default.
+    max_delta: float = 25.0
 
 
 # Shared per-source view declarations. The park gallery was shot on a Sony
@@ -370,13 +389,17 @@ def install(spec: AssetSpec, scratch: Path, shared_box=None, dry: bool = False) 
         import io as _io
         import subprocess as _sp
 
-        base_name = spec.asset.replace("crop_", "").rsplit("/", 1)[-1]
+        if spec.old_full:
+            ref = spec.old_full
+        else:
+            base_name = spec.asset.replace("crop_", "").rsplit("/", 1)[-1]
+            ref = f"film-tutorial/{base_name}"
         blob = _sp.run(
-            ["git", "show", f"HEAD:docs/assets/film-tutorial/{base_name}"],
+            ["git", "show", f"HEAD:docs/assets/{ref}"],
             capture_output=True, cwd=str(REPO),
         )
         if blob.returncode != 0:
-            raise RuntimeError(f"cannot read pristine {base_name} from HEAD")
+            raise RuntimeError(f"cannot read pristine {ref} from HEAD")
         old_full = Image.open(_io.BytesIO(blob.stdout))
         if shared_box is not None:
             nx0, ny0, nx1, ny1 = shared_box
@@ -393,10 +416,10 @@ def install(spec: AssetSpec, scratch: Path, shared_box=None, dry: bool = False) 
     a = np.asarray(old, dtype=np.float32)
     b = np.asarray(out, dtype=np.float32)
     delta = float(np.abs(a - b).mean()) if a.shape == b.shape else float("nan")
-    if spec.crop_from_old and not (delta < 25.0):
+    if spec.crop_from_old and not (delta < float(spec.max_delta)):
         raise RuntimeError(
-            f"{spec.asset}: post-cut delta {delta:.1f} vs pristine crop — "
-            "window mislocated, refusing to install"
+            f"{spec.asset}: post-cut delta {delta:.1f} vs pristine crop "
+            f"(bound {spec.max_delta:g}) — window mislocated, refusing to install"
         )
     if not dry:
         out.save(old_path, quality=JPEG_QUALITY)
@@ -414,7 +437,28 @@ def main() -> int:
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--install", action="store_true",
                     help="replace docs/assets files (otherwise render only)")
+    ap.add_argument("--manifest", type=Path, nargs="*", default=None,
+                    help="extra JSON manifest(s) {renders:[{name,source,args}], "
+                         "assets:[{asset,render,crop_from_old,crop_group}]} "
+                         "appended to the built-in specs (2026-08-28 refresh: "
+                         "tutorial images that predate this script)")
     args = ap.parse_args()
+    if args.manifest:
+        import json as _json
+
+        for mpath in args.manifest:
+            data = _json.loads(Path(mpath).read_text(encoding="utf-8"))
+            for rs in data.get("renders", []):
+                RENDERS.append(RenderSpec(rs["name"], rs["source"], tuple(rs.get("args", []))))
+            for a in data.get("assets", []):
+                ASSET_SPECS.append(AssetSpec(a["asset"], a["render"],
+                                             bool(a.get("crop_from_old", False)),
+                                             a.get("crop_group"),
+                                             old_full=a.get("old_full"),
+                                             max_delta=float(a.get("max_delta", 25.0))))
+            for pl in data.get("plates", []):
+                PLATES.append(PlateSpec(pl["asset"], tuple(pl["panels"]),
+                                        tuple(tuple(int(v) for v in box) for box in pl["boxes"])))
     if args.list:
         for spec in RENDERS:
             print(f"{spec.name:32s} {spec.source:16s} {' '.join(spec.args)}")
