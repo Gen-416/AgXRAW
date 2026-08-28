@@ -1,11 +1,129 @@
 {
  "renders": [
   {
-   "name": "obs_v3theatrical",
+   "name": "park_portra400_full",
    "source": "DSC00225.ARW",
    "args": [
     "--film",
-    "vision3250d_theatrical",
+    "portra400",
+    "--film-mode",
+    "full",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "park_ektar100",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "ektar100",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "park_ektar100_full",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "ektar100",
+    "--film-mode",
+    "full",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "park_portra400_heavy",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "portra400",
+    "--film-mode",
+    "full",
+    "--film-neutralization",
+    "native",
+    "--film-appearance",
+    "reference",
+    "--film-appearance-strength",
+    "3",
+    "--film-interimage",
+    "custom",
+    "--film-interimage-beta",
+    "1.5",
+    "--film-grain",
+    "0.5",
+    "--film-halation",
+    "0.4",
+    "--film-bloom",
+    "0.3",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "park_velvia100_heavy",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "velvia100",
+    "--film-mode",
+    "full",
+    "--film-neutralization",
+    "native",
+    "--film-appearance",
+    "reference",
+    "--film-appearance-strength",
+    "3",
+    "--film-interimage",
+    "custom",
+    "--film-interimage-beta",
+    "1.5",
+    "--film-grain",
+    "0.5",
+    "--film-halation",
+    "0.4",
+    "--film-bloom",
+    "0.3",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "park_ektar100_heavy",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "ektar100",
+    "--film-mode",
+    "full",
+    "--film-neutralization",
+    "native",
+    "--film-appearance",
+    "reference",
+    "--film-appearance-strength",
+    "3",
+    "--film-interimage",
+    "custom",
+    "--film-interimage-beta",
+    "1.5",
+    "--film-grain",
+    "0.5",
+    "--film-halation",
+    "0.4",
+    "--film-bloom",
+    "0.3",
     "--wb",
     "5500k",
     "--highlight-mode",
@@ -14,40 +132,59 @@
   }
  ],
  "assets": [],
- "plates": [
+ "plates": [],
+ "composed_plates": [
   {
-   "asset": "film-observation-showcase.jpg",
-   "panels": [
-    "park_none",
-    "park_portra400",
-    "park_velvia100",
-    "obs_v3theatrical"
+   "asset": "film-observe-vs-full.jpg",
+   "cols": [
+    {
+     "key": "agx",
+     "label": "AgX 基线"
+    },
+    {
+     "key": "observe",
+     "label": "观察 · 默认"
+    },
+    {
+     "key": "full",
+     "label": "接管 · 默认"
+    },
+    {
+     "key": "heavy",
+     "label": "接管 · 配方 ×3 + 层间 β1.5"
+    }
    ],
-   "boxes": [
-    [
-     0,
-     0,
-     1200,
-     800
-    ],
-    [
-     1206,
-     0,
-     2406,
-     800
-    ],
-    [
-     0,
-     852,
-     1200,
-     1652
-    ],
-    [
-     1206,
-     852,
-     2406,
-     1652
-    ]
+   "rows": [
+    {
+     "key": "portra400",
+     "label": "Kodak Portra 400",
+     "renders": {
+      "agx": "park_none",
+      "observe": "park_portra400",
+      "full": "park_portra400_full",
+      "heavy": "park_portra400_heavy"
+     }
+    },
+    {
+     "key": "velvia100",
+     "label": "Fujifilm Velvia 100",
+     "renders": {
+      "agx": "park_none",
+      "observe": "park_velvia100",
+      "full": "park_velvia100_fullmode",
+      "heavy": "park_velvia100_heavy"
+     }
+    },
+    {
+     "key": "ektar100",
+     "label": "Kodak Ektar 100",
+     "renders": {
+      "agx": "park_none",
+      "observe": "park_ektar100",
+      "full": "park_ektar100_full",
+      "heavy": "park_ektar100_heavy"
+     }
+    }
    ]
   }
  ]
