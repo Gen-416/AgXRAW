@@ -268,6 +268,13 @@ def estimate_ev_headroom(
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
+    film_development: str = "measured_default",
+    film_dev_contrast: float = 0.0,
+    film_dev_fog: float = 0.0,
+    film_dev_density: float = 0.0,
+    film_compression: float = 0.0,
+    film_compression_knee: float = 2.0,
+    film_highlight_density: float = 0.0,
     film_interimage_beta: float | None = None,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
@@ -312,6 +319,7 @@ def estimate_ev_headroom(
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_development=film_development,
         film_interimage_beta_dial=film_interimage_beta,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
@@ -372,10 +380,24 @@ def raw9_support(params: dict) -> dict:
     else:
         detail = "、".join(offered) if offered else "无"
         message = f"此文件不支持 Apple RAW 9，也没有可用的 RAW 8/7 降级路径（报告版本：{detail}）。"
+    # GUI review 2026-08-27 item 5: the API can exist while the runtime
+    # context cannot be built; surface both contexts so the page can grey
+    # the decoder with the reason instead of failing at the first preview.
+    runtime_interactive = runtime_export = None
+    if probe["coreimage_available"]:
+        try:
+            runtime_interactive = bool(coreimage_decode.runtime_available(interactive=True))
+            runtime_export = bool(coreimage_decode.runtime_available(interactive=False))
+        except Exception:
+            runtime_interactive = runtime_export = False
+        if runtime_interactive is False:
+            message = "此系统的 Core Image 运行时上下文不可用（API 存在但无法建立解码上下文）。"
     return {
         "ok": True,
         "support_lines": support_lines,
         "coreimage_available": bool(probe["coreimage_available"]),
+        "runtime_interactive": runtime_interactive,
+        "runtime_export": runtime_export,
         "raw9_supported": bool(probe["raw9_supported"]),
         "versions_offered": offered,
         "fallback_version": fallback,
@@ -414,12 +436,9 @@ def _hard_clip_pct_by_colour(analysis: Any) -> dict[str, float] | None:
     if not buckets:
         return None
     out = {k.lower(): (sum(v) / len(v)) for k, v in buckets.items()}
-    union = getattr(analysis, "cell_union_pct", None)
-    try:
-        union_f = float(union)
-    except (TypeError, ValueError):
-        union_f = float("nan")
-    out["union"] = union_f if union_f == union_f else float("nan")
+    # JSON has no NaN (Starlette encodes with allow_nan=False): a non-finite
+    # union is "not measured", spelled None like detected_scene_params does.
+    out["union"] = _finite_or_none(getattr(analysis, "cell_union_pct", None))
     return out
 
 
@@ -465,11 +484,13 @@ def clip_overlay(params: dict) -> dict:
         raise ValueError(f"未知白平衡模式：{wb}")
     decoder, coreimage_version = parse_decoder(params)
     demosaic = parse_demosaic(params, decoder)
+    coreimage_scale, clip_margin = parse_decode_extras(params, decoder)
     if decoder == "coreimage":
         highlight = "reconstruct"
     tone_core, _norm = parse_tone_core(params)
     cached = PREVIEW_STORE.get(
-        inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic
+        inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic,
+        coreimage_scale=coreimage_scale, margin=clip_margin,
     )
     masks = getattr(cached.bundle, "clip_masks", None)
     hard = _hard_clip_pct_by_colour(getattr(cached, "analysis", None))
@@ -708,6 +729,13 @@ def _cached_render_plan(
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
     film_interimage_beta: float | None = None,
+    film_development: str = "measured_default",
+    film_dev_contrast: float = 0.0,
+    film_dev_fog: float = 0.0,
+    film_dev_density: float = 0.0,
+    film_compression: float = 0.0,
+    film_compression_knee: float = 2.0,
+    film_highlight_density: float = 0.0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     key = (
@@ -742,6 +770,13 @@ def _cached_render_plan(
         (None if film_interimage_beta is None else _cache_float(film_interimage_beta)),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
+        str(film_development),
+        _cache_float(film_dev_contrast),
+        _cache_float(film_dev_fog),
+        _cache_float(film_dev_density),
+        _cache_float(film_compression),
+        _cache_float(film_compression_knee),
+        _cache_float(film_highlight_density),
     )
     base = cached.get_or_build_plan(
         key,
@@ -775,6 +810,13 @@ def _cached_render_plan(
         film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_development=film_development,
+            film_dev_contrast=film_dev_contrast,
+            film_dev_fog=film_dev_fog,
+            film_dev_density=film_dev_density,
+            film_compression=film_compression,
+            film_compression_knee=film_compression_knee,
+            film_highlight_density=film_highlight_density,
             film_interimage_beta_dial=film_interimage_beta,
             adjustments=None,
             endpoint_mode=endpoint_mode,
@@ -827,6 +869,13 @@ def _preview_pixel_key(
     film_appearance_variant: str = "reference",
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
+    film_development: str = "measured_default",
+    film_dev_contrast: float = 0.0,
+    film_dev_fog: float = 0.0,
+    film_dev_density: float = 0.0,
+    film_compression: float = 0.0,
+    film_compression_knee: float = 2.0,
+    film_highlight_density: float = 0.0,
     film_interimage_beta: float | None = None,
 ) -> tuple[Any, ...]:
     return (
@@ -864,6 +913,13 @@ def _preview_pixel_key(
         film_appearance_variant,
         int(film_optics_seed),
         str(film_media_scatter),
+        str(film_development),
+        _cache_float(film_dev_contrast),
+        _cache_float(film_dev_fog),
+        _cache_float(film_dev_density),
+        _cache_float(film_compression),
+        _cache_float(film_compression_knee),
+        _cache_float(film_highlight_density),
         (None if film_interimage_beta is None else _cache_float(film_interimage_beta)),
         endpoint_mode,
         _adjustment_key(adjustments),
@@ -907,6 +963,29 @@ def parse_decoder(params: dict) -> tuple[str, str]:
     # the CLI allows it and tests pin it. One behaviour across GUI, CLI
     # and the Python API.
     return decoder, version
+
+
+def parse_decode_extras(params: dict, decoder: str) -> tuple[str, int]:
+    """(coreimage_scale, clip_margin) — the two CLI decode dials the GUI now
+    exposes (owner 2026-08-28). The scale policy only exists on the Core
+    Image decoder (LibRaw silently reads "aligned" so the cache identity
+    stays the default); the clip margin is the per-channel full-well
+    threshold back-off in DN that the CLI calls --margin."""
+    from dngscan.constants import COREIMAGE_SCALE_CHOICES, COREIMAGE_SCALE_DEFAULT_MODE
+
+    scale = str(params.get("coreimageScale", params.get("coreimage_scale", COREIMAGE_SCALE_DEFAULT_MODE)) or COREIMAGE_SCALE_DEFAULT_MODE)
+    if scale not in COREIMAGE_SCALE_CHOICES:
+        raise ValueError(f"未知 Core Image 尺度策略：{scale}（可选 {'/'.join(COREIMAGE_SCALE_CHOICES)}）")
+    if decoder != "coreimage":
+        scale = COREIMAGE_SCALE_DEFAULT_MODE
+    raw = params.get("clipMargin", params.get("margin", 4))
+    try:
+        margin = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"clipMargin 需为整数 DN：{raw!r}") from None
+    if not 0 <= margin <= 64:
+        raise ValueError(f"clipMargin 域为 [0, 64] DN：{raw!r}")
+    return scale, margin
 
 
 def parse_demosaic(params: dict, decoder: str) -> str:
@@ -963,11 +1042,20 @@ def export_preview_jpeg(
     film_optics_seed: int | None = None,
     film_media_scatter: str = "declared",
     film_interimage_beta: float | None = None,
+    film_development: str = "measured_default",
+    film_dev_contrast: float = 0.0,
+    film_dev_fog: float = 0.0,
+    film_dev_density: float = 0.0,
+    film_compression: float = 0.0,
+    film_compression_knee: float = 2.0,
+    film_highlight_density: float = 0.0,
     endpoint_mode: str = "adaptive",
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
     include_metrics: bool = True,
     is_current: Callable[[], bool] | None = None,
+    coreimage_scale: str = "aligned",
+    clip_margin: int = 4,
 ) -> dict:
     dg.require_dependencies()
     if decoder == "coreimage":
@@ -981,6 +1069,8 @@ def export_preview_jpeg(
             decoder,
             coreimage_version,
             demosaic,
+            coreimage_scale=coreimage_scale,
+            margin=clip_margin,
         )
 
     def ensure_current() -> None:
@@ -1045,6 +1135,13 @@ def export_preview_jpeg(
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
         film_interimage_beta=film_interimage_beta,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
@@ -1105,6 +1202,13 @@ def export_preview_jpeg(
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_development=film_development,
+            film_dev_contrast=film_dev_contrast,
+            film_dev_fog=film_dev_fog,
+            film_dev_density=film_dev_density,
+            film_compression=film_compression,
+            film_compression_knee=film_compression_knee,
+            film_highlight_density=film_highlight_density,
             film_interimage_beta=film_interimage_beta,
         )
         if rgb_u8 is None:
@@ -1318,7 +1422,7 @@ def parse_film_params(params: dict) -> tuple:
         )
     if film_print_timing == "custom" and film_crossover != "datasheet":
         raise ValueError(
-            "custom timing 与有界灰阶中性化互斥:请配 filmNeutralization=datasheet"
+            "custom timing 与有界灰阶中性化互斥:请配 filmNeutralization=native"
         )
     if film_print_timing != "custom" and film_print_exposure_ev != 0.0:
         raise ValueError("手动印相曝光仅在 timing=custom 下有意义")
@@ -1430,13 +1534,78 @@ def parse_film_params(params: dict) -> tuple:
         or film_neutral_bias != 1.0
     ):
         raise ValueError("丰度/色密度/灰阶偏色修饰只在 filmAppearance=custom 下有意义")
+    # film v2 P4 developer recipe + Film Compression (owner 2026-08-28: every
+    # CLI dial is a GUI dial). Same rules as the CLI parser, mirrored here so
+    # the GUI service fails closed identically instead of at plan compile.
+    film_development = str(
+        params.get("filmDevelopment", params.get("film_development", "measured_default"))
+        or "measured_default"
+    )
+    if film_development not in ("measured_default", "editorial_custom"):
+        raise ValueError(
+            f"未知显影配方:{film_development}(可选 measured_default/editorial_custom)"
+        )
+    film_dev_contrast = _finite_number(
+        params.get("filmDevContrast", params.get("film_dev_contrast", 0.0)) or 0.0,
+        "显影对比", -0.5, 0.5,
+    )
+    film_dev_fog = _finite_number(
+        params.get("filmDevFog", params.get("film_dev_fog", 0.0)) or 0.0,
+        "显影 fog", 0.0, 0.3,
+    )
+    film_dev_density = _finite_number(
+        params.get("filmDevDensity", params.get("film_dev_density", 0.0)) or 0.0,
+        "显影色密度", -0.5, 0.5,
+    )
+    film_compression = _finite_number(
+        params.get("filmCompression", params.get("film_compression", 0.0)) or 0.0,
+        "Film Compression", 0.0, 1.0,
+    )
+    _knee_raw = params.get("filmCompressionKnee", params.get("film_compression_knee"))
+    film_compression_knee = (
+        2.0 if _knee_raw in (None, "") else _finite_number(_knee_raw, "压缩 knee", 0.0, 6.0)
+    )
+    film_highlight_density = _finite_number(
+        params.get("filmHighlightDensity", params.get("film_highlight_density", 0.0)) or 0.0,
+        "高光色密度", 0.0, 2.0,
+    )
+    if film_development == "measured_default" and (
+        film_dev_contrast != 0.0 or film_dev_fog != 0.0 or film_dev_density != 0.0
+    ):
+        raise ValueError(
+            "显影参数需要显式声明 filmDevelopment=editorial_custom"
+            "(measured_default 的显影参数全部锁定)"
+        )
+    if film_development == "editorial_custom":
+        if film_crossover != "datasheet":
+            raise ValueError(
+                "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 measured "
+                "显影求解;请配 filmNeutralization=native"
+            )
+        if film_print_timing == "retimed":
+            raise ValueError(
+                "editorial_custom 显影与 retimed timing 互斥:retimed τ 表按 measured "
+                "显影求解;请配 fixed 或 custom timing"
+            )
+    if film_compression == 0.0 and film_highlight_density != 0.0:
+        raise ValueError("高光色密度只在 Film Compression > 0 时有意义")
+    if film_mode != "full" and (
+        film_development != "measured_default" or film_compression != 0.0
+        or film_highlight_density != 0.0
+    ):
+        raise ValueError(
+            "显影配方与 Film Compression 属于接管显影(full 模式);GUI 在其他状态"
+            "隐藏这些控件,非默认载荷是直接 API 合同违规"
+        )
     return (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
             color_head_m, film_exposure_ev, film_print_timing,
             film_print_medium, film_print_exposure_ev,
             film_grain, film_halation, film_bloom,
             film_interimage, film_appearance, film_appearance_strength,
             film_richness, film_color_density, film_neutral_bias,
-            film_appearance_variant, film_media_scatter, film_interimage_beta)
+            film_appearance_variant, film_media_scatter, film_interimage_beta,
+            film_development, film_dev_contrast, film_dev_fog, film_dev_density,
+            film_compression, film_compression_knee, film_highlight_density)
 
 
 def effective_optics_seed(params: dict, entry) -> int:
@@ -1471,6 +1640,7 @@ def run_preview(params: dict) -> dict:
         raise ValueError(f"未知白平衡模式：{wb}")
     decoder, coreimage_version = parse_decoder(params)
     demosaic = parse_demosaic(params, decoder)
+    coreimage_scale, clip_margin = parse_decode_extras(params, decoder)
     if decoder == "coreimage":
         highlight = "reconstruct"
     look, look_strength, display_filter, filter_strength = parse_grade(params)
@@ -1487,6 +1657,8 @@ def run_preview(params: dict) -> dict:
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
      film_appearance_variant, film_media_scatter, film_interimage_beta,
+     film_development, film_dev_contrast, film_dev_fog, film_dev_density,
+     film_compression, film_compression_knee, film_highlight_density,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1503,6 +1675,8 @@ def run_preview(params: dict) -> dict:
             decoder,
             coreimage_version,
             demosaic,
+            coreimage_scale=coreimage_scale,
+            margin=clip_margin,
         )
         if not is_current():
             raise PreviewSuperseded()
@@ -1548,6 +1722,13 @@ def run_preview(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
         film_interimage_beta_dial=film_interimage_beta,
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
@@ -1599,12 +1780,21 @@ def run_preview(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
         film_interimage_beta=film_interimage_beta,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             include_metrics=bool(params.get("includeMetrics", True)),
             is_current=is_current,
+            coreimage_scale=coreimage_scale,
+            clip_margin=clip_margin,
         )
         result["generation"] = generation
         return result
@@ -1683,6 +1873,7 @@ def prepare_preview(params: dict) -> dict:
         raise ValueError(f"未知白平衡模式：{wb}")
     decoder, coreimage_version = parse_decoder(params)
     demosaic = parse_demosaic(params, decoder)
+    coreimage_scale, clip_margin = parse_decode_extras(params, decoder)
     if decoder == "coreimage":
         highlight = "reconstruct"
     tone_core, lum_norm = parse_tone_core(params)
@@ -1698,6 +1889,8 @@ def prepare_preview(params: dict) -> dict:
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
      film_appearance_variant, film_media_scatter, film_interimage_beta,
+     film_development, film_dev_contrast, film_dev_fog, film_dev_density,
+     film_compression, film_compression_knee, film_highlight_density,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -1714,6 +1907,8 @@ def prepare_preview(params: dict) -> dict:
             decoder,
             coreimage_version,
             demosaic,
+            coreimage_scale=coreimage_scale,
+            margin=clip_margin,
         )
         proxy_bundle = entry.bundle
         if film_optics_seed is None:
@@ -1757,6 +1952,13 @@ def prepare_preview(params: dict) -> dict:
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_development=film_development,
+            film_dev_contrast=film_dev_contrast,
+            film_dev_fog=film_dev_fog,
+            film_dev_density=film_dev_density,
+            film_compression=film_compression,
+            film_compression_knee=film_compression_knee,
+            film_highlight_density=film_highlight_density,
             film_interimage_beta=film_interimage_beta,
         )
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
@@ -1807,6 +2009,18 @@ def export_suffix_parts(
     film_color_density: float = 0.0,
     film_neutral_bias: float = 1.0,
     film_appearance_variant: str = "reference",
+    film_development: str = "measured_default",
+    film_dev_contrast: float = 0.0,
+    film_dev_fog: float = 0.0,
+    film_dev_density: float = 0.0,
+    film_compression: float = 0.0,
+    film_compression_knee: float = 2.0,
+    film_highlight_density: float = 0.0,
+    film_media_scatter: str = "declared",
+    explicit_optics_seed: int | None = None,
+    coreimage_scale: str = "aligned",
+    clip_margin: int = 4,
+    decoder: str = "libraw",
 ) -> str:
     """Build the filename stem suffix for GUI JPEG/PNG exports."""
     parts = [tone_core]
@@ -1843,6 +2057,26 @@ def export_suffix_parts(
                 ("optics" + f"-g{float(film_grain):g}h{float(film_halation):g}"
                  f"b{float(film_bloom):g}").replace(".", "_")
             )
+        # Owner 2026-08-28: the GUI now carries every CLI dial; each one that
+        # changes the render names itself so it cannot overwrite the default.
+        if str(film_development) == "editorial_custom":
+            parts.append(
+                ("dev-c" + f"{float(film_dev_contrast):+g}" + "f" + f"{float(film_dev_fog):g}"
+                 + "d" + f"{float(film_dev_density):+g}").replace("+", "p").replace("-", "m").replace(".", "_").replace("devmc", "dev-c")
+            )
+        if float(film_compression) > 0.0:
+            tok = f"comp{float(film_compression):g}k{float(film_compression_knee):g}"
+            if float(film_highlight_density) > 0.0:
+                tok += f"hd{float(film_highlight_density):g}"
+            parts.append(tok.replace(".", "_"))
+        if str(film_media_scatter) == "off":
+            parts.append("scatteroff")
+        if explicit_optics_seed is not None:
+            parts.append(f"seed{int(explicit_optics_seed)}")
+    if str(decoder) == "coreimage" and str(coreimage_scale) != "aligned":
+        parts.append(f"ciscale-{coreimage_scale}")
+    if int(clip_margin) != 4:
+        parts.append(f"margin{int(clip_margin)}")
     if highlight != "clip":
         parts.append(highlight)
     if gamut != "srgb":
@@ -1892,6 +2126,8 @@ def _cached_full_analysis(
     decoder: str,
     coreimage_version: str,
     demosaic: str,
+    coreimage_scale: str = "aligned",
+    margin: int = 4,
 ) -> Any | None:
     """The preview session's persisted full-resolution Analysis, or None.
 
@@ -1918,7 +2154,8 @@ def _cached_full_analysis(
         highlight, demosaic = "reconstruct", "auto"
     try:
         _, digest = pc._cache_identity(
-            Path(inp), highlight, wb, decoder, coreimage_version, demosaic
+            Path(inp), highlight, wb, decoder, coreimage_version, demosaic,
+            coreimage_scale if decoder == "coreimage" else "aligned", int(margin),
         )
         cache_path = pc._cache_dir() / f"{digest}.npz"
         if not cache_path.is_file():
@@ -1983,6 +2220,7 @@ def run_export(params: dict) -> dict:
     if wb not in dg.WB_CHOICES:
         raise ValueError(f"未知白平衡模式：{wb}")
     decoder, coreimage_version = parse_decoder(params)
+    coreimage_scale, clip_margin = parse_decode_extras(params, decoder)
     # R4: same validator as the preview path — a bogus demosaic used to fall
     # through to load_raw's silent auto preference while the fingerprint
     # baked the bogus string into the filename (parse_demosaic also resolves
@@ -2013,6 +2251,8 @@ def run_export(params: dict) -> dict:
      film_interimage, film_appearance, film_appearance_strength,
      film_richness, film_color_density, film_neutral_bias,
      film_appearance_variant, film_media_scatter, film_interimage_beta,
+     film_development, film_dev_contrast, film_dev_fog, film_dev_density,
+     film_compression, film_compression_knee, film_highlight_density,
      ) = parse_film_params(params)
     film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     film_optics_seed = (
@@ -2040,6 +2280,7 @@ def run_export(params: dict) -> dict:
         wb_mode=wb,
         decoder=decoder,
         coreimage_version=coreimage_version,
+        coreimage_scale=coreimage_scale,
     )
     bundle.lens_filter = lens_filter
 
@@ -2052,12 +2293,13 @@ def run_export(params: dict) -> dict:
     y = ev_img = None
     if not want_png:
         analysis = _cached_full_analysis(
-            inp, highlight, wb, decoder, coreimage_version, demosaic
+            inp, highlight, wb, decoder, coreimage_version, demosaic,
+            coreimage_scale, clip_margin,
         )
     if analysis is None:
         analysis, y, ev_img = dg.analyze(
             bundle,
-            4,
+            clip_margin,
             diagnostics=want_png,
             gamut_names=None if want_png else (dg.output_gamut_space(gamut),),
         )
@@ -2098,6 +2340,13 @@ def run_export(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
         film_interimage_beta_dial=film_interimage_beta,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
@@ -2136,6 +2385,13 @@ def run_export(params: dict) -> dict:
         film_appearance_variant=film_appearance_variant,
         film_optics_seed=film_optics_seed,
         film_media_scatter=film_media_scatter,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
         film_interimage_beta_dial=film_interimage_beta,
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
@@ -2144,6 +2400,8 @@ def run_export(params: dict) -> dict:
 
     grade_id = str(params.get("grade", "none"))
     grade_strength = float(params.get("gradeStrength", params.get("grade_strength", 1.0)))
+    _seed_raw = params.get("filmOpticsSeed", params.get("film_optics_seed"))
+    _explicit_seed = int(_seed_raw) if _seed_raw not in (None, "", "auto") else None
     suffix = export_suffix_parts(
         highlight,
         gamut,
@@ -2179,6 +2437,18 @@ def run_export(params: dict) -> dict:
         # seed rides the fingerprint below, which is what prevents two
         # different renders from sharing a path (review batch 18 P0: passing
         # it here raised TypeError on EVERY GUI export).
+        film_media_scatter=film_media_scatter,
+        explicit_optics_seed=_explicit_seed,
+        coreimage_scale=coreimage_scale,
+        clip_margin=int(clip_margin),
+        decoder=decoder,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
     )
     fingerprint = export_plan_fingerprint(
         wb=wb,
@@ -2186,6 +2456,8 @@ def run_export(params: dict) -> dict:
         highlight=highlight,
         decoder=decoder,
         coreimage_version=coreimage_version,
+        coreimage_scale=coreimage_scale,
+        clip_margin=int(clip_margin),
         demosaic=demosaic,
         gamut=gamut,
         output_format=output_format,
@@ -2223,6 +2495,13 @@ def run_export(params: dict) -> dict:
         # duplicating instead of replacing (the unused-knob rule below).
         film_optics_seed=(film_optics_seed if float(film_grain) > 0.0 else 0),
         film_media_scatter=film_media_scatter,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
         film_interimage_beta_dial=film_interimage_beta,
         # The optics budget tier picks the spread-grid size (P3) and the
         # band split whose per-band dither draw orders the output noise, so
@@ -2381,6 +2660,13 @@ def run_export(params: dict) -> dict:
             film_appearance_variant=film_appearance_variant,
             film_optics_seed=film_optics_seed,
             film_media_scatter=film_media_scatter,
+            film_development=film_development,
+            film_dev_contrast=film_dev_contrast,
+            film_dev_fog=film_dev_fog,
+            film_dev_density=film_dev_density,
+            film_compression=film_compression,
+            film_compression_knee=film_compression_knee,
+            film_highlight_density=film_highlight_density,
             film_interimage_beta=film_interimage_beta,
                     color_head_y=color_head_y,
                     color_head_m=color_head_m,
