@@ -308,5 +308,5 @@ def validate_film_plans(
         ):
             raise ValueError(
                 "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 "
-                "measured 显影求解;请配 --film-neutralization datasheet"
+                "measured 显影求解;请配 --film-neutralization native"
             )

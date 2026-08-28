@@ -131,7 +131,8 @@ policy); right is the datasheet served verbatim (`native`).
   filters, and film observation remain explicit choices.
 - **Form SDR and HDR separately:** SDR targets sRGB or Display P3. HDR starts again from the same
   scene image and uses only the extra brightness supported by un-clipped RAW highlights.
-- **Observe and reproduce:** the local GUI and CLI share the same controls. The GUI's "RAW
+- **Observe and reproduce:** the local GUI and CLI share the same controls, and the GUI
+  covers every CLI dial (report and diagnostic outputs excepted). The GUI's "RAW
   near-full-well" toggle marks the RAW's pixels at or above ~97% of full well per CFA channel (the
   chroma-retreat region) and lists the full-resolution hard-clip share next to it; the CLI prints
   only the files it wrote by default, and the full analysis report comes with `--report` (a
@@ -206,7 +207,7 @@ python -m dngscan photo.dng --jpeg photo_hdr.jpg \
 # RAW analysis dashboard and CSV (a diagnostic run includes the report)
 python -m dngscan photo.dng --jpeg photo.jpg --scan --csv photo.csv
 
-# Compare the experimental RAW-gated tone core
+# Compare the RAW-gated (fidelity) tone compression
 python -m dngscan photo.dng --jpeg photo_gated.jpg --tone-core gated
 
 # Use a film observation position (observe by default: the film declares the observer, AgX develops)

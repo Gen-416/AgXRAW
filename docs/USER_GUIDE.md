@@ -65,6 +65,21 @@ the same LibRaw provider, so switching between LibRaw and Apple RAW cannot chang
 analysis inputs. A file that LibRaw cannot open therefore cannot bypass the Evidence
 requirement by selecting Apple RAW.
 
+Two more decode-level settings sit on the RAW decode card and rarely need touching;
+they differ in kind. **CI 尺度 — CI scale** (CLI `--coreimage-scale`, shown only when
+the decoder is Apple RAW) decides at what scale Core Image's scene-linear values enter
+the rest of the pipeline: **对齐 LibRaw · 默认** (aligned) matches the LibRaw decode
+file by file, **原生单位** (unity) keeps Core Image's native units, and **实测补偿**
+(measured) is the old fixed ratio, kept only for reproducing earlier results; changing
+it re-runs preparation (the decode). **剪切回退 DN — clip margin** (CLI `--margin`,
+integer 0–64, default 4) is how many DN below full well each channel's clipping
+threshold sits. It does not change the reconstruction; it changes the analysis
+criterion — the RAW clipping share, the hard-clip numbers next to the RAW 满阱 toggle
+and the whole Detected Parameters card are recomputed against it, so changing it
+re-runs the analysis. Neither needs attention day to day; exported filenames carry
+`ciscale-unity` / `ciscale-measured` or `margin{n}` only when the value is not the
+default.
+
 ---
 
 ## 2. Basic workflow
@@ -87,6 +102,12 @@ endpoints, colour-matrix health κ, Stage A residuals and so on — run the CLI
 with `--report`. Without it the CLI prints only the files it wrote
 (`JPEG 图像: …` / `PNG 图像: …`); diagnostic runs with `--scan` or `--csv`
 include the report automatically.
+
+Apart from those report and diagnostic outputs (`--report`, `--csv`, `--support`,
+`--hdr-debug-dir` and the like) the GUI now covers every CLI dial: anything that
+shapes the image on the CLI has a control on the page, and the ones hidden or greyed
+are simply those that do not apply in the current state (section 11). The six-panel
+dashboard can ride along via the export dialog's 附带分析图 checkbox (section 10).
 
 ---
 
@@ -332,25 +353,66 @@ lives here:
   lookup of the 5207 chart, calibrated at a 48 µm aperture), with a fixed
   statistical master field and one random spatial arrangement per photo; the
   negative and the paper take independent phases, so the two realizations are
-  uncorrelated — `--film-optics-seed auto|N` controls randomness/reproduction
-  and the report prints the effective seed. **Halation** is bright scene
-  exposure back-scattered through the base onto the red-sensitive layer and
-  re-injected into layer exposure, before the characteristic curve. **Bloom**
-  is an additive capture glow before the emulsion, declared editorial — not a
-  conservative medium scatter. The media's own scatter (emulsion scatter and
-  print-formation scatter, fitted from MTF) belongs to the declared medium
-  rather than to a look amount: it applies from the compiled profile whenever
-  the optics chain is engaged, independent of the three sliders, and the CLI
-  declares it separately with `--film-media-scatter declared|off` (off is the
-  operator-isolation setting the measurement tooling uses).
-- **Takeover options that exist only on the CLI**: `--film-development
-  editorial_custom` unlocks bounded developer-recipe perturbations
-  (`--film-dev-contrast/--film-dev-fog/--film-dev-density`, honestly labelled
-  in the report; mutually exclusive with retimed timing and digital-neutral
-  neutralization); `--film-compression` (C1 saturating compression of scene
-  luminance above a knee, before the emulsion; `--film-compression-knee` sets
-  the knee and `--film-highlight-density` pulls the compressed highlights toward
-  luminance-preserving neutral).
+  uncorrelated. **Halation** is bright scene exposure back-scattered through
+  the base onto the red-sensitive layer and re-injected into layer exposure,
+  before the characteristic curve. **Bloom** is an additive capture glow
+  before the emulsion, declared editorial — not a conservative medium scatter.
+  Two small controls sit beside the tier dropdown. **光学种子 — optics seed**
+  (CLI `--film-optics-seed auto|N`) decides only the grain's spatial
+  arrangement, never its size, spectrum, density response or cross-layer
+  covariance: leave it empty for auto, which draws one fixed seed when the RAW
+  is loaded so preview and export match (the report prints the effective
+  seed); type a non-negative integer for a permanently reproducible
+  realization. **介质散射 — media scatter** (CLI `--film-media-scatter
+  declared|off`) is the media's own scatter (emulsion scatter and
+  print-formation scatter, fitted from MTF), which belongs to the declared
+  medium rather than to a look amount: under **按声明 · 默认** (declared) it
+  applies from the compiled profile whenever the optics chain is engaged,
+  independent of the three sliders; **关闭** (off) is the operator-isolation
+  setting the measurement tooling uses, not for everyday work.
+- **显影配方 — developer recipe** (CLI `--film-development`): which
+  development the characteristic curves are solved for. **实测默认**
+  (`measured_default`) is the datasheet development with the three
+  perturbations locked at 0; **自定义显影** (`editorial_custom`) reveals three
+  bounded sliders, and the report labels the result editorial development:
+  **显影对比 — development contrast** (−0.5…0.5, CLI `--film-dev-contrast`)
+  scales the characteristic curve's logE axis about the mid-grey anchor — the
+  contrast dimension of push/pull processing, mid-grey held by construction;
+  **显影灰雾 — development fog** (0…0.3, CLI `--film-dev-fog`) adds uniform
+  density to all three layers — real chemical fog brightens the whole print,
+  and the tool applies no hidden compensation; **显影色密度 — development
+  colour density** (−0.5…0.5, CLI `--film-dev-density`) scales the developed
+  dye amount about the mid-grey anchor, again without moving mid-grey. Two
+  coupling rules match the CLI and are enforced server-side as well: custom
+  development requires the neutralization to be 数据手册漂移 (the bounded
+  neutralization's cast curve is solved for the measured development) — the
+  GUI switches it automatically with a status message and greys the other
+  neutralization options, while the CLI needs an explicit
+  `--film-neutralization native`; and custom development is mutually
+  exclusive with 随胶片曝光重定时 (the retimed τ table is likewise solved for
+  the measured development) — the GUI greys retimed and falls back to fixed;
+  fixed and custom timing both work.
+- **胶片压缩 — film compression** (0…1, default 0, CLI `--film-compression`):
+  a C1 saturating compression of scene luminance EV before the emulsion — above
+  a knee it eases hard digital highlights into the negative's latitude,
+  declared as an editorial bridge; 0 is the strict identity. Above 0 two more
+  sliders appear: **压缩 knee — compression knee** (0…6 EV above mid-grey,
+  default 2, CLI `--film-compression-knee`) sets the stop at which compression
+  starts; **高光色密度 — highlight colour density** (0…2, default 0, CLI
+  `--film-highlight-density`) lets the compressed highlights converge toward
+  luminance-preserving neutral — the look of negative highlight dye density
+  approaching saturation. The latter is only meaningful with compression > 0:
+  at 0 the GUI zeroes it and the CLI and server reject a non-zero value.
+
+The developer recipe, film compression, media scatter and optics seed are
+takeover-only: they appear only while 显影分工 is set to 接管, and switching
+back to observe resets all of them to their defaults so no stale value rides
+along in the payload (the server also rejects non-default values in observe
+mode). Exported filenames add a token only when a value is not the default, so
+a dialled render never overwrites the default one: `dev-c…f…d…` for custom
+development, `comp{c}k{knee}` for film compression (plus `hd{x}` when highlight
+colour density > 0), `scatteroff` for media scatter off, and `seed{n}` for an
+explicit seed.
 
 ### The enlarger colour head (negatives only)
 
@@ -418,6 +480,10 @@ daylight". There is no strength slider — glass has no half-installed state.
   Default "declared" = the stock's modelled table value (0.32–1.05); a custom
   value is reported as an editorial dial. CLI:
   `--film-interimage custom --film-interimage-beta`.
+- **Compression knee** (imaging card; appears in takeover mode once 胶片压缩 is
+  above 0): the stop above mid-grey at which the saturating compression starts,
+  0…6 EV, default 2; only scene luminance above the knee is compressed. CLI:
+  `--film-compression-knee`.
 
 ## 7. Tone card: endpoint mode and toe/shoulder offsets
 
@@ -439,6 +505,33 @@ daylight". There is no strength slider — glass has no half-installed state.
   gradations merge later and the roll-off softens; dragging left closes white earlier
   and hardens the shoulder. Implemented by re-solving the shoulder curvature; **the
   black point, white point and shoulder start do not move**.
+- **Shadow transition / highlight transition** (暗部过渡 / 高光过渡, −1…+1
+  sliders): the **fine trims** for the toe and shoulder. Unlike toe end and
+  shoulder white they do not name an EV coordinate; they multiply the curvature
+  of the toe/shoulder segment by a bounded factor (about ±37% at full travel)
+  while the black point, white point and mid-grey anchor all stay put. **They
+  are restrained by design**: a full-travel move changes the finished image by
+  only a few code values at peak (measured roughly 3–9/255, concentrated in one
+  brightness window of the deep shadows or the highlight roll-off), and the
+  whole-image per-pixel p99 rarely exceeds 10/255 — barely seeing it in the
+  preview is normal behaviour, not a broken slider. Full-travel shadow
+  transition is roughly a 0.6–0.7 stop move of toe end; full-travel highlight
+  transition is under 0.1 stop of shoulder white. For a visible move, use toe
+  end / shoulder white directly. On photos whose shoulder has no room to bend
+  (see the editing tutorial's "shoulder white does not move" section),
+  highlight transition and shoulder white fail together, with under 1/255 of
+  difference at full travel — the same geometric reason.
+- **Highlight fade** (高光褪白, colour card, −1…+1 slider): adjusts only the
+  chroma of **coloured pixels approaching display white** — right fades them
+  toward white earlier, left keeps more colour; luminance is untouched. Neutral
+  (colourless) brights change by exactly zero, so a frame with no "bright and
+  coloured" content (sunset clouds, coloured lampshades) shows no change at
+  all; with such content, full travel moves a single channel by at most about
+  15/255. **Disabled under HDR output** (HDR's highlight colour geometry is
+  handled independently and the value is forced to 0 at export); shadow
+  transition still applies under HDR, while highlight transition takes no part
+  in the shape of HDR highlights (the HDR shoulder is solved independently
+  above mid-grey).
 - The measured line at the bottom of the tone card reports the **compiled actual
   values** (toe-end EV, shoulder-white EV, endpoint provenance). Out-of-range
   requests are clamped by the curve legality guards; the line always shows what
@@ -559,6 +652,11 @@ letting you choose it and failing at export. Currently handled this way:
 - **印相 timing** retimed/custom and the **colour head** — slides are always
   fixed and the colour head is greyed and zeroed; in takeover mode the colour
   head additionally needs custom timing (section 5);
+- **自定义显影** (the takeover-mode developer recipe) — locks the grey-scale
+  neutralization to 数据手册漂移, greys the other neutralization options with a
+  status message, and greys 随胶片曝光重定时 on the print timing, falling back
+  to fixed (section 5). Custom timing likewise locks the neutralization to
+  数据手册漂移;
 - **附带分析图** — needs matplotlib (section 10);
 - **RAW 满阱** — Apple RAW decoding has no per-pixel CFA evidence (section 3).
 
@@ -567,6 +665,12 @@ per file, and an unsupported file is intercepted before submission so you can
 choose (section 1); fixed-Kelvin white balance on a file without colour
 calibration degrades to As Shot, flagged with ⚠ on the Detected Parameters
 card.
+
+A few more controls are **hidden by state rather than greyed**: CI 尺度 appears only
+while the decoder is Apple RAW; the developer recipe, film compression, media scatter
+and optics seed appear only in takeover mode and reset on the way back to observe;
+compression knee and highlight colour density appear only while film compression is
+above 0.
 
 ---
 

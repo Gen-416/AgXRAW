@@ -121,11 +121,12 @@ class VariantPlumbingTests(unittest.TestCase):
             **base, "filmAppearance": "reference",
             "filmAppearanceVariant": "extended",
         })
-        # Tuple tail (R1 item 4 + taste-to-dial): ..., variant,
-        # film_media_scatter, film_interimage_beta.
-        self.assertEqual(out[-3], "extended")
-        self.assertEqual(out[-2], "declared")
-        self.assertIsNone(out[-1])
+        # Tuple positions (R1 item 4 + taste-to-dial): ..., variant [19],
+        # film_media_scatter [20], film_interimage_beta [21]; the developer
+        # recipe / film compression dials follow (owner 2026-08-28).
+        self.assertEqual(out[19], "extended")
+        self.assertEqual(out[20], "declared")
+        self.assertIsNone(out[21])
         with self.assertRaises(ValueError):
             parse_film_params({**base, "filmAppearanceVariant": "extended"})
         with self.assertRaises(ValueError):
