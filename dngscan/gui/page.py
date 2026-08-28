@@ -73,6 +73,10 @@ button.ghost{background:#12141a;border:1px solid #2b2f3a;border-radius:8px;color
 .browserList div.pick{color:#8ae08a;font-weight:600;position:sticky;top:0;background:#12141a}
 #previewWrap{position:relative;margin-top:10px;min-height:260px;flex:1;overflow:hidden;background:#11141a;border:1px solid #2b2f3a;border-radius:8px}
 #preview{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;transition:opacity .15s ease}
+#clipOverlay{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;pointer-events:none;image-rendering:pixelated}
+.previewToggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#c7cbd6;cursor:pointer}
+.previewToggle input{margin:0}
+.previewToggle.dim{opacity:.45;cursor:default}
 #previewWrap.loading #preview{opacity:.4}
 #spinner{display:none;position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border:3px solid rgba(255,255,255,.22);border-top-color:#eef2ff;border-radius:50%;animation:spin .8s linear infinite}
 #previewWrap.loading #spinner{display:block}
@@ -340,14 +344,14 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
   <div class="row">
     <div style="flex:1;min-width:190px">
       <label>胶片观察位置</label>
-      <select id="film" title="一次设置多层独立声明：白平衡（日光卷 5500K / 钨丝电影卷 3200K）+ 光谱前馈 + 曲线预设 + 风格配对（前馈强度与 AgX 原色几何，编辑初稿可改）。胶片决定观察者看见了什么，AgX 决定怎么显影。选中后相关控件同步更新，随时可单独调整——没有任何一层被烘焙。">
+      <select id="film" title="一次设定白平衡、前馈、曲线预设与风格配对；各层随时可单独改。详见 docs/FILM_TUTORIAL。">
         <option value="none">无 · 场景自适应</option>
 FILM_OPTIONS
       </select>
     </div>
     <div style="flex:1;min-width:190px">
       <label>曲线预设</label>
-      <select id="filmCurve" title="AgX 参数空间里的具名胶片坐标（数据手册特性曲线最小二乘解）；选中后整卷一致、场景自适应关闭。">
+      <select id="filmCurve" title="胶片特性曲线的 AgX 参数坐标；选中后整卷一致、场景自适应关闭。">
         <option value="none">场景自适应 · 默认</option>
 FILM_CURVE_OPTIONS
       </select>
@@ -355,11 +359,11 @@ FILM_CURVE_OPTIONS
   </div>
   <div class="row" id="colorHeadBlock" style="margin-top:12px">
     <div class="sliderField">
-      <div class="labelRow"><label title="放大机色头黄（Y）分色滤镜，真实暗房单位：CC 密度档位，30CC=0.30 光学密度≈相纸蓝敏层 1 档印相曝光衰减。暗房口诀：成片偏什么色，加什么色的滤镜——偏黄加 Y、去黄。方向已渲染级验证：portra400 人像样张 +30CC Y 使成片中位 b*（黄蓝轴）从 +9.4 移到 -36.8（100% 像素向去黄方向移动）。响应由该预设的拟合光谱印相模型推导（构建期把滤镜放进放大机光路重曝相纸并按暗房惯例重解曝光时间，中灰亮度不变），运行时按 CC 与曝光插值——不是后置 RGB 增益。仅负片预设显示：反转片无印相环节，物理上没有色头。">色头 Y（黄）</label><span class="val" id="colorHeadYVal">0</span></div>
+      <div class="labelRow"><label title="放大机色头 Y 滤镜，CC 档位。成片偏黄就加 Y。仅负片；full 模式需 timing=自定义。">色头 Y（黄）</label><span class="val" id="colorHeadYVal">0</span></div>
       <input type="range" id="colorHeadY" min="0" max="200" step="5" value="0" title="向右加黄滤镜档位：成片去黄（偏蓝）。0=预设的中性印相决定。">
     </div>
     <div class="sliderField">
-      <div class="labelRow"><label title="放大机色头品（M）分色滤镜：CC 密度档位，30CC≈相纸绿敏层 1 档印相曝光衰减。暗房口诀：成片偏品加 M、去品。方向已渲染级验证：portra400 人像样张 +30CC M 使成片中位 a*（品绿轴）从 +0.8 移到 -45.2（100% 像素向去品方向移动）。同 Y：响应来自拟合光谱印相模型，改档位后自动重解曝光时间，中灰亮度不变。仅负片预设显示：反转片无印相环节。">色头 M（品）</label><span class="val" id="colorHeadMVal">0</span></div>
+      <div class="labelRow"><label title="放大机色头 M 滤镜，CC 档位。成片偏品就加 M。仅负片；full 模式需 timing=自定义。">色头 M（品）</label><span class="val" id="colorHeadMVal">0</span></div>
       <input type="range" id="colorHeadM" min="0" max="200" step="5" value="0" title="向右加品滤镜档位：成片去品（偏绿）。0=预设的中性印相决定。">
     </div>
     <div class="ctlFact" id="colorHeadHint" style="flex-basis:100%"></div>
@@ -367,29 +371,29 @@ FILM_CURVE_OPTIONS
   <div class="row" id="filmModeRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
       <label>显影分工</label>
-      <select id="filmMode" title="observe=胶片声明观察者看见了什么，颜色由 AgX 显影（默认，已验证路径）；full=胶片显影模型整体接管（film v2 因式分解链：Stage A（每卷按 held-out CV 选色度场或 3×3 观察者；光源假设 D55，实测白平衡后钨丝/高显色 LED 场景同级、无需分档）→三层乳剂→特性曲线→B1→印相 timing→相纸显影→B2 观看；实验）。印相介质/timing/显影配方/模拟光学随之可声明;色头在 timing=custom 下解锁;Ultra HDR 下以'胶片印相+scene HDR 扩展'参与。">
+      <select id="filmMode" title="观察=胶片决定看见什么，AgX 显影（默认）；接管=胶片显影链整体接管（乳剂→特性曲线→印相→相纸→观看）。">
         <option value="observe">观察 · AgX 显影 · 默认</option>
-        <option value="full">接管 · 胶片显影模型（实验）</option>
+        <option value="full">接管 · 胶片显影链</option>
       </select>
     </div>
     <div id="filmCrossoverBlock" style="flex:1;min-width:190px;display:none">
       <label>灰阶中性化</label>
-      <select id="filmNeutralization" title="灰阶中性化（与印相 timing 正交，仅接管模式）。跟随胶片解释=不显式声明，由编译器按胶片解释解析（技术中和→数字中性；参考印相/自定义→印相平衡）；数字中性=完整链输出按像素曝光除以随包中性染色曲线，整条灰阶严格中性；印相平衡=同一染色表只在中灰锚点取值一次做恒定平衡——中灰依构造中性，灰阶两端保留介质自身的曝光相关 crossover（印相性格）；数据手册漂移=链原样，中灰由印相求解锚定（实验）。">
+      <select id="filmNeutralization" title="灰阶怎么回中性：跟随胶片解释（默认）/ 数字中性 / 印相平衡 / 数据手册漂移。仅接管模式。">
         <option value="auto">跟随胶片解释 · 默认</option>
         <option value="technical-neutral">数字中性</option>
         <option value="print-balanced">印相平衡</option>
-        <option value="native">数据手册漂移（实验）</option>
+        <option value="native">数据手册漂移</option>
       </select>
     </div>
     <div id="filmMediumBlock" style="flex:1;min-width:190px;display:none">
       <label>印相介质</label>
-      <select id="filmPrintMedium" title="film v2 印相介质：默认为该卷的出厂配对；仅列出已烘焙的介质（B1/τ 按 卷×介质 求解，B2 跨卷复用）。"></select>
+      <select id="filmPrintMedium" title="印相相纸/介质；默认为该卷的出厂配对，只列已烘焙的介质。"></select>
     </div>
   </div>
   <div class="row" id="filmAppearanceRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
       <label>胶片解释</label>
-      <select id="filmAppearance" title="外观层（仅接管模式）：技术中和=冻结基线，测量链原样；参考印相=该卷在配对相纸上的编辑性调色板（授权配方：色相路径+色密度，Oklab+场景EV 域，灰阶依内核构造不动）；自定义=参考印相加三个有界修饰（丰度/色密度/灰阶偏色强度）。出厂默认=参考印相@1.0（2026-08-12 校准）；技术中和一键可回，且始终是无配方卷的回退。">
+      <select id="filmAppearance" title="技术中和=测量链原样；参考印相=该卷在配对相纸上的调色板（默认）；自定义=参考印相加三个修饰。">
         <option value="technical">技术中和</option>
         <option value="reference" selected>参考印相 · 默认</option>
         <option value="custom">自定义</option>
@@ -397,39 +401,39 @@ FILM_CURVE_OPTIONS
     </div>
     <div id="filmAppearanceVariantBlock" style="flex:1;min-width:190px;display:none">
       <label>解释变体</label>
-      <select id="filmAppearanceVariant" title="配方解释变体:参考印相=该卷在配对介质上的印相解读(默认);扫描对照(extended)=同家族方向 0.6 幅度、阴影密度不加、灰轴数字中性——scan/telecine 的对照解读。仅已作 extended 配方的卷可用(当前 vision3250d),缺资产硬失败。">
+      <select id="filmAppearanceVariant" title="参考印相=印相解读（默认）；扫描对照=scan/telecine 解读，仅有资产的卷可选。">
         <option value="reference">参考印相 · 默认</option>
         <option value="extended">扫描对照 extended</option>
       </select>
     </div>
     <div style="flex:1;min-width:190px">
       <label>层间放大</label>
-      <select id="filmInterimage" title="层间放大（inter-image effect）：显影耦合对色差的有界放大 D'=N+sign(d)·h·t'，β 按卷声明，轨距内保界。声明=默认；关=光谱基线（oracle 口径）。">
+      <select id="filmInterimage" title="层间放大：显影耦合对色差的放大。声明=默认；关=光谱基线。">
         <option value="declared">声明 · 默认</option>
         <option value="off">关 · 光谱基线</option>
         <option value="custom">自定义 β</option>
       </select>
     </div>
     <div class="sliderField" id="filmInterimageBetaBlock" style="display:none">
-      <div class="labelRow"><label title="层间放大 β [0,1.5]（taste-to-dial）：声明表范围 0.32–1.05；0=等效关。仅 自定义 β 档下生效。">层间 β</label><span class="val" id="filmInterimageBetaVal">0.60</span></div>
+      <div class="labelRow"><label title="层间放大强度 [0,1.5]；0 等效关。仅自定义 β 档生效。">层间 β</label><span class="val" id="filmInterimageBetaVal">0.60</span></div>
       <input type="range" id="filmInterimageBeta" min="0" max="1.5" step="0.01" value="0.6">
     </div>
     <div class="sliderField" id="filmAppearanceStrengthBlock" style="display:none">
-      <div class="labelRow"><label title="外观层强度：0=不施加，1=配方声明值，>1 外推（上限 3——数学安全域实测:无折叠/灰轴不动/clamp 增量可忽略;弱可见卷如 Velvia 靠这只旋钮到位,不重作配方）。">解释强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
+      <div class="labelRow"><label title="0=不施加，1=配方声明值，>1 外推（上限 3）。">解释强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
       <input type="range" id="filmAppearanceStrength" min="0" max="3" step="0.05" value="1">
     </div>
     <div id="filmAppearanceCustom" style="display:none;flex-basis:100%">
       <div class="row">
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="颜色丰度修饰：配方 chroma-gain 场 ×(1+r)，纯度肩部内核保护高饱和。">丰度</label><span class="val" id="filmRichnessVal">0.00</span></div>
+          <div class="labelRow"><label title="配方颜色丰度修饰。">丰度</label><span class="val" id="filmRichnessVal">0.00</span></div>
           <input type="range" id="filmRichness" min="-1" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="色密度修饰：配方 density 场 ×(1+d)，中性密度式压亮（L 与 C 同缩，饱和度守恒）。">色密度</label><span class="val" id="filmColorDensityVal">0.00</span></div>
+          <div class="labelRow"><label title="配方色密度修饰（压亮不改饱和）。">色密度</label><span class="val" id="filmColorDensityVal">0.00</span></div>
           <input type="range" id="filmColorDensity" min="-1" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="灰阶偏色强度：配方 neutral-bias 场 ×s（当前配方为零场，此控件预留）。">灰阶偏色</label><span class="val" id="filmNeutralBiasVal">1.00</span></div>
+          <div class="labelRow"><label title="配方灰阶偏色强度（当前配方为零场，预留）。">灰阶偏色</label><span class="val" id="filmNeutralBiasVal">1.00</span></div>
           <input type="range" id="filmNeutralBias" min="0" max="2" step="0.05" value="1">
         </div>
       </div>
@@ -437,25 +441,25 @@ FILM_CURVE_OPTIONS
   </div>
   <div class="row" id="filmExposureRow" style="margin-top:12px;display:none">
     <div class="sliderField">
-      <div class="labelRow"><label title="film v2：胶片乳剂相对标称 EI 的曝光状态——改变乳剂状态，不等于输出曝光。负片配 retimed 印相时按暗房惯例重新定时（总体亮度接近不变，颜色/对比/趾肩变化）；fixed 保持同一放大机设置。域 [-2,+2]，资产声明。">胶片曝光</label><span class="val" id="filmExposureVal">0.00 EV</span></div>
+      <div class="labelRow"><label title="乳剂相对标称 EI 的曝光状态，不是输出曝光；域 ±2 EV。">胶片曝光</label><span class="val" id="filmExposureVal">0.00 EV</span></div>
       <input type="range" id="filmExposure" min="-2" max="2" step="0.05" value="0" title="改变乳剂状态，不等于输出曝光。">
     </div>
     <div style="flex:1;min-width:190px">
       <label>印相 timing</label>
-      <select id="filmPrintTiming" title="fixed=沿用 EV0 联合求解的 q(0)（同一放大机设置，默认）；retimed=随胶片曝光重解 q(E)（因式分解 Stage B；试点负片 portra400/vision3250d）。反转片无印相环节，一律 fixed。">
-        <option value="fixed">固定 · τ(0) · 默认</option>
-        <option value="retimed">随胶片曝光重定时（负片）</option>
-        <option value="custom">自定义印相 · 色头+曝光（modelled）</option>
+      <select id="filmPrintTiming" title="固定=沿用 EV0 联合求解的印相时间（默认）；重定时=随胶片曝光重解，全部负片可用；自定义=手动色头+印相曝光。反转片无印相，一律固定。">
+        <option value="fixed">固定 · 默认</option>
+        <option value="retimed">随胶片曝光重定时</option>
+        <option value="custom">自定义 · 色头+印相曝光</option>
       </select>
       <div class="ctlFact" id="filmTimingHint" style="display:none"></div>
     </div>
     <div class="sliderField" id="filmPrintExposureBlock" style="display:none">
-      <div class="labelRow"><label title="custom timing 的手动印相曝光（log2 域，作用于三个纸层）。fixed/retimed 的印相由联合求解决定。">印相曝光</label><span class="val" id="filmPrintExposureVal">0.00 EV</span></div>
+      <div class="labelRow"><label title="自定义 timing 的手动印相曝光（EV）。">印相曝光</label><span class="val" id="filmPrintExposureVal">0.00 EV</span></div>
       <input type="range" id="filmPrintExposure" min="-2" max="2" step="0.05" value="0">
     </div>
     <div id="filmOpticsBlock" style="flex:1;min-width:190px;display:none">
       <label>模拟光学</label>
-      <select id="filmOptics" title="胶片的空间成像（V2）：颗粒=实测 σ(D)（5207 图表逐通道查表,48µm 孔径校准;负片+2383 印片双介质;粒子 oracle 多带频谱;预览/裁切/全尺寸共享同一实现,随机只改排布）；halation 把高亮场景曝光经红敏背散射回注层曝光（modelled 分量集）；bloom=editorial 捕获辉光（进乳剂前,声明为编辑性）；MTF 拟合的乳剂/相纸散射是所声明介质的属性,full 模式下默认始终生效,与本档位无关（filmMediaScatter=declared;API/CLI 可设 off 单独关闭）。关闭本档位=颗粒/halation/bloom 严格恒等。">
+      <select id="filmOptics" title="胶片空间成像：颗粒、halation、bloom 三档预设或自定义；介质散射按所选介质始终生效。">
         <option value="off">关闭 · 默认</option>
         <option value="light">轻 · 颗粒0.25/晕0.20/泛0.15</option>
         <option value="standard">标准 · 颗粒0.50/晕0.40/泛0.30</option>
@@ -466,15 +470,15 @@ FILM_CURVE_OPTIONS
     <div id="filmOpticsCustom" style="display:none;flex-basis:100%">
       <div class="row">
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="density grain：负片毫米坐标的确定性带限颗粒场，先扰动密度再经印相，参与颜色与局部反差。">颗粒</label><span class="val" id="filmGrainVal">0.00</span></div>
+          <div class="labelRow"><label title="密度颗粒：负片毫米坐标的带限颗粒场。">颗粒</label><span class="val" id="filmGrainVal">0.00</span></div>
           <input type="range" id="filmGrain" min="0" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="halation：高亮场景曝光经红敏背散射核扩散后回注层曝光，位于特性曲线之前。">Halation</label><span class="val" id="filmHalationVal">0.00</span></div>
+          <div class="labelRow"><label title="高亮场景光经片基背散射回注乳剂。">Halation</label><span class="val" id="filmHalationVal">0.00</span></div>
           <input type="range" id="filmHalation" min="0" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="介质散射（medium scatter）：正介质形成后的守恒能量重分布——高光核心失去的正是邻域得到的，总光能不变；印相形成之后、gamut fit 之前。强度是 editorial，散射核 profile 是 modelled。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
+          <div class="labelRow"><label title="进乳剂前的捕获辉光（editorial）；介质散射另按介质始终生效。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
           <input type="range" id="filmBloom" min="0" max="1" step="0.05" value="0">
         </div>
       </div>
@@ -535,7 +539,7 @@ FILM_CURVE_OPTIONS
 </div>
 
 <div class="card" data-mobile-card="color">
-  <div class="secTitle">前馈校正 · 实验</div>
+  <div class="secTitle">前馈校正</div>
   <div class="row">
     <div style="flex:2;min-width:210px">
       <label>前馈校正</label>
@@ -576,12 +580,14 @@ GRADE_OPTIONS
     <button class="go" id="go">导出</button>
     <button class="ghost" id="revealBtn" style="display:none">在 Finder 显示</button>
     <span class="previewLive" id="previewLiveBadge">实时 · PREVIEW_LONG_EDGEpx</span>
+    <label class="previewToggle" id="clipOverlayLabel" title="把 RAW 里已饱和的像素按通道标出（红/绿/蓝＝该通道溢出，白＝三通道全溢出）。这是解码证据，不随曝光滑条变化——用它判断该压 EV 还是收肩部。"><input type="checkbox" id="clipOverlayToggle">RAW 过曝</label>
+    <span class="ctlFact" id="clipOverlayFact" style="margin:0"></span>
   </div>
   <details id="deliveryReport" style="display:none">
     <summary>投递报告 · 本次导出的实测真值</summary>
     <dl class="reportGrid" id="deliveryReportBody"></dl>
   </details>
-  <div id="previewWrap"><img id="preview"><div id="spinner"></div><div id="status" role="status" aria-live="polite"></div></div>
+  <div id="previewWrap"><img id="preview"><img id="clipOverlay" alt=""><div id="spinner"></div><div id="status" role="status" aria-live="polite"></div></div>
   <canvas id="displayHist" class="histCanvas" title="显示码值直方图：与预览同帧的 1920px 已渲染帧，RGB 三通道与 luma，0–255。HDR 格式下为 SDR 底图直方图。"></canvas>
 </div>
 
@@ -747,6 +753,7 @@ const V6_STORE_KEY="dngscan.settings.v6";
 const V5_STORE_KEY="dngscan.settings.v5";
 const LEGACY_STORE_KEY="dngscan.settings.v4";
 const COREIMAGE_AVAILABLE=COREIMAGE_AVAILABLE_FLAG;
+const MATPLOTLIB_AVAILABLE=MATPLOTLIB_AVAILABLE_FLAG;
 function setGradeStrengthLabel(){const v=+$("#gradeStrength").value;$("#gradeStrengthVal").textContent=v.toFixed(2);}
 function updateGradeUi(){$("#gradeStrengthBlock").style.display=$("#grade").value!=="none"?"block":"none";}
 function setPunchLabel(){const v=+$("#punch").value;$("#punchVal").textContent=v.toFixed(2);}
@@ -1012,7 +1019,8 @@ function saveSettings(){
     toeEndOffset:$("#toeEndOffset").value,shoulderWhiteOffset:$("#shoulderWhiteOffset").value,
     hdrHeadroom:$("#hdrHeadroom").value,outdir:$("#outdir").value,png:$("#png").checked,
     hdrRho:$("#hdrRho").value,hdrWhiteMargin:$("#hdrWhiteMargin").value,hdrShoulderStart:$("#hdrShoulderStart").value,
-    filmInterimageBeta:$("#filmInterimageBeta").value
+    filmInterimageBeta:$("#filmInterimageBeta").value,
+    clipOverlay:$("#clipOverlayToggle").checked
   }));}catch(e){}
 }
 function restoreSettings(){
@@ -1106,7 +1114,8 @@ function restoreSettings(){
   if(s.format)$("#format").value=s.format;
   if(s.hdrHeadroom!==undefined)$("#hdrHeadroom").value=s.hdrHeadroom;
   if(s.outdir)$("#outdir").value=s.outdir;
-  if(s.png!==undefined)$("#png").checked=!!s.png;
+  if(s.png!==undefined)$("#png").checked=MATPLOTLIB_AVAILABLE&&!!s.png;
+  if(s.clipOverlay!==undefined)$("#clipOverlayToggle").checked=!!s.clipOverlay;
   setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();
   if(migrated)saveSettings();
 }
@@ -1173,6 +1182,11 @@ function currentAppearanceMemo(){
 }
 function updateFilmModeUi(){
   const hasCurve=$("#filmCurve").value!=="none";
+  // The takeover declaration needs a film to hand development to: the #film
+  // combo resets it, but the standalone #filmCurve select reaches "none" too
+  // (GUI review 2026-08-27) — a hidden stale "full" then rides every payload
+  // and the service fails closed instead of the control greying.
+  if(!hasCurve&&$("#filmMode").value==="full")$("#filmMode").value="observe";
   $("#filmModeRow").style.display=hasCurve?"":"none";
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
@@ -1349,7 +1363,14 @@ $("#filmAppearance").addEventListener("change",()=>{updateFilmModeUi();saveSetti
 $("#filmInterimage").addEventListener("change",()=>{updateInterimageBetaUi();saveSettings();scheduleLivePreview();});
 function updateInterimageBetaUi(){$("#filmInterimageBetaBlock").style.display=$("#filmInterimage").value==="custom"?"block":"none";}
 $("#filmInterimageBeta").oninput=()=>{$("#filmInterimageBetaVal").textContent=(+$("#filmInterimageBeta").value).toFixed(2);saveSettings();scheduleLivePreview();};
-for(const id of ["hdrRho","hdrWhiteMargin","hdrShoulderStart"]){$("#"+id).addEventListener("change",saveSettings);}
+for(const id of ["hdrRho","hdrWhiteMargin","hdrShoulderStart"]){$("#"+id).addEventListener("change",()=>{
+  // Declared convention: a value the backend would reject never rides the
+  // payload — clamp to the dial's domain and say so (GUI review 2026-08-27).
+  const el=$("#"+id);if(el.value!==""){const v=Number(el.value);
+    if(!Number.isFinite(v)){el.value="";setStatus(el.previousElementSibling.textContent+"：需为数字，已清空为 auto","err");}
+    else{const lo=Number(el.min),hi=Number(el.max);const c=Math.min(hi,Math.max(lo,v));
+      if(c!==v){el.value=c;setStatus(el.previousElementSibling.textContent+"：域 ["+lo+","+hi+"]，已钳到 "+c,"err");}}}
+  saveSettings();});}
 $("#filmAppearanceVariant").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 for(const id of ["filmAppearanceStrength","filmRichness","filmColorDensity","filmNeutralBias"]){
   $("#"+id).addEventListener("input",()=>{setFilmAppearanceLabels();saveSettings();scheduleLivePreview();});
@@ -1433,6 +1454,12 @@ $("#punch").oninput=()=>{setPunchLabel();saveSettings();scheduleLivePreview();};
 $("#endpointMode").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#sceneTransformStrength").oninput=()=>{setSceneTransformStrengthLabel();saveSettings();scheduleLivePreview();};
 restoreSettings();
+if(!MATPLOTLIB_AVAILABLE){
+  // The dashboard PNG is an optional extra: grey it with the reason instead
+  // of failing the export after the full-resolution analysis (GUI review 2026-08-27).
+  const png=$("#png");png.checked=false;png.disabled=true;
+  png.parentElement.classList.add("dim");png.parentElement.title="需要 matplotlib：pip install 'dngscan[scan]'";
+}
 updateInterimageBetaUi();
 checkHdrBackend();
 document.querySelectorAll("button[data-ev]").forEach(b=>b.onclick=()=>{$("#ev").value=b.dataset.ev;setEvLabel();saveSettings();scheduleLivePreview();});
@@ -1734,6 +1761,7 @@ async function preparePreview(){
     if(controller.signal.aborted||session!==PREVIEW_SESSION_ID)return;
     if(j&&j.ok){
       renderDetectedParams(j.detected);PREVIEW_READY=true;setPreviewBadge("实时 · PREVIEW_LONG_EDGEpx","");
+      loadClipOverlay(body);
       await requestPreview();
     }else if(j&&j.error){setStatus(j.error,"err");renderDetectedParams(null);setPreviewBadge("实时预览错误 · PREVIEW_LONG_EDGEpx","err");}
   }catch(e){
@@ -1744,6 +1772,35 @@ async function preparePreview(){
 }
 function beginBusy(){const w=$("#previewWrap");w.classList.add("loading");}
 function endBusy(){const w=$("#previewWrap");w.classList.remove("loading");}
+let CLIP_OVERLAY={has:false,b64:null,pct:null};
+function applyClipOverlay(){
+  const img=$("#clipOverlay");const t=$("#clipOverlayToggle");
+  const show=!!(CLIP_OVERLAY.has&&CLIP_OVERLAY.b64&&t.checked);
+  if(show&&!img.dataset.b64){img.src="data:image/png;base64,"+CLIP_OVERLAY.b64;img.dataset.b64="1";}
+  img.style.display=show?"block":"none";
+}
+function setClipOverlayState(j){
+  const t=$("#clipOverlayToggle");const lab=$("#clipOverlayLabel");const fact=$("#clipOverlayFact");
+  const img=$("#clipOverlay");img.removeAttribute("src");delete img.dataset.b64;
+  if(!j||!j.ok||!j.has_masks){
+    CLIP_OVERLAY={has:false,b64:null,pct:null};
+    t.disabled=true;lab.classList.add("dim");
+    fact.textContent=(j&&j.ok)?"Core Image 解码没有逐像素 CFA 证据，过曝显示不可用":"";
+    applyClipOverlay();return;
+  }
+  CLIP_OVERLAY={has:true,b64:j.overlay,pct:j.clip_pct};
+  t.disabled=false;lab.classList.remove("dim");
+  const p=j.clip_pct||{};
+  fact.textContent=j.overlay?("RAW 过曝 "+(+p.any).toFixed(2)+"%（R "+(+p.r).toFixed(1)+" · G "+(+p.g).toFixed(1)+" · B "+(+p.b).toFixed(1)+"）"):"RAW 无过曝像素";
+  applyClipOverlay();
+}
+async function loadClipOverlay(body){
+  // Evidence layer, decode-derived and WB-independent: one fetch per prepared
+  // entry, composited client-side over every live frame.
+  try{const j=await postJob("/clip-overlay",body);setClipOverlayState(j);}
+  catch(e){setClipOverlayState(null);}
+}
+$("#clipOverlayToggle").addEventListener("change",()=>{applyClipOverlay();saveSettings();});
 function setPreviewImage(b64, ondone){
   const img=$("#preview");
   img.onload=()=>{img.style.display="block";endBusy();if(ondone)ondone();};
@@ -1963,8 +2020,11 @@ def _scene_transform_options_html() -> str:
 
 
 def _film_retimed_json() -> str:
-    """Presets whose asset family ships retimed print states (P3: every
-    negative; reversals never)."""
+    """Presets whose asset family ships retimed print states: a negative stock
+    WITH at least one ``print__<stock>__*`` asset on disk (P3 bakes one for
+    every negative; reversals never print). Presence, not the reversal flag
+    alone, gates the option — a missing print asset fails the render closed,
+    so the page must not offer it (GUI review 2026-08-27)."""
     import json
     from pathlib import Path as _P
 
@@ -1977,10 +2037,12 @@ def _film_retimed_json() -> str:
             continue
         try:
             with _np.load(npz, allow_pickle=False) as z:
-                if str(_np.asarray(z.get("kind", ""))) == "stock" and not bool(z["reversal"]):
-                    out.append(npz.stem)
+                if str(_np.asarray(z.get("kind", ""))) != "stock" or bool(z["reversal"]):
+                    continue
         except OSError:
             continue
+        if any(v2_dir.glob(f"print__{npz.stem}__*.npz")):
+            out.append(npz.stem)
     return json.dumps(out)
 
 
@@ -2125,6 +2187,12 @@ def _film_options_html() -> tuple[str, str, str, str]:
     )
 
 
+def _dashboard_import_errors() -> list[str]:
+    from dngscan._deps import DASHBOARD_IMPORT_ERRORS
+
+    return list(DASHBOARD_IMPORT_ERRORS)
+
+
 def render_page(init_dir: str, session_token: str = "") -> bytes:
     from dngscan import coreimage_decode
     from dngscan.constants import MAX_HDR_HEADROOM_EV
@@ -2144,6 +2212,9 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         # where only the interactive context works. Real runtime capability
         # is judged at the decode entry (load_raw probes its own workload).
         .replace("COREIMAGE_AVAILABLE_FLAG", "true" if coreimage_decode.available() else "false")
+        # The dashboard PNG needs matplotlib (optional extra): the page greys
+        # the checkbox with the reason instead of failing the export late.
+        .replace("MATPLOTLIB_AVAILABLE_FLAG", "true" if not _dashboard_import_errors() else "false")
         # Keep the slider ceiling on the same source of truth as the CLI's
         # --hdr-headroom bound (log2(4000/100) = 5.32); step 0.02 lands on it exactly.
         .replace("MAX_HDR_HEADROOM_ATTR", f"{MAX_HDR_HEADROOM_EV:.2f}")

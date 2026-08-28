@@ -29,6 +29,8 @@ import unittest
 
 from dngscan.gui.page import PAGE, render_page
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 MOBILE_VIEWPORT_CONTRACT = (
     (375, 667, "portrait"),
@@ -545,9 +547,15 @@ class OpticsProfileSummaryTests(unittest.TestCase):
         self.assertNotIn("FILM_OPTICS_SUMMARY", html)
 
     def test_tooltip_speaks_v2_semantics(self) -> None:
-        # the stale pre-V2 claims must be gone: bloom is editorial capture
-        # glow (P3), grain is measured sigma(D) (P4), scatter exists (P5)
+        # the stale pre-V2 claim must be gone; the page copy is deliberately
+        # basic (owner 2026-08-27: complex content lives in the docs), so the
+        # V2 facts — bloom is editorial capture glow (P3), grain is measured
+        # sigma(D) (P4), scatter exists (P5) — are pinned in FILM_TUTORIAL
+        # instead of the tooltip.
         self.assertNotIn("bloom 是正介质的守恒内在散射", PAGE)
-        self.assertIn("实测 σ(D)", PAGE)
-        self.assertIn("editorial 捕获辉光", PAGE)
-        self.assertIn("MTF 拟合", PAGE)
+        optics = PAGE[PAGE.index('id="filmOptics"'):PAGE.index('id="filmOpticsSummary"')]
+        for word in ("颗粒", "halation", "bloom", "介质散射"):
+            self.assertIn(word, optics)
+        tutorial = (ROOT / "docs" / "FILM_TUTORIAL.zh-CN.md").read_text(encoding="utf-8")
+        for claim in ("σ(D)", "MTF"):
+            self.assertIn(claim, tutorial)

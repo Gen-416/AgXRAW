@@ -143,6 +143,7 @@ class FastApiContractTests(unittest.TestCase):
             "/raw9-support",
             "/prepare",
             "/preview",
+            "/clip-overlay",
             "/export",
             "/reveal",
         ):

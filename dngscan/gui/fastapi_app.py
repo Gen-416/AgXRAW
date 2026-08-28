@@ -253,6 +253,10 @@ def create_app(
     async def preview(request: Request) -> JSONResponse:
         return await legacy_call(request, service_module.run_preview)
 
+    @protected.post("/clip-overlay")
+    async def clip_overlay(request: Request) -> JSONResponse:
+        return await legacy_call(request, service_module.clip_overlay)
+
     @protected.post("/export")
     async def export(request: Request) -> JSONResponse:
         return await legacy_call(request, service_module.run_export_isolated)

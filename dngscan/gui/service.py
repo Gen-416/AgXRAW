@@ -384,6 +384,91 @@ def raw9_support(params: dict) -> dict:
     }
 
 
+CLIP_OVERLAY_THRESHOLD = 0.5
+# Marker colours per clipped-channel set (R, G, B bits): the clipped channels
+# light up in their own colour, all three clipped reads white — the RAW
+# evidence itself, not the rendered pixel (a rendered highlight can look
+# fine while one CFA channel is already saturated, which is exactly what
+# withdraws chroma freedom downstream).
+_CLIP_OVERLAY_ALPHA = 168
+
+
+def clip_overlay_rgba(clip_masks: Any, threshold: float = CLIP_OVERLAY_THRESHOLD) -> Any:
+    """RGBA u8 marker plane from per-channel CFA clip masks [h, w, 3] in [0, 1].
+
+    The proxy masks are bilinear resizes of the half-resolution evidence masks,
+    so a cell is "clipped" once its resized weight reaches ``threshold``.
+    Returns None when no channel clips anywhere (the page then hides the
+    layer without a decode)."""
+    np = dg.np
+    masks = np.asarray(clip_masks, dtype=np.float32)
+    if masks.ndim != 3 or masks.shape[-1] != 3:
+        raise ValueError(f"clip masks must be [h, w, 3], got {masks.shape}")
+    hit = masks >= np.float32(threshold)
+    if not bool(hit.any()):
+        return None
+    any_hit = hit.any(axis=-1)
+    rgba = np.zeros(masks.shape[:2] + (4,), dtype=np.uint8)
+    for c in range(3):
+        rgba[..., c] = np.where(hit[..., c], 255, 0).astype(np.uint8)
+    # a clipped pixel with only one or two channels saturated still gets a
+    # visible base so single-channel red/green/blue reads as a marker, not
+    # as image colour: dim the unclipped channels rather than zeroing them
+    rgba[..., :3] = np.where(any_hit[..., None], np.maximum(rgba[..., :3], 48), 0).astype(np.uint8)
+    rgba[..., 3] = np.where(any_hit, _CLIP_OVERLAY_ALPHA, 0).astype(np.uint8)
+    return rgba
+
+
+def clip_overlay(params: dict) -> dict:
+    """RAW over-exposure layer for the preview: which proxy pixels saturate in
+    which CFA channel, drawn from the SAME evidence masks the render's clip
+    retreat and the HDR chroma gates consume. Evidence is decode-derived and
+    WB-independent, so the layer is fetched once per prepared entry and
+    composited client-side over every frame. Core Image decodes carry no
+    aligned CFA masks; the page greys the toggle on ``has_masks`` false."""
+    inp, highlight, _gamut, _fmt, _ev, _, _q, _png, _out, _auto = parse_job_params(params)
+    wb = str(params.get("wb", "camera"))
+    if wb not in dg.WB_CHOICES:
+        raise ValueError(f"未知白平衡模式：{wb}")
+    decoder, coreimage_version = parse_decoder(params)
+    demosaic = parse_demosaic(params, decoder)
+    if decoder == "coreimage":
+        highlight = "reconstruct"
+    tone_core, _norm = parse_tone_core(params)
+    cached = PREVIEW_STORE.get(
+        inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic
+    )
+    masks = getattr(cached.bundle, "clip_masks", None)
+    if masks is None:
+        return {"ok": True, "has_masks": False, "overlay": None, "clip_pct": None}
+    np = dg.np
+    masks32 = np.asarray(masks, dtype=np.float32)
+    hit = masks32 >= np.float32(CLIP_OVERLAY_THRESHOLD)
+    total = float(max(1, hit.shape[0] * hit.shape[1]))
+    clip_pct = {
+        "r": 100.0 * float(hit[..., 0].sum()) / total,
+        "g": 100.0 * float(hit[..., 1].sum()) / total,
+        "b": 100.0 * float(hit[..., 2].sum()) / total,
+        "any": 100.0 * float(hit.any(axis=-1).sum()) / total,
+    }
+    rgba = clip_overlay_rgba(masks32)
+    overlay = None
+    if rgba is not None:
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.fromarray(rgba, mode="RGBA").save(buf, format="PNG", optimize=True)
+        overlay = base64.b64encode(buf.getvalue()).decode("ascii")
+    return {
+        "ok": True,
+        "has_masks": True,
+        "overlay": overlay,
+        "width": int(masks32.shape[1]),
+        "height": int(masks32.shape[0]),
+        "clip_pct": clip_pct,
+    }
+
+
 def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, int, bool, Path | None, bool]:
     inp = Path(str(params["input"])).expanduser()
     if not inp.is_file():
@@ -1811,10 +1896,13 @@ def _cached_full_analysis(
 
 
 def run_export(params: dict) -> dict:
-    dg.require_dependencies()
     inp, highlight, gamut, output_format, ev, hdr_headroom, quality, want_png, outdir_arg, ev_auto = parse_job_params(
         params
     )
+    # The dashboard PNG needs matplotlib (an optional extra): gate it HERE,
+    # before the full-resolution analysis, instead of failing inside
+    # plot_dashboard after the JPEG's work was already done and lost.
+    dg.require_dependencies(dashboard=bool(want_png))
     if dg.is_hdr_output_format(output_format):
         available, reason = dg.apple_gainmap_backend_status()
         if not available:

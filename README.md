@@ -53,8 +53,10 @@ development curve — while colour is still formed by AgX; it does NOT run the p
 simulation. A stock's default look then adds two declarations that are explicitly
 editorial, not measured: a separation-strength pairing and an AgX primaries pairing,
 chosen by stock reputation — visible in the UI, freely adjustable, never overriding
-a value you set yourself. **full** takeover mode (``--film-mode full``, experimental)
-is what runs the factorised spectral chain — Stage A observer -> layer exposure ->
+a value you set yourself. **full** takeover mode (``--film-mode full``)
+is what runs the factorised spectral chain — Stage A (a chromaticity-field
+correction LUT over the 3x3 observer; each stock keeps the field or only the
+3x3 according to held-out cross-validation) -> layer exposure ->
 characteristic density -> B1 -> print timing -> paper development -> B2 -> grey-axis
 neutralization -> optional reference-print appearance — with no monolithic, creative
 or opaque LUT: the chain factorises into traceable B1/B2 interpolation assets (65^3
@@ -93,25 +95,30 @@ to the measured chain.
 |---|---|
 | ![off](docs/assets/film-tutorial/crop_crossover_verita_off.jpg) | ![datasheet](docs/assets/film-tutorial/crop_crossover_verita_datasheet.jpg) |
 
-The experimental film-takeover mode (full) is no longer a per-channel-curve
+Film-takeover mode (full) is no longer a per-channel-curve
 heuristic: scene colour passes through the stock's Stage A — a held-out
-CV-selected chromaticity field, or the constrained 3x3 observer where the
+CV-selected chromaticity-field correction LUT, or the constrained 3x3 observer where the
 field did not earn its place — into three emulsion exposures, through each layer's characteristic curve into
 negative dye density, then through the FACTORIZED print chain — negative
 density to paper-layer exposure (B1), print timing (τ), the paper's
-development curves, and the viewing chain (B2). Print medium, timing
-(fixed / retimed with film exposure / custom with a modelled colour head),
-grey-scale neutralization, editorial developer recipes, Film Compression
-and the analog optics (grain / halation / bloom) are all declarable states
-of this one chain, and Ultra HDR runs it as "film print + scene HDR
+development curves, and the viewing chain (B2). Print medium, print timing
+(fixed / retimed with film exposure / custom colour head + print exposure;
+retiming is available for every negative stock, while reversal stocks have
+no print stage and always stay fixed), grey-scale neutralization, editorial
+developer recipes, Film Compression and the analog optics (grain / halation /
+bloom) are all declarable states of this one chain. The chain's illuminant
+assumption is fixed at D55 — measured after white balance, tungsten and
+high-CRI LED scenes land at the same level as daylight, so there are no
+illuminant tiers. Ultra HDR runs it as "film print + scene HDR
 extension" (the SDR base IS the film print; reliable scene highlights gain
 smoothly above the print's reference white). Above is
 something it renders that no grading filter can: the Verita 200D print chain's
 measured inter-layer crossover — the carved door and stone steps in shadow turn
 green-teal while the sunlit wall and pebbles sit still, at zero median luminance
 difference. Left is the digitally neutralized variant (grays stay
-strictly neutral, `--film-neutralization technical-neutral`); right is the
-datasheet served verbatim (`native`).
+strictly neutral, `--film-neutralization technical-neutral`, the CLI default;
+the GUI defaults to following the chosen interpretation, which picks the grey
+policy); right is the datasheet served verbatim (`native`).
 
 ## Features
 
@@ -124,9 +131,11 @@ datasheet served verbatim (`native`).
   filters, and film observation remain explicit choices.
 - **Form SDR and HDR separately:** SDR targets sRGB or Display P3. HDR starts again from the same
   scene image and uses only the extra brightness supported by un-clipped RAW highlights.
-- **Observe and reproduce:** the local GUI and CLI share the same controls; a diagnostic dashboard
-  and CSV reports make measurements inspectable and comparisons repeatable. RAW files are never
-  uploaded.
+- **Observe and reproduce:** the local GUI and CLI share the same controls. The GUI's "RAW
+  clipping" toggle marks the RAW's saturated pixels on the preview per CFA channel; the CLI prints
+  only the files it wrote by default, and the full analysis report comes with `--report` (a
+  `--scan` / `--csv` diagnostic run includes it automatically). The diagnostic dashboard and CSV
+  keep measurements inspectable and comparisons repeatable. RAW files are never uploaded.
 - **Deliver, then verify:** archive/share profiles control encoding without changing image
   formation. On macOS, HDR becomes an ISO 21496-1 gain-map JPEG or HEIC and is read back to verify
   the color profile, gain map, declared headroom, and pixel error.
@@ -162,6 +171,14 @@ Open the localhost address printed in the terminal. A practical starting point i
 `base` primaries, and camera WB; adjust from there according to the
 photograph.
 
+The preview card's "RAW clipping" toggle marks the RAW's saturated pixels on the preview per
+channel (red/green/blue = that channel clipped, white = all three clipped) and shows the clipped
+share next to it. It is decode evidence — independent of white balance and unchanged by the EV
+slider — and tells you whether to pull EV or tighten the shoulder. Core Image decodes carry no
+per-pixel CFA evidence, so the toggle is greyed with the reason stated; every option that needs a
+specific environment or asset follows the same rule. The GUI produces images only and shows no
+analysis report.
+
 The RAW field uses the browser's native file picker. The selected file is sent only to the localhost
 AgXRAW service on the same computer and kept in a process-scoped temporary directory; the temporary
 copy is removed when AgXRAW exits and is never sent to an external service.
@@ -169,8 +186,11 @@ copy is removed when AgXRAW exits and is never sent to an external service.
 ### CLI
 
 ```bash
-# Default AgX JPEG
+# Default AgX JPEG (prints only the file it wrote)
 python -m dngscan photo.dng --jpeg photo.jpg
+
+# Also print the full analysis report (evidence, curve endpoints, colour-matrix health, Stage A residual, ...)
+python -m dngscan photo.dng --jpeg photo.jpg --report
 
 # Highlight reconstruction and Display P3
 python -m dngscan photo.dng --jpeg photo_p3.jpg \
@@ -180,14 +200,18 @@ python -m dngscan photo.dng --jpeg photo_p3.jpg \
 python -m dngscan photo.dng --jpeg photo_hdr.jpg \
   --output-format ultrahdr --hdr-headroom 3
 
-# RAW analysis dashboard and CSV
+# RAW analysis dashboard and CSV (a diagnostic run includes the report)
 python -m dngscan photo.dng --jpeg photo.jpg --scan --csv photo.csv
 
 # Compare the experimental RAW-gated tone core
 python -m dngscan photo.dng --jpeg photo_gated.jpg --tone-core gated
 
-# Use a film observation position
+# Use a film observation position (observe by default: the film declares the observer, AgX develops)
 python -m dngscan photo.dng --jpeg photo_portra.jpg --film portra400
+
+# Let the film development chain take over, retiming the print with film exposure
+python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
+  --film-mode full --film-exposure 1 --film-print-timing retimed
 ```
 
 Run `python -m dngscan --help` for the complete option list.
@@ -260,6 +284,15 @@ flowchart TB
 6. **Encode and check the result.** SDR becomes a regular JPEG. HDR packages the SDR and HDR images
    with an ISO 21496-1 gain map, then opens the file again to verify delivery.
 
+The work proceeds along two routes. **Route one** compiles only AgX / HDR parameters and colour
+processing permissions from camera data — never per-camera curve rewrites: the toe sits at scene
+coordinates given by the sensor's signal-to-noise ratio, the shoulder and white come from the
+reliable scene body and the highlight tail, chroma permissions come from CFA clipping evidence,
+and the HDR headroom is the minimum of content, display, and curve, with separate luminance and
+chroma confidence. **Route two** is a camera-independent virtual film and print chain constrained
+by public spectral data: it acknowledges the metamerism limit and faithfully translates the
+declared observer's report, rather than replicating "this camera shooting that film".
+
 ## How AgXRAW differs
 
 The main difference is not the number of controls. It is when the RAW evidence is discarded.
@@ -295,7 +328,7 @@ testing standards, and developing new image-formation methods on the same captur
 [Architecture and technical details](docs/ARCHITECTURE.md) (the full pipeline and why each stage is built this way) ·
 [Engineering notes](docs/ENGINEERING_NOTES.zh-CN.md) (problems, evidence and reasoning; Chinese) ·
 [Design contract](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (film observation contract and boundaries; Chinese) ·
-[Film print rendering plan](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md) (full v2 design proposal: exposure state, printing, grain and halation; Chinese)
+[Film print rendering plan](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md) (full v2 contract and implementation record: exposure state, printing, grain and halation; landed; Chinese)
 
 ## License
 
