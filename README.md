@@ -28,15 +28,45 @@ same RAW evidence and validation instead of rebuilding the whole pipeline.
 
 ## HDR in one frame
 
-![SDR, exposure-normalized HDR, and HDR curve-expansion map](docs/assets/hdr-comparisons/_SDI0150_native_hdr_ab.jpg)
+![SDR, headroom-normalised HDR, and the HDR brightness allocation map](docs/assets/hdr-comparisons/_SDI0150_native_hdr_ab.jpg)
 
-From left to right: ordinary SDR, an independently formed HDR rendition, and a map of the HDR
-luminance expansion. In the map, black means no expansion; white means the full headroom supported
-by the evidence in this RAW.
+Left to right: the plain SDR, the independently formed HDR (exposed down by its own
+achieved headroom so an SDR screen can show it), and the HDR-over-reference-white
+allocation map — brighter means more headroom spent there, black means none.
 
-The additional brightness stays around lamps and reflections instead of lifting the entire frame.
-HDR-capable devices display those highlights; an ordinary screen still receives a normal SDR JPEG.
-If the RAW contains no reliable highlight information, AgXRAW does not invent HDR headroom.
+HDR is not the SDR image scaled up. The same scene-linear Rec.2020 splits into two
+independent DRTs before display formation: SDR AgX and HDR AgX share the capture
+exposure intent and the RAW analysis, but HDR owns its tone curve, colour geometry and
+extended-P3 projection, and no pixel is required to match the SDR. How much headroom it
+may spend is the minimum of three things: the **reliable highlight tail in the RAW**
+(filtered by clipping evidence — neither the white point nor reconstructed highlights),
+the **display capacity** (default +3 EV ceiling), and the **curve itself** (a monotone
+Hermite shoulder above the knee, piecewise C1, zero slope at white). On this fp frame the
+reliable tail sits +3.94 EV above mid-grey and earns 1.47 EV of headroom; the gain map
+written to the file reads back as 1.447 EV with zero error. When the RAW holds no reliable
+highlight, headroom is 0 and the export fails explicitly instead of inventing it.
+
+Luminance and colour are authorised separately. **Luminance** is decided by the native HDR
+curve alone — the single Y authority. **Colour** freedom ρ only blends between the
+reference-white AgX chromaticity path and the extended-white native path, both first
+aligned to the same Y; per-pixel CFA clipping masks then withdraw the native path from
+untrustworthy channels, and the closer a clipped light source sits to the content peak,
+the more completely its chroma authority converges (per-pixel luminance and chroma
+confidence, separated in 2026-08). The stage frame below is where that rule is visible:
+lamp highlights stay neutral in HDR instead of colouring, and the SDR base is untouched.
+
+![Native extended-white HDR AgX on a stage frame](docs/assets/hdr-comparisons/_SDI0199_native_hdr_ab.jpg)
+
+Delivery is an Apple ISO 21496-1 gain-map container (JPEG or HEIC, macOS/Core Image
+backend). Every written file is expanded back to HDR pixels and checked — P3 profile,
+auxiliary map, declared headroom, SDR-base code error and HDR chromaticity error — and a
+file that fails any gate is not kept; viewers that do not understand gain maps degrade
+gracefully to the SDR base. Under film takeover, HDR runs as "film print + scene HDR
+extension": the print is the SDR base and the scene highlight gain above reference white
+fills the rest — no claim of physical film HDR. Three latitude dials (ρ base, white
+margin, shoulder start) are left to the user; the defaults are the mathematical ones.
+Details live in the [architecture notes](docs/ARCHITECTURE.md) and the
+[HDR implementation plan](docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) (Chinese).
 
 ## Observe versus takeover in one frame
 
