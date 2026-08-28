@@ -451,6 +451,37 @@ def _normalize(token: str) -> str:
     return coreimage_decode._normalize_version_token(token)
 
 
+class ProjectHotWbAcrossDecodersTests(unittest.TestCase):
+    """R5 item 1: a fixed-Kelvin mode on the Core Image path is the PROJECT
+    hot-WB composed onto Apple's fixed AsShot decode — declared as not being
+    Apple's neutralTemperature. The pixel-level property that IS claimed:
+    both decoders resolve the same Rec.2020 hot-WB matrix for the same file
+    and target (same C0 ladder, same gains)."""
+
+    def test_same_hot_wb_matrix_for_both_decoders(self) -> None:
+        from dngscan.raw_io import hot_wb_matrix_rec2020, load_raw, resolve_hot_wb_c0
+        from dngscan.wb import kelvin_mode_cct
+
+        if not coreimage_decode.runtime_available(interactive=True):
+            raise unittest.SkipTest("Core Image runtime unavailable")
+        if not SIGMA_DNG.is_file():
+            raise unittest.SkipTest(f"missing {SIGMA_DNG}")
+        for mode in ("5500k", "3200k"):
+            with self.subTest(mode=mode):
+                mats = {}
+                for decoder in ("libraw", "coreimage"):
+                    b = load_raw(SIGMA_DNG, scene_half_size=True, decoder=decoder, wb_mode=mode)
+                    self.assertEqual(b.decode_wb, b.camera_wb)
+                    c0, ct, source = resolve_hot_wb_c0(b, kelvin_mode_cct(mode))
+                    mats[decoder] = (
+                        np.asarray(hot_wb_matrix_rec2020(c0, list(b.decode_wb), list(b.applied_wb), ct)),
+                        source,
+                    )
+                self.assertEqual(mats["libraw"][1], mats["coreimage"][1])
+                np.testing.assert_allclose(mats["libraw"][0], mats["coreimage"][0], rtol=1e-9, atol=1e-12)
+                self.assertFalse(np.allclose(mats["libraw"][0], np.eye(3)))
+
+
 class LoadRawDecoderGuardTests(unittest.TestCase):
     def test_daylight_uses_project_hot_wb_after_fixed_coreimage_decode(self) -> None:
         from dngscan.raw_io import load_raw

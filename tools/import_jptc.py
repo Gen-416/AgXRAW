@@ -181,7 +181,7 @@ def fit_ptc(
     if n_top < 3:
         # top of ramp not sampled -> the correction cannot run at all
         prnu_status = "unresolved"
-        fit_model_effective = "linear-0.10 (prnu unresolved -> plain linear)"
+        fit_model_effective = f"linear-{fit_window_frac:.2f} (prnu unresolved -> plain linear)"
     elif not prnu_converged:
         # 16 rounds without meeting the gate: fail closed (R10 item 5) —
         # an unconverged correction must not be labelled corrected
@@ -246,7 +246,9 @@ def fit_ptc(
         # too sparse below 0.10 — self-review 2026-08-27).
         "fit_window_frac": fit_window_frac,
         "fit_model_effective": fit_model_effective,
-        "gain_alternatives": {"linear-0.10": gain_a,
+        # keyed by the window ACTUALLY fitted (review R5 item 4: a sparse ramp
+        # widens to 0.35 and the alternative must not still be called 0.10)
+        "gain_alternatives": {f"linear-{fit_window_frac:.2f}": gain_a,
                               "quadratic-0.35": gain_q},
         "gain_estimator_spread_rel": gain_estimator_spread_rel,
         "prnu_status": prnu_status,
@@ -269,7 +271,7 @@ def fit_ptc(
         "prnu": (prnu if math.isfinite(prnu) and prnu_status != "unresolved" else None),
         "prnu_quadratic_fit": prnu_q if math.isfinite(prnu_q) else None,
         "fit_relative_rms": resid,
-        "fit_relative_rms_alternatives": {"linear-0.10": resid_a,
+        "fit_relative_rms_alternatives": {f"linear-{fit_window_frac:.2f}": resid_a,
                                           "quadratic-0.35": resid_q},
         "fit_points": int(keep.sum()),
         "fit_points_excluded": int((~keep).sum()),
@@ -393,9 +395,10 @@ def self_test() -> int:
           f"<= fwc {fit['fwc_e']:.4g} [ok]; prnu_status={fit['prnu_status']} "
           f"iterations={fit['prnu_iterations']} converged={fit['prnu_converged']}")
     alts = fit["gain_alternatives"]
+    lin_key = next(k for k in alts if k.startswith("linear-"))
     print(f"  gain_estimator_spread_rel: {fit['gain_estimator_spread_rel']:.4f} "
-          f"(primary {fit['gain_e_per_dn']:.4g}, linear-0.10 "
-          f"{alts['linear-0.10']:.4g}, quad-0.35 {alts['quadratic-0.35']:.4g})")
+          f"(primary {fit['gain_e_per_dn']:.4g}, {lin_key} "
+          f"{alts[lin_key]:.4g}, quad-0.35 {alts['quadratic-0.35']:.4g})")
     # R10 item 2: the gain estimate must be invariant to the exposure-step
     # density of the ramp (the old midpoint-referenced windows were not —
     # S5M2 moved -2.7% between conventions).

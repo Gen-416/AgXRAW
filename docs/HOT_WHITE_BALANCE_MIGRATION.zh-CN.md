@@ -73,6 +73,12 @@ LibRaw 和 Apple RAW 都执行这一项目 WB。Apple 的 `neutralTemperature` �
 
 **金标**：现有 golden/SDR 冻结全部走 camera 路径，迁移前后逐字节不变（三方 sha 验证），无需重冻结。上节"golden 集"要求的非 camera 覆盖，在本裁决通过后按新语义生成即为基线。
 
+## 2026-08-27 更新：rung 1 现行公式与 RAW 9 固定色温的声明
+
+**rung 1（`evidence+cct`）现行公式**（自审 P1，PR #147）：解码侧 C₀ = LibRaw 实际施加的 XYZ→cam 矩阵（`_libraw_applied_xyz_to_cam`），目标侧 = 文件双光源标定在声明色温处的插值矩阵，两侧均做 D65 行归一（`d65_row_normalize`）。下节"两侧同为未归一 DNG 约定、解码侧在 AsShot CCT 插值"是 2026-08-04 的口径，已被替换：那一版把解码器从未施加过的插值矩阵与未归一目标配对。identity 档（rung 3/4）两侧统一为 `XYZ_TO_RGB_REC2020` 基。报告里的色彩矩阵健康度 κ 按同一阶梯的目标矩阵评估（行归一后）。
+
+**RAW 9 固定色温是项目定义的后置变换，不是 Apple 的 neutralTemperature**（第五轮审查 P1 的处置）：Apple 解码固定在 AsShot，之后施加与 LibRaw 路径同一文件、同一目标下**同一个** Rec.2020 hot-WB 矩阵。共轭矩阵对线性解码精确，对 Apple 不透明的颜色变换是近似。审查实测与同一 RAW 9 解码器 `neutralTemperature` 的差异：fp `_SDI0150` 3200K xy 差中位 0.0146 / RGB 方向角中位 2.47°，5500K 0.0220 / 3.05°；`_SDI0199` 3200K 0.0435 / 7.98°，5500K 0.0153 / 2.85°。这不是要复刻的目标（Apple 的结果也不是真值），而是量化"不等价"。像素级钉子：`tests/test_coreimage_decode.py` 断言两解码器对同一文件、同一目标解出同一 hot-WB 矩阵；`tests/test_wb.py` 断言 LibRaw 路径把声明白渲染为中性。设计选择：不改用 Apple 原生重解码——那会让白平衡语义随解码器与 RAW 版本漂移，违背"一套热 WB 跨解码器"的迁移目标。
+
 ## C₀ 锚定统一（缝 A 修复，2026-08-04）
 
 **缺陷**：`resolve_hot_wb_c0` 阶梯 rung 1 直接把 evidence `rgb_xyz_matrix`（LibRaw 的 `cam_xyz`，DNG 上源自 ColorMatrix2，固定锚在其标定光源 ~D65）用作解码侧 C₀，而固定色温模式的目标侧从文件双光源标定在 target_cct 处插值——`Ctarget·Gtarget·(C₀·Gdecode)⁻¹` 两侧光源锚不一致（合成标定实测锚差 ~1500 K；fp 实拍标定上按帧可达 ~3000 K，见下）。#10 引入的 AsShot-CCT 不动点（`wb.asshot_reference_cct`）只在 rung 3 生效，携带可用 evidence 矩阵的健康 DNG 永远走不到。

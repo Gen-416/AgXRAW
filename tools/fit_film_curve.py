@@ -146,7 +146,8 @@ TARGET_POINTS_STORED = 192
 
 
 def _load_curves(name: str) -> tuple[np.ndarray, np.ndarray]:
-    data = json.load(open(PROFILE_DIR / f"{name}.json"))["data"]
+    with open(PROFILE_DIR / f"{name}.json", encoding="utf-8") as fh:
+        data = json.load(fh)["data"]
     log_e = np.asarray(data["log_exposure"], dtype=np.float64)
     density = np.asarray(data["density_curves"], dtype=np.float64)
     keep = np.all(np.isfinite(density), axis=1)
@@ -201,7 +202,8 @@ _LUMA_2020 = np.array([0.2627, 0.6780, 0.0593], dtype=np.float64)
 
 
 def _load_spectral(name: str) -> dict[str, np.ndarray]:
-    raw = json.load(open(PROFILE_DIR / f"{name}.json"))
+    with open(PROFILE_DIR / f"{name}.json", encoding="utf-8") as fh:
+        raw = json.load(fh)
     data = raw["data"]
 
     def arr(key):
@@ -1143,7 +1145,8 @@ def main() -> int:
 
     presets = {}
     if PRESET_PATH.is_file():
-        presets = json.load(open(PRESET_PATH)).get("presets", {})
+        with open(PRESET_PATH, encoding="utf-8") as fh:
+            presets = json.load(fh).get("presets", {})
     data_dir = PROJECT_ROOT / "dngscan" / "data" / "color_head"
     data_dir.mkdir(parents=True, exist_ok=True)
 

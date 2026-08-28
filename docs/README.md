@@ -10,9 +10,9 @@ GUI 上的描述性文案只有最基础的一句;每个控件的来龙去脉、
 
 | 文档 | 内容 |
 |---|---|
-| [EDITING_TUTORIAL.zh-CN.md](EDITING_TUTORIAL.zh-CN.md) | 修图教程:从导入到导出的完整流程,逐个控件讲用法,含 RAW 过曝层的读法 |
+| [EDITING_TUTORIAL.zh-CN.md](EDITING_TUTORIAL.zh-CN.md) | 修图教程:从导入到导出的完整流程,逐个控件讲用法,含 RAW 满阱层的读法 |
 | [FILM_TUTORIAL.zh-CN.md](FILM_TUTORIAL.zh-CN.md) | 胶片教程:每个胶片滑条与选择的作用,配实测样张 |
-| [USER_GUIDE.md](USER_GUIDE.md) / [USER_GUIDE.zh-CN.md](USER_GUIDE.zh-CN.md) | 使用说明:支持的相机、界面字段、RAW 过曝显示与选项置灰规则、导出选择、latitude 旋钮 |
+| [USER_GUIDE.md](USER_GUIDE.md) / [USER_GUIDE.zh-CN.md](USER_GUIDE.zh-CN.md) | 使用说明:支持的相机、界面字段、RAW 满阱显示与选项置灰规则、导出选择、latitude 旋钮 |
 | [SENSOR_SUPPORT.zh-CN.md](SENSOR_SUPPORT.zh-CN.md) | 机型支持:传感器数据、降级策略与 LibRaw 升级路线 |
 
 ## 架构 / Architecture

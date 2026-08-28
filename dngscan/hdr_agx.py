@@ -713,13 +713,21 @@ def to_gainmap_alternate(hdr_display_linear: Any, peak: float) -> Any:
 
 
 def achieved_headroom(hdr_display_linear: Any, percentile: float = 99.99) -> float:
-    """H_actual, reported from a percentile rather than the single brightest pixel.
+    """H_actual as MAX-CHANNEL headroom: the percentile of each pixel's
+    brightest channel, in stops above reference white.
 
-    One specular pixel is not evidence that a render used its headroom, and accepting it
-    as such is how a capacity ceiling turns into a normalisation target.
+    Reported from a percentile rather than the single brightest pixel: one
+    specular pixel is not evidence that a render used its headroom, and
+    accepting it as such is how a capacity ceiling turns into a normalisation
+    target. Per-pixel max channel (review R5 item 5) because the gain map's
+    peak is a per-pixel quantity — flattening H x W x 3 treated channels as
+    independent samples and diluted a single-channel highlight three-fold
+    (two 8x red patches in 10k pixels read 0 EV instead of 3 EV).
     """
     arr = np.asarray(hdr_display_linear, dtype=np.float32)
     if arr.size == 0:
         return 0.0
+    if arr.ndim >= 2 and arr.shape[-1] in (3, 4):
+        arr = np.max(arr[..., :3], axis=-1)
     top = float(np.percentile(arr, percentile))
     return float(np.log2(top)) if top > 1.0 else 0.0

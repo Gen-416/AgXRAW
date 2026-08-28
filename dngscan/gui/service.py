@@ -385,12 +385,42 @@ def raw9_support(params: dict) -> dict:
 
 
 CLIP_OVERLAY_THRESHOLD = 0.5
-# Marker colours per clipped-channel set (R, G, B bits): the clipped channels
-# light up in their own colour, all three clipped reads white — the RAW
-# evidence itself, not the rendered pixel (a rendered highlight can look
-# fine while one CFA channel is already saturated, which is exactly what
-# withdraws chroma freedom downstream).
+# What the layer IS (review R5 item 2): the render-time SOFT clip mask —
+# raw_io builds it as smoothstep(0.95, 0.99) of the per-channel full-well
+# fraction, feathered and resized to the proxy — thresholded at 0.5, i.e.
+# the region at or above ~97% of full well where the pipeline's own chroma
+# retreat / HDR chroma gates engage. It is NOT the hard clip statistic
+# (raw >= fullwell - margin); that number comes from the full-resolution
+# Analysis.clip_pct and is reported alongside as the authority. Marker
+# colours per channel set: the near-full-well channels light up in their
+# own colour, all three read white.
 _CLIP_OVERLAY_ALPHA = 168
+
+
+def _hard_clip_pct_by_colour(analysis: Any) -> dict[str, float] | None:
+    """Full-resolution hard-clip share per CFA colour (R/G/B) from
+    Analysis.clip_pct (raw >= fullwell - margin), averaging duplicate
+    greens; plus the 2x2-cell union the detected-params card shows."""
+    clip = getattr(analysis, "clip_pct", None)
+    labels = getattr(analysis, "labels", None) or {}
+    if not isinstance(clip, dict) or not clip:
+        return None
+    buckets: dict[str, list[float]] = {}
+    for cid, pct in clip.items():
+        letter = str(labels.get(cid, "")).strip()[:1].upper()
+        if letter not in ("R", "G", "B"):
+            continue
+        buckets.setdefault(letter, []).append(float(pct))
+    if not buckets:
+        return None
+    out = {k.lower(): (sum(v) / len(v)) for k, v in buckets.items()}
+    union = getattr(analysis, "cell_union_pct", None)
+    try:
+        union_f = float(union)
+    except (TypeError, ValueError):
+        union_f = float("nan")
+    out["union"] = union_f if union_f == union_f else float("nan")
+    return out
 
 
 def clip_overlay_rgba(clip_masks: Any, threshold: float = CLIP_OVERLAY_THRESHOLD) -> Any:
@@ -420,12 +450,15 @@ def clip_overlay_rgba(clip_masks: Any, threshold: float = CLIP_OVERLAY_THRESHOLD
 
 
 def clip_overlay(params: dict) -> dict:
-    """RAW over-exposure layer for the preview: which proxy pixels saturate in
-    which CFA channel, drawn from the SAME evidence masks the render's clip
-    retreat and the HDR chroma gates consume. Evidence is decode-derived and
-    WB-independent, so the layer is fetched once per prepared entry and
-    composited client-side over every frame. Core Image decodes carry no
-    aligned CFA masks; the page greys the toggle on ``has_masks`` false."""
+    """RAW near-full-well layer for the preview: which proxy pixels sit at or
+    above ~97% of full well in which CFA channel, drawn from the SAME soft
+    evidence masks the render's clip retreat and the HDR chroma gates
+    consume (see CLIP_OVERLAY_THRESHOLD). The hard clip share is a separate,
+    full-resolution number (``hard_clip_pct``) and is what "over-exposed"
+    means numerically. Evidence is decode-derived and WB-independent, so the
+    layer is fetched once per prepared entry and composited client-side over
+    every frame. Core Image decodes carry no aligned CFA masks; the page
+    greys the toggle on ``has_masks`` false."""
     inp, highlight, _gamut, _fmt, _ev, _, _q, _png, _out, _auto = parse_job_params(params)
     wb = str(params.get("wb", "camera"))
     if wb not in dg.WB_CHOICES:
@@ -439,13 +472,14 @@ def clip_overlay(params: dict) -> dict:
         inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic
     )
     masks = getattr(cached.bundle, "clip_masks", None)
+    hard = _hard_clip_pct_by_colour(getattr(cached, "analysis", None))
     if masks is None:
-        return {"ok": True, "has_masks": False, "overlay": None, "clip_pct": None}
+        return {"ok": True, "has_masks": False, "overlay": None, "mask_pct": None, "hard_clip_pct": hard}
     np = dg.np
     masks32 = np.asarray(masks, dtype=np.float32)
     hit = masks32 >= np.float32(CLIP_OVERLAY_THRESHOLD)
     total = float(max(1, hit.shape[0] * hit.shape[1]))
-    clip_pct = {
+    mask_pct = {
         "r": 100.0 * float(hit[..., 0].sum()) / total,
         "g": 100.0 * float(hit[..., 1].sum()) / total,
         "b": 100.0 * float(hit[..., 2].sum()) / total,
@@ -465,7 +499,10 @@ def clip_overlay(params: dict) -> dict:
         "overlay": overlay,
         "width": int(masks32.shape[1]),
         "height": int(masks32.shape[0]),
-        "clip_pct": clip_pct,
+        # share of proxy pixels the LAYER marks (>= ~97% full well)
+        "mask_pct": mask_pct,
+        # the authoritative hard-clip share (full resolution, >= fullwell - margin)
+        "hard_clip_pct": hard,
     }
 
 
