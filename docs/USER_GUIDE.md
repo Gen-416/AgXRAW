@@ -118,9 +118,10 @@ median −3 EV → this is a night scene, don't force the exposure up.
 The "RAW clipping" percentage says how many pixels blew out, not where or in
 which channel. The **RAW 满阱** toggle at the top right of the preview card adds
 that layer: switched on, it paints the pixels at or above ~97% of full well
-(clipped or about to clip — exactly the region where the render's chroma
-retreat engages) onto the preview, per CFA channel — **red / green / blue =
-that channel, white = all three**. Next to the toggle it reports two numbers:
+(the region where the render's chroma retreat engages — near full well, not
+necessarily clipped: the soft mask is feathered and resized, so a marked pixel
+may still hold valid data) onto the preview, per CFA channel — **red / green /
+blue = that channel, white = all three**. Next to the toggle it reports two numbers:
 **hard clip R · G · B** (full-resolution, ≥ full well − margin, the same
 criterion as the detected-parameters card — this is the authoritative "how
 much is over-exposed") and the **marked share** (≥97% of full well, the area
