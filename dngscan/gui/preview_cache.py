@@ -737,15 +737,23 @@ class PreviewCache:
         decoder: str = "libraw",
         coreimage_version: str = "auto",
         demosaic: str = "auto",
+        coreimage_scale: str = "aligned",
+        margin: int = 4,
     ) -> PreviewEntry | None:
         """The loaded entry for this identity WITHOUT building one — the
         export path uses it to reuse the preview's grain realization (batch
-        15 seed lifecycle); a cold export mints its own instead."""
+        15 seed lifecycle); a cold export mints its own instead. Same
+        identity as get() including the decode dials (R7 item 2: a peek
+        without them missed every non-default entry, so the export minted a
+        fresh seed and the grain no longer matched the preview)."""
         if decoder == "coreimage":
             highlight = "reconstruct"
             demosaic = "auto"
+        else:
+            coreimage_scale = "aligned"
         key, _ = _cache_identity(
-            path, highlight, wb, decoder, coreimage_version, demosaic
+            path, highlight, wb, decoder, coreimage_version, demosaic,
+            coreimage_scale, int(margin),
         )
         with self.lock:
             return self.entries.get(key)

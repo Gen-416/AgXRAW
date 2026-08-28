@@ -232,7 +232,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
     </div>
     <div style="flex:1;min-width:140px" id="clipMarginBlock">
       <label>剪切回退 DN</label>
-      <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重做分析。">
+      <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重新解码并分析这张 RAW（数秒）。">
     </div>
     <div style="flex:1;min-width:170px">
       <label>解拜耳</label>
@@ -2131,6 +2131,15 @@ $("#outputCancel").onclick=closeOutputDialog;
 $("#exportConfirm").onclick=async()=>{
   const body=payload();if(!body){closeOutputDialog();return;}
   try{if(!await ensureRaw9Support(body))return;}catch(e){setStatus("RAW 9 探测失败："+e,"err");return;}
+  // R7 item 3: the export context is probed separately from the interactive
+  // one — a host whose preview context works but whose export context does
+  // not must fail HERE with the reason, not after the full-size decode.
+  if(body.decoder==="coreimage"){
+    let pj=null;try{pj=await raw9Probe(body.input);}catch(e){pj=null;}
+    if(pj&&pj.ok&&pj.runtime_export===false){
+      setStatus("Core Image 导出上下文在此系统不可用（预览上下文可用）：请把解码器切到 LibRaw 再导出。","err");return;
+    }
+  }
   closeOutputDialog();
   $("#go").disabled=true;$("#exportConfirm").disabled=true;$("#revealBtn").style.display="none";beginBusy();setStatus("正在全尺寸导出…","");
   try{
