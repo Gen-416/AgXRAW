@@ -451,6 +451,48 @@ def _normalize(token: str) -> str:
     return coreimage_decode._normalize_version_token(token)
 
 
+class SyntheticHotWbPixelParityTests(unittest.TestCase):
+    """R6 item 2: a CI-runnable PIXEL regression with no private sample and no
+    Core Image — the hot stage is decoder-agnostic given the bundle, so a
+    synthetic bundle tagged coreimage must receive exactly the same transform
+    the libraw-tagged twin receives, and both must equal the explicit matrix."""
+
+    def test_hot_stage_applies_the_same_matrix_to_pixels_for_both_decoders(self) -> None:
+        import dataclasses
+        from unittest import mock
+
+        from tests.golden_support import build_daylight_wide_dr
+        from dngscan.camera_matrices import _FALLBACK_MATRICES
+        from dngscan.raw_io import (
+            apply_hot_wb_rec2020,
+            hot_wb_matrix_rec2020,
+            rebalance_raw_bundle,
+            resolve_hot_wb_c0,
+        )
+        from dngscan.wb import kelvin_mode_cct
+
+        scene = build_daylight_wide_dr()
+        m = np.asarray(_FALLBACK_MATRICES[0]["matrix"], dtype=np.float64) / 10000.0
+        base = dataclasses.replace(scene.bundle, wb_xyz_to_cam=m)
+        for mode in ("5500k", "3200k"):
+            with self.subTest(mode=mode):
+                outs = {}
+                with mock.patch("dngscan.raw_io.dng_metadata.read_dng_color_calibration", return_value=None):
+                    for decoder in ("libraw", "coreimage"):
+                        b = dataclasses.replace(base, scene_decoder=decoder)
+                        r = rebalance_raw_bundle(b, mode)
+                        self.assertEqual(r.wb_mode, mode, getattr(r, "wb_degradation", None))
+                        c0, ct, _ = resolve_hot_wb_c0(r, kelvin_mode_cct(mode))
+                        explicit = apply_hot_wb_rec2020(
+                            b.scene_rec2020_render,
+                            hot_wb_matrix_rec2020(c0, list(r.decode_wb or r.camera_wb), list(r.applied_wb), ct),
+                        )
+                        outs[decoder] = (np.asarray(r.scene_rec2020_render), np.asarray(explicit))
+                np.testing.assert_array_equal(outs["libraw"][0], outs["coreimage"][0])
+                np.testing.assert_array_equal(outs["libraw"][0], outs["libraw"][1])
+                self.assertGreater(float(np.abs(outs["libraw"][0] - np.asarray(base.scene_rec2020_render)).max()), 0.0)
+
+
 class ProjectHotWbAcrossDecodersTests(unittest.TestCase):
     """R5 item 1: a fixed-Kelvin mode on the Core Image path is the PROJECT
     hot-WB composed onto Apple's fixed AsShot decode — declared as not being
