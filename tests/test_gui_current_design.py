@@ -30,7 +30,7 @@ class ClipOverlayPageWires(unittest.TestCase):
     def test_overlay_layer_and_toggle_exist_and_are_fetched_after_prepare(self) -> None:
         self.assertIn('<img id="clipOverlay"', PAGE)
         self.assertIn('id="clipOverlayToggle"', PAGE)
-        self.assertIn('postJob("/clip-overlay",body)', PAGE)
+        self.assertIn('postJob("/clip-overlay",body,controller.signal)', PAGE)
         prep = PAGE[PAGE.index("async function preparePreview"):]
         prep = prep[: prep.index("function beginBusy")]
         self.assertIn("loadClipOverlay(body);", prep)
@@ -38,6 +38,25 @@ class ClipOverlayPageWires(unittest.TestCase):
         self.assertIn('t.disabled=true;lab.classList.add("dim")', PAGE)
         self.assertIn("Core Image 解码没有逐像素 CFA 证据", PAGE)
         self.assertIn('clipOverlay:$("#clipOverlayToggle").checked', PAGE)
+
+    def test_overlay_is_labelled_as_near_full_well_with_hard_clip_authority(self) -> None:
+        # R5 item 2: the layer is the soft retreat mask (>= ~97% full well),
+        # not the hard clip statistic; the label says so and the hard number
+        # is shown next to it from the full-resolution analysis.
+        self.assertIn(">RAW 满阱</label>", PAGE)
+        self.assertNotIn(">RAW 过曝</label>", PAGE)
+        self.assertIn("硬剪切 R ", PAGE)
+        self.assertIn("≥97% 满阱", PAGE)
+
+    def test_overlay_fetch_is_latest_wins(self) -> None:
+        # R5 item 3: bound to the issuing preview session and aborting its
+        # predecessor, so a slow response for the previous file cannot land.
+        body = PAGE[PAGE.index("async function loadClipOverlay"):]
+        body = body[: body.index('$("#clipOverlayToggle").addEventListener')]
+        self.assertIn("const session=PREVIEW_SESSION_ID;", body)
+        self.assertIn("if(clipOverlayAbort)clipOverlayAbort.abort();", body)
+        self.assertIn('postJob("/clip-overlay",body,controller.signal)', body)
+        self.assertIn("session!==PREVIEW_SESSION_ID)return;", body)
 
 
 class FilmModeResetWire(unittest.TestCase):
@@ -137,16 +156,26 @@ class ClipOverlayServiceTests(unittest.TestCase):
 
         masks = np.zeros((6, 8, 3), dtype=np.float16)
         masks[:3, :4, 0] = 1.0
-        entry = SimpleNamespace(bundle=SimpleNamespace(clip_masks=masks))
+        analysis = SimpleNamespace(
+            clip_pct={0: 1.0, 1: 0.5, 2: 0.0, 3: 0.7},
+            labels={0: "R", 1: "G1", 2: "B", 3: "G2"},
+            cell_union_pct=1.25,
+        )
+        entry = SimpleNamespace(bundle=SimpleNamespace(clip_masks=masks), analysis=analysis)
         with mock.patch.object(service.PREVIEW_STORE, "get", return_value=entry), mock.patch.object(
             service, "parse_decoder", return_value=("libraw", "auto")
         ):
             out = service.clip_overlay(self._params())
         self.assertTrue(out["has_masks"])
         self.assertEqual((out["width"], out["height"]), (8, 6))
-        self.assertAlmostEqual(out["clip_pct"]["r"], 25.0)
-        self.assertAlmostEqual(out["clip_pct"]["any"], 25.0)
-        self.assertEqual(out["clip_pct"]["g"], 0.0)
+        self.assertAlmostEqual(out["mask_pct"]["r"], 25.0)
+        self.assertAlmostEqual(out["mask_pct"]["any"], 25.0)
+        self.assertEqual(out["mask_pct"]["g"], 0.0)
+        # the authoritative hard-clip share rides alongside, greens averaged
+        self.assertAlmostEqual(out["hard_clip_pct"]["r"], 1.0)
+        self.assertAlmostEqual(out["hard_clip_pct"]["g"], 0.6)
+        self.assertAlmostEqual(out["hard_clip_pct"]["b"], 0.0)
+        self.assertAlmostEqual(out["hard_clip_pct"]["union"], 1.25)
         im = Image.open(io.BytesIO(base64.b64decode(out["overlay"])))
         self.assertEqual(im.mode, "RGBA")
         self.assertEqual(im.size, (8, 6))
@@ -154,13 +183,14 @@ class ClipOverlayServiceTests(unittest.TestCase):
     def test_missing_masks_report_has_masks_false(self) -> None:
         from dngscan.gui import service
 
-        entry = SimpleNamespace(bundle=SimpleNamespace(clip_masks=None))
+        entry = SimpleNamespace(bundle=SimpleNamespace(clip_masks=None), analysis=None)
         with mock.patch.object(service.PREVIEW_STORE, "get", return_value=entry), mock.patch.object(
             service, "parse_decoder", return_value=("coreimage", "auto")
         ):
             out = service.clip_overlay(self._params())
         self.assertFalse(out["has_masks"])
         self.assertIsNone(out["overlay"])
+        self.assertIsNone(out["hard_clip_pct"])
 
 
 class ExportDashboardGateTests(unittest.TestCase):
@@ -178,6 +208,49 @@ class ExportDashboardGateTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "stop here"):
                 service.run_export(params)
         self.assertTrue(seen.get("dashboard"))
+
+
+class AchievedHeadroomSemanticsTests(unittest.TestCase):
+    def test_max_channel_headroom_is_not_diluted_by_other_channels(self) -> None:
+        # R5 item 5: a single-channel highlight covering 0.016% of the pixels
+        # (8 of 50,000) sits above p99.99 per pixel (max channel -> 3 EV) but
+        # below it once H*W*3 is flattened (8 of 150,000 samples -> 0 EV).
+        from dngscan.hdr_agx import achieved_headroom
+
+        img = np.ones((200, 250, 3), dtype=np.float32) * 0.5
+        img[0, 0:8, 0] = 8.0
+        self.assertAlmostEqual(achieved_headroom(img), 3.0, places=6)
+        flat = float(np.percentile(img, 99.99))
+        self.assertLessEqual(flat, 1.0)  # the old semantics really said 0 EV
+        self.assertEqual(achieved_headroom(np.ones((4, 4, 3), dtype=np.float32)), 0.0)
+
+
+class PtcWindowLabelTests(unittest.TestCase):
+    def test_sparse_ramp_labels_carry_the_window_actually_fitted(self) -> None:
+        # R5 item 4: with <4 points below 0.10*S_sat the fit widens to 0.35
+        # and every label/alternative key must say 0.35, not 0.10.
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("import_jptc", ROOT / "tools" / "import_jptc.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        rng = np.random.default_rng(3)
+        black, white = 512.0, 16383.0
+        gain = 4.0  # e-/DN
+        cap = white - black
+        # 2 points below 0.10*cap, the rest spread 0.12..0.90 of capacity
+        fracs = np.concatenate([[0.03, 0.07], np.linspace(0.12, 0.90, 24)])
+        signal = fracs * cap
+        var = signal / gain + 2.0 ** 2  # shot noise + read noise (no PRNU)
+        means = black + signal
+        stds = np.sqrt(var)
+        fit = mod.fit_ptc(means, stds, black, white)
+        self.assertEqual(fit["fit_window_frac"], 0.35)
+        self.assertIn("linear-0.35", fit["gain_alternatives"])
+        self.assertNotIn("linear-0.10", fit["gain_alternatives"])
+        self.assertIn("linear-0.35", fit["fit_relative_rms_alternatives"])
+        self.assertIn("0.35", fit["fit_model"])
+        self.assertNotIn("linear-0.10", fit["fit_model_effective"])
 
 
 class CliReportOnDemandTests(unittest.TestCase):

@@ -47,7 +47,8 @@ FILMS = _discover()
 
 
 def export(key: str, profile_name: str) -> Path:
-    profile = json.load(open(PROFILE_DIR / f"{profile_name}.json"))
+    with open(PROFILE_DIR / f"{profile_name}.json", encoding="utf-8") as fh:
+        profile = json.load(fh)
     wl = np.asarray(profile["data"]["wavelengths"], dtype=np.float64)
     log_sens = np.asarray(profile["data"]["log_sensitivity"], dtype=np.float64)
     out = OUT_DIR / f"film_ssf_{key}.csv"
