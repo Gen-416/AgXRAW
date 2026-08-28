@@ -132,7 +132,8 @@ policy); right is the datasheet served verbatim (`native`).
 - **Form SDR and HDR separately:** SDR targets sRGB or Display P3. HDR starts again from the same
   scene image and uses only the extra brightness supported by un-clipped RAW highlights.
 - **Observe and reproduce:** the local GUI and CLI share the same controls. The GUI's "RAW
-  clipping" toggle marks the RAW's saturated pixels on the preview per CFA channel; the CLI prints
+  near-full-well" toggle marks the RAW's pixels at or above ~97% of full well per CFA channel (the
+  chroma-retreat region) and lists the full-resolution hard-clip share next to it; the CLI prints
   only the files it wrote by default, and the full analysis report comes with `--report` (a
   `--scan` / `--csv` diagnostic run includes it automatically). The diagnostic dashboard and CSV
   keep measurements inspectable and comparisons repeatable. RAW files are never uploaded.
@@ -171,10 +172,12 @@ Open the localhost address printed in the terminal. A practical starting point i
 `base` primaries, and camera WB; adjust from there according to the
 photograph.
 
-The preview card's "RAW clipping" toggle marks the RAW's saturated pixels on the preview per
-channel (red/green/blue = that channel clipped, white = all three clipped) and shows the clipped
-share next to it. It is decode evidence — independent of white balance and unchanged by the EV
-slider — and tells you whether to pull EV or tighten the shoulder. Core Image decodes carry no
+The preview card's "RAW near-full-well" toggle marks the RAW's pixels at or above ~97% of full
+well on the preview per channel (red/green/blue = that channel, white = all three) — the region
+where the render's chroma retreat engages, not necessarily already clipped. Next to it the
+full-resolution hard-clip share per channel (≥ full well − margin) is the number that proves
+information loss. The layer is decode evidence — independent of white balance and unchanged by
+the EV slider — and tells you whether to pull EV or tighten the shoulder. Core Image decodes carry no
 per-pixel CFA evidence, so the toggle is greyed with the reason stated; every option that needs a
 specific environment or asset follows the same rule. The GUI produces images only and shows no
 analysis report.

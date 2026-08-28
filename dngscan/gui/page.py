@@ -1704,6 +1704,18 @@ function setPreviewBadge(text,state){
   badge.textContent=text;
   badge.className="previewLive"+(state?" "+state:"");
 }
+let clipOverlayAbort=null;
+let CLIP_OVERLAY={has:false,b64:null,pct:null};
+function resetClipOverlay(){
+  // A new preview session invalidates the evidence layer of the previous
+  // file at once (review R6 item 3): abort its request, drop the state and
+  // hide the image, so the new frame never wears the old file's marks
+  // while its own layer is still in flight.
+  if(clipOverlayAbort){clipOverlayAbort.abort();clipOverlayAbort=null;}
+  CLIP_OVERLAY={has:false,b64:null,pct:null};
+  const img=$("#clipOverlay");if(img){img.style.display="none";img.removeAttribute("src");delete img.dataset.b64;}
+  const fact=$("#clipOverlayFact");if(fact)fact.textContent="";
+}
 function beginPreviewSession(){
   PREVIEW_SESSION_SERIAL+=1;
   PREVIEW_SESSION_ID=PREVIEW_CLIENT_ID+":"+PREVIEW_SESSION_SERIAL;
@@ -1711,6 +1723,7 @@ function beginPreviewSession(){
   if(previewRaf){cancelAnimationFrame(previewRaf);previewRaf=0;}
   if(previewAbort){previewAbort.abort();previewAbort=null;}
   if(prepareAbort){prepareAbort.abort();prepareAbort=null;}
+  resetClipOverlay();
   return PREVIEW_SESSION_ID;
 }
 function scheduleLivePreview(){
@@ -1772,7 +1785,6 @@ async function preparePreview(){
 }
 function beginBusy(){const w=$("#previewWrap");w.classList.add("loading");}
 function endBusy(){const w=$("#previewWrap");w.classList.remove("loading");}
-let CLIP_OVERLAY={has:false,b64:null,pct:null};
 function applyClipOverlay(){
   const img=$("#clipOverlay");const t=$("#clipOverlayToggle");
   const show=!!(CLIP_OVERLAY.has&&CLIP_OVERLAY.b64&&t.checked);
@@ -1796,7 +1808,6 @@ function setClipOverlayState(j){
   fact.textContent=hard?(hard+" · "+mark):mark;
   applyClipOverlay();
 }
-let clipOverlayAbort=null;
 async function loadClipOverlay(body){
   // Evidence layer, decode-derived and WB-independent: one fetch per prepared
   // entry, composited client-side over every live frame. Latest wins (review

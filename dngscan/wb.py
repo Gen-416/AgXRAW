@@ -21,7 +21,9 @@ RAW 9 path: since the hot-WB migration both decoders decode at the fixed as-shot
 neutral and receive the SAME project hot-WB matrix after the linear handoff
 (``raw_io.rebalance_raw_bundle``); Apple's own neutralTemperature/neutralTint interface
 is not part of the declaration. The two decoders still differ in reconstruction and in
-the colour matrix Apple applied, which is measured and reported, not hidden.
+Apple's internal colour transform, which is opaque: what the project can measure is
+the OUTPUT difference (against Apple's own neutralTemperature, median xy 0.015-0.044 /
+RGB direction 2.5-8 degrees on the fp samples, review R5), not the matrix Apple used.
 """
 from __future__ import annotations
 

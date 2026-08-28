@@ -48,6 +48,18 @@ class ClipOverlayPageWires(unittest.TestCase):
         self.assertIn("硬剪切 R ", PAGE)
         self.assertIn("≥97% 满阱", PAGE)
 
+    def test_new_session_resets_the_layer_before_the_new_frame_lands(self) -> None:
+        # R6 item 3: the old file's marks must not sit on the new frame while
+        # the new layer is still in flight — the session start aborts, clears
+        # and hides the layer.
+        body = PAGE[PAGE.index("function beginPreviewSession"):]
+        body = body[: body.index("function scheduleLivePreview")]
+        self.assertIn("resetClipOverlay();", body)
+        reset = PAGE[PAGE.index("function resetClipOverlay"):PAGE.index("function beginPreviewSession")]
+        self.assertIn("clipOverlayAbort.abort()", reset)
+        self.assertIn('img.style.display="none"', reset)
+        self.assertIn("CLIP_OVERLAY={has:false,b64:null,pct:null};", reset)
+
     def test_overlay_fetch_is_latest_wins(self) -> None:
         # R5 item 3: bound to the issuing preview session and aborting its
         # predecessor, so a slow response for the previous file cannot land.
