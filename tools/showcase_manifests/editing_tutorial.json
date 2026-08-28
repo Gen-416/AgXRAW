@@ -1,0 +1,353 @@
+{
+ "renders": [
+  {
+   "name": "bridge_default",
+   "source": "DSCF0214.RAF",
+   "args": []
+  },
+  {
+   "name": "bridge_range",
+   "source": "DSCF0214.RAF",
+   "args": [
+    "--endpoint-mode",
+    "evidence",
+    "--toe-end-offset",
+    "-2"
+   ]
+  },
+  {
+   "name": "bridge_range_ev1",
+   "source": "DSCF0214.RAF",
+   "args": [
+    "--endpoint-mode",
+    "evidence",
+    "--toe-end-offset",
+    "-2",
+    "--ev",
+    "1"
+   ]
+  },
+  {
+   "name": "bridge_range_mid",
+   "source": "DSCF0214.RAF",
+   "args": [
+    "--endpoint-mode",
+    "evidence",
+    "--toe-end-offset",
+    "-2",
+    "--midtone-brightness",
+    "0.6"
+   ]
+  },
+  {
+   "name": "bridge_range_mid_punch",
+   "source": "DSCF0214.RAF",
+   "args": [
+    "--endpoint-mode",
+    "evidence",
+    "--toe-end-offset",
+    "-2",
+    "--midtone-brightness",
+    "0.6",
+    "--punch",
+    "1.35"
+   ]
+  },
+  {
+   "name": "galley_default",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-05-12 210128342.dng",
+   "args": []
+  },
+  {
+   "name": "galley_blend",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-05-12 210128342.dng",
+   "args": [
+    "--highlight-mode",
+    "blend"
+   ]
+  },
+  {
+   "name": "galley_reconstruct",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-05-12 210128342.dng",
+   "args": [
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "lamp_default",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-07-11 202403093.dng",
+   "args": []
+  },
+  {
+   "name": "lamp_shoulder_m1",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-07-11 202403093.dng",
+   "args": [
+    "--shoulder-white-offset",
+    "-1"
+   ]
+  },
+  {
+   "name": "lamp_shoulder_p2",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-07-11 202403093.dng",
+   "args": [
+    "--shoulder-white-offset",
+    "2"
+   ]
+  },
+  {
+   "name": "lamp_ev07",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-07-11 202403093.dng",
+   "args": [
+    "--ev",
+    "0.7"
+   ]
+  },
+  {
+   "name": "lamp_mid08",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-07-11 202403093.dng",
+   "args": [
+    "--midtone-brightness",
+    "0.8"
+   ]
+  },
+  {
+   "name": "lamp_combo",
+   "source": "/Users/itoshikigen/Pictures/Original RAW 26-07-11 202403093.dng",
+   "args": [
+    "--ev",
+    "0.3",
+    "--midtone-brightness",
+    "0.5"
+   ]
+  }
+ ],
+ "assets": [
+  {
+   "asset": "editing-tutorial/00_default.jpg",
+   "render": "bridge_default",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/03_range_ev1.jpg",
+   "render": "bridge_range_ev1",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/04_range_mid.jpg",
+   "render": "bridge_range_mid",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/20_kitchen_default.jpg",
+   "render": "galley_default",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/30_lamp_default.jpg",
+   "render": "lamp_default",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/lamp_route_default.jpg",
+   "render": "lamp_default",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/lamp_route_ev07.jpg",
+   "render": "lamp_ev07",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/lamp_route_mid08.jpg",
+   "render": "lamp_mid08",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/lamp_route_combo.jpg",
+   "render": "lamp_combo",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "editing-tutorial/crop_truss_00_default.jpg",
+   "render": "bridge_default",
+   "crop_from_old": true,
+   "crop_group": "truss",
+   "old_full": "editing-tutorial/00_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_truss_02_range.jpg",
+   "render": "bridge_range",
+   "crop_from_old": true,
+   "crop_group": "truss",
+   "old_full": "editing-tutorial/00_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_truss_03_range_ev1.jpg",
+   "render": "bridge_range_ev1",
+   "crop_from_old": true,
+   "crop_group": "truss",
+   "old_full": "editing-tutorial/03_range_ev1.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_truss_04_range_mid.jpg",
+   "render": "bridge_range_mid",
+   "crop_from_old": true,
+   "crop_group": "truss",
+   "old_full": "editing-tutorial/04_range_mid.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_sky_03_range_ev1.jpg",
+   "render": "bridge_range_ev1",
+   "crop_from_old": true,
+   "crop_group": "sky",
+   "old_full": "editing-tutorial/03_range_ev1.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_sky_04_range_mid.jpg",
+   "render": "bridge_range_mid",
+   "crop_from_old": true,
+   "crop_group": "sky",
+   "old_full": "editing-tutorial/04_range_mid.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_deck_03_range_ev1.jpg",
+   "render": "bridge_range_ev1",
+   "crop_from_old": true,
+   "crop_group": "deck",
+   "old_full": "editing-tutorial/03_range_ev1.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_deck_04_range_mid.jpg",
+   "render": "bridge_range_mid",
+   "crop_from_old": true,
+   "crop_group": "deck",
+   "old_full": "editing-tutorial/04_range_mid.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_pillar_04_range_mid.jpg",
+   "render": "bridge_range_mid",
+   "crop_from_old": true,
+   "crop_group": "pillar",
+   "old_full": "editing-tutorial/04_range_mid.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_pillar_05_range_mid_punch.jpg",
+   "render": "bridge_range_mid_punch",
+   "crop_from_old": true,
+   "crop_group": "pillar",
+   "old_full": "editing-tutorial/04_range_mid.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_lamp_shoulder_m1.jpg",
+   "render": "lamp_shoulder_m1",
+   "crop_from_old": true,
+   "crop_group": "lamp_shoulder",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_lamp_shoulder_0.jpg",
+   "render": "lamp_default",
+   "crop_from_old": true,
+   "crop_group": "lamp_shoulder",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_lamp_shoulder_p2.jpg",
+   "render": "lamp_shoulder_p2",
+   "crop_from_old": true,
+   "crop_group": "lamp_shoulder",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_figure_default.jpg",
+   "render": "lamp_default",
+   "crop_from_old": true,
+   "crop_group": "lamp_figure",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_figure_ev07.jpg",
+   "render": "lamp_ev07",
+   "crop_from_old": true,
+   "crop_group": "lamp_figure",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_figure_mid08.jpg",
+   "render": "lamp_mid08",
+   "crop_from_old": true,
+   "crop_group": "lamp_figure",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_figure_combo.jpg",
+   "render": "lamp_combo",
+   "crop_from_old": true,
+   "crop_group": "lamp_figure",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_zoom_default.jpg",
+   "render": "lamp_default",
+   "crop_from_old": true,
+   "crop_group": "lamp_zoom",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_zoom_ev07.jpg",
+   "render": "lamp_ev07",
+   "crop_from_old": true,
+   "crop_group": "lamp_zoom",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_zoom_mid08.jpg",
+   "render": "lamp_mid08",
+   "crop_from_old": true,
+   "crop_group": "lamp_zoom",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/lamp_zoom_combo.jpg",
+   "render": "lamp_combo",
+   "crop_from_old": true,
+   "crop_group": "lamp_zoom",
+   "old_full": "editing-tutorial/30_lamp_default.jpg"
+  },
+  {
+   "asset": "editing-tutorial/crop_galley_hlzoom_clip.jpg",
+   "render": "galley_default",
+   "crop_from_old": true,
+   "crop_group": "galley_hlzoom",
+   "old_full": "editing-tutorial/20_kitchen_default.jpg",
+   "max_delta": 40.0
+  },
+  {
+   "asset": "editing-tutorial/crop_galley_hlzoom_blend.jpg",
+   "render": "galley_blend",
+   "crop_from_old": true,
+   "crop_group": "galley_hlzoom",
+   "old_full": "editing-tutorial/20_kitchen_default.jpg",
+   "max_delta": 40.0
+  },
+  {
+   "asset": "editing-tutorial/crop_galley_hlzoom_reconstruct.jpg",
+   "render": "galley_reconstruct",
+   "crop_from_old": true,
+   "crop_group": "galley_hlzoom",
+   "old_full": "editing-tutorial/20_kitchen_default.jpg",
+   "max_delta": 40.0
+  }
+ ],
+ "plates": []
+}

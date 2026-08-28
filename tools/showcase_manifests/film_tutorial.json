@@ -1,0 +1,462 @@
+{
+ "renders": [
+  {
+   "name": "bridge_default",
+   "source": "DSCF0214.RAF",
+   "args": []
+  },
+  {
+   "name": "bridge_wb5500k",
+   "source": "DSCF0214.RAF",
+   "args": [
+    "--wb",
+    "5500k"
+   ]
+  },
+  {
+   "name": "cat_asshot",
+   "source": "_SDI0016.DNG",
+   "args": []
+  },
+  {
+   "name": "cat_wb5500k",
+   "source": "_SDI0016.DNG",
+   "args": [
+    "--wb",
+    "5500k"
+   ]
+  },
+  {
+   "name": "cat_curve_portra400",
+   "source": "_SDI0016.DNG",
+   "args": [
+    "--film-curve",
+    "portra400"
+   ]
+  },
+  {
+   "name": "grid_hk_1",
+   "source": "_SDI0164.DNG",
+   "args": []
+  },
+  {
+   "name": "hk_curve_portra400",
+   "source": "_SDI0164.DNG",
+   "args": [
+    "--film-curve",
+    "portra400"
+   ]
+  },
+  {
+   "name": "grid_bs_1",
+   "source": "_SDI0173.DNG",
+   "args": []
+  },
+  {
+   "name": "backstage_curve_velvia100",
+   "source": "_SDI0173.DNG",
+   "args": [
+    "--film-curve",
+    "velvia100"
+   ]
+  },
+  {
+   "name": "temple_curve_adaptive",
+   "source": "_SDI0094.DNG",
+   "args": []
+  },
+  {
+   "name": "temple_curve_portra400",
+   "source": "_SDI0094.DNG",
+   "args": [
+    "--film-curve",
+    "portra400"
+   ]
+  },
+  {
+   "name": "primaries_base",
+   "source": "_SDI0165.DNG",
+   "args": [
+    "--agx-primaries",
+    "base"
+   ]
+  },
+  {
+   "name": "primaries_punchy",
+   "source": "_SDI0165.DNG",
+   "args": [
+    "--agx-primaries",
+    "punchy"
+   ]
+  },
+  {
+   "name": "primaries_smooth",
+   "source": "_SDI0165.DNG",
+   "args": [
+    "--agx-primaries",
+    "smooth"
+   ]
+  },
+  {
+   "name": "primaries_muted",
+   "source": "_SDI0165.DNG",
+   "args": [
+    "--agx-primaries",
+    "muted"
+   ]
+  },
+  {
+   "name": "stage_primaries_punchy",
+   "source": "_SDI0175.DNG",
+   "args": [
+    "--agx-primaries",
+    "punchy"
+   ]
+  },
+  {
+   "name": "stage_primaries_muted",
+   "source": "_SDI0175.DNG",
+   "args": [
+    "--agx-primaries",
+    "muted"
+   ]
+  },
+  {
+   "name": "strength_x00",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "velvia100",
+    "--scene-transform-strength",
+    "0",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "strength_x10",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "velvia100",
+    "--scene-transform-strength",
+    "1.0",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "strength_x16",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "velvia100",
+    "--scene-transform-strength",
+    "1.6",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "strength_x25",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "velvia100",
+    "--scene-transform-strength",
+    "2.5",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  },
+  {
+   "name": "head_bowl_y00",
+   "source": "_SDI0127.DNG",
+   "args": [
+    "--film",
+    "portra400"
+   ]
+  },
+  {
+   "name": "head_bowl_y05",
+   "source": "_SDI0127.DNG",
+   "args": [
+    "--film",
+    "portra400",
+    "--color-head-y",
+    "5"
+   ]
+  },
+  {
+   "name": "head_bowl_y10",
+   "source": "_SDI0127.DNG",
+   "args": [
+    "--film",
+    "portra400",
+    "--color-head-y",
+    "10"
+   ]
+  },
+  {
+   "name": "head_bowl_y30",
+   "source": "_SDI0127.DNG",
+   "args": [
+    "--film",
+    "portra400",
+    "--color-head-y",
+    "30"
+   ]
+  },
+  {
+   "name": "head_bowl_y60",
+   "source": "_SDI0127.DNG",
+   "args": [
+    "--film",
+    "portra400",
+    "--color-head-y",
+    "60"
+   ]
+  },
+  {
+   "name": "head_bowl_m10",
+   "source": "_SDI0127.DNG",
+   "args": [
+    "--film",
+    "portra400",
+    "--color-head-m",
+    "10"
+   ]
+  },
+  {
+   "name": "head_bowl_m30",
+   "source": "_SDI0127.DNG",
+   "args": [
+    "--film",
+    "portra400",
+    "--color-head-m",
+    "30"
+   ]
+  }
+ ],
+ "assets": [
+  {
+   "asset": "film-tutorial/bridge_default.jpg",
+   "render": "bridge_default",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/bridge_wb5500k.jpg",
+   "render": "bridge_wb5500k",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/cat_wb_asshot.jpg",
+   "render": "cat_asshot",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/cat_wb_5500k.jpg",
+   "render": "cat_wb5500k",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/cat_curve_adaptive.jpg",
+   "render": "cat_asshot",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/cat_curve_portra400.jpg",
+   "render": "cat_curve_portra400",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/hk_curve_adaptive.jpg",
+   "render": "grid_hk_1",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/hk_curve_portra400.jpg",
+   "render": "hk_curve_portra400",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/backstage_curve_adaptive.jpg",
+   "render": "grid_bs_1",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/backstage_curve_velvia100.jpg",
+   "render": "backstage_curve_velvia100",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/temple_curve_adaptive.jpg",
+   "render": "temple_curve_adaptive",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/temple_curve_portra400.jpg",
+   "render": "temple_curve_portra400",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/stage_primaries_punchy.jpg",
+   "render": "stage_primaries_punchy",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/stage_primaries_muted.jpg",
+   "render": "stage_primaries_muted",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/head_bowl_y00.jpg",
+   "render": "head_bowl_y00",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/head_bowl_y05.jpg",
+   "render": "head_bowl_y05",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/head_bowl_y10.jpg",
+   "render": "head_bowl_y10",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/head_bowl_y30.jpg",
+   "render": "head_bowl_y30",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/head_bowl_y60.jpg",
+   "render": "head_bowl_y60",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/head_bowl_m10.jpg",
+   "render": "head_bowl_m10",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/head_bowl_m30.jpg",
+   "render": "head_bowl_m30",
+   "crop_from_old": false,
+   "crop_group": null
+  },
+  {
+   "asset": "film-tutorial/crop_hk_curve_adaptive.jpg",
+   "render": "grid_hk_1",
+   "crop_from_old": true,
+   "crop_group": "hk_curve",
+   "old_full": "film-tutorial/hk_curve_adaptive.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_hk_curve_portra400.jpg",
+   "render": "hk_curve_portra400",
+   "crop_from_old": true,
+   "crop_group": "hk_curve",
+   "old_full": "film-tutorial/hk_curve_portra400.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_backstage_curve_adaptive.jpg",
+   "render": "grid_bs_1",
+   "crop_from_old": true,
+   "crop_group": "backstage_curve",
+   "old_full": "film-tutorial/backstage_curve_adaptive.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_backstage_curve_velvia100.jpg",
+   "render": "backstage_curve_velvia100",
+   "crop_from_old": true,
+   "crop_group": "backstage_curve",
+   "old_full": "film-tutorial/backstage_curve_velvia100.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_primaries_base.jpg",
+   "render": "primaries_base",
+   "crop_from_old": true,
+   "crop_group": "primaries",
+   "old_full": "film-tutorial/crossover_k64_off.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_primaries_punchy.jpg",
+   "render": "primaries_punchy",
+   "crop_from_old": true,
+   "crop_group": "primaries",
+   "old_full": "film-tutorial/crossover_k64_off.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_primaries_smooth.jpg",
+   "render": "primaries_smooth",
+   "crop_from_old": true,
+   "crop_group": "primaries",
+   "old_full": "film-tutorial/crossover_k64_off.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_primaries_muted.jpg",
+   "render": "primaries_muted",
+   "crop_from_old": true,
+   "crop_group": "primaries",
+   "old_full": "film-tutorial/crossover_k64_off.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_strength_x00.jpg",
+   "render": "strength_x00",
+   "crop_from_old": true,
+   "crop_group": "strength",
+   "old_full": "film-tutorial/park_velvia100.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_strength_x10.jpg",
+   "render": "strength_x10",
+   "crop_from_old": true,
+   "crop_group": "strength",
+   "old_full": "film-tutorial/park_velvia100.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_strength_x16.jpg",
+   "render": "strength_x16",
+   "crop_from_old": true,
+   "crop_group": "strength",
+   "old_full": "film-tutorial/park_velvia100.jpg"
+  },
+  {
+   "asset": "film-tutorial/crop_strength_x25.jpg",
+   "render": "strength_x25",
+   "crop_from_old": true,
+   "crop_group": "strength",
+   "old_full": "film-tutorial/park_velvia100.jpg"
+  }
+ ],
+ "plates": []
+}

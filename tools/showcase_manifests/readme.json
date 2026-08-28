@@ -1,0 +1,54 @@
+{
+ "renders": [
+  {
+   "name": "obs_v3theatrical",
+   "source": "DSC00225.ARW",
+   "args": [
+    "--film",
+    "vision3250d_theatrical",
+    "--wb",
+    "5500k",
+    "--highlight-mode",
+    "reconstruct"
+   ]
+  }
+ ],
+ "assets": [],
+ "plates": [
+  {
+   "asset": "film-observation-showcase.jpg",
+   "panels": [
+    "park_none",
+    "park_portra400",
+    "park_velvia100",
+    "obs_v3theatrical"
+   ],
+   "boxes": [
+    [
+     0,
+     0,
+     1200,
+     800
+    ],
+    [
+     1206,
+     0,
+     2406,
+     800
+    ],
+    [
+     0,
+     852,
+     1200,
+     1652
+    ],
+    [
+     1206,
+     852,
+     2406,
+     1652
+    ]
+   ]
+  }
+ ]
+}
