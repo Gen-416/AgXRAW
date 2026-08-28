@@ -74,7 +74,7 @@ requirement by selecting Apple RAW.
    look here before touching anything (next section explains each number);
 3. **Adjust exposure and tone** — if needed. When you cannot tell whether a
    highlight wants less exposure or a different shoulder, switch on the
-   **RAW 过曝 (RAW clipping)** toggle on the preview card first (end of
+   **RAW 满阱 (RAW clipping)** toggle on the preview card first (end of
    section 3);
 4. **Choose the output** — ordinary JPEG or HDR, for sharing or for archiving
    (section 10);
@@ -116,11 +116,15 @@ median −3 EV → this is a night scene, don't force the exposure up.
 ### The RAW clipping overlay: where it clipped, and which channel
 
 The "RAW clipping" percentage says how many pixels blew out, not where or in
-which channel. The **RAW 过曝** toggle at the top right of the preview card adds
-that layer: switched on, it paints the pixels that are already saturated in the
-RAW onto the preview, per CFA channel — **red / green / blue = that channel
-overflowed, white = all three did**. Next to the toggle it reports "RAW 过曝 x%
-(R · G · B)", or "RAW 无过曝像素" (no clipped pixels) when there are none.
+which channel. The **RAW 满阱** toggle at the top right of the preview card adds
+that layer: switched on, it paints the pixels at or above ~97% of full well
+(clipped or about to clip — exactly the region where the render's chroma
+retreat engages) onto the preview, per CFA channel — **red / green / blue =
+that channel, white = all three**. Next to the toggle it reports two numbers:
+**hard clip R · G · B** (full-resolution, ≥ full well − margin, the same
+criterion as the detected-parameters card — this is the authoritative "how
+much is over-exposed") and the **marked share** (≥97% of full well, the area
+the layer covers); "无 ≥97% 满阱像素" when there are none.
 
 What it shows is **decode evidence, not the rendered result**: the data is the
 same evidence mask the render uses for clip retreat and the HDR chroma gate —
@@ -390,7 +394,7 @@ daylight". There is no strength slider — glass has no half-installed state.
 ## 6. The other EVs in the interface
 
 - **Exposure EV** (the slider): brightens/darkens everything, +1 = one stop up. 0 keeps
-  the brightness relationships from capture. The RAW 过曝 marks on the preview do
+  the brightness relationships from capture. The RAW 满阱 marks on the preview do
   not move with it — they show decode evidence (section 3).
 - **Brightness reference** (button): the tool measures the subject and aligns it to a
   standard exposure while limiting highlight overflow. "Expose this for me, once" — the
@@ -438,7 +442,7 @@ daylight". There is no strength slider — glass has no half-installed state.
   values** (toe-end EV, shoulder-white EV, endpoint provenance). Out-of-range
   requests are clamped by the curve legality guards; the line always shows what
   actually took effect.
-- **Not sure whose problem a highlight is**: switch on RAW 过曝 on the preview
+- **Not sure whose problem a highlight is**: switch on RAW 满阱 on the preview
   card first (section 3). If the RAW did not clip and the render is merely too
   bright, shoulder white / highlight transition and EV all work; where the RAW
   already overflowed in all three channels, no curve setting can invent
@@ -472,7 +476,7 @@ they belong to, and both refresh with every preview frame:
 Both histograms are display-only for now: no hover, no range selection.
 
 The preview card carries one more per-frame layer that is not a histogram: the
-RAW 过曝 marks (section 3). It complements the display histogram — the
+RAW 满阱 marks (section 3). It complements the display histogram — the
 histogram's clipped whites tell you the output hit 255, the overlay tells you
 whether the RAW itself had already hit full well. The former can be rescued
 with exposure and curve; the latter cannot.
@@ -555,7 +559,7 @@ letting you choose it and failing at export. Currently handled this way:
   fixed and the colour head is greyed and zeroed; in takeover mode the colour
   head additionally needs custom timing (section 5);
 - **附带分析图** — needs matplotlib (section 10);
-- **RAW 过曝** — Apple RAW decoding has no per-pixel CFA evidence (section 3).
+- **RAW 满阱** — Apple RAW decoding has no per-pixel CFA evidence (section 3).
 
 Two more cases **warn without greying**: Apple RAW's RAW 9/8/7 version is probed
 per file, and an unsupported file is intercepted before submission so you can

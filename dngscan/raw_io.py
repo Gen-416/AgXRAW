@@ -492,12 +492,14 @@ def resolve_hot_wb_c0(
     correspond to what the fixed decode actually did:
 
     1. ``wb_xyz_to_cam`` (evidence ``rgb_xyz_matrix``): when the file carries DNG
-       colour calibration tags and a fixed-Kelvin target is requested, *both* sides
-       come from the file's own dual-illuminant interpolation — decode C0 at the
-       as-shot CCT (``wb.asshot_reference_cct``, the same fixed point rung 3 uses),
-       the target at the declared CCT, both in the same unnormalized DNG convention
-       (source ``"evidence+cct"``, anchor unification effective 2026-08-04).  The
-       evidence matrix itself is LibRaw's ``cam_xyz`` — on DNGs sourced from
+       colour calibration tags and a fixed-Kelvin target is requested, decode C0 is
+       the matrix LibRaw ACTUALLY applied (``_libraw_applied_xyz_to_cam``) and the
+       target is the file's dual-illuminant interpolation at the declared CCT,
+       both D65 row-normalised (``d65_row_normalize``) so the two sides share one
+       neutral convention (source ``"evidence+cct"``; self-review 2026-08-27 P1
+       replaced the earlier "both sides interpolated, unnormalised" formulation,
+       which paired a matrix the decoder never applied with an unnormalised
+       target).  The evidence matrix itself is LibRaw's ``cam_xyz`` — on DNGs sourced from
        ColorMatrix2 and therefore pinned to its calibration illuminant (~D65); using
        it directly as C0 against a target interpolated at the declared CCT would put
        the two sides on different illuminant anchors (the former "seam A", a ~1500 K
@@ -1400,6 +1402,19 @@ def load_raw(
     if decoder == "coreimage":
         # Keep Apple's reconstruction fixed as well.  neutralTemperature belongs to the
         # old decoder-coupled path; the project hot-WB matrix runs after this call.
+        #
+        # DECLARATION (review R5 item 1): a fixed-Kelvin mode on this decoder is
+        # the PROJECT hot-WB — the same Rec.2020 matrix the LibRaw path applies
+        # for the same file and target — composed onto Apple's fixed AsShot
+        # decode. It is not Apple's neutralTemperature and does not claim to
+        # reproduce it: Apple's colour transform is opaque, so the conjugate
+        # matrix is exact for a linear decode and approximate here. Measured
+        # against the same RAW 9 decoder's neutralTemperature (fp _SDI0150 /
+        # _SDI0199, 3200 K / 5500 K): median xy difference 0.015-0.044, median
+        # RGB direction angle 2.5-8.0 degrees. What IS pinned, at pixel level,
+        # is the declared property — one hot-WB matrix across decoders
+        # (tests/test_coreimage_decode.py) and a neutral render of the
+        # declared white on the LibRaw path (tests/test_wb.py).
         neutral_cct = None
         from . import coreimage_decode
 

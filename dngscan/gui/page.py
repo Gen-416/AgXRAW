@@ -580,7 +580,7 @@ GRADE_OPTIONS
     <button class="go" id="go">导出</button>
     <button class="ghost" id="revealBtn" style="display:none">在 Finder 显示</button>
     <span class="previewLive" id="previewLiveBadge">实时 · PREVIEW_LONG_EDGEpx</span>
-    <label class="previewToggle" id="clipOverlayLabel" title="把 RAW 里已饱和的像素按通道标出（红/绿/蓝＝该通道溢出，白＝三通道全溢出）。这是解码证据，不随曝光滑条变化——用它判断该压 EV 还是收肩部。"><input type="checkbox" id="clipOverlayToggle">RAW 过曝</label>
+    <label class="previewToggle" id="clipOverlayLabel" title="标出 RAW 里达到满阱 97% 以上的像素（已溢出或即将溢出，色度退让区）：红/绿/蓝＝该通道，白＝三通道。旁边的硬剪切百分比是全尺寸统计。解码证据，不随曝光滑条变化。"><input type="checkbox" id="clipOverlayToggle">RAW 满阱</label>
     <span class="ctlFact" id="clipOverlayFact" style="margin:0"></span>
   </div>
   <details id="deliveryReport" style="display:none">
@@ -1790,15 +1790,30 @@ function setClipOverlayState(j){
   }
   CLIP_OVERLAY={has:true,b64:j.overlay,pct:j.clip_pct};
   t.disabled=false;lab.classList.remove("dim");
-  const p=j.clip_pct||{};
-  fact.textContent=j.overlay?("RAW 过曝 "+(+p.any).toFixed(2)+"%（R "+(+p.r).toFixed(1)+" · G "+(+p.g).toFixed(1)+" · B "+(+p.b).toFixed(1)+"）"):"RAW 无过曝像素";
+  const p=j.mask_pct||{};const h=j.hard_clip_pct||null;
+  const hard=h?("硬剪切 R "+(+h.r).toFixed(2)+" · G "+(+h.g).toFixed(2)+" · B "+(+h.b).toFixed(2)+"%"):"";
+  const mark=j.overlay?("标记区 "+(+p.any).toFixed(2)+"%（≥97% 满阱）"):"无 ≥97% 满阱像素";
+  fact.textContent=hard?(hard+" · "+mark):mark;
   applyClipOverlay();
 }
+let clipOverlayAbort=null;
 async function loadClipOverlay(body){
   // Evidence layer, decode-derived and WB-independent: one fetch per prepared
-  // entry, composited client-side over every live frame.
-  try{const j=await postJob("/clip-overlay",body);setClipOverlayState(j);}
-  catch(e){setClipOverlayState(null);}
+  // entry, composited client-side over every live frame. Latest wins (review
+  // R5 item 3): the request is bound to the preview session that issued it
+  // and aborts its predecessor, so a slow response for the previous file can
+  // never overwrite the layer of the file now on screen.
+  const session=PREVIEW_SESSION_ID;
+  if(clipOverlayAbort)clipOverlayAbort.abort();
+  const controller=new AbortController();clipOverlayAbort=controller;
+  try{
+    const j=await postJob("/clip-overlay",body,controller.signal);
+    if(controller.signal.aborted||session!==PREVIEW_SESSION_ID)return;
+    setClipOverlayState(j);
+  }catch(e){
+    if(e&&e.name==="AbortError")return;
+    if(session===PREVIEW_SESSION_ID)setClipOverlayState(null);
+  }finally{if(clipOverlayAbort===controller)clipOverlayAbort=null;}
 }
 $("#clipOverlayToggle").addEventListener("change",()=>{applyClipOverlay();saveSettings();});
 function setPreviewImage(b64, ondone){
