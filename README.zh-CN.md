@@ -47,8 +47,9 @@ Fujifilm Velvia 100（反转片）、Vision3 250D 影院放映外观（引用原
 色温、感色层分离前馈、显影曲线——颜色仍由 AgX 显影;它**不经过**相纸模拟。
 每款的默认观感另加两项**明确标注为编辑取向（非测量）**的声明：按胶卷口碑配对
 的分离强度倍率与 AgX 原色几何,两者都在界面可见、随时可改,且永远不会覆盖你
-亲手设置的值。**full（接管）模式**（`--film-mode full`,实验）才运行完整的
-因式分解光谱链——Stage A 观察者→层曝光→特性密度→B1→印相 timing→相纸显影→
+亲手设置的值。**full（接管）模式**（`--film-mode full`）才运行完整的
+因式分解光谱链——Stage A（3×3 观察者之上的色度场修正 LUT，每卷按 held-out
+交叉验证决定用场还是只保留 3×3）→层曝光→特性密度→B1→印相 timing→相纸显影→
 B2→灰阶中性化→可选参考印相外观层——没有单体、创意或不透明的 LUT：链被因式
 分解为可追溯的 B1/B2 插值资产（同一声明数据离线求解的 65³ 体积,不是手调
 观感）。层间放大与 reference recipe 只属于 full 模式。二十款胶卷与五款影院变体的完整清单见
@@ -78,16 +79,20 @@ CLI/API 默认保持 `technical`（脚本口径以测量链为基准）。
 |---|---|
 | ![off](docs/assets/film-tutorial/crop_crossover_verita_off.jpg) | ![datasheet](docs/assets/film-tutorial/crop_crossover_verita_datasheet.jpg) |
 
-实验性的胶片接管模式（full）不再是"逐通道曲线"的启发式：场景颜色经过受约束的
-观察者逆矩阵折算为三层乳剂曝光，过各层特性曲线进入**因式分解的印相链**——负片
-密度 → 相纸层曝光（B1）→ 印相 timing（τ）→ 相纸显影曲线 → 观看链（B2），印相
-介质、timing（固定/随胶片曝光重定时/自定义色头）、灰阶中性化、编辑显影配方、
-Film Compression 与模拟光学（颗粒/halation/bloom）都是这条链上可声明的真实状态；
-Ultra HDR 下它以"胶片印相 + scene HDR 扩展"参与（SDR 底图=胶片印相，参考白之上
-按场景高光平滑增益）。上图是它能渲染而调色滤镜渲染不出的东西——Verita 200D
+胶片接管模式（full）不再是"逐通道曲线"的启发式：场景颜色经过该卷的 Stage A——
+held-out 交叉验证选出的色度场修正 LUT，或在场没有胜出时的受约束 3×3 观察者——
+折算为三层乳剂曝光，过各层特性曲线进入**因式分解的印相链**——负片密度 → 相纸层
+曝光（B1）→ 印相 timing（τ）→ 相纸显影曲线 → 观看链（B2）。印相介质、印相 timing
+（固定 / 随胶片曝光重定时 / 自定义色头+印相曝光；重定时对全部负片可用，反转片没有
+印相环节一律固定）、灰阶中性化、编辑显影配方、Film Compression 与模拟光学
+（颗粒/halation/bloom）都是这条链上可声明的真实状态；链的光源假设固定为 D55——实测
+表明经白平衡后钨丝与高显色 LED 场景和日光同级，所以不设光源档。Ultra HDR 下它以
+"胶片印相 + scene HDR 扩展"参与（SDR 底图=胶片印相，参考白之上按场景高光平滑增益）。
+上图是它能渲染而调色滤镜渲染不出的东西——Verita 200D
 印相链按数据手册实测的**层间漂移**（crossover）：雕花木门与石阶的阴影转出绿青，
-白墙与受光的卵石地纹丝不动；全图亮度差中位数为 0。左边是默认的数字中性化变体
-（灰阶严格保持中性，即 `--film-neutralization bounded`），右边是数据手册原样。
+白墙与受光的卵石地纹丝不动；全图亮度差中位数为 0。左边是数字中性化变体（灰阶
+严格保持中性，`--film-neutralization technical-neutral`，CLI 默认；GUI 默认"跟随
+胶片解释"，由所选解释决定灰阶策略），右边是数据手册原样（`native`）。
 
 ## 功能
 
@@ -99,8 +104,10 @@ Ultra HDR 下它以"胶片印相 + scene HDR 扩展"参与（SDR 底图=胶片�
   方法。曝光、白平衡、高光处理、场景变换、镜前滤镜和胶片观察都可以明确选择。
 - **分别生成 SDR 与 HDR**：SDR 输出到 sRGB 或 Display P3；HDR 则从同一份场景图像
   重新显影，只使用 RAW 中未过曝高光真正支持的额外亮度。
-- **观察并复现实验**：本地图形界面和命令行使用同一套设置，诊断图与 CSV 报告让测量
-  结果可查、对照过程可复现；RAW 文件不会上传。
+- **观察并复现实验**：本地图形界面和命令行使用同一套设置。图形界面的"RAW 过曝"开关
+  把 RAW 里已饱和的像素按 CFA 通道标在预览上；命令行默认只打印写出的文件，完整分析
+  报告按需用 `--report` 打印（`--scan` / `--csv` 诊断运行自动附带），诊断图与 CSV 让
+  测量结果可查、对照过程可复现；RAW 文件不会上传。
 - **交付后再验证**：`archive` / `share` 档只改变编码，不改变成像。在 macOS 上，HDR
   可写成符合 ISO 21496-1 的增益图 JPEG 或 HEIC，随后回读检查颜色配置文件、增益图、
   文件声明的 HDR 余量和像素误差。
@@ -131,14 +138,23 @@ python -m dngscan.gui
 在浏览器中打开终端显示的本机地址（localhost）即可。可以先用 `EV 0`、`AgX`、`base` 原色、
 `camera` 白平衡和 `reconstruct` 高光处理，再根据照片本身调整。
 
+预览卡上的"RAW 过曝"开关把 RAW 里已饱和的像素按通道标在预览图上（红/绿/蓝＝该通道
+溢出，白＝三通道全溢出），旁边显示过曝像素占比。它来自解码证据，与白平衡无关，也不随
+EV 滑条变化——用它判断该压 EV 还是收肩部。Core Image 解码没有逐像素 CFA 证据，此时
+开关置灰并注明原因；需要特定环境或资产的选项都遵循这一规则。图形界面只出图，不显示
+分析报告。
+
 顶部的 RAW 入口使用浏览器原生文件选择器。选中的文件只会传给同一台电脑上的 localhost
 服务，并保存在进程级临时目录中；退出 AgXRAW 后临时副本会自动清理，不会发送到外部服务。
 
 ### 命令行
 
 ```bash
-# 默认 AgX JPEG
+# 默认 AgX JPEG（只打印写出的文件）
 python -m dngscan photo.dng --jpeg photo.jpg
+
+# 同时打印完整分析报告（证据、曲线端点、色彩矩阵健康度、Stage A 残差等）
+python -m dngscan photo.dng --jpeg photo.jpg --report
 
 # 高光重建 + Display P3
 python -m dngscan photo.dng --jpeg photo_p3.jpg \
@@ -148,14 +164,18 @@ python -m dngscan photo.dng --jpeg photo_p3.jpg \
 python -m dngscan photo.dng --jpeg photo_hdr.jpg \
   --output-format ultrahdr --hdr-headroom 3
 
-# RAW 分析图和 CSV
+# RAW 分析图和 CSV（诊断运行自动附带分析报告）
 python -m dngscan photo.dng --jpeg photo.jpg --scan --csv photo.csv
 
 # 对比实验性的 RAW 门控明暗压缩
 python -m dngscan photo.dng --jpeg photo_gated.jpg --tone-core gated
 
-# 使用胶片观察位置
+# 使用胶片观察位置（默认 observe：胶片声明观察者，AgX 显影）
 python -m dngscan photo.dng --jpeg photo_portra.jpg --film portra400
+
+# 胶片显影链整体接管，印相随胶片曝光重定时
+python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
+  --film-mode full --film-exposure 1 --film-print-timing retimed
 ```
 
 完整参数见 `python -m dngscan --help`。
@@ -225,6 +245,12 @@ flowchart TB
 6. **编码并检查成品。** SDR 直接写成普通 JPEG；HDR 则把两版图像装进带增益图的 JPEG
    或 HEIC，写完后重新打开，确认文件里的图像和 HDR 余量都符合预期。
 
+这套流程按两条路线推进。**路线一**只从相机数据编译 AgX / HDR 的参数与色彩处理许可，
+不逐机改写曲线：趾部由传感器信噪比给出的场景坐标决定，肩与白点来自可靠主体与高光
+尾部，色度处理的许可来自 CFA 剪切证据，HDR 余量取内容、显示与曲线三者的最小值，并分别
+带亮度与色度置信度。**路线二**是与相机无关、由公开光谱数据约束的虚拟胶片与印相链：
+它承认同色异谱的限制，忠实翻译声明观察者的报告，而不是"某台相机拍某卷胶片"的复刻。
+
 ## 与常见 RAW 处理流程的区别
 
 区别不在于少了多少按钮，而在于传感器数据从什么时候开始不再参与处理。
@@ -254,7 +280,7 @@ AgXRAW 目前不管理图库，也不做局部调整。这是现阶段产品的�
 [架构与技术细节](docs/ARCHITECTURE.zh-CN.md)（完整管线与每个环节的设计理由）·
 [工程决策记录](docs/ENGINEERING_NOTES.zh-CN.md)（问题、证据与解法的推理过程）·
 [设计合同](docs/FILM_OBSERVATION_PLAN.zh-CN.md)（胶片观察的生产合同与计算边界）·
-[胶片印相与模拟成像层计划](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md)（full v2 设计提案：曝光状态、印相、颗粒与 halation）
+[胶片印相与模拟成像层计划](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md)（full v2 合同与实施记录：曝光状态、印相、颗粒与 halation；已落地）
 
 ## 许可证
 

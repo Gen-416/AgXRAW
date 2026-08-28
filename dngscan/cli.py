@@ -80,6 +80,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="导出六面板诊断 PNG；纯 JPEG 转换默认不画图",
     )
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="打印完整分析报告（证据、曲线端点、色彩矩阵健康度、Stage A 残差等）；"
+        "默认只打印写出的文件。--scan/--csv 的诊断运行自动附带报告",
+    )
     parser.add_argument("--out", type=Path, default=None, help="诊断 PNG 输出路径；设置后隐含 --scan")
     parser.add_argument("--csv", type=Path, default=None, help="可选指标 CSV 路径")
     parser.add_argument(
@@ -371,9 +377,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "胶片分工模式（仅在胶片曲线激活时有意义）。observe=胶片声明观察者看见了"
             "什么（WB/分离/音调签名），颜色由 AgX 显影（默认，已验证路径）；"
-            "full=胶片显影模型整体接管（film v2 因式分解链：Stage A 解析——观察者"
-            "逆矩阵→三层乳剂→特性曲线→染料密度；Stage B——B1→印相 timing τ→"
-            "相纸显影曲线→B2 观看；实验性），AgX 只保留交付端色域安全。仅 AgX "
+            "full=胶片显影链整体接管（film v2 因式分解链：Stage A 观察者（3×3 或"
+            "色度场修正 LUT，按卷选定）→三层乳剂→特性曲线→染料密度；Stage B——B1→印相 timing τ→"
+            "相纸显影曲线→B2 观看），AgX 只保留交付端色域安全。仅 AgX "
             "tone core;色头在 --film-print-timing custom 下解锁(modelled Δτ);"
             "Ultra HDR 下 full 以\"胶片印相+scene HDR 扩展\"参与"
         ),
@@ -422,8 +428,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
         default=None,
         help=(
-            "film v2 灰阶中性化(与 timing 正交):technical-neutral=逐像素有界"
-            "数字中性(默认);print-balanced=只在 EV0 解常数 balance,保留灰阶"
+            "film v2 灰阶中性化(与 timing 正交;不指定时按 --film-appearance 解析:"
+            "technical→technical-neutral,reference/custom→print-balanced):technical-neutral=逐像素有界"
+            "数字中性;print-balanced=只在 EV0 解常数 balance,保留灰阶"
             "两端 crossover(参考印相推荐);native=不做校正,介质原样。"
             "bounded/datasheet 为弃用别名(=technical-neutral/native)。"
             "与已弃用的 --film-crossover 同时给出时硬失败"
@@ -1269,25 +1276,34 @@ def main(argv: list[str]) -> int:
                 chroma=args.chroma if jpeg_path is not None else "444",
             )
             write_csv(args.csv, row)
-        print_report(
-            bundle,
-            analysis,
-            out_path,
-            args.csv,
-            jpeg_path,
-            args.jpeg_quality,
-            RENDER_MODE if jpeg_path is not None else "",
-            jpeg_icc_embedded,
-            resolved_ev,
-            render_plan.tone if render_plan is not None else None,
-            jpeg_output_gamut,
-            auto_ev_result,
-            args.grade,
-            args.grade_strength,
-            args.scene_transform,
-            args.scene_transform_strength,
-            chroma=args.chroma if jpeg_path is not None else "444",
-        )
+        # The report is a standalone deliverable (owner 2026-08-27): a plain
+        # conversion prints the files it wrote and nothing else; the full
+        # analysis report comes with --report or with a diagnostic run
+        # (--scan / --csv), where it documents what the PNG/CSV contain.
+        if args.report or diagnostics_requested:
+            print_report(
+                bundle,
+                analysis,
+                out_path,
+                args.csv,
+                jpeg_path,
+                args.jpeg_quality,
+                RENDER_MODE if jpeg_path is not None else "",
+                jpeg_icc_embedded,
+                resolved_ev,
+                render_plan.tone if render_plan is not None else None,
+                jpeg_output_gamut,
+                auto_ev_result,
+                args.grade,
+                args.grade_strength,
+                args.scene_transform,
+                args.scene_transform_strength,
+                chroma=args.chroma if jpeg_path is not None else "444",
+            )
+        else:
+            for label, path in (("JPEG 图像", jpeg_path), ("PNG 图像", out_path)):
+                if path is not None:
+                    print(f"{label}: {path}")
         if jpeg_path is not None and is_hdr_output_format(args.output_format):
             container = "HEIC" if args.output_format == "ultrahdr-heic" else "JPEG"
             film_hdr = args.film_mode == "full" and args.film_curve != "none"
