@@ -547,3 +547,19 @@ class ColourHeadRangeTests(unittest.TestCase):
         self.assertIn("if(Number(el.value)>max){el.value=String(max);changed=true;}", body)
         self.assertIn('if(Math.max(Number($("#colorHeadY").value),Number($("#colorHeadM").value))>40)$("#colorHeadWide").checked=true;', PAGE)
         self.assertIn('colorHeadWide:$("#colorHeadWide").checked', PAGE)
+
+
+class ResetDefaultsButtonTests(unittest.TestCase):
+    def test_button_restores_served_defaults_and_reprepares(self) -> None:
+        # Owner 2026-08-28: one button, page-initial values (snapshot taken
+        # before localStorage replays), file path and folder kept, then a
+        # fresh prepare because decode-level settings may have moved.
+        self.assertIn('id="resetDefaults"', PAGE)
+        i = PAGE.index("const PAGE_DEFAULTS=new Map();")
+        self.assertLess(i, PAGE.index("restoreSettings();\n", i))
+        self.assertIn('const RESET_KEEP=new Set(["input","outdir"]);', PAGE)
+        body = PAGE[PAGE.index("function resetToDefaults"):PAGE.index('$("#resetDefaults").addEventListener')]
+        self.assertIn("saveSettings();", body)
+        self.assertIn('if($("#input").value.trim())preparePreview();', body)
+        self.assertIn('"updateFilmModeUi"', body)
+        self.assertIn('"updateDecoderUi"', body)
