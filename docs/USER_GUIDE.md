@@ -422,7 +422,7 @@ the Y/M filter settings on the colour head are that decision. Selecting any
 **negative** preset (Portra / Gold / Superia / the Vision3 family and so on)
 shows two sliders on the imaging card:
 
-- **Real darkroom units**: CC filter density, 0–200 in steps of 5; 30CC = 0.30
+- **Real darkroom units**: CC filter density, 0–200 in steps of 5 (the GUI slider covers the 0–40 working band by default; tick "色头量程扩展到 200 CC" to expose the full hardware travel); 30CC = 0.30
   optical density ≈ one stop of print-exposure attenuation for that separation.
   After a change the exposure time is re-solved darkroom-style, so mid-grey
   brightness does not move;
