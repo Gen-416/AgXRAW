@@ -531,3 +531,19 @@ class ReviewR7Tests(unittest.TestCase):
         body = body[: body.index('postJob("/export"')]
         self.assertIn("pj.runtime_export===false", body)
         self.assertIn("导出上下文", body)
+
+
+class ColourHeadRangeTests(unittest.TestCase):
+    def test_sliders_cover_the_working_band_with_an_opt_in_full_travel(self) -> None:
+        # Owner 2026-08-28: 0-40 CC by default (the 2-10 CC fine band with
+        # room), the 200 CC hardware travel behind a checkbox; a restored
+        # value above 40 widens the range rather than being clamped.
+        for cid in ("colorHeadY", "colorHeadM"):
+            self.assertRegex(PAGE, rf'id="{cid}" min="0" max="40" step="5"')
+        self.assertIn('id="colorHeadWide"', PAGE)
+        body = PAGE[PAGE.index("function applyColorHeadRange"):]
+        body = body[: body.index('$("#colorHeadWide").addEventListener')]
+        self.assertIn("const max=wide?200:40;", body)
+        self.assertIn("if(Number(el.value)>max){el.value=String(max);changed=true;}", body)
+        self.assertIn('if(Math.max(Number($("#colorHeadY").value),Number($("#colorHeadM").value))>40)$("#colorHeadWide").checked=true;', PAGE)
+        self.assertIn('colorHeadWide:$("#colorHeadWide").checked', PAGE)

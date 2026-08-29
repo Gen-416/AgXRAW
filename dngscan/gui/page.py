@@ -372,12 +372,13 @@ FILM_CURVE_OPTIONS
   <div class="row" id="colorHeadBlock" style="margin-top:12px">
     <div class="sliderField">
       <div class="labelRow"><label title="放大机色头 Y 滤镜，CC 档位。成片偏黄就加 Y。仅负片；full 模式需 timing=自定义。">色头 Y（黄）</label><span class="val" id="colorHeadYVal">0</span></div>
-      <input type="range" id="colorHeadY" min="0" max="200" step="5" value="0" title="向右加黄滤镜档位：成片去黄（偏蓝）。0=预设的中性印相决定。">
+      <input type="range" id="colorHeadY" min="0" max="40" step="5" value="0" title="向右加黄滤镜档位：成片去黄（偏蓝）。0=预设的中性印相决定。默认量程 0–40 CC（精修区），勾选扩展到硬件全程 200。">
     </div>
     <div class="sliderField">
       <div class="labelRow"><label title="放大机色头 M 滤镜，CC 档位。成片偏品就加 M。仅负片；full 模式需 timing=自定义。">色头 M（品）</label><span class="val" id="colorHeadMVal">0</span></div>
-      <input type="range" id="colorHeadM" min="0" max="200" step="5" value="0" title="向右加品滤镜档位：成片去品（偏绿）。0=预设的中性印相决定。">
+      <input type="range" id="colorHeadM" min="0" max="40" step="5" value="0" title="向右加品滤镜档位：成片去品（偏绿）。0=预设的中性印相决定。默认量程 0–40 CC（精修区），勾选扩展到硬件全程 200。">
     </div>
+    <label class="previewToggle" id="colorHeadWideLabel" style="flex-basis:100%" title="色头滑条默认只走 0–40 CC：实际精修在 2–10 CC，30 CC 起已是粗调；硬件拨轮的 200 CC 全程只在需要时展开。"><input type="checkbox" id="colorHeadWide">色头量程扩展到 200 CC</label>
     <div class="ctlFact" id="colorHeadHint" style="flex-basis:100%"></div>
   </div>
   <div class="row" id="filmModeRow" style="margin-top:12px;display:none">
@@ -1086,7 +1087,7 @@ function saveSettings(){
     hdrHeadroom:$("#hdrHeadroom").value,outdir:$("#outdir").value,png:$("#png").checked,
     hdrRho:$("#hdrRho").value,hdrWhiteMargin:$("#hdrWhiteMargin").value,hdrShoulderStart:$("#hdrShoulderStart").value,
     filmInterimageBeta:$("#filmInterimageBeta").value,
-    clipOverlay:$("#clipOverlayToggle").checked,
+    clipOverlay:$("#clipOverlayToggle").checked,colorHeadWide:$("#colorHeadWide").checked,
     filmDevelopment:$("#filmDevelopment").value,filmDevContrast:$("#filmDevContrast").value,
     filmDevFog:$("#filmDevFog").value,filmDevDensity:$("#filmDevDensity").value,
     filmCompression:$("#filmCompression").value,filmCompressionKnee:$("#filmCompressionKnee").value,
@@ -1187,6 +1188,10 @@ function restoreSettings(){
   if(s.outdir)$("#outdir").value=s.outdir;
   if(s.png!==undefined)$("#png").checked=MATPLOTLIB_AVAILABLE&&!!s.png;
   if(s.clipOverlay!==undefined)$("#clipOverlayToggle").checked=!!s.clipOverlay;
+  if(s.colorHeadWide!==undefined)$("#colorHeadWide").checked=!!s.colorHeadWide;
+  // a restored value above the working band widens the range instead of clamping it
+  if(Math.max(Number($("#colorHeadY").value),Number($("#colorHeadM").value))>40)$("#colorHeadWide").checked=true;
+  applyColorHeadRange();
   for(const id of ["filmDevelopment","filmDevContrast","filmDevFog","filmDevDensity","filmCompression","filmCompressionKnee","filmHighlightDensity","filmMediaScatter","filmOpticsSeed","coreimageScale","clipMargin"]){
     if(s[id]!==undefined&&s[id]!==null){const el=$("#"+id);if(el&&(el.tagName!=="SELECT"||[...el.options].some(o=>o.value===String(s[id]))))el.value=s[id];}
   }
@@ -1533,6 +1538,15 @@ function updateColorHeadUi(){
   setColorHeadLabels();
 }
 ["colorHeadY","colorHeadM"].forEach(id=>$("#"+id).oninput=()=>{setColorHeadLabels();saveSettings();scheduleLivePreview();});
+function applyColorHeadRange(){
+  // Owner 2026-08-28: the last 80% of the 200 CC hardware travel is never
+  // used in practice and made one 5 CC detent a hair's width on the slider;
+  // the default range is the 0-40 CC working band, the full travel opt-in.
+  const wide=$("#colorHeadWide").checked;const max=wide?200:40;let changed=false;
+  for(const id of ["colorHeadY","colorHeadM"]){const el=$("#"+id);el.max=String(max);if(Number(el.value)>max){el.value=String(max);changed=true;}}
+  setColorHeadLabels();return changed;
+}
+$("#colorHeadWide").addEventListener("change",()=>{const changed=applyColorHeadRange();saveSettings();if(changed)scheduleLivePreview();});
 function setFilmDevLabels(){
   const f=(id,d)=>{const el=$("#"+id);const v=$("#"+id+"Val");if(el&&v)v.textContent=Number(el.value).toFixed(d);};
   f("filmDevContrast",2);f("filmDevFog",2);f("filmDevDensity",2);f("filmCompression",2);f("filmCompressionKnee",2);f("filmHighlightDensity",2);
