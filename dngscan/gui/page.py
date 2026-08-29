@@ -642,6 +642,7 @@ GRADE_OPTIONS
   <div class="actions">
     <button class="go" id="go">导出</button>
     <button class="ghost" id="revealBtn" style="display:none">在 Finder 显示</button>
+    <button class="ghost" id="resetDefaults" title="把全部调整恢复到页面初始状态（自适应默认）；文件路径与输出文件夹保留。">恢复默认</button>
     <span class="previewLive" id="previewLiveBadge">实时 · PREVIEW_LONG_EDGEpx</span>
     <label class="previewToggle" id="clipOverlayLabel" title="标出 RAW 里达到满阱 97% 以上的像素（已溢出或即将溢出，色度退让区）：红/绿/蓝＝该通道，白＝三通道。旁边的硬剪切百分比是全尺寸统计。解码证据，不随曝光滑条变化。"><input type="checkbox" id="clipOverlayToggle">RAW 满阱</label>
     <span class="ctlFact" id="clipOverlayFact" style="margin:0"></span>
@@ -1587,6 +1588,26 @@ $("#punch").oninput=()=>{setPunchLabel();saveSettings();scheduleLivePreview();};
 });
 $("#endpointMode").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#sceneTransformStrength").oninput=()=>{setSceneTransformStrengthLabel();saveSettings();scheduleLivePreview();};
+// Owner 2026-08-28: one button returns every control to the page's initial
+// state. The snapshot is taken BEFORE restoreSettings replays localStorage, so
+// "默认" means the served defaults, not whatever the last session left behind.
+const PAGE_DEFAULTS=new Map();
+const RESET_KEEP=new Set(["input","outdir"]);
+for(const el of document.querySelectorAll("input,select")){
+  if(!el.id||RESET_KEEP.has(el.id))continue;
+  PAGE_DEFAULTS.set(el.id,(el.type==="checkbox"||el.type==="radio")?el.checked:el.value);
+}
+function resetToDefaults(){
+  for(const [id,v] of PAGE_DEFAULTS){const el=$("#"+id);if(!el)continue;
+    if(el.type==="checkbox"||el.type==="radio")el.checked=v;else el.value=v;}
+  delete $("#toneCore").dataset.librawValue;
+  for(const fn of ["applyColorHeadRange","setEvLabel","setHdrLabel","setGradeStrengthLabel","setSceneTransformStrengthLabel","setPunchLabel","setAdjustmentLabels","setColorHeadLabels","setFilmExposureLabel","setFilmPrintExposureLabel","setFilmOpticsLabels","setFilmAppearanceLabels","setFilmDevLabels","updateGradeUi","updateSceneTransformUi","updateToneCoreUi","updateDecoderUi","updateFormatUi","updateFilmModeUi","updateColorHeadUi","updateHdrOptionGate","updateInterimageBetaUi"]){
+    const f=window[fn]||(typeof eval(fn)==="function"?eval(fn):null);if(typeof f==="function"){try{f();}catch(e){}}
+  }
+  saveSettings();setStatus("已恢复默认设置","");
+  if($("#input").value.trim())preparePreview();
+}
+$("#resetDefaults").addEventListener("click",resetToDefaults);
 restoreSettings();
 if(CORE_DEPS_MISSING.length){
   // rawpy/numpy/Pillow are hard dependencies of every path: say so on the
