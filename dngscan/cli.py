@@ -630,6 +630,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--chroma-nr",
+        type=float,
+        default=0.0,
+        metavar="0..1",
+        help=(
+            "仅色度降噪(数字化修复,默认0=严格恒等):在声明的传感器像素频带"
+            "(8-128px)内收缩低频色斑,亮度与更细的彩色噪点按构造不动——保留"
+            "的传感器噪声是诚实纹理,这里只清除 CFA 采样工件级的色块。"
+            "v1 仅 SDR 路径;HDR 导出遇非零值失闭拒绝"
+        ),
+    )
+    parser.add_argument(
         "--film-optics-seed",
         default="auto",
         metavar="N|auto",
@@ -1144,6 +1156,7 @@ def main(argv: list[str]) -> int:
                 film_optics_seed=args.film_optics_seed,
                 film_media_scatter=args.film_media_scatter,
                 film_interimage_beta_dial=args.film_interimage_beta,
+                chroma_nr=args.chroma_nr,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
             )
@@ -1200,6 +1213,7 @@ def main(argv: list[str]) -> int:
                 film_optics_seed=args.film_optics_seed,
                 film_media_scatter=args.film_media_scatter,
                 film_interimage_beta_dial=args.film_interimage_beta,
+                chroma_nr=args.chroma_nr,
                 endpoint_mode=args.endpoint_mode,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,

@@ -515,6 +515,9 @@ def jpeg_tone_plan_cn(
             if rho > 0.0:
                 state += f"·高光色密度ρ={rho:.2f}"
             state += "；"
+        _nr = float(getattr(plan, "chroma_nr", 0.0) or 0.0)
+        if _nr > 0.0:
+            state += f"色度NR {_nr:.2f}(数字化修复:8-128px色斑,亮度不动)；"
         if str(getattr(plan, "film_interimage", "declared") or "declared") != "declared":
             beta = 0.0
         else:
@@ -646,6 +649,11 @@ def jpeg_tone_plan_cn(
             mode, mode
         )
         extras = []
+        if float(getattr(plan, "chroma_nr", 0.0) or 0.0) > 0.0:
+            extras.append(
+                f"色度NR={float(plan.chroma_nr):.2f}"
+                "(数字化修复:8-128px色斑,亮度不动)"
+            )
         if abs(plan.pivot_ev_offset) > 1e-3:
             extras.append(f"pivot={plan.pivot_ev_offset:+.2f}EV")
         if abs(plan.hue_restore - 0.6) > 1e-3:
