@@ -408,11 +408,13 @@ def _prepare_spatial_pass1(
     clip_masks: Any,
     h: int,
     w: int,
+    chroma_map: Any = None,
 ) -> tuple:
     """Pass 1 of the §9.3 band pipeline: build the FilmSpatialContext from
-    the band-streamed area-decimated post-intent scene (retreat included,
-    matching what the film core sees per band). Returns (ctx, band_chunk)
-    where band_chunk is row-aligned flat pixels per sequential band."""
+    the band-streamed area-decimated post-intent scene (retreat and, when
+    engaged, the chroma-NR correction included — matching what the film
+    core sees per band). Returns (ctx, band_chunk) where band_chunk is
+    row-aligned flat pixels per sequential band."""
     from .film_develop import prepare_film_spatial
     from .film_optics import area_decimate_rows, spread_grid_shape, light_source
 
@@ -455,6 +457,12 @@ def _prepare_spatial_pass1(
                 rec = retreat_engine.apply_clip_retreat_rec2020(
                     rec, clip_masks[s0:e0], retreat_strength
                 )
+            if chroma_map is not None:
+                from .chroma_nr import apply_chroma_correction_flat
+
+                rec = apply_chroma_correction_flat(
+                    rec, chroma_map, s0, e0, h, w
+                )
             # Light-transport sources see the non-negative part only — the
             # same boundary apply_film_core's full-frame oracle declares.
             light = light_source(rec)
@@ -472,6 +480,63 @@ def _prepare_spatial_pass1(
             )
         del scene_dec
     return ctx, band_rows * w
+
+
+def _prepare_chroma_nr_map(
+    bundle: RawBundle,
+    tone_plan: Any,
+    color_plan: Any,
+    flat_scene: Any,
+    clip_masks: Any,
+    h: int,
+    w: int,
+    film_full: bool,
+    scene_transform: str,
+    scene_transform_strength: float,
+    wb_adapt: Any,
+) -> Any:
+    """Pass 0: the chroma-NR correction map, or None when the dial is 0.
+
+    Walks the scene once in row bands, mirroring EXACTLY the per-chunk
+    preprocessing of the path it serves (intent -> transform when not
+    film-full -> clip retreat), area-decimates the SIGNED result onto the
+    spread grid and hands it to chroma_nr.chroma_correction_map. Runs
+    BEFORE the film spatial pass so the halation/bloom sources read the
+    corrected scene — the operators must not disagree about the same
+    photograph."""
+    amount = float(getattr(tone_plan, "chroma_nr", 0.0) or 0.0)
+    if amount <= 0.0:
+        return None
+    from .chroma_nr import chroma_correction_map
+    from .film_optics import area_decimate_rows, spread_grid_shape
+
+    dh, dw = spread_grid_shape(h, w)
+    acc = np.zeros((dh, dw, 3), dtype=np.float64)
+    band = _optics_band_rows(w)
+    retreat_strength = (
+        float(color_plan.raw_clip_retreat_strength)
+        if color_plan is not None else 0.0
+    )
+    for y0 in range(0, h, band):
+        y1 = min(y0 + band, h)
+        s0, e0 = y0 * w, y1 * w
+        rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
+        if not film_full:
+            rec = scene_transform_engine.apply_scene_transform_rec2020(
+                rec, scene_transform, scene_transform_strength, wb_adapt
+            )
+        if clip_masks is not None and retreat_strength > 0.0:
+            rec = retreat_engine.apply_clip_retreat_rec2020(
+                rec, clip_masks[s0:e0], retreat_strength
+            )
+        area_decimate_rows(
+            np.asarray(rec, dtype=np.float32).reshape(-1, w, 3),
+            y0, h, w, dh, dw, acc,
+        )
+    factor = max(h, w) / max(max(dh, dw), 1)
+    return chroma_correction_map(
+        acc.astype(np.float32), amount, decimation_factor=factor
+    )
 
 
 def scene_render_to_display_linear(
@@ -519,6 +584,10 @@ def scene_render_to_display_linear(
         str(getattr(tone_plan, "film_mode", "observe")) == "full"
         and str(getattr(tone_plan, "curve_preset", "none")) != "none"
     )
+    chroma_map = _prepare_chroma_nr_map(
+        bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w,
+        film_full, scene_transform, scene_transform_strength, wb_adapt,
+    )
     spatial_ctx = None
     if _film_spatial_engaged(tone_plan):
         # §9.3: sequential row-band spatial path. Pass 1 area-decimates the
@@ -527,7 +596,8 @@ def scene_render_to_display_linear(
         # full-frame oracle would build — seams exact, no full-resolution
         # convolution, extra working set bounded by the budget tier.
         spatial_ctx, chunk = _prepare_spatial_pass1(
-            bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w
+            bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w,
+            chroma_map=chroma_map,
         )
     halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
     if halo_rows > 0:
@@ -557,6 +627,12 @@ def scene_render_to_display_linear(
                 rec,
                 clip_masks[starte:ende],
                 float(color_plan.raw_clip_retreat_strength),
+            )
+        if chroma_map is not None:
+            from .chroma_nr import apply_chroma_correction_flat
+
+            rec = apply_chroma_correction_flat(
+                rec, chroma_map, starte, ende, h, w
             )
         if spatial_ctx is not None:
             from .film_develop import apply_film_core
@@ -806,6 +882,10 @@ def render_output_u8(
         str(getattr(effective_tone, "film_mode", "observe")) == "full"
         and str(getattr(effective_tone, "curve_preset", "none")) != "none"
     )
+    chroma_map = _prepare_chroma_nr_map(
+        bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w,
+        film_full, scene_transform, scene_transform_strength, wb_adapt,
+    )
     spatial_ctx = None
     spatial_chunk = 0
     if _film_spatial_engaged(effective_tone):
@@ -813,7 +893,8 @@ def render_output_u8(
         # band branch below replaces the worker pool (band = quantize group,
         # dither RNG consumed in deterministic call order).
         spatial_ctx, spatial_chunk = _prepare_spatial_pass1(
-            bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w
+            bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w,
+            chroma_map=chroma_map,
         )
 
     halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
@@ -843,6 +924,12 @@ def render_output_u8(
         ):
             rec = retreat_engine.apply_clip_retreat_rec2020(
                 rec, sample_masks, float(color_plan.raw_clip_retreat_strength)
+            )
+        if chroma_map is not None:
+            from .chroma_nr import apply_chroma_correction_flat
+
+            rec = apply_chroma_correction_flat(
+                rec, chroma_map, starte, ende, h, w
             )
         if spatial_ctx is not None:
             from .film_develop import apply_film_core

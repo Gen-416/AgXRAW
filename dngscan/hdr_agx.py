@@ -272,6 +272,15 @@ def scene_render_to_hdr_display_linear(
             "HDR AgX formation 不支持胶片接管显影（film_mode=full）计划："
             "接管链的 HDR 走 render_ultrahdr_film_pair 的印相+增益扩展"
         )
+    if float(getattr(source_tone, "chroma_nr", 0.0) or 0.0) > 0.0:
+        # v1 boundary, refused rather than ignored (the exporter's own
+        # policy for SDR-only operators): the AgX HDR formation has no
+        # chroma-NR pre-pass yet, so an SDR leg with the repair and an HDR
+        # leg without it would disagree about the same photograph. The film
+        # pair is unaffected — its two legs derive from ONE render.
+        raise RuntimeError(
+            "chroma_nr 尚未接入 AgX HDR formation（v1 仅 SDR）：HDR 导出请置 0"
+        )
 
     # HdrColorGeometry is the source of truth for the HDR branch. The values currently
     # start from shared scene intent, but both the tone object and geometry are HDR-owned.
@@ -509,6 +518,12 @@ def render_ultrahdr_agx_pair(
         raise RuntimeError(
             "Ultrahdr AgX pair 不支持胶片接管显影（film_mode=full）："
             "SDR 腿是接管 LUT、HDR 腿是 AgX formation，两种显影不能拼进同一个 gain-map"
+        )
+    if float(getattr(plan.tone, "chroma_nr", 0.0) or 0.0) > 0.0:
+        # v1 boundary (see scene_render_to_hdr_display_linear): the pair's
+        # two formations would disagree about the repaired scene.
+        raise RuntimeError(
+            "chroma_nr 尚未接入 Ultrahdr AgX pair（v1 仅 SDR）：HDR 导出请置 0"
         )
 
     effective_plan = plan_with_look_overrides(plan, "none", 1.0)
