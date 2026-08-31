@@ -321,7 +321,11 @@ def _optics_budget_mib() -> int:
 # against a context that had quietly outgrown the tier is the exact failure
 # this constant exists to prevent, and the independent-process RSS gate is
 # what caught it, at 810 MiB against a 608 MiB allowance.
-_OPTICS_FIXED_MIB = 72 + 160 + 48
+# P5f adds the halation fine-source accumulators to the pass A working set:
+# one float32 spread-grid map per component with a nonzero transfer (two in
+# the shipped asset; the zero-transfer aura pays nothing) — ~67 MiB at the
+# 2048 grid, freed when finish_maps builds the spread.
+_OPTICS_FIXED_MIB = 72 + 160 + 48 + 68
 
 
 def _optics_band_rows(width: int) -> int:

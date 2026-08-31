@@ -431,7 +431,8 @@ class FilmSpatialContext:
     __slots__ = (
         "height", "width", "optics", "grain", "halation", "bloom", "seed",
         "hal_map", "hal_ref", "bloom_map", "geometry", "bloom_fine",
-        "hal_fine", "hal_prep", "spread_shape", "media_scatter",
+        "hal_fine", "hal_prep", "hal_gate_floor", "spread_shape",
+        "media_scatter",
     )
 
     def __init__(self, height: int, width: int, plan: Any) -> None:
@@ -462,6 +463,7 @@ class FilmSpatialContext:
         self.bloom_fine = None
         self.hal_fine = None
         self.hal_prep = None
+        self.hal_gate_floor = 0.0
         self.spread_shape = (0, 0)
         # Orientation-aware centered gate mapping (review batch 13): portrait
         # images use the 24x36 rotated gate and non-3:2 aspects letterbox
@@ -590,6 +592,13 @@ class FilmSpatialContext:
         shape = spread_grid_shape(self.height, self.width)
         if shape == (self.height, self.width):
             return
+        components = self.optics.stock.halation.components
+        active = [
+            float(np.abs(np.asarray(comp.transfer)).sum()) > 0.0
+            for comp in components
+        ]
+        if not any(active):
+            return  # nothing to spread: the classic all-zero map is exact
         self.spread_shape = shape
         self.hal_prep = self._hal_prep_from(plan, preset)
         # float32 accumulators, one per component with any transfer at all
@@ -598,16 +607,53 @@ class FilmSpatialContext:
         # each decimated cell integrates only a handful of gated source
         # pixels.
         self.hal_fine = [
-            (np.zeros(shape + (3,), dtype=np.float32)
-             if float(np.abs(np.asarray(comp.transfer)).sum()) > 0.0 else None)
-            for comp in self.optics.stock.halation.components
+            (np.zeros(shape + (3,), dtype=np.float32) if on else None)
+            for on in active
         ]
+        # Row-candidate floor (P5f perf): the full-resolution gate costs
+        # ~18 s/61 MP frame if every pixel runs Stage A, and almost every
+        # pixel is nowhere near a gate that opens at >= 3.2 EV over grey.
+        # A row whose brightest CHANNEL cannot reach the lowest gate under
+        # a provable upper bound is skipped whole, byte-identically (the
+        # smootherstep is exactly 0 below t0). The bound, for non-negative
+        # scene rows S: every post-compression channel <= max_c(S)
+        # (film_compression_ev: gain <= 1, and the rho step is a convex
+        # blend toward its own luminance, which max_c bounds), the signed
+        # observer product e_c <= sum_j max(A_cj, 0) * max_c(S), and the
+        # chroma field multiplies by at most 2^max(0, LUT max). Signed
+        # callers stay safe: sum_j max(A,0)*S_j <= posrow * max(mx, 0).
+        from .film_v2_math import SCENE_MID
+
+        stock, ev_offset = self.hal_prep[0], self.hal_prep[1]
+        obs = np.asarray(stock["observer"], dtype=np.float64)
+        mid = np.maximum(obs @ np.full(3, SCENE_MID), 1e-12)
+        posrow = np.clip(obs, 0.0, None).sum(axis=1)
+        lut = stock.get("chroma_delta_lut")
+        d_max = (
+            float(max(np.asarray(lut, dtype=np.float64).max(), 0.0))
+            if lut is not None else 0.0
+        )
+        t0min = min(
+            float(np.asarray(comp.gate_ev, dtype=np.float64)[:, 0].min())
+            for comp, on in zip(components, active) if on
+        )
+        bound = max(float((posrow / mid).max()), 1e-12)
+        self.hal_gate_floor = float(
+            2.0 ** (t0min - ev_offset - d_max) / bound * (1.0 - 1e-3)
+        )
 
     def accumulate_halation_source(self, scene_rows: Any, y0: int, y1: int) -> None:
         """Gate rows [y0, y1) at FULL resolution and area-decimate each
         component's transferred source into its accumulator. Runs inside
         pass A's own band loop on the same light_source rows the bloom fine
-        rung reads; deterministic in any band split (area_decimate_rows)."""
+        rung reads; deterministic in any band split (area_decimate_rows).
+
+        Only rows holding a CANDIDATE pixel — one whose brightest channel
+        clears the provable hal_gate_floor bound (see begin) — pay for
+        Stage A: below the floor every gate is exactly 0 and the row's
+        contribution is exactly zero, so skipping it is byte-identical.
+        Measured: the unmasked gate cost ~18 s per 61 MP frame; a frame
+        with no gated highlights now pays one max+compare per pixel."""
         if self.hal_fine is None:
             return
         from .film_optics import area_decimate_rows, halation_component_source
@@ -615,18 +661,31 @@ class FilmSpatialContext:
         rows = np.asarray(scene_rows, dtype=np.float32).reshape(
             y1 - y0, self.width, 3
         )
-        e_lin = self._layer_exposure_f32(rows, self.hal_prep)
+        hot = (
+            rows.max(axis=2) >= np.float32(self.hal_gate_floor)
+        ).any(axis=1)
+        if not hot.any():
+            return
+        idx = np.flatnonzero(hot)
+        splits = np.flatnonzero(np.diff(idx) > 1)
+        starts = np.concatenate(([0], splits + 1))
+        ends = np.concatenate((splits, [idx.size - 1]))
         ref = np.ones(3, dtype=np.float32)
         dh, dw = self.spread_shape
-        for acc, comp in zip(
-            self.hal_fine, self.optics.stock.halation.components
-        ):
-            if acc is None:
-                continue
-            src = halation_component_source(e_lin, ref, comp)
-            area_decimate_rows(src, y0, self.height, self.width, dh, dw, acc)
-            del src
-        del e_lin
+        for s, e in zip(starts, ends):
+            r0, r1 = int(idx[s]), int(idx[e]) + 1
+            e_lin = self._layer_exposure_f32(rows[r0:r1], self.hal_prep)
+            for acc, comp in zip(
+                self.hal_fine, self.optics.stock.halation.components
+            ):
+                if acc is None:
+                    continue
+                src = halation_component_source(e_lin, ref, comp)
+                area_decimate_rows(
+                    src, y0 + r0, self.height, self.width, dh, dw, acc
+                )
+                del src
+            del e_lin
 
     def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
         """Pass A: build the halation spread on the decimated grid.
@@ -662,9 +721,17 @@ class FilmSpatialContext:
                 rgb_dec.reshape(-1, 3), self.bloom_map, 0, dhh, dhh, dww,
                 self.optics.capture_bloom, self.bloom,
             ).reshape(dhh, dww, 3)
-        prep = self.hal_prep if self.hal_prep is not None else (
-            self._hal_prep_from(plan, preset)
-        )
+        prep = self._hal_prep_from(plan, preset)
+        if self.hal_prep is not None:
+            # The fine accumulators were gated with begin's parameters; a
+            # finish against a different plan/preset would silently mix two
+            # exposure coordinates in one map. _load_v2 caches per preset,
+            # so the stock compares by identity.
+            if self.hal_prep[0] is not prep[0] or self.hal_prep[1:] != prep[1:]:
+                raise ValueError(
+                    "halation fine source was prepared against a different "
+                    "plan/preset than finish_maps received"
+                )
         # The gate reference is UNITY (review 2026-08-10 F1). layer_log_
         # exposure is already neutral-anchored — it divides by observer@0.18 —
         # so e_lin is in multiples of the grey layer exposure and carries
@@ -1419,6 +1486,8 @@ def apply_film_core(
                     ctx.finish_maps(scene_dec, plan, preset)
                 del scene_dec
                 ctx.bloom_fine = None
+                ctx.hal_fine = None
+                ctx.hal_prep = None
             spatial = (ctx, 0, h)
     return _apply_film_core_v2(rgb, plan, preset, spatial)
 

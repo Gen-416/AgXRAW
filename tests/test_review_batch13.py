@@ -251,6 +251,8 @@ if ctx is not None:
     acc = np.zeros((dh, dw, 3), dtype=np.float64)
     # P3: ONE scene pass feeds both operators — the capture bloom's finest
     # rung at full resolution, the halation source from the decimated result.
+    # P5f: the halation fine-source accumulators (full-resolution gate) are
+    # part of the measured spatial peak, so the mirror includes them.
     ctx.begin_bloom_source()
     ctx.begin_halation_source(plan, "portra400")
     for y0 in range(0, h, band_rows):
