@@ -409,9 +409,15 @@ class FilmSpatialContext:
        and the grain realization. GRAIN needs nothing further: it samples
        the cached master integral by phase at apply time.
     2. ``finish_maps(decimated_scene, ...)`` — PASS A, and it now serves
-       HALATION ONLY. Its source is pre-emulsion scene exposure, genuinely
-       low-frequency, so the decimated proxy is the right domain. A
-       bloom-only render skips this phase entirely.
+       HALATION ONLY. Its SPREAD is pre-emulsion scene exposure, genuinely
+       low-frequency, so the decimated grid is the right domain for the
+       blur. A bloom-only render skips this phase entirely. The GATE is
+       only decimated while the grid resolves the sources: when the spread
+       grid is smaller than the image, ``begin_halation_source(plan,
+       preset)`` -> ``accumulate_halation_source(rows, y0, y1)`` per band
+       gate at FULL resolution first (P5f — the same non-commutation
+       lesson as the bloom rung below), and finish_maps blurs the
+       accumulated sources instead of re-gating the proxy.
     3. ``begin_bloom_source()`` -> ``accumulate_bloom_source(rows, y0, y1)``
        per band -> ``finish_bloom_map(scene_dec)`` — the CAPTURE BLOOM's
        scale space. Its finest rung is gated at FULL resolution inside pass
@@ -425,7 +431,7 @@ class FilmSpatialContext:
     __slots__ = (
         "height", "width", "optics", "grain", "halation", "bloom", "seed",
         "hal_map", "hal_ref", "bloom_map", "geometry", "bloom_fine",
-        "spread_shape", "media_scatter",
+        "hal_fine", "hal_prep", "spread_shape", "media_scatter",
     )
 
     def __init__(self, height: int, width: int, plan: Any) -> None:
@@ -454,6 +460,8 @@ class FilmSpatialContext:
         self.hal_ref = None
         self.bloom_map = None
         self.bloom_fine = None
+        self.hal_fine = None
+        self.hal_prep = None
         self.spread_shape = (0, 0)
         # Orientation-aware centered gate mapping (review batch 13): portrait
         # images use the 24x36 rotated gate and non-3:2 aspects letterbox
@@ -504,32 +512,144 @@ class FilmSpatialContext:
             self.mm_per_px(),
         )
 
-    def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
-        """Pass A: build the halation spread from the decimated post-intent
-        scene. Halation's source is PRE-emulsion LAYER exposure, a genuinely
-        low-frequency quantity, so the decimated proxy is the right domain.
-
-        The scene is carried all the way to layer exposure here — compression,
-        observer, film exposure state and anchor — rather than collapsed to
-        one photometric luminance. R1 §5.2: a saturated blue source has a low
-        Y and an enormous blue-layer exposure, and a luminance gate simply
-        cannot see it.
-
-        Called AFTER ``finish_bloom_map`` when both are engaged: the glow is
-        part of the light the emulsion receives, so the halation source has to
-        read the bloomed scene or the two operators disagree about the same
-        photograph.
-        """
-        from .film_optics import halation_spread_map
-        from .film_v2_math import (
-            film_compression_ev,
-            stage_a_log_exposure,
+    @staticmethod
+    def _hal_prep_from(plan: Any, preset: str) -> tuple:
+        """The layer-exposure parameters halation sources are built with —
+        computed once, shared by the fine full-resolution path and the
+        decimated proxy so the two grids cannot drift apart."""
+        stock, _media = _load_v2(preset)
+        return (
+            stock,
+            float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
+            + float(stock["anchor"]),
+            float(getattr(plan, "film_compression", 0.0) or 0.0),
+            _compression_knee(plan),
+            float(getattr(plan, "film_highlight_density", 0.0) or 0.0),
         )
 
-        dh, dw = rgb_dec.shape[:2]
+    @staticmethod
+    def _layer_exposure_f32(rgb: Any, prep: tuple) -> Any:
+        """LINEAR layer exposure of an [n, w, 3] block, float32.
+
+        The scene is carried all the way to layer exposure — compression,
+        observer, film exposure state and anchor — rather than collapsed to
+        one photometric luminance. R1 §5.2: a saturated blue source has a
+        low Y and an enormous blue-layer exposure, and a luminance gate
+        simply cannot see it.
+
+        Row slabs, and the result kept in float32. The whole-grid float64
+        chain (scene, its logE and its linearisation) is three 67 MiB
+        buffers alive at once on a 2048-wide spread grid, which is the same
+        shape of peak review batch 13 charged against the tier — and the
+        float64 precision buys nothing for a quantity that goes straight
+        into a gate and a blur.
+        """
+        from .film_v2_math import film_compression_ev, stage_a_log_exposure
+
+        stock, ev_offset, compression, knee, rho = prep
+        n, w = rgb.shape[:2]
+        e_lin = np.empty((n, w, 3), dtype=np.float32)
+        slab = max(1, 2_000_000 // max(w, 1))
+        for r0 in range(0, n, slab):
+            r1 = min(r0 + slab, n)
+            part = rgb[r0:r1].reshape(-1, 3).astype(np.float64)
+            if compression > 0.0:
+                part = film_compression_ev(
+                    part, impact=compression, knee_ev=knee,
+                    highlight_color_density=rho,
+                )
+            # Same layer-exposure coordinate the emulsion sees (R1 §3.1), so
+            # the spatial source moves with the film exposure exactly as the
+            # density does. The two must not be able to disagree.
+            log_e = stage_a_log_exposure(part, stock) + ev_offset * _LOG10_2
+            e_lin[r0:r1] = np.power(10.0, log_e).reshape(r1 - r0, w, 3)
+            del part, log_e
+        return e_lin
+
+    def begin_halation_source(self, plan: Any, preset: str) -> None:
+        """Open the halation fine-source accumulators (P5f).
+
+        Engaged only when halation is on AND the spread grid is decimated:
+        the source GATE then runs at FULL resolution inside pass A's band
+        loop, and only the SPREAD stays on the decimated grid. Same
+        non-commutation lesson as the bloom fine rung: the gate is a
+        smootherstep on log exposure, so a sub-cell source averaged into a
+        decimated cell falls below the gate before the map ever sees it —
+        while the reinject's pointwise subtraction still charges it at full
+        resolution. Measured (2026-08-31, +6.5 EV 1-px source at 7x
+        decimation): 100% of the given energy destroyed, the source pixel
+        down 7.7%/3.0% of its own R/G layer exposure at amount 1, no halo
+        anywhere. At identity grids the decimated gate IS the full-
+        resolution gate, so the classic path stands byte-identical and
+        previews stay unexpanded.
+        """
         if self.halation <= 0.0:
             return
-        if self.bloom > 0.0 and self.bloom_map is not None:
+        from .film_optics import spread_grid_shape
+
+        shape = spread_grid_shape(self.height, self.width)
+        if shape == (self.height, self.width):
+            return
+        self.spread_shape = shape
+        self.hal_prep = self._hal_prep_from(plan, preset)
+        # float32 accumulators, one per component with any transfer at all
+        # (the default asset's aura row is all zero — nothing to spread, so
+        # no grid is paid for it). Same precision argument as bloom_fine:
+        # each decimated cell integrates only a handful of gated source
+        # pixels.
+        self.hal_fine = [
+            (np.zeros(shape + (3,), dtype=np.float32)
+             if float(np.abs(np.asarray(comp.transfer)).sum()) > 0.0 else None)
+            for comp in self.optics.stock.halation.components
+        ]
+
+    def accumulate_halation_source(self, scene_rows: Any, y0: int, y1: int) -> None:
+        """Gate rows [y0, y1) at FULL resolution and area-decimate each
+        component's transferred source into its accumulator. Runs inside
+        pass A's own band loop on the same light_source rows the bloom fine
+        rung reads; deterministic in any band split (area_decimate_rows)."""
+        if self.hal_fine is None:
+            return
+        from .film_optics import area_decimate_rows, halation_component_source
+
+        rows = np.asarray(scene_rows, dtype=np.float32).reshape(
+            y1 - y0, self.width, 3
+        )
+        e_lin = self._layer_exposure_f32(rows, self.hal_prep)
+        ref = np.ones(3, dtype=np.float32)
+        dh, dw = self.spread_shape
+        for acc, comp in zip(
+            self.hal_fine, self.optics.stock.halation.components
+        ):
+            if acc is None:
+                continue
+            src = halation_component_source(e_lin, ref, comp)
+            area_decimate_rows(src, y0, self.height, self.width, dh, dw, acc)
+            del src
+        del e_lin
+
+    def finish_maps(self, rgb_dec: Any, plan: Any, preset: str) -> None:
+        """Pass A: build the halation spread on the decimated grid.
+
+        Halation's SPREAD is genuinely low-frequency, so the decimated grid
+        is the right domain for the blur. The GATE is only allowed there
+        while the grid resolves the sources: when the spread grid is
+        decimated, the per-component sources arrive from the full-resolution
+        accumulators instead (begin/accumulate_halation_source above), and
+        this method only adds the bloom correction and blurs.
+
+        Called AFTER ``finish_bloom_map`` when both are engaged: the glow is
+        part of the light the emulsion receives, so the halation source has
+        to read the bloomed scene or the two operators disagree about the
+        same photograph.
+        """
+        from .film_optics import halation_spread_map
+
+        if self.halation <= 0.0:
+            return
+        rgb_raw_dec = rgb_dec
+        bloomed = self.bloom > 0.0 and self.bloom_map is not None
+        if bloomed:
             # The halation source must read the scene the emulsion actually
             # gets, which by P3's ordering already carries the glow. Reading
             # the raw scene here would let a source bright enough to bloom
@@ -542,36 +662,9 @@ class FilmSpatialContext:
                 rgb_dec.reshape(-1, 3), self.bloom_map, 0, dhh, dhh, dww,
                 self.optics.capture_bloom, self.bloom,
             ).reshape(dhh, dww, 3)
-        stock, _media = _load_v2(preset)
-        ev_offset = (
-            float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
-            + float(stock["anchor"])
+        prep = self.hal_prep if self.hal_prep is not None else (
+            self._hal_prep_from(plan, preset)
         )
-        compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
-        knee = _compression_knee(plan)
-        rho = float(getattr(plan, "film_highlight_density", 0.0) or 0.0)
-        # Row slabs, and the result kept in float32. The whole-grid float64
-        # chain (decimated scene, its logE and its linearisation) is three
-        # 67 MiB buffers alive at once on a 2048-wide spread grid, which is
-        # the same shape of peak review batch 13 charged against the tier —
-        # and the float64 precision buys nothing for a quantity that goes
-        # straight into a gate and a blur.
-        e_lin = np.empty((dh, dw, 3), dtype=np.float32)
-        slab = max(1, 2_000_000 // max(dw, 1))
-        for r0 in range(0, dh, slab):
-            r1 = min(r0 + slab, dh)
-            part = rgb_dec[r0:r1].reshape(-1, 3).astype(np.float64)
-            if compression > 0.0:
-                part = film_compression_ev(
-                    part, impact=compression, knee_ev=knee,
-                    highlight_color_density=rho,
-                )
-            # Same layer-exposure coordinate the emulsion sees (R1 §3.1), so
-            # the spatial source moves with the film exposure exactly as the
-            # density does. The two must not be able to disagree.
-            log_e = stage_a_log_exposure(part, stock) + ev_offset * _LOG10_2
-            e_lin[r0:r1] = np.power(10.0, log_e).reshape(r1 - r0, dw, 3)
-            del part, log_e
         # The gate reference is UNITY (review 2026-08-10 F1). layer_log_
         # exposure is already neutral-anchored — it divides by observer@0.18 —
         # so e_lin is in multiples of the grey layer exposure and carries
@@ -584,9 +677,61 @@ class FilmSpatialContext:
         # fixed gates: more exposure, more halation, like the material.
         self.hal_ref = np.ones(3, dtype=np.float32)
         _, _, geo_w_mm, _ = self.geometry.region()
-        self.hal_map = halation_spread_map(
-            e_lin, self.hal_ref, geo_w_mm, self.optics.stock.halation
+        hal = self.optics.stock.halation
+        if self.hal_fine is None:
+            self.hal_map = halation_spread_map(
+                self._layer_exposure_f32(
+                    np.asarray(rgb_dec, dtype=np.float32), prep
+                ),
+                self.hal_ref, geo_w_mm, hal,
+            )
+            return
+        # P5f fine path. The accumulators hold the full-resolution gated
+        # transferred sources, decimated — but UN-bloomed: the glow map does
+        # not exist while pass A streams the rows. The bloom enters as a
+        # decimated-grid CORRECTION, gate(bloomed proxy) - gate(un-bloomed
+        # proxy): it vanishes exactly where only the fine gate resolves the
+        # source (both proxy terms sit under the gate) and restores the
+        # classic bloomed behaviour for sources the proxy resolves. It is
+        # non-negative because the glow only adds light and the transferred
+        # gated source is monotone in each layer's exposure; the clamp
+        # guards float noise only. Residual approximation, accepted: a
+        # sub-cell source lifted ACROSS the gate by glow alone is gated
+        # here at proxy resolution, second-order because glow is itself a
+        # decimated-grid quantity.
+        from .film_optics import (
+            halation_component_source,
+            halation_spread_map_from_sources,
         )
+
+        if bloomed:
+            e_lin = self._layer_exposure_f32(
+                np.asarray(rgb_dec, dtype=np.float32), prep
+            )
+            e_lin_raw = self._layer_exposure_f32(
+                np.asarray(rgb_raw_dec, dtype=np.float32), prep
+            )
+        else:
+            e_lin = e_lin_raw = None
+        sources: list = []
+        for acc, comp in zip(self.hal_fine, hal.components):
+            if acc is None:
+                sources.append(None)
+                continue
+            if e_lin_raw is not None:
+                corr = halation_component_source(e_lin, self.hal_ref, comp)
+                corr -= halation_component_source(
+                    e_lin_raw, self.hal_ref, comp
+                )
+                np.maximum(corr, np.float32(0.0), out=corr)
+                acc += corr
+                del corr
+            sources.append(acc)
+        self.hal_map = halation_spread_map_from_sources(
+            sources, geo_w_mm, hal, self.spread_shape
+        )
+        self.hal_fine = None
+        self.hal_prep = None
 
     def begin_bloom_source(self) -> None:
         """Open the capture bloom's finest detection scale.
@@ -1266,6 +1411,11 @@ def apply_film_core(
                     ctx.accumulate_bloom_source(light, 0, h)
                     ctx.finish_bloom_map(scene_dec)
                 if ctx.halation > 0.0:
+                    # P5f fine source, same call order as the renderer's
+                    # pass A (one band spanning the frame — the decimated
+                    # accumulation is band-split invariant by contract).
+                    ctx.begin_halation_source(plan, preset)
+                    ctx.accumulate_halation_source(light, 0, h)
                     ctx.finish_maps(scene_dec, plan, preset)
                 del scene_dec
                 ctx.bloom_fine = None

@@ -985,6 +985,59 @@ def halation_pointwise_return(
     return out
 
 
+def halation_component_source(
+    e_lin: np.ndarray, e_ref: np.ndarray, comp
+) -> np.ndarray:
+    """One component's TRANSFERRED gated source A_i @ U_i, at the resolution
+    of `e_lin` — the quantity the spread blurs and the pointwise return
+    subtracts. Factored out (P5f) so the fine-source path can gate at FULL
+    resolution and area-decimate the result, while the classic path gates
+    the decimated proxy directly: same maths, different grid.
+
+    Transfer FIRST, then blur (in the caller). The same kernel is applied to
+    every channel, so the channel mix and the convolution commute — and doing
+    the mix on the source costs one buffer instead of one per scale.
+    """
+    e = np.asarray(e_lin, dtype=np.float32)
+    u = halation_layer_gate(e, e_ref, comp.gate_ev)
+    u *= e
+    return (u.reshape(-1, 3) @ comp.transfer.astype(np.float32).T).reshape(
+        e.shape
+    )
+
+
+def halation_spread_map_from_sources(
+    sources,
+    geometry_w_mm: float,
+    halation: HalationAsset,
+    grid_hw: tuple[int, int],
+) -> np.ndarray:
+    """Blur per-component transferred sources into the spread map.
+
+    `sources` aligns with `halation.components`; each entry is that
+    component's A_i @ U_i on the (dh, dw) grid, or None for a component
+    whose transfer is zero everywhere (nothing to spread). Consumed lazily
+    so the classic path keeps one component's source alive at a time.
+    """
+    dh, dw = grid_hw
+    px_per_mm = dw / max(geometry_w_mm, 1e-9)
+    out = np.zeros((dh, dw, 3), dtype=np.float32)
+    for comp, u in zip(halation.components, sources):
+        if u is None:
+            continue
+        r0 = max(comp.radius_mm * px_per_mm, 0.35)
+        # Exponential-tail cascade approximated by three Gaussians whose
+        # weights sum to 1, so a uniform source spreads to itself and the
+        # residual is exactly zero on a flat field.
+        for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
+            blurred = _blur_bounded(u, r0 * scale)
+            blurred *= np.float32(wgt)
+            out += blurred
+            del blurred
+        del u
+    return out
+
+
 def halation_spread_map(
     e_lin_dec: np.ndarray,
     e_ref: np.ndarray,
@@ -1003,31 +1056,18 @@ def halation_spread_map(
     one from a white source: the tight component returns red AND green, the
     wide one returns almost only red. A single radius with a fixed weight
     vector can only make the same colour at every distance.
+
+    Gating the DECIMATED proxy is exact only while the proxy resolves the
+    source (P5f): the renderer switches to full-resolution gating via
+    halation_component_source + area decimation whenever the spread grid is
+    smaller than the image — see FilmSpatialContext.begin_halation_source.
     """
     e = np.asarray(e_lin_dec, dtype=np.float32)
     dh, dw = e.shape[:2]
-    px_per_mm = dw / max(geometry_w_mm, 1e-9)
-    out = np.zeros((dh, dw, 3), dtype=np.float32)
-    for comp in halation.components:
-        u = halation_layer_gate(e, e_ref, comp.gate_ev)
-        u *= e
-        r0 = max(comp.radius_mm * px_per_mm, 0.35)
-        # Transfer FIRST, then blur. The same kernel is applied to every
-        # channel, so the channel mix and the convolution commute — and doing
-        # the mix on the source costs one buffer instead of one per scale.
-        u = (u.reshape(-1, 3) @ comp.transfer.astype(np.float32).T).reshape(
-            dh, dw, 3
-        )
-        # Exponential-tail cascade approximated by three Gaussians whose
-        # weights sum to 1, so a uniform source spreads to itself and the
-        # residual is exactly zero on a flat field.
-        for scale, wgt in ((0.5, 0.55), (1.0, 0.30), (2.0, 0.15)):
-            blurred = _blur_bounded(u, r0 * scale)
-            blurred *= np.float32(wgt)
-            out += blurred
-            del blurred
-        del u
-    return out
+    return halation_spread_map_from_sources(
+        (halation_component_source(e, e_ref, comp) for comp in halation.components),
+        geometry_w_mm, halation, (dh, dw),
+    )
 
 
 def halation_reinject_rows(

@@ -252,10 +252,12 @@ if ctx is not None:
     # P3: ONE scene pass feeds both operators — the capture bloom's finest
     # rung at full resolution, the halation source from the decimated result.
     ctx.begin_bloom_source()
+    ctx.begin_halation_source(plan, "portra400")
     for y0 in range(0, h, band_rows):
         y1 = min(y0 + band_rows, h)
         rows = flat[y0*w:y1*w]
         ctx.accumulate_bloom_source(rows, y0, y1)
+        ctx.accumulate_halation_source(rows, y0, y1)
         area_decimate_rows(rows.reshape(-1, w, 3), y0, h, w, dh, dw, acc)
     scene_dec = acc.astype(np.float32)
     del acc

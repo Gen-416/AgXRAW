@@ -504,10 +504,12 @@ def measure_perf(stock: str, megapixels: float = 61.0) -> dict:
             dh, dw = spread_grid_shape(h, w)
             acc = np.zeros((dh, dw, 3), dtype=np.float64)
             ctx.begin_bloom_source()
+            ctx.begin_halation_source(plan, stock)
             for y0 in range(0, h, band):
                 y1 = min(y0 + band, h)
                 rows = rows_for(y0, y1)
                 ctx.accumulate_bloom_source(rows, y0, y1)
+                ctx.accumulate_halation_source(rows, y0, y1)
                 area_decimate_rows(
                     rows.reshape(y1 - y0, w, 3), y0, h, w, dh, dw, acc
                 )

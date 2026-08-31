@@ -436,6 +436,13 @@ def _prepare_spatial_pass1(
             if color_plan is not None else 0.0
         )
         ctx.begin_bloom_source()
+        # P5f: when the spread grid is decimated, the halation source gate
+        # runs at full resolution in this same loop (see
+        # FilmSpatialContext.begin_halation_source); at identity grids this
+        # opens nothing and finish_maps keeps the classic decimated gate.
+        ctx.begin_halation_source(
+            tone_plan, str(getattr(tone_plan, "curve_preset", "") or "")
+        )
         for y0 in range(0, h, band_rows):
             y1 = min(y0 + band_rows, h)
             s0, e0 = y0 * w, y1 * w
@@ -448,6 +455,7 @@ def _prepare_spatial_pass1(
             # same boundary apply_film_core's full-frame oracle declares.
             light = light_source(rec)
             ctx.accumulate_bloom_source(light, y0, y1)
+            ctx.accumulate_halation_source(light, y0, y1)
             area_decimate_rows(light, y0, h, w, dh, dw, acc)
         scene_dec = acc.astype(np.float32)
         del acc
