@@ -416,6 +416,11 @@ class ToneCompressionPlan:
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0
+    # Chroma-only NR (digitization repair, chroma_nr.py): removes low-
+    # frequency colour mottle in a declared sensor-pixel band, luminance and
+    # fine chroma speckle untouched by construction. 0 (default) is a strict
+    # identity fast path. SDR paths only in v1; HDR entries refuse it.
+    chroma_nr: float = 0.0
     # Which endpoint policy compiled black_ev / white_ev. "adaptive" (default) follows
     # the scene body/tail percentiles exactly as before; "evidence" pins the black
     # endpoint to the measured sensor noise floor (prior read-noise when the sensor

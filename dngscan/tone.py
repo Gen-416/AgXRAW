@@ -910,6 +910,7 @@ def build_render_plan(
     film_optics_seed: int = 0,
     film_media_scatter: str = "declared",
     film_interimage_beta_dial: float | None = None,
+    chroma_nr: float = 0.0,
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
     # Full-mode input-domain normalization also lives HERE so hand callers of
@@ -976,6 +977,14 @@ def build_render_plan(
         endpoint_mode=endpoint_mode,
         rec2020_sample=rec2020_sample,
     )
+    # Chroma-only NR (digitization repair, chroma_nr.py): a universal scene
+    # dial, stamped before any film branch — the mottle is a sensor artefact
+    # and exists whether or not a film chain follows. Fail-closed domain.
+    chroma_nr_value = float(chroma_nr or 0.0)
+    if not (math.isfinite(chroma_nr_value) and 0.0 <= chroma_nr_value <= 1.0):
+        raise ValueError(f"chroma_nr={chroma_nr!r} 域为 [0, 1]")
+    if chroma_nr_value > 0.0:
+        tone = replace(tone, chroma_nr=chroma_nr_value)
     if film_curve != "none":
         from dataclasses import replace as _replace
 
