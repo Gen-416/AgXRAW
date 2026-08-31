@@ -177,8 +177,11 @@ def _form_hdr_chunk(
                 raise fast_backend.NativeKernelError(str(exc)) from exc
     inset, pre_hue = agx_engine.prepare_formation(intent_rec, hdr_tone_plan, inset_matrix)
     # The HDR plan is a replace() of the film plan so curve_preset rides along;
-    # the retired channel-ratio machinery no longer exists in either dispatcher,
-    # and exposure-dependent film colour (the colour head) is SDR/observe-side.
+    # the retired channel-ratio machinery no longer exists in either dispatcher.
+    # The observe-mode film colour (colour head) is applied in formation_tail
+    # below, mirroring the SDR order — an earlier comment here claimed it was
+    # "SDR/observe-side only", contradicting the very tail that applies it
+    # (review batch 21).
     native_table, reference_table = curve_tables
     native_formation = native_table.apply(inset)
 
@@ -256,6 +259,19 @@ def scene_render_to_hdr_display_linear(
     source_tone = plan.tone if isinstance(plan, RenderPlan) else plan
     if str(getattr(source_tone, "tone_core", "agx")) != "agx":
         raise RuntimeError("HDR AgX 仅支持 tone_core=agx；不能把其他 SDR tone core 标成 HDR AgX")
+    if (
+        str(getattr(source_tone, "film_mode", "observe")) == "full"
+        and str(getattr(source_tone, "curve_preset", "none")) != "none"
+    ):
+        # Review batch 21: same kernel-level defence the pair entry carries —
+        # a full+preset plan renders through the takeover film chain in SDR,
+        # while this path is AgX formation; rendering it here would ship an
+        # "HDR of a different developer" behind the film plan's name. Film
+        # HDR has its own honest path (render_ultrahdr_film_pair).
+        raise RuntimeError(
+            "HDR AgX formation 不支持胶片接管显影（film_mode=full）计划："
+            "接管链的 HDR 走 render_ultrahdr_film_pair 的印相+增益扩展"
+        )
 
     # HdrColorGeometry is the source of truth for the HDR branch. The values currently
     # start from shared scene intent, but both the tone object and geometry are HDR-owned.

@@ -482,6 +482,7 @@ def scene_render_to_display_linear(
     filter_strength: float = 1.0,
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
+    analysis: Analysis | None = None,
 ) -> Any:
     """Scene-linear -> display-linear through agx, gated, lum, or neutral.
 
@@ -501,7 +502,13 @@ def scene_render_to_display_linear(
     if color_plan is not None and getattr(bundle, "clip_masks", None) is not None:
         clip_masks = retreat_engine.clip_masks_for_shape(bundle, (h, w)).reshape(-1, 3)
         if str(getattr(tone_plan, "tone_core", "agx")) == "gated":
-            raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w))
+            # Review batch 21 item 5: same evidence as the streaming u8 path
+            # below — without the analysis the gated guidance builds against
+            # metadata white and no sensor-SNR prior, so a linear render that
+            # ran first diverged from the u8 render of the same plan.
+            raw_guidance = guidance_engine.raw_guidance_for_shape(
+                bundle, (h, w), analysis
+            )
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
     # Input-domain contract: normalized at the parameter sources (CLI/GUI via
@@ -635,6 +642,10 @@ def render_output_linear(
         raise ValueError("色度 look 与输出滤镜不能同时启用")
     if analysis is None:
         raise ValueError("AgX 导出需要分析结果")
+    # API note (review batch 21): this fallback builds a PLAIN plan — film,
+    # development and optics declarations cannot be expressed through this
+    # entry's kwargs. A caller wanting the film chain must compile its own
+    # plan via build_render_plan and pass it as tone_plan.
     plan = tone_plan if tone_plan is not None else build_render_plan(
         bundle,
         analysis,
@@ -655,6 +666,7 @@ def render_output_linear(
         filter_strength,
         scene_transform,
         scene_transform_strength,
+        analysis=analysis,
     )
     color_plan = effective_plan.color if isinstance(effective_plan, RenderPlan) else None
     return finalize_output_linear(agx_linear, output_gamut, look, look_strength, color_plan)
@@ -686,6 +698,10 @@ def render_output_u8(
         raise ValueError("色度 look 与输出滤镜不能同时启用")
     if analysis is None:
         raise ValueError("AgX 导出需要分析结果")
+    # API note (review batch 21): this fallback builds a PLAIN plan — film,
+    # development and optics declarations cannot be expressed through this
+    # entry's kwargs. A caller wanting the film chain must compile its own
+    # plan via build_render_plan and pass it as tone_plan.
     plan = tone_plan if tone_plan is not None else build_render_plan(
         bundle,
         analysis,

@@ -244,7 +244,11 @@ class Analysis:
     health_hist_empty_pct: float = float("nan")
 
 
-@dataclass
+# frozen (review batch 21): compiled plans are cached and shared across
+# preview/export/HDR consumers; a stray attribute write on a cached plan
+# would silently change every later render of the same key. All production
+# mutation already went through dataclasses.replace.
+@dataclass(frozen=True)
 class ToneCompressionPlan:
     target_gamut: str
     luma_p1: float

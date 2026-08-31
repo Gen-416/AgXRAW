@@ -270,9 +270,21 @@ def compile_hdr_agx_plan(
     # zero white tangent, per-piece monotonicity). Disabling HDR there would be the least
     # faithful choice on offer and a discontinuity in an otherwise continuous control.
     from .drt import c1_value_and_derivative_at_ev
+    from .hdr_curve import body_brightness_power
+
+    # The body the shoulder anchors to must be the body that renders — which
+    # since review batch 21 includes the SDR view-brightness power (see
+    # body_brightness_power). Chain rule keeps the C1 join exact: the solver
+    # only ever sees the composed function.
+    _bright_p = body_brightness_power(formation)
 
     def _body_anchor(ev: float) -> tuple[float, float]:
-        return c1_value_and_derivative_at_ev(ev, formation)
+        value, slope = c1_value_and_derivative_at_ev(ev, formation)
+        if _bright_p != 1.0:
+            base = max(float(value), 1e-12)
+            value = base ** _bright_p
+            slope = float(slope) * _bright_p * base ** (_bright_p - 1.0)
+        return value, slope
 
     segments = (
         compile_hdr_shoulder(

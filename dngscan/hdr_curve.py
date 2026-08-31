@@ -25,6 +25,39 @@ from .models import HdrShoulderSegment, HdrToneCurve
 _EPS = np.float32(1e-12)
 
 
+def body_brightness_power(formation: Any) -> float:
+    """The SDR view-brightness display power the HDR body must share.
+
+    Review batch 21 item 1: apply_formation_curve raises the SDR rendition to
+    look_brightness_power(view_brightness) (both branches — the encoded-domain
+    power commutes with the display gamma), while the HDR body ran the bare C1
+    curve. For an Ultrahdr pair that difference is not a look, it is a defect:
+    below the join the HDR rendition must EQUAL the SDR base, or the gain map
+    encodes the whole brightness lift as "HDR renders darker" (the dark-scene
+    auto reaches view_brightness ~1.3). The power therefore joins the body
+    definition itself — evaluation here, and the shoulder solve's knee anchor
+    in compile_hdr_agx_plan — so the C1 join and the headroom semantics above
+    the knee are preserved. Film plans neutralize view_brightness to 1.0 at
+    preset compile, so the film pair path is untouched by construction. The
+    1e-6 deadband mirrors the SDR gate exactly, keeping brightness-1 plans
+    byte-identical."""
+    from .agx import look_brightness_power
+
+    brightness = max(1e-9, float(getattr(formation, "view_brightness", 1.0)))
+    if abs(brightness - 1.0) <= 1e-6:
+        return 1.0
+    return float(look_brightness_power(brightness))
+
+
+def _apply_body_brightness(body: Any, formation: Any) -> Any:
+    power = body_brightness_power(formation)
+    if power == 1.0:
+        return body
+    return np.power(
+        np.maximum(body, np.float32(0.0)), np.float32(power)
+    ).astype(np.float32, copy=False)
+
+
 def _hermite_stops(ev: Any, segments: tuple[HdrShoulderSegment, ...]) -> Any:
     """Output stops for every sample, selecting the owning segment per element."""
     e = np.asarray(ev, dtype=np.float32)
@@ -85,7 +118,9 @@ def apply_hdr_curve(
     rgb = np.asarray(scene_rgb, dtype=np.float32)
     ev = np.log2(np.maximum(rgb, _EPS) / np.float32(SCENE_MIDGRAY))
     params = body_params if body_params is not None else curve_params_from_plan(formation)
-    body = apply_c1_endpoints(ev, formation, params=params)
+    body = _apply_body_brightness(
+        apply_c1_endpoints(ev, formation, params=params), formation
+    )
 
     segments = tone.shoulder_segments
     if not segments:
@@ -118,7 +153,9 @@ def apply_hdr_curve_pair(
     rgb = np.asarray(scene_rgb, dtype=np.float32)
     ev = np.log2(np.maximum(rgb, _EPS) / np.float32(SCENE_MIDGRAY))
     params = body_params if body_params is not None else curve_params_from_plan(formation)
-    body = apply_c1_endpoints(ev, formation, params=params)
+    body = _apply_body_brightness(
+        apply_c1_endpoints(ev, formation, params=params), formation
+    )
 
     segments = tone.shoulder_segments
     if not segments:
