@@ -917,6 +917,16 @@ def build_render_plan(
     # (review batch 10; the CLI and GUI already normalize at their sources).
     from .scene_transform import effective_scene_transform
 
+    # Review batch 21: film_mode=full with no preset used to fall through the
+    # film branch entirely — a silent plain render behind a name that claimed
+    # the takeover chain (the GUI guards this at its own source; the CLI and
+    # the Python API reach here unguarded, same class as the tone-core
+    # mismatch guard below).
+    if str(film_mode) == "full" and str(film_curve or "none") == "none":
+        raise ValueError(
+            "胶片接管显影（film_mode=full）需要一个胶片曲线预设：无预设时不存在"
+            "可接管的胶片链；请用 --film/--film-curve 选择，或改用 observe 模式"
+        )
     scene_transform = effective_scene_transform(scene_transform, film_mode, film_curve)
     tone_core = tone_core if tone_core in TONE_CORE_CHOICES else "agx"
     lum_norm = lum_norm if lum_norm in LUM_NORM_CHOICES else "y"
@@ -1185,6 +1195,20 @@ def build_render_plan(
         )
 
         process = film_process(film_curve)
+        # Review batch 21: an explicit print medium is validated at COMPILE
+        # time against the stock's baked media, not first at the pixel path —
+        # a typo'd --film-print-medium used to survive plan build and export
+        # naming, then fail mid-render with the same message this raises now.
+        _requested_medium = str(getattr(tone, "film_print_medium", "") or "")
+        if _requested_medium and process != "reversal":
+            from .film_develop import _load_v2 as _load_v2_for_medium
+
+            _st, _media = _load_v2_for_medium(film_curve)
+            if _requested_medium not in _media:
+                raise ValueError(
+                    f"'{film_curve}' 未烘焙印相介质 '{_requested_medium}'"
+                    f"（可用：{'/'.join(_st['media'])}）"
+                )
         # Canonical policy names (plan §8): the internal crossover switch
         # keeps its historical off/print/datasheet values, the PLAN records
         # what they mean.
@@ -1221,7 +1245,15 @@ def build_render_plan(
             FilmPrintPlan(
                 medium_id=(
                     "reversal_direct" if process == "reversal"
-                    else (str(getattr(tone, "film_print_medium", "")) or "print_paper")
+                    # Review batch 21: the runtime resolves an unset medium to
+                    # the STOCK's declared default (film_develop reads
+                    # stock["default_medium"]); a hardcoded "print_paper" here
+                    # made the audit plan name a medium the pixels never used
+                    # for any stock whose default differs.
+                    else (
+                        str(getattr(tone, "film_print_medium", ""))
+                        or _default_medium_for(film_curve)
+                    )
                 ),
                 timing_policy=str(getattr(tone, "film_print_timing", "fixed")),
                 neutralization_policy=neutralization,

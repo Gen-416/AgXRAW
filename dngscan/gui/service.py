@@ -933,6 +933,12 @@ def _preview_pixel_key(
         # accidentally sharing frames across decoder/cache versions.
         _cache_float(getattr(bundle, "scene_scale", 1.0)),
         str(getattr(bundle, "scene_decoder_runtime", "") or ""),
+        # Review batch 21: the optics budget tier picks the spread-grid size
+        # and the film-optics band height, both of which change rendered
+        # bytes when the spatial optics engage — the export fingerprint
+        # already carries it; a preview cached under the other tier must not
+        # be served as this one.
+        _optics_budget_mib_for_fingerprint(),
     )
 
 
@@ -2126,11 +2132,18 @@ def export_plan_fingerprint(**params: object) -> str:
     path and silently overwrite each other. The fingerprint closes that gap:
     identical parameters keep an identical name (re-exporting the same recipe
     intentionally replaces the file), any differing parameter changes it.
+
+    Review batch 21: the INPUT is one of those parameters — the output name
+    only carries the stem, so two different RAWs sharing a stem (memory-card
+    counter resets are routine) exported with the same recipe used to
+    overwrite each other; callers pass the resolved path and file size. Also
+    widened 6 -> 12 hex: 24 bits reaches birthday-collision territory within
+    a few thousand recipes, and a collision here IS a silent overwrite.
     """
     canonical = "\0".join(f"{key}={params[key]!r}" for key in sorted(params))
     import hashlib
 
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:6]
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
 
 
 def _cached_full_analysis(
@@ -2466,6 +2479,8 @@ def run_export(params: dict) -> dict:
         film_highlight_density=film_highlight_density,
     )
     fingerprint = export_plan_fingerprint(
+        input_path=str(inp.resolve()),
+        input_size=int(inp.stat().st_size),
         wb=wb,
         ev=float(ev),
         highlight=highlight,
