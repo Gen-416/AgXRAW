@@ -321,7 +321,11 @@ def _optics_budget_mib() -> int:
 # against a context that had quietly outgrown the tier is the exact failure
 # this constant exists to prevent, and the independent-process RSS gate is
 # what caught it, at 810 MiB against a 608 MiB allowance.
-_OPTICS_FIXED_MIB = 72 + 160 + 48
+# P5f adds the halation fine-source accumulators to the pass A working set:
+# one float32 spread-grid map per component with a nonzero transfer (two in
+# the shipped asset; the zero-transfer aura pays nothing) — ~67 MiB at the
+# 2048 grid, freed when finish_maps builds the spread.
+_OPTICS_FIXED_MIB = 72 + 160 + 48 + 68
 
 
 def _optics_band_rows(width: int) -> int:
@@ -436,6 +440,13 @@ def _prepare_spatial_pass1(
             if color_plan is not None else 0.0
         )
         ctx.begin_bloom_source()
+        # P5f: when the spread grid is decimated, the halation source gate
+        # runs at full resolution in this same loop (see
+        # FilmSpatialContext.begin_halation_source); at identity grids this
+        # opens nothing and finish_maps keeps the classic decimated gate.
+        ctx.begin_halation_source(
+            tone_plan, str(getattr(tone_plan, "curve_preset", "") or "")
+        )
         for y0 in range(0, h, band_rows):
             y1 = min(y0 + band_rows, h)
             s0, e0 = y0 * w, y1 * w
@@ -448,6 +459,7 @@ def _prepare_spatial_pass1(
             # same boundary apply_film_core's full-frame oracle declares.
             light = light_source(rec)
             ctx.accumulate_bloom_source(light, y0, y1)
+            ctx.accumulate_halation_source(light, y0, y1)
             area_decimate_rows(light, y0, h, w, dh, dw, acc)
         scene_dec = acc.astype(np.float32)
         del acc
