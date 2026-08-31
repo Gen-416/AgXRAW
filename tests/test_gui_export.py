@@ -67,13 +67,20 @@ class ExportSuffixTests(unittest.TestCase):
         )
         same = export_plan_fingerprint(**base)
         self.assertEqual(same, export_plan_fingerprint(**base))
-        self.assertEqual(len(same), 6)
+        # 12 hex = 48 bits (review batch 21): 6 hex was birthday-collision
+        # territory within a few thousand recipes, and a collision here is a
+        # silent overwrite.
+        self.assertEqual(len(same), 12)
         for key, value in (
             ("film_curve", "velvia100"),   # 不同曲线预设的 observe 输出
             ("wb", "5500k"),
             ("ev", 0.7),
             ("lens_filter", "85b"),
             ("adjustments", (0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+            # review batch 21: two different RAWs sharing a stem must not
+            # share an output path
+            ("input_path", "/somewhere/else/DSC0001.ARW"),
+            ("input_size", 123456789),
         ):
             changed = dict(base); changed[key] = value
             self.assertNotEqual(

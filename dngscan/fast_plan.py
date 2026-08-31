@@ -23,6 +23,10 @@ from .models import ToneCompressionPlan
 # v8 (R2 item 6): the SDR output plan carries the exact two-stage matrices
 # (rec2020_to_xyz + xyz_to_output, float64) instead of the pre-merged
 # rec2020_to_output that dropped one float32 rounding.
+# v9 (#136, HDR per-pixel confidence): raw_gated_channel_separation gains
+# the peak-proximity path (y_native, peak) — clip-compromised pixels lose
+# chroma authority continuously toward the content peak — so the native HDR
+# formation plan/kernel interface changed shape with it.
 NATIVE_ABI_VERSION = 9
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
