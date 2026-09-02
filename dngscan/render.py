@@ -328,14 +328,19 @@ def _optics_budget_mib() -> int:
 _OPTICS_FIXED_MIB = 72 + 160 + 48 + 68
 
 
-def _optics_band_rows(width: int) -> int:
+def _optics_band_rows(width: int, reserved_mib: float = 0.0) -> int:
     """Rows per sequential band so the fixed context costs PLUS the band's
     working set (about eight float32 RGB copies through intent/retreat/
     StageA/B1/paper/B2/finalize) stay inside the budget tier. Sampling and
     blur paths are slab-bounded upstream so no full-frame temporary exists
-    outside this accounting; an independent-process RSS gate pins the sum."""
+    outside this accounting; an independent-process RSS gate pins the sum.
+
+    reserved_mib: full-frame state a caller keeps alive across the bands
+    beyond the optics context — today the chroma-NR correction map (review
+    batch 23: it was allocated before pass A and held through A/B without
+    being charged to the tier)."""
     budget_bytes = max(
-        (_optics_budget_mib() - _OPTICS_FIXED_MIB), 32
+        (_optics_budget_mib() - _OPTICS_FIXED_MIB - float(reserved_mib)), 32
     ) * (1 << 20)
     per_row = max(width, 1) * 3 * 4 * 8
     return int(np.clip(budget_bytes // (3 * per_row), 64, 8192))
@@ -419,7 +424,7 @@ def _prepare_spatial_pass1(
     from .film_optics import area_decimate_rows, spread_grid_shape, light_source
 
     ctx = prepare_film_spatial(tone_plan, h, w)
-    band_rows = _optics_band_rows(w)
+    band_rows = _optics_band_rows(w, _retained_map_mib(chroma_map))
     if ctx is None:
         # R3 item 3: a scatter-only plan (media scatter declared, all look
         # amounts 0) resolves to exact identity at this coarse pitch — no
@@ -482,6 +487,23 @@ def _prepare_spatial_pass1(
     return ctx, band_rows * w
 
 
+def _retained_map_mib(chroma_map: Any) -> float:
+    """MiB a chroma-NR map keeps resident through the band passes."""
+    return 0.0 if chroma_map is None else float(chroma_map.nbytes) / float(1 << 20)
+
+
+def sensor_px_per_render_px(bundle: RawBundle, h: int, w: int) -> float:
+    """Full-resolution SENSOR pixels per pixel of this render grid.
+
+    1.0 for a full decode; the proxy ratio for a GUI preview bundle (the
+    cache records it as ``proxy_scale`` when it downsamples the scene).
+    Review batch 23: the chroma-NR band is declared in sensor pixels, and
+    measuring it against the render grid put a 1600-px preview's band at
+    ~6x the export's on a 61 MP frame."""
+    scale = float(getattr(bundle, "proxy_scale", 1.0) or 1.0)
+    return max(scale, 1.0)
+
+
 def _prepare_chroma_nr_map(
     bundle: RawBundle,
     tone_plan: Any,
@@ -533,10 +555,14 @@ def _prepare_chroma_nr_map(
             np.asarray(rec, dtype=np.float32).reshape(-1, w, 3),
             y0, h, w, dh, dw, acc,
         )
-    factor = max(h, w) / max(max(dh, dw), 1)
-    return chroma_correction_map(
-        acc.astype(np.float32), amount, decimation_factor=factor
+    # Sensor pixels per decimated cell: the render grid's own ratio times
+    # the render's sensor scale (identity on a full decode).
+    factor = (
+        max(h, w) * sensor_px_per_render_px(bundle, h, w) / max(max(dh, dw), 1)
     )
+    dec32 = acc.astype(np.float32)
+    del acc
+    return chroma_correction_map(dec32, amount, decimation_factor=factor)
 
 
 def scene_render_to_display_linear(

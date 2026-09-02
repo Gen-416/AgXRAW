@@ -144,6 +144,12 @@ class RawBundle:
     # Per-file scalar used only by the aligned policy. It compares two decoded green
     # medians; it is not an absolute sensor calibration or content-adaptive auto exposure.
     scene_align_factor: float = 1.0
+    # Review batch 23: full-resolution sensor pixels per pixel of
+    # scene_rec2020_render along the long edge — 1.0 for a full decode, the
+    # downsample ratio on a GUI preview proxy. Operators whose scale is
+    # declared in sensor pixels (chroma_nr's band) read it so a preview
+    # measures the same physical band the export does.
+    proxy_scale: float = 1.0
     # Why aligned mode fell back to identity. None is expected for unity/measured modes.
     scene_align_error: str | None = None
     # DNG opcodes the decoder executed (Core Image path only). Reported, not acted on:
