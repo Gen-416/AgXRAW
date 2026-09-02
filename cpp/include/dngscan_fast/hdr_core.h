@@ -29,11 +29,19 @@ struct NativeHdrPlan {
   float inset[9];
   float outset[9];
 
-  // rec2020_to_output is applied as two chained float32 multiplies, matching the
-  // NumPy rec2020_to_output(rec2020_to_xyz -> XYZ_TO_RGB[space]) operation order.
+  // Float32 copies feed the punch/Oklab excursion (pixel_math PunchMatrices,
+  // a float32 path in NumPy too).
   float rec2020_to_xyz[9];
   float xyz_to_rec2020[9];
   float xyz_to_output[9];
+  // ABI v10 (review batch 25): the OUTPUT stage rec2020_to_output is two exact
+  // NumPy matrix stages — float64 accumulate, float32 materialization per
+  // stage (apply_rgb_matrix3(rec2020_to_xyz(rgb), XYZ_TO_RGB[space])) — the
+  // same contract NativeOutputPlan has carried since v8. The old comment
+  // claimed the float32 chain "matched the NumPy operation order"; NumPy
+  // accumulates in float64, so it did not.
+  double rec2020_to_xyz_f64[9];
+  double xyz_to_output_f64[9];
 
   float oklab_m1[9];
   float oklab_m2[9];

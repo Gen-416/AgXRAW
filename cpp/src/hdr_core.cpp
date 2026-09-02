@@ -9,6 +9,7 @@
 // (supports_hdr_formation) instead of being reimplemented here.
 
 #include "dngscan_fast/hdr_core.h"
+#include "dngscan_fast/exact_matrix.h"
 #include "dngscan_fast/pixel_math.h"
 
 #include <algorithm>
@@ -198,8 +199,9 @@ Rgb process_pixel(const Rgb& input, const float* mask, const NativeHdrPlan& plan
     }
     Rgb mapped = mat3(plan.outset, formation);
     mapped = apply_punch_rec2020_pixel(mapped, plan.punch_strength, punch);
-    const Rgb xyz = mat3(plan.rec2020_to_xyz, mapped);
-    Rgb output_linear = mat3(plan.xyz_to_output, xyz);
+    // ABI v10: exact float64 stages, materialized to float32 per stage
+    const Rgb xyz = mat3_exact_f64(plan.rec2020_to_xyz_f64, mapped);
+    Rgb output_linear = mat3_exact_f64(plan.xyz_to_output_f64, xyz);
     return {
         nan_to_num(output_linear.r, 0.0f, 1e6f, -1e6f),
         nan_to_num(output_linear.g, 0.0f, 1e6f, -1e6f),
