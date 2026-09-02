@@ -681,7 +681,11 @@ def scene_render_to_agx_u8(
     scene_transform_strength: float = 1.0,
     tone_core: str = "agx",
     lum_norm: str = "y",
+    analysis: Any = None,
 ) -> Any:
+    # Review batch 22: the legacy public entry forwards the Analysis like the
+    # streaming u8 path (batch 21 item 2) — a gated plan rendered through
+    # here otherwise built its guidance without the sensor-SNR evidence.
     return output_linear_to_u8(
         scene_render_to_display_linear(
             bundle,
@@ -691,6 +695,7 @@ def scene_render_to_agx_u8(
             filter_strength,
             scene_transform,
             scene_transform_strength,
+            analysis=analysis,
         ),
         output_gamut,
         look,
