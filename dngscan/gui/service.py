@@ -11,14 +11,13 @@ import multiprocessing as mp
 import threading
 from queue import Empty
 import os
-import secrets
 import time
 from pathlib import Path
 from typing import Any, Callable
 
 import dngscan as dg
 from dngscan.debug_util import maybe_print_exc
-from dngscan.grade import RENDER_MODE, resolve_grade_params
+from dngscan.grade import RENDER_MODE, resolve_grade_id, resolve_grade_params
 
 from .constants import (
     PROXY_LONG_EDGE,
@@ -1000,6 +999,28 @@ def parse_chroma_nr(params: dict, output_format: str) -> float:
     return float(value)
 
 
+def _identity_realization(
+    inp: Path, highlight: str, wb: str, require_guidance: bool,
+    decoder: str, coreimage_version: str, demosaic: str,
+    coreimage_scale: str, clip_margin: int,
+) -> int:
+    """The identity-derived auto grain realization (review batch 24) for an
+    export whose preview entry is not loaded. Falls back to a stable hash of
+    the path when the file's evidence identity cannot be read — the export
+    itself then fails on load with the real error, but the payload stays a
+    deterministic integer instead of a fresh random seed."""
+    from dngscan.gui.preview_cache import _realization_id_for
+
+    try:
+        return int(PREVIEW_STORE.realization_id_for(
+            inp, highlight, wb, require_guidance,
+            decoder, coreimage_version, demosaic,
+            coreimage_scale=coreimage_scale, margin=int(clip_margin),
+        ))
+    except Exception:
+        return _realization_id_for(str(inp))
+
+
 def parse_decode_extras(params: dict, decoder: str) -> tuple[str, int]:
     """(coreimage_scale, clip_margin) — the two CLI decode dials the GUI now
     exposes (owner 2026-08-28). The scale policy only exists on the Core
@@ -1653,7 +1674,7 @@ def parse_film_params(params: dict) -> tuple:
 
 def effective_optics_seed(params: dict, entry) -> int:
     """Seed lifecycle (batch 15): an explicit integer in the payload always
-    wins (reproducible); otherwise the loaded entry's one realization_id —
+    wins (reproducible); otherwise the entry's identity-derived realization_id —
     the same value serves preview, probes, export and both HDR legs, so the
     grain a preview shows IS the grain the export carries."""
     raw = params.get("filmOpticsSeed", params.get("film_optics_seed"))
@@ -2334,9 +2355,13 @@ def run_export(params: dict) -> dict:
         if entry is not None:
             film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
         else:
-            import secrets
-
-            film_optics_seed = secrets.randbits(32) | 1
+            # review batch 24: identity-derived, so an evicted or never-
+            # previewed entry still yields the grain the preview would show
+            film_optics_seed = _identity_realization(
+                inp, highlight, wb, tone_core == "gated",
+                decoder, coreimage_version, demosaic,
+                coreimage_scale, clip_margin,
+            )
     bundle = dg.load_raw(
         inp,
         highlight,
@@ -2464,8 +2489,8 @@ def run_export(params: dict) -> dict:
         chroma_nr=chroma_nr,
     )
 
-    grade_id = str(params.get("grade", "none"))
-    grade_strength = float(params.get("gradeStrength", params.get("grade_strength", 1.0)))
+    # review batch 24: the id the render resolves, not the raw payload key
+    grade_id, grade_strength = resolve_grade_id(params)
     _seed_raw = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     _explicit_seed = int(_seed_raw) if _seed_raw not in (None, "", "auto") else None
     suffix = export_suffix_parts(
@@ -2520,6 +2545,9 @@ def run_export(params: dict) -> dict:
     fingerprint = export_plan_fingerprint(
         input_path=str(inp.resolve()),
         input_size=int(inp.stat().st_size),
+        # review batch 24: a same-size in-place replacement of the RAW is a
+        # different input; the preview cache already keys on mtime
+        input_mtime_ns=int(inp.stat().st_mtime_ns),
         wb=wb,
         ev=float(ev),
         highlight=highlight,
@@ -2848,11 +2876,18 @@ def run_export_isolated(params: dict) -> dict:
                 wb, tone_core == "gated", decoder, coreimage_version, demosaic,
                 coreimage_scale=coreimage_scale, margin=clip_margin,
             )
+            seed = int(getattr(entry, "realization_id", 0) or 0) or _identity_realization(
+                inp, "reconstruct" if decoder == "coreimage" else highlight,
+                wb, tone_core == "gated", decoder, coreimage_version, demosaic,
+                coreimage_scale, clip_margin,
+            )
         except Exception:
-            entry = None
-        params["filmOpticsSeed"] = int(
-            getattr(entry, "realization_id", 0) or secrets.randbits(32) | 1
-        )
+            # an unparseable payload fails properly inside the child; the
+            # seed it carries is still a deterministic function of the input
+            from dngscan.gui.preview_cache import _realization_id_for
+
+            seed = _realization_id_for(str(params.get("input", "")))
+        params["filmOpticsSeed"] = int(seed)
         params.pop("film_optics_seed", None)
     context = mp.get_context("spawn")
     result_queue = context.Queue(maxsize=1)
