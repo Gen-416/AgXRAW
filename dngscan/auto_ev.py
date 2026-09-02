@@ -282,6 +282,7 @@ def max_safe_ev(
     film_interimage_beta_dial: float | None = None,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
+    chroma_nr: float = 0.0,
     lens_filter: str | None = None,
 ) -> float:
     """Largest EV (>= from_ev) whose preview-scale output stays below highlight thresholds.
@@ -343,6 +344,7 @@ def max_safe_ev(
         film_interimage_beta_dial=film_interimage_beta_dial,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
+        chroma_nr=chroma_nr,
             endpoint_mode=endpoint_mode,
         )
 
@@ -532,6 +534,7 @@ def compute_auto_ev(
     film_interimage_beta_dial: float | None = None,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
+    chroma_nr: float = 0.0,
     lens_filter: str | None = None,
 ) -> AutoEvResult:
     """Reference the reliable decoded scene body to 18% gray without changing EV 0.
@@ -597,6 +600,7 @@ def compute_auto_ev(
         film_interimage_beta_dial=film_interimage_beta_dial,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
+        chroma_nr=chroma_nr,
         endpoint_mode=endpoint_mode,
     )
     target = scene_body_align_ev(reference_plan)
@@ -647,6 +651,7 @@ def compute_auto_ev(
         film_interimage_beta_dial=film_interimage_beta_dial,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
+        chroma_nr=chroma_nr,
     )
     boost_target = max(target, baseline_ev)
     ev = min(boost_target, cap)
@@ -707,6 +712,7 @@ def resolve_export_ev(
     film_interimage_beta_dial: float | None = None,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
+    chroma_nr: float = 0.0,
     lens_filter: str | None = None,
 ) -> tuple[float, AutoEvResult | None]:
     if not is_ev_auto(ev):
@@ -757,6 +763,7 @@ def resolve_export_ev(
         film_interimage_beta_dial=film_interimage_beta_dial,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
+        chroma_nr=chroma_nr,
         lens_filter=lens_filter,
     )
     return result.ev, result
