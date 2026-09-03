@@ -86,7 +86,13 @@ def resolve_grade_id(params: dict) -> tuple[str, float]:
     rendered a look under a name and fingerprint that claimed grade=none."""
     grade = params.get("grade")
     if grade is not None:
-        return str(grade), float(params.get("gradeStrength", params.get("grade_strength", 1.0)))
+        gid = str(grade)
+        if gid == "none":
+            return "none", 1.0
+        raw = float(params.get("gradeStrength", params.get("grade_strength", 1.0)))
+        # the render clamps (resolve_grade): name what renders, so 2.0 and
+        # 1.5 (byte-identical) share a name and -1 is not named as the grade
+        return gid, max(0.0, min(1.5, raw))
     look, look_strength, filt, filter_strength = resolve_grade_params(params)
     if filt != "none":
         return grade_id_for_filter(filt), float(filter_strength)

@@ -82,7 +82,7 @@ class NativeAgxParityTests(unittest.TestCase):
         )
         ref = _reference_agx_core(rgb, plan)
         out = apply_agx_core(rgb, plan)
-        np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5)
+        np.testing.assert_allclose(out, ref, rtol=0.0, atol=4e-6)
 
     def test_punch_zero_is_identity(self) -> None:
         plan = _sample_plan(punch_strength=0.0)
@@ -97,7 +97,7 @@ class NativeAgxParityTests(unittest.TestCase):
         rgb = np.asarray([[0.28, 0.16, 0.10], [0.55, 0.40, 0.32]], dtype=np.float32)
         ref = _reference_agx_core(rgb, plan)
         out = apply_agx_core(rgb, plan)
-        np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5)
+        np.testing.assert_allclose(out, ref, rtol=0.0, atol=4e-6)
 
     def test_synthetic_scene_matches_reference(self) -> None:
         rng = np.random.default_rng(11)
@@ -107,7 +107,7 @@ class NativeAgxParityTests(unittest.TestCase):
                 plan = _sample_plan(agx_primaries=primaries, hue_restore=hue_restore)
                 ref = _reference_agx_core(rgb, plan)
                 out = apply_agx_core(rgb, plan)
-                np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5, err_msg=primaries)
+                np.testing.assert_allclose(out, ref, rtol=0.0, atol=4e-6, err_msg=primaries)
 
     def test_parallel_kernel_matches_reference(self) -> None:
         plan = _sample_plan(agx_primaries="punchy", hue_restore=0.7)
@@ -116,7 +116,7 @@ class NativeAgxParityTests(unittest.TestCase):
         rgb = rng.uniform(0.0, 2.0, size=(140_000, 3)).astype(np.float32)
         ref = _reference_agx_core(rgb, plan)
         out = apply_agx_core(rgb, plan)
-        np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5)
+        np.testing.assert_allclose(out, ref, rtol=0.0, atol=4e-6)
 
     def test_view_brightness_both_sides_match_reference(self) -> None:
         rgb = np.asarray([[0.02, 0.08, 0.25], [0.8, 0.45, 0.12]], dtype=np.float32)
@@ -124,7 +124,7 @@ class NativeAgxParityTests(unittest.TestCase):
             plan = _sample_plan(view_brightness=brightness)
             ref = _reference_agx_core(rgb, plan)
             out = apply_agx_core(rgb, plan)
-            np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5)
+            np.testing.assert_allclose(out, ref, rtol=0.0, atol=4e-6)
 
     def test_extended_target_white_matches_reference(self) -> None:
         plan = _sample_plan(target_white_linear=8.0)
@@ -132,7 +132,7 @@ class NativeAgxParityTests(unittest.TestCase):
         ref = _reference_agx_core(rgb, plan)
         out = apply_agx_core(rgb, plan)
         self.assertGreater(float(np.max(ref)), 1.0)
-        np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5)
+        np.testing.assert_allclose(out, ref, rtol=0.0, atol=4e-6)
 
     def test_fast_does_not_mutate_input(self) -> None:
         plan = _sample_plan()
@@ -154,7 +154,7 @@ class NativeAgxParityTests(unittest.TestCase):
                 mock.patch.object(fast_backend, "apply_agx_core_f32", kernel):
             out = apply_agx_core(rgb, plan)
         kernel.assert_not_called()
-        np.testing.assert_allclose(out, ref, rtol=0.0, atol=2e-5)
+        np.testing.assert_allclose(out, ref, rtol=0.0, atol=4e-6)
 
 
 @unittest.skipUnless(fast_backend.available(), "native extension not built")
@@ -194,7 +194,7 @@ class NativeOutputParityTests(unittest.TestCase):
         self.assertEqual(ext.native_abi_version(), NATIVE_ABI_VERSION)
         # v9: peak-proximity chroma convergence in the HDR gated blend
         # (two-route doctrine item B).
-        self.assertEqual(NATIVE_ABI_VERSION, 10)  # v10: HDR output stage float64 (batch 25)
+        self.assertEqual(NATIVE_ABI_VERSION, 11)  # v11: all matrix stages float64 (math review 2026-09)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_FIT_ITERS, 16)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_TOLERANCE, 1e-4)
         for gamut in ("srgb", "p3"):

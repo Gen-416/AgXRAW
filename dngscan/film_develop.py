@@ -646,7 +646,10 @@ class FilmSpatialContext:
         """Gate rows [y0, y1) at FULL resolution and area-decimate each
         component's transferred source into its accumulator. Runs inside
         pass A's own band loop on the same light_source rows the bloom fine
-        rung reads; deterministic in any band split (area_decimate_rows).
+        rung reads. Band splits change the result only through float32
+        accumulation order (area_decimate_rows adds fractional-cell weights
+        into float32 accumulators): exact for integer grid ratios, ~1e-7
+        relative otherwise (math review 2026-09-03) — not byte-identical.
 
         Only rows holding a CANDIDATE pixel — one whose brightest channel
         clears the provable hal_gate_floor bound (see begin) — pay for
@@ -762,10 +765,17 @@ class FilmSpatialContext:
         # classic bloomed behaviour for sources the proxy resolves. It is
         # non-negative because the glow only adds light and the transferred
         # gated source is monotone in each layer's exposure; the clamp
-        # guards float noise only. Residual approximation, accepted: a
-        # sub-cell source lifted ACROSS the gate by glow alone is gated
-        # here at proxy resolution, second-order because glow is itself a
-        # decimated-grid quantity.
+        # is a deliberate ONE-SIDED approximation, not a float guard: the
+        # transferred source is monotone in LAYER exposure, but layer
+        # exposure is not monotone in scene RGB once compression, the
+        # chroma field or a signed observer act, so a green-leaning glow on
+        # a red-saturated cell can lower the R-layer source (measured corr
+        # -1.20 R at compression 1; math review 2026-09-03). Clamping keeps
+        # the map at or above the un-bloomed one; the negative part is
+        # dropped. Residual approximation, accepted: a sub-cell source
+        # lifted ACROSS the gate by glow alone is gated here at proxy
+        # resolution, second-order because glow is itself a decimated-grid
+        # quantity.
         from .film_optics import (
             halation_component_source,
             halation_spread_map_from_sources,
@@ -1091,6 +1101,7 @@ def _apply_film_core_v2(
     log_e = stage_a_log_exposure(rgb, stock) + (
         exposure_ev + float(stock["anchor"])
     ) * _LOG10_2
+    pre_scatter_lin = None
     if ctx is not None and ctx.media_scatter:
         _scat = ctx.optics.stock.emulsion_scatter
         if _scat is not None:
@@ -1108,6 +1119,17 @@ def _apply_film_core_v2(
             e_lin = log_e.astype(np.float32, copy=True)
             e_lin *= np.float32(_LOG10_2 * 0.0 + 2.302585092994046)
             np.exp(e_lin, out=e_lin)
+            if ctx.halation > 0.0:
+                # Math review 2026-09-03 (P1): the halation GIVE must gate the
+                # same exposure the TAKE was accumulated from — the pre-scatter
+                # layer exposure (pass A reads the unscattered scene). Gating
+                # the scattered exposure instead opened the give gate less for
+                # sub-pixel sources (a 1-px source keeps 29-53% of its peak
+                # after the mix at 36 mm / 6016 px), so take exceeded give by
+                # up to ~3.5x and the residual form CREATED energy at export
+                # pitches — invisible at preview pitches where the mix is the
+                # identity, which is where the balance figure was measured.
+                pre_scatter_lin = e_lin.copy()
             e_lin = apply_scatter_mix(
                 e_lin.reshape(_rows, ctx.width, 3), ctx.mm_per_px(), _scat
             ).reshape(-1, 3)
@@ -1121,11 +1143,14 @@ def _apply_film_core_v2(
 
         # §9.2: source is the PRE-emulsion highlight scene exposure (spread
         # map prepared on the decimated grid), reinjected red-heavy into
-        # layer exposure before the curves.
+        # layer exposure before the curves. The give side reads the same
+        # pre-scatter exposure the source was gated on (see above).
         log_e = halation_reinject_rows(
             log_e, ctx.hal_map, ctx.hal_ref, y0, y1, ctx.height, ctx.width,
             ctx.optics.stock.halation, ctx.halation,
+            give_lin=pre_scatter_lin,
         )
+        pre_scatter_lin = None
     amounts = characteristic_amounts(log_e, stock["char_le"], char_amounts)
     # `film_interimage` selects whether the declared modelled beta applies.
     # "off" exists because the spectral oracle gates certify the MEASURED

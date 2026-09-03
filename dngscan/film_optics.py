@@ -901,7 +901,13 @@ def _blur_small_sigma(chan: np.ndarray, sigma_px: float) -> np.ndarray:
     this support. Gate 13 pins two frequencies at 6 um/px; the band-wide
     end-to-end deviation there is ~3.7 pp (B channel, 67.6 c/mm), 4.9 pp at
     8.8 um/px (self-review 2026-08-27 corrected the earlier ~2.4 pp figure). Tiny negative lobes below sigma ~0.703 are
-    the price of the in-band match and sum to zero energy."""
+    the price of the in-band match and sum to zero energy — on the linear
+    slab. Next to a bright source the lobe undershoots the background
+    (measured -0.27 on a 0.2 background beside a 2^6.5 1-px source at
+    36 mm/6016 px), and the exposure log floor converts that negative
+    exposure into zero, so ~1% of such a source's mass is created rather
+    than conserved after the floor (math review 2026-09-03; accepted,
+    documented, not clamped in the kernel)."""
     g_half = float(np.exp(-0.5 * sigma_px ** 2 * (np.pi / 2.0) ** 2))
     g_nyq = float(np.exp(-0.5 * sigma_px ** 2 * np.pi ** 2))
     b = (1.0 - g_nyq) / 4.0
@@ -1080,10 +1086,19 @@ def halation_reinject_rows(
     width: int,
     halation: HalationAsset,
     amount: float,
+    give_lin: np.ndarray | None = None,
 ) -> np.ndarray:
     """Reinject the SPATIAL RESIDUAL into layer exposure for rows [y0, y1).
 
-        E' = E + amount * (upsample(spread) - A @ U(E))
+        E' = E + amount * (upsample(spread) - A @ U(E_src))
+
+    give_lin: the linear layer exposure the GIVE term gates on, when it is
+    not the exposure in ``log_e`` — the production path passes the
+    pre-emulsion-scatter exposure because the spread (take) was accumulated
+    from the unscattered scene, and give and take must gate the same
+    quantity or the residual is not a residual (math review 2026-09-03:
+    gating the scattered exposure created up to ~3.5x the transferred
+    energy of a sub-pixel source at export pitches). None: gate ``log_e``.
 
     R1 §5.3, and the reason is calibration, not taste. The characteristic
     curves come from sensitometric exposure of large uniform patches, where
@@ -1097,7 +1112,14 @@ def halation_reinject_rows(
 
     The subtraction is capped at the pixel's own exposure per layer, which
     makes non-negativity structural rather than a clamp applied afterwards:
-    a highlight core can give away all of its light but not more.
+    a highlight core can give away all of its light but not more. The cap
+    is a stated non-conservation: a chromatic source whose destination
+    layer is under-exposed relative to the cross-layer transfer gives less
+    than the spread takes (pure green under an observer whose R row reads
+    only R gives ~0 in R while R still receives the transferred blur).
+    Give and take also differ in sign convention — take gates the
+    non-negative light_source, give the signed Stage-A exposure — so the
+    balance figures hold for in-gamut sources.
     """
     if amount <= 0.0:
         return log_e
@@ -1106,7 +1128,10 @@ def halation_reinject_rows(
         10.0, np.asarray(log_e, dtype=np.float64).reshape(n, width, 3)
     ).astype(np.float32)
     if halation.dc_mode == "residual":
-        give = halation_pointwise_return(lin, e_ref, halation)
+        src = lin if give_lin is None else np.asarray(
+            give_lin, dtype=np.float32
+        ).reshape(n, width, 3)
+        give = halation_pointwise_return(src, e_ref, halation)
         give = np.minimum(np.float32(amount) * give, lin)
     else:
         # legacy additive branch, kept so an asset that still declares it

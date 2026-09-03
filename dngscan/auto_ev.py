@@ -291,6 +291,13 @@ def max_safe_ev(
     caller's endpoint mode and full film declaration (curve, mode, crossover, color
     head) and declared lens filter all participate; a None lens_filter keeps whatever
     the bundle already declares.
+
+    chroma_nr rides the plan for domain validation only: the sampled probe never
+    builds the chroma-NR map (it needs the full spread grid), so the highlight gates
+    see the un-repaired scene. The repair is zero-luma at the scene stage and only
+    ever shrinks chroma by MAD-scale amounts inside the 8-128 px band, so the probe
+    is on the conservative side by far less than its 1/128 EV bisection quantum
+    (math review 2026-09-03).
     """
     if np is None:
         return float(from_ev)

@@ -7,6 +7,7 @@
 // Shared per-pixel primitives live in dngscan_fast/pixel_math.h.
 
 #include "dngscan_fast/agx_core.h"
+#include "dngscan_fast/exact_matrix.h"
 #include "dngscan_fast/pixel_math.h"
 
 #include <algorithm>
@@ -101,7 +102,7 @@ PunchMatrices punch_matrices(const NativeAgxPlan& plan) {
 
 Rgb process_pixel(const Rgb& input, const NativeAgxPlan& plan) {
   Rgb rgb = compress_into_gamut(input);
-  Rgb inset = mat3(plan.inset, rgb);
+  Rgb inset = mat3_exact_f64(plan.inset, rgb);
 
   const bool restore_hue = plan.hue_restore > 1e-6f;
   float pre_hue = 0.0f;
@@ -127,7 +128,7 @@ Rgb process_pixel(const Rgb& input, const NativeAgxPlan& plan) {
     linear = mix_hue(linear, pre_hue, plan.hue_restore);
   }
 
-  Rgb mapped = mat3(plan.outset, linear);
+  Rgb mapped = mat3_exact_f64(plan.outset, linear);
   return apply_punch_rec2020_pixel(mapped, plan.punch_strength, punch_matrices(plan));
 }
 

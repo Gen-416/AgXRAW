@@ -6,7 +6,9 @@
    compute_auto_ev -> max_safe_ev -> reference build_render_plan) knew
    nothing of it: ``--ev auto`` raised TypeError on every invocation. The
    chain now carries the dial end to end, and the CLI's keyword set is
-   bound to the callee's signature so the next dial cannot drift.
+   bound to the callee's signature so the next dial cannot drift. (The
+   probe itself never applies the map — see max_safe_ev's docstring; the
+   threading is domain validation and parity of declaration, not pixels.)
 2. R-P2-1: the legacy public ``scene_render_to_agx_u8`` entry did not
    forward the Analysis (batch 21 item 2 closed the main paths only), so a
    gated plan rendered through it built guidance without sensor-SNR

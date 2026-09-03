@@ -2617,6 +2617,10 @@ def run_export(params: dict) -> dict:
                     and film_curve != "none"
                     and str(film_media_scatter) != "off"
                 )
+                # math review 2026-09-03: the chroma-NR map lives on the
+                # spread grid, whose size (1408/2048) the tier selects — so
+                # its realized band, and the bytes, change with the tier too
+                or float(chroma_nr) > 0.0
             )
             else 0
         ),

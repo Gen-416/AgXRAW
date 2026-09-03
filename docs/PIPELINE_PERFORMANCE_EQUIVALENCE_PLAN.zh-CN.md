@@ -79,6 +79,13 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   逐位相同像素 21.7%→21.9%:这一级只是 HDR 残差的来源之一,其余来自曲线表插值、Oklab
   punch 路径与 gamut-fit（预合并矩阵,1e-4 容差）等 float32 级,HDR 门禁仍为
   2e-4 / 2e-5(p99),未收紧;逐级拆分归属完整 reference-mode 程序。
+  **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
+  只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
+  矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:
+  SDR 逐位相同像素 47%→92%(punch 开启 7%→90%,max 1.55e-6→1.01e-6);HDR
+  max |Δ| 8.27e-5→2.36e-5、p99 5.2e-6→2.0e-6、逐位相同 22%→81%。门禁随之收紧:
+  HDR 6e-5 / 6e-6(p99),SDR atol 4e-6。剩余残差:曲线表插值、cbrt/hypot/
+  smoothstep 等 float32 逐元素级与预合并 gamut-fit。
 - 单平面 TPDF cache 把 `(value + noise_a) - noise_b` 改成 `value + (noise_a - noise_b)`。
   **已修正（批 20 期间）**:生产路径全部走双平面
   （`deterministic_dither_planes` / native finalize 的 noise_a/noise_b 入参,

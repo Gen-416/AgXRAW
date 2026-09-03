@@ -15,10 +15,13 @@ clip retreat): the mottle is a sampling artefact, not optical information.
 
 WHAT IT MUST NOT TOUCH, by construction rather than by tuning:
 
-- LUMINANCE, ever: the correction is projected to the zero-luma subspace
-  (P = I - 1·w^T with the Rec.2020 luma row w), so the grain carried by Y
-  is untouched to float precision. Bilinear upsampling is linear, so the
-  projection survives the map's trip to full resolution.
+- LUMINANCE, at the scene stage: the correction is projected to the
+  zero-luma subspace (P = I - 1·w^T with the Rec.2020 luma row w), so the
+  grain carried by scene Y is untouched to float precision. Bilinear
+  upsampling is linear, so the projection survives the map's trip to full
+  resolution. Every downstream tone core is per-channel nonlinear, so a
+  zero-Y scene change still moves display luminance slightly — the
+  promise is about what the operator touches, not the output.
 - FINE CHROMA SPECKLE: the analysis runs on the DECIMATED spread grid
   (film_optics.spread_grid_shape, <= 1408/2048 on the long side), so all
   chroma structure finer than a decimated cell — including the film-like
@@ -27,10 +30,17 @@ WHAT IT MUST NOT TOUCH, by construction rather than by tuning:
   the last detail level) passes through unshrunk. A plain lowpass
   subtraction would eat genuine colour gradients along with the mottle;
   the wavelet split is what makes "去斑不去色" a structural property.
-- HIGH-AMPLITUDE CHROMA EDGES: within the detail levels, soft
-  thresholding shrinks only coefficients near the level's own robust noise
-  floor (MAD estimate); a real colour boundary's coefficients sit far
-  above it and lose at most the threshold.
+- HIGH-AMPLITUDE CHROMA EDGES: within the detail levels the garrote
+  removes the fraction 1/(1 + (d/T)²) of each coefficient d against the
+  level's own robust noise floor (T = amount·3·σ_MAD): 94% at |d| = T/4,
+  50% at |d| = T, 20% at 2T, and only ~T²/|d| of a strong edge; the
+  absolute bite never exceeds T/2. A real colour boundary's coefficients
+  sit far above T.
+
+The realized band is octave-aligned to within √2 of [BAND_LO_PX,
+BAND_HI_PX] (atrous_levels_for); on grids too small to reflect-pad a
+level (min side < 2·2^k + 1) the cascade stops early and the band is
+truncated at the top — only tiny renders, and silently.
 
 Amount 0 is a strict identity — callers keep the no-context fast path and
 never call in here.

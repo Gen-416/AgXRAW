@@ -32,10 +32,13 @@ from dngscan.models import (
 )
 
 # Thresholds for |native - numpy| on display-linear output up to peak (~3-8 here).
-# Measured worst case across the variant sweep is 8.5e-5 max / 5.5e-6 p99; the gates
-# leave ~2x headroom while staying far below one 8-bit output step.
-MAX_ABS_TOL = 2e-4
-P99_ABS_TOL = 2e-5
+# Measured worst case across the variant sweep was 8.5e-5 max / 5.5e-6 p99 with
+# float32 matrix stages; ABI v11 (math review 2026-09-03: every float64-matrix
+# stage of the NumPy graph is an exact float64 stage in the kernel) brings it to
+# 2.4e-5 max / 2.0e-6 p99 with 81% of pixels bit-identical. The gates keep ~2.5x
+# headroom over that, far below one 8-bit output step.
+MAX_ABS_TOL = 6e-5
+P99_ABS_TOL = 6e-6
 
 
 def _scene_plan(**tone_overrides) -> RenderPlan:

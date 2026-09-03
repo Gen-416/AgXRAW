@@ -11,7 +11,10 @@ namespace dngscan_fast {
 // v10 (review batch 25, R-P2-6): NativeHdrPlan's output stage gets the same
 // exact float64 two-stage matrices the SDR plan has carried since v8; the
 // float32 chain was the recorded ~2.4e-6..8.5e-5 deviation of the HDR fast path.
-inline constexpr int NATIVE_ABI_VERSION = 10;
+// v11 (math review 2026-09-03): inset/outset and the punch/Oklab matrices of
+// BOTH kernels become exact float64 stages (they were the dominant residual
+// of the HDR fast path after v10, and the punch residual of the SDR one).
+inline constexpr int NATIVE_ABI_VERSION = 11;
 inline constexpr float EPS = 1e-12f;
 
 struct CurveParams {
@@ -42,19 +45,24 @@ struct CurveParams {
 };
 
 struct NativeAgxPlan {
-  float inset[9];
-  float outset[9];
+  // ABI v11 (math review 2026-09-03): every matrix stage NumPy evaluates
+  // with a float64 matrix (agx._apply_matrix3 / apply_rgb_matrix3 on
+  // float64 constants: inset, outset, the punch/Oklab excursion) is carried
+  // as float64 and applied through mat3_exact_f64 — the same exact-stage
+  // contract the output plan has carried since v8.
+  double inset[9];
+  double outset[9];
   CurveParams curve;
   float hue_restore;
   float view_brightness;
   float punch_strength;
 
-  float rec2020_to_xyz[9];
-  float xyz_to_rec2020[9];
-  float oklab_m1[9];
-  float oklab_m2[9];
-  float oklab_m1_inv[9];
-  float oklab_m2_inv[9];
+  double rec2020_to_xyz[9];
+  double xyz_to_rec2020[9];
+  double oklab_m1[9];
+  double oklab_m2[9];
+  double oklab_m1_inv[9];
+  double oklab_m2_inv[9];
 };
 
 struct Rgb {
