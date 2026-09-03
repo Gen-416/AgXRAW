@@ -238,7 +238,7 @@ plan = SimpleNamespace(
     film_dev_fog=0.0, film_dev_density=0.0, film_compression=0.0,
     film_compression_knee=2.0, film_highlight_density=0.0,
     film_grain=GRAIN, film_halation=HAL, film_bloom=BLOOM,
-    film_optics_seed=0,
+    film_optics_seed=0, chroma_nr=CNR,
 )
 h, w = 2000, 3000
 rng = np.random.default_rng(0)
@@ -246,6 +246,24 @@ img = rng.uniform(0.02, 0.6, (h, w, 3)).astype(np.float32)
 flat = img.reshape(-1, 3)
 ctx = prepare_film_spatial(plan, h, w)
 band_rows = _optics_band_rows(w)
+# Review batch 23: pass 0 — the chroma-NR map is built BEFORE the optics
+# context and kept resident through passes A/B, so the mirror builds it
+# the same way (_prepare_chroma_nr_map) and charges it to the band budget.
+chroma_map = None
+if CNR > 0.0:
+    from dngscan.chroma_nr import chroma_correction_map
+    dh0, dw0 = spread_grid_shape(h, w)
+    acc0 = np.zeros((dh0, dw0, 3), dtype=np.float64)
+    for y0 in range(0, h, band_rows):
+        y1 = min(y0 + band_rows, h)
+        area_decimate_rows(flat[y0*w:y1*w].reshape(-1, w, 3), y0, h, w, dh0, dw0, acc0)
+    dec0 = acc0.astype(np.float32)
+    del acc0
+    chroma_map = chroma_correction_map(
+        dec0, CNR, decimation_factor=max(h, w) / max(dh0, dw0)
+    )
+    del dec0
+    band_rows = _optics_band_rows(w, chroma_map.nbytes / float(1 << 20))
 if ctx is not None:
     dh, dw = spread_grid_shape(h, w)
     acc = np.zeros((dh, dw, 3), dtype=np.float64)
@@ -279,14 +297,16 @@ for y0 in range(0, h, band_rows):
     else:
         out = apply_film_core(flat[y0*w:y1*w], plan, spatial=None)
     assert np.isfinite(out).all()
+assert chroma_map is None or np.isfinite(chroma_map).all()  # kept resident to the end
 print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
 """
 
-        def run(grain, hal, bloom, tier=512):
+        def run(grain, hal, bloom, tier=512, cnr=0.0):
             import os
 
             body = (script.replace("GRAIN", str(grain))
-                    .replace("HAL", str(hal)).replace("BLOOM", str(bloom)))
+                    .replace("HAL", str(hal)).replace("BLOOM", str(bloom))
+                    .replace("CNR", str(cnr)))
             env = dict(os.environ, DNGSCAN_OPTICS_BUDGET_MIB=str(tier))
             proc = subprocess.run(
                 [sys.executable, "-c", body], capture_output=True,
@@ -309,6 +329,15 @@ print(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
             self.assertLess(
                 extra_mib, tier + 96,
                 f"tier {tier}: spatial extra peak {extra_mib:.0f} MiB "
+                "exceeds the advertised budget (+96 MiB allocator slack)",
+            )
+            # Review batch 23: the chroma-NR pre-pass (R-P1-1) — its pass-0
+            # transient and the resident map are part of the same promise.
+            spatial_nr = run(0.7, 0.5, 0.4, tier=tier, cnr=0.5)
+            extra_nr_mib = (spatial_nr - baseline) / (1 << 20)
+            self.assertLess(
+                extra_nr_mib, tier + 96,
+                f"tier {tier}: spatial+chroma_nr extra peak {extra_nr_mib:.0f} MiB "
                 "exceeds the advertised budget (+96 MiB allocator slack)",
             )
 

@@ -78,7 +78,13 @@ criterion — the RAW clipping share, the hard-clip numbers next to the RAW 满�
 and the whole Detected Parameters card are recomputed against it, so changing it
 re-decodes and re-analyses this RAW (a few seconds) in the current implementation. Neither needs attention day to day; exported filenames carry
 `ciscale-unity` / `ciscale-measured` or `margin{n}` only when the value is not the
-default.
+default. The **色度降噪 — chroma NR** slider on the same row (CLI `--chroma-nr`, 0–1,
+default 0 = strict identity) is an optional digitization repair: inside a band of
+roughly 8–128 sensor pixels (octave-aligned, so the edges can sit up to √2 off) it
+shrinks low-frequency colour mottle against each level's own noise floor — a
+content-adaptive operator; the scene-linear luminance component and finer coloured
+noise are untouched by construction. v1 is SDR-only: under an HDR container the
+control is greyed and snapped to 0. A nonzero value names the file `cnr{x}`.
 
 ---
 

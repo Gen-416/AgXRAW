@@ -234,6 +234,10 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
       <label>剪切回退 DN</label>
       <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重新解码并分析这张 RAW（数秒）。">
     </div>
+    <div class="sliderField" id="chromaNrBlock" style="flex:1;min-width:150px">
+      <div class="labelRow"><label title="仅色度降噪（CLI --chroma-nr，0–1，默认 0=不动）：只去低频色斑，亮度与细彩噪不动；仅 SDR 输出可用。">色度降噪</label><span class="val" id="chromaNrVal">0.00</span></div>
+      <input type="range" id="chromaNr" min="0" max="1" step="0.05" value="0">
+    </div>
     <div style="flex:1;min-width:170px">
       <label>解拜耳</label>
       <select id="demosaic" title="仅 LibRaw；RAW 9 使用 Apple 的 CoreML 解拜耳与降噪模型。">
@@ -929,6 +933,14 @@ function updateFormatUi(){
   }
   $("#highlightFade").disabled=hdr;
   $("#highlightFadeBlock").title=hdr?"HDR 色彩几何独立处理高光，不使用 SDR 显示侧褪白（仅 SDR 导出支持此滑杆）。":"";
+  // Review batch 23: chroma NR v1 is SDR-only (the exporter refuses it under
+  // an HDR container) — same convention: never let a refused value ride.
+  if(hdr&&+$("#chromaNr").value!==0){
+    $("#chromaNr").value=0;setChromaNrLabel();saveSettings();
+    setStatus("HDR 容器导出尚无色度降噪 pre-pass（v1 仅 SDR），已重置为 0。","warn");
+  }
+  $("#chromaNr").disabled=hdr;
+  $("#chromaNrBlock").title=hdr?"色度降噪 v1 仅 SDR 输出；HDR 容器下不可用。":"";
   applyDeliveryConstraints();
   updateToneCoreExportUi();
   updateToneCoreUi();
@@ -1093,7 +1105,8 @@ function saveSettings(){
     filmDevFog:$("#filmDevFog").value,filmDevDensity:$("#filmDevDensity").value,
     filmCompression:$("#filmCompression").value,filmCompressionKnee:$("#filmCompressionKnee").value,
     filmHighlightDensity:$("#filmHighlightDensity").value,filmMediaScatter:$("#filmMediaScatter").value,
-    filmOpticsSeed:$("#filmOpticsSeed").value,coreimageScale:$("#coreimageScale").value,clipMargin:$("#clipMargin").value
+    filmOpticsSeed:$("#filmOpticsSeed").value,coreimageScale:$("#coreimageScale").value,clipMargin:$("#clipMargin").value,
+    chromaNr:$("#chromaNr").value
   }));}catch(e){}
 }
 function restoreSettings(){
@@ -1193,10 +1206,10 @@ function restoreSettings(){
   // a restored value above the working band widens the range instead of clamping it
   if(Math.max(Number($("#colorHeadY").value),Number($("#colorHeadM").value))>40)$("#colorHeadWide").checked=true;
   applyColorHeadRange();
-  for(const id of ["filmDevelopment","filmDevContrast","filmDevFog","filmDevDensity","filmCompression","filmCompressionKnee","filmHighlightDensity","filmMediaScatter","filmOpticsSeed","coreimageScale","clipMargin"]){
+  for(const id of ["filmDevelopment","filmDevContrast","filmDevFog","filmDevDensity","filmCompression","filmCompressionKnee","filmHighlightDensity","filmMediaScatter","filmOpticsSeed","coreimageScale","clipMargin","chromaNr"]){
     if(s[id]!==undefined&&s[id]!==null){const el=$("#"+id);if(el&&(el.tagName!=="SELECT"||[...el.options].some(o=>o.value===String(s[id]))))el.value=s[id];}
   }
-  setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();
+  setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();setAdjustmentLabels();setChromaNrLabel();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();updateFormatUi();updateDecoderUi();updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();
   if(migrated)saveSettings();
 }
 ["quality","outdir","png"].forEach(id=>$("#"+id).addEventListener("change",saveSettings));
@@ -1556,6 +1569,8 @@ function setFilmDevLabels(){
 $("#filmCompression").oninput=()=>{updateFilmModeUi();saveSettings();scheduleLivePreview();};
 $("#filmDevelopment").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();saveSettings();scheduleLivePreview();});
 $("#filmMediaScatter").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+function setChromaNrLabel(){$("#chromaNrVal").textContent=Number($("#chromaNr").value).toFixed(2);}
+$("#chromaNr").oninput=()=>{setChromaNrLabel();saveSettings();scheduleLivePreview();};
 $("#filmOpticsSeed").addEventListener("change",()=>{
   const el=$("#filmOpticsSeed");const t=el.value.trim();
   if(t!==""&&!/^[0-9]+$/.test(t)){el.value="";setStatus("光学种子需为非负整数，已清空为 auto","err");}
@@ -1601,7 +1616,7 @@ function resetToDefaults(){
   for(const [id,v] of PAGE_DEFAULTS){const el=$("#"+id);if(!el)continue;
     if(el.type==="checkbox"||el.type==="radio")el.checked=v;else el.value=v;}
   delete $("#toneCore").dataset.librawValue;
-  for(const fn of ["applyColorHeadRange","setEvLabel","setHdrLabel","setGradeStrengthLabel","setSceneTransformStrengthLabel","setPunchLabel","setAdjustmentLabels","setColorHeadLabels","setFilmExposureLabel","setFilmPrintExposureLabel","setFilmOpticsLabels","setFilmAppearanceLabels","setFilmDevLabels","updateGradeUi","updateSceneTransformUi","updateToneCoreUi","updateDecoderUi","updateFormatUi","updateFilmModeUi","updateColorHeadUi","updateHdrOptionGate","updateInterimageBetaUi"]){
+  for(const fn of ["applyColorHeadRange","setEvLabel","setHdrLabel","setGradeStrengthLabel","setSceneTransformStrengthLabel","setPunchLabel","setAdjustmentLabels","setColorHeadLabels","setFilmExposureLabel","setFilmPrintExposureLabel","setFilmOpticsLabels","setFilmAppearanceLabels","setFilmDevLabels","setChromaNrLabel","updateGradeUi","updateSceneTransformUi","updateToneCoreUi","updateDecoderUi","updateFormatUi","updateFilmModeUi","updateColorHeadUi","updateHdrOptionGate","updateInterimageBetaUi"]){
     const f=window[fn]||(typeof eval(fn)==="function"?eval(fn):null);if(typeof f==="function"){try{f();}catch(e){}}
   }
   saveSettings();setStatus("已恢复默认设置","");
@@ -1712,6 +1727,7 @@ function payload(){
     filmMediaScatter:$("#filmMediaScatter").value,
     filmOpticsSeed:$("#filmOpticsSeed").value.trim()===""?"auto":$("#filmOpticsSeed").value.trim(),
     coreimageScale:$("#coreimageScale").value,clipMargin:+$("#clipMargin").value,
+    chromaNr:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?0:+$("#chromaNr").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,

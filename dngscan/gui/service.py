@@ -276,6 +276,7 @@ def estimate_ev_headroom(
     film_compression_knee: float = 2.0,
     film_highlight_density: float = 0.0,
     film_interimage_beta: float | None = None,
+    chroma_nr: float = 0.0,
     color_head_y: float = 0.0,
     color_head_m: float = 0.0,
     lens_filter: str | None = None,
@@ -327,6 +328,7 @@ def estimate_ev_headroom(
         film_compression_knee=film_compression_knee,
         film_highlight_density=film_highlight_density,
         film_interimage_beta_dial=film_interimage_beta,
+        chroma_nr=chroma_nr,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
         lens_filter=lens_filter,
@@ -742,6 +744,7 @@ def _cached_render_plan(
     film_compression: float = 0.0,
     film_compression_knee: float = 2.0,
     film_highlight_density: float = 0.0,
+    chroma_nr: float = 0.0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     key = (
@@ -783,6 +786,7 @@ def _cached_render_plan(
         _cache_float(film_compression),
         _cache_float(film_compression_knee),
         _cache_float(film_highlight_density),
+        _cache_float(chroma_nr),
     )
     base = cached.get_or_build_plan(
         key,
@@ -824,6 +828,7 @@ def _cached_render_plan(
             film_compression_knee=film_compression_knee,
             film_highlight_density=film_highlight_density,
             film_interimage_beta_dial=film_interimage_beta,
+            chroma_nr=chroma_nr,
             adjustments=None,
             endpoint_mode=endpoint_mode,
             color_head_y=color_head_y,
@@ -883,6 +888,7 @@ def _preview_pixel_key(
     film_compression_knee: float = 2.0,
     film_highlight_density: float = 0.0,
     film_interimage_beta: float | None = None,
+    chroma_nr: float = 0.0,
 ) -> tuple[Any, ...]:
     return (
         gamut,
@@ -927,6 +933,8 @@ def _preview_pixel_key(
         _cache_float(film_compression_knee),
         _cache_float(film_highlight_density),
         (None if film_interimage_beta is None else _cache_float(film_interimage_beta)),
+        # review batch 23: the chroma-NR dial changes rendered bytes
+        _cache_float(chroma_nr),
         endpoint_mode,
         _adjustment_key(adjustments),
         # Exposure is represented by ``ev`` above; the scale contract guards against
@@ -975,6 +983,21 @@ def parse_decoder(params: dict) -> tuple[str, str]:
     # the CLI allows it and tests pin it. One behaviour across GUI, CLI
     # and the Python API.
     return decoder, version
+
+
+def parse_chroma_nr(params: dict, output_format: str) -> float:
+    """``chromaNr`` [0, 1] (CLI --chroma-nr). v1 is an SDR-only operator: the
+    page never sends a nonzero value with an HDR container (the control is
+    greyed and snapped to 0 there), so a nonzero HDR payload is a direct API
+    contract violation and is refused — the exporter itself refuses it too,
+    and failing here is earlier and names the dial."""
+    raw = params.get("chromaNr", params.get("chroma_nr", 0.0))
+    value = _finite_number(raw if raw not in (None, "") else 0.0, "色度降噪", 0.0, 1.0)
+    if value > 0.0 and dg.is_hdr_output_format(output_format):
+        raise ValueError(
+            "chromaNr 属于 SDR 路径(v1):HDR 容器导出尚无色度降噪 pre-pass,请置 0"
+        )
+    return float(value)
 
 
 def parse_decode_extras(params: dict, decoder: str) -> tuple[str, int]:
@@ -1073,6 +1096,7 @@ def export_preview_jpeg(
     is_current: Callable[[], bool] | None = None,
     coreimage_scale: str = "aligned",
     clip_margin: int = 4,
+    chroma_nr: float = 0.0,
 ) -> dict:
     dg.require_dependencies()
     if decoder == "coreimage":
@@ -1160,6 +1184,7 @@ def export_preview_jpeg(
         film_compression_knee=film_compression_knee,
         film_highlight_density=film_highlight_density,
         film_interimage_beta=film_interimage_beta,
+        chroma_nr=chroma_nr,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
     if auto_ev is None:
@@ -1227,6 +1252,7 @@ def export_preview_jpeg(
             film_compression_knee=film_compression_knee,
             film_highlight_density=film_highlight_density,
             film_interimage_beta=film_interimage_beta,
+            chroma_nr=chroma_nr,
         )
         if rgb_u8 is None:
             ensure_current()
@@ -1683,6 +1709,7 @@ def run_preview(params: dict) -> dict:
         if film_optics_seed not in (None, "", "auto") else None
     )
     endpoint_mode = parse_endpoint_mode(params)
+    chroma_nr = parse_chroma_nr(params, output_format)
     try:
         cached = PREVIEW_STORE.get(
             inp,
@@ -1750,6 +1777,7 @@ def run_preview(params: dict) -> dict:
                 color_head_y=color_head_y,
                 color_head_m=color_head_m,
                 lens_filter=lens_filter,
+                chroma_nr=chroma_nr,
             )
             if not is_current():
                 raise PreviewSuperseded()
@@ -1812,6 +1840,7 @@ def run_preview(params: dict) -> dict:
             is_current=is_current,
             coreimage_scale=coreimage_scale,
             clip_margin=clip_margin,
+            chroma_nr=chroma_nr,
         )
         result["generation"] = generation
         return result
@@ -1884,7 +1913,7 @@ def detected_scene_params(
 
 def prepare_preview(params: dict) -> dict:
     """Warm the fixed proxy and current immutable base plan after selection."""
-    inp, highlight, gamut, _, _, _, _, _, _, _ = parse_job_params(params)
+    inp, highlight, gamut, output_format, _, _, _, _, _, _ = parse_job_params(params)
     wb = str(params.get("wb", "camera"))
     if wb not in dg.WB_CHOICES:
         raise ValueError(f"未知白平衡模式：{wb}")
@@ -1915,6 +1944,7 @@ def prepare_preview(params: dict) -> dict:
         if film_optics_seed not in (None, "", "auto") else None
     )
     endpoint_mode = parse_endpoint_mode(params)
+    chroma_nr = parse_chroma_nr(params, output_format)
     with SCHEDULER.slot("prepare"):
         entry = PREVIEW_STORE.get(
             inp,
@@ -1977,6 +2007,7 @@ def prepare_preview(params: dict) -> dict:
             film_compression_knee=film_compression_knee,
             film_highlight_density=film_highlight_density,
             film_interimage_beta=film_interimage_beta,
+            chroma_nr=chroma_nr,
         )
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
@@ -2038,6 +2069,7 @@ def export_suffix_parts(
     coreimage_scale: str = "aligned",
     clip_margin: int = 4,
     decoder: str = "libraw",
+    chroma_nr: float = 0.0,
 ) -> str:
     """Build the filename stem suffix for GUI JPEG/PNG exports."""
     parts = [tone_core]
@@ -2097,6 +2129,9 @@ def export_suffix_parts(
         parts.append(f"ciscale-{coreimage_scale}")
     if int(clip_margin) != 4:
         parts.append(f"margin{int(clip_margin)}")
+    if float(chroma_nr) > 0.0:
+        # a repaired render must not silently overwrite the untouched one
+        parts.append(f"cnr{float(chroma_nr):g}".replace(".", "_"))
     if highlight != "clip":
         parts.append(highlight)
     if gamut != "srgb":
@@ -2287,6 +2322,7 @@ def run_export(params: dict) -> dict:
         if film_optics_seed not in (None, "", "auto") else None
     )
     endpoint_mode = parse_endpoint_mode(params)
+    chroma_nr = parse_chroma_nr(params, output_format)
     if film_optics_seed is None:
         # the same realization the preview showed, when its entry is loaded;
         # a cold export (no preview session) mints its own
@@ -2379,6 +2415,7 @@ def run_export(params: dict) -> dict:
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             lens_filter=lens_filter,
+            chroma_nr=chroma_nr,
         )
         ev = auto_ev_result.ev
     bundle = dg.with_intent_exposure(bundle, user_ev=ev, tone_core=tone_core)
@@ -2424,6 +2461,7 @@ def run_export(params: dict) -> dict:
         endpoint_mode=endpoint_mode,
         color_head_y=color_head_y,
         color_head_m=color_head_m,
+        chroma_nr=chroma_nr,
     )
 
     grade_id = str(params.get("grade", "none"))
@@ -2470,6 +2508,7 @@ def run_export(params: dict) -> dict:
         coreimage_scale=coreimage_scale,
         clip_margin=int(clip_margin),
         decoder=decoder,
+        chroma_nr=chroma_nr,
         film_development=film_development,
         film_dev_contrast=film_dev_contrast,
         film_dev_fog=film_dev_fog,
@@ -2533,6 +2572,8 @@ def run_export(params: dict) -> dict:
         film_compression_knee=film_compression_knee,
         film_highlight_density=film_highlight_density,
         film_interimage_beta_dial=film_interimage_beta,
+        # review batch 23: an SDR-only operator, but one that changes bytes
+        chroma_nr=float(chroma_nr),
         # The optics budget tier picks the spread-grid size (P3) and the
         # band split whose per-band dither draw orders the output noise, so
         # it changes rendered bytes whenever the SPATIAL PATH is engaged —
@@ -2701,6 +2742,7 @@ def run_export(params: dict) -> dict:
                     color_head_y=color_head_y,
                     color_head_m=color_head_m,
                     lens_filter=lens_filter,
+                    chroma_nr=chroma_nr,
                 )
             )
             preview = (

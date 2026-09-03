@@ -30,7 +30,10 @@ from .constants import PROXY_LONG_EDGE
 # v14 (R2 item 20): entries carry the full-resolution tone-plan sample
 # rows (+ identically strided clip-mask rows), so preview plans compile
 # from the exporter's own statistics instead of proxy pixels.
-PREVIEW_CACHE_VERSION = 14
+# v15 (review batch 23): entries record proxy_scale (sensor px per proxy px)
+# so sensor-declared operator bands (chroma_nr) measure the same physical
+# scale on the preview as on the export.
+PREVIEW_CACHE_VERSION = 15
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -389,6 +392,7 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "scene_decoder_runtime": getattr(bundle, "scene_decoder_runtime", None),
         "scene_scale_mode": getattr(bundle, "scene_scale_mode", None),
         "scene_align_factor": float(getattr(bundle, "scene_align_factor", 1.0)),
+        "proxy_scale": float(getattr(bundle, "proxy_scale", 1.0)),
         "scene_align_error": getattr(bundle, "scene_align_error", None),
         "scene_opcode_names": list(getattr(bundle, "scene_opcode_names", ()) or ()),
         "evidence_shape": (
@@ -471,6 +475,7 @@ def _bundle_from_cache(
         scene_decoder_runtime=metadata.get("scene_decoder_runtime"),
         scene_scale_mode=metadata.get("scene_scale_mode"),
         scene_align_factor=float(metadata.get("scene_align_factor", 1.0)),
+        proxy_scale=float(metadata.get("proxy_scale", 1.0)),
         scene_align_error=metadata.get("scene_align_error"),
         scene_opcode_names=tuple(metadata.get("scene_opcode_names", ()) or ()),
         evidence_shape=(
@@ -564,6 +569,11 @@ def build_proxy_entry(
     # resizes treat them as already scene-aligned.
     meta["evidence_shape"] = [int(proxy_shape[0]), int(proxy_shape[1])]
     meta["scene_geometry_crop"] = None
+    # sensor px per proxy px along the long edge (compounds if the source
+    # was itself a proxy); the chroma-NR band is declared in sensor px
+    meta["proxy_scale"] = float(getattr(source, "proxy_scale", 1.0) or 1.0) * (
+        max(source.scene_rec2020_render.shape[:2]) / max(max(proxy_shape), 1)
+    )
     bundle = _bundle_from_cache(
         source.path,
         meta,

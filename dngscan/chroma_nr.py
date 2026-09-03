@@ -52,6 +52,7 @@ LUMA_W = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
 # modelled choices, not measurements.
 BAND_LO_PX = 8.0
 BAND_HI_PX = 128.0
+_SQRT2 = 2.0 ** 0.5
 _B3 = np.asarray([1.0, 4.0, 6.0, 4.0, 1.0], dtype=np.float32) / 16.0
 
 
@@ -59,19 +60,26 @@ def atrous_levels_for(decimation_factor: float) -> tuple[int, ...]:
     """Which à-trous levels on the decimated grid fall inside the declared
     full-resolution band. Level k shrinks detail between hole spacings
     2^k and 2^(k+1) cells, i.e. factor·2^k .. factor·2^(k+1) sensor px —
-    include it while it overlaps [BAND_LO_PX, BAND_HI_PX]. At identity
-    grids (small renders) the first levels fall below BAND_LO_PX and are
-    skipped, which is what keeps pixel-scale speckle untouched there."""
+    include it while the level's geometric centre factor·2^k·√2 lies in
+    [BAND_LO_PX, BAND_HI_PX]. The realized band is octave-aligned, so it
+    can only be declared to within a factor √2: it always lies INSIDE
+    [BAND_LO_PX/√2, BAND_HI_PX·√2] and always COVERS [BAND_LO_PX·√2,
+    BAND_HI_PX/√2] (the lower edge bounded below by the grid's own cell
+    when the decimation factor exceeds BAND_LO_PX·√2). (Review batch 23: the earlier any-overlap rule let the
+    top level reach 2·BAND_HI_PX at some decimation factors — a memory
+    tier could silently widen the declared band.) At identity grids (small
+    renders) the first levels fall below BAND_LO_PX and are skipped, which
+    is what keeps pixel-scale speckle untouched there."""
     factor = max(float(decimation_factor), 1.0)
     levels = []
-    k = 0
-    while factor * (2.0 ** k) < BAND_HI_PX:
-        if factor * (2.0 ** (k + 1)) > BAND_LO_PX:
-            levels.append(k)
-        k += 1
-        if k > 12:
+    for k in range(13):
+        centre = factor * (2.0 ** k) * _SQRT2
+        if centre > BAND_HI_PX:
             break
+        if centre >= BAND_LO_PX:
+            levels.append(k)
     return tuple(levels)
+
 
 # Shrinkage scale: T_level = amount * K * sigma_level, sigma from the
 # level's own median absolute deviation (MAD / 0.6745). The shrink is the
@@ -125,12 +133,12 @@ def chroma_correction_map(
     dec = np.asarray(scene_dec, dtype=np.float32)
     y = dec @ LUMA_W
     chroma = dec - y[..., None]
+    del dec, y
 
     # Multiplicative domain would be ill-defined at y <= 0; the additive
     # opponent form keeps the operator linear-in-signal and lets shadows —
     # where the mottle lives — carry proportionally small absolute
     # corrections bounded by their own chroma.
-    smooth = chroma
     total_removed = np.zeros_like(chroma)
     max_step = max((min(chroma.shape[:2]) - 1) // 2, 1)
     included = set(atrous_levels_for(decimation_factor))
@@ -139,25 +147,37 @@ def chroma_correction_map(
     # spacing only avoids aliasing on the PROGRESSIVELY smoothed image —
     # but only the in-band levels shrink; protected fine levels pass
     # through untouched inside their detail coefficients.
-    for level in range(top + 1):
-        if (1 << level) > max_step:
-            break  # grid too small to carry this scale's reflect pad
-        coarser = _atrous_smooth(smooth, level)
-        if level in included:
-            detail = smooth - coarser
-            # Per-level, per-channel robust noise floor. abs+median over
-            # the whole grid: the mottle and noise dominate the
-            # coefficient population at these scales; sparse real edges
-            # do not move a MAD.
-            mad = np.median(np.abs(detail.reshape(-1, 3)), axis=0)
-            threshold = (
-                np.float32(float(amount) * _THRESHOLD_K * _MAD_TO_SIGMA) * mad
-            ).astype(np.float32)
-            t2 = np.square(threshold)[None, None, :]
-            removed = detail * (t2 / (t2 + np.square(detail) + np.float32(1e-30)))
-            total_removed += removed
-            del detail, removed
-        smooth = coarser
+    #
+    # Review batch 23 (memory): the cascade runs ONE CHANNEL AT A TIME.
+    # Every operation below is elementwise per channel (separable B3
+    # smoothing, per-channel MAD, per-channel garrote), so the result is
+    # byte-identical to the three-channel form while the transient working
+    # set drops to about a third — measured 227 MiB -> ~70 MiB on the 1408
+    # grid, which is what lets the pass-0 peak stay under the optics tier.
+    for c in range(3):
+        smooth = chroma[..., c]
+        for level in range(top + 1):
+            if (1 << level) > max_step:
+                break  # grid too small to carry this scale's reflect pad
+            coarser = _atrous_smooth(smooth, level)
+            if level in included:
+                detail = smooth - coarser
+                # Per-level, per-channel robust noise floor. abs+median over
+                # the whole grid: the mottle and noise dominate the
+                # coefficient population at these scales; sparse real edges
+                # do not move a MAD.
+                mad = np.median(np.abs(detail))
+                threshold = np.float32(
+                    np.float32(float(amount) * _THRESHOLD_K * _MAD_TO_SIGMA)
+                    * np.float32(mad)
+                )
+                t2 = np.square(threshold)
+                total_removed[..., c] += detail * (
+                    t2 / (t2 + np.square(detail) + np.float32(1e-30))
+                )
+                del detail
+            smooth = coarser
+        del smooth
 
     correction = -total_removed
     # Exact zero-luma projection: whatever numerical luma the per-channel
