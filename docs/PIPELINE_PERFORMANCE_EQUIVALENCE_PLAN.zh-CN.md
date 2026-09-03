@@ -72,6 +72,13 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   现仅 gamut-fit 路径上 ≤0.05% 残差,见下一条遗留）。gamut fit 内部的
   `output_to_lms`/`lms_to_output` 仍是预合并矩阵——它只作用于 out-of-gamut 像素并
   受 1e-4 浮点容差门约束,拆分归属完整 reference-mode 程序。
+- HDR 快路的输出级（`NativeHdrPlan` 的 rec2020_to_xyz/xyz_to_output）曾是 float32 链,
+  头文件却写着"与 NumPy 运算顺序一致"（NumPy 在 float64 累加）。**已修正（批 25,
+  ABI v10）**:与 SDR v8 同一合同——float64 两阶段、逐级 float32 materialization。
+  实测（test_hdr_native 的 10 组 60k 像素扫描）max |Δ| 8.46e-5→8.27e-5、p99 5.2e-6 不变、
+  逐位相同像素 21.7%→21.9%:这一级只是 HDR 残差的来源之一,其余来自曲线表插值、Oklab
+  punch 路径与 gamut-fit（预合并矩阵,1e-4 容差）等 float32 级,HDR 门禁仍为
+  2e-4 / 2e-5(p99),未收紧;逐级拆分归属完整 reference-mode 程序。
 - 单平面 TPDF cache 把 `(value + noise_a) - noise_b` 改成 `value + (noise_a - noise_b)`。
   **已修正（批 20 期间）**:生产路径全部走双平面
   （`deterministic_dither_planes` / native finalize 的 noise_a/noise_b 入参,

@@ -194,7 +194,7 @@ class NativeOutputParityTests(unittest.TestCase):
         self.assertEqual(ext.native_abi_version(), NATIVE_ABI_VERSION)
         # v9: peak-proximity chroma convergence in the HDR gated blend
         # (two-route doctrine item B).
-        self.assertEqual(NATIVE_ABI_VERSION, 9)
+        self.assertEqual(NATIVE_ABI_VERSION, 10)  # v10: HDR output stage float64 (batch 25)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_FIT_ITERS, 16)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_TOLERANCE, 1e-4)
         for gamut in ("srgb", "p3"):

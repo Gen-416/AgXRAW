@@ -8,7 +8,10 @@ namespace dngscan_fast {
 
 // v8 (R2 item 6): NativeOutputPlan's pre-merged rec2020_to_output replaced by
 // the exact two-stage float64 matrices (rec2020_to_xyz + xyz_to_output).
-inline constexpr int NATIVE_ABI_VERSION = 9;
+// v10 (review batch 25, R-P2-6): NativeHdrPlan's output stage gets the same
+// exact float64 two-stage matrices the SDR plan has carried since v8; the
+// float32 chain was the recorded ~2.4e-6..8.5e-5 deviation of the HDR fast path.
+inline constexpr int NATIVE_ABI_VERSION = 10;
 inline constexpr float EPS = 1e-12f;
 
 struct CurveParams {

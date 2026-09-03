@@ -137,6 +137,9 @@ dngscan_fast::NativeHdrPlan hdr_plan_from_py(
   copy_matrix9(obj.attr("rec2020_to_xyz"), plan.rec2020_to_xyz);
   copy_matrix9(obj.attr("xyz_to_rec2020"), plan.xyz_to_rec2020);
   copy_matrix9(obj.attr("xyz_to_output"), plan.xyz_to_output);
+  // ABI v10: the output stage reads the exact float64 copies
+  copy_matrix9_f64(obj.attr("rec2020_to_xyz"), plan.rec2020_to_xyz_f64);
+  copy_matrix9_f64(obj.attr("xyz_to_output"), plan.xyz_to_output_f64);
   copy_matrix9(obj.attr("oklab_m1"), plan.oklab_m1);
   copy_matrix9(obj.attr("oklab_m2"), plan.oklab_m2);
   copy_matrix9(obj.attr("oklab_m1_inv"), plan.oklab_m1_inv);
@@ -476,6 +479,10 @@ PYBIND11_MODULE(_dngscan_fast, m) {
             hdr_plan.xyz_to_rec2020[8] = 1.0f;
         hdr_plan.xyz_to_output[0] = hdr_plan.xyz_to_output[4] =
             hdr_plan.xyz_to_output[8] = 1.0f;
+        hdr_plan.rec2020_to_xyz_f64[0] = hdr_plan.rec2020_to_xyz_f64[4] =
+            hdr_plan.rec2020_to_xyz_f64[8] = 1.0;
+        hdr_plan.xyz_to_output_f64[0] = hdr_plan.xyz_to_output_f64[4] =
+            hdr_plan.xyz_to_output_f64[8] = 1.0;
         hdr_plan.oklab_m1[0] = hdr_plan.oklab_m1[4] = hdr_plan.oklab_m1[8] = 1.0f;
         hdr_plan.oklab_m2[0] = hdr_plan.oklab_m2[4] = hdr_plan.oklab_m2[8] = 1.0f;
         hdr_plan.oklab_m1_inv[0] = hdr_plan.oklab_m1_inv[4] =
