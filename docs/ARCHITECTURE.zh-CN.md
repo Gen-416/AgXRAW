@@ -329,7 +329,7 @@ ceiling，没有才回退到逐通道 metadata white level。它不会拿一个�
 最高优先级算法；X-Trans 等非 Bayer 数据继续走 LibRaw 对应路径。预览使用 half-size
 2×2 超像素合并，所以预览适合看曝光、颜色和高光路径，不适合评价最终纹理。
 
-dngscan 不做降噪，因此解拜耳也是主要的纹理选择。DHT 适合低 ISO 的干净信号；重噪声
+dngscan 默认不做降噪，因此解拜耳也是主要的纹理选择。唯一的可选例外是仅色度数字化修复（`--chroma-nr`，默认 0）：一个频带受限、内容自适应（按每级 MAD 定阈）的算子，只去低频色斑、按构造不碰别的——见 `chroma_nr.py`；v1 仅 SDR。DHT 适合低 ISO 的干净信号；重噪声
 夜景里，DCB、AAHD、VNG 或 PPG 有时比更激进的细节插值自然。标准 rawpy wheel 不一定包含
 AMaZE、LMMSE、VCD、AFD 等 GPL demosaic pack 算法，实际可选项取决于本机 LibRaw 构建。
 GUI/CLI 可手动指定 `dht / dcb / ahd / aahd / vng / ppg`；如果本机 LibRaw 还带有其他

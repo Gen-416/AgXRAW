@@ -310,6 +310,7 @@ class EveryCliDialHasAGuiControl(unittest.TestCase):
     PAYLOAD_KEY_FOR_CLI = {
         "--coreimage-scale": "coreimageScale",
         "--margin": "clipMargin",
+        "--chroma-nr": "chromaNr",
         "--film-development": "filmDevelopment",
         "--film-dev-contrast": "filmDevContrast",
         "--film-dev-fog": "filmDevFog",
@@ -336,7 +337,7 @@ class EveryCliDialHasAGuiControl(unittest.TestCase):
     def test_new_controls_exist_and_reset_outside_full(self) -> None:
         for cid in ("filmDevelopment", "filmDevContrast", "filmDevFog", "filmDevDensity", "filmCompression",
                     "filmCompressionKnee", "filmHighlightDensity", "filmMediaScatter", "filmOpticsSeed",
-                    "coreimageScale", "clipMargin"):
+                    "coreimageScale", "clipMargin", "chromaNr"):
             self.assertIn(f'id="{cid}"', PAGE)
         reset = PAGE[PAGE.index("function updateFilmModeUi"):]
         reset = reset[: reset.index("const preset=$(\"#filmCurve\").value;")]
