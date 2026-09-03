@@ -446,6 +446,11 @@ Z_K = 0.24216090560632872 stops
 M_K = 1.1657668767547156 output-stops / scene-EV
 ```
 
+> 批 21 之后的补充：body 是 `T_body^p`，`p = look_brightness_power(view_brightness)`
+> （SDR 的亮度腿同一映射）。锚点按复合函数取：`T_K = T_body(K)^p`，
+> `dT/de = p·T_body^(p-1)·dT_body/de`，换成输出 stops 正好是 `M_K' = p·M_K`。
+> 上面的数字是 view_brightness = 1（p = 1）时的值。
+
 ## 7. HDR upper shoulder 数学
 
 ### 7.1 为什么用 output-stop 坐标
