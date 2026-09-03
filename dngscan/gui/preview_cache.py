@@ -259,6 +259,26 @@ def _scene_decoder_runtime_id(decoder: str) -> str:
     return str(decoder_runtime_id())
 
 
+def _realization_id_for(digest: str) -> int:
+    """The grain realization an identity ALWAYS gets (review batch 24, R-P2-7).
+
+    The auto seed used to be minted per PreviewEntry (secrets), so it lived
+    only as long as the entry: a memory-LRU eviction (two proxies resident),
+    a disk-cache reload or a restart re-minted it, and an export that peeked
+    for the entry after eviction minted yet another — preview grain and
+    export grain could disagree. Deriving it from the cache identity digest
+    (file evidence + decode recipe) makes the same RAW under the same recipe
+    carry the same realization everywhere, forever; an explicit seed still
+    overrides it."""
+    import hashlib
+
+    # hash rather than parse: the digest is opaque text (tests substitute
+    # non-hex identities), and the realization only needs to be a stable
+    # odd 32-bit function of it
+    h = hashlib.sha256(str(digest).encode("utf-8")).hexdigest()
+    return (int(h[:8], 16) & 0xFFFFFFFF) | 1
+
+
 def _cache_identity(
     path: Path,
     highlight: str,
@@ -738,6 +758,32 @@ class PreviewCache:
         with self.lock:
             self.entries.clear()
 
+    def realization_id_for(
+        self,
+        path: Path,
+        highlight: str,
+        wb: str,
+        require_guidance: bool = False,
+        decoder: str = "libraw",
+        coreimage_version: str = "auto",
+        demosaic: str = "auto",
+        coreimage_scale: str = "aligned",
+        margin: int = 4,
+    ) -> int:
+        """The auto grain realization for this identity WITHOUT loading it —
+        the same value get() stamps on the entry, so an export whose entry
+        was evicted (or never previewed) still carries the preview's grain."""
+        if decoder == "coreimage":
+            highlight = "reconstruct"
+            demosaic = "auto"
+        else:
+            coreimage_scale = "aligned"
+        _, digest = _cache_identity(
+            path, highlight, wb, decoder, coreimage_version, demosaic,
+            coreimage_scale, int(margin),
+        )
+        return _realization_id_for(digest)
+
     def peek(
         self,
         path: Path,
@@ -857,6 +903,8 @@ class PreviewCache:
                         analysis, _, _ = dg.analyze(source, int(margin), diagnostics=False)
                         built = build_proxy_entry(source, analysis, require_guidance)
                         _write_disk_entry(cache_path, built)
+                    # identity-derived, whichever way the entry was built
+                    built.realization_id = _realization_id_for(digest)
                 with self.lock:
                     self.entries[key] = built
                     self.entries.move_to_end(key)

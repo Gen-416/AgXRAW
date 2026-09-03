@@ -203,8 +203,12 @@ contract both feed, orange is the intent a person supplies, and green is the com
 plan everything downstream must obey.
 
 The second graph expands the actual render. SDR and HDR share capture, scene intent,
-exposure, and the optional prefeed, then split before display formation. HDR never uses
-the completed SDR pixels as its tone-map input.
+exposure, and the optional prefeed, then split before display formation. On the AgX path
+HDR never uses the completed SDR pixels as its tone-map input. The film-takeover HDR
+pair (`render_ultrahdr_film_pair`) is the declared exception: its SDR leg is the film
+print and its HDR leg is that same print plus a scene-EV-driven gain increment above the
+print's reference white — one development, two legs, rather than two developers of the
+same photograph. The graph below draws the AgX path.
 
 ```mermaid
 flowchart TB
@@ -297,7 +301,8 @@ flowchart TB
 
 Purple is the HDR branch, blue the SDR one. They meet only at the grey shared nodes on
 the left and at packaging on the right — there is no arrow from a finished SDR pixel into
-the HDR branch, which is the property the whole split exists to guarantee. The red node
+the HDR branch, which is the property the whole split exists to guarantee (the
+film-takeover pair extends the finished print instead, by construction: see above). The red node
 is the only gate that can reject a finished file: it re-reads what was written and
 compares it against the rendition it claims to carry.
 
