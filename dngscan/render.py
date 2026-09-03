@@ -332,8 +332,10 @@ def _optics_band_rows(width: int, reserved_mib: float = 0.0) -> int:
     """Rows per sequential band so the fixed context costs PLUS the band's
     working set (about eight float32 RGB copies through intent/retreat/
     StageA/B1/paper/B2/finalize) stay inside the budget tier. Sampling and
-    blur paths are slab-bounded upstream so no full-frame temporary exists
-    outside this accounting; an independent-process RSS gate pins the sum.
+    blur paths are slab-bounded upstream so the RENDER path holds no
+    full-frame temporary outside this accounting (the film HDR pair's own
+    band loop keeps its full-frame mapped/hdr buffers, charged nowhere); an
+    independent-process RSS gate pins the sum.
 
     reserved_mib: full-frame state a caller keeps alive across the bands
     beyond the optics context — today the chroma-NR correction map (review
@@ -343,6 +345,9 @@ def _optics_band_rows(width: int, reserved_mib: float = 0.0) -> int:
         (_optics_budget_mib() - _OPTICS_FIXED_MIB - float(reserved_mib)), 32
     ) * (1 << 20)
     per_row = max(width, 1) * 3 * 4 * 8
+    # the extra /3 pre-reserves for the halo-slab tripling below (chunk =
+    # min(chunk*3, ...) when a scatter halo widens the band); passes 0/1
+    # never triple and so run 3x smaller bands than the budget allows
     return int(np.clip(budget_bytes // (3 * per_row), 64, 8192))
 
 

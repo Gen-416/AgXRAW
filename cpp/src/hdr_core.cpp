@@ -168,7 +168,7 @@ Rgb process_pixel(const Rgb& input, const float* mask, const NativeHdrPlan& plan
     in = {nan, nan, nan};
   }
   const Rgb rgb = compress_into_gamut(in);
-  const Rgb inset = mat3(plan.inset, rgb);
+  const Rgb inset = mat3_exact_f64(plan.inset, rgb);
 
   const bool restore_hue = plan.hue_restore > 1e-6f;
   float pre_hue = 0.0f;
@@ -197,11 +197,11 @@ Rgb process_pixel(const Rgb& input, const float* mask, const NativeHdrPlan& plan
     if (restore_hue) {
       formation = mix_hue(formation, pre_hue, plan.hue_restore);
     }
-    Rgb mapped = mat3(plan.outset, formation);
+    Rgb mapped = mat3_exact_f64(plan.outset, formation);
     mapped = apply_punch_rec2020_pixel(mapped, plan.punch_strength, punch);
     // ABI v10: exact float64 stages, materialized to float32 per stage
-    const Rgb xyz = mat3_exact_f64(plan.rec2020_to_xyz_f64, mapped);
-    Rgb output_linear = mat3_exact_f64(plan.xyz_to_output_f64, xyz);
+    const Rgb xyz = mat3_exact_f64(plan.rec2020_to_xyz, mapped);
+    Rgb output_linear = mat3_exact_f64(plan.xyz_to_output, xyz);
     return {
         nan_to_num(output_linear.r, 0.0f, 1e6f, -1e6f),
         nan_to_num(output_linear.g, 0.0f, 1e6f, -1e6f),

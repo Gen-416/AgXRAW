@@ -26,27 +26,21 @@ struct HdrCurveTableView {
 // takeover LUT (film_mode="full" with an active curve preset) and the enlarger
 // colour-head LMS gain field (non-zero Y/M filtration).
 struct NativeHdrPlan {
-  float inset[9];
-  float outset[9];
+  // ABI v11: exact float64 stages throughout (see NativeAgxPlan).
+  double inset[9];
+  double outset[9];
 
-  // Float32 copies feed the punch/Oklab excursion (pixel_math PunchMatrices,
-  // a float32 path in NumPy too).
-  float rec2020_to_xyz[9];
-  float xyz_to_rec2020[9];
-  float xyz_to_output[9];
-  // ABI v10 (review batch 25): the OUTPUT stage rec2020_to_output is two exact
-  // NumPy matrix stages — float64 accumulate, float32 materialization per
-  // stage (apply_rgb_matrix3(rec2020_to_xyz(rgb), XYZ_TO_RGB[space])) — the
-  // same contract NativeOutputPlan has carried since v8. The old comment
-  // claimed the float32 chain "matched the NumPy operation order"; NumPy
-  // accumulates in float64, so it did not.
-  double rec2020_to_xyz_f64[9];
-  double xyz_to_output_f64[9];
-
-  float oklab_m1[9];
-  float oklab_m2[9];
-  float oklab_m1_inv[9];
-  float oklab_m2_inv[9];
+  // The punch/Oklab excursion and the output stage: every one of these is a
+  // float64-matrix stage in NumPy (apply_rgb_matrix3), so each is an exact
+  // float64-accumulate / float32-materialize stage here (v10 did the output
+  // stage; v11 the rest — the remaining residual of the HDR fast path).
+  double rec2020_to_xyz[9];
+  double xyz_to_rec2020[9];
+  double xyz_to_output[9];
+  double oklab_m1[9];
+  double oklab_m2[9];
+  double oklab_m1_inv[9];
+  double oklab_m2_inv[9];
 
   // Pre-outset formation luminance row (hdr_color.formation_luma_weights) for the
   // native/reference chroma blend, and the output space's normalized luminance row

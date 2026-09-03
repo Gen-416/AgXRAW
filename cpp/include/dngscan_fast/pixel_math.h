@@ -7,6 +7,7 @@
 #pragma once
 
 #include "dngscan_fast/agx_core.h"
+#include "dngscan_fast/exact_matrix.h"
 
 #include <algorithm>
 #include <cmath>
@@ -180,12 +181,13 @@ inline Rgb mix_hue(const Rgb& rgb_linear, float pre_hue, float restore) {
 
 // Matrices needed by the scene-driven punch operator (dngscan/punch.py).
 struct PunchMatrices {
-  const float* rec2020_to_xyz;
-  const float* xyz_to_rec2020;
-  const float* oklab_m1;
-  const float* oklab_m2;
-  const float* oklab_m1_inv;
-  const float* oklab_m2_inv;
+  // ABI v11: exact float64 stages (NumPy's apply_rgb_matrix3 on float64).
+  const double* rec2020_to_xyz;
+  const double* xyz_to_rec2020;
+  const double* oklab_m1;
+  const double* oklab_m2;
+  const double* oklab_m1_inv;
+  const double* oklab_m2_inv;
 };
 
 constexpr float PUNCH_CHROMA_MAX = 1.5f;
@@ -205,12 +207,12 @@ inline Rgb apply_punch_rec2020_pixel(
       nan_to_num(rgb_in.b, 0.0f, 1e6f, 0.0f),
   };
 
-  Rgb xyz = mat3(m.rec2020_to_xyz, rgb);
-  Rgb lms = mat3(m.oklab_m1, xyz);
+  Rgb xyz = mat3_exact_f64(m.rec2020_to_xyz, rgb);
+  Rgb lms = mat3_exact_f64(m.oklab_m1, xyz);
   lms.r = std::cbrt(std::max(lms.r, 0.0f));
   lms.g = std::cbrt(std::max(lms.g, 0.0f));
   lms.b = std::cbrt(std::max(lms.b, 0.0f));
-  Rgb lab = mat3(m.oklab_m2, lms);
+  Rgb lab = mat3_exact_f64(m.oklab_m2, lms);
 
   const float chroma = std::hypot(lab.g, lab.b);
   float hue = std::fmod(std::atan2(lab.b, lab.g) * (180.0f / static_cast<float>(M_PI)), 360.0f);
@@ -226,12 +228,12 @@ inline Rgb apply_punch_rec2020_pixel(
   const float gain = 1.0f + (PUNCH_CHROMA_MAX - 1.0f) * s * weight;
 
   Rgb lab_out{lab.r, lab.g * gain, lab.b * gain};
-  Rgb lms_ = mat3(m.oklab_m2_inv, lab_out);
+  Rgb lms_ = mat3_exact_f64(m.oklab_m2_inv, lab_out);
   lms_.r = lms_.r * lms_.r * lms_.r;
   lms_.g = lms_.g * lms_.g * lms_.g;
   lms_.b = lms_.b * lms_.b * lms_.b;
-  Rgb xyz_out = mat3(m.oklab_m1_inv, lms_);
-  Rgb out = mat3(m.xyz_to_rec2020, xyz_out);
+  Rgb xyz_out = mat3_exact_f64(m.oklab_m1_inv, lms_);
+  Rgb out = mat3_exact_f64(m.xyz_to_rec2020, xyz_out);
   return {
       nan_to_num(out.r, 0.0f, 1e6f, -1e6f),
       nan_to_num(out.g, 0.0f, 1e6f, -1e6f),

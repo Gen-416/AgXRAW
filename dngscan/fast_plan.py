@@ -30,7 +30,9 @@ from .models import ToneCompressionPlan
 # v10 (review batch 25, R-P2-6): the HDR plan's output stage carries the same
 # exact float64 two-stage matrices as the SDR output plan (v8); the kernel
 # reads rec2020_to_xyz/xyz_to_output as float64 for that stage.
-NATIVE_ABI_VERSION = 10
+# v11 (math review 2026-09-03): inset/outset and punch/Oklab matrices of both
+# kernels are exact float64 stages too.
+NATIVE_ABI_VERSION = 11
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

@@ -51,9 +51,11 @@ class PreviewEntry:
     bundle: RawBundle
     analysis: Analysis
     # P3 seed lifecycle (review batch 15): one grain realization per loaded
-    # RAW, minted here and reused by every preview, probe and export this
-    # entry serves. A re-loaded entry (cache eviction) mints a new one —
-    # "fully random per photo" — while an explicit seed always wins.
+    # RAW, reused by every preview, probe and export this entry serves.
+    # Review batch 24: PreviewCache.get stamps the identity-derived value
+    # (_realization_id_for) on every entry it installs, so the random
+    # default below only survives on entries constructed outside the store
+    # (tests, tools); balance children copy the base's. Explicit seed wins.
     realization_id: int = field(
         default_factory=lambda: __import__("secrets").randbits(32) | 1,
         init=False, repr=False,
