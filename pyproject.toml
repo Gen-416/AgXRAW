@@ -11,7 +11,9 @@ requires-python = ">=3.11"
 classifiers = ["Operating System :: MacOS"]
 license = { text = "GPL-3.0-or-later" }
 dependencies = [
-    "numpy>=1.24",
+    # review batch 24: the native/NumPy bit-exact contracts (float32 scalar
+    # promotion, NEP 50) are verified on NumPy 2 only — the locked CI version
+    "numpy>=2.0",
     "rawpy @ git+https://github.com/Gen-416/rawpy.git@cc7b4748c7b3e87da319198fdfcdb46e17c9c2a6",
     "pillow>=9.2",
 ]

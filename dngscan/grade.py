@@ -79,6 +79,22 @@ def resolve_grade(name: str, strength: float) -> tuple[str, float, str, float]:
     return bare, s, "none", 0.0
 
 
+def resolve_grade_id(params: dict) -> tuple[str, float]:
+    """The canonical grade id and strength a payload RENDERS with — unified
+    ``grade`` or the legacy look/filter pair. Review batch 24: export naming
+    and the fingerprint read the raw ``grade`` key, so a legacy payload
+    rendered a look under a name and fingerprint that claimed grade=none."""
+    grade = params.get("grade")
+    if grade is not None:
+        return str(grade), float(params.get("gradeStrength", params.get("grade_strength", 1.0)))
+    look, look_strength, filt, filter_strength = resolve_grade_params(params)
+    if filt != "none":
+        return grade_id_for_filter(filt), float(filter_strength)
+    if look != "none":
+        return grade_id_for_look(look), float(look_strength)
+    return "none", 1.0
+
+
 def resolve_grade_params(params: dict) -> tuple[str, float, str, float]:
     """Accept unified `grade` or legacy separate look/filter (mutually exclusive)."""
     grade = params.get("grade")

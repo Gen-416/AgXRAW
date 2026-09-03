@@ -179,7 +179,10 @@ flowchart TB
 绿色是编译完成、下游必须遵守的 plan。
 
 第二张图展开真正的渲染过程。SDR 与 HDR 共享 capture、scene intent、曝光和可选前馈，随后在
-显示形成之前分叉；HDR 不会把已经完成的 SDR 像素当作 tone-map 输入。
+显示形成之前分叉；AgX 路径上 HDR 不会把已经完成的 SDR 像素当作 tone-map 输入。胶片接管的
+HDR pair（`render_ultrahdr_film_pair`）是声明的例外：SDR 腿是胶片印相，HDR 腿在同一张印相
+之上按场景 EV 做参考白以上的增益扩展——一次显影、两条腿，而不是同一张照片的两种显影。
+下图画的是 AgX 路径。
 
 ```mermaid
 flowchart TB
@@ -271,7 +274,8 @@ flowchart TB
 ```
 
 紫色是 HDR 分支，蓝色是 SDR。两者只在左侧的灰色共享节点和右侧的封装处相遇——**没有任何
-箭头从完成的 SDR 像素指向 HDR 分支**，这正是整个分叉要保证的性质。红色节点是唯一能否决
+箭头从完成的 SDR 像素指向 HDR 分支**，这正是整个分叉要保证的性质（胶片接管 pair 则按构造
+延展已完成的印相，见上文）。红色节点是唯一能否决
 成品文件的关卡：它重新读回已写出的内容，与文件声称承载的 rendition 比对。
 
 这几个层次是刻意分开的。Tone 层只负责亮度关系和显示动态范围；Color geometry 层负责

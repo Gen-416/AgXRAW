@@ -530,7 +530,7 @@ FILM_CURVE_OPTIONS
         </div>
         <div style="flex:1;min-width:130px">
           <label>光学种子</label>
-          <input type="number" id="filmOpticsSeed" min="0" step="1" placeholder="auto" title="颗粒/光学随机排布的种子；留空=本次载入的固定种子（预览与导出一致）。">
+          <input type="number" id="filmOpticsSeed" min="0" step="1" placeholder="auto" title="颗粒/光学随机排布的种子；留空=由这张 RAW 与解码配方决定的固定种子（预览与导出一致，重启后不变）。">
         </div>
       </div>
     </div>
