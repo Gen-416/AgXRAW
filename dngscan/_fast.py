@@ -274,6 +274,27 @@ def finalize_output_u8_noise_f32(
     )
 
 
+def kernel(name: str) -> Any | None:
+    """The native entry `name`, or None when the fast path is off/unavailable.
+
+    Stage 1 (2026-09-15): the decode-side evidence and metric kernels
+    (feathering, GainMap opcodes, gamut counts, delivery round-trip metrics)
+    dispatch through this under the same policy as the render kernels —
+    auto: use when importable; strict: required; off: NumPy reference.
+    """
+    if _fast_mode() == "off":
+        return None
+    ext = _load_extension()
+    if ext is None:
+        if strict_requested():
+            raise NativeKernelError(_extension_error or "native extension unavailable")
+        return None
+    fn = getattr(ext, name, None)
+    if fn is None and strict_requested():
+        raise NativeKernelError(f"native kernel {name} missing from the extension")
+    return fn
+
+
 def set_thread_budget(budget: int) -> None:
     """Publish the native kernels' per-worker thread budget (scheduler S3).
 

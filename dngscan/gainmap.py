@@ -233,6 +233,18 @@ def _roundtrip_error(path: Path, intended_hdr_half: Any) -> dict[str, float]:
     """
     expanded = _read_expanded_hdr_rgba_half(path)[..., :3]
     intended = np.asarray(intended_hdr_half)[..., :3]
+    return _roundtrip_error_arrays(expanded, intended)
+
+
+def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
+    """Array-level body of _roundtrip_error (both float16 (H, W, 3))."""
+    from . import _fast
+
+    native = _fast.kernel("hdr_roundtrip_metrics")
+    if native is not None and expanded.shape == intended.shape:
+        # Stage 1 (2026-09-15): same float32 element math, NumPy's own
+        # median/percentile/8x8-mean semantics (tests/test_rust_stage1.py).
+        return {k: float(v) for k, v in native(expanded, intended).items()}
     if expanded.shape != intended.shape:
         return {
             "chroma_error": float("inf"),
@@ -426,6 +438,19 @@ def _base_roundtrip_error(path: Path, intended_rgb_u8: Any) -> dict[str, float]:
     """
     decoded = np.asarray(read_primary_rgb_u8(path), dtype=np.uint8)
     intended = np.asarray(intended_rgb_u8, dtype=np.uint8)
+    return _base_roundtrip_error_arrays(decoded, intended)
+
+
+def _base_roundtrip_error_arrays(decoded: Any, intended: Any) -> dict[str, float]:
+    """Array-level body of _base_roundtrip_error (both uint8 (H, W, 3))."""
+    from . import _fast
+
+    native = _fast.kernel("base_roundtrip_metrics")
+    if native is not None and decoded.shape == intended.shape and decoded.ndim == 3 and decoded.shape[2] == 3:
+        # Stage 1 (2026-09-15): exact except the float64 sums, which
+        # accumulate sequentially instead of pairwise (last-bits difference,
+        # declared in the kernel and pinned with a tolerance).
+        return {k: float(v) for k, v in native(decoded, intended).items()}
     if decoded.shape != intended.shape:
         return {
             "base_mean_code_error": float("inf"),

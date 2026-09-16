@@ -7,12 +7,15 @@
 //! tests/test_film_appearance_p10.py.
 mod agx;
 mod budget;
+mod evidence;
 mod film_appearance;
 mod hdr;
+mod metrics;
 mod output;
 mod pixel;
+mod stats;
 
-use numpy::{PyArray1, PyArrayDyn, PyArrayMethods, PyUntypedArrayMethods};
+use numpy::{PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArray2, PyReadwriteArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
@@ -548,6 +551,218 @@ fn self_test() -> bool {
         && hdr_out[2] == hdr_out[0]
 }
 
+// ---------------------------------------------------------------------------
+// Stage 1 (2026-09-15): decode-side evidence and analysis/delivery metrics.
+// NumPy stays the reference implementation (dngscan/raw_io.py, analysis.py,
+// gainmap.py); tests/test_rust_stage1.py pins bit-identity.
+
+fn as_f16_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyArrayDyn<half::f16>>> {
+    let np = py.import("numpy")?;
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("dtype", np.getattr("float16")?)?;
+    let arr = np.getattr("ascontiguousarray")?.call((obj,), Some(&kwargs))?;
+    Ok(arr.cast_into::<PyArrayDyn<half::f16>>()?)
+}
+
+fn as_u8_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyArrayDyn<u8>>> {
+    let np = py.import("numpy")?;
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("dtype", np.getattr("uint8")?)?;
+    let arr = np.getattr("ascontiguousarray")?.call((obj,), Some(&kwargs))?;
+    Ok(arr.cast_into::<PyArrayDyn<u8>>()?)
+}
+
+fn as_f64_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyArrayDyn<f64>>> {
+    let np = py.import("numpy")?;
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("dtype", np.getattr("float64")?)?;
+    let arr = np.getattr("ascontiguousarray")?.call((obj,), Some(&kwargs))?;
+    Ok(arr.cast_into::<PyArrayDyn<f64>>()?)
+}
+
+/// raw_io._feather_masks_f16: (h, w, c) float32 -> (h, w, c) float16.
+#[pyfunction]
+fn feather_masks_f16<'py>(py: Python<'py>, mask: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let mask = as_f32_array(py, mask)?;
+    let shape = mask.shape().to_vec();
+    if shape.len() != 3 {
+        return Err(PyValueError::new_err("mask must be (H, W, C)"));
+    }
+    let (h, w, c) = (shape[0], shape[1], shape[2]);
+    let ro = mask.readonly();
+    let data = ro.as_slice()?;
+    let out = py.detach(|| evidence::feather_masks_f16(data, h, w, c));
+    Ok(PyArray1::from_vec(py, out).reshape([h, w, c])?.into_any())
+}
+
+/// raw_io._apply_gain_maps_mosaic for ONE opcode, in place on the uint16
+/// visible mosaic view. `op` carries the DNG GainMap attributes (top, left,
+/// bottom, right, row_pitch, col_pitch, origin_v/h, spacing_v/h, points_v/h,
+/// gains); `colors` is the uint8 CFA index view of the same window.
+#[pyfunction]
+fn apply_gain_map_mosaic<'py>(
+    py: Python<'py>,
+    mut img: PyReadwriteArray2<'py, u16>,
+    colors: PyReadonlyArray2<'py, u8>,
+    op: &Bound<'py, PyAny>,
+    blacks: Vec<f32>,
+    whites: Vec<f32>,
+) -> PyResult<()> {
+    let gains_obj = as_f64_array(py, &op.getattr("gains")?)?;
+    let gshape = gains_obj.shape().to_vec();
+    if gshape.len() != 3 {
+        return Err(PyValueError::new_err("gains must be (points_v, points_h, planes)"));
+    }
+    let planes = gshape[2];
+    let gains_ro = gains_obj.readonly();
+    let gains_all = gains_ro.as_slice()?;
+    // map plane 0 (dng_gain_map::Interpolate for the single mosaic image plane)
+    let gains: Vec<f64> = gains_all.iter().step_by(planes.max(1)).copied().collect();
+    let geti = |name: &str| -> PyResult<i64> { op.getattr(name)?.extract::<i64>() };
+    let getf = |name: &str| -> PyResult<f64> { op.getattr(name)?.extract::<f64>() };
+    let gop = evidence::GainMapOp {
+        top: geti("top")?,
+        left: geti("left")?,
+        bottom: geti("bottom")?,
+        right: geti("right")?,
+        row_pitch: geti("row_pitch")?,
+        col_pitch: geti("col_pitch")?,
+        origin_v: getf("origin_v")?,
+        origin_h: getf("origin_h")?,
+        spacing_v: getf("spacing_v")?,
+        spacing_h: getf("spacing_h")?,
+        points_v: geti("points_v")?,
+        points_h: geti("points_h")?,
+        gains: &gains,
+    };
+    if (gshape[0] as i64) != gop.points_v || (gshape[1] as i64) != gop.points_h {
+        return Err(PyValueError::new_err("gains grid does not match points_v/points_h"));
+    }
+    let mut img_view = img.as_array_mut();
+    let colors_view = colors.as_array();
+    let (h, w) = (img_view.shape()[0], img_view.shape()[1]);
+    if colors_view.shape() != [h, w] {
+        return Err(PyValueError::new_err("colors must match img shape"));
+    }
+    let color_at = |y: usize, x: usize| -> usize { colors_view[[y, x]] as usize };
+    // the view may be strided (visible window): index through ndarray
+    let mut writes: Vec<(usize, usize, u16)> = Vec::new();
+    {
+        let get = |y: usize, x: usize| -> u16 { img_view[[y, x]] };
+        let mut set = |y: usize, x: usize, v: u16| writes.push((y, x, v));
+        evidence::apply_gain_map_mosaic(h, w, &gop, &blacks, &whites, &color_at, &get, &mut set);
+    }
+    for (y, x, v) in writes {
+        img_view[[y, x]] = v;
+    }
+    Ok(())
+}
+
+/// analysis.compute_gamut_metrics core: (counts per matrix, bright_total).
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn gamut_counts<'py>(
+    py: Python<'py>,
+    scene: &Bound<'py, PyAny>,
+    y: &Bound<'py, PyAny>,
+    inv_scale: f32,
+    rec2020_to_xyz: Vec<f64>,
+    matrices: Vec<Vec<f64>>,
+    eps: f32,
+    gamut_eps: f32,
+) -> PyResult<(Vec<u64>, usize)> {
+    let scene = as_f32_array(py, scene)?;
+    let sshape = scene.shape().to_vec();
+    if sshape.len() != 2 || sshape[1] < 3 {
+        return Err(PyValueError::new_err("scene must be (N, >=3)"));
+    }
+    let y = as_f32_array(py, y)?;
+    if y.shape().len() != 1 || y.shape()[0] != sshape[0] {
+        return Err(PyValueError::new_err("y must be (N,)"));
+    }
+    let m: [f64; 9] = rec2020_to_xyz
+        .as_slice()
+        .try_into()
+        .map_err(|_| PyValueError::new_err("rec2020_to_xyz must have 9 elements"))?;
+    let mats: Vec<[f64; 9]> = matrices
+        .iter()
+        .map(|v| v.as_slice().try_into().map_err(|_| PyValueError::new_err("matrix must have 9 elements")))
+        .collect::<PyResult<_>>()?;
+    let sro = scene.readonly();
+    let yro = y.readonly();
+    let sdata = sro.as_slice()?;
+    let ydata = yro.as_slice()?;
+    let stride = sshape[1];
+    Ok(py.detach(|| metrics::gamut_counts(sdata, stride, ydata, inv_scale, &m, &mats, eps, gamut_eps)))
+}
+
+/// gainmap._roundtrip_error on the decoded (h, w, >=3) float16 rendition and
+/// the intended (h, w, >=3) float16 one. Returns the metrics dict.
+#[pyfunction]
+fn hdr_roundtrip_metrics<'py>(
+    py: Python<'py>,
+    expanded: &Bound<'py, PyAny>,
+    intended: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = as_f16_array(py, expanded)?;
+    let e = as_f16_array(py, intended)?;
+    let (sa, se) = (a.shape().to_vec(), e.shape().to_vec());
+    if sa.len() != 3 || se.len() != 3 || sa[2] < 3 || se[2] < 3 {
+        return Err(PyValueError::new_err("renditions must be (H, W, >=3)"));
+    }
+    if sa[0] != se[0] || sa[1] != se[1] {
+        return Err(PyValueError::new_err("rendition shapes differ"));
+    }
+    let aro = a.readonly();
+    let ero = e.readonly();
+    let ad = aro.as_slice()?;
+    let ed = ero.as_slice()?;
+    let r = py
+        .detach(|| metrics::hdr_roundtrip(ad, sa[2], ed, se[2], sa[0], sa[1]))
+        .map_err(PyValueError::new_err)?;
+    let d = PyDict::new(py);
+    d.set_item("chroma_error", r.chroma_error)?;
+    d.set_item("relative_error", r.relative_error)?;
+    d.set_item("median_relative_error", r.median_relative_error)?;
+    d.set_item("p95_relative_error", r.p95_relative_error)?;
+    d.set_item("p99_relative_error", r.p99_relative_error)?;
+    d.set_item("p999_relative_error", r.p999_relative_error)?;
+    d.set_item("block_median_relative_error", r.block_median_relative_error)?;
+    d.set_item("block_p95_relative_error", r.block_p95_relative_error)?;
+    d.set_item("block_p99_relative_error", r.block_p99_relative_error)?;
+    d.set_item("block_chroma_error", r.block_chroma_error)?;
+    Ok(d)
+}
+
+/// gainmap._base_roundtrip_error on (h, w, 3) uint8 renditions.
+#[pyfunction]
+fn base_roundtrip_metrics<'py>(
+    py: Python<'py>,
+    decoded: &Bound<'py, PyAny>,
+    intended: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let a = as_u8_array(py, decoded)?;
+    let e = as_u8_array(py, intended)?;
+    let (sa, se) = (a.shape().to_vec(), e.shape().to_vec());
+    if sa.len() != 3 || sa[2] != 3 || sa != se {
+        return Err(PyValueError::new_err("renditions must be identical (H, W, 3) uint8"));
+    }
+    let aro = a.readonly();
+    let ero = e.readonly();
+    let ad = aro.as_slice()?;
+    let ed = ero.as_slice()?;
+    let r = py
+        .detach(|| metrics::base_roundtrip(ad, ed, sa[0], sa[1]))
+        .map_err(PyValueError::new_err)?;
+    let d = PyDict::new(py);
+    d.set_item("base_mean_code_error", r.mean_code_error)?;
+    d.set_item("base_p99_code_error", r.p99_code_error)?;
+    d.set_item("base_max_code_error", r.max_code_error)?;
+    d.set_item("base_channel_bias_code_error", r.channel_bias_code_error)?;
+    d.set_item("base_block_p99_code_error", r.block_p99_code_error)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "dngscan optional native kernels (Rust)")?;
@@ -562,5 +777,10 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(finalize_rec2020_u8_noise_f32, m)?)?;
     m.add_function(wrap_pyfunction!(finalize_output_u8_noise_f32, m)?)?;
     m.add_function(wrap_pyfunction!(self_test, m)?)?;
+    m.add_function(wrap_pyfunction!(feather_masks_f16, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_gain_map_mosaic, m)?)?;
+    m.add_function(wrap_pyfunction!(gamut_counts, m)?)?;
+    m.add_function(wrap_pyfunction!(hdr_roundtrip_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(base_roundtrip_metrics, m)?)?;
     Ok(())
 }
