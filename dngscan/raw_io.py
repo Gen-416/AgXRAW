@@ -95,9 +95,26 @@ def _apply_gain_maps_mosaic(
         ] or [float(white_level)],
         dtype=np.float32,
     )
+    from . import _fast
+
+    native = _fast.kernel("apply_gain_map_mosaic")
     for m in maps:
         if int(getattr(m, "plane", 0)) > 0 or int(getattr(m, "planes", 1)) < 1:
             # Targets image planes the 1-plane mosaic does not have (or none).
+            continue
+        if (
+            native is not None
+            and img.dtype == np.uint16
+            and colors.dtype == np.uint8
+            and img.flags["WRITEABLE"]
+        ):
+            # Stage 1 (2026-09-15): the Rust kernel replicates the bilinear
+            # expression below (float64 grid arithmetic, float32 difference,
+            # clip to the sensel's own white) element for element.
+            native(
+                img, colors, m,
+                [float(v) for v in blacks], [float(v) for v in whites],
+            )
             continue
         rows = np.arange(m.top, min(m.bottom, h), m.row_pitch)
         cols = np.arange(m.left, min(m.right, w), m.col_pitch)
@@ -944,6 +961,10 @@ def _resize_mask_to_shape(mask: Any, shape: tuple[int, int]) -> Any:
 def _feather_masks_f16(mask: Any) -> Any:
     """Row-banded feather that writes the float16 result directly.
 
+    Stage 1 (2026-09-15): the Rust kernel `feather_masks_f16` reproduces this
+    function bit for bit (tests/test_rust_stage1.py) and is used under the
+    shared native policy; this NumPy body is the reference implementation.
+
     Scheduler plan S4: the whole-frame version held the aligned float32
     mask, a float32 output, a clipped copy and four per-channel temporaries
     at full resolution — 1.37 GB of the measured decode peak at 24 MP. The
@@ -951,6 +972,11 @@ def _feather_masks_f16(mask: Any) -> Any:
     two-row halo (edge-clamped at the true frame boundary, exactly as the
     whole-frame pad did) reproduces every element bit for bit.
     """
+    from . import _fast
+
+    native = _fast.kernel("feather_masks_f16")
+    if native is not None:
+        return native(np.ascontiguousarray(mask, dtype=np.float32))
     kernel = np.asarray([1, 4, 6, 4, 1], dtype=np.float32) / np.float32(16.0)
     radius = len(kernel) // 2
     h, w, channels = mask.shape

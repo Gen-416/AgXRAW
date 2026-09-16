@@ -688,6 +688,29 @@ def compute_gamut_metrics(
     inv_scale = np.float32(1.0 / scene_scale)
     chunk = 1_000_000
 
+    from . import _fast
+
+    native = _fast.kernel("gamut_counts")
+    if native is not None:
+        # Stage 1 (2026-09-15): the Rust kernel evaluates the same per-pixel
+        # chain (float32 scale, float64 matrix stages materialized to float32,
+        # nan_to_num, normalized threshold) and returns the counts.
+        from .color import RGB_TO_XYZ as _RGB_TO_XYZ
+
+        native_counts, native_bright = native(
+            flat_scene, flat_y, float(inv_scale),
+            [float(v) for v in np.asarray(_RGB_TO_XYZ["Rec2020"], dtype=np.float64).reshape(-1)],
+            [[float(v) for v in np.asarray(XYZ_TO_RGB[name], dtype=np.float64).reshape(-1)] for name in names],
+            float(EPS), float(GAMUT_EPS),
+        )
+        if int(native_bright) != bright_total:
+            raise RuntimeError("native gamut_counts disagrees on the bright population")
+        for name, count in zip(names, native_counts):
+            counts[name] = int(count)
+        pct = {name: counts[name] / bright_total * 100.0 for name in names}
+        bright_pct = bright_total / total_pixels * 100.0 if total_pixels else 0.0
+        return pct, bright_pct
+
     for start in range(0, total_pixels, chunk):
         end = min(start + chunk, total_pixels)
         mask = bright_flat[start:end]
