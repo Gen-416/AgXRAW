@@ -277,8 +277,7 @@ def finalize_output_u8_noise_f32(
 def kernel(name: str) -> Any | None:
     """The native entry `name`, or None when the fast path is off/unavailable.
 
-    Stage 1 (2026-09-15): the decode-side evidence and metric kernels
-    (feathering, GainMap opcodes, gamut counts, delivery round-trip metrics)
+    Stage 1/2 (2026-09-15): the evidence, metric and film-spatial kernels
     dispatch through this under the same policy as the render kernels —
     auto: use when importable; strict: required; off: NumPy reference.
     """
@@ -289,10 +288,19 @@ def kernel(name: str) -> Any | None:
         if strict_requested():
             raise NativeKernelError(_extension_error or "native extension unavailable")
         return None
+    if name in _skipped_kernels():
+        # DNGSCAN_FAST_SKIP=a,b,c — parity bisection aid: named kernels take the
+        # NumPy reference path while everything else stays native.
+        return None
     fn = getattr(ext, name, None)
     if fn is None and strict_requested():
         raise NativeKernelError(f"native kernel {name} missing from the extension")
     return fn
+
+
+def _skipped_kernels() -> frozenset[str]:
+    raw = os.environ.get("DNGSCAN_FAST_SKIP", "")
+    return frozenset(s.strip() for s in raw.split(",") if s.strip())
 
 
 def set_thread_budget(budget: int) -> None:
