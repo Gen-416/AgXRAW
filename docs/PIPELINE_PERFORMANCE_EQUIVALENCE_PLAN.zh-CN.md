@@ -106,6 +106,20 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   (不给种子时 CLI 每次随机铸种,逐字节比较无意义)。`DNGSCAN_FAST_SKIP=a,b` 可按内核名
   回退 NumPy 做二分。实测 24 MP 胶片+光学导出 41 s→35 s;剩余大头是胶片核逐像素链
   (四面体 LUT 9 s、色度场 7.5 s、interp 2.5 s),为 Stage 3。
+  **Stage 3(同日)**:胶片核逐像素链搬进 Rust(rust/src/film_core.rs)——层曝光与色度场
+  对数曝光(`layer_log_exposure`/`chroma_field_log_exposure`,接受 float32 与 float64 场景,
+  后者是 halation 预处理 slab 路径喂的压缩后场景)、特性曲线 interp(`characteristic_amounts`)、
+  层间放大(`interimage_amplify`,含逐像素中性点)、四面体 LUT(`tetrahedral`)、胶片压缩
+  (`film_compression_ev`)、技术中性 cast 逐像素除法(`cast_divide`)。`amounts_to_unit`
+  留在 NumPy(0.4 s,不值一个内核)。新钉住的语义:np.mean(axis=1) 三元是 ((a+b)+c)/3;
+  `_tetrahedral` 的 (g−i0) 先升 float64 再转 float32,四个权重 float32 左结合;float32 数组
+  `/=` float64 插值结果在 float64 里除后回存 float32;float64 log10/exp2 走 libm;(n,3)@(3,3)
+  float64 仍是 k 序 FMA 链。内核按 budget::workers_for 切像素块并行(逐像素映射,切分精确)。
+  验收:tests/test_rust_stage3.py 每个内核对 NumPy 原体随机输入 + 全部出厂 stock 的 B1/B2 LUT
+  逐位相同,apply_film_core 负片/反转片、压缩、层间放大 custom、off/print crossover、retimed
+  全路径 array_equal;固定种子胶片+光学导出 JPEG 与主树 sha256 相同。实测 24 MP:单独 Stage 3
+  胶片 full 12.7→9.8 s、胶片+光学 41→25 s;三阶段叠加胶片+光学 15–17 s(两次 15.1 / 16.8 s;Stage 1 前为 41 s),SDR 8 s。剩余大头是 LibRaw
+  解码、`np.add.at` 的 float32 累加与积分图采样——已无单个 Python 阶段超过 2 s。
   **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
   只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
   矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:
