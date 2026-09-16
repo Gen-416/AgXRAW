@@ -11,8 +11,10 @@ mod evidence;
 mod film_appearance;
 mod hdr;
 mod metrics;
+mod numpy_sum;
 mod output;
 mod pixel;
+mod spatial;
 mod stats;
 
 use numpy::{PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArray2, PyReadwriteArray2, PyUntypedArrayMethods};
@@ -763,6 +765,436 @@ fn base_roundtrip_metrics<'py>(
     Ok(d)
 }
 
+// ---------------------------------------------------------------------------
+// Stage 2 (2026-09-15): film spatial operators (dngscan/film_optics.py).
+
+fn vec3_f32(v: Vec<f32>, what: &str) -> PyResult<[f32; 3]> {
+    v.as_slice().try_into().map_err(|_| PyValueError::new_err(format!("{what} must have 3 elements")))
+}
+
+fn halation_comps_from_py(py: Python<'_>, comps: &Bound<'_, PyAny>) -> PyResult<Vec<spatial::HalationComponent>> {
+    let mut out = Vec::new();
+    for item in comps.try_iter()? {
+        let item = item?;
+        let gate = as_f32_array(py, &item.get_item(0)?)?;
+        let transfer = as_f32_array(py, &item.get_item(1)?)?;
+        if gate.shape() != [3, 2] || transfer.shape() != [3, 3] {
+            return Err(PyValueError::new_err("halation component must be (gate_ev (3,2), transfer (3,3))"));
+        }
+        let g = gate.readonly();
+        let g = g.as_slice()?;
+        let t = transfer.readonly();
+        let t = t.as_slice()?;
+        out.push(spatial::HalationComponent {
+            gate_ev: [[g[0], g[1]], [g[2], g[3]], [g[4], g[5]]],
+            transfer: [[t[0], t[1], t[2]], [t[3], t[4], t[5]], [t[6], t[7], t[8]]],
+        });
+    }
+    Ok(out)
+}
+
+/// film_optics.area_decimate_rows: `acc` (out_h, out_w, c) float64 or float32 is updated in place.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn area_decimate_rows<'py>(
+    py: Python<'py>,
+    rows: &Bound<'py, PyAny>,
+    y0: usize,
+    h: usize,
+    w: usize,
+    out_h: usize,
+    out_w: usize,
+    acc: &Bound<'py, PyAny>,
+) -> PyResult<()> {
+    let rows = as_f64_array(py, rows)?;
+    let shape = rows.shape().to_vec();
+    let c = *shape.last().ok_or_else(|| PyValueError::new_err("rows must have a channel axis"))?;
+    let n = rows.len() / (w * c).max(1);
+    if rows.len() != n * w * c {
+        return Err(PyValueError::new_err("rows must reshape to (n, w, c)"));
+    }
+    let rro = rows.readonly();
+    let rdata = rro.as_slice()?;
+    let np = py.import("numpy")?;
+    let dtype = acc.getattr("dtype")?;
+    if dtype.eq(np.getattr("float64")?)? {
+        let mut a = acc.cast::<PyArrayDyn<f64>>()?.readwrite();
+        let s = a.as_slice_mut()?;
+        if s.len() != out_h * out_w * c {
+            return Err(PyValueError::new_err("acc must be (out_h, out_w, c)"));
+        }
+        py.detach(|| spatial::area_decimate_rows(rdata, n, y0, h, w, out_h, out_w, c, spatial::Acc::F64(s)));
+    } else if dtype.eq(np.getattr("float32")?)? {
+        let mut a = acc.cast::<PyArrayDyn<f32>>()?.readwrite();
+        let s = a.as_slice_mut()?;
+        if s.len() != out_h * out_w * c {
+            return Err(PyValueError::new_err("acc must be (out_h, out_w, c)"));
+        }
+        py.detach(|| spatial::area_decimate_rows(rdata, n, y0, h, w, out_h, out_w, c, spatial::Acc::F32(s)));
+    } else {
+        return Err(PyValueError::new_err("acc must be float64 or float32"));
+    }
+    Ok(())
+}
+
+/// film_optics.upsample_rows -> (y1 - y0, width, c) float32.
+#[pyfunction]
+fn upsample_rows<'py>(
+    py: Python<'py>,
+    map_dec: &Bound<'py, PyAny>,
+    y0: usize,
+    y1: usize,
+    height: usize,
+    width: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    let m = as_f32_array(py, map_dec)?;
+    let shape = m.shape().to_vec();
+    if shape.len() != 3 {
+        return Err(PyValueError::new_err("map must be (dh, dw, c)"));
+    }
+    let (dh, dw, c) = (shape[0], shape[1], shape[2]);
+    let ro = m.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| spatial::upsample_rows(d, dh, dw, c, y0, y1, height, width));
+    Ok(PyArray1::from_vec(py, out).reshape([y1 - y0, width, c])?.into_any())
+}
+
+/// film_optics._gaussian_blur_slabbed on (h, w, c) float32 -> new array.
+#[pyfunction]
+fn gaussian_blur_slabbed<'py>(py: Python<'py>, img: &Bound<'py, PyAny>, sigma: f64, periodic: bool) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, img)?;
+    let shape = a.shape().to_vec();
+    if shape.len() != 3 {
+        return Err(PyValueError::new_err("img must be (h, w, c)"));
+    }
+    let (h, w, c) = (shape[0], shape[1], shape[2]);
+    let mut buf = a.readonly().as_slice()?.to_vec();
+    py.detach(|| spatial::gaussian_blur(&mut buf, h, w, c, sigma, periodic));
+    Ok(PyArray1::from_vec(py, buf).reshape([h, w, c])?.into_any())
+}
+
+/// film_optics._blur_small_sigma on one (h, w) float32 plane.
+#[pyfunction]
+fn blur_small_sigma<'py>(py: Python<'py>, chan: &Bound<'py, PyAny>, sigma_px: f64) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, chan)?;
+    let shape = a.shape().to_vec();
+    if shape.len() != 2 {
+        return Err(PyValueError::new_err("chan must be (h, w)"));
+    }
+    let (h, w) = (shape[0], shape[1]);
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| spatial::blur_small_sigma(d, h, w, sigma_px));
+    Ok(PyArray1::from_vec(py, out).reshape([h, w])?.into_any())
+}
+
+/// film_optics.halation_layer_gate on (..., 3) float32.
+#[pyfunction]
+fn halation_layer_gate<'py>(py: Python<'py>, e_lin: &Bound<'py, PyAny>, e_ref: Vec<f32>, gate_ev: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let e = as_f32_array(py, e_lin)?;
+    let shape = e.shape().to_vec();
+    if shape.last() != Some(&3) {
+        return Err(PyValueError::new_err("e_lin must be (..., 3)"));
+    }
+    let g = as_f32_array(py, gate_ev)?;
+    if g.shape() != [3, 2] {
+        return Err(PyValueError::new_err("gate_ev must be (3, 2)"));
+    }
+    let gro = g.readonly();
+    let gs = gro.as_slice()?;
+    let gate = [[gs[0], gs[1]], [gs[2], gs[3]], [gs[4], gs[5]]];
+    let r = vec3_f32(e_ref, "e_ref")?;
+    let ro = e.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| {
+        let mut out = vec![0.0f32; d.len()];
+        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
+            let v = spatial::halation_layer_gate_px([px[0], px[1], px[2]], r, &gate);
+            o.copy_from_slice(&v);
+        }
+        out
+    });
+    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
+}
+
+/// film_optics.halation_pointwise_return on (..., 3) float32.
+#[pyfunction]
+fn halation_pointwise_return<'py>(py: Python<'py>, e_lin: &Bound<'py, PyAny>, e_ref: Vec<f32>, comps: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let e = as_f32_array(py, e_lin)?;
+    let shape = e.shape().to_vec();
+    if shape.last() != Some(&3) {
+        return Err(PyValueError::new_err("e_lin must be (..., 3)"));
+    }
+    let comps = halation_comps_from_py(py, comps)?;
+    let r = vec3_f32(e_ref, "e_ref")?;
+    let ro = e.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| {
+        let mut out = vec![0.0f32; d.len()];
+        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
+            o.copy_from_slice(&spatial::halation_pointwise_return_px([px[0], px[1], px[2]], r, &comps));
+        }
+        out
+    });
+    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
+}
+
+/// film_optics.halation_component_source on (..., 3) float32 for one component.
+#[pyfunction]
+fn halation_component_source<'py>(py: Python<'py>, e_lin: &Bound<'py, PyAny>, e_ref: Vec<f32>, comp: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+    let e = as_f32_array(py, e_lin)?;
+    let shape = e.shape().to_vec();
+    if shape.last() != Some(&3) {
+        return Err(PyValueError::new_err("e_lin must be (..., 3)"));
+    }
+    let list = pyo3::types::PyList::new(py, [comp])?;
+    let comps = halation_comps_from_py(py, list.as_any())?;
+    let r = vec3_f32(e_ref, "e_ref")?;
+    let ro = e.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| {
+        let mut out = vec![0.0f32; d.len()];
+        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
+            o.copy_from_slice(&spatial::halation_component_source_px([px[0], px[1], px[2]], r, &comps[0]));
+        }
+        out
+    });
+    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
+}
+
+/// film_optics.capture_bloom_gate on any float32 array.
+#[pyfunction]
+fn capture_bloom_gate<'py>(py: Python<'py>, y: &Bound<'py, PyAny>, t0: f64, t1: f64) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, y)?;
+    let shape = a.shape().to_vec();
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| d.iter().map(|&v| spatial::capture_bloom_gate_px(v, t0, t1)).collect::<Vec<f32>>());
+    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
+}
+
+/// film_optics.capture_bloom_source_rows on (..., 3) float32.
+#[pyfunction]
+fn capture_bloom_source_rows<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, t0: f64, t1: f64) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, rgb)?;
+    let shape = a.shape().to_vec();
+    if shape.last() != Some(&3) {
+        return Err(PyValueError::new_err("rgb must be (..., 3)"));
+    }
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| {
+        let mut out = vec![0.0f32; d.len()];
+        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
+            o.copy_from_slice(&spatial::capture_bloom_source_px([px[0], px[1], px[2]], t0, t1));
+        }
+        out
+    });
+    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
+}
+
+/// film_optics.capture_bloom_apply_rows -> (n*width, 3) float32.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn capture_bloom_apply_rows<'py>(
+    py: Python<'py>,
+    rgb: &Bound<'py, PyAny>,
+    glow_map: &Bound<'py, PyAny>,
+    y0: usize,
+    y1: usize,
+    height: usize,
+    width: usize,
+    t0: f64,
+    t1: f64,
+    core_ratio: Vec<f64>,
+    save_lights: f32,
+    saturation: f32,
+    amount: f32,
+) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, rgb)?;
+    let n = y1 - y0;
+    if a.len() != n * width * 3 {
+        return Err(PyValueError::new_err("rgb must hold (y1 - y0) * width pixels"));
+    }
+    let m = as_f32_array(py, glow_map)?;
+    let ms = m.shape().to_vec();
+    if ms.len() != 3 || ms[2] != 3 {
+        return Err(PyValueError::new_err("glow_map must be (dh, dw, 3)"));
+    }
+    if core_ratio.len() != 2 {
+        return Err(PyValueError::new_err("core_ratio must have 2 elements"));
+    }
+    let cr = [core_ratio[0], core_ratio[1]];
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let mro = m.readonly();
+    let md = mro.as_slice()?;
+    let out = py.detach(|| {
+        let glow = spatial::upsample_rows(md, ms[0], ms[1], 3, y0, y1, height, width);
+        let mut out = vec![0.0f32; d.len()];
+        for ((px, g), o) in d.chunks_exact(3).zip(glow.chunks_exact(3)).zip(out.chunks_exact_mut(3)) {
+            o.copy_from_slice(&spatial::capture_bloom_apply_px(
+                [px[0], px[1], px[2]], [g[0], g[1], g[2]], t0, t1, cr, save_lights, saturation, amount,
+            ));
+        }
+        out
+    });
+    Ok(PyArray1::from_vec(py, out).reshape([n * width, 3])?.into_any())
+}
+
+/// film_optics.apply_scatter_mix on (h, w, 3) float32; `chans` is
+/// [(s_mix, [(sigma_px, weight), ...]) x 3] as _scatter_components resolves.
+#[pyfunction]
+fn apply_scatter_mix<'py>(py: Python<'py>, img: &Bound<'py, PyAny>, chans: Vec<(f64, Vec<(f64, f64)>)>) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, img)?;
+    let shape = a.shape().to_vec();
+    if shape.len() != 3 || shape[2] != 3 {
+        return Err(PyValueError::new_err("img must be (h, w, 3)"));
+    }
+    if chans.len() != 3 {
+        return Err(PyValueError::new_err("chans must have 3 entries"));
+    }
+    let (h, w) = (shape[0], shape[1]);
+    let sc: [spatial::ScatterChannel; 3] = [
+        spatial::ScatterChannel { s_mix: chans[0].0, comps: chans[0].1.clone() },
+        spatial::ScatterChannel { s_mix: chans[1].0, comps: chans[1].1.clone() },
+        spatial::ScatterChannel { s_mix: chans[2].0, comps: chans[2].1.clone() },
+    ];
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| spatial::apply_scatter_mix(d, h, w, &sc));
+    Ok(PyArray1::from_vec(py, out).reshape([h, w, 3])?.into_any())
+}
+
+/// film_optics.sample_field on the cached master integral image (gh+1, gw+1, c)
+/// float32 (landscape store; `rotated` samples it transposed).
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn sample_field<'py>(
+    py: Python<'py>,
+    ii: &Bound<'py, PyAny>,
+    rotated: bool,
+    height: usize,
+    width: usize,
+    x0: f64,
+    y0: f64,
+    w_mm: f64,
+    h_mm: f64,
+    gate_w_mm: f64,
+    gate_h_mm: f64,
+    phase: (i64, i64),
+) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, ii)?;
+    let shape = a.shape().to_vec();
+    if shape.len() != 3 {
+        return Err(PyValueError::new_err("ii must be (gh+1, gw+1, c)"));
+    }
+    let (store_h, store_w, c) = (shape[0] - 1, shape[1] - 1, shape[2]);
+    let (gh, gw) = if rotated { (store_w, store_h) } else { (store_h, store_w) };
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let out = py.detach(|| {
+        let img = spatial::IntegralImage { data: d, gh, gw, c, rotated };
+        let edges = spatial::field_edges(height, width, x0, y0, w_mm, h_mm, gate_w_mm, gate_h_mm, gh, gw, phase);
+        spatial::sample_field(&img, &edges, height, width)
+    });
+    Ok(PyArray1::from_vec(py, out).reshape([height, width, c])?.into_any())
+}
+
+/// film_optics.apply_density_grain (band_limited_gaussian_v1) -> (n, 3) float64.
+#[pyfunction]
+fn density_grain_v1<'py>(py: Python<'py>, amounts: &Bound<'py, PyAny>, lo: Vec<f64>, hi: Vec<f64>, field: &Bound<'py, PyAny>, sigma_mul: f64) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f64_array(py, amounts)?;
+    let f = as_f32_array(py, field)?;
+    if a.len() != f.len() || a.len() % 3 != 0 || lo.len() != 3 || hi.len() != 3 {
+        return Err(PyValueError::new_err("amounts/field must be (n, 3), lo/hi 3-vectors"));
+    }
+    let aro = a.readonly();
+    let ad = aro.as_slice()?;
+    let fro = f.readonly();
+    let fd = fro.as_slice()?;
+    let n = ad.len() / 3;
+    let out = py.detach(|| spatial::density_grain_v1(ad, [lo[0], lo[1], lo[2]], [hi[0], hi[1], hi[2]], fd, sigma_mul));
+    Ok(PyArray1::from_vec(py, out).reshape([n, 3])?.into_any())
+}
+
+/// film_optics.apply_density_grain (measured_sigma_v2) -> (n, 3) float64.
+/// `tables` = [(chart_base, density_axis, sigma) x 3].
+#[pyfunction]
+fn density_grain_v2<'py>(py: Python<'py>, amounts: &Bound<'py, PyAny>, field: &Bound<'py, PyAny>, tables: Vec<(f32, Vec<f64>, Vec<f64>)>, amount_over_rms: f32) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f64_array(py, amounts)?;
+    let f = as_f32_array(py, field)?;
+    if a.len() != f.len() || a.len() % 3 != 0 || tables.len() != 3 {
+        return Err(PyValueError::new_err("amounts/field must be (n, 3), tables x3"));
+    }
+    let tabs: [spatial::SigmaTable; 3] = [
+        spatial::SigmaTable { base: tables[0].0, d: tables[0].1.clone(), sigma: tables[0].2.clone() },
+        spatial::SigmaTable { base: tables[1].0, d: tables[1].1.clone(), sigma: tables[1].2.clone() },
+        spatial::SigmaTable { base: tables[2].0, d: tables[2].1.clone(), sigma: tables[2].2.clone() },
+    ];
+    let aro = a.readonly();
+    let ad = aro.as_slice()?;
+    let fro = f.readonly();
+    let fd = fro.as_slice()?;
+    let n = ad.len() / 3;
+    let out = py.detach(|| spatial::density_grain_v2(ad, fd, &tabs, amount_over_rms));
+    Ok(PyArray1::from_vec(py, out).reshape([n, 3])?.into_any())
+}
+
+/// film_optics.halation_reinject_rows -> (n*width, 3) float64.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn halation_reinject_rows<'py>(
+    py: Python<'py>,
+    log_e: &Bound<'py, PyAny>,
+    spread_map: &Bound<'py, PyAny>,
+    e_ref: Vec<f32>,
+    y0: usize,
+    y1: usize,
+    height: usize,
+    width: usize,
+    comps: &Bound<'py, PyAny>,
+    residual: bool,
+    amount: f32,
+    give_lin: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let l = as_f64_array(py, log_e)?;
+    let n = (y1 - y0) * width;
+    if l.len() != n * 3 {
+        return Err(PyValueError::new_err("log_e must hold (y1 - y0) * width pixels"));
+    }
+    let m = as_f32_array(py, spread_map)?;
+    let ms = m.shape().to_vec();
+    if ms.len() != 3 || ms[2] != 3 {
+        return Err(PyValueError::new_err("spread_map must be (dh, dw, 3)"));
+    }
+    let comps = halation_comps_from_py(py, comps)?;
+    let r = vec3_f32(e_ref, "e_ref")?;
+    let give = if give_lin.is_none() {
+        None
+    } else {
+        let g = as_f32_array(py, give_lin)?;
+        if g.len() != n * 3 {
+            return Err(PyValueError::new_err("give_lin must match log_e"));
+        }
+        Some(g)
+    };
+    let lro = l.readonly();
+    let ld = lro.as_slice()?;
+    let mro = m.readonly();
+    let md = mro.as_slice()?;
+    let gro = give.as_ref().map(|g| g.readonly());
+    let gd = match gro.as_ref() {
+        Some(g) => Some(g.as_slice()?),
+        None => None,
+    };
+    let out = py.detach(|| {
+        let up = spatial::upsample_rows(md, ms[0], ms[1], 3, y0, y1, height, width);
+        spatial::halation_reinject(ld, gd, &up, r, &comps, residual, amount)
+    });
+    Ok(PyArray1::from_vec(py, out).reshape([n, 3])?.into_any())
+}
+
 #[pymodule]
 fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "dngscan optional native kernels (Rust)")?;
@@ -782,5 +1214,17 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gamut_counts, m)?)?;
     m.add_function(wrap_pyfunction!(hdr_roundtrip_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(base_roundtrip_metrics, m)?)?;
+    for f in [
+        wrap_pyfunction!(area_decimate_rows, m)?, wrap_pyfunction!(upsample_rows, m)?,
+        wrap_pyfunction!(gaussian_blur_slabbed, m)?, wrap_pyfunction!(blur_small_sigma, m)?,
+        wrap_pyfunction!(halation_layer_gate, m)?, wrap_pyfunction!(halation_pointwise_return, m)?,
+        wrap_pyfunction!(halation_component_source, m)?, wrap_pyfunction!(capture_bloom_gate, m)?,
+        wrap_pyfunction!(capture_bloom_source_rows, m)?, wrap_pyfunction!(capture_bloom_apply_rows, m)?,
+        wrap_pyfunction!(apply_scatter_mix, m)?, wrap_pyfunction!(sample_field, m)?,
+        wrap_pyfunction!(density_grain_v1, m)?, wrap_pyfunction!(density_grain_v2, m)?,
+        wrap_pyfunction!(halation_reinject_rows, m)?,
+    ] {
+        m.add_function(f)?;
+    }
     Ok(())
 }

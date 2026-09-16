@@ -94,6 +94,18 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   行主序顺序 float32 累加再 /64)由实验钉死并在 tests/test_rust_stage1.py 里复刻;
   底图回读的两项 float64 求和按 band 顺序累加而非 NumPy 的 pairwise,是声明的末位差。
   实测 24 MP:SDR 10 s→7 s,HDR 15.7 s→约 11.5 s,导出 JPEG 逐字节不变。
+  **Stage 2(同日)**:film_optics 的空间算子搬进 Rust——面积降采样/上采样、slab 高斯与
+  5-tap 小 σ 模糊、halation 门/逐点回注/分量源、bloom 门/源/应用、散射混合、颗粒场
+  采样(不复制主场,旋转几何按转置索引)、密度颗粒 v1/v2、halation 回注。参考平台
+  语义由实验钉死并作为测试保留:Accelerate 的 (n,3)@(3,3) matmul(f32/f64)= k 顺序
+  的 FMA 链;(n,3)@(3,) matvec 与 einsum "cj,...j->...c" 是顺序乘加(无 FMA);
+  np.interp = fma(slope, x−xp[j], fp[j])(arm64 编译合并);np.sum(float64)= NumPy
+  pairwise 顺序;float32 log2/exp2/exp/log/cbrt/hypot/atan2/pow 与系统 libm 逐位一致
+  (sin/cos 不一致,NumPy 自带 SIMD 实现——本阶段无此依赖)。逐位验收:每个算子对 NumPy
+  体随机输入逐位相同,固定 `--film-optics-seed` 后胶片+光学导出 JPEG 与主树逐字节相同
+  (不给种子时 CLI 每次随机铸种,逐字节比较无意义)。`DNGSCAN_FAST_SKIP=a,b` 可按内核名
+  回退 NumPy 做二分。实测 24 MP 胶片+光学导出 41 s→35 s;剩余大头是胶片核逐像素链
+  (四面体 LUT 9 s、色度场 7.5 s、interp 2.5 s),为 Stage 3。
   **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
   只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
   矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:
