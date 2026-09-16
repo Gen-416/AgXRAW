@@ -272,9 +272,10 @@ Run `python -m dngscan --help` for the complete option list.
 
 NumPy is the reference implementation and works without a native extension. The optional Rust
 kernels (`rust/`, built with setuptools-rust / PyO3) accelerate the AgX core, the HDR formation
-chain, the film appearance palette and the shared SDR output finalizer (16-step Oklab gamut fit,
-transfer, dither, and quantization); RAW analysis, render planning, and fallback policy remain in
-Python. Every kernel reproduces the NumPy reference's float32 operation order (parity gates in
+chain, the film appearance palette, the shared SDR output finalizer (16-step Oklab gamut fit,
+transfer, dither, and quantization), the decode-side evidence steps (clip-mask feathering, DNG
+GainMap opcodes), the gamut-pressure metric and the HDR delivery round-trip verification; render
+planning and fallback policy remain in Python. Every kernel reproduces the NumPy reference's float32 operation order (parity gates in
 `tests/test_fast_backend.py`, `tests/test_hdr_native.py`, `tests/test_film_appearance_p10.py`).
 
 ```bash

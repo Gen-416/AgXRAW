@@ -86,6 +86,14 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   C++ 时代靠 -ffp-contract=off 保证的性质在 Rust 里是语言默认;libm 调用
   (cbrtf/hypotf/atan2f/powf/expf/exp2f/log2f/fmodf)与 std::min/max 的 NaN 语义
   (第一参数保 NaN)按 C++ 语义显式复刻(rust/src/pixel.rs cmax/cmin)。
+  **Stage 1(同日)**:解码侧证据与指标搬进 Rust——掩码羽化(`feather_masks_f16`)、
+  DNG GainMap opcode(`apply_gain_map_mosaic`)、色域计数(`gamut_counts`)、HDR/底图
+  回读校验(`hdr_roundtrip_metrics`/`base_roundtrip_metrics`)。NumPy 体保留为参考实现,
+  `_fast.kernel(name)` 按同一策略分派;NumPy 的 float32 中位数((a+b)/2)、
+  百分位(gamma 转 float32 的 _lerp,≥0.5 用反向式)与 8×8 块均值(64 个样本按 (i,j)
+  行主序顺序 float32 累加再 /64)由实验钉死并在 tests/test_rust_stage1.py 里复刻;
+  底图回读的两项 float64 求和按 band 顺序累加而非 NumPy 的 pairwise,是声明的末位差。
+  实测 24 MP:SDR 10 s→7 s,HDR 15.7 s→约 11.5 s,导出 JPEG 逐字节不变。
   **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
   只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
   矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:
