@@ -97,9 +97,15 @@ class Stage3KernelParity(unittest.TestCase):
         ref, got = self._both(layer_log_exposure, rgb, self.stock["observer"])
         self.assertEqual(got.dtype, np.float64)
         np.testing.assert_array_equal(got, ref)
-        # float64 scene (the halation-prep slab path feeds compressed float64).
+        # A float64 scene stays on NumPy: Accelerate's float64 gemm tail
+        # rows differ between macOS versions (FMA chain on 27, not on 14),
+        # while float32 values make every product exact. Pin the fallback.
         rgb64 = rgb.astype(np.float64) * 1.0000001
-        ref, got = self._both(layer_log_exposure, rgb64, self.stock["observer"])
+        ext = _fast._load_extension()
+        with mock.patch.object(ext, "layer_log_exposure", side_effect=AssertionError("must not dispatch")):
+            got = layer_log_exposure(rgb64, self.stock["observer"])
+        with _NoNative():
+            ref = layer_log_exposure(rgb64, self.stock["observer"])
         np.testing.assert_array_equal(got, ref)
 
     def test_chroma_field_log_exposure(self) -> None:
@@ -109,12 +115,17 @@ class Stage3KernelParity(unittest.TestCase):
 
         s = self.chroma_stock
         rgb = _scene(20011, 2)
-        for scene in (rgb, rgb.astype(np.float64) * 1.0000001):
-            ref, got = self._both(
-                chroma_field_log_exposure, scene, s["chroma_delta_lut"], s["chroma_domain"],
+        ref, got = self._both(
+            chroma_field_log_exposure, rgb, s["chroma_delta_lut"], s["chroma_domain"],
+            s["chroma_xyz_from_rec2020"], s["observer"],
+        )
+        np.testing.assert_array_equal(got, ref)
+        ext = _fast._load_extension()
+        with mock.patch.object(ext, "chroma_field_log_exposure", side_effect=AssertionError("must not dispatch")):
+            chroma_field_log_exposure(
+                rgb.astype(np.float64) * 1.0000001, s["chroma_delta_lut"], s["chroma_domain"],
                 s["chroma_xyz_from_rec2020"], s["observer"],
             )
-            np.testing.assert_array_equal(got, ref)
 
     def test_characteristic_amounts(self) -> None:
         from dngscan.film_v2_math import characteristic_amounts, layer_log_exposure

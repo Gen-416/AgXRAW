@@ -52,8 +52,14 @@ def layer_log_exposure(rgb_rec2020: Any, observer: Any) -> Any:
     from . import _fast
 
     native = _fast.kernel("layer_log_exposure")
-    arr = np.ascontiguousarray(rgb_rec2020)
-    if native is not None and arr.ndim == 2 and arr.shape[1] == 3 and arr.dtype in (np.float32, np.float64):
+    arr = np.asarray(rgb_rec2020)
+    # float32 scenes only: their float64 products are exact, so the FMA
+    # chain and a plain chain agree on every platform. A float64 scene (the
+    # halation-prep slab path feeds compressed float64) stays on NumPy —
+    # Accelerate on macOS 14 computes the tail rows (n mod 8 != 0) of a
+    # float64 gemm without the FMA chain that macOS 27 uses throughout
+    # (CI 2026-09-16: 1-ulp mismatch in the last row only).
+    if native is not None and arr.ndim == 2 and arr.shape[1] == 3 and arr.dtype == np.float32:
         # Stage 3 (2026-09-15): Accelerate's (n,3)@(3,3) FMA chain and the
         # sequential (3,3)@(3,) product, replicated element for element.
         return native(arr, [float(v) for v in a.reshape(-1)])
@@ -96,8 +102,14 @@ def chroma_field_log_exposure(
     from . import _fast
 
     native = _fast.kernel("chroma_field_log_exposure")
-    arr = np.ascontiguousarray(rgb_rec2020)
-    if native is not None and arr.ndim == 2 and arr.shape[1] == 3 and arr.dtype in (np.float32, np.float64):
+    arr = np.asarray(rgb_rec2020)
+    # float32 scenes only: their float64 products are exact, so the FMA
+    # chain and a plain chain agree on every platform. A float64 scene (the
+    # halation-prep slab path feeds compressed float64) stays on NumPy —
+    # Accelerate on macOS 14 computes the tail rows (n mod 8 != 0) of a
+    # float64 gemm without the FMA chain that macOS 27 uses throughout
+    # (CI 2026-09-16: 1-ulp mismatch in the last row only).
+    if native is not None and arr.ndim == 2 and arr.shape[1] == 3 and arr.dtype == np.float32:
         return native(
             arr, np.asarray(delta_lut, dtype=np.float64),
             [float(v) for v in np.asarray(domain, dtype=np.float64).reshape(-1)],
