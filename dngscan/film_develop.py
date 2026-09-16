@@ -83,6 +83,14 @@ from .color import EPS
 REC2020_LUMA = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
 def _tetrahedral(lut: Any, u: Any, n: int) -> Any:
     """Vectorized tetrahedral interpolation on a cubic lattice. [N,3] -> [N,3]."""
+    from . import _fast
+
+    native = _fast.kernel("tetrahedral")
+    uu = np.asarray(u)
+    if native is not None and uu.ndim == 2 and uu.shape[1] == 3 and uu.dtype == np.float32 and np.asarray(lut).dtype == np.float32:
+        # Stage 3 (2026-09-15): same branch order, the float64 (g - i0)
+        # difference cast to float32, left-associative float32 weights.
+        return native(np.ascontiguousarray(lut), np.ascontiguousarray(uu), int(n))
     g = np.clip(u, 0.0, 1.0) * (n - 1)
     i0 = np.minimum(g.astype(np.int32), n - 2)
     f = (g - i0).astype(np.float32)
@@ -1250,13 +1258,26 @@ def _apply_film_core_v2(
         cube_hi = np.asarray(stock["hi"], dtype=np.float64)[None, :]
         rail_lo = np.maximum(table.min(axis=0)[None, :], cube_lo)
         rail_hi = np.minimum(table.max(axis=0)[None, :], cube_hi)
-        d = amounts - neutral
-        head = np.where(d >= 0.0, rail_hi - neutral, neutral - rail_lo)
-        head = np.maximum(head, 1e-9)
-        t = np.minimum(np.abs(d) / head, 1.0)
-        t = (1.0 + beta) * t / (1.0 + beta * t)
-        amounts = neutral + np.sign(d) * head * t
-        del neutral, d, head, t
+        from . import _fast
+
+        _native_ii = _fast.kernel("interimage_amplify")
+        if _native_ii is not None:
+            # Stage 3: the per-pixel neutral (interp of the channel mean),
+            # headroom to the rail and the bounded map, element for element.
+            amounts = _native_ii(
+                np.asarray(amounts, dtype=np.float64), np.asarray(log_e, dtype=np.float64),
+                [float(v) for v in stock["char_le"]], table,
+                [float(v) for v in rail_lo.reshape(-1)], [float(v) for v in rail_hi.reshape(-1)], float(beta),
+            )
+            del neutral
+        else:
+            d = amounts - neutral
+            head = np.where(d >= 0.0, rail_hi - neutral, neutral - rail_lo)
+            head = np.maximum(head, 1e-9)
+            t = np.minimum(np.abs(d) / head, 1.0)
+            t = (1.0 + beta) * t / (1.0 + beta * t)
+            amounts = neutral + np.sign(d) * head * t
+            del neutral, d, head, t
     if ctx is not None and ctx.grain > 0.0:
         from .film_optics import apply_density_grain
 
@@ -1303,13 +1324,9 @@ def _apply_film_core_v2(
                         exposure_ev, stock["cast_ev"], stock["cast_bounded"][:, c]
                     ))
             else:
-                ev_y = np.log2(
-                    np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18)
-                ) + np.float32(exposure_ev)
-                for c in range(3):
-                    developed[:, c] /= np.interp(
-                        ev_y, stock["cast_ev"], stock["cast_bounded"][:, c]
-                    )
+                developed = _divide_by_cast(
+                    developed, rgb, exposure_ev, stock["cast_ev"], stock["cast_bounded"]
+                )
         developed = np.maximum(developed, 0.0)
         _app = _appearance_for(plan)
         if _app is not None:
@@ -1440,11 +1457,7 @@ def _apply_film_core_v2(
                     np.interp(cast_axis_offset, ps["cast_ev"], cast_e[:, c])
                 )
         else:
-            ev_y = np.log2(
-                np.maximum(rgb @ REC2020_LUMA, EPS) / np.float32(0.18)
-            ) + np.float32(cast_axis_offset)
-            for c in range(3):
-                developed[:, c] /= np.interp(ev_y, ps["cast_ev"], cast_e[:, c])
+            developed = _divide_by_cast(developed, rgb, cast_axis_offset, ps["cast_ev"], cast_e)
     developed = np.maximum(developed, 0.0)
     # Appearance slot (plan §11): after B2 + neutral policy, before delivery.
     _app = _appearance_for(plan)
@@ -1459,6 +1472,26 @@ def _apply_film_core_v2(
             _crop_rows[0]:_crop_rows[1]
         ].reshape(-1, 3)
     return developed.astype(np.float32, copy=False)
+
+
+def _divide_by_cast(developed: Any, rgb: Any, ev_offset: float, cast_ev: Any, cast_table: Any) -> Any:
+    """developed[:, c] /= interp(ev_y, cast_ev, cast[:, c]) with the per-pixel
+    scene luminance EV of `rgb` (technical-neutral cast division)."""
+    from . import _fast
+
+    native = _fast.kernel("cast_divide")
+    rgb32 = np.asarray(rgb, dtype=np.float32)
+    if native is not None and developed.dtype == np.float32 and rgb32.ndim == 2 and rgb32.shape[1] == 3:
+        return native(
+            np.ascontiguousarray(developed), np.ascontiguousarray(rgb32), float(EPS), float(ev_offset),
+            [float(v) for v in np.asarray(cast_ev, dtype=np.float64)], np.asarray(cast_table, dtype=np.float64),
+        )
+    ev_y = np.log2(
+        np.maximum(rgb32 @ REC2020_LUMA, EPS) / np.float32(0.18)
+    ) + np.float32(ev_offset)
+    for c in range(3):
+        developed[:, c] /= np.interp(ev_y, cast_ev, np.asarray(cast_table)[:, c])
+    return developed
 
 
 def apply_film_core(

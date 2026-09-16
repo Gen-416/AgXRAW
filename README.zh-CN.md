@@ -224,8 +224,9 @@ python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
 NumPy 是参考实现，不编译原生扩展也可以正常使用。可选的 Rust 内核（`rust/`，
 setuptools-rust / PyO3 构建）加速 AgX 核心、HDR 形成链、胶片外观调色板、共享的
 SDR 输出终段（16 轮 Oklab gamut fit、transfer、dither、量化）、解码侧证据步骤（剪切
-掩码羽化、DNG GainMap opcode）、色域压力指标、HDR 交付回读校验与胶片空间算子
-（halation、capture bloom、介质散射、颗粒采样）；渲染方案和出错时的回退处理仍由
+掩码羽化、DNG GainMap opcode）、色域压力指标、HDR 交付回读校验、胶片空间算子
+（halation、capture bloom、介质散射、颗粒采样）与胶片核逐像素链（层曝光/色度场、
+特性曲线、层间放大、四面体 LUT、胶片压缩、cast 除法）；渲染方案和出错时的回退处理仍由
 Python 负责。每个内核逐位复现 NumPy 参考实现的 float32
 运算顺序（对照门禁：`tests/test_fast_backend.py`、`tests/test_hdr_native.py`、
 `tests/test_film_appearance_p10.py`）。

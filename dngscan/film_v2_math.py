@@ -49,6 +49,20 @@ def layer_log_exposure(rgb_rec2020: Any, observer: Any) -> Any:
     RESULT is floored, at a numerical exposure floor.
     """
     a = np.asarray(observer, dtype=np.float64)
+    from . import _fast
+
+    native = _fast.kernel("layer_log_exposure")
+    arr = np.asarray(rgb_rec2020)
+    # float32 scenes only: their float64 products are exact, so the FMA
+    # chain and a plain chain agree on every platform. A float64 scene (the
+    # halation-prep slab path feeds compressed float64) stays on NumPy —
+    # Accelerate on macOS 14 computes the tail rows (n mod 8 != 0) of a
+    # float64 gemm without the FMA chain that macOS 27 uses throughout
+    # (CI 2026-09-16: 1-ulp mismatch in the last row only).
+    if native is not None and arr.ndim == 2 and arr.shape[1] == 3 and arr.dtype == np.float32:
+        # Stage 3 (2026-09-15): Accelerate's (n,3)@(3,3) FMA chain and the
+        # sequential (3,3)@(3,) product, replicated element for element.
+        return native(arr, [float(v) for v in a.reshape(-1)])
     mid = a @ np.full(3, SCENE_MID)
     e = np.asarray(rgb_rec2020, dtype=np.float64) @ a.T
     return np.log10(np.maximum(e, 1e-12) / np.maximum(mid, 1e-12)[None, :])
@@ -85,6 +99,23 @@ def chroma_field_log_exposure(
     (x, y) would otherwise leak ~1e-15 inter-layer nonuniformity into the
     interimage term and break the mainline grey-ramp BIT-invariance.
     """
+    from . import _fast
+
+    native = _fast.kernel("chroma_field_log_exposure")
+    arr = np.asarray(rgb_rec2020)
+    # float32 scenes only: their float64 products are exact, so the FMA
+    # chain and a plain chain agree on every platform. A float64 scene (the
+    # halation-prep slab path feeds compressed float64) stays on NumPy —
+    # Accelerate on macOS 14 computes the tail rows (n mod 8 != 0) of a
+    # float64 gemm without the FMA chain that macOS 27 uses throughout
+    # (CI 2026-09-16: 1-ulp mismatch in the last row only).
+    if native is not None and arr.ndim == 2 and arr.shape[1] == 3 and arr.dtype == np.float32:
+        return native(
+            arr, np.asarray(delta_lut, dtype=np.float64),
+            [float(v) for v in np.asarray(domain, dtype=np.float64).reshape(-1)],
+            [float(v) for v in np.asarray(xyz_from_rec2020, dtype=np.float64).reshape(-1)],
+            [float(v) for v in np.asarray(observer, dtype=np.float64).reshape(-1)],
+        )
     rgb = np.asarray(rgb_rec2020, dtype=np.float64)
     a_obs = np.asarray(observer, dtype=np.float64)
     mid = a_obs @ np.full(3, SCENE_MID)
@@ -158,6 +189,12 @@ def characteristic_amounts(
     """
     le = np.asarray(le_axis, dtype=np.float64)
     table = np.asarray(amounts_table, dtype=np.float64)
+    from . import _fast
+
+    native = _fast.kernel("characteristic_amounts")
+    arr = np.asarray(log_e)
+    if native is not None and arr.ndim == 2 and arr.shape[1] == 3 and table.shape == (le.size, 3):
+        return native(np.asarray(arr, dtype=np.float64), [float(v) for v in le], table, float(ev_offset))
     x = np.asarray(log_e, dtype=np.float64) + float(ev_offset) * LOG10_2
     return np.stack(
         [np.interp(x[:, c], le, table[:, c]) for c in range(3)], axis=1
@@ -296,6 +333,11 @@ def film_compression_ev(
     impact = float(impact)
     if impact <= 0.0:
         return rgb
+    from . import _fast
+
+    native = _fast.kernel("film_compression_ev")
+    if native is not None and rgb.ndim == 2 and rgb.shape[1] == 3:
+        return native(rgb, impact, float(knee_ev), float(width_ev), float(highlight_color_density))
     luma = np.array([0.2627, 0.6780, 0.0593])
     y = np.maximum(rgb @ luma, 1e-9)
     x = np.log2(y / SCENE_MID)
