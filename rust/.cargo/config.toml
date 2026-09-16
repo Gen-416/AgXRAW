@@ -1,0 +1,8 @@
+# Plain `cargo build` (dev) needs the Python-extension link flags that
+# setuptools-rust passes on its own; keeps `cargo check`/`cargo build` usable
+# without going through setup.py.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]

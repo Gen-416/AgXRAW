@@ -27,26 +27,25 @@ class HdrOutputStageIsFloat64(unittest.TestCase):
         from dngscan.fast_plan import NATIVE_ABI_VERSION
 
         self.assertGreaterEqual(NATIVE_ABI_VERSION, 10)
-        header = (ROOT / "cpp" / "include" / "dngscan_fast" / "agx_core.h").read_text(encoding="utf-8")
-        self.assertRegex(header, r"NATIVE_ABI_VERSION = 1[01];")
+        # 2026-09: the native layer is Rust (rust/), same ABI and module API
+        header = (ROOT / "rust" / "src" / "lib.rs").read_text(encoding="utf-8")
+        self.assertRegex(header, r"NATIVE_ABI_VERSION: i32 = 1[01];")
 
     def test_kernel_reads_exact_float64_stages(self) -> None:
-        hdr_h = (ROOT / "cpp" / "include" / "dngscan_fast" / "hdr_core.h").read_text(encoding="utf-8")
-        self.assertIn("double rec2020_to_xyz[9];", hdr_h)
-        self.assertIn("double xyz_to_output[9];", hdr_h)
-        self.assertNotIn("matching the\n  // NumPy", hdr_h)
-        kernel = (ROOT / "cpp" / "src" / "hdr_core.cpp").read_text(encoding="utf-8")
-        self.assertIn("mat3_exact_f64(plan.rec2020_to_xyz, mapped)", kernel)
-        self.assertIn("mat3_exact_f64(plan.xyz_to_output, xyz)", kernel)
-        bindings = (ROOT / "cpp" / "src" / "bindings.cpp").read_text(encoding="utf-8")
-        self.assertIn('copy_matrix9_f64(obj.attr("rec2020_to_xyz"), plan.rec2020_to_xyz)', bindings)
-        self.assertIn('copy_matrix9_f64(obj.attr("xyz_to_output"), plan.xyz_to_output)', bindings)
-        # one shared definition of the exact stage, used by both kernels
-        shared = (ROOT / "cpp" / "include" / "dngscan_fast" / "exact_matrix.h").read_text(encoding="utf-8")
-        self.assertIn("inline Rgb mat3_exact_f64(const double matrix[9], const Rgb& value)", shared)
-        output = (ROOT / "cpp" / "src" / "output_core.cpp").read_text(encoding="utf-8")
-        self.assertNotIn("inline Rgb mat3_exact_f64", output)
-        self.assertIn('#include "dngscan_fast/exact_matrix.h"', output)
+        hdr = (ROOT / "rust" / "src" / "hdr.rs").read_text(encoding="utf-8")
+        self.assertIn("pub rec2020_to_xyz: [f64; 9],", hdr)
+        self.assertIn("pub xyz_to_output: [f64; 9],", hdr)
+        self.assertIn("mat3_exact_f64(&plan.rec2020_to_xyz, mapped)", hdr)
+        self.assertIn("mat3_exact_f64(&plan.xyz_to_output, xyz)", hdr)
+        bindings = (ROOT / "rust" / "src" / "lib.rs").read_text(encoding="utf-8")
+        self.assertIn('rec2020_to_xyz: read_mat9_f64(obj, "rec2020_to_xyz")?', bindings)
+        self.assertIn('xyz_to_output: read_mat9_f64(obj, "xyz_to_output")?', bindings)
+        # one shared definition of the exact stage, used by every kernel
+        shared = (ROOT / "rust" / "src" / "pixel.rs").read_text(encoding="utf-8")
+        self.assertIn("pub fn mat3_exact_f64(m: &[f64; 9], v: Rgb) -> Rgb", shared)
+        output = (ROOT / "rust" / "src" / "output.rs").read_text(encoding="utf-8")
+        self.assertNotIn("fn mat3_exact_f64", output)
+        self.assertIn("mat3_exact_f64(&plan.rec2020_to_xyz, rgb)", output)
 
     def test_built_extension_matches_when_present(self) -> None:
         from dngscan import _fast as fast_backend

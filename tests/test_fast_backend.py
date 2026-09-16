@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Tests for the optional C++ AgX backend."""
+"""Tests for the optional native (Rust) AgX backend."""
 
 from __future__ import annotations
 

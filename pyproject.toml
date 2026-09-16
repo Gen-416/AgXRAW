@@ -1,6 +1,9 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "pybind11>=2.11"]
-build-backend = "scikit_build_core.build"
+# Rust kernels via setuptools-rust (2026-09: the pybind11/CMake extension was
+# ported to Rust with the same module API and ABI). A host without cargo, or
+# DNGSCAN_BUILD_NATIVE=OFF, gets the pure-Python wheel — see setup.py.
+requires = ["setuptools>=70", "setuptools-rust>=1.10"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "dngscan"
@@ -22,7 +25,7 @@ dependencies = [
 # A9 item 8: matplotlib gates only the diagnostic dashboard (--scan/--csv);
 # a plain conversion must install without it.
 scan = ["matplotlib>=3.6"]
-native = ["pybind11>=2.11"]
+native = ["setuptools-rust>=1.10"]
 calibration = ["colour-science==0.4.7"]
 gui = [
     "fastapi>=0.141.1,<0.142",
@@ -41,16 +44,16 @@ test = ["httpx2>=2,<3", "scipy>=1.10", "matplotlib>=3.6",
         "fastapi>=0.141.1,<0.142", "uvicorn>=0.52.2,<0.53",
         "colour-science==0.4.7"]
 
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["dngscan*"]
 
-[tool.scikit-build]
-cmake.version = ">=3.18"
-wheel.packages = ["dngscan"]
-build-dir = "build/{wheel_tag}"
-
-[tool.scikit-build.cmake.define]
-# Native ON by default (review batch 17); export DNGSCAN_BUILD_NATIVE=OFF
-# through SKBUILD_CMAKE_DEFINE for a pure-Python build.
-DNGSCAN_BUILD_NATIVE = "ON"
+[tool.setuptools.package-data]
+# The data assets the wheel-smoke CI job loads from the INSTALLED package:
+# priors JSONs, film_optics/film_v2/appearance assets (npz), lens library,
+# spectral data.
+dngscan = ["**/*.json", "**/*.npz", "**/*.txt"]

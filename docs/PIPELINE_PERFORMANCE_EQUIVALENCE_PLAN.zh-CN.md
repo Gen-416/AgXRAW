@@ -79,6 +79,13 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   逐位相同像素 21.7%→21.9%:这一级只是 HDR 残差的来源之一,其余来自曲线表插值、Oklab
   punch 路径与 gamut-fit（预合并矩阵,1e-4 容差）等 float32 级,HDR 门禁仍为
   2e-4 / 2e-5(p99),未收紧;逐级拆分归属完整 reference-mode 程序。
+  **2026-09-15 原生层迁移到 Rust(rust/,PyO3 + setuptools-rust)**:四个内核与绑定层
+  逐句转写自 C++,ABI v11 与模块 API 不变;验收口径是 C++ 构建在 26 组输入(含
+  NaN/Inf 边缘)上的黄金输出与 Rust 构建逐位相同,性能持平(6 MP:AgX 38 ns/px
+  同、finalize 43 vs 49、HDR 49 vs 47)。Rust 不会自行把 a*b+c 合成 FMA,
+  C++ 时代靠 -ffp-contract=off 保证的性质在 Rust 里是语言默认;libm 调用
+  (cbrtf/hypotf/atan2f/powf/expf/exp2f/log2f/fmodf)与 std::min/max 的 NaN 语义
+  (第一参数保 NaN)按 C++ 语义显式复刻(rust/src/pixel.rs cmax/cmin)。
   **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
   只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
   矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:

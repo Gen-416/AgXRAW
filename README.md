@@ -268,17 +268,23 @@ python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
 
 Run `python -m dngscan --help` for the complete option list.
 
-### Optional C++ acceleration
+### Optional native acceleration (Rust)
 
-NumPy is the reference implementation and works without a native extension. The optional pybind11
-C++ kernel accelerates the AgX core and the shared SDR output finalizer (16-step Oklab gamut fit,
+NumPy is the reference implementation and works without a native extension. The optional Rust
+kernels (`rust/`, built with setuptools-rust / PyO3) accelerate the AgX core, the HDR formation
+chain, the film appearance palette and the shared SDR output finalizer (16-step Oklab gamut fit,
 transfer, dither, and quantization); RAW analysis, render planning, and fallback policy remain in
-Python.
+Python. Every kernel reproduces the NumPy reference's float32 operation order (parity gates in
+`tests/test_fast_backend.py`, `tests/test_hdr_native.py`, `tests/test_film_appearance_p10.py`).
 
 ```bash
-pip install pybind11 cmake
+# Rust toolchain: https://rustup.rs
+pip install setuptools-rust
 tools/build_native.sh
 ```
+
+`pip install .` builds the kernels too; without a Rust toolchain (or with
+`DNGSCAN_BUILD_NATIVE=OFF`) it installs the pure-Python package.
 
 ## How it works
 

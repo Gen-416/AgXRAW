@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Optional C++ AgX core: import, dispatch policy, and fallback."""
+"""Optional native (Rust) kernels: import, dispatch policy, and fallback."""
 
 from __future__ import annotations
 
