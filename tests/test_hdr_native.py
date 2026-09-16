@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Parity tests for the native HDR formation kernel (cpp/src/hdr_core.cpp).
+"""Parity tests for the native HDR formation kernel (rust/src/hdr.rs).
 
 The NumPy body of hdr_agx._form_hdr_chunk is the reference implementation; the
 native kernel must reproduce it per pixel on real compiled plans, including the
