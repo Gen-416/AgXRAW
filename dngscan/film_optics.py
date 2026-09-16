@@ -215,7 +215,18 @@ def area_decimate_rows(
     acc: np.ndarray,
 ) -> None:
     """Accumulate source rows [y0, y0+rows.shape[0]) into the decimated
-    accumulator (see area_decimate). Deterministic in any band split."""
+    accumulator (see area_decimate). Deterministic in any band split.
+
+    Stage 2 (2026-09-15): the Rust kernel replicates this body element for
+    element (sequential float64 column integral, np.add.at accumulation
+    order, float32 accumulators updated as f32(f64(acc) + v)); this NumPy
+    body is the reference (tests/test_rust_stage2.py)."""
+    from . import _fast
+
+    native = _fast.kernel("area_decimate_rows")
+    if native is not None and acc.dtype in (np.float64, np.float32) and acc.flags["C_CONTIGUOUS"]:
+        native(np.asarray(rows, dtype=np.float64), int(y0), int(h), int(w), int(out_h), int(out_w), acc)
+        return
     rows = np.asarray(rows, dtype=np.float64).reshape(-1, w, rows.shape[-1])
     n = rows.shape[0]
     # columns: fractional integral image along x
@@ -248,6 +259,11 @@ def upsample_rows(map_dec: np.ndarray, y0: int, y1: int, height: int, width: int
     """Bilinear upsample of a decimated map for output rows [y0, y1): the
     row-band path samples exactly the same continuous surface the full-frame
     path does, so band seams are zero by construction."""
+    from . import _fast
+
+    native = _fast.kernel("upsample_rows")
+    if native is not None:
+        return native(np.asarray(map_dec, dtype=np.float32), int(y0), int(y1), int(height), int(width))
     dh, dw = map_dec.shape[:2]
     yq = (np.arange(y0, y1) + 0.5) / height * dh - 0.5
     xq = (np.arange(width) + 0.5) / width * dw - 0.5
@@ -292,6 +308,13 @@ def _gaussian_blur_slabbed(
     the wrap line (review batch 16)."""
     if sigma <= 0.0:
         return np.asarray(img, dtype=np.float32)
+    from . import _fast
+
+    native = _fast.kernel("gaussian_blur_slabbed")
+    if native is not None and np.ndim(img) == 3:
+        # Stage 2: same taps (float64 exp, NumPy pairwise-sum normalization,
+        # float32 cast), same per-tap accumulation order, reflect/wrap edges.
+        return native(np.ascontiguousarray(img, dtype=np.float32), float(sigma), bool(periodic))
     radius = max(int(np.ceil(3.0 * sigma)), 1)
     x = np.arange(-radius, radius + 1, dtype=np.float64)
     k = np.exp(-0.5 * (x / sigma) ** 2)
@@ -542,6 +565,19 @@ def sample_field(
     # `field` IS the integral image (grain callers pass the cached master;
     # tests pass integral_from_field(raw_field)) — no content sniffing.
     ii = np.asarray(field)
+    from . import _fast
+
+    native = _fast.kernel("sample_field")
+    if native is not None and ii.ndim == 3 and ii.dtype == np.float32 and ii.flags["C_CONTIGUOUS"]:
+        # Stage 2: the master store stays landscape; the kernel indexes it
+        # transposed for rotated geometries instead of copying it.
+        gate_w_mm, gate_h_mm = (GATE_H_MM, GATE_W_MM) if geometry.rotated else (GATE_W_MM, GATE_H_MM)
+        ph = (int(phase[1]), int(phase[0])) if geometry.rotated else (int(phase[0]), int(phase[1]))
+        x0, y0, w_mm, h_mm = geometry.region()
+        return native(
+            ii, bool(geometry.rotated), int(geometry.height), int(geometry.width),
+            float(x0), float(y0), float(w_mm), float(h_mm), float(gate_w_mm), float(gate_h_mm), ph,
+        )
     if geometry.rotated:
         ii = ii.transpose(1, 0, 2)
         gate_w_mm, gate_h_mm = GATE_H_MM, GATE_W_MM
@@ -747,7 +783,16 @@ def apply_density_grain(
     a = np.asarray(amounts, dtype=np.float64).reshape(h, w, 3)
     lo64 = np.asarray(lo, dtype=np.float64)
     span = np.maximum(np.asarray(hi, dtype=np.float64) - lo64, 1e-9)
+    from . import _fast
+
     if grain.model == "band_limited_gaussian_v1":
+        native = _fast.kernel("density_grain_v1")
+        if native is not None:
+            return native(
+                a.reshape(-1, 3), [float(v) for v in lo64], [float(v) for v in np.asarray(hi, dtype=np.float64)],
+                np.ascontiguousarray(field, dtype=np.float32).reshape(-1, 3),
+                float(amount) * grain.sigma0 * 4.0,
+            )
         dn = np.clip((a - lo64) / span, 0.0, 1.0)
         sigma = float(amount) * grain.sigma0 * 4.0 * dn * (1.0 - dn)
         return (a + sigma * span * field.astype(np.float64)).reshape(-1, 3)
@@ -768,6 +813,17 @@ def apply_density_grain(
     # modelled — that open loop is why these optics carry `derived`
     # provenance, not `measured`.
     rms48 = max(_aperture_rms(grain), 1e-9)
+    native = _fast.kernel("density_grain_v2")
+    if native is not None:
+        tables = []
+        for ch in range(3):
+            base, _dmax = grain.chart_density[ch]
+            tab = np.asarray(grain.sigma_density[ch], dtype=np.float64)
+            tables.append((float(base), [float(v) for v in tab[:, 0]], [float(v) for v in tab[:, 1]]))
+        return native(
+            a.reshape(-1, 3), np.ascontiguousarray(field, dtype=np.float32).reshape(-1, 3),
+            tables, float(np.float32(float(amount) / rms48)),
+        )
     ln10 = np.float32(np.log(10.0))
     out = a.copy()
     for ch in range(3):
@@ -863,6 +919,15 @@ def apply_scatter_mix(
     the render's resolving scale keep their weight on the identity term.
     """
     src = np.asarray(img, dtype=np.float32)
+    from . import _fast
+
+    native = _fast.kernel("apply_scatter_mix")
+    if native is not None and src.ndim == 3 and src.shape[2] == 3:
+        return native(
+            np.ascontiguousarray(src),
+            [(float(kernel.s[ch]), [(float(s), float(w)) for s, w in _scatter_components(kernel, ch, mm_per_px)])
+             for ch in range(3)],
+        )
     out = np.empty_like(src)
     for ch in range(3):
         s_mix = float(kernel.s[ch])
@@ -908,6 +973,11 @@ def _blur_small_sigma(chan: np.ndarray, sigma_px: float) -> np.ndarray:
     exposure into zero, so ~1% of such a source's mass is created rather
     than conserved after the floor (math review 2026-09-03; accepted,
     documented, not clamped in the kernel)."""
+    from . import _fast
+
+    native = _fast.kernel("blur_small_sigma")
+    if native is not None and np.ndim(chan) == 2:
+        return native(np.ascontiguousarray(chan, dtype=np.float32), float(sigma_px))
     g_half = float(np.exp(-0.5 * sigma_px ** 2 * (np.pi / 2.0) ** 2))
     g_nyq = float(np.exp(-0.5 * sigma_px ** 2 * np.pi ** 2))
     b = (1.0 - g_nyq) / 4.0
@@ -945,6 +1015,12 @@ def halation_layer_gate(
     least C1, and a hard threshold draws a visible contour around the onset.
     """
     e = np.asarray(e_lin, dtype=np.float32)
+    from . import _fast
+
+    native = _fast.kernel("halation_layer_gate")
+    if native is not None and e.ndim >= 1 and e.shape[-1] == 3:
+        return native(e, [float(v) for v in np.asarray(e_ref, dtype=np.float32).reshape(-1)],
+                      np.asarray(gate_ev, dtype=np.float32))
     ref = np.asarray(e_ref, dtype=np.float32).reshape(1, 1, 3)
     gate = np.asarray(gate_ev, dtype=np.float32)
     t0 = gate[None, None, :, 0]
@@ -982,6 +1058,12 @@ def halation_pointwise_return(
     proxy's version instead steals light from pixels that never had any.
     """
     e = np.asarray(e_lin, dtype=np.float32)
+    from . import _fast
+
+    native = _fast.kernel("halation_pointwise_return")
+    if native is not None and e.shape[-1] == 3:
+        return native(e, [float(v) for v in np.asarray(e_ref, dtype=np.float32).reshape(-1)],
+                      _halation_components_for_native(halation))
     out = np.zeros(e.shape[:-1] + (3,), dtype=np.float32)
     for comp in halation.components:
         u = halation_layer_gate(e, e_ref, comp.gate_ev)
@@ -1005,11 +1087,26 @@ def halation_component_source(
     the mix on the source costs one buffer instead of one per scale.
     """
     e = np.asarray(e_lin, dtype=np.float32)
+    from . import _fast
+
+    native = _fast.kernel("halation_component_source")
+    if native is not None and e.shape[-1] == 3:
+        # the (n,3)@(3,3) product is Accelerate's FMA chain in k order on
+        # the reference platform; the kernel reproduces exactly that
+        return native(e, [float(v) for v in np.asarray(e_ref, dtype=np.float32).reshape(-1)],
+                      (np.asarray(comp.gate_ev, dtype=np.float32), comp.transfer.astype(np.float32)))
     u = halation_layer_gate(e, e_ref, comp.gate_ev)
     u *= e
     return (u.reshape(-1, 3) @ comp.transfer.astype(np.float32).T).reshape(
         e.shape
     )
+
+
+def _halation_components_for_native(halation: HalationAsset) -> list:
+    return [
+        (np.asarray(comp.gate_ev, dtype=np.float32), comp.transfer.astype(np.float32))
+        for comp in halation.components
+    ]
 
 
 def halation_spread_map_from_sources(
@@ -1124,6 +1221,17 @@ def halation_reinject_rows(
     if amount <= 0.0:
         return log_e
     n = y1 - y0
+    from . import _fast
+
+    native = _fast.kernel("halation_reinject_rows")
+    if native is not None:
+        return native(
+            np.ascontiguousarray(log_e, dtype=np.float64).reshape(-1, 3), np.asarray(spread_map, dtype=np.float32),
+            [float(v) for v in np.asarray(e_ref, dtype=np.float32).reshape(-1)],
+            int(y0), int(y1), int(height), int(width), _halation_components_for_native(halation),
+            halation.dc_mode == "residual", float(amount),
+            None if give_lin is None else np.ascontiguousarray(give_lin, dtype=np.float32).reshape(-1, 3),
+        )
     lin = np.power(
         10.0, np.asarray(log_e, dtype=np.float64).reshape(n, width, 3)
     ).astype(np.float32)
@@ -1146,6 +1254,11 @@ def capture_bloom_gate(y_over_grey: np.ndarray, t0: float, t1: float) -> np.ndar
     """smootherstep source gate on scene EV above 18% grey."""
     # In place, for the same reason as halation_layer_gate: the readable
     # expression chain costs six full grids of transient on a spread grid.
+    from . import _fast
+
+    native = _fast.kernel("capture_bloom_gate")
+    if native is not None:
+        return native(np.asarray(y_over_grey, dtype=np.float32), float(t0), float(t1))
     t = np.maximum(np.asarray(y_over_grey, dtype=np.float32), 1e-20)
     np.log2(t, out=t)
     t -= np.float32(t0)
@@ -1176,9 +1289,14 @@ def capture_bloom_source_rows(
     18 um, exactly the next rung of the ladder.
     """
     arr = np.asarray(rgb, dtype=np.float32)
+    t0, t1 = bloom.scales[0].gate_ev
+    from . import _fast
+
+    native = _fast.kernel("capture_bloom_source_rows")
+    if native is not None and arr.shape[-1] == 3:
+        return native(arr, float(t0), float(t1))
     y = arr @ np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
     y /= np.float32(0.18)
-    t0, t1 = bloom.scales[0].gate_ev
     return arr * capture_bloom_gate(y, t0, t1)[..., None]
 
 
@@ -1254,6 +1372,17 @@ def capture_bloom_apply_rows(
     if amount <= 0.0:
         return rgb
     n = y1 - y0
+    from . import _fast
+
+    native = _fast.kernel("capture_bloom_apply_rows")
+    if native is not None:
+        t0, t1 = bloom.scales[0].gate_ev
+        return native(
+            np.ascontiguousarray(rgb, dtype=np.float32), np.asarray(glow_map, dtype=np.float32),
+            int(y0), int(y1), int(height), int(width), float(t0), float(t1),
+            [float(bloom.core_ratio[0]), float(bloom.core_ratio[1])],
+            float(bloom.save_lights), float(bloom.saturation), float(amount),
+        )
     img = np.asarray(rgb, dtype=np.float32).reshape(n, width, 3)
     glow = upsample_rows(glow_map, y0, y1, height, width)
     source = capture_bloom_source_rows(img, bloom)
