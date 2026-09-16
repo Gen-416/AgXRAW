@@ -9,6 +9,7 @@ mod agx;
 mod budget;
 mod evidence;
 mod film_appearance;
+mod film_core;
 mod hdr;
 mod metrics;
 mod numpy_sum;
@@ -1195,6 +1196,199 @@ fn halation_reinject_rows<'py>(
     Ok(PyArray1::from_vec(py, out).reshape([n, 3])?.into_any())
 }
 
+// ---------------------------------------------------------------------------
+// Stage 3 (2026-09-15): film v2 core per-pixel chain (film_v2_math.py, film_develop.py).
+
+fn mat3_f64(v: Vec<f64>, what: &str) -> PyResult<[[f64; 3]; 3]> {
+    if v.len() != 9 {
+        return Err(PyValueError::new_err(format!("{what} must have 9 elements")));
+    }
+    Ok([[v[0], v[1], v[2]], [v[3], v[4], v[5]], [v[6], v[7], v[8]]])
+}
+
+fn vec3_f64(v: Vec<f64>, what: &str) -> PyResult<[f64; 3]> {
+    v.as_slice().try_into().map_err(|_| PyValueError::new_err(format!("{what} must have 3 elements")))
+}
+
+fn rows3_f64<'py>(py: Python<'py>, data: Vec<f64>, n: usize) -> PyResult<Bound<'py, PyAny>> {
+    Ok(PyArray1::from_vec(py, data).reshape([n, 3])?.into_any())
+}
+
+/// film_v2_math.layer_log_exposure -> (n, 3) float64.
+#[pyfunction]
+fn layer_log_exposure<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, observer: Vec<f64>) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, rgb)?;
+    let n = require_rgb(&a, "rgb")?;
+    let obs = mat3_f64(observer, "observer")?;
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let mut out = vec![0.0f64; n * 3];
+    py.detach(|| film_core::layer_log_exposure(d, &obs, &mut out));
+    rows3_f64(py, out, n)
+}
+
+/// film_v2_math.chroma_field_log_exposure -> (n, 3) float64.
+#[pyfunction]
+fn chroma_field_log_exposure<'py>(
+    py: Python<'py>,
+    rgb: &Bound<'py, PyAny>,
+    delta_lut: &Bound<'py, PyAny>,
+    domain: Vec<f64>,
+    xyz_from_rec2020: Vec<f64>,
+    observer: Vec<f64>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f32_array(py, rgb)?;
+    let n = require_rgb(&a, "rgb")?;
+    let lut = as_f64_array(py, delta_lut)?;
+    let ls = lut.shape().to_vec();
+    if ls.len() != 3 || ls[0] != ls[1] || ls[0] < 2 || ls[2] != 3 {
+        return Err(PyValueError::new_err("delta_lut must be (n, n, 3)"));
+    }
+    if domain.len() != 4 {
+        return Err(PyValueError::new_err("domain must have 4 elements"));
+    }
+    let lro = lut.readonly();
+    let ld = lro.as_slice()?;
+    let field = film_core::ChromaField {
+        table: ld,
+        n: ls[0],
+        domain: [domain[0], domain[1], domain[2], domain[3]],
+        xyz_from_rec2020: mat3_f64(xyz_from_rec2020, "xyz_from_rec2020")?,
+        observer: mat3_f64(observer, "observer")?,
+    };
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let mut out = vec![0.0f64; n * 3];
+    py.detach(|| film_core::chroma_field_log_exposure(d, &field, &mut out));
+    rows3_f64(py, out, n)
+}
+
+/// film_v2_math.characteristic_amounts -> (n, 3) float64.
+#[pyfunction]
+fn characteristic_amounts<'py>(py: Python<'py>, log_e: &Bound<'py, PyAny>, le_axis: Vec<f64>, table: &Bound<'py, PyAny>, ev_offset: f64) -> PyResult<Bound<'py, PyAny>> {
+    let l = as_f64_array(py, log_e)?;
+    let n = require_rgb_f64(&l, "log_e")?;
+    let t = as_f64_array(py, table)?;
+    if t.shape() != [le_axis.len(), 3] {
+        return Err(PyValueError::new_err("amounts_table must be (K, 3)"));
+    }
+    let lro = l.readonly();
+    let ld = lro.as_slice()?;
+    let tro = t.readonly();
+    let td = tro.as_slice()?;
+    let mut out = vec![0.0f64; n * 3];
+    py.detach(|| film_core::characteristic_amounts(ld, &le_axis, td, ev_offset, &mut out));
+    rows3_f64(py, out, n)
+}
+
+fn require_rgb_f64(arr: &Bound<'_, PyArrayDyn<f64>>, name: &str) -> PyResult<usize> {
+    let shape = arr.shape();
+    if shape.len() != 2 || shape[1] != 3 {
+        return Err(PyValueError::new_err(format!("{name} must be (N, 3)")));
+    }
+    Ok(shape[0])
+}
+
+/// film_develop inter-image amplification -> (n, 3) float64 (new array).
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn interimage_amplify<'py>(
+    py: Python<'py>,
+    amounts: &Bound<'py, PyAny>,
+    log_e: &Bound<'py, PyAny>,
+    le_axis: Vec<f64>,
+    table: &Bound<'py, PyAny>,
+    rail_lo: Vec<f64>,
+    rail_hi: Vec<f64>,
+    beta: f64,
+) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f64_array(py, amounts)?;
+    let n = require_rgb_f64(&a, "amounts")?;
+    let l = as_f64_array(py, log_e)?;
+    if require_rgb_f64(&l, "log_e")? != n {
+        return Err(PyValueError::new_err("log_e must match amounts"));
+    }
+    let t = as_f64_array(py, table)?;
+    if t.shape() != [le_axis.len(), 3] {
+        return Err(PyValueError::new_err("table must be (K, 3)"));
+    }
+    let lo = vec3_f64(rail_lo, "rail_lo")?;
+    let hi = vec3_f64(rail_hi, "rail_hi")?;
+    let mut out = a.readonly().as_slice()?.to_vec();
+    let lro = l.readonly();
+    let ld = lro.as_slice()?;
+    let tro = t.readonly();
+    let td = tro.as_slice()?;
+    py.detach(|| film_core::interimage_amplify(&mut out, ld, &le_axis, td, lo, hi, beta));
+    rows3_f64(py, out, n)
+}
+
+/// film_develop._tetrahedral on a (n, n, n, 3) float32 LUT at (m, 3) float32 coordinates.
+#[pyfunction]
+fn tetrahedral<'py>(py: Python<'py>, lut: &Bound<'py, PyAny>, u: &Bound<'py, PyAny>, n: usize) -> PyResult<Bound<'py, PyAny>> {
+    let l = as_f32_array(py, lut)?;
+    if l.shape() != [n, n, n, 3] {
+        return Err(PyValueError::new_err("lut must be (n, n, n, 3)"));
+    }
+    let uu = as_f32_array(py, u)?;
+    let m = require_rgb(&uu, "u")?;
+    let lro = l.readonly();
+    let ld = lro.as_slice()?;
+    let uro = uu.readonly();
+    let ud = uro.as_slice()?;
+    let mut out = vec![0.0f32; m * 3];
+    py.detach(|| film_core::tetrahedral(ld, n, ud, &mut out));
+    rows3_f32(py, out, m)
+}
+
+/// film_v2_math.film_compression_ev -> (n, 3) float64.
+#[pyfunction]
+fn film_compression_ev<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, impact: f64, knee_ev: f64, width_ev: f64, rho: f64) -> PyResult<Bound<'py, PyAny>> {
+    let a = as_f64_array(py, rgb)?;
+    let n = require_rgb_f64(&a, "rgb")?;
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let mut out = vec![0.0f64; n * 3];
+    py.detach(|| film_core::film_compression_ev(d, impact, knee_ev, width_ev, rho, &mut out));
+    rows3_f64(py, out, n)
+}
+
+/// developed[:, c] /= np.interp(ev_y, cast_ev, cast[:, c]) with
+/// ev_y = log2(max(rgb @ luma, eps) / 0.18) + offset (float32 rgb) -> new (n, 3) float32.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn cast_divide<'py>(
+    py: Python<'py>,
+    developed: &Bound<'py, PyAny>,
+    rgb: &Bound<'py, PyAny>,
+    eps: f32,
+    offset: f32,
+    cast_ev: Vec<f64>,
+    cast: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let dv = as_f32_array(py, developed)?;
+    let n = require_rgb(&dv, "developed")?;
+    let a = as_f32_array(py, rgb)?;
+    if require_rgb(&a, "rgb")? != n {
+        return Err(PyValueError::new_err("rgb must match developed"));
+    }
+    let c = as_f64_array(py, cast)?;
+    if c.shape() != [cast_ev.len(), 3] {
+        return Err(PyValueError::new_err("cast must be (K, 3)"));
+    }
+    let mut out = dv.readonly().as_slice()?.to_vec();
+    let aro = a.readonly();
+    let ad = aro.as_slice()?;
+    let cro = c.readonly();
+    let cd = cro.as_slice()?;
+    py.detach(|| {
+        let mut ev = vec![0.0f32; n];
+        film_core::scene_ev_luma_f32(ad, eps, offset, &mut ev);
+        film_core::cast_divide_per_pixel(&mut out, &ev, &cast_ev, cd);
+    });
+    rows3_f32(py, out, n)
+}
+
 #[pymodule]
 fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "dngscan optional native kernels (Rust)")?;
@@ -1223,6 +1417,14 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
         wrap_pyfunction!(apply_scatter_mix, m)?, wrap_pyfunction!(sample_field, m)?,
         wrap_pyfunction!(density_grain_v1, m)?, wrap_pyfunction!(density_grain_v2, m)?,
         wrap_pyfunction!(halation_reinject_rows, m)?,
+    ] {
+        m.add_function(f)?;
+    }
+    for f in [
+        wrap_pyfunction!(layer_log_exposure, m)?, wrap_pyfunction!(chroma_field_log_exposure, m)?,
+        wrap_pyfunction!(characteristic_amounts, m)?, wrap_pyfunction!(interimage_amplify, m)?,
+        wrap_pyfunction!(tetrahedral, m)?, wrap_pyfunction!(film_compression_ev, m)?,
+        wrap_pyfunction!(cast_divide, m)?,
     ] {
         m.add_function(f)?;
     }
