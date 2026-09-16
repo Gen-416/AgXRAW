@@ -14,6 +14,16 @@ the arm64 reference platform with Accelerate):
 from __future__ import annotations
 
 import math
+from fractions import Fraction
+
+
+def _fma(a: float, b: float, c: float) -> float:
+    """Correctly rounded a*b+c. math.fma is Python 3.13+; the Fraction form
+    is exact and rounds once on the float() conversion, so CI's 3.11/3.12
+    pin the same platform fact."""
+    if hasattr(math, "fma"):
+        return math.fma(a, b, c)
+    return float(Fraction(a) * Fraction(b) + Fraction(c))
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -54,7 +64,7 @@ class PlatformSemantics(unittest.TestCase):
         for c in range(3):
             acc[:] = 0.0
             for k in range(3):
-                acc = np.fromiter((math.fma(float(x), float(t[c, k]), float(a)) for x, a in zip(u[:, k], acc)), np.float64, u.shape[0])
+                acc = np.fromiter((_fma(float(x), float(t[c, k]), float(a)) for x, a in zip(u[:, k], acc)), np.float64, u.shape[0])
             out[:, c] = acc
         self.assertTrue(np.array_equal(u @ t.T, out))
 
@@ -65,7 +75,7 @@ class PlatformSemantics(unittest.TestCase):
         xp = np.sort(rng.uniform(-3, 3, 50)); fp = rng.uniform(0, 2, 50); x = rng.uniform(-2.9, 2.9, 5000)
         j = np.clip(np.searchsorted(xp, x, side="right") - 1, 0, xp.size - 2)
         slope = (fp[j + 1] - fp[j]) / (xp[j + 1] - xp[j])
-        ref = np.fromiter((math.fma(float(s), float(xv - xp[jj]), float(fp[jj])) for s, xv, jj in zip(slope, x, j)), np.float64, x.size)
+        ref = np.fromiter((_fma(float(s), float(xv - xp[jj]), float(fp[jj])) for s, xv, jj in zip(slope, x, j)), np.float64, x.size)
         self.assertTrue(np.array_equal(np.interp(x, xp, fp), ref))
 
 
