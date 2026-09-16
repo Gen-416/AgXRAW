@@ -285,7 +285,7 @@ flowchart TB
 Core Image 在图里出现两次，但用途完全不同：`CIRAWFilter` 是可选的 scene decoder，
 `CIContext` 则是 HDR 容器写入器。选择 LibRaw 不妨碍使用 Apple gain-map 导出；选择 RAW 9
 也不等于直接采用 Apple 原生成片作为 HDR DRT。两种情况下，dngscan 自己的 SDR/HDR
-formation 都位于 scene 解码与 JPEG 交付之间。预览 proxy 与 C++/NumPy 分块只改变分辨率或
+formation 都位于 scene 解码与 JPEG 交付之间。预览 proxy 与原生（Rust）/NumPy 分块只改变分辨率或
 执行方式，不改变上述顺序；全分辨率导出沿用相同的 plan 语义。
 
 ### 架构契约

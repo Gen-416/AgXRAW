@@ -315,7 +315,7 @@ Core Image appears twice for unrelated jobs: `CIRAWFilter` is an optional scene 
 while `CIContext` is the HDR container writer. Selecting LibRaw does not prevent Apple
 gain-map export, and selecting RAW 9 does not turn Apple's native render into the HDR DRT.
 In both cases dngscan's own SDR/HDR formation still sits between scene decoding and JPEG
-delivery. Preview proxies and streamed C++/NumPy chunks change resolution or execution,
+delivery. Preview proxies and streamed native (Rust)/NumPy chunks change resolution or execution,
 not this ordering; full-resolution export uses the same plan semantics.
 
 ### Architecture contract
