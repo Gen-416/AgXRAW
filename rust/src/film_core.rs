@@ -72,8 +72,32 @@ pub fn dot3_seq_f64(v: [f64; 3], w: [f64; 3]) -> f64 {
     (v[0] * w[0] + v[1] * w[1]) + v[2] * w[2]
 }
 
+/// Run a per-pixel (n,3) -> (n,3) map over thread-budgeted pixel chunks.
+/// Every kernel here is a pure elementwise map, so the split is exact.
+pub fn par_map3<I, O, F>(inp: &[I], out: &mut [O], f: F)
+where
+    I: Sync,
+    O: Send,
+    F: Fn(&[I], &mut [O]) + Sync,
+{
+    let n = out.len() / 3;
+    debug_assert_eq!(inp.len(), out.len());
+    let workers = crate::budget::workers_for(n).max(1) as usize;
+    if workers <= 1 || n < 2 * workers {
+        f(inp, out);
+        return;
+    }
+    let chunk = (n + workers - 1) / workers * 3;
+    std::thread::scope(|s| {
+        for (i, o) in inp.chunks(chunk).zip(out.chunks_mut(chunk)) {
+            let fref = &f;
+            s.spawn(move || fref(i, o));
+        }
+    });
+}
+
 /// film_v2_math.layer_log_exposure: signed observer, neutral-anchored log10.
-pub fn layer_log_exposure(rgb: &[f32], observer: &[[f64; 3]; 3], out: &mut [f64]) {
+pub fn layer_log_exposure<T: Copy + Into<f64>>(rgb: &[T], observer: &[[f64; 3]; 3], out: &mut [f64]) {
     let mid = [
         dot3_seq_f64([observer[0][0], observer[0][1], observer[0][2]], [SCENE_MID; 3]),
         dot3_seq_f64([observer[1][0], observer[1][1], observer[1][2]], [SCENE_MID; 3]),
@@ -81,7 +105,7 @@ pub fn layer_log_exposure(rgb: &[f32], observer: &[[f64; 3]; 3], out: &mut [f64]
     ];
     let mid_f = [fmax64(mid[0], 1e-12), fmax64(mid[1], 1e-12), fmax64(mid[2], 1e-12)];
     for (px, o) in rgb.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
-        let e = mat3_fma_chain_f64([px[0] as f64, px[1] as f64, px[2] as f64], observer);
+        let e = mat3_fma_chain_f64([px[0].into(), px[1].into(), px[2].into()], observer);
         for c in 0..3 {
             o[c] = (fmax64(e[c], 1e-12) / mid_f[c]).log10();
         }
@@ -98,7 +122,7 @@ pub struct ChromaField<'a> {
 }
 
 /// film_v2_math.chroma_field_log_exposure.
-pub fn chroma_field_log_exposure(rgb: &[f32], field: &ChromaField, out: &mut [f64]) {
+pub fn chroma_field_log_exposure<T: Copy + Into<f64>>(rgb: &[T], field: &ChromaField, out: &mut [f64]) {
     let obs = &field.observer;
     let mid = [
         dot3_seq_f64([obs[0][0], obs[0][1], obs[0][2]], [SCENE_MID; 3]),
@@ -110,7 +134,7 @@ pub fn chroma_field_log_exposure(rgb: &[f32], field: &ChromaField, out: &mut [f6
     let n = field.n;
     let nm1 = (n - 1) as f64;
     for (px, o) in rgb.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
-        let r = [px[0] as f64, px[1] as f64, px[2] as f64];
+        let r = [px[0].into(), px[1].into(), px[2].into()];
         let e_obs = mat3_fma_chain_f64(r, obs);
         let finite = r.iter().all(|v| v.is_finite());
         let positive = finite && r.iter().all(|&v| v > 0.0);

@@ -1217,13 +1217,21 @@ fn rows3_f64<'py>(py: Python<'py>, data: Vec<f64>, n: usize) -> PyResult<Bound<'
 /// film_v2_math.layer_log_exposure -> (n, 3) float64.
 #[pyfunction]
 fn layer_log_exposure<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, observer: Vec<f64>) -> PyResult<Bound<'py, PyAny>> {
+    let obs = mat3_f64(observer, "observer")?;
+    if let Ok(a) = rgb.cast::<PyArrayDyn<f64>>() {
+        let n = require_rgb_f64(a, "rgb")?;
+        let ro = a.readonly();
+        let d = ro.as_slice()?;
+        let mut out = vec![0.0f64; n * 3];
+        py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::layer_log_exposure(i, &obs, o)));
+        return rows3_f64(py, out, n);
+    }
     let a = as_f32_array(py, rgb)?;
     let n = require_rgb(&a, "rgb")?;
-    let obs = mat3_f64(observer, "observer")?;
     let ro = a.readonly();
     let d = ro.as_slice()?;
     let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::layer_log_exposure(d, &obs, &mut out));
+    py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::layer_log_exposure(i, &obs, o)));
     rows3_f64(py, out, n)
 }
 
@@ -1237,8 +1245,6 @@ fn chroma_field_log_exposure<'py>(
     xyz_from_rec2020: Vec<f64>,
     observer: Vec<f64>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, rgb)?;
-    let n = require_rgb(&a, "rgb")?;
     let lut = as_f64_array(py, delta_lut)?;
     let ls = lut.shape().to_vec();
     if ls.len() != 3 || ls[0] != ls[1] || ls[0] < 2 || ls[2] != 3 {
@@ -1256,10 +1262,20 @@ fn chroma_field_log_exposure<'py>(
         xyz_from_rec2020: mat3_f64(xyz_from_rec2020, "xyz_from_rec2020")?,
         observer: mat3_f64(observer, "observer")?,
     };
+    if let Ok(a64) = rgb.cast::<PyArrayDyn<f64>>() {
+        let n = require_rgb_f64(a64, "rgb")?;
+        let ro = a64.readonly();
+        let d = ro.as_slice()?;
+        let mut out = vec![0.0f64; n * 3];
+        py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::chroma_field_log_exposure(i, &field, o)));
+        return rows3_f64(py, out, n);
+    }
+    let a = as_f32_array(py, rgb)?;
+    let n = require_rgb(&a, "rgb")?;
     let ro = a.readonly();
     let d = ro.as_slice()?;
     let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::chroma_field_log_exposure(d, &field, &mut out));
+    py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::chroma_field_log_exposure(i, &field, o)));
     rows3_f64(py, out, n)
 }
 
@@ -1277,7 +1293,7 @@ fn characteristic_amounts<'py>(py: Python<'py>, log_e: &Bound<'py, PyAny>, le_ax
     let tro = t.readonly();
     let td = tro.as_slice()?;
     let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::characteristic_amounts(ld, &le_axis, td, ev_offset, &mut out));
+    py.detach(|| film_core::par_map3(ld, &mut out, |i, o| film_core::characteristic_amounts(i, &le_axis, td, ev_offset, o)));
     rows3_f64(py, out, n)
 }
 
@@ -1319,7 +1335,7 @@ fn interimage_amplify<'py>(
     let ld = lro.as_slice()?;
     let tro = t.readonly();
     let td = tro.as_slice()?;
-    py.detach(|| film_core::interimage_amplify(&mut out, ld, &le_axis, td, lo, hi, beta));
+    py.detach(|| film_core::par_map3(ld, &mut out, |i, o| film_core::interimage_amplify(o, i, &le_axis, td, lo, hi, beta)));
     rows3_f64(py, out, n)
 }
 
@@ -1337,7 +1353,7 @@ fn tetrahedral<'py>(py: Python<'py>, lut: &Bound<'py, PyAny>, u: &Bound<'py, PyA
     let uro = uu.readonly();
     let ud = uro.as_slice()?;
     let mut out = vec![0.0f32; m * 3];
-    py.detach(|| film_core::tetrahedral(ld, n, ud, &mut out));
+    py.detach(|| film_core::par_map3(ud, &mut out, |i, o| film_core::tetrahedral(ld, n, i, o)));
     rows3_f32(py, out, m)
 }
 
@@ -1349,7 +1365,7 @@ fn film_compression_ev<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, impact: f6
     let ro = a.readonly();
     let d = ro.as_slice()?;
     let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::film_compression_ev(d, impact, knee_ev, width_ev, rho, &mut out));
+    py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::film_compression_ev(i, impact, knee_ev, width_ev, rho, o)));
     rows3_f64(py, out, n)
 }
 
@@ -1382,9 +1398,11 @@ fn cast_divide<'py>(
     let cro = c.readonly();
     let cd = cro.as_slice()?;
     py.detach(|| {
-        let mut ev = vec![0.0f32; n];
-        film_core::scene_ev_luma_f32(ad, eps, offset, &mut ev);
-        film_core::cast_divide_per_pixel(&mut out, &ev, &cast_ev, cd);
+        film_core::par_map3(ad, &mut out, |i, o| {
+            let mut ev = vec![0.0f32; i.len() / 3];
+            film_core::scene_ev_luma_f32(i, eps, offset, &mut ev);
+            film_core::cast_divide_per_pixel(o, &ev, &cast_ev, cd);
+        });
     });
     rows3_f32(py, out, n)
 }

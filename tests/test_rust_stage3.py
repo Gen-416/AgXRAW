@@ -97,6 +97,10 @@ class Stage3KernelParity(unittest.TestCase):
         ref, got = self._both(layer_log_exposure, rgb, self.stock["observer"])
         self.assertEqual(got.dtype, np.float64)
         np.testing.assert_array_equal(got, ref)
+        # float64 scene (the halation-prep slab path feeds compressed float64).
+        rgb64 = rgb.astype(np.float64) * 1.0000001
+        ref, got = self._both(layer_log_exposure, rgb64, self.stock["observer"])
+        np.testing.assert_array_equal(got, ref)
 
     def test_chroma_field_log_exposure(self) -> None:
         if self.chroma_stock is None:
@@ -105,11 +109,12 @@ class Stage3KernelParity(unittest.TestCase):
 
         s = self.chroma_stock
         rgb = _scene(20011, 2)
-        ref, got = self._both(
-            chroma_field_log_exposure, rgb, s["chroma_delta_lut"], s["chroma_domain"],
-            s["chroma_xyz_from_rec2020"], s["observer"],
-        )
-        np.testing.assert_array_equal(got, ref)
+        for scene in (rgb, rgb.astype(np.float64) * 1.0000001):
+            ref, got = self._both(
+                chroma_field_log_exposure, scene, s["chroma_delta_lut"], s["chroma_domain"],
+                s["chroma_xyz_from_rec2020"], s["observer"],
+            )
+            np.testing.assert_array_equal(got, ref)
 
     def test_characteristic_amounts(self) -> None:
         from dngscan.film_v2_math import characteristic_amounts, layer_log_exposure
