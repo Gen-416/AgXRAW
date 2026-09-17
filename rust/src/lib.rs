@@ -563,7 +563,7 @@ fn as_f16_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
     let np = py.import("numpy")?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("dtype", np.getattr("float16")?)?;
-    let arr = np.getattr("ascontiguousarray")?.call((obj,), Some(&kwargs))?;
+    let arr = np.getattr("asarray")?.call((obj,), Some(&kwargs))?;
     Ok(arr.cast_into::<PyArrayDyn<half::f16>>()?)
 }
 
@@ -613,7 +613,7 @@ fn apply_gain_map_mosaic<'py>(
 ) -> PyResult<()> {
     let gains_obj = as_f64_array(py, &op.getattr("gains")?)?;
     let gshape = gains_obj.shape().to_vec();
-    if gshape.len() != 3 {
+    if gshape.len() != 3 || gshape.contains(&0) {
         return Err(PyValueError::new_err("gains must be (points_v, points_h, planes)"));
     }
     let planes = gshape[2];
@@ -641,23 +641,18 @@ fn apply_gain_map_mosaic<'py>(
     if (gshape[0] as i64) != gop.points_v || (gshape[1] as i64) != gop.points_h {
         return Err(PyValueError::new_err("gains grid does not match points_v/points_h"));
     }
-    let mut img_view = img.as_array_mut();
+    if gop.top < 0 || gop.left < 0 || gop.row_pitch <= 0 || gop.col_pitch <= 0 {
+        return Err(PyValueError::new_err("GainMap origin must be nonnegative and pitches positive"));
+    }
+    let img_view = img.as_array_mut();
     let colors_view = colors.as_array();
     let (h, w) = (img_view.shape()[0], img_view.shape()[1]);
     if colors_view.shape() != [h, w] {
         return Err(PyValueError::new_err("colors must match img shape"));
     }
-    let color_at = |y: usize, x: usize| -> usize { colors_view[[y, x]] as usize };
-    // the view may be strided (visible window): index through ndarray
-    let mut writes: Vec<(usize, usize, u16)> = Vec::new();
-    {
-        let get = |y: usize, x: usize| -> u16 { img_view[[y, x]] };
-        let mut set = |y: usize, x: usize, v: u16| writes.push((y, x, v));
-        evidence::apply_gain_map_mosaic(h, w, &gop, &blacks, &whites, &color_at, &get, &mut set);
-    }
-    for (y, x, v) in writes {
-        img_view[[y, x]] = v;
-    }
+    // Keep the NumPy borrows alive while native code updates the actual
+    // visible window. No per-pixel write list or contiguous mosaic copy.
+    py.detach(move || evidence::apply_gain_map_mosaic(img_view, colors_view, &gop, &blacks, &whites));
     Ok(())
 }
 
@@ -718,10 +713,10 @@ fn hdr_roundtrip_metrics<'py>(
     }
     let aro = a.readonly();
     let ero = e.readonly();
-    let ad = aro.as_slice()?;
-    let ed = ero.as_slice()?;
+    let ad = aro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+    let ed = ero.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
     let r = py
-        .detach(|| metrics::hdr_roundtrip(ad, sa[2], ed, se[2], sa[0], sa[1]))
+        .detach(|| metrics::hdr_roundtrip(ad, ed, sa[0], sa[1]))
         .map_err(PyValueError::new_err)?;
     let d = PyDict::new(py);
     d.set_item("chroma_error", r.chroma_error)?;

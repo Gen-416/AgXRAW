@@ -107,17 +107,19 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   回退 NumPy 做二分。实测 24 MP 胶片+光学导出 41 s→35 s;剩余大头是胶片核逐像素链
   (四面体 LUT 9 s、色度场 7.5 s、interp 2.5 s),为 Stage 3。
   **Stage 3(同日)**:胶片核逐像素链搬进 Rust(rust/src/film_core.rs)——层曝光与色度场
-  对数曝光(`layer_log_exposure`/`chroma_field_log_exposure`,只接 float32 场景:float32 值的
-  float64 乘积是精确的,FMA 链与普通链在任何平台上都一致;halation 预处理 slab 路径喂的压缩后
-  float64 场景留在 NumPy——CI 的 macOS 14 Accelerate 对 float64 gemm 的尾行(n mod 8 ≠ 0)
-  不走 FMA 链而 macOS 27 全程走,只有末行差 1 ulp,不值得为 2 s 引入平台条件相等)、
+  对数曝光(`layer_log_exposure`/`chroma_field_log_exposure`,目前只接 float32 场景;halation
+  预处理 slab 路径喂的压缩后 float64 场景保留 NumPy)。精度更正:observer 系数是 float64,
+  float32 场景值并不保证乘积精确;小批次或尾行的 BLAS 累加也可能与 Rust FMA 链不同。
+  macOS 27 / NumPy 2.5.2 的 Velvia 100 七像素样本可复现 logE 相差 8.33e-17。
+  原先“所有平台逐位一致”的解释不成立;源文件的旧注释也不能作为此保证。
+  `film_v2_math.py` 属于已发布资产的 builder-source 哈希输入,本轮不为注释重烘焙资产。
   特性曲线 interp(`characteristic_amounts`)、
   层间效应(`interimage_amplify`,含逐像素中性点)、四面体 LUT(`tetrahedral`)、高光预压缩
   (`film_compression_ev`)、技术中性 cast 逐像素除法(`cast_divide`)。`amounts_to_unit`
   留在 NumPy(0.4 s,不值一个内核)。新钉住的语义:np.mean(axis=1) 三元是 ((a+b)+c)/3;
   `_tetrahedral` 的 (g−i0) 先升 float64 再转 float32,四个权重 float32 左结合;float32 数组
   `/=` float64 插值结果在 float64 里除后回存 float32;float64 log10/exp2 走 libm;(n,3)@(3,3)
-  float64 仍是 k 序 FMA 链。内核按 budget::workers_for 切像素块并行(逐像素映射,切分精确)。
+  float64 原生实现采用 k 序 FMA 链,BLAS 的所有尺寸不一定如此。内核按 budget::workers_for 切像素块并行(逐像素映射,切分精确)。
   验收:tests/test_rust_stage3.py 每个内核对 NumPy 原体随机输入 + 全部出厂 stock 的 B1/B2 LUT
   逐位相同,apply_film_core 负片/反转片、压缩、层间效应 custom、off/print crossover、retimed
   全路径 array_equal;固定种子胶片+光学导出 JPEG 与主树 sha256 相同。实测 24 MP:单独 Stage 3
@@ -126,12 +128,44 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   **Stage 4(2026-09-17)**:剖析里剩下的两处 NumPy 残留。① halation 预处理 slab 路径
   (`FilmSpatialContext._layer_exposure_f32`)在未启用高光预压缩时不再先转 float64:float32 行
   原样交给 Stage A,由它自己升 float64——数值相同,而 float32 场景正是原生内核接受的输入
-  (乘积精确、平台无关);启用压缩时场景是真 float64,仍留 NumPy。② `color.apply_rgb_matrix3`
+  (精度边界见上面的更正);启用压缩时场景是真 float64,仍留 NumPy。② `color.apply_rgb_matrix3`
   (float64 乘积、左结合 (a+b)+c、一次舍入到 float32)进 Rust,f32/f64 场景都接,float32 矩阵
   回落 NumPy。验收:tests/test_rust_stage4.py 逐位对拍(含 NaN/Inf/3e38 与 float64 场景);
   SDR、胶片+光学、带压缩的胶片导出 JPEG 与 ultrahdr 整个文件的 sha256 与 main 相同。实测
   24 MP:胶片+光学 16.9→14.6 s,ultrahdr 10.3→9.7 s,SDR 7.4→7.0 s。现在每条路径里最大的
   单项都是 LibRaw 解码(2.1 s,第三方),其后是 JPEG/HEIC 编码与 Apple gain-map 写出。
+  **2026-09-17 Rust pipeline 内存修复**:GainMap opcode 直接借用可跨步的 mosaic/CFA
+  视图,逐点写回并释放 GIL,删除全图 `(y,x,value)` 待写队列;临时空间只随行列坐标和小型
+  gain 网格增长。clip-mask feather 改成每个线程复用一行 float32,直接输出交错 float16,
+  遵守 native thread budget。HDR 回读借用 RGB/RGBA 的原始 strides,不再复制完整 RGB;
+  工作线程共享 512 行临时预算并复用缓冲,每批立即合并精确 top-K,不保留历史行带。
+  每个 RGB 分量在已有扫描中检查有限性,NaN/Inf 返回拒绝指标;NumPy 参考路径同样拒绝。
+  SDR base 回读用 256 档整数误差直方图计算精确 p99,删除逐像素误差数组。
+  Gaussian reflect 对单元素轴直接返回 0,其余用周期折叠,修复 1×N/N×1 死循环。
+
+  回归见 `tests/test_rust_pipeline_memory.py`:包括 NaN/±Inf 各通道、反向/转置视图、
+  重叠 GainMap、单元素轴、小图大半径、跨多批行带、不同线程预算及独立进程 RSS 门禁。
+  Stage 3 新增全部出厂 stock 的短/奇数批次:float64 曝光中间量用 `rtol=atol=2e-14`,
+  最终 float32 胶片输出仍要求 array_equal,原有精确回归不放宽。
+  本机完整 `unittest discover -s tests -q` 两次通过: `DNGSCAN_FAST=1` 共 1435 项、
+  跳过 36 项;`DNGSCAN_FAST=0` 共 1435 项、跳过 75 项。数字化精度门禁单独通过且未跳过。
+
+  合成核基准(三次独立进程中位数,macOS 27.2 arm64、Python 3.14.4、NumPy 2.5.2,
+  release 构建,thread budget=8;修复前 `7cb201c`)如下。峰值 RSS **包含输入与输出**,
+  不是额外临时内存;输入为均匀图,不代表真实 RAW 全流程导出速度。
+
+  | 核 | 24 MP 耗时 前→后 | 24 MP 峰值 MiB 前→后 | 60.2 MP 耗时 前→后 | 60.2 MP 峰值 MiB 前→后 |
+  | --- | --- | --- | --- | --- |
+  | GainMap | 0.137→0.038 s | 659→109 | 0.288→0.092 s | 1592→212 |
+  | HDR 回读统计 | 0.302→0.224 s | 926→500 | 0.820→0.628 s | 2199→1158 |
+  | SDR base 回读统计 | 0.051→0.017 s | 284→179 | 0.144→0.047 s | 644→391 |
+  | mask feather | 0.127→0.035 s | 864→453 | 0.332→0.093 s | 2108→1074 |
+
+  `tools/benchmark_native_memory.py --kernel gain --height 6336 --width 9504 --threads 8`
+  可复测,`--repo` 指向另一份已编译 checkout 作对照。单线程预算下 feather 的 60.2 MP
+  耗时为 0.340→0.392 s:旧实现无视预算固定启动三个线程,新实现遵守预算;默认多线程
+  预算下更快。精确 HDR 中位数仍保留一份全图 float32 相对误差,空间不是 O(1)。
+
   **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
   只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
   矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:

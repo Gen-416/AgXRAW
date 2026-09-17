@@ -99,7 +99,8 @@ class Stage3KernelParity(unittest.TestCase):
         np.testing.assert_array_equal(got, ref)
         # A float64 scene stays on NumPy: Accelerate's float64 gemm tail
         # rows differ between macOS versions (FMA chain on 27, not on 14),
-        # while float32 values make every product exact. Pin the fallback.
+        # and float32 scenes do not make float64 observer products exact.
+        # Pin the existing fallback; small native batches are tested below.
         rgb64 = rgb.astype(np.float64) * 1.0000001
         ext = _fast._load_extension()
         with mock.patch.object(ext, "layer_log_exposure", side_effect=AssertionError("must not dispatch")):
@@ -216,6 +217,36 @@ class Stage3KernelParity(unittest.TestCase):
 
 @unittest.skipUnless(_native_available(), "native stage-3 kernels unavailable")
 class Stage3PipelineParity(unittest.TestCase):
+    def test_small_observer_batches_and_final_output(self) -> None:
+        """BLAS tail rows can differ in float64 even for float32 scenes.
+
+        Preserve the existing exact-output gates, while explicitly covering
+        the intermediate tolerance on short/odd batches for shipped assets.
+        This does not claim universal bit identity across BLAS backends.
+        """
+        from dngscan.film_develop import _load_v2, apply_film_core
+        from dngscan.film_v2_math import layer_log_exposure, chroma_field_log_exposure
+
+        for name in _stocks():
+            stock, _ = _load_v2(name)
+            for n in (1, 2, 3, 7, 8, 9, 15, 17, 31, 33, 127, 129):
+                # n=7 includes the reviewed Velvia 100 counterexample.
+                rgb = _scene(n + 1, 11)[:n]
+                with self.subTest(stock=name, n=n):
+                    with _NoNative():
+                        ref = layer_log_exposure(rgb, stock["observer"])
+                        final_ref = apply_film_core(rgb.copy(), _plan(name))
+                    got = layer_log_exposure(rgb, stock["observer"])
+                    np.testing.assert_allclose(got, ref, rtol=2e-14, atol=2e-14)
+                    if stock.get("chroma_delta_lut") is not None:
+                        args = (rgb, stock["chroma_delta_lut"], stock["chroma_domain"],
+                                stock["chroma_xyz_from_rec2020"], stock["observer"])
+                        with _NoNative():
+                            ref = chroma_field_log_exposure(*args)
+                        np.testing.assert_allclose(chroma_field_log_exposure(*args), ref,
+                                                   rtol=2e-14, atol=2e-14)
+                    np.testing.assert_array_equal(apply_film_core(rgb.copy(), _plan(name)), final_ref)
+
     def _run(self, stock: str, **kw) -> None:
         from dngscan.film_develop import apply_film_core
 
