@@ -123,6 +123,15 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   全路径 array_equal;固定种子胶片+光学导出 JPEG 与主树 sha256 相同。实测 24 MP:单独 Stage 3
   胶片 full 12.7→9.8 s、胶片+光学 41→25 s;三阶段叠加胶片+光学 15–17 s(Stage 1 前为 41 s),SDR 8 s。剩余大头是 LibRaw
   解码、`np.add.at` 的 float32 累加与积分图采样——已无单个 Python 阶段超过 2 s。
+  **Stage 4(2026-09-17)**:剖析里剩下的两处 NumPy 残留。① halation 预处理 slab 路径
+  (`FilmSpatialContext._layer_exposure_f32`)在未启用胶片压缩时不再先转 float64:float32 行
+  原样交给 Stage A,由它自己升 float64——数值相同,而 float32 场景正是原生内核接受的输入
+  (乘积精确、平台无关);启用压缩时场景是真 float64,仍留 NumPy。② `color.apply_rgb_matrix3`
+  (float64 乘积、左结合 (a+b)+c、一次舍入到 float32)进 Rust,f32/f64 场景都接,float32 矩阵
+  回落 NumPy。验收:tests/test_rust_stage4.py 逐位对拍(含 NaN/Inf/3e38 与 float64 场景);
+  SDR、胶片+光学、带压缩的胶片导出 JPEG 与 ultrahdr 整个文件的 sha256 与 main 相同。实测
+  24 MP:胶片+光学 16.9→14.6 s,ultrahdr 10.3→9.7 s,SDR 7.4→7.0 s。现在每条路径里最大的
+  单项都是 LibRaw 解码(2.1 s,第三方),其后是 JPEG/HEIC 编码与 Apple gain-map 写出。
   **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
   只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
   矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:

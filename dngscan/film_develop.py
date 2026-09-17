@@ -562,7 +562,15 @@ class FilmSpatialContext:
         slab = max(1, 2_000_000 // max(w, 1))
         for r0 in range(0, n, slab):
             r1 = min(r0 + slab, n)
-            part = rgb[r0:r1].reshape(-1, 3).astype(np.float64)
+            part = rgb[r0:r1].reshape(-1, 3)
+            if compression > 0.0 or part.dtype != np.float32:
+                part = part.astype(np.float64)
+            # else: keep the float32 rows. stage_a_log_exposure promotes them to
+            # float64 itself, so the values are identical — and a float32 scene
+            # is what the native Stage A kernels accept (their float64 products
+            # are exact, hence platform-independent; a float64 scene stays on
+            # NumPy, see film_v2_math). Without compression this slab path was
+            # the last 1.9 s of NumPy in a 24 MP film+optics export.
             if compression > 0.0:
                 part = film_compression_ev(
                     part, impact=compression, knee_ev=knee,

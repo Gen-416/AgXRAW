@@ -1407,6 +1407,40 @@ fn cast_divide<'py>(
     rows3_f32(py, out, n)
 }
 
+// ---------------------------------------------------------------------------
+// color.apply_rgb_matrix3: float64 products, (a + b) + c, one round to float32.
+
+fn matrix3_rows<T: Copy + Into<f64> + Sync>(d: &[T], m: &[f64; 9], out: &mut [f32]) {
+    film_core::par_map3(d, out, |i, o| {
+        for (px, q) in i.chunks_exact(3).zip(o.chunks_exact_mut(3)) {
+            let (r, g, b): (f64, f64, f64) = (px[0].into(), px[1].into(), px[2].into());
+            q[0] = ((m[0] * r + m[1] * g) + m[2] * b) as f32;
+            q[1] = ((m[3] * r + m[4] * g) + m[5] * b) as f32;
+            q[2] = ((m[6] * r + m[7] * g) + m[8] * b) as f32;
+        }
+    });
+}
+
+#[pyfunction]
+fn apply_rgb_matrix3<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, matrix: Vec<f64>) -> PyResult<Bound<'py, PyAny>> {
+    let m: [f64; 9] = matrix.as_slice().try_into().map_err(|_| PyValueError::new_err("matrix must have 9 elements"))?;
+    if let Ok(a) = rgb.cast::<PyArrayDyn<f64>>() {
+        let n = require_rgb_f64(a, "rgb")?;
+        let ro = a.readonly();
+        let d = ro.as_slice()?;
+        let mut out = vec![0.0f32; n * 3];
+        py.detach(|| matrix3_rows(d, &m, &mut out));
+        return rows3_f32(py, out, n);
+    }
+    let a = as_f32_array(py, rgb)?;
+    let n = require_rgb(&a, "rgb")?;
+    let ro = a.readonly();
+    let d = ro.as_slice()?;
+    let mut out = vec![0.0f32; n * 3];
+    py.detach(|| matrix3_rows(d, &m, &mut out));
+    rows3_f32(py, out, n)
+}
+
 #[pymodule]
 fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "dngscan optional native kernels (Rust)")?;
@@ -1446,5 +1480,6 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     ] {
         m.add_function(f)?;
     }
+    m.add_function(wrap_pyfunction!(apply_rgb_matrix3, m)?)?;
     Ok(())
 }
