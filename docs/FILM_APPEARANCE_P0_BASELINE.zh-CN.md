@@ -6,6 +6,12 @@
 > `tests/appearance_freeze/BASELINE.json`，由
 > `tests/test_film_appearance_p0.py` 复算。计划正文见
 > [`FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md`](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md)。
+>
+> **2026-09-17 补记**：本文的 `observe` 侧数字是材质窗口重拟合之前量的。重拟合后胶片分离前馈
+> 的残差矩阵只偏离单位阵几个百分点（旧矩阵的强效果主要来自 profile 误差，见
+> `dngscan_assets/spectral/README.md`），`tests/appearance_freeze/` 的 observe 探针与 `BASELINE.json`
+> 已随之重生成（6528 个数全部在 observe 路径下，full 路径逐字节不变）。下文表格保留为历史记录，
+> 现行数字以 `BASELINE.json` 为准。
 
 > **历史状态注（2026-08-11）**：本文件是外观层 P0 时点的测量记录。其中
 > 「Portra vs Ektar 0.46 dE00」「C-41 S 传递明显下降」等数字描述的是
