@@ -22,6 +22,41 @@ demo families are used when a file is absent:
 - `magenta_reflectance.csv`: magenta/purple dyes and fabrics.
 - `neutral_reflectance.csv`: near-neutral ramps.
 
+### Windows and profiles (2026-09-17 refit)
+
+The per-class **windows** are the colorimetric truth (CIE 1931 → white-balanced Rec.2020
+under D55) of measured reflectances, not the tool's camera-model response: the pixels
+the runtime sees come from a properly profiled decode (LibRaw with the file's DNG
+matrices, or RAW 9), which renders natural materials near their colorimetric positions.
+With `--profile-csv rawtoaces_training_reflectance.csv` the foliage, cyan and magenta
+classes (windows AND matrix fits) use colorimetric subsets of the AMPAS 190 — Oklab hue
+sectors with a chroma floor, foliage additionally requiring the red-edge signature
+(`MEASURED_CLASS_RULES`; n = 12 / 28 / 29). Skin keeps the window fitted from real fp
+photographs (`arri_skin_d55`). Every non-neutral window is shrunk until the neutral
+point sits 3 scaled sigmas away, and the tool refuses to write a window that sits on
+the clip floor or has a degenerate covariance.
+
+Why: the previous windows were the response of a camera profile fitted in the
+G-normalised chroma domain. That profile left a mean Oklab error of 0.056 on the
+measured A7 III SSF and gave 100 % of saturated greens a negative blue, which the
+positivity clip flattened to 1e-8 — the shipped foliage window sat at B/G = 1e-7 with
+variance 1e-5 (weight 0 on every real pixel) and the cyan window covered 84–87 % of
+ordinary frames. The observer **profiles** are now white-preserving 3x3 fits in linear
+RGB (mean Oklab error 0.007 on the same data, ~1 % negatives), and the per-material
+fits see signed responses. Validation on fp frames decoded at 5500 K: photo green
+clusters sit at R/G 0.72–0.78, B/G 0.34–0.42 against the foliage window centre
+(0.778, 0.355).
+
+Consequence worth knowing: with honest profiles the fp→stock residual matrices are
+gentle (a few percent off identity) where the old ones had coefficients of 2–3; the
+old "look" was mostly profile error. `--material-look-gain` and the runtime
+`--scene-transform-strength` remain the declared dials for a stronger separation.
+
+Regenerate every material preset (19 film stocks + `alev_material_d55`) from its
+recorded target SSF with:
+
+    python tools/regenerate_material_presets.py
+
 Outputs: preset `alev_material_d55` (merged into scene_transform_presets.json) and
 `calibration_report.json` here (per-material before/after Oklab divergence per
 illuminant, confidence, and the D55 cross-material leakage table). Windows can be
@@ -39,7 +74,7 @@ alev_material_d55 --region <name>`.
 - `rawtoaces_training_reflectance.csv`: the 190 AMPAS IDT training reflectances
   (rawtoaces-data), used to fit the per-illuminant camera->Rec2020 profiles.
 
-Recalibrate with:
+Recalibrate one preset by hand with (the driver above does this for all of them):
     python tools/calibrate_skin_matrix.py --preset-mode material \
       --imx410-qe-csv dngscan_assets/spectral/sony_a7m3_ssf_weta_measured.csv \
       --ir-transmission-csv dngscan_assets/spectral/unit_transmission.csv \
