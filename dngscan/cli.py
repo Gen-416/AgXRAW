@@ -28,6 +28,7 @@ from .delivery import (
     is_hdr_output_format,
     profile_from_encode_settings,
     resolve_delivery_profile,
+    resolve_hdr_chroma,
 )
 from .export import chroma_to_subsampling, export_jpeg
 from .film_curve import FILM_CURVE_CHOICES, FILM_CURVE_PRESETS
@@ -941,25 +942,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             )
     except ValueError as exc:
         parser.error(str(exc))
-    if is_hdr_output_format(args.output_format) and args.chroma is not None:
-        # The HDR container's primary-image subsampling is emergent from quality inside
-        # Core Image; an explicit --chroma the encoder cannot honour must fail loudly
-        # instead of writing a file that contradicts the request.
-        if args.chroma == "422":
-            parser.error(
-                "HDR gain-map 容器不提供 4:2:2 主图采样；"
-                "Core Image 按 quality 决定采样（q100→4:4:4，share→通常 4:2:0）"
-            )
-        if args.chroma == "444" and not args.delivery.is_archive:
-            parser.error(
-                "HDR 容器的 4:4:4 只在 q100（archive 档）下产生并被门禁验证；"
-                "请用 --delivery-profile archive（或去掉 --chroma）"
-            )
-        if args.chroma == "420" and args.delivery.is_archive:
-            parser.error(
-                "archive 档（q100）的 HDR 主图为 4:4:4；"
-                "要 4:2:0 请用 --delivery-profile share"
-            )
+    if is_hdr_output_format(args.output_format):
+        try:
+            args.delivery = resolve_hdr_chroma(args.delivery, explicit_chroma=args.chroma)
+        except ValueError as exc:
+            parser.error(str(exc))
     args.delivery_profile = str(args.delivery.name)
     args.jpeg_quality = int(args.delivery.quality)
     args.chroma = str(args.delivery.chroma)

@@ -14,7 +14,7 @@ from dngscan.metadata import (
     _parse_gain_map_payload,
     read_dng_shading_ops,
 )
-from dngscan.raw_io import _apply_gain_maps_mosaic, _apply_vignette_render
+from dngscan.raw_io import _apply_gain_maps_mosaic, _apply_vignette_render, _orient_like_libraw
 
 SAMPLE_FP = Path.home() / "Pictures" / "AgXRAW样张" / "_SDI0150.DNG"
 SAMPLE_IPHONE = Path.home() / "Pictures" / "Original RAW 26-05-11 193721820.dng"
@@ -61,6 +61,26 @@ class GainMapParserTests(unittest.TestCase):
 
 
 class VignetteTests(unittest.TestCase):
+    def test_correction_commutes_with_all_libraw_orientations(self) -> None:
+        v = DngVignetteRadial(k=(1.0, -0.1, 0.05, 0.0, 0.0), cx_hat=0.25, cy_hat=0.6)
+        rng = np.random.default_rng(38)
+        for shape in ((63, 97, 3), (32, 49, 3)):
+            raw = rng.integers(100, 12000, shape, dtype=np.uint16)
+            corrected = _apply_vignette_render(raw.copy(), v)
+            for flip in range(8):
+                with self.subTest(shape=shape, flip=flip):
+                    oriented = _orient_like_libraw(raw.copy(), flip)
+                    out = _apply_vignette_render(oriented, v, flip)
+                    self.assertIs(out, oriented)
+                    np.testing.assert_array_equal(out, _orient_like_libraw(corrected, flip))
+
+    def test_invalid_orientation_does_not_mutate_input(self) -> None:
+        img = np.ones((10, 12, 3), dtype=np.uint16)
+        v = DngVignetteRadial(k=(1.0, 0.0, 0.0, 0.0, 0.0), cx_hat=0.3, cy_hat=0.4)
+        with self.assertRaises(ValueError):
+            _apply_vignette_render(img, v, 8)
+        np.testing.assert_array_equal(img, 1)
+
     def test_radial_gain_grows_toward_corners_and_centre_is_unity(self) -> None:
         v = DngVignetteRadial(k=(1.0, 0.0, 0.0, 0.0, 0.0), cx_hat=0.5, cy_hat=0.5)
         img = np.full((64, 96, 3), 1000, dtype=np.uint16)

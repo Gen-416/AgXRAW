@@ -32,7 +32,9 @@ from .models import ToneCompressionPlan
 # reads rec2020_to_xyz/xyz_to_output as float64 for that stage.
 # v11 (math review 2026-09-03): inset/outset and punch/Oklab matrices of both
 # kernels are exact float64 stages too.
-NATIVE_ABI_VERSION = 11
+# v12: HDR delivery metrics take the P3 luminance row and include local
+# luminance-fidelity gates. Reject older extensions rather than omit those gates.
+NATIVE_ABI_VERSION = 12
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

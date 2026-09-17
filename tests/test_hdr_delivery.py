@@ -68,6 +68,69 @@ class AlternatePackingTests(unittest.TestCase):
 
 
 class RoundtripErrorTests(unittest.TestCase):
+    def test_luminance_metrics_match_independent_block_oracle(self) -> None:
+        from dngscan.gainmap import _roundtrip_error_arrays
+        from dngscan.hdr_color import output_luma_weights
+
+        rng = np.random.default_rng(37)
+        e = rng.uniform(0, 4, (521, 19, 3)).astype(np.float16)
+        a = (e * rng.uniform(.7, 1.3, e.shape)).astype(np.float16)
+        w = output_luma_weights("p3")
+        block_errors, highlight_errors = [], []
+        for y in range(0, e.shape[0], 8):
+            for x in range(0, e.shape[1], 8):
+                eb = e[y:y + 8, x:x + 8].astype(np.float32).reshape(-1, 3)
+                ab = a[y:y + 8, x:x + 8].astype(np.float32).reshape(-1, 3)
+                ye = (eb[:, 0] * w[0] + eb[:, 1] * w[1]) + eb[:, 2] * w[2]
+                ya = (ab[:, 0] * w[0] + ab[:, 1] * w[1]) + ab[:, 2] * w[2]
+                error = np.abs(ya - ye).astype(np.float64)
+                mass = np.abs(ye).astype(np.float64)
+                block_errors.append(error.sum() / max(mass.sum(), .05 * len(eb)))
+                mask = (eb.max(axis=1) > 1) | (ab.max(axis=1) > 1)
+                if mask.any():
+                    highlight_errors.append(error[mask].sum() / max(mass[mask].sum(), .05 * mask.sum()))
+        actual = _roundtrip_error_arrays(a, e)
+        self.assertEqual(actual["block_p95_luma_error"], float(np.percentile(np.array(block_errors, np.float32), 95)))
+        self.assertEqual(actual["highlight_max_luma_error"], float(np.float32(max(highlight_errors))))
+
+    def test_erased_luminance_texture_is_rejected_even_when_means_match(self) -> None:
+        from dngscan.gainmap import _roundtrip_error_arrays
+        from dngscan.delivery import ARCHIVE_TOLERANCES, SHARE_TOLERANCES, SHARE_HEIC_TOLERANCES
+
+        e = np.ones((256, 256, 3), np.float16)
+        e[::2] = 0.25
+        e[1::2] = 1.75
+        metrics = _roundtrip_error_arrays(np.ones_like(e), e)
+        self.assertEqual(metrics["block_p99_relative_error"], 0.0)
+        self.assertAlmostEqual(metrics["block_p95_luma_error"], 0.75, places=6)
+        for tolerance in (ARCHIVE_TOLERANCES, SHARE_TOLERANCES, SHARE_HEIC_TOLERANCES):
+            self.assertFalse(_hdr_roundtrip_is_acceptable(metrics, tolerance))
+
+    def test_sparse_missing_or_spurious_highlights_including_edges_are_rejected(self) -> None:
+        from dngscan.gainmap import _roundtrip_error_arrays
+        from dngscan.delivery import ARCHIVE_TOLERANCES, SHARE_TOLERANCES, SHARE_HEIC_TOLERANCES
+
+        for shape in ((256, 256, 3), (521, 257, 3)):
+            for position in ((100, 100), (-1, -1)):
+                for spurious in (False, True):
+                    e = np.full(shape, .18, np.float16)
+                    e[30:34, 30:34] = 4  # keep the global peak unchanged
+                    a = e.copy()
+                    (a if spurious else e)[position] = 4
+                    with self.subTest(shape=shape, position=position, spurious=spurious):
+                        m = _roundtrip_error_arrays(a, e)
+                        self.assertEqual(m["p999_relative_error"], 0.0)
+                        self.assertGreater(m["highlight_max_luma_error"], .95)
+                        for t in (ARCHIVE_TOLERANCES, SHARE_TOLERANCES, SHARE_HEIC_TOLERANCES):
+                            self.assertFalse(_hdr_roundtrip_is_acceptable(m, t))
+
+    def test_missing_luminance_metrics_fail_closed(self) -> None:
+        m = PerProfileToleranceContractTests._metrics(0.0)
+        for key in ("block_p95_luma_error", "highlight_max_luma_error"):
+            old = m.copy()
+            del old[key]
+            self.assertFalse(_hdr_roundtrip_is_acceptable(old))
+
     def test_shape_mismatch_reports_infinite_error(self) -> None:
         """A mismatch must never read as a small error and pass the gate."""
         with tempfile.TemporaryDirectory() as td:
@@ -292,6 +355,49 @@ class RoundtripErrorTests(unittest.TestCase):
 
 @unittest.skipUnless(_BACKEND_OK, f"gain-map backend unavailable: {_BACKEND_WHY}")
 class WriterVerificationTests(unittest.TestCase):
+    def test_sampling_mismatch_keeps_existing_destination(self) -> None:
+        from dngscan import gainmap
+        from dngscan.delivery import resolve_delivery_profile
+
+        base = np.full((24, 48, 3), 180, np.uint8)
+        hdr = np.ones((24, 48, 4), np.float16)
+        hdr[..., :3] = srgb_decode(base.astype(np.float32) / 255) * 2.5
+        inspect = gainmap.inspect_gainmap_file
+
+        def wrong_sampling(path):
+            info = inspect(path)
+            info["chroma_subsampling"] = "4:2:0"
+            return info
+
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "existing.jpg"
+            out.write_bytes(b"previous good delivery")
+            with mock.patch.object(gainmap, "inspect_gainmap_file", side_effect=wrong_sampling):
+                with self.assertRaisesRegex(RuntimeError, "采样与请求不符"):
+                    gainmap.write_apple_gainmap_file(base, hdr, out, 3,
+                        delivery=resolve_delivery_profile("share", quality=100, chroma="444"))
+            self.assertEqual(out.read_bytes(), b"previous good delivery")
+            self.assertEqual(list(Path(td).iterdir()), [out])
+
+    def test_sparse_highlight_failure_keeps_existing_destination(self) -> None:
+        from dngscan import gainmap
+
+        base = np.full((256, 256, 3), 128, np.uint8)
+        hdr = np.ones((256, 256, 4), np.float16)
+        hdr[..., :3] = .18
+        hdr[100:104, 100:104, :3] = 4
+        hdr[200:204, 200:204, :3] = 4
+        decoded = hdr.copy()
+        decoded[100:104, 100:104, :3] = .18
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "existing.jpg"
+            out.write_bytes(b"previous good delivery")
+            with mock.patch.object(gainmap, "_read_expanded_hdr_rgba_half", return_value=decoded):
+                with self.assertRaisesRegex(RuntimeError, "局部HDR亮度误差"):
+                    write_apple_gainmap_jpeg(base, hdr, out, 100, 3)
+            self.assertEqual(out.read_bytes(), b"previous good delivery")
+            self.assertEqual(list(Path(td).iterdir()), [out])
+
     def test_writer_rejects_a_rendition_it_cannot_reproduce(self) -> None:
         """The per-file check is the real guarantee, so it has to actually bite.
 
@@ -503,6 +609,8 @@ class PerProfileToleranceContractTests(unittest.TestCase):
             "block_p99_relative_error": 0.04,
             "block_chroma_error": 0.01,
             "chroma_error": chroma_error,
+            "block_p95_luma_error": 0.01,
+            "highlight_max_luma_error": 0.02,
         }
 
     def test_mid_chroma_error_splits_archive_from_share(self) -> None:

@@ -54,6 +54,23 @@ class GainMapInterfaceTests(unittest.TestCase):
             )
 
 class AppleGainMapWriterTests(unittest.TestCase):
+    def test_writer_refuses_chroma_conflict_before_backend_or_file_access(self) -> None:
+        from dngscan.delivery import resolve_delivery_profile
+        from dngscan.gainmap import write_apple_gainmap_file
+
+        with mock.patch("dngscan.gainmap.apple_gainmap_backend_status", side_effect=AssertionError):
+            with self.assertRaisesRegex(ValueError, "chroma=420"):
+                write_apple_gainmap_file(None, None, Path("unused.jpg"), 3,
+                    delivery=resolve_delivery_profile("share", quality=100, chroma="420"))
+
+    def test_quality_only_legacy_entry_resolves_sampling(self) -> None:
+        from dngscan.gainmap import write_apple_gainmap_heic
+
+        for writer in (write_apple_gainmap_jpeg, write_apple_gainmap_heic):
+            with mock.patch("dngscan.gainmap.write_apple_gainmap_file", return_value={}) as encode:
+                writer(None, None, Path("unused"), 90, 3)
+                self.assertEqual(encode.call_args.kwargs["delivery"].chroma, "420")
+
     def test_writer_rejects_non_finite_hdr_before_core_image(self) -> None:
         from dngscan.gainmap import write_apple_gainmap_jpeg
 

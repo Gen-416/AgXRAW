@@ -168,7 +168,7 @@ def _apply_gain_maps_mosaic(
             img_view[r0:r1] = corrected.astype(img.dtype)
 
 
-def _apply_vignette_render(render: Any, vignette: Any) -> Any:
+def _apply_vignette_render(render: Any, vignette: Any, orientation_flip: int = 0) -> Any:
     """Apply a post-demosaic FixVignetteRadial to the scene render, in row bands.
 
     g(r) = 1 + sum k_i (r/m)^(2(i+1)) with the optical centre at (cx_hat, cy_hat) and
@@ -176,14 +176,21 @@ def _apply_vignette_render(render: Any, vignette: Any) -> Any:
     commutes with WB and matrices, so applying it to the finished linear render is
     exact. Output clips at the container maximum.
     """
-    h, w = render.shape[:2]
+    # Opcode coordinates belong to the un-oriented image. Undo LibRaw's
+    # orientation as a view before evaluating the radial field; this also
+    # preserves the old arithmetic exactly for every reflected/rotated pixel.
+    inverse_flip = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 5, 7: 7}
+    if orientation_flip not in inverse_flip:
+        raise ValueError(f"unknown LibRaw flip code {orientation_flip}")
+    working = _orient_like_libraw(render, inverse_flip[orientation_flip])
+    h, w = working.shape[:2]
     cx, cy = float(vignette.cx_hat) * w, float(vignette.cy_hat) * h
     m2 = max((cx) ** 2 + (cy) ** 2, (w - cx) ** 2 + (cy) ** 2,
              (cx) ** 2 + (h - cy) ** 2, (w - cx) ** 2 + (h - cy) ** 2)
     limit = float(np.iinfo(render.dtype).max) if np.issubdtype(render.dtype, np.integer) else None
     xs = (np.arange(w, dtype=np.float64) + 0.5 - cx) ** 2
     k = [float(v) for v in vignette.k]
-    out = render
+    out = working
     for y0 in range(0, h, 512):
         y1 = min(y0 + 512, h)
         ys = (np.arange(y0, y1, dtype=np.float64) + 0.5 - cy) ** 2
@@ -193,7 +200,7 @@ def _apply_vignette_render(render: Any, vignette: Any) -> Any:
         if limit is not None:
             band = np.clip(band, 0.0, limit)
         out[y0:y1] = band.astype(render.dtype)
-    return out
+    return render
 
 def solve_wb_for_mode(
     wb_mode: str,
@@ -1402,7 +1409,7 @@ def load_raw(
             )
         if shading_ops["vignette"] is not None:
             scene_rec2020_render = _apply_vignette_render(
-                scene_rec2020_render, shading_ops["vignette"]
+                scene_rec2020_render, shading_ops["vignette"], orientation_flip
             )
             lens_shading = (
                 "vignette" if lens_shading is None else lens_shading + "+vignette"
@@ -1527,7 +1534,7 @@ def load_raw(
                     )
                 if reference_shading["vignette"] is not None:
                     reference_scene = _apply_vignette_render(
-                        reference_scene, reference_shading["vignette"]
+                        reference_scene, reference_shading["vignette"], orientation_flip
                     )
                 # Decode the reference with the same storage-scale contract as the main
                 # LibRaw path. Normalising reconstruct by 65535 would lose its reserved

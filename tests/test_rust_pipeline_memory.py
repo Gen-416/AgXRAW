@@ -45,7 +45,7 @@ class HdrValidation(unittest.TestCase):
                             ref = gainmap._roundtrip_error_arrays(*images)
                         self.assertFalse(gainmap._hdr_roundtrip_is_acceptable(ref))
                         if NATIVE:
-                            native = _fast._load_extension().hdr_roundtrip_metrics(*images)
+                            native = _fast._load_extension().hdr_roundtrip_metrics(*images, gainmap._HDR_LUMA_WEIGHTS.tolist())
                             self.assertEqual(native, ref)
 
     def test_empty_rendition_is_rejected(self):
@@ -57,7 +57,7 @@ class HdrValidation(unittest.TestCase):
                 ref = gainmap._roundtrip_error_arrays(a, a)
             self.assertFalse(gainmap._hdr_roundtrip_is_acceptable(ref))
             if NATIVE:
-                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(a, a), ref)
+                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(a, a, gainmap._HDR_LUMA_WEIGHTS.tolist()), ref)
 
 
 @unittest.skipUnless(NATIVE, "native extension not built")
@@ -121,8 +121,8 @@ class NativePipeline(unittest.TestCase):
                 ref_base = gainmap._base_roundtrip_error_arrays(decoded, intended)
             for workers in (1, 3):
                 _fast.set_thread_budget(workers)
-                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(a, e), ref_hdr)
-                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(select(rgba), e), ref_hdr)
+                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(a, e, gainmap._HDR_LUMA_WEIGHTS.tolist()), ref_hdr)
+                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(select(rgba), e, gainmap._HDR_LUMA_WEIGHTS.tolist()), ref_hdr)
                 self.assertEqual(_fast._load_extension().base_roundtrip_metrics(decoded, intended), ref_base)
 
     def test_base_histogram_percentile_interpolates_rank_boundary(self):

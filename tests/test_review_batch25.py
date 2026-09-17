@@ -29,7 +29,7 @@ class HdrOutputStageIsFloat64(unittest.TestCase):
         self.assertGreaterEqual(NATIVE_ABI_VERSION, 10)
         # 2026-09: the native layer is Rust (rust/), same ABI and module API
         header = (ROOT / "rust" / "src" / "lib.rs").read_text(encoding="utf-8")
-        self.assertRegex(header, r"NATIVE_ABI_VERSION: i32 = 1[01];")
+        self.assertRegex(header, rf"NATIVE_ABI_VERSION: i32 = {NATIVE_ABI_VERSION};")
 
     def test_kernel_reads_exact_float64_stages(self) -> None:
         hdr = (ROOT / "rust" / "src" / "hdr.rs").read_text(encoding="utf-8")

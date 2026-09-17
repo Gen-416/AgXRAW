@@ -2278,24 +2278,12 @@ def run_export(params: dict) -> dict:
         )
     except ValueError as exc:
         raise ValueError(str(exc)) from exc
-    # Profile owns the encode knobs once resolved (archive forces 100/444).
+    if dg.is_hdr_output_format(output_format):
+        delivery = dg.resolve_hdr_chroma(
+            delivery, explicit_chroma=params.get("chroma")
+        )
     quality = int(delivery.quality)
     chroma = str(delivery.chroma)
-    if dg.is_hdr_output_format(output_format):
-        # Mirror the CLI's honesty contract: the HDR container's primary-image
-        # subsampling is emergent from quality inside Core Image, so a request the
-        # encoder cannot honour must fail loudly, not write a contradicting file.
-        # The page constrains its own controls; this guards direct API clients.
-        if chroma == "422":
-            raise ValueError(
-                "HDR gain-map 容器不提供 4:2:2 主图采样；"
-                "Core Image 按 quality 决定采样（q100→4:4:4，share→通常 4:2:0）"
-            )
-        if chroma == "444" and not delivery.is_archive:
-            raise ValueError(
-                "HDR 容器的 4:4:4 只在 q100（archive 档）下产生并被门禁验证；"
-                "请改用 archive 导出档位（或让色度采样跟随导出档位）"
-            )
     wb = str(params.get("wb", "camera"))
     if wb not in dg.WB_CHOICES:
         raise ValueError(f"未知白平衡模式：{wb}")

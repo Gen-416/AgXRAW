@@ -8,7 +8,7 @@ Core Image may emit 4:2:0 and uses wider engineering gates calibrated for that l
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 
@@ -45,16 +45,25 @@ class DeliveryTolerances:
     # would leave chroma quality entirely ungated.
     hdr_pixel_chroma_error: float
     require_chroma_444: bool
+    # MAE before spatial averaging: opposite-sign errors cannot cancel.
+    hdr_block_p95_luma_error: float
+    # Worst local HDR population, independent of total image area.
+    hdr_highlight_max_luma_error: float
     # Optional Apple gain-map auxiliary downsample. None leaves Core Image default.
     gainmap_subsample_factor: int | None = None
 
 
-# All tolerance sets below were calibrated 2026-07-29 against the macOS Core Image
+# Original tone/chroma tolerance sets were calibrated 2026-07-29 against the macOS Core Image
 # writer on the three-frame regression corpus (_SDI0150 daylight, _SDI0199 stage,
 # _SDI0133 bar), worst case per metric with ~1.3x margin. The synthetic-ramp numbers
 # they replace under-reported real-content loss by an order of magnitude on the stage
 # frame; a gate that no representative frame can pass is not a contract, it is a
 # post-render crash. These remain engineering regression limits, not quality claims.
+# The two non-cancelling luminance gates were added 2026-09-17. Conservative
+# catastrophic-loss limits checked on the same three full-resolution frames,
+# clip/reconstruct x JPEG/HEIC x archive/share (24 combinations). Worst values:
+# archive L_p95 .03777 / H_max .14493; share JPEG .05085 / .70804;
+# share HEIC .03167 / .68630. Scope and formulas: HDR_DELIVERY_VALIDATION.zh-CN.md.
 
 # Quality-100 / 4:4:4 Core Image ISO gain-map delivery (JPEG and HEVC both comfortably
 # inside these on the corpus).
@@ -72,6 +81,8 @@ ARCHIVE_TOLERANCES = DeliveryTolerances(
     # this still separates subsampling damage from noise, layered with the 4:4:4 check.
     hdr_pixel_chroma_error=0.10,
     require_chroma_444=True,
+    hdr_block_p95_luma_error=0.15,
+    hdr_highlight_max_luma_error=0.60,
     gainmap_subsample_factor=None,
 )
 
@@ -87,6 +98,8 @@ SHARE_TOLERANCES = DeliveryTolerances(
     # Legitimate 4:2:0-plus-noise reaches 0.276 on the stage frame; backstop only.
     hdr_pixel_chroma_error=0.35,
     require_chroma_444=False,
+    hdr_block_p95_luma_error=0.25,
+    hdr_highlight_max_luma_error=0.85,
     gainmap_subsample_factor=2,
 )
 
@@ -103,6 +116,8 @@ SHARE_HEIC_TOLERANCES = DeliveryTolerances(
     hdr_block_chroma_error=0.08,
     hdr_pixel_chroma_error=0.45,
     require_chroma_444=False,
+    hdr_block_p95_luma_error=0.40,
+    hdr_highlight_max_luma_error=0.85,
     gainmap_subsample_factor=2,
 )
 
@@ -214,6 +229,24 @@ def is_hdr_output_format(output_format: str) -> bool:
     return str(output_format) in ("ultrahdr", "ultrahdr-heic")
 
 
+def resolve_hdr_chroma(
+    profile: DeliveryProfile, *, explicit_chroma: str | None
+) -> DeliveryProfile:
+    """Resolve Core Image's quality-dependent sampling at every HDR entry.
+
+    Profile names choose error tolerances, not codec sampling. With no explicit
+    request, follow quality; a contradictory request is refused before rendering.
+    The writer additionally checks the actual container before publishing it.
+    """
+    expected = "444" if int(profile.quality) == 100 else "420"
+    if explicit_chroma is not None and str(explicit_chroma) != expected:
+        raise ValueError(
+            f"HDR gain-map quality={profile.quality} 要求 chroma={expected}；"
+            f"不能兑现 chroma={explicit_chroma}，请修改质量或省略采样参数"
+        )
+    return replace(profile, chroma=expected)
+
+
 def container_for_output_format(output_format: str) -> str:
     return "heic" if str(output_format) == "ultrahdr-heic" else "jpeg"
 
@@ -233,6 +266,14 @@ def profile_from_encode_settings(
     if q == ARCHIVE_JPEG_QUALITY and c == ARCHIVE_CHROMA:
         return resolve_delivery_profile("archive", quality=q, chroma=c, container=container)
     return resolve_delivery_profile("share", quality=q, chroma=c, container=container)
+
+
+def hdr_profile_from_encode_settings(
+    quality: int, chroma: str | None = None, container: str = "jpeg"
+) -> DeliveryProfile:
+    """Legacy HDR API defaults follow quality; explicit sampling is validated."""
+    profile = profile_from_encode_settings(quality, chroma or "444", container)
+    return resolve_hdr_chroma(profile, explicit_chroma=chroma)
 
 
 @dataclass(frozen=True)

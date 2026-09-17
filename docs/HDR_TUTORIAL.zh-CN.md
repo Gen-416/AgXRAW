@@ -136,4 +136,4 @@ HDR 导出需要 macOS（用系统自带的编码器写增益图）。界面加�
 **为什么我的屏幕上三张样张看不出区别？**
 当前的屏幕或浏览器不支持 HDR 显示，或者系统里关了 HDR。文件本身没有问题，换一台支持的设备打开就能看到。
 
-原理和实现细节见[架构文档](ARCHITECTURE.zh-CN.md)与 [HDR 实施计划](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md)。样张由 `tools/make_hdr_showcase.py` 生成：走正常的导出流程，只在编码之前把普通版和 HDR 版一起缩小，再由同一套写入和回读校验出文件。
+原理和实现细节见[架构文档](ARCHITECTURE.zh-CN.md)与 [HDR 实施计划](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md)。文件验证的指标、反例和局限见 [HDR 编码回读验证](HDR_DELIVERY_VALIDATION.zh-CN.md)。样张由 `tools/make_hdr_showcase.py` 生成：走正常的导出流程，只在编码之前把普通版和 HDR 版一起缩小，再由同一套写入和回读校验出文件。

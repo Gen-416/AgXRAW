@@ -16,7 +16,8 @@ from .delivery import (
     FinishedPair,
     container_for_output_format,
     is_hdr_output_format,
-    profile_from_encode_settings,
+    hdr_profile_from_encode_settings,
+    resolve_hdr_chroma,
     reprofile_for_container,
     resolve_delivery_profile,
 )
@@ -288,11 +289,12 @@ def export_ultrahdr_jpeg(
     punch_scale: float = 1.0,
     hdr_drt: str = DEFAULT_HDR_DRT,
     delivery: DeliveryProfile | None = None,
-    chroma: str = "444",
+    chroma: str | None = None,
 ) -> dict[str, Any]:
     """Write Display P3 Ultrahdr (JPEG or HEIC) carrying an ISO 21496-1 gain map."""
     output_gamut = "p3"
-    profile = delivery or profile_from_encode_settings(int(quality), str(chroma))
+    profile = delivery or hdr_profile_from_encode_settings(int(quality), chroma)
+    profile = resolve_hdr_chroma(profile, explicit_chroma=profile.chroma)
     container_label = "HEIC" if profile.container == "heic" else "JPEG"
     # A .jpg that actually holds HEIC bytes (or the reverse) misleads every downstream
     # consumer; the container decides the suffix, and the rewrite is reported in info.
@@ -501,14 +503,14 @@ def export_jpeg(
     return_rgb: bool = False,
     hdr_drt: str = DEFAULT_HDR_DRT,
     delivery: DeliveryProfile | None = None,
-    chroma: str = "444",
+    chroma: str | None = None,
 ) -> Any:
     if is_hdr_output_format(output_format):
         cont = container_for_output_format(output_format)
         profile = delivery
         if profile is None:
-            profile = profile_from_encode_settings(
-                int(quality), str(chroma), container=cont
+            profile = hdr_profile_from_encode_settings(
+                int(quality), chroma, container=cont
             )
         elif profile.container != cont:
             profile = reprofile_for_container(profile, cont)
