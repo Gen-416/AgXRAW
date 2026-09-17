@@ -593,7 +593,7 @@ especially how highlights behave in color.
 | Option | One line | When |
 |---|---|---|
 | **AgX · default** | Film-style highlight handling: bright areas fade naturally toward white instead of staying garishly saturated | **Use this when unsure** — 95% of the time |
-| **RAW-gated · fidelity** | Same brightness as AgX, but the color processing strength is decided per pixel by RAW evidence: colors the sensor genuinely measured are preserved harder | When you want colors more "faithful to the sensor"; LibRaw decoding only |
+| **RAW-gated · fidelity** | Brightness comes from the luminance-only curve; the color is chosen per pixel between the untouched color ratios and AgX's path to white according to RAW evidence: colors the sensor genuinely measured are kept, clipped or noisy highlights are handed to AgX | When you want colors more "faithful to the sensor"; LibRaw decoding only |
 | **Scene C1 · luminance only** | Compresses brightness only, never touches color ratios | A control group: switch here to see what AgX's color handling is actually doing |
 | **Fixed curve · diagnostic** | A fixed curve that ignores the scene | For troubleshooting, not for daily use |
 
@@ -651,7 +651,7 @@ letting you choose it and failing at export. Currently handled this way:
 - **HDR gain-map · JPEG / HEIC** — the page probes the HDR backend once on load
   (`/hdr-status`, a read-back verification); if it fails the formats are greyed
   with the reason and a selected HDR format snaps back to SDR;
-- The **RAW 实测保色** (RAW-gated) compression core is unavailable under
+- The **按 RAW 数据自动 · 保留真实颜色** (RAW-gated) compression core is unavailable under
   Apple RAW — it gates the colour path on per-pixel CFA evidence, which Core
   Image does not provide;
 - **成片调色** reference/custom and the **调色版本** scan reference — only open
