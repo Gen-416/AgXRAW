@@ -66,15 +66,15 @@ analysis inputs. A file that LibRaw cannot open therefore cannot bypass the Evid
 requirement by selecting Apple RAW.
 
 Two more decode-level settings sit on the RAW decode card and rarely need touching;
-they differ in kind. **CI 尺度 — CI scale** (CLI `--coreimage-scale`, shown only when
+they differ in kind. **Apple RAW 亮度基准 — CI scale** (CLI `--coreimage-scale`, shown only when
 the decoder is Apple RAW) decides at what scale Core Image's scene-linear values enter
-the rest of the pipeline: **对齐 LibRaw · 默认** (aligned) matches the LibRaw decode
-file by file, **原生单位** (unity) keeps Core Image's native units, and **实测补偿**
+the rest of the pipeline: **与 LibRaw 对齐 · 默认** (aligned) matches the LibRaw decode
+file by file, **Apple 原始数值** (unity) keeps Core Image's native units, and **旧版固定系数**
 (measured) is the old fixed ratio, kept only for reproducing earlier results; changing
-it re-runs preparation (the decode). **剪切回退 DN — clip margin** (CLI `--margin`,
+it re-runs preparation (the decode). **过曝判定余量 DN — clip margin** (CLI `--margin`,
 integer 0–64, default 4) is how many DN below full well each channel's clipping
 threshold sits. It does not change the reconstruction; it changes the analysis
-criterion — the RAW clipping share, the hard-clip numbers next to the RAW 满阱 toggle
+criterion — the RAW clipping share, the hard-clip numbers next to the RAW 过曝标记 toggle
 and the whole Detected Parameters card are recomputed against it, so changing it
 re-decodes and re-analyses this RAW (a few seconds) in the current implementation. Neither needs attention day to day; exported filenames carry
 `ciscale-unity` / `ciscale-measured` or `margin{n}` only when the value is not the
@@ -96,7 +96,7 @@ repair. A nonzero value names the file `cnr{x}`.
    look here before touching anything (next section explains each number);
 3. **Adjust exposure and tone** — if needed. When you cannot tell whether a
    highlight wants less exposure or a different shoulder, switch on the
-   **RAW 满阱 (RAW clipping)** toggle on the preview card first (end of
+   **RAW 过曝标记 (RAW clipping)** toggle on the preview card first (end of
    section 3);
 4. **Choose the output** — ordinary JPEG or HDR, for sharing or for archiving
    (section 10);
@@ -144,7 +144,7 @@ median −3 EV → this is a night scene, don't force the exposure up.
 ### The RAW clipping overlay: where it clipped, and which channel
 
 The "RAW clipping" percentage says how many pixels blew out, not where or in
-which channel. The **RAW 满阱** toggle at the top right of the preview card adds
+which channel. The **RAW 过曝标记** toggle at the top right of the preview card adds
 that layer: switched on, it paints the pixels at or above ~97% of full well
 (the region where the render's chroma retreat engages — near full well, not
 necessarily clipped: the soft mask is feathered and resized, so a marked pixel
@@ -153,7 +153,7 @@ blue = that channel, white = all three**. Next to the toggle it reports two numb
 **hard clip R · G · B** (full-resolution, ≥ full well − margin, the same
 criterion as the detected-parameters card — this is the authoritative "how
 much is over-exposed") and the **marked share** (≥97% of full well, the area
-the layer covers); "无 ≥97% 满阱像素" when there are none.
+the layer covers); "没有接近上限的像素" when there are none.
 
 What it shows is **decode evidence, not the rendered result**: the data is the
 same evidence mask the render uses for clip retreat and the HDR chroma gate —
@@ -250,13 +250,13 @@ the reason this film simulation stays stable.
   surround constants — the translation carries the appearance term only. The
   calibration describes THE MEDIUM (black = the paper's or slide's own Dmax);
   viewing-room flare is no longer baked into film curves;
-- **Two development roles** (imaging card 显影分工, CLI `--film-mode
-  observe|full`): the default **观察 · AgX 显影** (observe — AgX develops) is
-  everything above; use it day to day. **接管 · 胶片显影链** (takeover — the
+- **Two development roles** (imaging card 胶片模拟方式, CLI `--film-mode
+  observe|full`): the default **胶片风格 · AgX 成像** (observe — AgX develops) is
+  everything above; use it day to day. **完整冲印 · 胶片全流程** (takeover — the
   film development chain) hands development to the film model as well and
   reveals a further row of controls — the next subsection covers them;
 - No vignette — it changes *how the camera saw the world*; grain and halation
-  exist only in takeover mode's declared 模拟光学 (analog optics) tiers, never
+  exist only in takeover mode's declared 颗粒与光晕 (analog optics) tiers, never
   in observe mode;
 - **HDR keeps working**: observe mode as always; takeover-mode Ultra HDR is
   "film print + scene HDR extension" — the SDR base IS the film print
@@ -284,18 +284,18 @@ any of it experimental.
 The one-line hints on the GUI controls are deliberately basic; the full meaning
 lives here:
 
-- **灰阶中性化 — grey-scale neutralization** (CLI `--film-neutralization`):
-  how the grey axis returns to neutral. **跟随胶片解释 · 默认** (follow the film
-  interpretation) resolves from the interpretation control — 技术中和 → digital
+- **灰阶校色 — grey-scale neutralization** (CLI `--film-neutralization`):
+  how the grey axis returns to neutral. **跟随成片调色 · 默认** (follow the film
+  interpretation) resolves from the interpretation control — 中性还原 → digital
   neutral, 参考印相 → print-balanced (the extended scan-reference variant's
   recipe declares digital neutral and the compiler follows); leaving the CLI
-  flag out hands the same resolution to the compiler. **数字中性** — digital
+  flag out hands the same resolution to the compiler. **全程中性** — digital
   neutral (`technical-neutral`): the chain's output is divided, per pixel by
   luminance exposure, by the package's bounded neutral-tint curve, so greys
-  within two stops of neutral stay strictly neutral. **印相平衡** —
+  within two stops of neutral stay strictly neutral. **只校中灰** —
   print-balanced (`print-balanced`): one constant balance solved at the EV0
   anchor, mid-grey neutral by construction while both ends of the grey scale
-  keep the medium's own exposure-dependent crossover. **数据手册漂移** —
+  keep the medium's own exposure-dependent crossover. **保留胶片偏色** —
   datasheet drift (`native`): the chain verbatim with no correction, mid-grey
   anchored by the print solve and shadows tinting per each stock's datasheet —
   cine negatives green-teal, Kodachrome amber, Velvia mildly cool. In the CLI,
@@ -308,9 +308,9 @@ lives here:
   under-exposed — **not the output exposure**. It changes the negative itself
   (colour, contrast, toe and shoulder); the overall brightness of the print is
   decided by the print timing below.
-- **印相 timing — print timing** (CLI `--film-print-timing`): **固定 · 默认**
+- **印相曝光方式 — print timing** (CLI `--film-print-timing`): **固定 · 默认**
   (fixed) keeps the print time jointly solved at EV0, the same enlarger
-  settings even when film exposure changes; **随胶片曝光重定时** (retimed with
+  settings even when film exposure changes; **随胶片曝光补偿** (retimed with
   film exposure) re-prints darkroom-style as the film exposure moves
   (interpolated from a 0.25 EV table), overall brightness nearly constant while
   colour/contrast/toe-shoulder follow the emulsion state — available for **all
@@ -320,17 +320,17 @@ lives here:
   print-exposure slider (±2 EV, CLI `--film-print-exposure`) and the enlarger
   colour head Δτ (resolved inside the paper-layer exposure model, reported as
   modelled). Custom is open to negatives only and requires the neutralization
-  to be 数据手册漂移 — the point of manual printing is to keep what came out of
+  to be 保留胶片偏色 — the point of manual printing is to keep what came out of
   the printer — and the GUI switches it over automatically (the CLI needs an
   explicit `--film-neutralization native`). Slides have no print step: their
   timing is always fixed and the other two options are greyed with the reason.
-- **印相介质 — print medium** (CLI `--film-print-medium`): defaults to the
+- **印相材料 — print medium** (CLI `--film-print-medium`): defaults to the
   stock's factory-paired paper; the dropdown only appears for stocks with a
   second baked medium (at the time of writing Portra 400 also has Supra Endura,
   Vision3 250D also has 2393 print stock). Changing medium re-prints the same
   negative on different paper without double tone mapping.
-- **胶片解释 — film interpretation** (CLI `--film-appearance`, CLI default
-  technical): **技术中和** (technical neutral) is the spectral chain itself;
+- **成片调色 — film interpretation** (CLI `--film-appearance`, CLI default
+  technical): **中性还原** (technical neutral) is the spectral chain itself;
   **参考印相 · 默认** (reference print) adds the stock's palette on its paired
   paper as an appearance layer, with a strength slider (0 = not applied, 1 = the
   recipe's declared value, up to 3 extrapolated); **自定义** (custom) is
@@ -340,18 +340,18 @@ lives here:
   for stocks without one, reference/custom are greyed and the control falls
   back to technical (at the time of writing recipes exist for Portra 400,
   Ektar 100, Velvia 100 and Vision3 250D).
-- **解释变体 — interpretation variant** (CLI `--film-appearance-variant`):
-  **参考印相 · 默认** is the print reading; **扫描对照 extended** is the
+- **调色版本 — interpretation variant** (CLI `--film-appearance-variant`):
+  **参考印相 · 默认** is the print reading; **扫描版 extended** is the
   scan/telecine reference reading — same family direction at 0.6 amplitude,
   grey axis digitally neutral. The dropdown only appears for stocks with an
   extended asset (at the time of writing only Vision3 250D).
-- **层间放大 — inter-image amplification** (CLI `--film-interimage`): how
-  much development coupling amplifies colour differences. **声明 · 默认**
+- **层间效应 — inter-image amplification** (CLI `--film-interimage`): how
+  much development coupling amplifies colour differences. **按胶片数据 · 默认**
   (declared) uses the stock's modelled table value (declared range across
-  stocks 0.32–1.05); **关 · 光谱基线** (off — spectral baseline) is the pure
-  spectral base, a debugging setting; **自定义 β** exposes a [0, 1.5] slider (0
+  stocks 0.32–1.05); **关闭 · 纯光谱** (off — spectral baseline) is the pure
+  spectral base, a debugging setting; **自定义强度** exposes a [0, 1.5] slider (0
   is equivalent to off) and the report labels it an editorial dial.
-- **模拟光学 — analog optics** (CLI `--film-grain/--film-halation/
+- **颗粒与光晕 — analog optics** (CLI `--film-grain/--film-halation/
   --film-bloom`): three tiers — **关闭 · 默认** (off) / **轻** light (grain
   0.25 · halation 0.20 · bloom 0.15) / **标准** standard (grain 0.50 ·
   halation 0.40 · bloom 0.30) — or **自定义** with three 0…1 sliders. What
@@ -364,55 +364,55 @@ lives here:
   the base onto the red-sensitive layer and re-injected into layer exposure,
   before the characteristic curve. **Bloom** is an additive capture glow
   before the emulsion, declared editorial — not a conservative medium scatter.
-  Two small controls sit beside the tier dropdown. **光学种子 — optics seed**
+  Two small controls sit beside the tier dropdown. **颗粒种子 — optics seed**
   (CLI `--film-optics-seed auto|N`) decides only the grain's spatial
   arrangement, never its size, spectrum, density response or cross-layer
   covariance: leave it empty for auto, which draws one fixed seed when the RAW
   is loaded so preview and export match (the report prints the effective
   seed); type a non-negative integer for a permanently reproducible
-  realization. **介质散射 — media scatter** (CLI `--film-media-scatter
+  realization. **介质柔化 — media scatter** (CLI `--film-media-scatter
   declared|off`) is the media's own scatter (emulsion scatter and
   print-formation scatter, fitted from MTF), which belongs to the declared
-  medium rather than to a look amount: under **按声明 · 默认** (declared) it
+  medium rather than to a look amount: under **按介质数据 · 默认** (declared) it
   applies from the compiled profile whenever the optics chain is engaged,
   independent of the three sliders; **关闭** (off) is the operator-isolation
   setting the measurement tooling uses, not for everyday work.
-- **显影配方 — developer recipe** (CLI `--film-development`): which
-  development the characteristic curves are solved for. **实测默认**
+- **冲洗方式 — developer recipe** (CLI `--film-development`): which
+  development the characteristic curves are solved for. **标准冲洗**
   (`measured_default`) is the datasheet development with the three
-  perturbations locked at 0; **自定义显影** (`editorial_custom`) reveals three
+  perturbations locked at 0; **自定义冲洗** (`editorial_custom`) reveals three
   bounded sliders, and the report labels the result editorial development:
-  **显影对比 — development contrast** (−0.5…0.5, CLI `--film-dev-contrast`)
+  **冲洗反差 — development contrast** (−0.5…0.5, CLI `--film-dev-contrast`)
   scales the characteristic curve's logE axis about the mid-grey anchor — the
   contrast dimension of push/pull processing, mid-grey held by construction;
-  **显影灰雾 — development fog** (0…0.3, CLI `--film-dev-fog`) adds uniform
+  **灰雾 — development fog** (0…0.3, CLI `--film-dev-fog`) adds uniform
   density to all three layers — real chemical fog brightens the whole print,
-  and the tool applies no hidden compensation; **显影色密度 — development
+  and the tool applies no hidden compensation; **染料浓度 — development
   colour density** (−0.5…0.5, CLI `--film-dev-density`) scales the developed
   dye amount about the mid-grey anchor, again without moving mid-grey. Two
   coupling rules match the CLI and are enforced server-side as well: custom
-  development requires the neutralization to be 数据手册漂移 (the bounded
+  development requires the neutralization to be 保留胶片偏色 (the bounded
   neutralization's cast curve is solved for the measured development) — the
   GUI switches it automatically with a status message and greys the other
   neutralization options, while the CLI needs an explicit
   `--film-neutralization native`; and custom development is mutually
-  exclusive with 随胶片曝光重定时 (the retimed τ table is likewise solved for
+  exclusive with 随胶片曝光补偿 (the retimed τ table is likewise solved for
   the measured development) — the GUI greys retimed and falls back to fixed;
   fixed and custom timing both work.
-- **胶片压缩 — film compression** (0…1, default 0, CLI `--film-compression`):
+- **高光预压缩 — film compression** (0…1, default 0, CLI `--film-compression`):
   a C1 saturating compression of scene luminance EV before the emulsion — above
   a knee it eases hard digital highlights into the negative's latitude,
   declared as an editorial bridge; 0 is the strict identity. Above 0 two more
-  sliders appear: **压缩 knee — compression knee** (0…6 EV above mid-grey,
+  sliders appear: **压缩起点 — compression knee** (0…6 EV above mid-grey,
   default 2, CLI `--film-compression-knee`) sets the stop at which compression
-  starts; **高光色密度 — highlight colour density** (0…2, default 0, CLI
+  starts; **高光褪色 — highlight colour density** (0…2, default 0, CLI
   `--film-highlight-density`) lets the compressed highlights converge toward
   luminance-preserving neutral — the look of negative highlight dye density
   approaching saturation. The latter is only meaningful with compression > 0:
   at 0 the GUI zeroes it and the CLI and server reject a non-zero value.
 
 The developer recipe, film compression, media scatter and optics seed are
-takeover-only: they appear only while 显影分工 is set to 接管, and switching
+takeover-only: they appear only while 胶片模拟方式 is set to 接管, and switching
 back to observe resets all of them to their defaults so no stale value rides
 along in the payload (the server also rejects non-default values in observe
 mode). Exported filenames add a token only when a value is not the default, so
@@ -464,7 +464,7 @@ daylight". There is no strength slider — glass has no half-installed state.
 ## 6. The other EVs in the interface
 
 - **Exposure EV** (the slider): brightens/darkens everything, +1 = one stop up. 0 keeps
-  the brightness relationships from capture. The RAW 满阱 marks on the preview do
+  the brightness relationships from capture. The RAW 过曝标记 marks on the preview do
   not move with it — they show decode evidence (section 3).
 - **Brightness reference** (button): the tool measures the subject and aligns it to a
   standard exposure while limiting highlight overflow. "Expose this for me, once" — the
@@ -482,12 +482,12 @@ daylight". There is no strength slider — glass has no half-installed state.
   they are dials. The evidence gates (clip / noise / gamut pressure) always multiply
   and cannot be bypassed. CLI: `--hdr-rho` / `--hdr-white-margin` /
   `--hdr-shoulder-start`.
-- **Inter-image β** (imaging card; appears when 层间放大 is set to 自定义 β in
+- **Inter-image β** (imaging card; appears when 层间效应 is set to 自定义强度 in
   takeover mode): the development-coupling colour-difference amplification.
   Default "declared" = the stock's modelled table value (0.32–1.05); a custom
   value is reported as an editorial dial. CLI:
   `--film-interimage custom --film-interimage-beta`.
-- **Compression knee** (imaging card; appears in takeover mode once 胶片压缩 is
+- **Compression knee** (imaging card; appears in takeover mode once 高光预压缩 is
   above 0): the stop above mid-grey at which the saturating compression starts,
   0…6 EV, default 2; only scene luminance above the knee is compressed. CLI:
   `--film-compression-knee`.
@@ -543,7 +543,7 @@ daylight". There is no strength slider — glass has no half-installed state.
   values** (toe-end EV, shoulder-white EV, endpoint provenance). Out-of-range
   requests are clamped by the curve legality guards; the line always shows what
   actually took effect.
-- **Not sure whose problem a highlight is**: switch on RAW 满阱 on the preview
+- **Not sure whose problem a highlight is**: switch on RAW 过曝标记 on the preview
   card first (section 3). If the RAW did not clip and the render is merely too
   bright, shoulder white / highlight transition and EV all work; where the RAW
   already overflowed in all three channels, no curve setting can invent
@@ -577,7 +577,7 @@ they belong to, and both refresh with every preview frame:
 Both histograms are display-only for now: no hover, no range selection.
 
 The preview card carries one more per-frame layer that is not a histogram: the
-RAW 满阱 marks (section 3). It complements the display histogram — the
+RAW 过曝标记 marks (section 3). It complements the display histogram — the
 histogram's clipped whites tell you the output hit 255, the overlay tells you
 whether the RAW itself had already hit full well. The former can be rescued
 with exposure and curve; the latter cannot.
@@ -651,21 +651,21 @@ letting you choose it and failing at export. Currently handled this way:
 - **HDR gain-map · JPEG / HEIC** — the page probes the HDR backend once on load
   (`/hdr-status`, a read-back verification); if it fails the formats are greyed
   with the reason and a selected HDR format snaps back to SDR;
-- The **RAW 门控 · 保真** (RAW-gated) compression core is unavailable under
+- The **RAW 实测保色** (RAW-gated) compression core is unavailable under
   Apple RAW — it gates the colour path on per-pixel CFA evidence, which Core
   Image does not provide;
-- **胶片解释** reference/custom and the **解释变体** scan reference — only open
+- **成片调色** reference/custom and the **调色版本** scan reference — only open
   for stocks with a recipe/asset (section 5);
-- **印相 timing** retimed/custom and the **colour head** — slides are always
+- **印相曝光方式** retimed/custom and the **colour head** — slides are always
   fixed and the colour head is greyed and zeroed; in takeover mode the colour
   head additionally needs custom timing (section 5);
-- **自定义显影** (the takeover-mode developer recipe) — locks the grey-scale
-  neutralization to 数据手册漂移, greys the other neutralization options with a
-  status message, and greys 随胶片曝光重定时 on the print timing, falling back
+- **自定义冲洗** (the takeover-mode developer recipe) — locks the grey-scale
+  neutralization to 保留胶片偏色, greys the other neutralization options with a
+  status message, and greys 随胶片曝光补偿 on the print timing, falling back
   to fixed (section 5). Custom timing likewise locks the neutralization to
-  数据手册漂移;
+  保留胶片偏色;
 - **附带分析图** — needs matplotlib (section 10);
-- **RAW 满阱** — Apple RAW decoding has no per-pixel CFA evidence (section 3).
+- **RAW 过曝标记** — Apple RAW decoding has no per-pixel CFA evidence (section 3).
 
 Two more cases **warn without greying**: Apple RAW's RAW 9/8/7 version is probed
 per file, and an unsupported file is intercepted before submission so you can
@@ -673,7 +673,7 @@ choose (section 1); fixed-Kelvin white balance on a file without colour
 calibration degrades to As Shot, flagged with ⚠ on the Detected Parameters
 card.
 
-A few more controls are **hidden by state rather than greyed**: CI 尺度 appears only
+A few more controls are **hidden by state rather than greyed**: Apple RAW 亮度基准 appears only
 while the decoder is Apple RAW; the developer recipe, film compression, media scatter
 and optics seed appear only in takeover mode and reset on the way back to observe;
 compression knee and highlight colour density appear only while film compression is

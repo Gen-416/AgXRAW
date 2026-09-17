@@ -624,7 +624,7 @@ def parse_render_adjustments(params: dict) -> dg.RenderAdjustments:
 def parse_endpoint_mode(params: dict) -> str:
     mode = str(params.get("endpointMode", params.get("endpoint_mode", "adaptive")))
     if mode not in dg.ENDPOINT_MODE_CHOICES:
-        raise ValueError(f"未知端点模式：{mode}")
+        raise ValueError(f"未知黑白点依据：{mode}")
     return mode
 
 
@@ -1345,9 +1345,9 @@ def parse_hdr_dials(params: dict, output_format: str) -> tuple:
     nothing teaches the user it is broken). Evidence gates are not dials."""
     out = []
     for key, alt, name, lo, hi in (
-        ("hdrRho", "hdr_rho", "HDR 色度自由度基准", 0.0, 1.0),
-        ("hdrWhiteMargin", "hdr_white_margin", "HDR 白点余量", 0.0, 2.0),
-        ("hdrShoulderStart", "hdr_shoulder_start", "HDR 肩起点", -1.0, 3.0),
+        ("hdrRho", "hdr_rho", "HDR 高光保色基准", 0.0, 1.0),
+        ("hdrWhiteMargin", "hdr_white_margin", "HDR 白点留量", 0.0, 2.0),
+        ("hdrShoulderStart", "hdr_shoulder_start", "HDR 高光压缩起点", -1.0, 3.0),
     ):
         raw = params.get(key, params.get(alt))
         if raw in (None, "", "auto"):
@@ -1451,7 +1451,7 @@ def parse_film_params(params: dict) -> tuple:
             "native": "datasheet", "datasheet": "datasheet",
         }
         if str(neutral_req) not in mapping:
-            raise ValueError(f"未知灰阶中性化：{neutral_req}")
+            raise ValueError(f"未知灰阶校色：{neutral_req}")
         film_crossover = mapping[str(neutral_req)]
     else:
         # No explicit choice -> None; the COMPILER resolves the default from
@@ -1467,7 +1467,7 @@ def parse_film_params(params: dict) -> tuple:
     )
     film_print_timing = str(params.get("filmPrintTiming", params.get("film_print_timing", "fixed")) or "fixed")
     if film_print_timing not in ("fixed", "retimed", "custom"):
-        raise ValueError(f"未知印相 timing:{film_print_timing}")
+        raise ValueError(f"未知印相曝光方式:{film_print_timing}")
     film_print_medium = str(params.get("filmPrintMedium", params.get("film_print_medium", "")) or "")
     film_print_exposure_ev = _finite_number(
         params.get("filmPrintExposure", params.get("film_print_exposure_ev", 0.0)) or 0.0,
@@ -1478,16 +1478,16 @@ def parse_film_params(params: dict) -> tuple:
         or film_print_medium != "" or film_print_exposure_ev != 0.0
     ):
         raise ValueError(
-            "胶片曝光/印相 timing/介质/印相曝光属于接管显影(full 模式);GUI 在"
+            "胶片曝光/印相曝光方式/介质/印相曝光属于接管显影(full 模式);GUI 在"
             "其他状态灰显/隐藏这些控件,非零载荷是直接 API 合同违规"
         )
     if film_print_timing == "custom" and film_crossover != "datasheet":
         raise ValueError(
-            "custom timing 与有界灰阶中性化互斥:请配 filmNeutralization=native"
+            "custom timing 与有界灰阶校色互斥:请配 filmNeutralization=native"
         )
     if film_print_timing != "custom" and film_print_exposure_ev != 0.0:
         raise ValueError("手动印相曝光仅在 timing=custom 下有意义")
-    # P5c (§11): 模拟光学 tiers. off/light/standard map to declared amount
+    # P5c (§11): 颗粒与光晕 tiers. off/light/standard map to declared amount
     # triples; custom reads the three sliders. Non-full modes must carry no
     # optics payload (the GUI hides the control there).
     optics_tier = str(params.get("filmOptics", params.get("film_optics", "off")) or "off")
@@ -1501,21 +1501,21 @@ def parse_film_params(params: dict) -> tuple:
     elif optics_tier == "custom":
         film_grain = _finite_number(
             params.get("filmGrain", params.get("film_grain", 0.0)) or 0.0,
-            "模拟光学颗粒", 0.0, 1.0,
+            "颗粒与光晕颗粒", 0.0, 1.0,
         )
         film_halation = _finite_number(
             params.get("filmHalation", params.get("film_halation", 0.0)) or 0.0,
-            "模拟光学halation", 0.0, 1.0,
+            "颗粒与光晕halation", 0.0, 1.0,
         )
         film_bloom = _finite_number(
             params.get("filmBloom", params.get("film_bloom", 0.0)) or 0.0,
-            "模拟光学bloom", 0.0, 1.0,
+            "颗粒与光晕bloom", 0.0, 1.0,
         )
     else:
-        raise ValueError(f"未知模拟光学档位:{optics_tier}(可选 off/light/standard/custom)")
+        raise ValueError(f"未知颗粒与光晕档位:{optics_tier}(可选 off/light/standard/custom)")
     if film_mode != "full" and (film_grain or film_halation or film_bloom):
         raise ValueError(
-            "模拟光学属于接管显影(full 模式);GUI 在其他状态隐藏该控件,"
+            "颗粒与光晕属于接管显影(full 模式);GUI 在其他状态隐藏该控件,"
             "非零载荷是直接 API 合同违规"
         )
     # Review R1 item 4: media-scatter enablement is a declared policy on the
@@ -1526,23 +1526,23 @@ def parse_film_params(params: dict) -> tuple:
     )
     if film_media_scatter not in ("declared", "off"):
         raise ValueError(
-            f"未知介质散射策略:{film_media_scatter}(可选 declared/off)"
+            f"未知介质柔化策略:{film_media_scatter}(可选 declared/off)"
         )
-    # 胶片解释控件组 (appearance P1): interimage 底座开关与外观层模式。
+    # 成片调色控件组 (appearance P1): interimage 底座开关与外观层模式。
     film_interimage = str(
         params.get("filmInterimage", params.get("film_interimage", "declared"))
         or "declared"
     )
     if film_interimage not in ("declared", "off", "custom"):
         raise ValueError(
-            f"未知层间放大档:{film_interimage}(可选 declared/off/custom)"
+            f"未知层间效应档:{film_interimage}(可选 declared/off/custom)"
         )
     # Taste-to-dial (2026-08-14): custom opens the beta itself; the declared
     # table stays the default. Coupling is validated here AND in the compiler.
     _beta_raw = params.get("filmInterimageBeta", params.get("film_interimage_beta"))
     if film_interimage == "custom":
         film_interimage_beta = _finite_number(
-            _beta_raw if _beta_raw is not None else -1.0, "层间放大beta", 0.0, 1.5
+            _beta_raw if _beta_raw is not None else -1.0, "层间效应beta", 0.0, 1.5
         )
     else:
         if _beta_raw not in (None, ""):
@@ -1554,7 +1554,7 @@ def parse_film_params(params: dict) -> tuple:
     )
     if film_appearance not in ("technical", "reference", "custom"):
         raise ValueError(
-            f"未知胶片解释:{film_appearance}(可选 technical/reference/custom)"
+            f"未知成片调色:{film_appearance}(可选 technical/reference/custom)"
         )
     film_appearance_strength = _finite_number(
         params.get(
@@ -1566,7 +1566,7 @@ def parse_film_params(params: dict) -> tuple:
     if film_mode != "full" and (
         film_interimage != "declared" or film_appearance != "technical"
     ):
-        raise ValueError("胶片解释控件属于接管显影(full 模式)")
+        raise ValueError("成片调色控件属于接管显影(full 模式)")
     film_richness = _finite_number(
         params.get("filmRichness", params.get("film_richness", 0.0)) or 0.0,
         "颜色丰度", -1.0, 1.0,
@@ -1586,7 +1586,7 @@ def parse_film_params(params: dict) -> tuple:
     )
     if film_appearance_variant not in ("reference", "extended"):
         raise ValueError(
-            f"未知解释变体:{film_appearance_variant}(可选 reference/extended)"
+            f"未知调色版本:{film_appearance_variant}(可选 reference/extended)"
         )
     if film_appearance == "technical" and film_appearance_variant != "reference":
         raise ValueError("filmAppearanceVariant 属于外观层(reference/custom 模式)")
@@ -1604,11 +1604,11 @@ def parse_film_params(params: dict) -> tuple:
     )
     if film_development not in ("measured_default", "editorial_custom"):
         raise ValueError(
-            f"未知显影配方:{film_development}(可选 measured_default/editorial_custom)"
+            f"未知冲洗方式:{film_development}(可选 measured_default/editorial_custom)"
         )
     film_dev_contrast = _finite_number(
         params.get("filmDevContrast", params.get("film_dev_contrast", 0.0)) or 0.0,
-        "显影对比", -0.5, 0.5,
+        "冲洗反差", -0.5, 0.5,
     )
     film_dev_fog = _finite_number(
         params.get("filmDevFog", params.get("film_dev_fog", 0.0)) or 0.0,
@@ -1616,7 +1616,7 @@ def parse_film_params(params: dict) -> tuple:
     )
     film_dev_density = _finite_number(
         params.get("filmDevDensity", params.get("film_dev_density", 0.0)) or 0.0,
-        "显影色密度", -0.5, 0.5,
+        "染料浓度", -0.5, 0.5,
     )
     film_compression = _finite_number(
         params.get("filmCompression", params.get("film_compression", 0.0)) or 0.0,
@@ -1624,11 +1624,11 @@ def parse_film_params(params: dict) -> tuple:
     )
     _knee_raw = params.get("filmCompressionKnee", params.get("film_compression_knee"))
     film_compression_knee = (
-        2.0 if _knee_raw in (None, "") else _finite_number(_knee_raw, "压缩 knee", 0.0, 6.0)
+        2.0 if _knee_raw in (None, "") else _finite_number(_knee_raw, "压缩起点", 0.0, 6.0)
     )
     film_highlight_density = _finite_number(
         params.get("filmHighlightDensity", params.get("film_highlight_density", 0.0)) or 0.0,
-        "高光色密度", 0.0, 2.0,
+        "高光褪色", 0.0, 2.0,
     )
     if film_development == "measured_default" and (
         film_dev_contrast != 0.0 or film_dev_fog != 0.0 or film_dev_density != 0.0
@@ -1640,7 +1640,7 @@ def parse_film_params(params: dict) -> tuple:
     if film_development == "editorial_custom":
         if film_crossover != "datasheet":
             raise ValueError(
-                "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 measured "
+                "editorial_custom 显影与有界灰阶校色互斥:cast 曲线按 measured "
                 "显影求解;请配 filmNeutralization=native"
             )
         if film_print_timing == "retimed":
@@ -1649,13 +1649,13 @@ def parse_film_params(params: dict) -> tuple:
                 "显影求解;请配 fixed 或 custom timing"
             )
     if film_compression == 0.0 and film_highlight_density != 0.0:
-        raise ValueError("高光色密度只在 Film Compression > 0 时有意义")
+        raise ValueError("高光褪色只在 Film Compression > 0 时有意义")
     if film_mode != "full" and (
         film_development != "measured_default" or film_compression != 0.0
         or film_highlight_density != 0.0
     ):
         raise ValueError(
-            "显影配方与 Film Compression 属于接管显影(full 模式);GUI 在其他状态"
+            "冲洗方式与 Film Compression 属于接管显影(full 模式);GUI 在其他状态"
             "隐藏这些控件,非默认载荷是直接 API 合同违规"
         )
     return (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
@@ -2294,7 +2294,7 @@ def run_export(params: dict) -> dict:
         if chroma == "444" and not delivery.is_archive:
             raise ValueError(
                 "HDR 容器的 4:4:4 只在 q100（archive 档）下产生并被门禁验证；"
-                "请改用 archive 交付档（或让色度采样跟随交付档）"
+                "请改用 archive 导出档位（或让色度采样跟随导出档位）"
             )
     wb = str(params.get("wb", "camera"))
     if wb not in dg.WB_CHOICES:

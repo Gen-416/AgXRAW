@@ -1048,20 +1048,20 @@ def build_render_plan(
         print_exposure_value = float(film_print_exposure_ev)
         if timing_value not in ("fixed", "retimed", "custom"):
             raise ValueError(
-                f"未知印相 timing:{timing_value}(可选 fixed/retimed/custom)"
+                f"未知印相曝光方式:{timing_value}(可选 fixed/retimed/custom)"
             )
         if mode_value != "full" and (
             exposure_value != 0.0 or timing_value != "fixed"
             or medium_value != "" or print_exposure_value != 0.0
         ):
             raise ValueError(
-                "胶片曝光状态、印相 timing/介质与手动印相曝光属于接管显影"
+                "胶片曝光状态、印相曝光方式/介质与手动印相曝光属于接管显影"
                 "(full 模式):observe 模式没有乳剂/印相模型"
             )
         development_value = str(film_development or "measured_default")
         if development_value not in ("measured_default", "editorial_custom"):
             raise ValueError(
-                f"未知显影配方:{development_value}"
+                f"未知冲洗方式:{development_value}"
                 "(可选 measured_default/editorial_custom)"
             )
         if mode_value != "full" and (
@@ -1070,7 +1070,7 @@ def build_render_plan(
             or float(film_highlight_density) != 0.0
         ):
             raise ValueError(
-                "显影配方与 Film Compression 属于接管显影(full 模式):"
+                "冲洗方式与 Film Compression 属于接管显影(full 模式):"
                 "observe 模式没有显影/压缩模型"
             )
         if mode_value != "full" and (
@@ -1078,7 +1078,7 @@ def build_render_plan(
             or float(film_bloom) != 0.0
         ):
             raise ValueError(
-                "模拟光学(颗粒/halation/bloom)属于接管显影(full 模式):"
+                "颗粒与光晕(颗粒/halation/bloom)属于接管显影(full 模式):"
                 "observe 模式没有密度/印相空间模型"
             )
         if timing_value != "custom" and print_exposure_value != 0.0:
@@ -1091,7 +1091,7 @@ def build_render_plan(
         media_scatter_value = str(film_media_scatter or "declared")
         if media_scatter_value not in ("declared", "off"):
             raise ValueError(
-                f"未知介质散射策略:{media_scatter_value}(可选 declared/off)"
+                f"未知介质柔化策略:{media_scatter_value}(可选 declared/off)"
             )
         # A4 item 2: the effective beta is resolved from the declared table
         # exactly ONCE per compile. Both plan copies (ToneCompressionPlan for
@@ -1103,7 +1103,7 @@ def build_render_plan(
         _interimage_mode = str(film_interimage or "declared")
         if _interimage_mode not in ("declared", "off", "custom"):
             raise ValueError(
-                f"未知层间放大档:{_interimage_mode}(可选 declared/off/custom)"
+                f"未知层间效应档:{_interimage_mode}(可选 declared/off/custom)"
             )
         _beta_dial = film_interimage_beta_dial
         if _interimage_mode == "custom":
@@ -1191,7 +1191,7 @@ def build_render_plan(
         or float(film_grain) != 0.0 or float(film_halation) != 0.0
         or float(film_bloom) != 0.0
     ):
-        raise ValueError("显影配方、Film Compression 与模拟光学需要一个胶片曲线预设")
+        raise ValueError("冲洗方式、Film Compression 与颗粒与光晕需要一个胶片曲线预设")
     film_plans = None
     if film_curve != "none":
         from .film_curve import film_process
@@ -1215,7 +1215,7 @@ def build_render_plan(
             _st, _media = _load_v2_for_medium(film_curve)
             if _requested_medium not in _media:
                 raise ValueError(
-                    f"'{film_curve}' 未烘焙印相介质 '{_requested_medium}'"
+                    f"'{film_curve}' 未烘焙印相材料 '{_requested_medium}'"
                     f"（可用：{'/'.join(_st['media'])}）"
                 )
         # Canonical policy names (plan §8): the internal crossover switch

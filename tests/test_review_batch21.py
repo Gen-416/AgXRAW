@@ -198,7 +198,7 @@ class FilmPlanContractTests(unittest.TestCase):
         from dngscan.tone import build_render_plan
 
         scene = self._scene()
-        with self.assertRaisesRegex(ValueError, "未烘焙印相介质"):
+        with self.assertRaisesRegex(ValueError, "未烘焙印相材料"):
             build_render_plan(
                 scene.bundle, scene.analysis, "agx", "srgb",
                 film_curve="portra400", film_mode="full",

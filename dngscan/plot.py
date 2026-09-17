@@ -477,7 +477,7 @@ def plot_dashboard(
         fig.text(
             0.5,
             0.995,
-            f"全图亮度参考 {auto_ev.ev_boost:+.2f}（应用 {auto_ev.ev:+.2f} EV）{limit_note}",
+            f"全图自动曝光 {auto_ev.ev_boost:+.2f}（应用 {auto_ev.ev:+.2f} EV）{limit_note}",
             ha="center",
             va="top",
             fontsize=11,

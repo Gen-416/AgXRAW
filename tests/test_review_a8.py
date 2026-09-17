@@ -153,7 +153,7 @@ class TopologyNarrativeTests(unittest.TestCase):
 
         line = jpeg_policy_cn("agx", "srgb", "portra400", "full")
         self.assertNotIn("65³", line)
-        for stage in ("Stage A", "B1", "B2", "中性化"):
+        for stage in ("Stage A", "B1", "B2", "灰阶校色"):
             self.assertIn(stage, line)
 
 

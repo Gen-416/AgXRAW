@@ -344,7 +344,7 @@ def export_ultrahdr_jpeg(
         )
         if hdr_plan.tone.rendered_headroom_ev <= 0.0:
             raise RuntimeError(
-                "该场景的可靠高光尾部不支持任何 HDR 余量："
+                "该场景的可信最亮高光不支持任何 HDR 余量："
                 f"{describe_hdr_plan(hdr_plan)}。请改用 --output-format sdr"
             )
 

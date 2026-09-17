@@ -41,7 +41,7 @@ def rawpy_highlight_mode(name: str) -> Any:
 
 def highlight_mode_cn(name: str) -> str:
     return {
-        "clip": "硬剪切",
+        "clip": "完全过曝",
         "blend": "高光混合",
         "reconstruct": "高光重建",
     }.get(name, name)
