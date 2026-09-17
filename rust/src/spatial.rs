@@ -13,6 +13,7 @@
 //! pairwise order; float32/float64 libm functions match the system libm.
 use crate::budget::budgeted_workers;
 use crate::numpy_sum::pairwise_sum_f64;
+use numpy::ndarray::{ArrayView2, ArrayView3, Axis, s};
 
 /// Run `f(row0, out_chunk)` over `out` split into row chunks of `row_len`
 /// elements, on up to `budgeted_workers(8)` threads. Every kernel here is
@@ -167,8 +168,8 @@ pub enum Acc<'a> {
 /// film_optics.area_decimate_rows: accumulate source rows [y0, y0+n) (float32
 /// or float64 input, promoted to float64) into the decimated accumulator.
 #[allow(clippy::too_many_arguments)]
-pub fn area_decimate_rows(
-    rows: &[f64],
+pub fn area_decimate_rows<T: Copy + Into<f64>>(
+    rows: ArrayView3<'_, T>,
     n: usize,
     y0: usize,
     h: usize,
@@ -198,12 +199,11 @@ pub fn area_decimate_rows(
     let mut cols = vec![0.0f64; n * out_w * c];
     let mut los = vec![0usize; n];
     for r in 0..n {
-        let row = &rows[r * w * c..(r + 1) * w * c];
         for ch in 0..c {
             cs[ch] = 0.0;
             let mut run = 0.0f64;
             for x in 0..w {
-                run += row[x * c + ch];
+                run += rows[[r, x, ch]].into();
                 cs[(x + 1) * c + ch] = run;
             }
         }
@@ -327,60 +327,86 @@ pub fn gaussian_taps(sigma: f64) -> Vec<f32> {
     k.iter().map(|&v| v as f32).collect()
 }
 
-/// film_optics._gaussian_blur_slabbed on a (h, w, c) float32 buffer: vertical
-/// pass then horizontal pass, each `acc += k[i] * pad[i + t]` in tap order.
-pub fn gaussian_blur(img: &mut [f32], h: usize, w: usize, c: usize, sigma: f64, periodic: bool) {
-    if sigma <= 0.0 || h == 0 || w == 0 {
-        return;
-    }
-    let k = gaussian_taps(sigma);
+/// One separable convolution row, vertical then horizontal in tap order.
+/// Source stays borrowed, including strided channel/visible-window views.
+/// Only `vertical` and the caller's output row are used as working storage.
+fn convolve_row(
+    img: ArrayView3<'_, f32>, y: usize, k: &[f32], periodic: bool,
+    vertical: &mut [f32], dst: &mut [f32],
+) {
+    let (h, w, c) = img.dim();
     let radius = (k.len() / 2) as i64;
     let idx = |i: i64, n: usize| -> usize {
-        if periodic {
-            wrap_index(i, n as i64)
-        } else {
-            reflect_index(i, n as i64)
-        }
+        if periodic { wrap_index(i, n as i64) } else { reflect_index(i, n as i64) }
     };
-    // vertical: out[y] = sum_i k[i] * src[y + i - radius] (rows independent)
-    let mut tmp = vec![0.0f32; h * w * c];
-    {
-        let src_all: &[f32] = img;
-        par_rows(&mut tmp, w * c, h, |row0, chunk| {
-            for (r, dst) in chunk.chunks_exact_mut(w * c).enumerate() {
-                let y = row0 + r;
-                for (i, &kv) in k.iter().enumerate() {
-                    let sy = idx(y as i64 + i as i64 - radius, h);
-                    let src = &src_all[sy * w * c..(sy + 1) * w * c];
-                    for x in 0..w * c {
-                        dst[x] += kv * src[x];
-                    }
-                }
+    vertical.fill(0.0);
+    for (i, &kv) in k.iter().enumerate() {
+        let sy = idx(y as i64 + i as i64 - radius, h);
+        let row = img.index_axis(Axis(0), sy);
+        if let Some(src) = row.as_slice() {
+            for (acc, &v) in vertical.iter_mut().zip(src) {
+                *acc += kv * v;
             }
-        });
-    }
-    // horizontal on the vertical result, into img (rows independent)
-    let tmp_ref: &[f32] = &tmp;
-    par_rows(img, w * c, h, |row0, chunk| {
-        for (r, dst) in chunk.chunks_exact_mut(w * c).enumerate() {
-            let y = row0 + r;
-            let src = &tmp_ref[y * w * c..(y + 1) * w * c];
-            for x in 0..w {
-                for ch in 0..c {
-                    let mut acc = 0.0f32;
-                    for (i, &kv) in k.iter().enumerate() {
-                        let sx = idx(x as i64 + i as i64 - radius, w);
-                        acc += kv * src[sx * c + ch];
-                    }
-                    dst[x * c + ch] = acc;
-                }
+        } else if c == 1 {
+            // A channel view of interleaved RGB is a simple strided vector;
+            // avoid a two-dimensional iterator carry for every sample.
+            for (acc, &v) in vertical.iter_mut().zip(row.column(0).iter()) {
+                *acc += kv * v;
+            }
+        } else {
+            for (acc, &v) in vertical.iter_mut().zip(row.iter()) {
+                *acc += kv * v;
             }
         }
-    });
+    }
+    dst.fill(0.0);
+    // Tap-major contiguous inner loops vectorize without changing any
+    // pixel's accumulation order. Only the borders need index folding.
+    for (i, &kv) in k.iter().enumerate() {
+        let offset = i as i64 - radius;
+        let x0 = (-offset).clamp(0, w as i64) as usize;
+        let x1 = (w as i64 - offset).clamp(x0 as i64, w as i64) as usize;
+        if x1 > x0 {
+            let sx = (x0 as i64 + offset) as usize;
+            let src = &vertical[sx * c..(sx + x1 - x0) * c];
+            for (acc, &v) in dst[x0 * c..x1 * c].iter_mut().zip(src) {
+                *acc += kv * v;
+            }
+        }
+        for x in (0..x0).chain(x1..w) {
+            let sx = idx(x as i64 + offset, w);
+            for ch in 0..c {
+                dst[x * c + ch] += kv * vertical[sx * c + ch];
+            }
+        }
+    }
 }
 
-/// film_optics._blur_small_sigma on one (h, w) float32 plane.
-pub fn blur_small_sigma(chan: &[f32], h: usize, w: usize, sigma_px: f64) -> Vec<f32> {
+fn separable_blur(img: ArrayView3<'_, f32>, k: &[f32], periodic: bool) -> Vec<f32> {
+    let (h, w, c) = img.dim();
+    let mut out = vec![0.0f32; h * w * c];
+    if out.is_empty() {
+        return out;
+    }
+    par_rows(&mut out, w * c, h, |row0, chunk| {
+        let mut vertical = vec![0.0f32; w * c];
+        for (r, dst) in chunk.chunks_exact_mut(w * c).enumerate() {
+            convolve_row(img, row0 + r, k, periodic, &mut vertical, dst);
+        }
+    });
+    out
+}
+
+/// film_optics._gaussian_blur_slabbed: out of place, with one temporary row
+/// per worker instead of a copied input plus a full vertical-pass image.
+pub fn gaussian_blur(img: ArrayView3<'_, f32>, sigma: f64, periodic: bool) -> Vec<f32> {
+    if sigma <= 0.0 {
+        return img.iter().copied().collect();
+    }
+    separable_blur(img, &gaussian_taps(sigma), periodic)
+}
+
+fn small_sigma_taps(sigma_px: f64) -> [f32; 5] {
     let pi = std::f64::consts::PI;
     let s2 = sigma_px * sigma_px;
     let g_half = (-0.5 * s2 * ((pi / 2.0) * (pi / 2.0))).exp();
@@ -388,28 +414,12 @@ pub fn blur_small_sigma(chan: &[f32], h: usize, w: usize, sigma_px: f64) -> Vec<
     let b = (1.0 - g_nyq) / 4.0;
     let cc = ((1.0 + g_nyq) / 2.0 - g_half) / 4.0;
     let a = 1.0 - 2.0 * b - 2.0 * cc;
-    let k = [cc as f32, b as f32, a as f32, b as f32, cc as f32];
-    let mut cur = chan.to_vec();
-    // axis 0 then axis 1, reflect pad radius 2, out = sum_j k[j] * padded[j + t]
-    for axis in 0..2 {
-        let mut out = vec![0.0f32; h * w];
-        for y in 0..h {
-            for x in 0..w {
-                let mut acc = 0.0f32;
-                for (j, &kv) in k.iter().enumerate() {
-                    let (sy, sx) = if axis == 0 {
-                        (reflect_index(y as i64 + j as i64 - 2, h as i64), x)
-                    } else {
-                        (y, reflect_index(x as i64 + j as i64 - 2, w as i64))
-                    };
-                    acc += kv * cur[sy * w + sx];
-                }
-                out[y * w + x] = acc;
-            }
-        }
-        cur = out;
-    }
-    cur
+    [cc as f32, b as f32, a as f32, b as f32, cc as f32]
+}
+
+/// film_optics._blur_small_sigma on a borrowed (possibly strided) plane.
+pub fn blur_small_sigma(chan: ArrayView2<'_, f32>, sigma_px: f64) -> Vec<f32> {
+    separable_blur(chan.insert_axis(Axis(2)), &small_sigma_taps(sigma_px), false)
 }
 
 // ---------------------------------------------------------------------------
@@ -549,45 +559,47 @@ pub struct ScatterChannel {
 }
 
 /// film_optics.apply_scatter_mix on an (h, w, 3) float32 slab.
-pub fn apply_scatter_mix(img: &[f32], h: usize, w: usize, chans: &[ScatterChannel; 3]) -> Vec<f32> {
-    let planes: Vec<Vec<f32>> = std::thread::scope(|s| {
-        let handles: Vec<_> = (0..3)
-            .map(|ch| {
-                let sc = &chans[ch];
-                s.spawn(move || {
-                    let mut wsum = 0.0f64;
-                    for &(_, wgt) in &sc.comps {
-                        wsum += wgt; // Python sum(): sequential
-                    }
-                    let inert = 1.0 - sc.s_mix * wsum;
-                    let plane: Vec<f32> = (0..h * w).map(|i| img[i * 3 + ch]).collect();
-                    let inert32 = inert as f32;
-                    let mut acc: Vec<f32> = plane.iter().map(|&v| v * inert32).collect();
-                    for &(scale, wgt) in &sc.comps {
-                        let blurred = if scale < 1.0 {
-                            blur_small_sigma(&plane, h, w, scale)
-                        } else {
-                            let mut b = plane.clone();
-                            gaussian_blur(&mut b, h, w, 1, scale, false);
-                            b
-                        };
-                        let f = (sc.s_mix * wgt) as f32;
-                        for i in 0..h * w {
-                            acc[i] += f * blurred[i];
-                        }
-                    }
-                    acc
-                })
-            })
-            .collect();
-        handles.into_iter().map(|hd| hd.join().expect("scatter thread")).collect()
-    });
+pub fn apply_scatter_mix(img: ArrayView3<'_, f32>, chans: &[ScatterChannel; 3]) -> Vec<f32> {
+    let (h, w, _) = img.dim();
     let mut out = vec![0.0f32; h * w * 3];
-    for ch in 0..3 {
-        for i in 0..h * w {
-            out[i * 3 + ch] = planes[ch][i];
-        }
+    if out.is_empty() {
+        return out;
     }
+    let prepared: Vec<(f32, Vec<(Vec<f32>, f32)>)> = chans.iter().map(|sc| {
+        let mut wsum = 0.0f64;
+        for &(_, weight) in &sc.comps {
+            wsum += weight; // Python sum(): sequential
+        }
+        let inert = (1.0 - sc.s_mix * wsum) as f32;
+        let comps = sc.comps.iter().map(|&(scale, weight)| {
+            let taps = if scale < 1.0 { small_sigma_taps(scale).to_vec() } else { gaussian_taps(scale) };
+            (taps, (sc.s_mix * weight) as f32)
+        }).collect();
+        (inert, comps)
+    }).collect();
+    // One row pool owns the budget. Channels/components stay inside each
+    // worker, with two reused rows instead of whole-plane accumulators,
+    // blurred images and nested per-channel Gaussian pools.
+    par_rows(&mut out, w * 3, h, |row0, chunk| {
+        let mut vertical = vec![0.0f32; w];
+        let mut blurred = vec![0.0f32; w];
+        for (r, dst) in chunk.chunks_exact_mut(w * 3).enumerate() {
+            let y = row0 + r;
+            for ch in 0..3 {
+                let (inert, comps) = &prepared[ch];
+                for x in 0..w {
+                    dst[x * 3 + ch] = img[[y, x, ch]] * *inert;
+                }
+                let plane = img.slice(s![.., .., ch..ch + 1]);
+                for (taps, weight) in comps {
+                    convolve_row(plane, y, taps, false, &mut vertical, &mut blurred);
+                    for (px, &v) in dst.chunks_exact_mut(3).zip(&blurred) {
+                        px[ch] += *weight * v;
+                    }
+                }
+            }
+        }
+    });
     out
 }
 

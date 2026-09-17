@@ -20,16 +20,17 @@ from types import SimpleNamespace
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--kernel", choices=("gain", "hdr", "base", "feather"), required=True)
+    parser.add_argument("--kernel", choices=("gain", "hdr", "base", "feather", "blur", "small-blur", "area", "scatter"), required=True)
     parser.add_argument("--height", type=int, default=4000)
     parser.add_argument("--width", type=int, default=6000)
     parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument("--sigma", type=float, default=1.7)
     args = parser.parse_args()
     if min(args.height, args.width) < 1:
         parser.error("dimensions must be positive")
     sys.path.insert(0, str(args.repo.resolve()))
     import numpy as np
-    from dngscan import _fast, gainmap, raw_io
+    from dngscan import _fast, gainmap, raw_io, film_optics
 
     _fast.set_thread_budget(args.threads)
     h, w = args.height, args.width
@@ -50,9 +51,24 @@ def main():
         a = np.full((h, w, 3), 128, np.uint8)
         e = np.full((h, w, 3), 127, np.uint8)
         run = lambda: gainmap._base_roundtrip_error_arrays(a, e)
-    else:
+    elif args.kernel == "feather":
         a = np.full((h, w, 3), 0.5, np.float32)
         run = lambda: raw_io._feather_masks_f16(a)
+    elif args.kernel == "blur":
+        a = np.full((h, w, 3), 0.5, np.float32)
+        run = lambda: film_optics._blur_bounded(a, args.sigma)
+    elif args.kernel == "small-blur":
+        a = np.full((h, w, 3), 0.5, np.float32)
+        run = lambda: film_optics._blur_small_sigma(a[..., 1], 0.7)
+    elif args.kernel == "area":
+        a = np.full((h, w, 3), 0.5, np.float32)
+        run = lambda: film_optics.area_decimate(a, min(h, 384), min(w, 512))
+    else:
+        from dngscan.film_optics_assets import DEFAULT_STOCK_OPTICS, load_stock_optics
+
+        kernel = load_stock_optics(DEFAULT_STOCK_OPTICS).emulsion_scatter
+        a = np.full((h, w, 3), 0.5, np.float32)
+        run = lambda: film_optics.apply_scatter_mix(a, 36.0 / w, kernel)
 
     def peak():
         scale = 2**20 if sys.platform == "darwin" else 1024
@@ -67,6 +83,8 @@ def main():
         assert np.all(img == 1048)
     elif args.kernel == "feather":
         assert result.dtype == np.float16 and np.all(result == 0.5)
+    elif args.kernel in ("blur", "small-blur", "area", "scatter"):
+        assert result.dtype == np.float32 and np.allclose(result, 0.5, rtol=0, atol=1e-5)
     print(json.dumps(dict(kernel=args.kernel, shape=[h, w], threads=args.threads,
                           native=_fast.kernel("feather_masks_f16") is not None,
                           seconds=seconds, peak_mib=after, extra_peak_mib=after - before)))

@@ -72,6 +72,16 @@ fn as_f32_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
     Ok(arr.cast_into::<PyArrayDyn<f32>>()?)
 }
 
+/// Preserve strides when the kernel supports borrowed ndarray views.
+fn as_view_array<'py, T: numpy::Element>(
+    py: Python<'py>, obj: &Bound<'py, PyAny>, dtype: &str,
+) -> PyResult<Bound<'py, PyArrayDyn<T>>> {
+    let np = py.import("numpy")?;
+    let kwargs = PyDict::new(py);
+    kwargs.set_item("dtype", dtype)?;
+    Ok(np.getattr("asarray")?.call((obj,), Some(&kwargs))?.cast_into::<PyArrayDyn<T>>()?)
+}
+
 fn require_rgb(arr: &Bound<'_, PyArrayDyn<f32>>, name: &str) -> PyResult<usize> {
     let shape = arr.shape();
     if shape.len() != 2 || shape[1] != 3 {
@@ -789,48 +799,68 @@ fn halation_comps_from_py(py: Python<'_>, comps: &Bound<'_, PyAny>) -> PyResult<
     Ok(out)
 }
 
-/// film_optics.area_decimate_rows: `acc` (out_h, out_w, c) float64 or float32 is updated in place.
-#[pyfunction]
+/// Run area decimation on the source dtype, promoting each sample at its
+/// original float64 accumulation point instead of copying the whole band.
 #[allow(clippy::too_many_arguments)]
-fn area_decimate_rows<'py>(
-    py: Python<'py>,
-    rows: &Bound<'py, PyAny>,
-    y0: usize,
-    h: usize,
-    w: usize,
-    out_h: usize,
-    out_w: usize,
-    acc: &Bound<'py, PyAny>,
+fn area_decimate_typed<T: numpy::Element + Copy + Into<f64> + Sync>(
+    py: Python<'_>, rows: &Bound<'_, PyArrayDyn<T>>, y0: usize,
+    h: usize, w: usize, out_h: usize, out_w: usize, acc: &Bound<'_, PyAny>,
 ) -> PyResult<()> {
-    let rows = as_f64_array(py, rows)?;
-    let shape = rows.shape().to_vec();
-    let c = *shape.last().ok_or_else(|| PyValueError::new_err("rows must have a channel axis"))?;
-    let n = rows.len() / (w * c).max(1);
-    if rows.len() != n * w * c {
-        return Err(PyValueError::new_err("rows must reshape to (n, w, c)"));
+    let shape = rows.shape();
+    let (n, c) = (shape[0], shape[2]);
+    if y0 > h || n > h - y0 || shape[1] != w || out_h == 0 || out_w == 0 {
+        return Err(PyValueError::new_err("invalid source row range or decimation dimensions"));
     }
     let rro = rows.readonly();
-    let rdata = rro.as_slice()?;
+    let rdata = rro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
     let np = py.import("numpy")?;
     let dtype = acc.getattr("dtype")?;
     if dtype.eq(np.getattr("float64")?)? {
         let mut a = acc.cast::<PyArrayDyn<f64>>()?.readwrite();
-        let s = a.as_slice_mut()?;
-        if s.len() != out_h * out_w * c {
+        if a.shape() != [out_h, out_w, c] {
             return Err(PyValueError::new_err("acc must be (out_h, out_w, c)"));
         }
-        py.detach(|| spatial::area_decimate_rows(rdata, n, y0, h, w, out_h, out_w, c, spatial::Acc::F64(s)));
+        let data = a.as_slice_mut()?;
+        py.detach(|| spatial::area_decimate_rows(rdata, n, y0, h, w, out_h, out_w, c, spatial::Acc::F64(data)));
     } else if dtype.eq(np.getattr("float32")?)? {
         let mut a = acc.cast::<PyArrayDyn<f32>>()?.readwrite();
-        let s = a.as_slice_mut()?;
-        if s.len() != out_h * out_w * c {
+        if a.shape() != [out_h, out_w, c] {
             return Err(PyValueError::new_err("acc must be (out_h, out_w, c)"));
         }
-        py.detach(|| spatial::area_decimate_rows(rdata, n, y0, h, w, out_h, out_w, c, spatial::Acc::F32(s)));
+        let data = a.as_slice_mut()?;
+        py.detach(|| spatial::area_decimate_rows(rdata, n, y0, h, w, out_h, out_w, c, spatial::Acc::F32(data)));
     } else {
         return Err(PyValueError::new_err("acc must be float64 or float32"));
     }
     Ok(())
+}
+
+/// film_optics.area_decimate_rows: float32/float64 source, accumulator in place.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn area_decimate_rows<'py>(
+    py: Python<'py>, rows: &Bound<'py, PyAny>, y0: usize,
+    h: usize, w: usize, out_h: usize, out_w: usize, acc: &Bound<'py, PyAny>,
+) -> PyResult<()> {
+    let np = py.import("numpy")?;
+    let rows = np.getattr("asarray")?.call1((rows,))?;
+    let shape: Vec<usize> = rows.getattr("shape")?.extract()?;
+    let c = *shape.last().ok_or_else(|| PyValueError::new_err("rows must have a channel axis"))?;
+    // Preserve the original flat-band input convention, but an already
+    // shaped (including empty) view needs no reshape or contiguous copy.
+    let rows = if shape.len() == 3 && shape[1] == w {
+        rows
+    } else if w > 0 && c > 0 {
+        rows.call_method1("reshape", ((-1i64, w, c),))?
+    } else {
+        return Err(PyValueError::new_err("rows must reshape to (n, w, c)"));
+    };
+    if let Ok(a) = rows.cast::<PyArrayDyn<f32>>() {
+        area_decimate_typed(py, a, y0, h, w, out_h, out_w, acc)
+    } else {
+        let a = as_view_array::<f64>(py, &rows, "float64")?;
+        area_decimate_typed(py, &a, y0, h, w, out_h, out_w, acc)
+    }
 }
 
 /// film_optics.upsample_rows -> (y1 - y0, width, c) float32.
@@ -858,29 +888,30 @@ fn upsample_rows<'py>(
 /// film_optics._gaussian_blur_slabbed on (h, w, c) float32 -> new array.
 #[pyfunction]
 fn gaussian_blur_slabbed<'py>(py: Python<'py>, img: &Bound<'py, PyAny>, sigma: f64, periodic: bool) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, img)?;
+    let a = as_view_array::<f32>(py, img, "float32")?;
     let shape = a.shape().to_vec();
     if shape.len() != 3 {
         return Err(PyValueError::new_err("img must be (h, w, c)"));
     }
     let (h, w, c) = (shape[0], shape[1], shape[2]);
-    let mut buf = a.readonly().as_slice()?.to_vec();
-    py.detach(|| spatial::gaussian_blur(&mut buf, h, w, c, sigma, periodic));
-    Ok(PyArray1::from_vec(py, buf).reshape([h, w, c])?.into_any())
+    let ro = a.readonly();
+    let view = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+    let out = py.detach(|| spatial::gaussian_blur(view, sigma, periodic));
+    Ok(PyArray1::from_vec(py, out).reshape([h, w, c])?.into_any())
 }
 
 /// film_optics._blur_small_sigma on one (h, w) float32 plane.
 #[pyfunction]
 fn blur_small_sigma<'py>(py: Python<'py>, chan: &Bound<'py, PyAny>, sigma_px: f64) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, chan)?;
+    let a = as_view_array::<f32>(py, chan, "float32")?;
     let shape = a.shape().to_vec();
     if shape.len() != 2 {
         return Err(PyValueError::new_err("chan must be (h, w)"));
     }
     let (h, w) = (shape[0], shape[1]);
     let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| spatial::blur_small_sigma(d, h, w, sigma_px));
+    let view = ro.as_array().into_dimensionality::<numpy::ndarray::Ix2>().unwrap();
+    let out = py.detach(|| spatial::blur_small_sigma(view, sigma_px));
     Ok(PyArray1::from_vec(py, out).reshape([h, w])?.into_any())
 }
 
@@ -1042,7 +1073,7 @@ fn capture_bloom_apply_rows<'py>(
 /// [(s_mix, [(sigma_px, weight), ...]) x 3] as _scatter_components resolves.
 #[pyfunction]
 fn apply_scatter_mix<'py>(py: Python<'py>, img: &Bound<'py, PyAny>, chans: Vec<(f64, Vec<(f64, f64)>)>) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, img)?;
+    let a = as_view_array::<f32>(py, img, "float32")?;
     let shape = a.shape().to_vec();
     if shape.len() != 3 || shape[2] != 3 {
         return Err(PyValueError::new_err("img must be (h, w, 3)"));
@@ -1057,8 +1088,8 @@ fn apply_scatter_mix<'py>(py: Python<'py>, img: &Bound<'py, PyAny>, chans: Vec<(
         spatial::ScatterChannel { s_mix: chans[2].0, comps: chans[2].1.clone() },
     ];
     let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| spatial::apply_scatter_mix(d, h, w, &sc));
+    let view = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+    let out = py.detach(|| spatial::apply_scatter_mix(view, &sc));
     Ok(PyArray1::from_vec(py, out).reshape([h, w, 3])?.into_any())
 }
 
