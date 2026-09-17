@@ -198,7 +198,7 @@ def area_decimate(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
     full-frame oracle can pass the whole array — both produce identical
     bytes. Columns first (1-D fractional integral per row), then each source
     row scatters into the (at most two) decimated rows it overlaps."""
-    img = np.asarray(img, dtype=np.float64)
+    img = np.asarray(img)
     h, w = img.shape[:2]
     acc = np.zeros((out_h, out_w, img.shape[2]), dtype=np.float64)
     area_decimate_rows(img, 0, h, w, out_h, out_w, acc)
@@ -219,13 +219,14 @@ def area_decimate_rows(
 
     Stage 2 (2026-09-15): the Rust kernel replicates this body element for
     element (sequential float64 column integral, np.add.at accumulation
-    order, float32 accumulators updated as f32(f64(acc) + v)); this NumPy
-    body is the reference (tests/test_rust_stage2.py)."""
+    order, float32 accumulators updated as f32(f64(acc) + v)). Float32
+    source views are promoted sample by sample in Rust without a band copy;
+    this NumPy body is the reference (tests/test_rust_stage2.py)."""
     from . import _fast
 
     native = _fast.kernel("area_decimate_rows")
     if native is not None and acc.dtype in (np.float64, np.float32) and acc.flags["C_CONTIGUOUS"]:
-        native(np.asarray(rows, dtype=np.float64), int(y0), int(h), int(w), int(out_h), int(out_w), acc)
+        native(np.asarray(rows), int(y0), int(h), int(w), int(out_h), int(out_w), acc)
         return
     rows = np.asarray(rows, dtype=np.float64).reshape(-1, w, rows.shape[-1])
     n = rows.shape[0]
@@ -314,7 +315,7 @@ def _gaussian_blur_slabbed(
     if native is not None and np.ndim(img) == 3:
         # Stage 2: same taps (float64 exp, NumPy pairwise-sum normalization,
         # float32 cast), same per-tap accumulation order, reflect/wrap edges.
-        return native(np.ascontiguousarray(img, dtype=np.float32), float(sigma), bool(periodic))
+        return native(np.asarray(img, dtype=np.float32), float(sigma), bool(periodic))
     radius = max(int(np.ceil(3.0 * sigma)), 1)
     x = np.arange(-radius, radius + 1, dtype=np.float64)
     k = np.exp(-0.5 * (x / sigma) ** 2)
@@ -370,10 +371,17 @@ def _blur_bounded(img: np.ndarray, sigma: float) -> np.ndarray:
     buffers per call — and P3's two spread operators make eighteen such calls
     between them. CI's independent-process RSS gate measured 810 MiB against
     a 608 MiB allowance from exactly that; the slabbed kernel keeps the
-    transient at slab scale instead. The copy is explicit because the slabbed
-    routine works in place and `ascontiguousarray` hands back the argument
-    itself when it is already float32 and contiguous.
+    transient at slab scale instead. The NumPy copy is explicit because that
+    body works in place and `ascontiguousarray` hands back a contiguous
+    float32 argument unchanged. The native kernel instead borrows its source
+    and uses one row of scratch per worker besides its owned output.
     """
+    from . import _fast
+
+    native = _fast.kernel("gaussian_blur_slabbed")
+    if native is not None and np.ndim(img) == 3:
+        # Native convolution borrows the source and always owns its output.
+        return native(img, float(sigma), False)
     return _gaussian_blur_slabbed(np.array(img, dtype=np.float32, copy=True), sigma)
 
 
@@ -924,7 +932,7 @@ def apply_scatter_mix(
     native = _fast.kernel("apply_scatter_mix")
     if native is not None and src.ndim == 3 and src.shape[2] == 3:
         return native(
-            np.ascontiguousarray(src),
+            src,
             [(float(kernel.s[ch]), [(float(s), float(w)) for s, w in _scatter_components(kernel, ch, mm_per_px)])
              for ch in range(3)],
         )
@@ -977,7 +985,7 @@ def _blur_small_sigma(chan: np.ndarray, sigma_px: float) -> np.ndarray:
 
     native = _fast.kernel("blur_small_sigma")
     if native is not None and np.ndim(chan) == 2:
-        return native(np.ascontiguousarray(chan, dtype=np.float32), float(sigma_px))
+        return native(np.asarray(chan, dtype=np.float32), float(sigma_px))
     g_half = float(np.exp(-0.5 * sigma_px ** 2 * (np.pi / 2.0) ** 2))
     g_nyq = float(np.exp(-0.5 * sigma_px ** 2 * np.pi ** 2))
     b = (1.0 - g_nyq) / 4.0

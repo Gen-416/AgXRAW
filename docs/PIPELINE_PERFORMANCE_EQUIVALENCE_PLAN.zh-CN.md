@@ -166,6 +166,55 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   耗时为 0.340→0.392 s:旧实现无视预算固定启动三个线程,新实现遵守预算;默认多线程
   预算下更快。精确 HDR 中位数仍保留一份全图 float32 相对误差,空间不是 O(1)。
 
+  **2026-09-17 空间核续修(基线 `d06d265`)**:Gaussian 与 small-sigma 卷积直接借用
+  float32 源视图,每个线程只保存一行垂直滤波结果,随后写入独立输出;水平循环按 tap 遍历
+  连续内存,保留每个像素的乘加顺序。`_blur_bounded` 的原生路径省去外层防写回拷贝,
+  NumPy 路径仍保留该拷贝。scatter 在同一行池内按通道、分量顺序卷积并累加,删除全图
+  通道、累加器和分量模糊图,也删除三个通道线程各自再启动 Gaussian 池的嵌套。
+  area decimation 接受 float32/float64 及其 strided 源视图,在原 float64 累加位置逐样本
+  转换,删除入口处整图升精度拷贝;两遍 np.add.at 的顺序保持不变,列降采样缓存仍保留。
+
+  `tests/test_rust_spatial_streaming.py` 覆盖反向/转置/广播/只读视图、空图、单元素轴、
+  超出图像尺寸的大半径、周期/反射边界、NaN/Inf 传播、不同源和累加器 dtype、分带累加
+  以及源数组不被改写。独立进程 RSS 门禁新增四种空间核。父进程采样 scatter 的线程数:
+
+  | native 预算 | 修复前进程峰值线程 | 修复后进程峰值线程 |
+  | --- | --- | --- |
+  | 1 | 4 | 1 |
+  | 2 | 10 | 3 |
+  | 4 | 16 | 5 |
+  | 8 | 28 | 8 |
+
+  完整测试:严格 native 与 NumPy 路径各 1443 项,分别跳过 36/75 项,均无失败;
+  数字化精度门禁单独通过且未跳过。
+
+  下面为相同环境、三次独立进程中位数,24 MP 均匀 float32 RGB 输入、预算 8。
+  RSS 包括输入和输出;Gaussian sigma=1.7,small-sigma=0.7,area 输出 384×512,
+  scatter 使用默认 emulsion asset、36/6000 mm/px。
+
+  | 核 | 耗时 前→后 | 峰值 RSS MiB 前→后 |
+  | --- | --- | --- |
+  | Gaussian (`_blur_bounded`) | 0.186→0.047 s | 1143→594 |
+  | small-sigma 通道视图 | 0.110→0.018 s | 593→410 |
+  | area decimation | 0.121→0.076 s | 921→372 |
+  | scatter mix | 0.240→0.093 s | 1692→594 |
+
+  预算 1 下 scatter 为 0.387→0.425 s:旧实现仍占用三个通道线程,新实现真正串行。
+  可用 `tools/benchmark_native_memory.py --kernel blur|small-blur|area|scatter` 复测
+  (每次选择一个 kernel),`--repo` 对比 checkout,`--sigma` 设置 Gaussian 半径参数。
+  60.2 MP、预算 8 时耗时分别为 0.613→0.112、0.278→0.048、0.457→0.175、
+  1.066→0.313 s;核内存收益不等于完整导出的 RSS 收益。
+
+  真实 `_SDI0150.DNG` 输出 4042×6064 JPEG,Portra 400 full、grain=0.5、halation=0.4、
+  bloom=0.3、seed=42,前后交替各三次:main() 耗时中位数 15.37→14.28 s (约 −7.1%)。
+  六个 JPEG 的 SHA-256 都是 `484598a1fbacb9bc7a22d26e564bad7005d70ebc711f7a800fc85bb3b91a6e1b`。
+  本组完整进程 RSS 中位数 2094→2271 MiB,样本范围分别 1930–2279 与 2106–2298 MiB;
+  因此本轮不声称整图峰值 RSS 已下降。
+  另一次分阶段诊断通过 macOS `proc_pid_rusage(RUSAGE_INFO_V4)` 读取
+  `ri_lifetime_max_phys_footprint`:前后为 3199→3086 MiB。两者在 load_raw 结束约
+  1698 MiB、analyze 结束约 2168 MiB,高水位继续增长至输出结束附近。该数据来自一对
+  带探针的诊断运行,用于区分测量口径与定位生命周期,不替代上面的三次无探针基准。
+
   **2026-09-03 数学审查(ABI v11)**:上面"其余来自曲线表插值、Oklab punch"的判断
   只对了一半——inset/outset 与 punch 的六个 Oklab 矩阵在 NumPy 里同样是 float64
   矩阵级(`agx._apply_matrix3`/`apply_rgb_matrix3`),两个核全部改为精确 f64 级后:

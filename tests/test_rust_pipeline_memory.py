@@ -169,7 +169,8 @@ class NativeMemory(unittest.TestCase):
     def test_transient_memory_is_bounded(self):
         # Fresh processes exclude previous allocations/allocator high-water
         # marks. Limits include output buffers, with headroom for runtime noise.
-        for kernel, limit in (("gain", 32), ("feather", 80), ("hdr", 110), ("base", 32)):
+        for kernel, limit in (("gain", 32), ("feather", 80), ("hdr", 110), ("base", 32),
+                              ("blur", 128), ("small-blur", 48), ("area", 80), ("scatter", 128)):
             with self.subTest(kernel=kernel):
                 result = subprocess.run(
                     [sys.executable, str(ROOT / "tools/benchmark_native_memory.py"),
