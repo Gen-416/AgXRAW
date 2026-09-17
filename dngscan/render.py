@@ -521,8 +521,14 @@ def _prepare_chroma_nr_map(
     scene_transform: str,
     scene_transform_strength: float,
     wb_adapt: Any,
+    retreat_strength: float | None = None,
 ) -> Any:
     """Pass 0: the chroma-NR correction map, or None when the dial is 0.
+
+    ``retreat_strength`` overrides the clip-retreat strength read from
+    ``color_plan`` — the HDR entries own theirs (hdr_plan.color / the pair's
+    shared intent strength) and must build the map from the SAME
+    preprocessing their chunks apply.
 
     Walks the scene once in row bands, mirroring EXACTLY the per-chunk
     preprocessing of the path it serves (intent -> transform when not
@@ -540,10 +546,12 @@ def _prepare_chroma_nr_map(
     dh, dw = spread_grid_shape(h, w)
     acc = np.zeros((dh, dw, 3), dtype=np.float64)
     band = _optics_band_rows(w)
-    retreat_strength = (
-        float(color_plan.raw_clip_retreat_strength)
-        if color_plan is not None else 0.0
-    )
+    if retreat_strength is None:
+        retreat_strength = (
+            float(color_plan.raw_clip_retreat_strength)
+            if color_plan is not None else 0.0
+        )
+    retreat_strength = float(retreat_strength)
     for y0 in range(0, h, band):
         y1 = min(y0 + band, h)
         s0, e0 = y0 * w, y1 * w

@@ -235,7 +235,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
       <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重新解码并分析这张 RAW（数秒）。">
     </div>
     <div class="sliderField" id="chromaNrBlock" style="flex:1;min-width:150px">
-      <div class="labelRow"><label title="仅色度降噪（CLI --chroma-nr，0–1，默认 0=不动）：只去低频色斑，亮度与细彩噪不动；仅 SDR 输出可用。">色度降噪</label><span class="val" id="chromaNrVal">0.00</span></div>
+      <div class="labelRow"><label title="仅色度降噪（CLI --chroma-nr，0–1，默认 0=不动）：只去低频色斑，亮度与细彩噪不动；SDR 与 HDR 容器均可用（两腿读同一份修复后的场景）。">色度降噪</label><span class="val" id="chromaNrVal">0.00</span></div>
       <input type="range" id="chromaNr" min="0" max="1" step="0.05" value="0">
     </div>
     <div style="flex:1;min-width:170px">
@@ -933,14 +933,10 @@ function updateFormatUi(){
   }
   $("#highlightFade").disabled=hdr;
   $("#highlightFadeBlock").title=hdr?"HDR 色彩几何独立处理高光，不使用 SDR 显示侧褪白（仅 SDR 导出支持此滑杆）。":"";
-  // Review batch 23: chroma NR v1 is SDR-only (the exporter refuses it under
-  // an HDR container) — same convention: never let a refused value ride.
-  if(hdr&&+$("#chromaNr").value!==0){
-    $("#chromaNr").value=0;setChromaNrLabel();saveSettings();
-    setStatus("HDR 容器导出尚无色度降噪 pre-pass（v1 仅 SDR），已重置为 0。","warn");
-  }
-  $("#chromaNr").disabled=hdr;
-  $("#chromaNrBlock").title=hdr?"色度降噪 v1 仅 SDR 输出；HDR 容器下不可用。":"";
+  // Chroma NR v2 (2026-09-17): a scene-stage repair shared by both legs of
+  // an HDR pair, so the control stays live under HDR containers.
+  $("#chromaNr").disabled=false;
+  $("#chromaNrBlock").title="";
   applyDeliveryConstraints();
   updateToneCoreExportUi();
   updateToneCoreUi();
@@ -1727,7 +1723,7 @@ function payload(){
     filmMediaScatter:$("#filmMediaScatter").value,
     filmOpticsSeed:$("#filmOpticsSeed").value.trim()===""?"auto":$("#filmOpticsSeed").value.trim(),
     coreimageScale:$("#coreimageScale").value,clipMargin:+$("#clipMargin").value,
-    chromaNr:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?0:+$("#chromaNr").value,
+    chromaNr:+$("#chromaNr").value,
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,

@@ -83,8 +83,9 @@ default 0 = strict identity) is an optional digitization repair: inside a band o
 roughly 8–128 sensor pixels (octave-aligned, so the edges can sit up to √2 off) it
 shrinks low-frequency colour mottle against each level's own noise floor — a
 content-adaptive operator; the scene-linear luminance component and finer coloured
-noise are untouched by construction. v1 is SDR-only: under an HDR container the
-control is greyed and snapped to 0. A nonzero value names the file `cnr{x}`.
+noise are untouched by construction. It works under SDR and HDR containers alike: both
+legs of an HDR pair read the same repaired scene, so the gain map never encodes the
+repair. A nonzero value names the file `cnr{x}`.
 
 ---
 
