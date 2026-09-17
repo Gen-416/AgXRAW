@@ -6,8 +6,8 @@ the low-frequency colour mottle in its declared sensor-pixel band. The
 gates pin what the design promises structurally: luminance untouched,
 pixel-scale chroma speckle untouched at identity grids, real colour
 surviving shrinkage, mottle-band energy genuinely removed, amount 0 a
-strict identity through the render entry, and the v1 HDR boundary refused
-rather than ignored.
+strict identity through the render entry, and (v2, 2026-09-17) the HDR
+entries reading the same repaired scene as the SDR export.
 """
 from __future__ import annotations
 
@@ -195,15 +195,55 @@ class RenderEntryTests(unittest.TestCase):
         self.assertFalse(np.array_equal(base, treated),
                          "the dial must reach the pixels")
 
-    def test_hdr_entries_refuse_the_v1_boundary(self) -> None:
+    def _hdr_pair(self, scene, amount: float):
+        from dngscan.hdr_agx import render_ultrahdr_agx_pair
+        from dngscan.hdr_agx_plan import compile_hdr_agx_plan
+        from dngscan.tone import build_render_plan
+
+        plan = build_render_plan(
+            scene.bundle, scene.analysis, "agx", "p3", chroma_nr=amount
+        )
+        hdr_plan = compile_hdr_agx_plan(plan, analysis=scene.analysis)
+        return plan, hdr_plan, render_ultrahdr_agx_pair(
+            scene.bundle, scene.analysis, plan, hdr_plan
+        )
+
+    def test_hdr_pair_sdr_leg_matches_the_standalone_repaired_export(self) -> None:
+        """v2 (2026-09-17): the pair's two legs read ONE repaired scene. The
+        SDR leg must stay pixel-identical to a standalone export of the same
+        plan — the v1 refusal existed because an unrepaired HDR leg would
+        have made the gain map encode the repair."""
+        from tests.golden_support import build_night_sparse_lamps
+        from dngscan.render import render_output_u8
+
+        scene = build_night_sparse_lamps()
+        plan, _hdr_plan, (sdr_leg, hdr_linear) = self._hdr_pair(scene, 1.0)
+        plain = render_output_u8(scene.bundle, scene.analysis, "p3", plan)
+        self.assertTrue(bool(np.array_equal(sdr_leg, plain)))
+        self.assertTrue(np.all(np.isfinite(hdr_linear)))
+
+    def test_hdr_legs_engage_and_the_standalone_formation_agrees(self) -> None:
+        """The dial reaches the HDR pixels, and the standalone HDR formation
+        (the gain-map-less HDR entry) renders the SAME repaired scene as the
+        pair's HDR leg."""
+        from tests.golden_support import build_night_sparse_lamps
         from dngscan.hdr_agx import scene_render_to_hdr_display_linear
 
-        plan = SimpleNamespace(
-            tone_core="agx", film_mode="observe", curve_preset="none",
-            chroma_nr=0.5,
-        )
-        with self.assertRaisesRegex(RuntimeError, "chroma_nr"):
-            scene_render_to_hdr_display_linear(None, plan, None)
+        scene = build_night_sparse_lamps()
+        _p0, _h0, (_sdr0, hdr0) = self._hdr_pair(scene, 0.0)
+        plan, hdr_plan, (_sdr1, hdr1) = self._hdr_pair(scene, 1.0)
+        self.assertFalse(np.array_equal(hdr0, hdr1), "the dial must reach the HDR leg")
+        alone = scene_render_to_hdr_display_linear(scene.bundle, plan, hdr_plan)
+        np.testing.assert_array_equal(alone, hdr1)
+
+    def test_hdr_amount_zero_is_a_strict_identity(self) -> None:
+        from tests.golden_support import build_daylight_wide_dr
+
+        scene = build_daylight_wide_dr()
+        _p, _h, (sdr_a, hdr_a) = self._hdr_pair(scene, 0.0)
+        _p, _h, (sdr_b, hdr_b) = self._hdr_pair(scene, 0.0)
+        np.testing.assert_array_equal(sdr_a, sdr_b)
+        np.testing.assert_array_equal(hdr_a, hdr_b)
 
 
 if __name__ == "__main__":

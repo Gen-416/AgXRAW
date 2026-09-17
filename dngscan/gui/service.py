@@ -985,17 +985,14 @@ def parse_decoder(params: dict) -> tuple[str, str]:
 
 
 def parse_chroma_nr(params: dict, output_format: str) -> float:
-    """``chromaNr`` [0, 1] (CLI --chroma-nr). v1 is an SDR-only operator: the
-    page never sends a nonzero value with an HDR container (the control is
-    greyed and snapped to 0 there), so a nonzero HDR payload is a direct API
-    contract violation and is refused — the exporter itself refuses it too,
-    and failing here is earlier and names the dial."""
+    """``chromaNr`` [0, 1] (CLI --chroma-nr). v2 (2026-09-17): the repair is
+    a scene-stage operator shared by every formation — the AgX HDR entries
+    build the same pass-0 correction map the SDR render does, and the film
+    pair's two legs always came from one render — so HDR containers accept
+    it. ``output_format`` stays in the signature for the call sites."""
+    del output_format
     raw = params.get("chromaNr", params.get("chroma_nr", 0.0))
     value = _finite_number(raw if raw not in (None, "") else 0.0, "色度降噪", 0.0, 1.0)
-    if value > 0.0 and dg.is_hdr_output_format(output_format):
-        raise ValueError(
-            "chromaNr 属于 SDR 路径(v1):HDR 容器导出尚无色度降噪 pre-pass,请置 0"
-        )
     return float(value)
 
 

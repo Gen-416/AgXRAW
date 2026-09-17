@@ -1,7 +1,7 @@
 # 仅色度降噪（数字化修复）
 
-> 状态：v1 已落地（2026-08-31，owner 批准的工作项）。CLI `--chroma-nr 0..1`，
-> 默认 0 = 严格恒等。GUI 接线与 HDR 语义是记录在案的后续项。
+> 状态：v1 已落地（2026-08-31，owner 批准的工作项）；v2（2026-09-17）接入 AgX HDR。
+> CLI `--chroma-nr 0..1`，默认 0 = 严格恒等。GUI 已接线，SDR 与 HDR 容器均可用。
 
 ## 0. 立场
 
@@ -53,11 +53,18 @@ level 0 平滑（à-trous 的 hole 间距只在渐进平滑图上不混叠），
 连续面，跨 chunk/band 无缝）。**胶片 pass A 读校正后的场景**（chroma map 传入
 `_prepare_spatial_pass1`）——halation/bloom 源与色彩路径不得对同一张照片各执一词。
 
-## 5. v1 边界（失闭，非忽略）
+## 5. HDR（v2，2026-09-17）
 
-- **HDR**：AgX HDR formation 与 Ultrahdr AgX pair 无 chroma-NR 前置 pass，
-  非零值直接 raise（SDR 腿修、HDR 腿不修会让 gain map 编码分歧）。胶片 pair
-  不受限：两腿出自同一次渲染。
-- **GUI**：未接线（service 不传该字段，默认 0，预览缓存安全）。
+修复是场景阶段的算子，HDR 不需要自己的语义：`scene_render_to_hdr_display_linear` 与
+`render_ultrahdr_agx_pair` 在各自的逐 chunk 预处理（intent → scene transform → clip
+retreat）之后、formation 分叉之前，施加与 SDR 渲染同一个 pass-0 校正图
+（`render._prepare_chroma_nr_map`，retreat 强度由各入口显式传入）。pair 的 SDR 底图与 HDR
+备选读同一份修复后的场景，增益图不会去编码"一腿修、一腿不修"的分歧——这正是 v1 拒绝
+HDR 的原因。钉子（tests/test_chroma_nr.py）：pair 的 SDR 腿与同 plan 的独立导出逐像素
+相同；独立 HDR formation 与 pair 的 HDR 腿逐位相同；dial=0 严格恒等。胶片 pair 一直不受限
+（两腿出自同一次渲染），胶片链本身不做适配。GUI：滑杆在 HDR 容器下保持可用。
+
+## 6. 仍开放
+
 - **真实照片视觉验收待 owner**（同 P4 颗粒惯例）：阈值系数与频带在高 ISO 实拍
   上的观感未定版。

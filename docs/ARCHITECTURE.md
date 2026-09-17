@@ -377,7 +377,7 @@ rawpy/LibRaw build actually supports. Non-Bayer data such as X-Trans stays on th
 corresponding LibRaw path. Preview uses half-size 2x2 superpixel binning, so it is useful
 for exposure, color, and highlight decisions but not for judging final texture.
 
-dngscan performs no denoising by default, which makes demosaic the main texture choice. The one opt-in exception is the chroma-only digitization repair (`--chroma-nr`, 0 by default): a band-limited, content-adaptive operator (per-level MAD thresholds) that removes low-frequency colour mottle and, by construction, nothing else — see `chroma_nr.py`; it is SDR-only in v1. DHT suits
+dngscan performs no denoising by default, which makes demosaic the main texture choice. The one opt-in exception is the chroma-only digitization repair (`--chroma-nr`, 0 by default): a band-limited, content-adaptive operator (per-level MAD thresholds) that removes low-frequency colour mottle and, by construction, nothing else — see `chroma_nr.py`. It is a scene-stage operator, so SDR, the AgX HDR formation and both legs of an HDR pair read the same repaired scene. DHT suits
 clean low-ISO signal; DCB, AAHD, VNG, or PPG can look more natural on noisy night files.
 Standard rawpy wheels do not necessarily include GPL demosaic-pack algorithms such as
 AMaZE, LMMSE, VCD, or AFD, so the available set depends on the local LibRaw build. The

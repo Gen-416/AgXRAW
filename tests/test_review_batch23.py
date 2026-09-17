@@ -3,7 +3,7 @@
 
 1. R-P1-3 / R-P3-1: the GUI had no chroma-NR path at all — no control, no
    service forwarding, no cache-key or fingerprint entry (an API payload's
-   ``chromaNr`` was silently ignored). Now a page control (SDR-only, greyed
+   ``chromaNr`` was silently ignored). Now a page control (SDR-only and greyed in v1; HDR-capable since v2 2026-09-17,
    and snapped to 0 under an HDR container), a parser that refuses a
    nonzero HDR payload, and the dial threaded through every plan compile,
    the auto-EV probes, the preview pixel key, the export suffix and the
@@ -57,16 +57,17 @@ class ChromaNrParser(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_chroma_nr({"chromaNr": "nan"}, "sdr")
 
-    def test_hdr_container_refuses_a_nonzero_dial(self) -> None:
+    def test_hdr_container_accepts_the_dial(self) -> None:
+        """v2 (2026-09-17): HDR containers carry the repair — both legs of the
+        pair read one repaired scene (tests/test_chroma_nr.py pins that)."""
         from dngscan.gui.service import parse_chroma_nr
 
         for fmt in ("ultrahdr", "ultrahdr-heic"):
             self.assertEqual(parse_chroma_nr({"chromaNr": 0}, fmt), 0.0)
+            self.assertAlmostEqual(parse_chroma_nr({"chromaNr": 0.2}, fmt), 0.2)
             with self.assertRaises(ValueError):
-                parse_chroma_nr({"chromaNr": 0.2}, fmt)
+                parse_chroma_nr({"chromaNr": 1.5}, fmt)
 
-
-class ServiceThreadsTheDial(unittest.TestCase):
     def test_every_plan_and_probe_call_carries_chroma_nr(self) -> None:
         for callee in ("build_render_plan", "_cached_render_plan", "compute_auto_ev",
                        "max_safe_ev", "export_preview_jpeg",
@@ -117,13 +118,15 @@ class PageControl(unittest.TestCase):
         self.assertIn('id="chromaNrVal"', PAGE)
         payload = PAGE[PAGE.index("function payload("):]
         payload = payload[: payload.index("return p;")]
-        self.assertIn('chromaNr:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?0:+$("#chromaNr").value', payload)
+        # v2 (2026-09-17): HDR containers accept the repair, the payload carries it as-is.
+        self.assertIn('chromaNr:+$("#chromaNr").value,', payload)
+        self.assertNotIn('includes($("#format").value)?0:+$("#chromaNr")', payload)
         self.assertIn('"clipMargin","chromaNr"]', PAGE)  # restoreSettings list
         self.assertIn('chromaNr:$("#chromaNr").value', PAGE)  # saveSettings
         fmt = PAGE[PAGE.index("function updateFormatUi("):]
         fmt = fmt[: fmt.index("\n}")]
-        self.assertIn('$("#chromaNr").disabled=hdr;', fmt)
-        self.assertIn('$("#chromaNr").value=0;setChromaNrLabel();', fmt)
+        self.assertIn('$("#chromaNr").disabled=false;', fmt)
+        self.assertNotIn('$("#chromaNr").value=0;setChromaNrLabel();', fmt)
         reset = PAGE[PAGE.index("function resetToDefaults(){"):]
         reset = reset[: reset.index("\n}")]
         self.assertIn("setChromaNrLabel", reset)
