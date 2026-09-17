@@ -17,13 +17,15 @@ from typing import Any
 
 from ._deps import np
 from .color import srgb_decode
+from .hdr_color import output_luma_weights
 from .delivery import (
     ARCHIVE_TOLERANCES,
     DeliveryProfile,
     DeliveryTolerances,
     FinishedPair,
-    profile_from_encode_settings,
+    hdr_profile_from_encode_settings,
     reprofile_for_container,
+    resolve_hdr_chroma,
 )
 
 # Backward-compatible aliases for the archive operating point. Prefer DeliveryProfile.
@@ -183,6 +185,39 @@ def _apple_rgb_gainmap_roundtrip_status() -> tuple[bool, str]:
 
 _ROUNDTRIP_BAND_ROWS = 512  # multiple of 8 so block means never straddle bands
 
+# The writer and reader both use linear Display P3. Share the exact project
+# luminance row with the native scanner rather than duplicating coefficients.
+_HDR_LUMA_WEIGHTS = output_luma_weights("p3")
+
+
+def _hdr_luma_block_errors(a: Any, e: Any) -> tuple[Any, float]:
+    """Non-cancelling luminance loss, including partial right/bottom blocks.
+
+    Whole-block MAE detects texture erasure. A separate maximum, conditioned on
+    pixels above reference white in either image, detects sparse missing/spurious
+    highlights independently of their fraction of the complete photograph.
+    """
+    w = _HDR_LUMA_WEIGHTS
+    ya = (a[..., 0] * w[0] + a[..., 1] * w[1]) + a[..., 2] * w[2]
+    ye = (e[..., 0] * w[0] + e[..., 1] * w[1]) + e[..., 2] * w[2]
+    error = np.abs(ya - ye)
+    mass = np.abs(ye)
+    mask = (np.max(a, axis=2) > 1.0) | (np.max(e, axis=2) > 1.0)
+    ys, xs = np.arange(0, ya.shape[0], 8), np.arange(0, ya.shape[1], 8)
+
+    def sums(v: Any) -> Any:
+        return np.add.reduceat(
+            np.add.reduceat(v, xs, axis=1, dtype=np.float64),
+            ys, axis=0, dtype=np.float64,
+        )
+
+    counts = np.minimum(8, ya.shape[0] - ys)[:, None] * np.minimum(8, ya.shape[1] - xs)
+    block = sums(error) / np.maximum(sums(mass), 0.05 * counts)
+    highlighted = sums(np.where(mask, error, 0.0)) / np.maximum(
+        sums(np.where(mask, mass, 0.0)), np.maximum(0.05 * sums(mask), 1e-20)
+    )
+    return block.astype(np.float32).reshape(-1), float(np.max(highlighted.astype(np.float32)))
+
 
 def _exact_upper_percentile(top_values: Any, total_count: int, q: float) -> float:
     """np.percentile('linear') for an upper quantile from the retained top-K order stats.
@@ -249,6 +284,8 @@ def _invalid_hdr_roundtrip() -> dict[str, float]:
         "block_p95_relative_error": float("inf"),
         "block_p99_relative_error": float("inf"),
         "block_chroma_error": float("inf"),
+        "block_p95_luma_error": float("inf"),
+        "highlight_max_luma_error": float("inf"),
     }
 
 
@@ -260,7 +297,7 @@ def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
     if native is not None and expanded.shape == intended.shape:
         # Stage 1 (2026-09-15): same float32 element math, NumPy's own
         # median/percentile/8x8-mean semantics (tests/test_rust_stage1.py).
-        return {k: float(v) for k, v in native(expanded, intended).items()}
+        return {k: float(v) for k, v in native(expanded, intended, _HDR_LUMA_WEIGHTS.tolist()).items()}
     if expanded.shape != intended.shape or not expanded.size:
         return _invalid_hdr_roundtrip()
 
@@ -273,6 +310,8 @@ def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
     top_k = int(np.ceil(0.01 * total_px * 3)) + 8
     chroma_top = np.empty(0, dtype=np.float32)
     chroma_count = 0
+    luma_blocks = []
+    highlight_max = 0.0
 
     h8 = height - height % 8
     w8 = width - width % 8
@@ -289,6 +328,11 @@ def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
         e = intended[row0:row1].astype(np.float32).reshape(-1, 3)
         if not (np.isfinite(a).all() and np.isfinite(e).all()):
             return _invalid_hdr_roundtrip()
+        lb, hm = _hdr_luma_block_errors(
+            a.reshape(row1 - row0, width, 3), e.reshape(row1 - row0, width, 3)
+        )
+        luma_blocks.append(lb)
+        highlight_max = max(highlight_max, hm)
         # Normalize one RGB-vector error by that pixel's strongest intended component. A
         # tiny secondary channel must not turn a sub-code JPEG error into a huge percent.
         e_peak = np.max(np.abs(e), axis=1)
@@ -363,6 +407,8 @@ def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
         "block_p95_relative_error": block_p95,
         "block_p99_relative_error": block_p99,
         "block_chroma_error": block_chroma_p99,
+        "block_p95_luma_error": float(np.percentile(np.concatenate(luma_blocks), 95.0)),
+        "highlight_max_luma_error": highlight_max,
     }
 
 
@@ -376,6 +422,9 @@ def _hdr_roundtrip_is_acceptable(
     kept alongside them because 8x8 block means average over the same grid 4:2:0
     subsamples chroma on, making them nearly blind to exactly that loss; per-profile
     limits state how much pixel-scale chroma damage each delivery contract accepts.
+    Luminance MAE is averaged AFTER taking absolute differences, and local HDR
+    pixels have a separate worst-block gate: neither zero-mean texture loss nor
+    sparse highlight loss may disappear into a block mean/global percentile.
     """
     return bool(
         metrics["block_median_relative_error"]
@@ -386,6 +435,8 @@ def _hdr_roundtrip_is_acceptable(
         <= tolerances.hdr_block_p99_relative_error
         and metrics["block_chroma_error"] <= tolerances.hdr_block_chroma_error
         and metrics["chroma_error"] <= tolerances.hdr_pixel_chroma_error
+        and metrics.get("block_p95_luma_error", float("inf")) <= tolerances.hdr_block_p95_luma_error
+        and metrics.get("highlight_max_luma_error", float("inf")) <= tolerances.hdr_highlight_max_luma_error
     )
 
 
@@ -632,12 +683,12 @@ def write_apple_gainmap_jpeg(
     hdr_headroom_ev: float,
     *,
     delivery: DeliveryProfile | None = None,
-    chroma: str = "444",
+    chroma: str | None = None,
     _verify_roundtrip_capability: bool = True,
 ) -> dict[str, Any]:
     """Write and validate a Display P3 JPEG carrying an ISO 21496-1 gain map."""
-    profile = delivery or profile_from_encode_settings(
-        int(quality), str(chroma), container="jpeg"
+    profile = delivery or hdr_profile_from_encode_settings(
+        int(quality), chroma, container="jpeg"
     )
     profile = reprofile_for_container(profile, "jpeg")
     return write_apple_gainmap_file(
@@ -658,12 +709,12 @@ def write_apple_gainmap_heic(
     hdr_headroom_ev: float,
     *,
     delivery: DeliveryProfile | None = None,
-    chroma: str = "444",
+    chroma: str | None = None,
     _verify_roundtrip_capability: bool = True,
 ) -> dict[str, Any]:
     """Write and validate a Display P3 HEIC carrying an ISO 21496-1 gain map."""
-    profile = delivery or profile_from_encode_settings(
-        int(quality), str(chroma), container="heic"
+    profile = delivery or hdr_profile_from_encode_settings(
+        int(quality), chroma, container="heic"
     )
     profile = reprofile_for_container(profile, "heic")
     return write_apple_gainmap_file(
@@ -686,7 +737,7 @@ def write_apple_gainmap_file(
     _verify_roundtrip_capability: bool = True,
 ) -> dict[str, Any]:
     """Write JPEG or HEIC ISO gain-map packaging from finished formation masters."""
-    profile = delivery
+    profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
     quality = int(profile.quality)
     tolerances = profile.tolerances
     container = str(profile.container)
@@ -807,6 +858,12 @@ def write_apple_gainmap_file(
             raise RuntimeError(
                 f"HDR {label} 主图未保持 4:4:4：{info['chroma_subsampling'] or '未知'}"
             )
+        expected_chroma = ":".join(profile.chroma)
+        if info["chroma_subsampling"] != expected_chroma:
+            raise RuntimeError(
+                f"HDR {label} 主图采样与请求不符："
+                f"请求 {expected_chroma}，实际 {info['chroma_subsampling'] or '未知'}；已丢弃该文件"
+            )
         fmt = str(info["gainmap_pixel_format"] or "")
         if fmt in ("", "L008"):
             raise RuntimeError(
@@ -853,6 +910,8 @@ def write_apple_gainmap_file(
                 f"{roundtrip['block_p95_relative_error']:.4f}/"
                 f"{roundtrip['block_p99_relative_error']:.4f}，"
                 f"8x8色品p99={roundtrip['block_chroma_error']:.4f}；已丢弃该文件"
+                f"（块内亮度绝对误差p95={roundtrip['block_p95_luma_error']:.4f}，"
+                f"局部HDR亮度误差max={roundtrip['highlight_max_luma_error']:.4f}）"
             )
         os.replace(temp_path, out_path)
         info["gainmap_as_rgb"] = True

@@ -17,6 +17,7 @@ from dngscan.delivery import (
     DeliveryProfile,
     reprofile_for_container,
     resolve_delivery_profile,
+    resolve_hdr_chroma,
 )
 from dngscan.gainmap import apple_gainmap_backend_status, write_apple_gainmap_jpeg
 from dngscan._deps import np
@@ -95,12 +96,34 @@ class DeliveryProfileTests(unittest.TestCase):
         for extra in (
             ["--chroma", "422"],
             ["--delivery-profile", "share", "--chroma", "444"],
+            ["--delivery-profile", "share", "--jpeg-quality", "100", "--chroma", "420"],
+            ["--jpeg-quality", "100", "--chroma", "420"],
         ):
             with self.subTest(extra=extra):
                 with self.assertRaises(SystemExit):
                     parse_args(
                         ["photo.dng", "--output-format", "ultrahdr", *extra]
                     )
+
+    def test_hdr_sampling_follows_quality_even_under_share(self) -> None:
+        for output in ("ultrahdr", "ultrahdr-heic"):
+            for q, expected in ((100, "444"), (99, "420"), (90, "420")):
+                for explicit in (False, True):
+                    args = ["photo.dng", "--output-format", output,
+                            "--delivery-profile", "share", "--jpeg-quality", str(q)]
+                    if explicit:
+                        args += ["--chroma", expected]
+                    result = parse_args(args)
+                    self.assertEqual(result.chroma, expected)
+                    self.assertEqual(result.delivery.name, "share")
+        # The same q100/420 combination remains meaningful with Pillow's SDR codec.
+        self.assertEqual(parse_args(["photo.dng", "--jpeg-quality", "100", "--chroma", "420"]).chroma, "420")
+
+    def test_shared_resolver_refuses_explicit_conflicts(self) -> None:
+        profile = resolve_delivery_profile("share", quality=100)
+        self.assertEqual(resolve_hdr_chroma(profile, explicit_chroma=None).chroma, "444")
+        with self.assertRaises(ValueError):
+            resolve_hdr_chroma(profile, explicit_chroma="420")
 
     def test_share_heic_gets_its_own_calibration(self) -> None:
         jpeg = resolve_delivery_profile("share", container="jpeg")

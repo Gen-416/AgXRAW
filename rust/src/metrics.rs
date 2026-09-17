@@ -107,6 +107,8 @@ pub struct HdrRoundtrip {
     pub block_p95_relative_error: f64,
     pub block_p99_relative_error: f64,
     pub block_chroma_error: f64,
+    pub block_p95_luma_error: f64,
+    pub highlight_max_luma_error: f64,
 }
 
 impl HdrRoundtrip {
@@ -122,6 +124,8 @@ impl HdrRoundtrip {
             block_p95_relative_error: f64::INFINITY,
             block_p99_relative_error: f64::INFINITY,
             block_chroma_error: f64::INFINITY,
+            block_p95_luma_error: f64::INFINITY,
+            highlight_max_luma_error: f64::INFINITY,
         }
     }
 }
@@ -146,6 +150,10 @@ struct HdrBand {
     chroma: Vec<f32>,
     block_rel: Vec<f32>,
     block_chroma: Vec<f32>,
+    luma_blocks: Vec<f32>,
+    highlight_max: f32,
+    // Five f64 sums per 8-column group, reused for each 8-row strip.
+    luma_sums: Vec<[f64; 5]>,
 }
 
 const BAND_ROWS: usize = 512; // multiple of 8, like gainmap._ROUNDTRIP_BAND_ROWS
@@ -159,6 +167,7 @@ fn hdr_band(
     row1: usize,
     relative: &mut [f32],
     band: &mut HdrBand,
+    luma: &[f32; 3],
 ) -> bool {
     let px = |buf: ArrayView3<'_, f16>, y: usize, x: usize| -> [f32; 3] {
         [buf[[y, x, 0]].to_f32(), buf[[y, x, 1]].to_f32(), buf[[y, x, 2]].to_f32()]
@@ -166,7 +175,12 @@ fn hdr_band(
     band.chroma.clear();
     band.block_rel.clear();
     band.block_chroma.clear();
+    band.luma_blocks.clear();
+    band.highlight_max = 0.0;
     for y in row0..row1 {
+        if (y - row0) % 8 == 0 {
+            band.luma_sums.fill([0.0; 5]);
+        }
         for x in 0..w {
             let a = px(expanded, y, x);
             let e = px(intended, y, x);
@@ -180,6 +194,27 @@ fn hdr_band(
             relative[(y - row0) * w + x] = d / (if e_peak > 0.05 { e_peak } else { 0.05 });
             if e_peak > 0.05 {
                 band.chroma.extend_from_slice(&chroma_terms(a, e));
+            }
+            let ya = (a[0] * luma[0] + a[1] * luma[1]) + a[2] * luma[2];
+            let ye = (e[0] * luma[0] + e[1] * luma[1]) + e[2] * luma[2];
+            let error = (ya - ye).abs() as f64;
+            let mass = ye.abs() as f64;
+            let sums = &mut band.luma_sums[x / 8];
+            sums[0] += error;
+            sums[1] += mass;
+            if max3(a[0], a[1], a[2]) > 1.0 || max3(e[0], e[1], e[2]) > 1.0 {
+                sums[2] += error;
+                sums[3] += mass;
+                sums[4] += 1.0;
+            }
+        }
+        if (y - row0 + 1) % 8 == 0 || y + 1 == row1 {
+            let rows = (y - row0) % 8 + 1;
+            for (bx, sums) in band.luma_sums.iter().enumerate() {
+                let count = rows * (w - bx * 8).min(8);
+                band.luma_blocks.push((sums[0] / sums[1].max(0.05 * count as f64)) as f32);
+                let highlight = (sums[2] / sums[3].max((0.05 * sums[4]).max(1e-20))) as f32;
+                band.highlight_max = band.highlight_max.max(highlight);
             }
         }
     }
@@ -215,6 +250,7 @@ pub fn hdr_roundtrip(
     intended: ArrayView3<'_, f16>,
     h: usize,
     w: usize,
+    luma: &[f32; 3],
 ) -> Result<HdrRoundtrip, String> {
     let total = h * w;
     let h8 = h - h % 8;
@@ -235,6 +271,9 @@ pub fn hdr_roundtrip(
             chroma: Vec::with_capacity(band_chroma),
             block_rel: Vec::with_capacity(band_rows / 8 * (w8 / 8)),
             block_chroma: Vec::with_capacity(band_rows / 8 * (w8 / 8) * 3),
+            luma_blocks: Vec::with_capacity(band_rows.div_ceil(8) * w.div_ceil(8)),
+            highlight_max: 0.0,
+            luma_sums: vec![[0.0; 5]; w.div_ceil(8)],
         })
         .collect();
     // Allocate once and reuse across batches, including the merge space.
@@ -244,6 +283,8 @@ pub fn hdr_roundtrip(
     let mut chroma_count = 0usize;
     let mut block_rel = Vec::with_capacity(h8 / 8 * (w8 / 8));
     let mut block_chroma = Vec::with_capacity(h8 / 8 * (w8 / 8) * 3);
+    let mut luma_blocks = Vec::with_capacity(h.div_ceil(8) * w.div_ceil(8));
+    let mut highlight_max = 0.0f32;
     let mut chunks = relative.chunks_mut(band_rows * w).enumerate();
     loop {
         let batch: Vec<(usize, &mut [f32])> = chunks.by_ref().take(band_count).collect();
@@ -256,7 +297,7 @@ pub fn hdr_roundtrip(
             let r0 = bi * band_rows;
             hdr_band(
                 expanded, intended, w, w8, r0, (r0 + band_rows).min(h),
-                chunk, &mut scratch[0],
+                chunk, &mut scratch[0], luma,
             )
         } else {
             std::thread::scope(|s| {
@@ -265,7 +306,7 @@ pub fn hdr_roundtrip(
                     .map(|((bi, chunk), band)| {
                         let r0 = bi * band_rows;
                         s.spawn(move || hdr_band(
-                            expanded, intended, w, w8, r0, (r0 + band_rows).min(h), chunk, band,
+                            expanded, intended, w, w8, r0, (r0 + band_rows).min(h), chunk, band, luma,
                         ))
                     })
                     .collect();
@@ -282,6 +323,8 @@ pub fn hdr_roundtrip(
             retain_top_k(&mut chroma_top, &band.chroma, top_k);
             block_rel.extend_from_slice(&band.block_rel);
             block_chroma.extend_from_slice(&band.block_chroma);
+            luma_blocks.extend_from_slice(&band.luma_blocks);
+            highlight_max = highlight_max.max(band.highlight_max);
         }
     }
     drop(scratch);
@@ -319,6 +362,8 @@ pub fn hdr_roundtrip(
         block_p95_relative_error: bp95,
         block_p99_relative_error: bp99,
         block_chroma_error: bchroma,
+        block_p95_luma_error: percentile_f32(&mut luma_blocks, 95.0) as f64,
+        highlight_max_luma_error: highlight_max as f64,
     })
 }
 

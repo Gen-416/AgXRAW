@@ -94,6 +94,10 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   行主序顺序 float32 累加再 /64)由实验钉死并在 tests/test_rust_stage1.py 里复刻;
   底图回读的两项 float64 求和按 band 顺序累加而非 NumPy 的 pairwise,是声明的末位差。
   实测 24 MP:SDR 10 s→7 s,HDR 15.7 s→约 11.5 s,导出 JPEG 逐字节不变。
+  **2026-09-17 回读验证补强（ABI v12）**:HDR 扫描增加块内绝对亮度误差和局部
+  高光最大误差，计算融合进已有 Rust 扫描，不分配全图亮度平面。绑定额外接收
+  项目 P3 亮度权重；旧 ABI 自动拒用。公式、反例和实测门槛见
+  [HDR 编码回读验证](HDR_DELIVERY_VALIDATION.zh-CN.md)。
   **Stage 2(同日)**:film_optics 的空间算子搬进 Rust——面积降采样/上采样、slab 高斯与
   5-tap 小 σ 模糊、halation 门/逐点回注/分量源、bloom 门/源/应用、散射混合、颗粒场
   采样(不复制主场,旋转几何按转置索引)、密度颗粒 v1/v2、halation 回注。参考平台

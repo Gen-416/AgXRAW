@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! `dngscan._dngscan_fast` — the optional native kernels, ported from the
-//! pybind11 C++ extension (2026-09) with the same module API and ABI: the
-//! Python side (dngscan/_fast.py, dngscan/fast_plan.py) is unchanged. Every
+//! pybind11 C++ extension (2026-09). The versioned API is checked by the
+//! Python side (dngscan/_fast.py, dngscan/fast_plan.py). Every
 //! kernel replicates the NumPy reference's float32 operation order; the parity
 //! gates are tests/test_fast_backend.py, tests/test_hdr_native.py and
 //! tests/test_film_appearance_p10.py.
@@ -27,9 +27,9 @@ use std::sync::atomic::Ordering;
 /// Native ABI version. v8: exact float64 two-stage output matrices; v9
 /// (#136): HDR per-pixel peak-proximity confidence; v10 (batch 25): HDR
 /// output stage float64; v11 (math review 2026-09-03): inset/outset and the
-/// punch/Oklab matrices of both kernels exact float64. The Rust port keeps
-/// v11 — same plan attributes, same results.
-pub const NATIVE_ABI_VERSION: i32 = 11;
+/// punch/Oklab matrices of both kernels exact float64. v12 adds the P3
+/// luminance row and local luminance metrics to the HDR delivery scanner.
+pub const NATIVE_ABI_VERSION: i32 = 12;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -711,6 +711,7 @@ fn hdr_roundtrip_metrics<'py>(
     py: Python<'py>,
     expanded: &Bound<'py, PyAny>,
     intended: &Bound<'py, PyAny>,
+    luma_weights: [f32; 3],
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = as_f16_array(py, expanded)?;
     let e = as_f16_array(py, intended)?;
@@ -726,7 +727,7 @@ fn hdr_roundtrip_metrics<'py>(
     let ad = aro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
     let ed = ero.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
     let r = py
-        .detach(|| metrics::hdr_roundtrip(ad, ed, sa[0], sa[1]))
+        .detach(|| metrics::hdr_roundtrip(ad, ed, sa[0], sa[1], &luma_weights))
         .map_err(PyValueError::new_err)?;
     let d = PyDict::new(py);
     d.set_item("chroma_error", r.chroma_error)?;
@@ -739,6 +740,8 @@ fn hdr_roundtrip_metrics<'py>(
     d.set_item("block_p95_relative_error", r.block_p95_relative_error)?;
     d.set_item("block_p99_relative_error", r.block_p99_relative_error)?;
     d.set_item("block_chroma_error", r.block_chroma_error)?;
+    d.set_item("block_p95_luma_error", r.block_p95_luma_error)?;
+    d.set_item("highlight_max_luma_error", r.highlight_max_luma_error)?;
     Ok(d)
 }
 
