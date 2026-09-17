@@ -172,7 +172,7 @@ class SeedProductionPathTests(unittest.TestCase):
         self.assertLess(
             resolve, auto,
             "the seed must be resolved BEFORE the auto-EV branch (int(None) "
-            "crashed every film preset under 亮度参考)",
+            "crashed every film preset under 自动曝光)",
         )
 
     def test_balanced_entries_inherit_the_base_realization(self) -> None:

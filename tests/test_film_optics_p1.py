@@ -216,7 +216,7 @@ class CompilerTests(unittest.TestCase):
             scene.bundle, scene.analysis, "agx",
             tone_plan=_plan(film_grain=0.5, film_halation=0.4),
         )
-        self.assertIn("模拟光学", note)
+        self.assertIn("颗粒与光晕", note)
         self.assertIn(fa.DEFAULT_STOCK_OPTICS, note)
         self.assertIn("halation DC=residual", note)
 

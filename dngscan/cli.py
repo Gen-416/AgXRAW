@@ -147,7 +147,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_HDR_DRT,
         help="HDR display rendering transform（当前仅 agx=dngscan 对 darktable AgX formation 的 HDR 扩展）",
     )
-    # HDR latitude 旋钮（taste-to-dial,2026-08-14 owner 决策）:默认 auto 保持
+    # HDR 高级选项（taste-to-dial,2026-08-14 owner 决策）:默认 auto 保持
     # 数学化政策默认逐位不变;显式值覆盖 normal 与 sparse-emitter 两档。证据
     # 门控(多通道剪切/尾部SNR/色域压力/解码器cap)是测量逻辑,不开旋钮。
     parser.add_argument(
@@ -155,7 +155,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="auto",
         metavar="R|auto",
         help=(
-            "HDR 高光逐通道色度自由度基准 [0,1](仅 HDR 格式):证据置信满格时"
+            "HDR 高光逐通道高光保色基准 [0,1](仅 HDR 格式):证据置信满格时"
             "允许的 rho;auto(默认)=政策值 0.5。证据门控仍然乘算,不受此旋钮绕过"
         ),
     )
@@ -235,7 +235,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ("midtone-contrast", "中间调对比偏置 -1..1"),
         ("shadow-transition", "暗部过渡 -1..1（正=趾部更开）"),
         ("highlight-transition", "高光过渡 -1..1（正=肩部更柔）"),
-        ("highlight-fade", "高光褪色 -1..1（显示端色度退让）"),
+        ("highlight-fade", "高光褪色 -1..1（显示端高光降饱和）"),
     ):
         parser.add_argument(f"--{_flag}", type=float, default=0.0, help=_help)
     parser.add_argument(
@@ -244,7 +244,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="adaptive",
         help=(
             "曲线端点策略：adaptive=场景百分位自适应（默认，现状）；"
-            "evidence=端点钉在证据界——黑端点=实测噪声底 EV（有传感器先验用先验读出噪声，"
+            "evidence=端点钉在传感器实测范围——黑端点=实测噪声底 EV（有传感器先验用先验读出噪声，"
             "无先验用单帧估计并注记），白端点只信可靠 RAW 尾部（保留最低白点地板；"
             "证据缺席时如实回退自适应并注记）。pivot 锚定不变（0EV→18%%）"
         ),
@@ -254,7 +254,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=float,
         default=0.0,
         help=(
-            "趾部收黑点 EV 偏移 -3..+0.5（0=现状）。负值把曲线落到近黑的 EV 下移，"
+            "暗部收黑点 EV 偏移 -3..+0.5（0=现状）。负值把曲线落到近黑的 EV 下移，"
             "让更深的阴影保持可读、更晚坠向黑点；通过重解 toe 形状实现，"
             "不移动黑点、白点与 pivot 锚"
         ),
@@ -266,7 +266,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=float,
         default=0.0,
         help=(
-            "肩部收白点 EV 偏移 -2..+3（0=现状）。控制曲线升到近白参考"
+            "高光收白点 EV 偏移 -2..+3（0=现状）。控制曲线升到近白参考"
             "（黑地板到白点跨度的 90%%）的场景 EV：正值推迟收白——高光层次更晚合并、"
             "滚降更柔；负值提早收白、肩部更硬。通过重解肩部曲率实现，"
             "不移动黑点、白点、肩部起点与曝光锚；超出可达范围的请求钳到最软/最硬"
@@ -278,7 +278,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=AGX_PRIMARIES_CLI_CHOICES,
         default=None,
         help=(
-            "仅 tone-core=agx 的 AgX 原色几何：base=固定版本 darktable scene 默认；"
+            "仅 tone-core=agx 的 AgX 色彩浓淡：base=固定版本 darktable scene 默认；"
             "smooth=darktable smooth；punchy/muted=纯度变化参考。默认 base；显式给出"
             "的值总是生效——包括显式的 base（胶片风格配对只填充未给出的层）"
         ),
@@ -357,7 +357,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=FILM_CURVE_CHOICES,
         default="none",
         help=(
-            "胶片观察位置组合预设：一次展开三层独立声明（WB 5500k + 对应光谱前馈 + "
+            "胶片型号组合预设：一次展开三层独立声明（WB 5500k + 对应胶片感色 + "
             "对应曲线预设）。任何显式给出的单层参数优先于组合展开；没有烘焙，"
             "三层随时可单独调整"
         ),
@@ -378,7 +378,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "胶片分工模式（仅在胶片曲线激活时有意义）。observe=胶片声明观察者看见了"
             "什么（WB/分离/音调签名），颜色由 AgX 显影（默认，已验证路径）；"
             "full=胶片显影链整体接管（film v2 因式分解链：Stage A 观察者（3×3 或"
-            "色度场修正 LUT，按卷选定）→三层乳剂→特性曲线→染料密度；Stage B——B1→印相 timing τ→"
+            "色度场修正 LUT，按卷选定）→三层乳剂→特性曲线→染料密度；Stage B——B1→印相曝光方式 τ→"
             "相纸显影曲线→B2 观看），AgX 只保留交付端色域安全。仅 AgX "
             "tone core;色头在 --film-print-timing custom 下解锁(modelled Δτ);"
             "Ultra HDR 下 full 以\"胶片印相+scene HDR 扩展\"参与"
@@ -390,7 +390,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "胶片层间漂移（crossover）声明开关，仅 --film-mode full 有意义"
-            "（其余组合零改变）。off=数字中性化变体（默认）：因式分解链的输出按"
+            "（其余组合零改变）。off=全程中性化变体（默认）：因式分解链的输出按"
             "像素亮度曝光除以随包的有界中性染色曲线，介质灰阶偏中性两档以内严格"
             "中性；datasheet=光谱链原样：中灰由印相求解锚定，暗部/亮部按层间"
             "数据漂移（如 Velvia 阴影温和偏冷）——量级未经外部 oracle 裁决"
@@ -413,7 +413,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("fixed", "retimed", "custom"),
         default="fixed",
         help=(
-            "film v2 印相 timing:fixed=沿用 EV0 联合求解的 tau(0)(默认);"
+            "film v2 印相曝光方式:fixed=沿用 EV0 联合求解的 tau(0)(默认);"
             "retimed=随胶片曝光从 0.25EV 表插值 tau(E)(全部负片;反转片无印相"
             "一律拒绝);custom=手动印相——tau(0)+印相曝光+色头 Δτ(paper-layer "
             "exposure model 内解析,标 modelled,需配 --film-neutralization "
@@ -428,9 +428,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
         default=None,
         help=(
-            "film v2 灰阶中性化(与 timing 正交;不指定时按 --film-appearance 解析:"
+            "film v2 灰阶校色(与 timing 正交;不指定时按 --film-appearance 解析:"
             "technical→technical-neutral,reference/custom→print-balanced):technical-neutral=逐像素有界"
-            "数字中性;print-balanced=只在 EV0 解常数 balance,保留灰阶"
+            "全程中性;print-balanced=只在 EV0 解常数 balance,保留灰阶"
             "两端 crossover(参考印相推荐);native=不做校正,介质原样。"
             "bounded/datasheet 为弃用别名(=technical-neutral/native)。"
             "与已弃用的 --film-crossover 同时给出时硬失败"
@@ -441,7 +441,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="",
         metavar="ID",
         help=(
-            "film v2 印相介质(仅 full;空=该卷默认配对)。已烘焙的跨介质配对:"
+            "film v2 印相材料(仅 full;空=该卷默认配对)。已烘焙的跨介质配对:"
             "portra400 另有 kodak_supra_endura__translated,vision3250d 另有 "
             "kodak_2393__translated;未烘焙的介质报错"
         ),
@@ -458,7 +458,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("declared", "off", "custom"),
         default="declared",
         help=(
-            "film v2 层间放大(仅 full):declared=该卷声明的 modelled beta(默认,"
+            "film v2 层间效应(仅 full):declared=该卷声明的 modelled beta(默认,"
             "数学口径);off=纯光谱底座(oracle 认证口径,调试用);custom=显式 "
             "--film-interimage-beta(taste-to-dial)"
         ),
@@ -468,7 +468,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         metavar="B",
         help=(
-            "层间放大 beta [0,1.5],仅 --film-interimage custom 下有效"
+            "层间效应 beta [0,1.5],仅 --film-interimage custom 下有效"
             "(声明表范围 0.32-1.05;0=等效 off)"
         ),
     )
@@ -477,7 +477,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("technical", "reference", "custom"),
         default="technical",
         help=(
-            "胶片解释(仅 full):technical=光谱链本体(默认);reference=参考印相"
+            "成片调色(仅 full):technical=光谱链本体(默认);reference=参考印相"
             "外观层(缺 recipe 的卷硬失败);custom=reference+三个有界修饰"
         ),
     )
@@ -502,7 +502,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=1.0,
         metavar="S",
         help=(
-            "参考印相强度 0..3(仅 reference;0=palette 严格恒等——灰阶中性化"
+            "参考印相强度 0..3(仅 reference;0=palette 严格恒等——灰阶校色"
             "仍按解释声明解析,要连灰轴一起回 technical 基线请切"
             " --film-appearance technical 或显式 --film-neutralization)"
         ),
@@ -512,8 +512,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("reference", "extended"),
         default="reference",
         help=(
-            "解释变体(仅 reference/custom):reference=印相解读(默认);"
-            "extended=scan/telecine 对照解读——同家族方向 0.6 幅度,灰轴数字中性"
+            "调色版本(仅 reference/custom):reference=印相解读(默认);"
+            "extended=scan/telecine 对照解读——同家族方向 0.6 幅度,灰轴全程中性"
             "(recipe 声明 technical-neutral,编译器默认随之);缺资产的卷硬失败"
         ),
     )
@@ -522,7 +522,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("measured_default", "editorial_custom"),
         default="measured_default",
         help=(
-            "film v2 显影配方(仅 full):measured_default=测量曲线锁定(默认);"
+            "film v2 冲洗方式(仅 full):measured_default=测量曲线锁定(默认);"
             "editorial_custom=解锁 --film-dev-* 有界扰动(报告如实标注编辑显影;"
             "与 retimed timing、bounded 中性化互斥——二者按 measured 显影求解)"
         ),
@@ -533,7 +533,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0.0,
         metavar="D",
         help=(
-            "film v2 显影对比扰动 [-0.5,0.5]:绕中灰锚缩放特性曲线的 logE 轴"
+            "film v2 冲洗反差扰动 [-0.5,0.5]:绕中灰锚缩放特性曲线的 logE 轴"
             "(推/拉冲的对比维度;中灰不漂由构造保证);需 editorial_custom"
         ),
     )
@@ -553,7 +553,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0.0,
         metavar="D",
         help=(
-            "film v2 显影色密度扰动 [-0.5,0.5]:绕中灰锚缩放染料量幅度"
+            "film v2 染料浓度扰动 [-0.5,0.5]:绕中灰锚缩放染料量幅度"
             "(显影出的染料 yield;中灰不漂);需 editorial_custom"
         ),
     )
@@ -573,7 +573,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=float,
         default=2.0,
         metavar="EV",
-        help="film v2 压缩 knee(中灰之上 EV,[0,6];默认 2.0;仅压缩>0 时有意义)",
+        help="film v2 压缩起点(中灰之上 EV,[0,6];默认 2.0;仅压缩>0 时有意义)",
     )
     parser.add_argument(
         "--film-highlight-density",
@@ -581,7 +581,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0.0,
         metavar="RHO",
         help=(
-            "film v2 高光色密度 rho [0,2]:被压缩的高光按 C'=C·exp(-ρd) 向"
+            "film v2 高光褪色 rho [0,2]:被压缩的高光按 C'=C·exp(-ρd) 向"
             "保亮度中性收敛(负片高光染料密度趋满的观感);需压缩>0"
         ),
     )
@@ -614,7 +614,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="A",
         help=(
             "film v2 捕获辉光 [0,1](仅 full;声明为 editorial):进乳剂前的"
-            "加性眩光,作用于场景线性光——非守恒介质散射(介质自身的散射由 "
+            "加性眩光,作用于场景线性光——非守恒介质柔化(介质自身的散射由 "
             "--film-media-scatter 声明,不走这个滑杆);0=严格恒等"
         ),
     )
@@ -623,7 +623,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=("declared", "off"),
         default="declared",
         help=(
-            "film v2 介质散射策略(仅 full;审查R1第4项):乳剂散射(§5.1)与"
+            "film v2 介质柔化策略(仅 full;审查R1第4项):乳剂散射(§5.1)与"
             "相纸成像散射(§6.2)是所声明介质的属性而非观感量,独立于观感滑杆"
             "启用。declared(默认)=按编译 profile 应用;off=关闭(算子隔离"
             "测量口径)"
@@ -678,7 +678,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "仅 --decoder coreimage：scene-linear 尺度策略。"
             "aligned=逐文件对齐 LibRaw 解码绿色中位（默认，非自动曝光）；"
-            "unity=保留 Core Image 原生单位；"
+            "unity=保留 Core Image Apple 原始数值；"
             f"measured=旧版固定倍率 1/{COREIMAGE_SCALE_MEASURED_RATIO:.4f}，仅供复现"
         ),
     )
@@ -800,7 +800,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # from the appearance mode (A5 item 6: one resolution point).
     if args.film_print_timing == "custom" and args.film_crossover != "datasheet":
         parser.error(
-            "custom timing 与有界灰阶中性化互斥:手动印相的意义是保留印出的"
+            "custom timing 与有界灰阶校色互斥:手动印相的意义是保留印出的"
             "样子;请配 --film-neutralization native"
         )
     if args.film_development == "measured_default" and (
@@ -817,7 +817,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         # scan-only run cannot carry an invalid declaration silently.
         if args.film_crossover != "datasheet":
             parser.error(
-                "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 "
+                "editorial_custom 显影与有界灰阶校色互斥:cast 曲线按 "
                 "measured 显影求解;请配 --film-neutralization native"
             )
         if args.film_print_timing == "retimed":

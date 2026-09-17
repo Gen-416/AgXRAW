@@ -41,7 +41,7 @@ def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]
 
     if analysis.cfa_cell_supported and math.isfinite(analysis.cell_union_pct):
         if analysis.cell_union_pct <= 0.01:
-            lines.append("高光: RAW 剪切很少，高光重建风险低。")
+            lines.append("高光: RAW 过曝很少，高光重建风险低。")
         elif analysis.cell_ge2_of_clipped_pct >= 50.0:
             lines.append(
                 f"高光: {format_pct(analysis.cell_union_pct)}% CFA cell 剪切，且多通道占比高；细节修复有限。"
@@ -348,7 +348,7 @@ def print_report(
             elif scale_mode == "measured":
                 scale_note = "，尺度=旧版 Sigma fp 固定实测倍率（仅供复现）"
             else:
-                scale_note = "，尺度=Core Image 原生单位（unity）"
+                scale_note = "，尺度=Core Image Apple 原始数值（unity）"
             decoder_label = (
                 f"Core Image/{decoder_version or '?'}"
                 f"{f' · {decoder_runtime}' if decoder_runtime else ''}"
@@ -362,13 +362,13 @@ def print_report(
         else:
             decoder_label = "LibRaw"
             highlight_note = f"高光处理={highlight_mode_cn(bundle.scene_highlight_mode)}"
-        ev_label = "全图亮度参考" if auto_ev is not None else "EV 补偿"
+        ev_label = "全图自动曝光" if auto_ev is not None else "EV 补偿"
         ev_note = (
             f"{ev_label}={jpeg_ev:+.2f}（参考提升 {auto_ev.ev_boost:+.2f} EV）"
             if auto_ev is not None
             else f"EV 补偿={jpeg_ev:+.2f}，固定常数非自适应"
         )
-        brighten_note = "全图亮度参考" if auto_ev is not None else "手动 EV / 固定锚点"
+        brighten_note = "全图自动曝光" if auto_ev is not None else "手动 EV / 固定锚点"
         # BaselineExposure moves every pixel and can be scene-dependent in ProRAW. It is
         # file-authored baseline rendering compensation, not an auto-gray decision or the
         # shutter/aperture/ISO measurement, so name it without calling it capture exposure.
@@ -393,7 +393,7 @@ def print_report(
         )
         if auto_ev is not None:
             anchored = auto_ev.anchored_median_ev
-            print(f"亮度参考校验: 可靠 scene body 中位相对 18% 灰 {anchored:+.2f} EV")
+            print(f"自动曝光校验: 可靠 scene body 中位相对 18% 灰 {anchored:+.2f} EV")
         else:
             anchored = analysis.median_vs_gray_ev + math.log2(max(bundle.exposure_gain, EPS))
             print(
@@ -407,7 +407,7 @@ def print_report(
                 else ""
             )
             print(
-                f"全图亮度参考：提升 {auto_ev.ev_boost:+.2f} EV（相对 EV 0）"
+                f"全图自动曝光：提升 {auto_ev.ev_boost:+.2f} EV（相对 EV 0）"
                 f"{limit_note}；应用 EV={auto_ev.ev:+.2f}"
             )
         print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, 'curve_preset', 'none'), getattr(tone_plan, 'film_mode', 'observe'), chroma)}")
@@ -443,7 +443,7 @@ def jpeg_policy_cn(
                 f"agx·filmfull: scene-linear Rec.2020 工作空间；白平衡按导出"
                 f"选项；跳过胶片前馈（Stage A 的观察者逆矩阵自担分色），场景"
                 f"颜色进入因式分解的胶片链（Stage A 观察者→层曝光→特性密度 "
-                f"→ B1 → 印相 timing → 相纸显影 → B2 → 灰阶中性化 → 可选参考"
+                f"→ B1 → 印相曝光方式 → 相纸显影 → B2 → 灰阶校色 → 可选参考"
                 f"印相外观层），AgX 仅保留交付侧色域安全；"
                 f"最后转 {label}；{_chroma} 色度采样"
             )
@@ -497,7 +497,7 @@ def jpeg_tone_plan_cn(
         }.get(str(getattr(plan, "film_crossover", "off")), "technical-neutral")
         if str(getattr(plan, "film_development", "measured_default")) == "editorial_custom":
             state += (
-                "编辑显影配方(对比{:+.2f}/fog{:+.2f}/色密度{:+.2f})；".format(
+                "编辑冲洗方式(对比{:+.2f}/fog{:+.2f}/色密度{:+.2f})；".format(
                     float(getattr(plan, "film_dev_contrast", 0.0)),
                     float(getattr(plan, "film_dev_fog", 0.0)),
                     float(getattr(plan, "film_dev_density", 0.0)),
@@ -513,7 +513,7 @@ def jpeg_tone_plan_cn(
             )
             rho = float(getattr(plan, "film_highlight_density", 0.0) or 0.0)
             if rho > 0.0:
-                state += f"·高光色密度ρ={rho:.2f}"
+                state += f"·高光褪色ρ={rho:.2f}"
             state += "；"
         _nr = float(getattr(plan, "chroma_nr", 0.0) or 0.0)
         if _nr > 0.0:
@@ -531,12 +531,12 @@ def jpeg_tone_plan_cn(
         if beta > 0.0:
             _im_mode = str(getattr(plan, "film_interimage", "declared") or "declared")
             state += (
-                f"层间放大β={beta:.2f}"
+                f"层间效应β={beta:.2f}"
                 + ("(editorial dial)" if _im_mode == "custom" else "(modelled)")
                 + "；"
             )
         else:
-            state += "层间放大=off(光谱底座)；"
+            state += "层间效应=off(光谱底座)；"
         _app_mode = str(getattr(plan, "film_appearance", "technical") or "technical")
         if _app_mode in ("reference", "custom"):
             # A6 item 5: the report must let a reader AUDIT the appearance —
@@ -571,7 +571,7 @@ def jpeg_tone_plan_cn(
             )
             if val > 0.0
         ]
-        # §12.2 refuses a bare "模拟光学 standard": a reader must be able
+        # §12.2 refuses a bare "颗粒与光晕 standard": a reader must be able
         # to tell which asset produced the halo and how honest each field
         # is without opening the source. The compiled plan owns those
         # answers, so the line is built from it rather than re-derived.
@@ -595,7 +595,7 @@ def jpeg_tone_plan_cn(
                 getattr(plan, "film_media_scatter", "declared") or "declared"
             )
             state += (
-                "模拟光学 " + ("·".join(optics) if optics else "无观感量(仅介质散射)")
+                "颗粒与光晕 " + ("·".join(optics) if optics else "无观感量(仅介质柔化)")
                 + f"·seed={int(rep.get('seed', 0))}"
                 + f"·胶片资产={rep.get('stock_optics', '?')}"
                 + f"(颗粒{prov.get('grain') or '—'}"
@@ -604,7 +604,7 @@ def jpeg_tone_plan_cn(
                 + f"·印相资产={rep.get('print_optics', '?')}"
                 + f"(散射{prov.get('formation_scatter') or '—'}"
                 + f"/颗粒{prov.get('positive_grain') or '—'})"
-                + f"·介质散射={_media}"
+                + f"·介质柔化={_media}"
                 + f"·halation DC={rep.get('halation_dc_mode') or '—'}"
                 + f"·预算档={_optics_budget_mib_report()}MiB；"
             )
@@ -636,7 +636,7 @@ def jpeg_tone_plan_cn(
             f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
             f"→B1→τ→相纸曲线→B2)，{state}"
             f"{_resid}"
-            f"灰阶中性化={neutral}；"
+            f"灰阶校色={neutral}；"
             f"AgX endpoint/contrast/toe/shoulder/punch 不参与（接管核心整体替换 "
             f"formation，仅保留交付侧色域安全）；SDR 印相"
             f"（Ultra HDR 导出时作\"胶片印相+scene HDR 扩展\"的底图）"

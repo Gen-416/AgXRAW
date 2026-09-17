@@ -112,19 +112,19 @@ RenderPlan 先生成一次 transformed sample，`scene_tone_metrics` 与 tone-pl
   float64 场景留在 NumPy——CI 的 macOS 14 Accelerate 对 float64 gemm 的尾行(n mod 8 ≠ 0)
   不走 FMA 链而 macOS 27 全程走,只有末行差 1 ulp,不值得为 2 s 引入平台条件相等)、
   特性曲线 interp(`characteristic_amounts`)、
-  层间放大(`interimage_amplify`,含逐像素中性点)、四面体 LUT(`tetrahedral`)、胶片压缩
+  层间效应(`interimage_amplify`,含逐像素中性点)、四面体 LUT(`tetrahedral`)、高光预压缩
   (`film_compression_ev`)、技术中性 cast 逐像素除法(`cast_divide`)。`amounts_to_unit`
   留在 NumPy(0.4 s,不值一个内核)。新钉住的语义:np.mean(axis=1) 三元是 ((a+b)+c)/3;
   `_tetrahedral` 的 (g−i0) 先升 float64 再转 float32,四个权重 float32 左结合;float32 数组
   `/=` float64 插值结果在 float64 里除后回存 float32;float64 log10/exp2 走 libm;(n,3)@(3,3)
   float64 仍是 k 序 FMA 链。内核按 budget::workers_for 切像素块并行(逐像素映射,切分精确)。
   验收:tests/test_rust_stage3.py 每个内核对 NumPy 原体随机输入 + 全部出厂 stock 的 B1/B2 LUT
-  逐位相同,apply_film_core 负片/反转片、压缩、层间放大 custom、off/print crossover、retimed
+  逐位相同,apply_film_core 负片/反转片、压缩、层间效应 custom、off/print crossover、retimed
   全路径 array_equal;固定种子胶片+光学导出 JPEG 与主树 sha256 相同。实测 24 MP:单独 Stage 3
   胶片 full 12.7→9.8 s、胶片+光学 41→25 s;三阶段叠加胶片+光学 15–17 s(Stage 1 前为 41 s),SDR 8 s。剩余大头是 LibRaw
   解码、`np.add.at` 的 float32 累加与积分图采样——已无单个 Python 阶段超过 2 s。
   **Stage 4(2026-09-17)**:剖析里剩下的两处 NumPy 残留。① halation 预处理 slab 路径
-  (`FilmSpatialContext._layer_exposure_f32`)在未启用胶片压缩时不再先转 float64:float32 行
+  (`FilmSpatialContext._layer_exposure_f32`)在未启用高光预压缩时不再先转 float64:float32 行
   原样交给 Stage A,由它自己升 float64——数值相同,而 float32 场景正是原生内核接受的输入
   (乘积精确、平台无关);启用压缩时场景是真 float64,仍留 NumPy。② `color.apply_rgb_matrix3`
   (float64 乘积、左结合 (a+b)+c、一次舍入到 float32)进 Rust,f32/f64 场景都接,float32 矩阵

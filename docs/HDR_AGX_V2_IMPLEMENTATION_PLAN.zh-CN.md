@@ -1015,7 +1015,7 @@ v2 可以准确描述为：
 
 > 一条独立的、reference-white-relative HDR AgX DRT。它使用 darktable 式 toe 和摄影型主体段，
 > 在 AgX inset 后的逐通道 log-exposure 域中，以可靠 RAW 尾部和显示容量编译独立的 log-stop
-> shoulder；高光最终收敛到扩展白，RAW 剪切和输出色域压力只控制色度权限。Blender HDR LUT
+> shoulder；高光最终收敛到扩展白，RAW 过曝和输出色域压力只控制色度权限。Blender HDR LUT
 > 提供中灰/峰值解耦和高光形状的参考，但运行时不依赖 LUT，也不复制 HLG 编码。
 
 它不是 SDR 成片乘 gain，不是 Blender LUT 移植，也不是 darktable 官方 HDR 模块。它是以

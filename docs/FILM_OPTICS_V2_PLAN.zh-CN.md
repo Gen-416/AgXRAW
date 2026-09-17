@@ -1,4 +1,4 @@
-# Film Optics V2 实现计划：颗粒、Halation、Bloom 与介质散射
+# Film Optics V2 实现计划：颗粒、Halation、Bloom 与介质柔化
 
 > 状态：已落地——P0–P5 全部合并（含 R1 整改；§11.1 已闭账；P5f 细源门
 > 2026-08-31）。本文保留计划原文与各阶段实施记录。
@@ -13,7 +13,7 @@
 > Review 的测量结论是 look 差距不在空间算子——调性上 full 与 observe 的系统 gamma
 > 几乎重合（EV0 1.43 vs 1.36，都在经典负片×相纸系统的 1.5–1.8 区间），缺口在色彩
 > 分离：C-41 印相链的饱和度传递 0.76（observe 1.16，真实光学印相 ≥1.2），根源是链
-> 中声明缺失的 DIR/层间效应。主线因此转向胶片模拟本身（层间放大 + 外观层，见
+> 中声明缺失的 DIR/层间效应。主线因此转向胶片模拟本身（层间效应 + 外观层，见
 > [`FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md`](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md)）。
 > 空间光学保留现有功能与档位，缺陷照修（F1 gate 参考点已修），P4 颗粒重写与 P5
 > 的 halo 行带路径当时暂缓。（后续更新：P4/P5 已于 2026-08-13/14 落地，见下方
@@ -32,7 +32,7 @@
 
 1. 负片乳剂内部散射（emulsion scatter）；
 2. 穿过乳剂和片基后返回的 halation（backing reflection）；
-3. 正片/相纸在曝光与观看时的介质散射（print-medium scatter）；
+3. 正片/相纸在曝光与观看时的介质柔化（print-medium scatter）；
 4. 镜头杂散光与乳剂共同形成、以观感为目标的 bloom/glow。
 
 V2 不再用一个阈值 blur 同时近似这些现象。最终拓扑定为：
@@ -156,11 +156,11 @@ Filmbox 的公开资料确认了两点：
 |---|---|---|
 | Grain | 一份 unit-RMS Gaussian 场，经单一 Gaussian band-limit | 频谱窄、分布接近普通平滑噪声，没有粒子团簇与 dye-cloud 层次 |
 | Grain tone | `sigma = sigma0 * 4*Dn*(1-Dn)` | 在 Dmin/Dmax 被构造为严格 0，也没有正介质颗粒 |
-| Grain profile | 全部胶片共用 `18 um / sigma0=.055 / corr=.35` | 胶片感光度、画幅、负片/反转片和印相介质没有实质区别 |
+| Grain profile | 全部胶片共用 `18 um / sigma0=.055 / corr=.35` | 胶片感光度、画幅、负片/反转片和印相材料没有实质区别 |
 | Halation source | scene Rec.2020 先压成单通道 Y，再硬减阈值 | 光源的层曝光与颜色信息在扩散前丢失，阈值处不光滑 |
 | Halation color | 所有半径共用 `(1,.22,.06)` | 内圈和外圈只有强弱变化，不会自然从橙过渡到红 |
 | Halation radius | 基准 `0.55 mm`，再用 0.5/1/2 倍 Gaussian | 36 mm 宽、6016 px 图像对应约 46/92/184 px sigma，容易成为宽泛红雾 |
-| Bloom | `source -> pyramid blur -> spread-source` | 这是守恒介质散射；高光核心必然变暗，不是常见的可见 glow 语义 |
+| Bloom | `source -> pyramid blur -> spread-source` | 这是守恒介质柔化；高光核心必然变暗，不是常见的可见 glow 语义 |
 | Bloom source | display-linear Y 固定阈值 0.6 | 不识别光源尺寸、背景、曝光可靠性，也不区分相纸/正片/镜头 |
 | Halation DC（R1） | `lin += gain * w_c * spread`，纯加性 | 均匀亮面也被抬亮；特性曲线里已含 DC 反射，等于算两遍。实测整帧红通道 +0.95% |
 | 曝光拓扑（R1） | `ev_offset` 在 `characteristic_amounts` 里才加 | halation 在其之前算完，且 source 直接取 scene Y——改胶片曝光时密度变、空间效果不变 |
@@ -230,7 +230,7 @@ negative grain: D- 形成后、B1 之前
 positive grain: D+ 形成后、B2 之前
 ```
 
-负片最终画面阴影处的颗粒不一定来自负片本身；透明负片使印相介质获得高曝光，正
+负片最终画面阴影处的颗粒不一定来自负片本身；透明负片使印相材料获得高曝光，正
 介质的颗粒会进入最终阴影。V2 不再要求一条负片 `sigma(D)` 单独解释整个成片的颗粒。
 反转片没有印相时只启用自身正片颗粒。
 
@@ -694,7 +694,7 @@ stock、防光晕背层状态、扫描器与曝光。
 
 输出径向图、半能量半径、每层积分能量与残差。只有一张普通照片不能升级为 measured。
 
-### 9.3 Bloom 与介质散射标定
+### 9.3 Bloom 与介质柔化标定
 
 - editorial bloom 用合成 emitter chart 调整，不冒充测量；
 - print formation scatter 需要介质曝光 edge/MTF 或 PSF 数据；
@@ -838,7 +838,7 @@ spread grid 的最大长边**由内存档位决定**（P3 实施变更）：512 
 - 旧 conservative bloom 不自动映射，改名为内部 `legacy_print_scatter`，开发验收后删除。
 
 报告分别写出：stock optics、print-medium optics、editorial bloom、effective seed 和每项
-provenance。不得只输出“模拟光学 standard”。
+provenance。不得只输出“颗粒与光晕 standard”。
 
 ## 13. 分阶段实施
 
@@ -946,7 +946,7 @@ provenance。不得只输出“模拟光学 standard”。
 > 部分行带硬错误；<0.4px 分量精确恒等（预览零开销）。§5.1 挂层曝光（线性域、
 > halation 回注前），§6.2 挂纸曝光（B2 前）；均匀 patch 不变（1e-5），Stage B
 > 标定不受扰。门 13 成立：算子正弦调制=解析传递 3e-2 内；8.8µm/px 行带=全帧
-> oracle 2e-5。③ GUI：模拟光学 profile 摘要从渲染同源资产读 provenance。
+> oracle 2e-5。③ GUI：颗粒与光晕 profile 摘要从渲染同源资产读 provenance。
 > ④ legacy 删除：`legacy_print_scatter` 算子（scatter_source/scatter_spread/
 > bloom_delta_map/bloom_apply_rows）、PrintScatterAsset、资产块与钉其行为的
 > 批 15-20 测试全部移除；再带该块的 print 资产被拒载。P0 blockiness 门反转
@@ -972,12 +972,12 @@ provenance。不得只输出“模拟光学 standard”。
 > ③⑦ 诚实标注（P1/P2）：5207/2383 测量属性对所有 stock/print 无条件套用，
 > 故 grain/乳剂散射/formation/印相颗粒 provenance 全部降为 `derived`，
 > source_notes 重写为 GENERIC profile 声明；用户指南 bloom 表述改为
-> editorial 捕获辉光（旧"守恒介质散射"描述清除）。
-> ④ 介质散射独立启用（P2）：新计划字段 `film_media_scatter`
+> editorial 捕获辉光（旧"守恒介质柔化"描述清除）。
+> ④ 介质柔化独立启用（P2）：新计划字段 `film_media_scatter`
 > （declared/off，失闭校验），FilmSpatialContext 持 media_scatter 并 gate
 > `scatter_halo_rows()` 与两段显影散射；CLI `--film-media-scatter`、GUI
 > service（parse/计划缓存键/像素键/导出指纹全链）、报告行打印乳剂散射
-> provenance 与介质散射状态。报告工具 measure_spread/grain/blockiness
+> provenance 与介质柔化状态。报告工具 measure_spread/grain/blockiness
 > 两侧一律 off 隔离单算子——P5b 曾以"formation scatter 扩散了金字塔阶跃"
 > 反转 P0 blockiness 门，实为散射搭车测量；门已回退为如实记录缺陷
 > （§11.1 NN expand 重新开账，上面 P5 记录第④点的"闭账"表述以此更正）。

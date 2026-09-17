@@ -643,7 +643,7 @@ class FilmOpticsPlan:
     def report(self) -> dict:
         """What the render report must print: which asset, and how honest.
 
-        §12.2 refuses "模拟光学 standard" as a report line. A reader has to be
+        §12.2 refuses "颗粒与光晕 standard" as a report line. A reader has to be
         able to tell a modelled halo radius from a measured one without
         opening the source.
         """

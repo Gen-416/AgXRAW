@@ -214,7 +214,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
       </select>
     </div>
     <div style="flex:1;min-width:140px;display:none" id="coreimageVersionBlock">
-      <label>CI 版本</label>
+      <label>Apple RAW 版本</label>
       <select id="coreimageVersion" title="auto 选择文件支持的最高版本；显式版本在不支持时会报错。">
         <option value="auto">自动</option>
         <option value="9">9</option>
@@ -223,15 +223,15 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
       </select>
     </div>
     <div style="flex:1;min-width:150px;display:none" id="coreimageScaleBlock">
-      <label>CI 尺度</label>
+      <label>Apple RAW 亮度基准</label>
       <select id="coreimageScale" title="Apple RAW 的 scene-linear 尺度：对齐=逐文件对齐 LibRaw 解码（默认）；原生=保留 Core Image 单位；实测=旧的固定补偿。">
-        <option value="aligned">对齐 LibRaw · 默认</option>
-        <option value="unity">原生单位</option>
-        <option value="measured">实测补偿</option>
+        <option value="aligned">与 LibRaw 对齐 · 默认</option>
+        <option value="unity">Apple 原始数值</option>
+        <option value="measured">旧版固定系数</option>
       </select>
     </div>
     <div style="flex:1;min-width:140px" id="clipMarginBlock">
-      <label>剪切回退 DN</label>
+      <label>过曝判定余量 DN</label>
       <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重新解码并分析这张 RAW（数秒）。">
     </div>
     <div class="sliderField" id="chromaNrBlock" style="flex:1;min-width:150px">
@@ -267,7 +267,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
     <div style="flex:1;min-width:160px">
       <label>高光</label>
       <select id="highlight" title="LibRaw 的高光恢复方式；RAW 9 固定使用 Apple 重建。">
-        <option value="clip">保持剪切 · 原始</option>
+        <option value="clip">保持过曝 · 原始</option>
         <option value="blend">通道混合 · 温和</option>
         <option value="reconstruct">邻域重建 · 完整</option>
       </select>
@@ -299,10 +299,10 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
         <button type="button" data-ev="0"><span class="m">0.00</span></button>
         <button type="button" data-ev="0.50"><span class="m">+0.50</span></button>
         <button type="button" data-ev="1.00"><span class="m">+1.00</span></button>
-        <button type="button" id="evReferenceBtn" title="将可靠主体中位对齐 18% 灰，并限制高光溢出。"><span class="m">亮度参考</span></button>
+        <button type="button" id="evReferenceBtn" title="将可靠主体中位对齐 18% 灰，并限制高光溢出。"><span class="m">自动曝光</span></button>
       </div>
       <div class="ctlFact" id="evFact"></div>
-      <canvas id="sceneHist" class="histCanvas" title="可靠场景亮度直方图：EV 相对 18% 灰，与 tone 规划同一采样口径（剔除 RAW 剪切与地板钳制样本）。注记线为编译曲线端点、0 EV 与可靠尾部 p99.99。"></canvas>
+      <canvas id="sceneHist" class="histCanvas" title="可靠场景亮度直方图：EV 相对 18% 灰，与 tone 规划同一采样口径（剔除 RAW 过曝与地板钳制样本）。注记线为编译曲线端点、0 EV 与可靠尾部 p99.99。"></canvas>
     </div>
   </div>
 </div>
@@ -335,20 +335,20 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
   </div>
   <div class="row" style="margin-top:12px">
     <div style="flex:1;min-width:170px">
-      <label title="adaptive=端点追随场景百分位（默认）；evidence=端点钉在证据界：黑端点=实测噪声底 EV（有传感器先验用先验读出噪声），白端点只信可靠 RAW 尾部。pivot 锚定不变（0EV→18%）。">端点模式</label>
+      <label title="adaptive=端点追随场景百分位（默认）；evidence=端点钉在传感器实测范围：黑端点=实测噪声底 EV（有传感器先验用先验读出噪声），白端点只信可靠 RAW 尾部。pivot 锚定不变（0EV→18%）。">黑白点依据</label>
       <select id="endpointMode">
         <option value="adaptive">场景自适应 · 默认</option>
-        <option value="evidence">证据界 · 噪声底/可靠尾部</option>
+        <option value="evidence">传感器实测 · 噪声底/可信高光</option>
       </select>
     </div>
   </div>
   <div class="row" style="margin-top:12px">
     <div class="sliderField">
-      <div class="labelRow"><label title="把曲线落到近黑的 EV 位置下移：让更深的阴影保持可读、更晚坠向黑点；重解趾部形状实现，不移动黑点、白点与曝光锚。">趾部收黑</label><span class="val" id="toeEndOffsetVal">自动</span></div>
+      <div class="labelRow"><label title="把曲线落到近黑的 EV 位置下移：让更深的阴影保持可读、更晚坠向黑点；重解趾部形状实现，不移动黑点、白点与曝光锚。">暗部收黑</label><span class="val" id="toeEndOffsetVal">自动</span></div>
       <input type="range" id="toeEndOffset" min="-3" max="0.5" step="0.05" value="0" title="向左更深的阴影仍可读（更晚收黑），向右更早收黑、暗部更紧。">
     </div>
     <div class="sliderField">
-      <div class="labelRow"><label title="移动曲线升到近白参考（黑地板到白点跨度 90%）的场景 EV：重解肩部曲率实现，不移动黑点、白点与曝光锚。">肩部收白</label><span class="val" id="shoulderWhiteOffsetVal">自动</span></div>
+      <div class="labelRow"><label title="移动曲线升到近白参考（黑地板到白点跨度 90%）的场景 EV：重解肩部曲率实现，不移动黑点、白点与曝光锚。">高光收白</label><span class="val" id="shoulderWhiteOffsetVal">自动</span></div>
       <input type="range" id="shoulderWhiteOffset" min="-2" max="3" step="0.05" value="0" title="向右更晚收白（高光层次更晚合并、滚降更柔），向左更早收白、肩部更硬。">
     </div>
   </div>
@@ -359,7 +359,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
   <div class="secTitle">成像</div>
   <div class="row">
     <div style="flex:1;min-width:190px">
-      <label>胶片观察位置</label>
+      <label>胶片型号</label>
       <select id="film" title="一次设定白平衡、前馈、曲线预设与风格配对；各层随时可单独改。详见 docs/FILM_TUTORIAL。">
         <option value="none">无 · 场景自适应</option>
 FILM_OPTIONS
@@ -387,66 +387,66 @@ FILM_CURVE_OPTIONS
   </div>
   <div class="row" id="filmModeRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
-      <label>显影分工</label>
+      <label>胶片模拟方式</label>
       <select id="filmMode" title="观察=胶片决定看见什么，AgX 显影（默认）；接管=胶片显影链整体接管（乳剂→特性曲线→印相→相纸→观看）。">
-        <option value="observe">观察 · AgX 显影 · 默认</option>
-        <option value="full">接管 · 胶片显影链</option>
+        <option value="observe">胶片风格 · AgX 成像 · 默认</option>
+        <option value="full">完整冲印 · 胶片全流程</option>
       </select>
     </div>
     <div id="filmCrossoverBlock" style="flex:1;min-width:190px;display:none">
-      <label>灰阶中性化</label>
-      <select id="filmNeutralization" title="灰阶怎么回中性：跟随胶片解释（默认）/ 数字中性 / 印相平衡 / 数据手册漂移。仅接管模式。">
-        <option value="auto">跟随胶片解释 · 默认</option>
-        <option value="technical-neutral">数字中性</option>
-        <option value="print-balanced">印相平衡</option>
-        <option value="native">数据手册漂移</option>
+      <label>灰阶校色</label>
+      <select id="filmNeutralization" title="灰阶怎么回中性：跟随成片调色（默认）/ 全程中性 / 只校中灰 / 保留胶片偏色。仅接管模式。">
+        <option value="auto">跟随成片调色 · 默认</option>
+        <option value="technical-neutral">全程中性</option>
+        <option value="print-balanced">只校中灰</option>
+        <option value="native">保留胶片偏色</option>
       </select>
     </div>
     <div id="filmMediumBlock" style="flex:1;min-width:190px;display:none">
-      <label>印相介质</label>
+      <label>印相材料</label>
       <select id="filmPrintMedium" title="印相相纸/介质；默认为该卷的出厂配对，只列已烘焙的介质。"></select>
     </div>
   </div>
   <div class="row" id="filmAppearanceRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
-      <label>胶片解释</label>
-      <select id="filmAppearance" title="技术中和=测量链原样；参考印相=该卷在配对相纸上的调色板（默认）；自定义=参考印相加三个修饰。">
-        <option value="technical">技术中和</option>
+      <label>成片调色</label>
+      <select id="filmAppearance" title="中性还原=测量链原样；参考印相=该卷在配对相纸上的调色板（默认）；自定义=参考印相加三个修饰。">
+        <option value="technical">中性还原</option>
         <option value="reference" selected>参考印相 · 默认</option>
         <option value="custom">自定义</option>
       </select>
     </div>
     <div id="filmAppearanceVariantBlock" style="flex:1;min-width:190px;display:none">
-      <label>解释变体</label>
+      <label>调色版本</label>
       <select id="filmAppearanceVariant" title="参考印相=印相解读（默认）；扫描对照=scan/telecine 解读，仅有资产的卷可选。">
         <option value="reference">参考印相 · 默认</option>
-        <option value="extended">扫描对照 extended</option>
+        <option value="extended">扫描版 extended</option>
       </select>
     </div>
     <div style="flex:1;min-width:190px">
-      <label>层间放大</label>
-      <select id="filmInterimage" title="层间放大：显影耦合对色差的放大。声明=默认；关=光谱基线。">
-        <option value="declared">声明 · 默认</option>
-        <option value="off">关 · 光谱基线</option>
-        <option value="custom">自定义 β</option>
+      <label>层间效应</label>
+      <select id="filmInterimage" title="层间效应：显影耦合对色差的放大。声明=默认；关=光谱基线。">
+        <option value="declared">按胶片数据 · 默认</option>
+        <option value="off">关闭 · 纯光谱</option>
+        <option value="custom">自定义强度</option>
       </select>
     </div>
     <div class="sliderField" id="filmInterimageBetaBlock" style="display:none">
-      <div class="labelRow"><label title="层间放大强度 [0,1.5]；0 等效关。仅自定义 β 档生效。">层间 β</label><span class="val" id="filmInterimageBetaVal">0.60</span></div>
+      <div class="labelRow"><label title="层间效应强度 [0,1.5]；0 等效关。仅自定义强度 档生效。">层间效应强度 β</label><span class="val" id="filmInterimageBetaVal">0.60</span></div>
       <input type="range" id="filmInterimageBeta" min="0" max="1.5" step="0.01" value="0.6">
     </div>
     <div class="sliderField" id="filmAppearanceStrengthBlock" style="display:none">
-      <div class="labelRow"><label title="0=不施加，1=配方声明值，>1 外推（上限 3）。">解释强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
+      <div class="labelRow"><label title="0=不施加，1=配方声明值，>1 外推（上限 3）。">调色强度</label><span class="val" id="filmAppearanceStrengthVal">1.00</span></div>
       <input type="range" id="filmAppearanceStrength" min="0" max="3" step="0.05" value="1">
     </div>
     <div id="filmAppearanceCustom" style="display:none;flex-basis:100%">
       <div class="row">
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="配方颜色丰度修饰。">丰度</label><span class="val" id="filmRichnessVal">0.00</span></div>
+          <div class="labelRow"><label title="配方颜色丰度修饰。">色彩丰富度</label><span class="val" id="filmRichnessVal">0.00</span></div>
           <input type="range" id="filmRichness" min="-1" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="配方色密度修饰（压亮不改饱和）。">色密度</label><span class="val" id="filmColorDensityVal">0.00</span></div>
+          <div class="labelRow"><label title="配方色密度修饰（压亮不改饱和）。">颜色深浅</label><span class="val" id="filmColorDensityVal">0.00</span></div>
           <input type="range" id="filmColorDensity" min="-1" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
@@ -458,38 +458,38 @@ FILM_CURVE_OPTIONS
   </div>
   <div class="row" id="filmDevelopmentRow" style="margin-top:12px;display:none">
     <div style="flex:1;min-width:190px">
-      <label>显影配方</label>
-      <select id="filmDevelopment" title="实测默认=数据手册显影；自定义=对比/灰雾/色密度三个有界扰动（需灰阶中性化=数据手册漂移，不与重定时并用）。">
-        <option value="measured_default">实测默认</option>
-        <option value="editorial_custom">自定义显影</option>
+      <label>冲洗方式</label>
+      <select id="filmDevelopment" title="标准冲洗=数据手册显影；自定义=对比/灰雾/色密度三个有界扰动（需灰阶校色=保留胶片偏色，不与重定时并用）。">
+        <option value="measured_default">标准冲洗</option>
+        <option value="editorial_custom">自定义冲洗</option>
       </select>
     </div>
     <div id="filmDevCustom" style="display:none;flex-basis:100%">
       <div class="row">
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="绕中灰锚缩放特性曲线的 logE 轴 [-0.5, 0.5]。">显影对比</label><span class="val" id="filmDevContrastVal">0.00</span></div>
+          <div class="labelRow"><label title="绕中灰锚缩放特性曲线的 logE 轴 [-0.5, 0.5]。">冲洗反差</label><span class="val" id="filmDevContrastVal">0.00</span></div>
           <input type="range" id="filmDevContrast" min="-0.5" max="0.5" step="0.01" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="三层均匀加密度（化学灰雾）[0, 0.3]，会整体提亮中灰。">显影灰雾</label><span class="val" id="filmDevFogVal">0.00</span></div>
+          <div class="labelRow"><label title="三层均匀加密度（化学灰雾）[0, 0.3]，会整体提亮中灰。">灰雾</label><span class="val" id="filmDevFogVal">0.00</span></div>
           <input type="range" id="filmDevFog" min="0" max="0.3" step="0.01" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="绕中灰锚缩放染料量幅度 [-0.5, 0.5]。">显影色密度</label><span class="val" id="filmDevDensityVal">0.00</span></div>
+          <div class="labelRow"><label title="绕中灰锚缩放染料量幅度 [-0.5, 0.5]。">染料浓度</label><span class="val" id="filmDevDensityVal">0.00</span></div>
           <input type="range" id="filmDevDensity" min="-0.5" max="0.5" step="0.01" value="0">
         </div>
       </div>
     </div>
     <div class="sliderField" style="flex:1;min-width:150px">
-      <div class="labelRow"><label title="乳剂之前对场景亮度 EV 的饱和压缩 [0, 1]；0=关闭。">胶片压缩</label><span class="val" id="filmCompressionVal">0.00</span></div>
+      <div class="labelRow"><label title="乳剂之前对场景亮度 EV 的饱和压缩 [0, 1]；0=关闭。">高光预压缩</label><span class="val" id="filmCompressionVal">0.00</span></div>
       <input type="range" id="filmCompression" min="0" max="1" step="0.05" value="0">
     </div>
     <div class="sliderField" id="filmCompressionKneeBlock" style="flex:1;min-width:150px;display:none">
-      <div class="labelRow"><label title="压缩起点，中灰之上 EV [0, 6]，默认 2。">压缩 knee</label><span class="val" id="filmCompressionKneeVal">2.00</span></div>
+      <div class="labelRow"><label title="压缩起点，中灰之上 EV [0, 6]，默认 2。">压缩起点</label><span class="val" id="filmCompressionKneeVal">2.00</span></div>
       <input type="range" id="filmCompressionKnee" min="0" max="6" step="0.1" value="2">
     </div>
     <div class="sliderField" id="filmHighlightDensityBlock" style="flex:1;min-width:150px;display:none">
-      <div class="labelRow"><label title="被压缩高光的色密度回落 [0, 2]；只在压缩 > 0 时有意义。">高光色密度</label><span class="val" id="filmHighlightDensityVal">0.00</span></div>
+      <div class="labelRow"><label title="被压缩高光的色密度回落 [0, 2]；只在压缩 > 0 时有意义。">高光褪色</label><span class="val" id="filmHighlightDensityVal">0.00</span></div>
       <input type="range" id="filmHighlightDensity" min="0" max="2" step="0.05" value="0">
     </div>
   </div>
@@ -499,10 +499,10 @@ FILM_CURVE_OPTIONS
       <input type="range" id="filmExposure" min="-2" max="2" step="0.05" value="0" title="改变乳剂状态，不等于输出曝光。">
     </div>
     <div style="flex:1;min-width:190px">
-      <label>印相 timing</label>
+      <label>印相曝光方式</label>
       <select id="filmPrintTiming" title="固定=沿用 EV0 联合求解的印相时间（默认）；重定时=随胶片曝光重解，全部负片可用；自定义=手动色头+印相曝光。反转片无印相，一律固定。">
         <option value="fixed">固定 · 默认</option>
-        <option value="retimed">随胶片曝光重定时</option>
+        <option value="retimed">随胶片曝光补偿</option>
         <option value="custom">自定义 · 色头+印相曝光</option>
       </select>
       <div class="ctlFact" id="filmTimingHint" style="display:none"></div>
@@ -512,8 +512,8 @@ FILM_CURVE_OPTIONS
       <input type="range" id="filmPrintExposure" min="-2" max="2" step="0.05" value="0">
     </div>
     <div id="filmOpticsBlock" style="flex:1;min-width:190px;display:none">
-      <label>模拟光学</label>
-      <select id="filmOptics" title="胶片空间成像：颗粒、halation、bloom 三档预设或自定义；介质散射默认按所选介质生效，块内可关闭。">
+      <label>颗粒与光晕</label>
+      <select id="filmOptics" title="胶片空间成像：颗粒、halation、bloom 三档预设或自定义；介质柔化默认按所选介质生效，块内可关闭。">
         <option value="off">关闭 · 默认</option>
         <option value="light">轻 · 颗粒0.25/晕0.20/泛0.15</option>
         <option value="standard">标准 · 颗粒0.50/晕0.40/泛0.30</option>
@@ -522,14 +522,14 @@ FILM_CURVE_OPTIONS
       <div id="filmOpticsSummary" class="hint" style="margin-top:2px">FILM_OPTICS_SUMMARY</div>
       <div class="row" style="margin-top:6px">
         <div style="flex:1;min-width:130px">
-          <label>介质散射</label>
+          <label>介质柔化</label>
           <select id="filmMediaScatter" title="所选介质的乳剂/相纸散射：按声明启用（默认）或关闭。">
-            <option value="declared">按声明 · 默认</option>
+            <option value="declared">按介质数据 · 默认</option>
             <option value="off">关闭</option>
           </select>
         </div>
         <div style="flex:1;min-width:130px">
-          <label>光学种子</label>
+          <label>颗粒种子</label>
           <input type="number" id="filmOpticsSeed" min="0" step="1" placeholder="auto" title="颗粒/光学随机排布的种子；留空=由这张 RAW 与解码配方决定的固定种子（预览与导出一致，重启后不变）。">
         </div>
       </div>
@@ -541,11 +541,11 @@ FILM_CURVE_OPTIONS
           <input type="range" id="filmGrain" min="0" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="高亮场景光经片基背散射回注乳剂。">Halation</label><span class="val" id="filmHalationVal">0.00</span></div>
+          <div class="labelRow"><label title="高亮场景光经片基背散射回注乳剂。">光晕 Halation</label><span class="val" id="filmHalationVal">0.00</span></div>
           <input type="range" id="filmHalation" min="0" max="1" step="0.05" value="0">
         </div>
         <div class="sliderField" style="flex:1;min-width:150px">
-          <div class="labelRow"><label title="进乳剂前的捕获辉光（editorial）；介质散射是另一项，默认按介质生效、块内可关闭。">Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
+          <div class="labelRow"><label title="进乳剂前的捕获辉光（editorial）；介质柔化是另一项，默认按介质生效、块内可关闭。">柔光 Bloom</label><span class="val" id="filmBloomVal">0.00</span></div>
           <input type="range" id="filmBloom" min="0" max="1" step="0.05" value="0">
         </div>
       </div>
@@ -553,15 +553,15 @@ FILM_CURVE_OPTIONS
   </div>
   <div class="row" style="margin-top:12px">
     <div style="flex:2;min-width:210px">
-      <label>压缩核心</label>
+      <label>影调映射</label>
       <select id="toneCore" title="选择亮度压缩与高光色彩路径。">
         <optgroup label="成片">
           <option value="agx" selected>AgX · 默认</option>
-          <option value="gated">RAW 门控 · 保真</option>
+          <option value="gated">RAW 实测保色</option>
         </optgroup>
         <optgroup label="非 AgX 对照">
           <option value="neutral">固定亮度曲线 · 诊断</option>
-          <option value="lum">场景 C1 · 仅亮度</option>
+          <option value="lum">只压亮度 · 对照</option>
         </optgroup>
       </select>
     </div>
@@ -574,12 +574,12 @@ FILM_CURVE_OPTIONS
       </select>
     </div>
     <div id="agxPrimariesBlock" style="flex:1;min-width:150px">
-      <label>AgX 色彩路径</label>
+      <label>AgX 色彩浓淡</label>
       <select id="agxPrimaries" title="控制饱和高光如何向白色收敛。">
-        <option value="base" selected>darktable · 默认</option>
-        <option value="smooth">平滑收色</option>
-        <option value="punchy">纯度增强</option>
-        <option value="muted">纯度柔和</option>
+        <option value="base" selected>标准 · darktable 默认</option>
+        <option value="smooth">平滑</option>
+        <option value="punchy">浓郁</option>
+        <option value="muted">柔和</option>
       </select>
     </div>
   </div>
@@ -595,7 +595,7 @@ FILM_CURVE_OPTIONS
   <div class="secTitle">颜色</div>
   <div class="row">
     <div id="punchBlock" class="sliderField">
-      <div class="labelRow"><label>中频纯度</label><span class="val" id="punchVal">1.00</span></div>
+      <div class="labelRow"><label>色彩浓度</label><span class="val" id="punchVal">1.00</span></div>
       <input type="range" id="punch" min="0" max="1.5" step="0.05" value="1" title="1 使用场景分析值；0 关闭。">
     </div>
     <div id="highlightFadeBlock" class="sliderField">
@@ -606,16 +606,16 @@ FILM_CURVE_OPTIONS
 </div>
 
 <div class="card" data-mobile-card="color">
-  <div class="secTitle">前馈校正</div>
+  <div class="secTitle">感色校正</div>
   <div class="row">
     <div style="flex:2;min-width:210px">
-      <label>前馈校正</label>
+      <label>感色校正</label>
       <select id="sceneTransform" title="在 AgX 前校正相机的 scene-linear 色彩响应。">
 SCENE_TRANSFORM_OPTIONS
       </select>
     </div>
     <div id="sceneTransformStrengthBlock" class="sliderField" style="display:none">
-      <div class="labelRow"><label>前馈强度</label><span class="val" id="sceneTransformStrengthVal">1.00</span></div>
+      <div class="labelRow"><label>感色强度</label><span class="val" id="sceneTransformStrengthVal">1.00</span></div>
       <input type="range" id="sceneTransformStrength" min="0" max="3" step="0.05" value="1" title="1 为校准强度；更高数值用于比较。">
     </div>
   </div>
@@ -648,11 +648,11 @@ GRADE_OPTIONS
     <button class="ghost" id="revealBtn" style="display:none">在 Finder 显示</button>
     <button class="ghost" id="resetDefaults" title="把全部调整恢复到页面初始状态（自适应默认）；文件路径与输出文件夹保留。">恢复默认</button>
     <span class="previewLive" id="previewLiveBadge">实时 · PREVIEW_LONG_EDGEpx</span>
-    <label class="previewToggle" id="clipOverlayLabel" title="标出 RAW 里达到满阱 97% 以上的像素（已溢出或即将溢出，色度退让区）：红/绿/蓝＝该通道，白＝三通道。旁边的硬剪切百分比是全尺寸统计。解码证据，不随曝光滑条变化。"><input type="checkbox" id="clipOverlayToggle">RAW 满阱</label>
+    <label class="previewToggle" id="clipOverlayLabel" title="标出 RAW 里达到满阱 97% 以上的像素（已溢出或即将溢出，高光降饱和区）：红/绿/蓝＝该通道，白＝三通道。旁边的完全过曝百分比是全尺寸统计。解码证据，不随曝光滑条变化。"><input type="checkbox" id="clipOverlayToggle">RAW 过曝标记</label>
     <span class="ctlFact" id="clipOverlayFact" style="margin:0"></span>
   </div>
   <details id="deliveryReport" style="display:none">
-    <summary>投递报告 · 本次导出的实测真值</summary>
+    <summary>导出报告 · 本次导出的实测结果</summary>
     <dl class="reportGrid" id="deliveryReportBody"></dl>
   </details>
   <div id="previewWrap"><img id="preview"><img id="clipOverlay" alt=""><div id="spinner"></div><div id="status" role="status" aria-live="polite"></div></div>
@@ -684,10 +684,10 @@ GRADE_OPTIONS
         <div class="ctlFact" id="formatModeHint" style="display:none"></div>
       </div>
       <div style="flex:1;min-width:160px">
-        <label>交付档</label>
+        <label>导出档位</label>
         <select id="deliveryProfile" title="只影响最后编码，不重算 AgX/HDR。archive=q100/4:4:4 验证级保真（全尺寸约 60MB）；share=q90/4:2:0 流媒体发布档（约 11–27MB，微信原图 25MB 限制内，HDR gain map 完整保留）。">
-          <option value="archive">Archive · 保真</option>
-          <option value="share">Share · 流媒体</option>
+          <option value="archive">存档 · 最高质量</option>
+          <option value="share">分享 · 小体积</option>
         </select>
       </div>
       <div style="flex:1;min-width:140px">
@@ -712,16 +712,16 @@ GRADE_OPTIONS
     </div>
     <div class="row" id="hdrBlock" style="margin-top:12px">
       <div style="min-width:220px">
-        <div class="labelRow"><label>HDR 余量上限</label><span class="val" id="hdrHeadroomVal">+3.00 EV</span></div>
+        <div class="labelRow"><label>HDR 亮度上限</label><span class="val" id="hdrHeadroomVal">+3.00 EV</span></div>
         <input type="range" id="hdrHeadroom" min="1" max="MAX_HDR_HEADROOM_ATTR" step="0.02" value="3">
         <div class="ctlFact" id="hdrSceneFact"></div>
         <div class="muted" id="hdrHint">实际余量由场景决定；只恢复漫反射白以上的真实亮度档数。</div>
         <details id="hdrAdvanced" style="margin-top:6px">
-          <summary class="muted" style="cursor:pointer">HDR latitude 旋钮（默认 auto=数学口径）</summary>
+          <summary class="muted" style="cursor:pointer">HDR 高级选项（默认 auto=数学口径）</summary>
           <div class="row" style="margin-top:6px">
-            <div style="min-width:110px"><label title="证据置信满格时允许的逐通道高光色度自由度 [0,1]。证据门控（多通道剪切/尾部SNR/色域压力/解码器cap）仍然乘算，不被此旋钮绕过。留空=政策值 0.5。">色度自由度 ρ</label><input type="number" id="hdrRho" min="0" max="1" step="0.05" placeholder="auto"></div>
-            <div style="min-width:110px"><label title="HDR 白端点在可靠尾部之上的余量 EV [0,2]。留空=普通 0.30 / 稀疏光源 0.50。">白点余量 EV</label><input type="number" id="hdrWhiteMargin" min="0" max="2" step="0.05" placeholder="auto"></div>
-            <div style="min-width:110px"><label title="HDR 肩部离开 SDR 主体的起点 EV [-1,3]。留空=普通 0.20 / 稀疏光源 0.00。">肩起点 EV</label><input type="number" id="hdrShoulderStart" min="-1" max="3" step="0.05" placeholder="auto"></div>
+            <div style="min-width:110px"><label title="证据置信满格时允许的逐通道高光高光保色 [0,1]。证据门控（多通道剪切/尾部SNR/色域压力/解码器cap）仍然乘算，不被此旋钮绕过。留空=政策值 0.5。">高光保色 ρ</label><input type="number" id="hdrRho" min="0" max="1" step="0.05" placeholder="auto"></div>
+            <div style="min-width:110px"><label title="HDR 白端点在可靠尾部之上的余量 EV [0,2]。留空=普通 0.30 / 稀疏光源 0.50。">白点留量 EV</label><input type="number" id="hdrWhiteMargin" min="0" max="2" step="0.05" placeholder="auto"></div>
+            <div style="min-width:110px"><label title="HDR 肩部离开 SDR 主体的起点 EV [-1,3]。留空=普通 0.20 / 稀疏光源 0.00。">高光压缩起点 EV</label><input type="number" id="hdrShoulderStart" min="-1" max="3" step="0.05" placeholder="auto"></div>
           </div>
         </details>
       </div>
@@ -842,8 +842,8 @@ const CORE_FACTS={
   neutral:["曲线 <b>固定</b>","色彩 <b>保持比例</b>"]
 };
 const CONTROL_HINTS={
-  gated:"RAW 证据决定 AgX 色彩路径的混合量。",
-  agx:"默认成片；全图使用 AgX 色彩路径。",
+  gated:"RAW 证据决定 AgX 色彩浓淡的混合量。",
+  agx:"默认成片；全图使用 AgX 色彩浓淡。",
   neutral:"固定 Y 比例曲线，用来检查色调核与高饱和边界。",
   lum:"共用场景 C1，仅压缩亮度。"
 };
@@ -884,7 +884,7 @@ function updateToneCoreExportUi(){
   const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);
   const incompatible=hdr&&$("#toneCore").value!=="agx";
   const hint=$("#toneCoreExportHint");
-  hint.textContent=incompatible?"当前压缩核心可继续用于实时预览；HDR 容器导出目前只支持 AgX。请切换到 AgX，或改用 SDR JPEG。":"";
+  hint.textContent=incompatible?"当前影调映射可继续用于实时预览；HDR 容器导出目前只支持 AgX。请切换到 AgX，或改用 SDR JPEG。":"";
   hint.style.display=incompatible?"block":"none";
   $("#exportConfirm").disabled=incompatible;
   $("#exportConfirm").title=incompatible?"HDR 容器导出目前只支持 AgX":"";
@@ -982,7 +982,7 @@ function metricText(j){
 function fullFrameReferenceText(j){
   if(!j.ev_auto)return "";
   const a=j.ev_auto;
-  let t=" · 全图亮度参考 "+fmtEv(a.ev_boost)+" EV";
+  let t=" · 全图自动曝光 "+fmtEv(a.ev_boost)+" EV";
   if(a.highlight_limited)t+="（高光限制，参考目标 "+fmtEv(a.ev_median_target)+"）";
   return t;
 }
@@ -998,7 +998,7 @@ function toneCoreText(j){
   const norm=j.tone_core==="lum"&&j.lum_norm?"（"+(norms[j.lum_norm]||j.lum_norm)+"）":"";
   return "，策略 "+(labels[j.tone_core]||j.tone_core)+norm;
 }
-function highlightText(v){return ({clip:"保持剪切",blend:"高光混合",reconstruct:"高光重建"})[v]||v;}
+function highlightText(v){return ({clip:"保持过曝",blend:"高光混合",reconstruct:"高光重建"})[v]||v;}
 function gamutText(v){return ({srgb:"sRGB",p3:"Display P3"})[v]||v;}
 function formatText(v){return ({sdr:"SDR JPEG",ultrahdr:"HDR gain-map JPEG","ultrahdr-heic":"HDR gain-map HEIC"})[v]||v;}
 function decoderText(j){
@@ -1221,7 +1221,7 @@ $("#coreimageScale").addEventListener("change",()=>{saveSettings();preparePrevie
 $("#clipMargin").addEventListener("change",()=>{
   const el=$("#clipMargin");let v=Math.round(Number(el.value));
   if(!Number.isFinite(v)){v=4;}
-  const c=Math.min(64,Math.max(0,v));if(c!==Number(el.value)){el.value=c;setStatus("剪切回退：域 [0,64] DN，已钳到 "+c,"err");}
+  const c=Math.min(64,Math.max(0,v));if(c!==Number(el.value)){el.value=c;setStatus("过曝判定余量：域 [0,64] DN，已钳到 "+c,"err");}
   saveSettings();preparePreview();
 });
 $("#wb").addEventListener("change",()=>{updateDecoderUi();updateGradeUi();saveSettings();preparePreview();});
@@ -1261,7 +1261,7 @@ const FILM_FULL_INERT_IDS=["toneCore","midtoneBrightness","midtoneContrast",
 // the payload (the backend also forces them off; the reset keeps the UI and
 // the payload telling the same story).
 const FILM_FULL_RESET_ZERO_IDS=["highlightFade"];
-// 出厂默认(owner 2026-08-12 一次性校准):full 模式的胶片解释=参考印相@1.0。
+// 出厂默认(owner 2026-08-12 一次性校准):full 模式的成片调色=参考印相@1.0。
 // 非 full 载荷必须清回 technical(service 合同),因此把 full 模式下的选择
 // 记在 appearanceMemo 里,切回 full 时恢复;经 filmAppearanceMemo 跨会话
 // 持久化。capability 门在恢复之后运行,无配方卷照旧拉回 technical。
@@ -1287,7 +1287,7 @@ function updateFilmModeUi(){
   const full=hasCurve&&$("#filmMode").value==="full";
   $("#filmCrossoverBlock").style.display=full?"":"none";
   if(!full){const ob=$("#filmOpticsBlock");if(ob)ob.style.display="none";const oc=$("#filmOpticsCustom");if(oc)oc.style.display="none";}
-  // 胶片解释控件组:full 才显示;非 full 清回默认(service 合同)
+  // 成片调色控件组:full 才显示;非 full 清回默认(service 合同)
   const appRow=$("#filmAppearanceRow");
   if(appRow){
     appRow.style.display=full?"":"none";
@@ -1369,16 +1369,16 @@ function updateFilmModeUi(){
         reason="反转片无印相环节——timing 一律 fixed";
         if(timing.value!=="fixed"){timing.value="fixed";}
       } else if(!canRetime&&timing.value==="retimed"){
-        reason=devCustom?"自定义显影下 retimed τ 表不适用——已切回固定":"该卷尚无 retimed 印相资产";
+        reason=devCustom?"自定义冲洗下 retimed τ 表不适用——已切回固定":"该卷尚无 retimed 印相资产";
         timing.value="fixed";
       }
       if(hint){hint.textContent=reason;hint.style.display=reason?"":"none";}
-      // custom timing / 自定义显影 需要数据手册漂移(互斥合同);GUI 直接联动并说明
+      // custom timing / 自定义冲洗 需要保留胶片偏色(互斥合同);GUI 直接联动并说明
       const neut=$("#filmNeutralization");
       const forceNative=timing.value==="custom"||devCustom;
       if(forceNative&&neut.value!=="native"){
         neut.value="native";
-        setStatus((devCustom?"自定义显影":"自定义印相")+"要求灰阶中性化=数据手册漂移，已自动切换","err");
+        setStatus((devCustom?"自定义冲洗":"自定义印相")+"要求灰阶校色=保留胶片偏色，已自动切换","err");
       }
       for(const o of neut.options){if(o.value!=="native")o.disabled=forceNative;}
       // developer recipe + film compression row (full only)
@@ -1401,7 +1401,7 @@ function updateFilmModeUi(){
           if(typeof setFilmPrintExposureLabel==="function")setFilmPrintExposureLabel();
         }
       }
-      // 模拟光学:full 才显示;custom 才露滑杆
+      // 颗粒与光晕:full 才显示;custom 才露滑杆
       const opticsBlock=$("#filmOpticsBlock");
       if(opticsBlock){
         opticsBlock.style.display="";
@@ -1535,7 +1535,7 @@ function updateColorHeadUi(){
   const isFull=$("#filmMode").value==="full";
   let reason="";
   if(!isNegative){reason="反转片没有印相色头：幻灯片自身就是显示介质，物理上不存在放大机环节";}
-  else if(isFull&&$("#filmPrintTiming").value!=="custom"){reason="fixed/retimed 印相由联合求解决定——full 下要用色头请把印相 timing 切到 custom（modelled Δτ）";}
+  else if(isFull&&$("#filmPrintTiming").value!=="custom"){reason="fixed/retimed 印相由联合求解决定——full 下要用色头请把印相曝光方式 切到 custom（modelled Δτ）";}
   const enabled=!reason;
   for(const id of ["colorHeadY","colorHeadM"]){
     const el=$("#"+id);
@@ -1569,7 +1569,7 @@ function setChromaNrLabel(){$("#chromaNrVal").textContent=Number($("#chromaNr").
 $("#chromaNr").oninput=()=>{setChromaNrLabel();saveSettings();scheduleLivePreview();};
 $("#filmOpticsSeed").addEventListener("change",()=>{
   const el=$("#filmOpticsSeed");const t=el.value.trim();
-  if(t!==""&&!/^[0-9]+$/.test(t)){el.value="";setStatus("光学种子需为非负整数，已清空为 auto","err");}
+  if(t!==""&&!/^[0-9]+$/.test(t)){el.value="";setStatus("颗粒种子需为非负整数，已清空为 auto","err");}
   saveSettings();scheduleLivePreview();
 });
 $("#filmCurve").addEventListener("change",()=>{updateFilmModeUi();updateColorHeadUi();updateHdrOptionGate();saveSettings();scheduleLivePreview();});
@@ -1743,7 +1743,7 @@ function payload(){
     ev:+$("#ev").value,quality:+$("#quality").value,
     outdir:$("#outdir").value.trim(),png:$("#png").checked
   };
-  // auto=不显式声明中性化,由编译器按胶片解释解析(A5 item 6:单一解析点)
+  // auto=不显式声明中性化,由编译器按成片调色解析(A5 item 6:单一解析点)
   if(p.filmNeutralization==="auto")delete p.filmNeutralization;
   return p;
 }
@@ -1839,7 +1839,7 @@ function renderDetectedParams(d){
   const ev=v=>(v>=0?"+":"")+(+v).toFixed(2)+" EV";
   setFact("#decoderFact",d.data_support?"⚠ 机型数据："+d.data_support:"",true);
   setFact("#wbFact",d.wb_degradation?"⚠ 白平衡："+d.wb_degradation:"",true);
-  setFact("#clipFact",d.raw_clip_union_pct!==null?"实测 RAW 剪切 "+(+d.raw_clip_union_pct).toFixed(2)+"%（≥1 通道）":"");
+  setFact("#clipFact",d.raw_clip_union_pct!==null?"实测 RAW 过曝 "+(+d.raw_clip_union_pct).toFixed(2)+"%（≥1 通道）":"");
   const evBits=[];
   if(d.body_median_ev!==null)evBits.push("实测主体中位 "+ev(d.body_median_ev));
   if(d.sparse_emitter)evBits.push("稀疏光源 · 夜景/舞台策略");
@@ -1847,13 +1847,13 @@ function renderDetectedParams(d){
   const toneBits=[];
   if(d.black_ev!==null&&d.white_ev!==null)toneBits.push("编译曲线 "+ev(d.black_ev)+" .. "+ev(d.white_ev));
   if(d.contrast!==null)toneBits.push("对比 "+(+d.contrast).toFixed(2));
-  if(d.toe_end_ev!==null&&d.toe_end_ev!==undefined)toneBits.push("趾部收黑 "+ev(d.toe_end_ev));
-  if(d.shoulder_white_ev!==null&&d.shoulder_white_ev!==undefined)toneBits.push("肩部收白 "+ev(d.shoulder_white_ev));
-  if(d.endpoint_mode==="evidence")toneBits.push("端点 证据界"+(d.endpoint_note?"（"+d.endpoint_note+"）":""));
+  if(d.toe_end_ev!==null&&d.toe_end_ev!==undefined)toneBits.push("暗部收黑 "+ev(d.toe_end_ev));
+  if(d.shoulder_white_ev!==null&&d.shoulder_white_ev!==undefined)toneBits.push("高光收白 "+ev(d.shoulder_white_ev));
+  if(d.endpoint_mode==="evidence")toneBits.push("端点 传感器实测范围"+(d.endpoint_note?"（"+d.endpoint_note+"）":""));
   setFact("#toneFact",toneBits.join(" · "));
   if(d.reliable_tail_ev!==null){
     const bits=["实测可靠尾部 "+ev(d.reliable_tail_ev)+"（p99.99）"];
-    if(d.hdr_earned_ev!==null)bits.push("场景可挣余量 +"+(+d.hdr_earned_ev).toFixed(2)+" EV");
+    if(d.hdr_earned_ev!==null)bits.push("场景可用余量 +"+(+d.hdr_earned_ev).toFixed(2)+" EV");
     setFact("#hdrSceneFact",bits.join(" · "));
   }else{
     setFact("#hdrSceneFact","⚠ 可靠尾部不可用 · HDR 余量将为 0",true);
@@ -1939,7 +1939,7 @@ async function requestPreview({includeMetrics=false,busy=false,evAuto=false,pref
   if(previewAbort)previewAbort.abort();
   const controller=new AbortController();previewAbort=controller;
   if(busy)beginBusy();
-  setPreviewBadge(evAuto?"亮度参考计算中 · PREVIEW_LONG_EDGEpx":"处理中 · PREVIEW_LONG_EDGEpx","busy");
+  setPreviewBadge(evAuto?"自动曝光计算中 · PREVIEW_LONG_EDGEpx":"处理中 · PREVIEW_LONG_EDGEpx","busy");
   try{
     const j=await postJob("/preview",body,controller.signal);
     if(controller.signal.aborted||generation!==PREVIEW_GENERATION||j.superseded)return false;
@@ -2000,8 +2000,8 @@ function setClipOverlayState(j){
   CLIP_OVERLAY={has:true,b64:j.overlay,pct:j.clip_pct};
   t.disabled=false;lab.classList.remove("dim");
   const p=j.mask_pct||{};const h=j.hard_clip_pct||null;
-  const hard=h?("硬剪切 R "+(+h.r).toFixed(2)+" · G "+(+h.g).toFixed(2)+" · B "+(+h.b).toFixed(2)+"%"):"";
-  const mark=j.overlay?("标记区 "+(+p.any).toFixed(2)+"%（≥97% 满阱）"):"无 ≥97% 满阱像素";
+  const hard=h?("完全过曝 R "+(+h.r).toFixed(2)+" · G "+(+h.g).toFixed(2)+" · B "+(+h.b).toFixed(2)+"%"):"";
+  const mark=j.overlay?("标记区 "+(+p.any).toFixed(2)+"%（读数 ≥97% 上限）"):"没有接近上限的像素";
   fact.textContent=hard?(hard+" · "+mark):mark;
   applyClipOverlay();
 }
@@ -2055,7 +2055,7 @@ function renderDeliveryReport(j){
     add("SDR 底图误差","平均 "+(+c.base_mean_code_error).toFixed(2)+" 码值 · 8×8 p99 "+(+c.base_block_p99_code_error).toFixed(2)+" 码值");
   }
   if(c.headroom_error_ev!==undefined)add("声明余量误差",(+c.headroom_error_ev).toFixed(4)+" EV");
-  if(c.channel_separation!==undefined)add("色度自由度 rho",(+c.channel_separation).toFixed(3));
+  if(c.channel_separation!==undefined)add("高光保色 rho",(+c.channel_separation).toFixed(3));
   if(c.hdr_plan)add("HDR plan",c.hdr_plan);
   body.innerHTML=rows.join("");
   box.style.display=rows.length?"block":"none";
@@ -2135,7 +2135,7 @@ function renderDisplayHistogram(h,earnedEv){
   const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);
   if(hdr&&earnedEv!=null){
     ctx.fillStyle="#ffc46b";ctx.font=HIST_FONT;
-    const note="SDR 底图 · HDR 已挣余量 +"+(+earnedEv).toFixed(1)+" EV";
+    const note="SDR 底图 · HDR 实际余量 +"+(+earnedEv).toFixed(1)+" EV";
     ctx.fillText(note,W-ctx.measureText(note).width-6,10);
   }
 }
@@ -2158,8 +2158,8 @@ $("#evReferenceBtn").onclick=async()=>{
   if(!payload())return;
   if(!PREVIEW_READY)await preparePreview();
   if(!PREVIEW_READY)return;
-  $("#evReferenceBtn").disabled=true;$("#revealBtn").style.display="none";setStatus("正在计算亮度参考…","");
-  try{await requestPreview({includeMetrics:true,busy:true,evAuto:true,prefix:"全图亮度参考预览"});}
+  $("#evReferenceBtn").disabled=true;$("#revealBtn").style.display="none";setStatus("正在计算自动曝光…","");
+  try{await requestPreview({includeMetrics:true,busy:true,evAuto:true,prefix:"全图自动曝光预览"});}
   finally{$("#evReferenceBtn").disabled=false;}
 };
 
@@ -2280,7 +2280,7 @@ def _film_retimed_json() -> str:
 
 
 def _optics_profile_summary() -> str:
-    """One provenance-honest line under the 模拟光学 select (plan §12.1):
+    """One provenance-honest line under the 颗粒与光晕 select (plan §12.1):
     read from the SAME assets the renderer compiles, so the summary can
     never describe a profile the render path does not use."""
     try:

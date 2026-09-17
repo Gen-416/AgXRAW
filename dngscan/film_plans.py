@@ -216,20 +216,20 @@ def validate_film_plans(
             f"[{exposure_ev_min}, {exposure_ev_max}]；超域值硬拒绝，不静默钳制"
         )
     if development.recipe_id not in DEVELOPMENT_RECIPES:
-        raise ValueError(f"未知显影配方：{development.recipe_id}")
+        raise ValueError(f"未知冲洗方式：{development.recipe_id}")
     if development.recipe_id == "measured_default" and (
         development.contrast_delta != 0.0
         or development.fog_delta != 0.0
         or development.color_density != 0.0
     ):
         raise ValueError(
-            "measured_default 显影配方的参数全部锁定；要调整显影请显式声明 "
-            "editorial_custom（报告将如实标注编辑显影配方）"
+            "measured_default 冲洗方式的参数全部锁定；要调整显影请显式声明 "
+            "editorial_custom（报告将如实标注编辑冲洗方式）"
         )
     if print_plan.timing_policy not in TIMING_POLICIES:
-        raise ValueError(f"未知印相 timing：{print_plan.timing_policy}")
+        raise ValueError(f"未知印相曝光方式：{print_plan.timing_policy}")
     if print_plan.neutralization_policy not in NEUTRALIZATION_POLICIES:
-        raise ValueError(f"未知灰阶中性化：{print_plan.neutralization_policy}")
+        raise ValueError(f"未知灰阶校色：{print_plan.neutralization_policy}")
     if print_plan.medium_id == "reversal_direct":
         # §7.2 per-medium validity: no printing stage exists. Explicit failure,
         # never a silent downgrade.
@@ -259,9 +259,9 @@ def validate_film_plans(
                 "print_exposure_ev 必须为 0；要手动印相请声明 custom"
             )
     if finish.grain_amount < 0.0 or finish.halation_amount < 0.0 or finish.bloom_amount < 0.0:
-        raise ValueError("模拟光学强度不能为负")
+        raise ValueError("颗粒与光晕强度不能为负")
     if finish.grain_amount > 1.0 or finish.halation_amount > 1.0 or finish.bloom_amount > 1.0:
-        raise ValueError("模拟光学强度域为 [0,1]")
+        raise ValueError("颗粒与光晕强度域为 [0,1]")
     if finish.grain_amount > 0.0 and finish.grain_profile == "off":
         raise ValueError("grain_amount > 0 需要一个 grain profile")
     if finish.halation_amount > 0.0 and finish.halation_profile == "off":
@@ -271,7 +271,7 @@ def validate_film_plans(
     if finish.compression > 0.0 and not 0.0 <= float(finish.compression_knee_ev) <= 6.0:
         raise ValueError("film compression knee 域为 [0,6] EV(中灰之上)")
     if not 0.0 <= float(finish.highlight_color_density) <= 2.0:
-        raise ValueError("高光色密度 rho 域为 [0,2]")
+        raise ValueError("高光褪色 rho 域为 [0,2]")
     if development.recipe_id == "editorial_custom":
         # §6 bounded perturbation: declared editorial domains, hard-rejected
         # beyond (the anchor-preserving construction only holds inside them,
@@ -287,13 +287,13 @@ def validate_film_plans(
         _c = EDITORIAL_CONTRAST_LIMIT
         _d = EDITORIAL_DENSITY_LIMIT
         if not -_c <= float(development.contrast_delta) <= _c:
-            raise ValueError(f"显影对比扰动域为 [-{_c}, {_c}]")
+            raise ValueError(f"冲洗反差扰动域为 [-{_c}, {_c}]")
         if not 0.0 <= float(development.fog_delta) <= EDITORIAL_FOG_MAX:
             raise ValueError(
                 f"显影 fog 域为 [0, {EDITORIAL_FOG_MAX}](fog 只会增加密度)"
             )
         if not -_d <= float(development.color_density) <= _d:
-            raise ValueError(f"显影色密度扰动域为 [-{_d}, {_d}]")
+            raise ValueError(f"染料浓度扰动域为 [-{_d}, {_d}]")
         # The retimed tau table and the bounded neutralization casts are both
         # SOLVED against the measured development; an editorial recipe moves
         # the negative's densities out from under them. Fail closed instead of
@@ -307,6 +307,6 @@ def validate_film_plans(
             "bounded", "technical-neutral", "print-balanced",
         ):
             raise ValueError(
-                "editorial_custom 显影与有界灰阶中性化互斥:cast 曲线按 "
+                "editorial_custom 显影与有界灰阶校色互斥:cast 曲线按 "
                 "measured 显影求解;请配 --film-neutralization native"
             )

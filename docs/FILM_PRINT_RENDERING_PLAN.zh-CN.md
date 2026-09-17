@@ -12,8 +12,8 @@
 当前胶片功能在数学上已经不是一张 LUT：固定色温、镜前滤镜、胶片感色前馈、特性曲线、光谱印相和 full 65^3 LUT 分别落在各自合理的层。但它与 Dehancer 一类工具在最终观感上差异明显，原因不是“胶片强度太低”，而是优化目标不同：
 
 - `observe` 是**胶片数据参与的 AgX DRT**。胶片声明观察者、色彩分离与明暗坐标，最终颜色仍由 AgX formation 负责；
-- 当前 `full` 是**固定曝光、固定显影、EV0 经有效印相曝光 `q` 解到中性 0.18 的光谱链重建**；其默认 `off` 档还会在完整 LUT 之后做一次有界的灰阶数字中性化，不能把这一步误写成印相端 timing；
-- 大众语境中的“胶片 look”还包含胶片曝光状态、显影配方、印相决定、观看环境，以及颗粒、halation、bloom、局部扩散等空间成像；
+- 当前 `full` 是**固定曝光、固定显影、EV0 经有效印相曝光 `q` 解到中性 0.18 的光谱链重建**；其默认 `off` 档还会在完整 LUT 之后做一次有界的灰阶全程中性化，不能把这一步误写成印相端 timing；
+- 大众语境中的“胶片 look”还包含胶片曝光状态、冲洗方式、印相决定、观看环境，以及颗粒、halation、bloom、局部扩散等空间成像；
 - AgX 基线本身已经包含 filmic toe、shoulder、逐通道色彩形成和 path-to-white，因此 `observe` 实际是在比较两种相近的 filmic rendering，而不是数码线性输出与胶片的比较；
 - 当前模型为了诚实而固定 EV0、中性轴和有界色度变化，这会主动消除很多商业胶片插件用来建立强烈视觉身份的自由度。
 
@@ -62,7 +62,7 @@ flowchart LR
     TIMING --> PAPER["三条 1D 相纸曲线<br/>得到正介质密度"]
     PAPER --> B2["Stage B2 · 正介质密度 -> 观看 Rec.2020"]
     MEDIUM -->|reversal_direct| B2
-    B2 --> VIEW["可选有界灰阶数字中性化<br/>现行 crossover=off 的后继"]
+    B2 --> VIEW["可选有界灰阶全程中性化<br/>现行 crossover=off 的后继"]
     VIEW --> BLOOM["Medium bloom / intrinsic scatter"]
     BLOOM --> DEL
 
@@ -76,9 +76,9 @@ flowchart LR
 3. **解析 timing 与相纸曲线**：把三个 `tau_j(E)=log2(q_j(E))` 加到纸层 log exposure，再过三条 1D 相纸特性曲线得到正介质密度；
 4. **Stage B2，正介质密度域 3D LUT**：相纸/电影正片密度 -> 观看 XYZ -> display-linear Rec.2020。`reversal_direct` 跳过 B1、timing 和相纸曲线，直接由 Stage A 进入相应 B2。
 
-现行单只 `scene -> display` 65^3 LUT 在 v2 中退役：它把中间密度坍缩掉，运行时既无法在正确位置注入 halation 和 grain，也让更换印相介质必须重烘整条前链。Stage A 保留胶片曝光、显影、halation 和 grain；B1/B2 分解则把会随 timing 平移的相纸曲线输入重新暴露出来。B1 的输入 shaper 使用负片三通道 density `Dmin/Dmax`，B2 使用目标正介质的 density `Dmin/Dmax`；所有超域值都钳到声明边界并计数报告，不能静默超出 LUT 合同。
+现行单只 `scene -> display` 65^3 LUT 在 v2 中退役：它把中间密度坍缩掉，运行时既无法在正确位置注入 halation 和 grain，也让更换印相材料必须重烘整条前链。Stage A 保留胶片曝光、显影、halation 和 grain；B1/B2 分解则把会随 timing 平移的相纸曲线输入重新暴露出来。B1 的输入 shaper 使用负片三通道 density `Dmin/Dmax`，B2 使用目标正介质的 density `Dmin/Dmax`；所有超域值都钳到声明边界并计数报告，不能静默超出 LUT 合同。
 
-`full v2` 的 B2 输出已经是正片/相纸在声明观看条件下的 display-linear Rec.2020；之后只允许已声明的灰阶中性化、medium bloom、gamut fit 和输出编码，不再运行 AgX formation。放大机、扫描器、投影机或观看环境的 veiling glare 不属于这条介质链，未来若实现必须进入独立的光学/观看计划。
+`full v2` 的 B2 输出已经是正片/相纸在声明观看条件下的 display-linear Rec.2020；之后只允许已声明的灰阶校色、medium bloom、gamut fit 和输出编码，不再运行 AgX formation。放大机、扫描器、投影机或观看环境的 veiling glare 不属于这条介质链，未来若实现必须进入独立的光学/观看计划。
 
 ## 4. 计划数据结构
 
@@ -141,7 +141,7 @@ s_e = 2^film_exposure_ev * s
 
 它与输出曝光严格分开：
 
-- 负片：`retimed` 配方会在改变乳剂曝光后重新求印相 timing，把参考中灰印回 0.18，因此总体亮度接近不变但颜色、对比、toe 和 shoulder 会变化；`fixed` 配方则保留同一放大机设置；
+- 负片：`retimed` 配方会在改变乳剂曝光后重新求印相曝光方式，把参考中灰印回 0.18，因此总体亮度接近不变但颜色、对比、toe 和 shoulder 会变化；`fixed` 配方则保留同一放大机设置；
 - 反转片：没有负片重定时，曝光本来就直接改变正片密度。首版保持真实语义，不偷偷补偿；需要同亮度比较时使用独立输出 EV；
 - RAW 分析只给出传感器可靠余量与剪切警告，不自动决定胶片曝光状态，避免破坏拍摄意图。
 
@@ -222,7 +222,7 @@ display-linear Rec.2020、XYZ log-Y+xy 与 Oklab 的预混实验及其失败数�
 首版分两层：
 
 - `measured_default`：沿用每卷声明的标准工艺，所有参数锁定；
-- `editorial_custom`：允许调整显影对比、fog 和 color density，但报告明确写“编辑显影配方”，不冒充厂商工艺。
+- `editorial_custom`：允许调整冲洗反差、fog 和 color density，但报告明确写“编辑冲洗方式”，不冒充厂商工艺。
 
 编辑显影必须修改三层密度函数的参数，再重新采样/选择 LUT，而不是在成片上加普通 contrast。建议把变化写成特性曲线参数的有界扰动：
 
@@ -234,7 +234,7 @@ H'_c(x) = Dmin'_c + (Dmax'_c-Dmin'_c) * H_c(a_c*x+b_c)
 
 ## 7. 印相层重构
 
-当前 full LUT 把 scene->层曝光、特性曲线、指定相纸/正片和观看固定烘在每卷资产内。v2 必须拆成解析 Stage A 与密度域 Stage B，同时把“胶片负片状态”和“印相介质”拆成两个声明，避免把 Portra 与 Endura 永久视作同一材料。
+当前 full LUT 把 scene->层曝光、特性曲线、指定相纸/正片和观看固定烘在每卷资产内。v2 必须拆成解析 Stage A 与密度域 Stage B，同时把“胶片负片状态”和“印相材料”拆成两个声明，避免把 Portra 与 Endura 永久视作同一材料。
 
 ### 7.1 资产拆分
 
@@ -248,7 +248,7 @@ H'_c(x) = Dmin'_c + (Dmax'_c-Dmin'_c) * H_c(a_c*x+b_c)
 
 `intrinsic_scatter_profile` 只表示乳剂层、片基或相纸基材内部的空间散射核与强度先验，**不包含**放大机、扫描器、投影机或观看环境的 veiling glare。介质原生标定继续严格使用零观看杂光：黑位来自介质自身 Dmax，`intrinsic_scatter_profile` 不进入 Stage B 中性标定、target curve、Dmin/Dmax 或 printer timing，只能作为 §9.2 medium bloom 的 profile 数据源。未来若增加外部光学或观看环境模拟，它们必须拥有独立 plan、资产和算子，不能写回 `print_profile`。
 
-### 7.2 印相 timing 与灰阶中性化
+### 7.2 印相曝光方式 与灰阶校色
 
 这两个概念必须正交，不能再用一个“技术中性/native”枚举混在一起：
 
@@ -259,11 +259,11 @@ H'_c(x) = Dmin'_c + (Dmax'_c-Dmin'_c) * H_c(a_c*x+b_c)
 
 | 现行 `--film-crossover` | v2 timing | v2 neutralization | 行为 |
 |---|---|---|---|
-| `off`（默认） | `fixed`（使用解得的 tau(0)） | `bounded` | tau 先解 EV0 中性，再对完整链输出做有界数字中性化；策略与现状相同 |
+| `off`（默认） | `fixed`（使用解得的 tau(0)） | `bounded` | tau 先解 EV0 中性，再对完整链输出做有界全程中性化；策略与现状相同 |
 | `datasheet` | `fixed`（使用解得的 tau(0)） | `datasheet` | tau 仍解 EV0 中性，但保留其余灰阶的层间漂移；策略与现状相同 |
 | observe 下任一值 | 不适用 | 不适用 | 现状即惰性，迁移后不得改变 observe |
 
-新增 CLI 使用 `--film-print-timing` 与 `--film-neutralization`。旧 `--film-crossover off|datasheet` 保留一个稳定版本作为弃用别名；若新旧参数同时出现则硬失败，避免优先级猜测。GUI 原“层间漂移”改为“灰阶中性化”，旧设置文件加载时按上表一次性迁移，报告同时记录 timing 与 neutralization。两段式改变了 LUT 的插值与量化位置，不能承诺 v2 对旧 f16 单 LUT 逐字节相同；过渡期由隐藏的测试后端保留旧 freeze，v2 则对同一高精度光谱链 oracle 验证，并单独记录相对旧输出的可见域差异。
+新增 CLI 使用 `--film-print-timing` 与 `--film-neutralization`。旧 `--film-crossover off|datasheet` 保留一个稳定版本作为弃用别名；若新旧参数同时出现则硬失败，避免优先级猜测。GUI 原“层间漂移”改为“灰阶校色”，旧设置文件加载时按上表一次性迁移，报告同时记录 timing 与 neutralization。两段式改变了 LUT 的插值与量化位置，不能承诺 v2 对旧 f16 单 LUT 逐字节相同；过渡期由隐藏的测试后端保留旧 freeze，v2 则对同一高精度光谱链 oracle 验证，并单独记录相对旧输出的可见域差异。
 
 色头不能在 full 输出后追加 LMS 近似。当前联合色头场没有真实 Y/M 滤镜透过谱，只是 paper-layer exposure model，因此可转换为 B1 后的三个 `Delta tau_j`；在这个模型内它与 retimed timing 一样解析、可验证，但只能标为 `modelled`。取得真实滤镜透过谱后，Y/M 会改变 B1 内部的 `L_print(lambda)`，其效应通常依赖负片密度，不能再冒充固定三标量；届时必须按色头状态重建/选择 B1，或建立经过 oracle 验证的参数化 B1。observe 保留现有联合 LMS 色头作为快速近似。
 
@@ -290,7 +290,7 @@ x_f = k + w * (1 - exp(-(x-k)/w))           , x > k
 x'  = (1-impact)*x + impact*x_f
 ```
 
-`k` 是开始压缩的位置，`w` 是可容纳的高光范围。压缩量 `d=x-x'` 同时驱动高光色密度：
+`k` 是开始压缩的位置，`w` 是可容纳的高光范围。压缩量 `d=x-x'` 同时驱动高光褪色：
 
 ```text
 C' = C * exp(-rho * d)
@@ -298,9 +298,9 @@ C' = C * exp(-rho * d)
 
 负片 `rho` 较大，反转片较小。色度操作使用保持 hue 和 Y 的颜色几何，不做逐通道 clamp。RAW CFA clip mask 必须参与：已经丢失的通道先走既有重建/retreat，Film Compression 不能宣称恢复剪掉的信息。
 
-## 9. 模拟光学层
+## 9. 颗粒与光晕层
 
-> 本节记录已落地的第一版拓扑与流式合同。颗粒、Halation、Bloom 和正介质散射的
+> 本节记录已落地的第一版拓扑与流式合同。颗粒、Halation、Bloom 和正介质柔化的
 > 下一版数学、资产、迁移与验收方案见
 > [`FILM_OPTICS_V2_PLAN.zh-CN.md`](FILM_OPTICS_V2_PLAN.zh-CN.md)。在 V2 验收并替换
 > 当前实现以前，本节仍描述生产行为；两份文档不能混作同一版本的算法声明。
@@ -360,10 +360,10 @@ HDR 扩展应明确命名为“胶片印相 + scene HDR 扩展”，不声称物
 
 - **显影方式**：`AgX 胶片观察` / `胶片光谱显影`；
 - **胶片曝光**：`-2.0 ... +2.0 EV`，旁注“改变乳剂状态，不等于输出曝光”；
-- **印相介质**：按该卷实际支持的介质过滤；
-- **印相 timing**：`固定` / `随胶片曝光重定时` / `自定义色头`；
-- **灰阶中性化**：`有界数字中性` / `数据手册漂移`；
-- **模拟光学**：关闭 / 轻 / 标准 / 自定义。
+- **印相材料**：按该卷实际支持的介质过滤；
+- **印相曝光方式**：`固定` / `随胶片曝光补偿` / `自定义色头`；
+- **灰阶校色**：`有界全程中性` / `保留胶片偏色`；
+- **颗粒与光晕**：关闭 / 轻 / 标准 / 自定义。
 
 高级区再展开 developer、Film Compression、grain、halation、medium bloom。GUI 延续当前惯例：**功能域未激活**（例如未选择任何胶片）时隐藏整组；胶片功能域已激活但当前模式不可用时灰显，并在界面内显示原因，同时清除会污染 payload 的陈旧值。
 
@@ -443,7 +443,7 @@ CLI 建议新增：
 
 - 删除临时 v1/v2 内部开关，只保留 `observe/full` 稳定语义；
 - README 用相同解码、尺寸、ICC 和 JPEG 参数重做 A/B；
-- 展示必须分别标注“胶片 profile”“印相状态”“模拟光学”，不把组合预设冒充单卷测量；
+- 展示必须分别标注“胶片 profile”“印相状态”“颗粒与光晕”，不把组合预设冒充单卷测量；
 - 中英文架构、使用指南、CLI help 和报告字段同步。
 
 ## 13. 验收门槛
@@ -466,7 +466,7 @@ CLI 建议新增：
 ### 视觉与使用
 
 - Portra：`+2 EV` 经重新印相后总体亮度接近 0 EV，但高光更柔、颜色密度和中间调关系可见变化；
-- Velvia：曝光变化仍保持反转片较窄的宽容度和较高高光色密度，不被负片算法统一褪色；
+- Velvia：曝光变化仍保持反转片较窄的宽容度和较高高光褪色，不被负片算法统一褪色；
 - 夜景深影不能因 medium bloom 或 grain 被整体抬灰；
 - 强点光源的 halation 只围绕可靠光源和高反差边缘出现，不能给全图加红雾；
 - 预览与导出在 tone/color 上一致；同一 film-space 位置的连续颗粒实现一致，缩放后密度均值、方差、频谱和跨层协方差在容差内；
@@ -483,15 +483,15 @@ CLI 建议新增：
 - 若要把 full 色头升级为真实光谱求解，还需要所用 Y/M 滤镜或色头各档位的透过谱；
 - 灰阶、色卡和实景同时用于训练与留出验证。
 
-在拿到这些数据以前：曝光节点与印相模型可以称为 `modelled`；developer 自定义和模拟光学只能称为 `editorial`；不得把视觉偏好写回测量资产。
+在拿到这些数据以前：曝光节点与印相模型可以称为 `modelled`；developer 自定义和颗粒与光晕只能称为 `editorial`；不得把视觉偏好写回测量资产。
 
 ## 15. 决策摘要
 
 1. 当前 `observe` 不是失败的胶片模拟，而是完成度较高的胶片数据驱动 AgX；保持不动。
 2. 明显胶片观感由 `full v2` 承担，首要新增维度是**胶片曝光状态 + 重新印相**，不是总强度。
-3. full v2 拆成解析的 scene->density Stage A，以及 `B1 -> tau(E) -> paper curves -> B2`；halation、grain、印相 timing 与介质由此获得正确插入点。
-4. 印相 timing 与事后灰阶中性化正交；现行 `off/datasheet` 按迁移表保持原义。
-5. 胶片、显影、印相和模拟光学分别建模；full 路径独占 DRT，不再追加 AgX formation。
+3. full v2 拆成解析的 scene->density Stage A，以及 `B1 -> tau(E) -> paper curves -> B2`；halation、grain、印相曝光方式 与介质由此获得正确插入点。
+4. 印相曝光方式 与事后灰阶校色正交；现行 `off/datasheet` 按迁移表保持原义。
+5. 胶片、显影、印相和颗粒与光晕分别建模；full 路径独占 DRT，不再追加 AgX formation。
 6. 真实测量与主观配方并存，但必须在数据、计划、报告和 UI 中明确分层。
 7. HDR 是对 SDR 胶片印相的 scene-referred 扩展，不冒充物理胶片介质。
 

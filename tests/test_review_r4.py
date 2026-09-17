@@ -184,13 +184,13 @@ class ReportHonestyTests(unittest.TestCase):
 
         plan = _film_plan()
         line = jpeg_tone_plan_cn(None, None, "agx", plan, "p3")
-        self.assertIn("模拟光学", line)
-        self.assertIn("介质散射=declared", line)
+        self.assertIn("颗粒与光晕", line)
+        self.assertIn("介质柔化=declared", line)
         self.assertIn("无观感量", line)
         off = jpeg_tone_plan_cn(
             None, None, "agx", _film_plan(film_media_scatter="off"), "p3"
         )
-        self.assertNotIn("模拟光学", off)
+        self.assertNotIn("颗粒与光晕", off)
 
 
 class CliGamutContractTests(unittest.TestCase):

@@ -10,7 +10,7 @@
 > 基础设施层四层软件架构。
 
 先读[认识论基调](#认识论基调与声明纪律)——它解释这条管线的每个"为什么"共享的
-那个前提。然后按四层往下读（胶片观察位置作为跨层功能群，单独成节排在三层之后）：
+那个前提。然后按四层往下读（胶片型号作为跨层功能群，单独成节排在三层之后）：
 
 | 层 | 负责什么 | 不负责什么 |
 |---|---|---|
@@ -57,7 +57,7 @@
 
 darktable 的 scene-referred 管线很像一间信号处理实验室，理解每个模块怎样改变信号正是
 其中的重要部分。dngscan 从里面取出与目标最相关的路径：LibRaw 解释、scene-linear
-Rec.2020，以及 darktable GPL `agx` 模块里的曲线构造与原色几何。AgX 本身来自 Troy
+Rec.2020，以及 darktable GPL `agx` 模块里的曲线构造与色彩浓淡。AgX 本身来自 Troy
 Sobotka，并在 Blender / EaryChow 生态里发展；这里主要通过 darktable 面向照片的实现来
 继承它。
 
@@ -115,10 +115,10 @@ flowchart TB
         SCENE["RawBundle scene frame<br/>scene_rec2020_render + scene_scale<br/>scene-linear Rec.2020 交接"]
         ANALYSIS["Analysis<br/>按饱和堆积或 metadata 解析逐通道 full well<br/>硬 threshold、clip%、2x2 拓扑与 ceiling<br/>噪声底 / 可选诊断 SNR / 可用 DR<br/>解码后 XYZ-Y-EV 与输出色域压力"]
         SPATIAL["解析后的空间 RAW 证据 - 仅 LibRaw 几何<br/>95-99% mask 按实测 full well 刷新<br/>headroom / clip class / SNR guidance<br/>Core Image 几何不借用这些 mask"]
-        EV["Intent exposure<br/>固定 EV0 中灰锚点 x 2^EV<br/>手动 EV 或显式亮度参考搜索"]
+        EV["Intent exposure<br/>固定 EV0 中灰锚点 x 2^EV<br/>手动 EV 或显式自动曝光搜索"]
         SAMPLE["Plan 采样<br/>scene scale + intent exposure<br/>可选且随 WB 适配的 scene 前馈"]
         METRICS["SceneToneMetrics<br/>可靠主体与完整尾部分离<br/>LibRaw 按空间 mask 排除<br/>Core Image 按聚合比例 rank trim<br/>点状发光体分类"]
-        CONTROLS["渲染意图<br/>输出色域、tone core、AgX primaries<br/>胶片观察位置（WB 声明+滤镜+分离+曲线预设）<br/>前馈、punch 与有界明暗微调"]
+        CONTROLS["渲染意图<br/>输出色域、tone core、AgX primaries<br/>胶片型号（WB 声明+滤镜+分离+曲线预设）<br/>前馈、punch 与有界明暗微调"]
         COMPILE["分别编译<br/>SceneToneMetrics<br/>ToneCompressionPlan<br/>ColorGeometryPlan"]
         PLAN["不可变 RenderPlan"]
         REPORTS["可选六面板 / CSV / 文本报告"]
@@ -304,7 +304,7 @@ RAW 9 不是第五条 tone curve，`neutral` 也不是另一种 RAW 解码器。
 - DNG [`BaselineExposure`](https://developer.apple.com/documentation/coreimage/cirawfilter/baselineexposure)
   是文件写入的基线显影补偿。它不是快门/光圈/ISO，不是传感器
   绝对标定，也不是内容自适应自动曝光；显式 `--ev` 调整发生在它之后。
-- 场景亮度只编译 tone endpoint 与趾部/肩部；RAW 剪切和输出色域压力只编译颜色
+- 场景亮度只编译 tone endpoint 与趾部/肩部；RAW 过曝和输出色域压力只编译颜色
   权限。颜色指标不能移动黑白端点，亮度百分位也不能冒充已经丢失的 CFA 色彩。
 - `agx` 配 darktable `base` primaries 是成片默认。`lum`、`neutral` 是受控对照，
   `gated` 是仅限 LibRaw 的 RAW 证据实验。
@@ -375,7 +375,7 @@ LibRaw 的三种选择处理的是重建后的观感：
 
 默认即 `clip`——诚实的白不会错，剪切证据机制又让高光信任与填充方式解耦，多数照片
 看不出差别；`blend`/`reconstruct` 在部分通道过曝的平坦光源上值得一试，重建色度始终
-属于推断。无论选哪一个，RAW 剪切证据都不会改变。
+属于推断。无论选哪一个，RAW 过曝证据都不会改变。
 
 LibRaw 会把 `blend` 和 `reconstruct` 的 uint16 整幅缩暗，倍数正好是归一化后的最大
 白平衡增益，目的是给名义白点以上的重建值留容器码值。dngscan 现在把这段余量记进
@@ -404,7 +404,7 @@ Apple 的 `aligned` 模式额外做的 half-size LibRaw RGB 渲染只是 scene s
 RGBA half-float 渲染到 extended-linear Rec.2020。负色彩分量和 diffuse white 以上的值
 会原样交给 AgX，不再经过 uint16 百分位缩放。look 类控制项按中性线性交接配置（RAW 9 的
 moire 值刻意保留 Apple 更保细节的默认）；高光重建与镜头校正则显式开启。配置遵循 Apple
-在 [WWDC21 session 10160](https://developer.apple.com/videos/play/wwdc2021/10160/) 中对线性 RAW 配方与可编辑显影配方的区分。
+在 [WWDC21 session 10160](https://developer.apple.com/videos/play/wwdc2021/10160/) 中对线性 RAW 配方与可编辑冲洗方式的区分。
 
 它是**独立管线，不是 LibRaw 的后端**。Core Image 会执行文件里的 DNG opcode：在
 Sigma fp 的 DNG 上是逐平面 `WarpRectilinear` 加一张镜头阴影 `GainMap`。这个畸变校正
@@ -417,7 +417,7 @@ LibRaw 提供。Tone plan 会用实测的剪切 cell 比例，从 RAW 9 亮度�
 这是聚合层面的对照启发式，不表示某个 RAW 9 像素能对应到某个 CFA site：重建高光仍可描述
 尾部拓扑，但不能反过来定义全局白点。报告会写明解码器、版本，以及被执行的 opcode。
 
-HDR 分支按同一套证据规则接入这条路径，并有专门测试钉住：色度自由度 `rho` 被压在 0.25
+HDR 分支按同一套证据规则接入这条路径，并有专门测试钉住：高光保色 `rho` 被压在 0.25
 上限（没有逐像素 CFA 掩码可以在局部撤回它）、无掩码 formation 的渲染保持在 `[0, peak]`
 体积内、rank-trim 后的 RAW 9 可靠尾部与 LibRaw 的 CFA 掩码测量在同一帧上对齐（日景参考
 帧实测相差 0.09 EV，门限 0.3 EV）。两条解码线的成像差异属于相机诠释取向，不是 HDR
@@ -438,12 +438,12 @@ green 项会在分子分母中严格约掉；这里得到的是逐文件解码�
 它不会把中位数拉到 18% 灰，也不改变画面内部的光比，但解码器色彩、几何和重建都会影响
 这个统计量；它与上文的 Evidence 获取是两个独立调用和数据契约。
 
-`--coreimage-scale unity` 会跳过该比较，保留 Core Image 原生单位；`measured` 只应用旧的
+`--coreimage-scale unity` 会跳过该比较，保留 Core Image Apple 原始数值；`measured` 只应用旧的
 Sigma fp 固定 `1/1.0293` 倍率，用来复现早期 A/B。三个模式现在在效果上互斥，固定倍率不会
 再被后续逐文件对齐抵消。
 
 这类对比里有两种亮度口径，**不能互相引用**。**可靠主体**中位是 scene-linear 的，量在色调
-曲线之前，且已剔除 RAW 剪切样本；**最终输出**中位量在渲染完成的图像上，此时 AgX 已经把
+曲线之前，且已剔除 RAW 过曝样本；**最终输出**中位量在渲染完成的图像上，此时 AgX 已经把
 两端都压过。同一对解码器在 `_SDI0150` 上，前者相差 +0.123 EV，后者只有 +0.02~0.03 EV
 ——色调曲线吸收掉了 scene-linear 偏移的大部分，两个数字差了约 5 倍。它们都是正确答案，
 只是回答的不是同一个问题；引用时必须写明是哪一个。
@@ -451,7 +451,7 @@ Sigma fp 固定 `1/1.0293` 倍率，用来复现早期 A/B。三个模式现在�
 除对齐之外，差别主要来自相机解释本身——色彩分离、噪声重建和高光走向。另有三点行为差异
 来自解码器本身而非口味：
 
-- **亮度参考按钮在两条管线上可能给出不同 EV。** 它从当前解码器且经过所选
+- **自动曝光按钮在两条管线上可能给出不同 EV。** 它从当前解码器且经过所选
   scene transform 的结果里读取可靠主体中位，不再拿 LibRaw CFA 直方图代替亮度。然后用同一份
   已编译 plan 搜索最终输出的高光安全上限。这让按钮可以跨解码器工作，却不会把 EV 0 变成
   隐式自动曝光。要比较解码器本身，仍应固定 `--ev`。
@@ -599,10 +599,10 @@ RAW 9 随系统分发，一次 macOS 更新就可能换掉模型，而 `decoderV
 
 整条管线以 scene-linear `0.18` 作为名义中灰。当前显影锚点是统一固定标量
 `0.18 * 2^3` 再叠加手动 EV；它还不是逐机型标定，也不会把每张照片的中位数自动变成
-18% 灰。文件存在 DNG `BaselineExposure` 时，会更早按文件显影配方遵从。常数缩放不会
+18% 灰。文件存在 DNG `BaselineExposure` 时，会更早按文件冲洗方式遵从。常数缩放不会
 破坏场景意图：暗场景进 AgX 前依然暗，明亮场景依然亮。
 
-GUI 里的“亮度参考”是一个主动调用的对照读数，也就是 CLI 的 `--ev auto`。它会尝试把
+GUI 里的“自动曝光”是一个主动调用的对照读数，也就是 CLI 的 `--ev auto`。它会尝试把
 可靠主体中位放到 18% 灰，并受新增高光剪切预算约束。这个中位来自当前解码器、当前
 scene transform 之后的可靠 scene body，RAW 已剪切样本不会定义它。高光搜索会在同一份固定
 plan 上尝试候选 EV，不会边测边改变目标。全图统计仍可能被占比很大的背景误导，所以它只是参考，
@@ -634,7 +634,7 @@ render plan，输出不变。
 | `中间调亮度` | 主体更沉、更暗 | 提亮主体和可见暗部 | 不移动 scene exposure、黑点或白点 |
 | `中间调对比` | 中间调更柔和 | 拉开校准支点两侧的明暗距离 | 不移动支点本身 |
 | `暗部过渡` | 趾部更深，更快沉入黑场 | 趾部更开放，阴影层次更容易看见 | 不移动黑点，也不会创造低 SNR 信号 |
-| `高光过渡` | 肩部更直接，高光更有冲击力 | 肩部更柔和，更早保留亮部层次 | 不移动白点或 RAW 剪切位置 |
+| `高光过渡` | 肩部更直接，高光更有冲击力 | 肩部更柔和，更早保留亮部层次 | 不移动白点或 RAW 过曝位置 |
 
 `中间调亮度`和曝光 EV 最容易混淆。曝光 EV 在 scene-linear 域缩放信号，会改变进入
 肩部的位置并消耗高光余量；中间调亮度是显示侧的内部曲线调整，真黑和目标白保持不动。
@@ -645,12 +645,12 @@ render plan，输出不变。
 `暗部过渡`和`高光过渡`。打开暗部只能展示已经记录到的内容；低 SNR 场景开得过多，也会把
 读出噪声和色噪一起带出来。`高光褪白`不属于这四个亮度控制，它只处理接近显示白的色度路径。
 
-### 端点模式：自适应与证据界
+### 黑白点依据：自适应与传感器实测范围
 
 EV 之所以感觉像“数字亮度”，是因为默认端点追随场景百分位、曲线随场景平移。
 `endpoint_mode` 补上“界”这一轴：**adaptive**（默认）保持现状——黑端点参考主体 p1
 与噪声下界，白端点参考可靠尾部加边距；**evidence** 把端点钉在传感器证据上——黑端点
-= 实测噪声底 EV（固定曝光锚下 RAW 满阱位于 +`MIDGRAY_HEADROOM_STOPS` EV，噪声底占
+= 实测噪声底 EV（固定曝光锚下 RAW 过曝标记位于 +`MIDGRAY_HEADROOM_STOPS` EV，噪声底占
 满阱的比例 `f` 对应 `MIDGRAY_HEADROOM_STOPS + log2(f)`；有传感器先验时用先验读出
 噪声的电子域口径，无先验时用单帧 tile-σ 估计并注记降级），白端点只允许可靠 RAW 尾部
 （保留与自适应相同的边距与最低白点地板，防止肩部塌到主体上；重建尾部永远无权定义
@@ -666,9 +666,9 @@ EV 之所以感觉像“数字亮度”，是因为默认端点追随场景百�
 两者都不移动黑白端点与支点，编译后的实际值（含被钳制的请求）通过
 `drt.compiled_curve_transitions` 回报给 GUI 与报告。
 
-### 肩部自由度的几何：为什么有些照片的肩部收白纹丝不动
+### 肩部自由度的几何：为什么有些照片的高光收白纹丝不动
 
-（本节承接《修图工作流说明书》"为什么样张一的肩部收白纹丝不动"的白话结论，
+（本节承接《修图工作流说明书》"为什么样张一的高光收白纹丝不动"的白话结论，
 给出完整推导。）收白点定义为曲线升到"近白参考"——黑地板到白点跨度的 90%
 ——的场景 EV。肩部从校准支点出发能支配的显示空间等于中段斜率的投影升幅
 减去实际需要的升幅：
@@ -700,7 +700,7 @@ white EV，结果就是高光很刺眼而主体仍然偏暗。C1 端点和主体
 ## 三层：Color geometry — AgX 真正改变了什么
 
 裸的逐通道 S 曲线会让 R/G/B 以不同速度进入趾部和肩部，高纯度颜色的色相因此会
-随亮度漂移。AgX 不只是一条 sigmoid；它的关键是曲线前后的原色几何。
+随亮度漂移。AgX 不只是一条 sigmoid；它的关键是曲线前后的色彩浓淡。
 
 曲线前的 `inset` 把工作原色向中性轴收缩并做小幅旋转，避免极纯颜色直接撞上单通道上限，
 给饱和高光留出平滑的 path-to-white。曲线后的 `outset` 再恢复纯度，但它刻意不是 inset
@@ -731,7 +731,7 @@ Blender 生态常把 Base 与 Punchy look 配套使用，本质上也是在处�
 色度与内容在曲线上的位置耦合：同一个物体换一个构图或曝光，落入不同曲线区间后可能得到
 不同纯度。`punch`、`gated` 和 `lum` 都是为了把这些影响拆开观察，而不是否定 AgX。
 
-### 四条压缩核心
+### 四条影调映射
 
 四条核心共用同一个曝光锚点和交付端保护，方便在相同 EV 下拆开比较。它们并不都能拿到
 相同的空间 CFA 证据：mask 只存在于 LibRaw 路径，各核心对现有证据的使用方式也不同。
@@ -739,7 +739,7 @@ Blender 生态常把 Base 与 Punchy look 配套使用，本质上也是在处�
 | 核心 | 底层差别 |
 | --- | --- |
 | `agx` | 完整的 inset → 逐通道 C1 curve → hue path → outset。默认成片路径。 |
-| `gated` | 仅限 LibRaw 的实验：同时计算 AgX 色彩与亮度保持结果，由 RAW 剪切、余量和噪声置信度逐像素混合。 |
+| `gated` | 仅限 LibRaw 的实验：同时计算 AgX 色彩与亮度保持结果，由 RAW 过曝、余量和噪声置信度逐像素混合。 |
 | `lum` | 同一条场景编译的 C1 曲线只作用于亮度 norm，RGB 比例保持，不进入 AgX inset/outset。 |
 | `neutral` | 固定 Y 比例诊断曲线，不使用场景编译 endpoint 或 AgX 几何；不是成片基线。 |
 
@@ -763,7 +763,7 @@ RAW headroom retreat 只在解拜耳前 CFA 表明通道接近或到达 full-wel
 该亮度下的中性轴收回。它与 AgX 的全局 inset 不同：一个由传感器余量驱动，一个是显示变换
 本身的颜色几何。
 
-`punch`（GUI 中的`中频纯度`）用来补偿 AgX inset 在明亮宽动态场景里的整体去纯度。
+`punch`（GUI 中的`色彩浓度`）用来补偿 AgX inset 在明亮宽动态场景里的整体去纯度。
 它在 Oklab 中工作，自动值由主体亮度、可用 DR 和 tone window 共同门控；在中性轴、深影、
 亮部、已经很浓的颜色和肤色
 区域分别衰减。所有权重都乘在增益的增量上，因此 gain 始终 ≥ 1：它只补纯度，不会在某个
@@ -778,7 +778,7 @@ RAW headroom retreat 只在解拜耳前 CFA 表明通道接近或到达 full-wel
 方向压回边界，而不是简单逐通道 clip。这样 AgX 或 P3 保下来的高光颜色不会在最后一步突然
 崩成硬原色。
 
-## 胶片观察位置 — 跨四层的声明功能群
+## 胶片型号 — 跨四层的声明功能群
 
 胶片模拟在这条管线里不是一张 LUT，而是**五个独立声明**，各自落在它物理上正确的层。
 规范条款（验收门、边界、翻译规则）在
@@ -821,8 +821,8 @@ flowchart LR
   与**引用原文**，引用不占用胶片名，也不带观看翻译。
 - **曝光依赖色彩**：observe 模式 = 负片的联合 Y×M 色头场（Bradford-LMS 对角
   增益，outset 后施加）；full 模式 = 因式分解的胶片链运行时接管——
-  Stage A（observer→层曝光→特性密度）→ B1 → 印相 timing → 相纸显影 → B2 →
-  灰阶中性化策略 → 参考印相外观层（editorial recipe，可关）。两者的测量出处
+  Stage A（observer→层曝光→特性密度）→ B1 → 印相曝光方式 → 相纸显影 → B2 →
+  灰阶校色策略 → 参考印相外观层（editorial recipe，可关）。两者的测量出处
   相同（同一光谱链），中性轴的行为由所选中性化策略构造性决定。
 
 **双模式分工**（`--film-mode`，合同 §光谱印相·双模式）：**observe（默认）**=
@@ -830,8 +830,8 @@ flowchart LR
 数据可信边界上，胶片预设在此模式下只是曲线参数，原生内核照常加速；
 **full（实验）**= 胶片显影模型整体接管（`film_develop` 核，film v2 因式
 分解链：Stage A 解析——观察者逆矩阵→三条 1D 特性曲线→染料密度，含胶片
-曝光态、editorial 显影配方与 halation/颗粒挂点；Stage B 因式分解——B1
-密度→相纸层曝光 65³、τ(E) 印相 timing 表、相纸 1D 显影曲线、B2 正介质
+曝光态、editorial 冲洗方式与 halation/颗粒挂点；Stage B 因式分解——B1
+密度→相纸层曝光 65³、τ(E) 印相曝光方式 表、相纸 1D 显影曲线、B2 正介质
 密度→观看 65³（按介质×观看条件键控、跨卷复用）；无 AgX 色彩几何，要求
 AgX tone core；色头仅在 timing=custom 下以 modelled Δτ 解锁），AgX 只保留
 交付端色域安全。SDR 之上，Ultra HDR 以"胶片印相 + scene HDR 扩展"参与
@@ -847,14 +847,14 @@ b2，schema 10：每卷 Stage A 按 runtime-faithful、重复折的 held-out CV 
 
 （本节收纳《胶片调整说明书》只保留白话结论的三组技术事实。）
 
-**曲线预设与端点模式的交互**：预设坐标由数据手册特性曲线到 AgX 参数空间的
+**曲线预设与黑白点依据的交互**：预设坐标由数据手册特性曲线到 AgX 参数空间的
 最小二乘解给出（Velvia 100（v4 黑位语义:介质经声明环绕翻译的地板,原生
 Dmax 并记录于 medium_floor_native_linear）：black −4.05 / white +7.59
 ——介质原生黑位下反转片不再顶满拟合域上界；此前 white 顶格 +8.5 是 v2 把
 0.5% 投影杂光烘进目标后的副作用。theatrical 引用系仍可能顶界，属曲线族的
 顶格表达，`fit.pinned` 字段逐项记录；残差见"预设库与出处"一节）。
 预设激活时端点就是坐标本身，`endpoint_mode` 被静默改回自适应语义——实测
-"证据界 + Velvia 曲线"与"自适应 + Velvia 曲线"逐字节相同，GUI/CLI 传入
+"传感器实测范围 + Velvia 曲线"与"自适应 + Velvia 曲线"逐字节相同，GUI/CLI 传入
 evidence 不报错也不生效。趾/肩偏移仍在预设坐标上重解曲线形状（抬黑地板
 相对化处理，预设声明的相纸 Dmax 地板保留）：后台样张实测 Velvia 曲线上
 `toe_end_offset` −2 移动约 39% 的像素，而 `shoulder_white_offset` +2 只移动
@@ -883,9 +883,9 @@ Bradford-LMS 对角增益发布（极端滤镜下 Rec.2020 分量可能过零，
 取代,本节保留为历史记录;现行资产为 `dngscan/data/film_v2/` 三分家族,
 开关正名 `--film-neutralization`,详见 FILM_PRINT_RENDERING_PLAN）**：
 当时 full 模式的接管核心是离线烘焙的光谱链 65³ 查找表（输入声明为
-纯场景线性 Rec.2020（`input_space=scene_rec2020`——full 模式跳过光谱前馈，
+纯场景线性 Rec.2020（`input_space=scene_rec2020`——full 模式跳过胶片感色，
 观察者逆矩阵自担分色）、逐通道 log₂ 曝光整形、四面体插值、域外钳制），开关
-选择中性轴的供给方式：**off**（默认）——数字中性化变体，各通道除以中性阶
+选择中性轴的供给方式：**off**（默认）——全程中性化变体，各通道除以中性阶
 染色在该像素亮度曝光处的取值（存于同一 npz 的**有界** cast 曲线：校正乘数
 沿 h(t)=1+t·(1/cast−1) 直线取最大 t 使每通道落在 [0.25, 4]，该直线上任意
 一点都严格保持中性轴亮度；不烘第二只表——有界除数逐像素精确求值时商的
@@ -917,7 +917,7 @@ observe 模式的完整结构正是 FilmLight 的原型：**稳定的自家 DRT�
 - **前馈分离超驱动**（`--scene-transform-strength` >1）：把胶片感色分离（二手
   datasheet 数据、有界矩阵、中性保持）推过校准强度——加的是"这卷胶片怎么分
   颜色"的味；
-- **AgX 原色几何**（`--agx-primaries` punchy/muted）：AgX 自家被验证的纯度
+- **AgX 色彩浓淡**（`--agx-primaries` punchy/muted）：AgX 自家被验证的纯度
   词汇——加的是密度与饱和的"浓"。
 
 `FILM_STYLE_PAIRINGS`（film_curve.py）按卷口碑给每个预设一组
@@ -1029,14 +1029,14 @@ SDR 输出是带确定性 TPDF 抖动的 8-bit JPEG，默认 quality 100、4:4:4
 
 HDR 输出是可选的 Apple ISO 21496-1 gain-map 封装（JPEG 或 HEIC），目前只在
 macOS/Core Image 后端可用，并且只接 AgX tone core。HEIC 与 JPEG 共用同一套 formation
-masters，只换最后一跳编码——但本管线实测 HEIC 文件更大、回读误差也更大（见交付档
+masters，只换最后一跳编码——但本管线实测 HEIC 文件更大、回读误差也更大（见导出档位
 说明与使用指南），推荐默认仍是 JPEG 容器。它不是把 SDR 成片直接放大：同一份 scene-linear
 Rec.2020 在 display formation 前分成 SDR AgX 与 HDR AgX 两条独立 DRT。两者共享拍摄曝光
 意图和 RAW 分析，但 HDR 自己持有 tone curve、色彩几何和扩展 P3 投影，不要求任何像素区域
 与 SDR 成片一致。
 
 HDR 可用余量不是用户所选屏幕容量的同义词。屏幕容量只是上限；初始请求由
-RAW 剪切证据筛过的可靠高光尾部决定。LibRaw 用逐像素 CFA mask，RAW9 则按全分辨率
+RAW 过曝证据筛过的可信最亮高光决定。LibRaw 用逐像素 CFA mask，RAW9 则按全分辨率
 剪切 cell 比例从亮度顶部做保守的 rank trim。没有足够 RAW 证据时 headroom 就是 0，导出会
 明确失败，不会用重建高光或 SDR white endpoint 冒充传感器信息。
 
@@ -1071,9 +1071,9 @@ JPEG）；任一门禁不过就不会保留输出文件。现在 HDR 不支持 d
 因为这些 SDR 算子还没有独立 HDR 定义。数学约束和验收线在
 [`docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md`](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md)。
 
-### 交付档的实测定位
+### 导出档位的实测定位
 
-两个交付档是两个被测量过的操作点，不是一根质量滑杆。在全分辨率回归样张（24.5 MP
+两个导出档位是两个被测量过的操作点，不是一根质量滑杆。在全分辨率回归样张（24.5 MP
 Sigma fp）上：archive q100/4:4:4 约 60 MB——验证级母版，约为源 DNG 的两倍，因为去拜耳
 后的三通道 q100 JPEG 加 gain map 本来就比无损压缩的 14-bit 拜耳马赛克大。share
 q90/4:2:0 为 11–27 MB，gain map 与 content headroom 完整保留；最坏情况（高 ISO 舞台帧）
@@ -1137,7 +1137,7 @@ compression 说明。它们定义职责边界和参照方法，不会把 dngscan
 
 ## 附：保留的前馈实验
 
-> 注：这套前馈机制现已承载胶片光谱分离预设（见"胶片观察位置"一节）——同一标定器、
+> 注：这套前馈机制现已承载胶片光谱分离预设（见"胶片型号"一节）——同一标定器、
 > 同一窗口/置信度合同，拟合目标从数字化的 ALEV 猜测换成了数据手册里的胶片感色层曲线。
 > 以下记述保留原 ALEV 实验的动机与边界。
 

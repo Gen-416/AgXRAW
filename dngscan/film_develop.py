@@ -1087,7 +1087,7 @@ def _apply_film_core_v2(
     medium = str(getattr(plan, "film_print_medium", "") or "") or stock["default_medium"]
     if medium not in media:
         raise ValueError(
-            f"'{preset}' 未烘焙印相介质 '{medium}'（可用：{'/'.join(stock['media'])}）"
+            f"'{preset}' 未烘焙印相材料 '{medium}'（可用：{'/'.join(stock['media'])}）"
         )
     if not stock["exp_lo"] <= exposure_ev <= stock["exp_hi"]:
         raise ValueError(
@@ -1440,7 +1440,7 @@ def _apply_film_core_v2(
     if bounded:
         if timing == "custom":
             raise ValueError(
-                "custom timing 与数字灰阶中性化互斥：手动印相的意义是保留"
+                "custom timing 与数字灰阶校色互斥：手动印相的意义是保留"
                 "印出的样子；请配 --film-neutralization native"
             )
         nodes = ps["tau_nodes"]
