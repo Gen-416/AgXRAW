@@ -179,9 +179,13 @@ def decoder_window_ratios(scene_decoder: str, region_name: str) -> tuple[float, 
     decoder's reference frame (see tools/calibrate_raw9_anchors.py). None = identity.
 
     The prefeed windows are calibrated against LibRaw-decoded responses; RAW 9
-    realises the same declared balance through Apple's own calibration and interprets
-    hue regions differently (measured global B/G x0.82 on the fp corpus, skin
-    shifting hardest). Windows follow the pixels; matrices and pixels are untouched.
+    interprets hue regions differently through Apple's opaque colour transform. Both
+    paths realise a declared balance with the same project hot-WB matrix since
+    2026-08-27, so the residual transport is small (2026-09-16 recalibration on the
+    fp corpus: global R/G x1.05, B/G x0.98; skin B/G x0.88 shifts hardest — the
+    2026-08-04 values measured against CIRAWFilter's own neutralTemperature put B/G at
+    x0.85 and were stale once the migration landed). Windows follow the pixels;
+    matrices and pixels are untouched.
     """
     token = str(scene_decoder)
     decoder, _, model = token.partition("|")

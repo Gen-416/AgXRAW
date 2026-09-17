@@ -93,3 +93,16 @@ LibRaw 和 Apple RAW 都执行这一项目 WB。Apple 的 `neutralTemperature` �
 **同批合入——rung 2 采纳门（缝 B）**：rawpy 的 `color_matrix` 读的是 LibRaw 采纳门*之前*的嵌入 `cmatrix`（钉扎 `identify.cpp`：仅 DNG 容器且 `cmatrix[0][0] > 0.125` 才 memcpy 进 `rgb_cam`，非 DNG 永不采纳，被拒时解码走恒等色彩 `raw_color=1`）。rung 2 现按同一判据设门（`metadata.is_dng_container` 判 IFD0 DNGVersion 标签 + 阈值 0.125），不满足则落到 rung 3/4 或显式降级，绝不用解码器从未施加过的矩阵建 C₀。fp/iPhone 等 DNG（`cmatrix[0][0]≈1.3–1.4`）通过采纳门，行为不变，由上面的 sha 验证顺带覆盖。
 
 **与原裁决的关系**：上节盲测裁决（2026-08-04）针对的是修复前行为；其全部样张（fp 走 rung 2、X100VI RAF 无 DNG 标定走 rung 1 evidence 两侧）在本修复下逐字节不变，裁决对这些路径继续有效。但对真正命中 rung 1+标定的机型（evidence 矩阵非零且带双光源标定的 DNG，如 Adobe 转制 DNG），模拟量级（相对归一 p99.9 最高 ~0.94）明显超出原裁决所见差异量级（8bit p99.9 ≤ 24）；如后续在此类文件上量化出的数字超出原裁决量级，需用户重新过目——此判断留给用户在 PR review 时作出。
+
+## 2026-09-16 更新:RAW 9 窗口传输按现行链重标
+
+`dngscan/decoder_anchor_transport.json` 原值是 2026-08-04 在"RAW 9 走 Apple `neutralTemperature`
+实现 5500K"的旧设计下量的(fp 语料全局 R/G ×1.038、B/G ×0.854)。8 月 27 日改为两条路径施加
+同一个 hot-WB 矩阵后,这个传输就只剩 Apple 不透明颜色变换与 LibRaw 线性变换之差,但数据一直
+没重标——RAW 9 解码的类窗口中心仍被往 B/G 方向挪 15%。在 macOS 27 正式版(26A428)上用
+同一批 9 帧 fp 语料与 12 帧 iPhone 16 Pro 语料重标(`tools/calibrate_raw9_anchors.py`,
+语料按文件名钉死):fp 全局 R/G ×1.053、B/G ×0.984,skin ×1.147 / ×0.882;iPhone 全局
+×1.005 / ×0.985,skin ×1.044 / ×0.990。json 现在记录测量所用的系统版号与日期。
+foliage、magenta、neutral 三类在两套语料上有效支持不足,回退全局值——foliage 窗口
+(`alev_material_d55`,来源为解析式"red-edge"演示光谱)的 B/G 中心 ≈ 0、方差 1e-5,对任何
+真实像素权重都是 0,它的传输值因此无关紧要;这是材质窗口数据质量问题,不在本次范围。

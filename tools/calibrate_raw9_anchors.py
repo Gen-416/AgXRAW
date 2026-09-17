@@ -6,8 +6,14 @@ The prefeed windows are calibrated in the LibRaw-decoded reference frame. Apple'
 RAW 9 interprets the same scene slightly differently, so materials land at slightly
 shifted (R/G, B/G) chromaticities. This tool measures that shift empirically:
 
-- decode each corpus frame with BOTH decoders under the same declared WB (5500K, a
-  balance both paths realise from their own calibration);
+- decode each corpus frame with BOTH decoders under the same declared WB (5500K).
+  Since the 2026-08-27 hot-WB migration both paths realise that declaration with the
+  SAME project Rec.2020 hot-WB matrix (RAW 9 decodes at AsShot, the matrix is applied
+  after), so what remains in the ratio is Apple's opaque colour transform against
+  LibRaw's linear one — no longer two different 5500K realisations. Recalibrate
+  whenever the WB realisation of either path changes (the 2026-08-04 values, measured
+  against CIRAWFilter's own neutralTemperature, put B/G at x0.85 on the fp corpus;
+  the 2026-09-16 recalibration on the current chain measures x0.98);
 - box-downsample both renders to a coarse common grid — RAW 9's DNG-opcode warp moves
   corners by ~70 px at 24 MP, which vanishes at block scale (same reasoning as the
   existing geometry_correlation diagnostic);
@@ -25,6 +31,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +40,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from dngscan.analysis import analyze  # noqa: E402
+from dngscan.coreimage_decode import decoder_runtime_id  # noqa: E402
 from dngscan.raw_io import load_raw  # noqa: E402
 from dngscan.scene_transform import SCENE_TRANSFORMS  # noqa: E402
 from dngscan.tone import scene_intent_rec2020  # noqa: E402
@@ -40,10 +48,14 @@ from dngscan.tone import scene_intent_rec2020  # noqa: E402
 OUT_PATH = PROJECT_ROOT / "dngscan" / "decoder_anchor_transport.json"
 GRID = (64, 96)  # coarse block grid: warp-immune, still ~6k samples per frame
 MIN_EFFECTIVE_SUPPORT = 40.0  # weighted sample mass below which a class uses global
-RATIO_BOUNDS = (0.65, 1.30)  # measured global bg reaches 0.82: the two decoders realise 5500K differently  # implausible transport = measurement problem, refuse
+RATIO_BOUNDS = (0.65, 1.30)  # 2026-08 native-neutral era measured global bg 0.82; implausible transport = measurement problem, refuse
 
 import argparse
 
+_FP_CORPUS = (
+    "_SDI0133", "_SDI0150", "_SDI0165", "_SDI0199", "_SDI0200",
+    "_SDI0206", "_SDI0222", "_SDI0237", "_SDI0238",
+)
 CORPORA = {
     # camera scope key -> (glob patterns under ~/Pictures, central-crop fraction)
     # Central crop 1.0 = full frame. iPhone ProRAW under LibRaw carries uncorrected
@@ -53,7 +65,12 @@ CORPORA = {
     # not (measured in coreimage_decode), so fp needs the same central crop as iPhone;
     # the radial warp is also near a full block at the corners. The first fp pass ran
     # full-frame — corner shading contaminated ~40% of blocks.
-    "default": (("_SDI*.DNG",), 0.6),
+    # The fp corpus is pinned by name so a recalibration measures the same nine frames
+    # the 2026-08-04 values came from (they have since moved into the 样张 folder).
+    "default": (
+        tuple(f"{n}.DNG" for n in _FP_CORPUS) + tuple(f"AgXRAW样张/{n}.DNG" for n in _FP_CORPUS),
+        0.6,
+    ),
     "Apple iPhone 16 Pro": (("Original RAW *.dng",), 0.6),
 }
 
@@ -202,6 +219,9 @@ def main() -> int:
                       f"grid {GRID[0]}x{GRID[1]}, central crop {crop:g}, "
                       "weighted median per window class",
             "corpus": [p.name for p in frames],
+            # Apple revises RAW 9 by OS build: record which build measured this.
+            "decoder_runtime": decoder_runtime_id(),
+            "measured": date.today().isoformat(),
         },
     }
     OUT_PATH.write_text(json.dumps(existing, indent=1, ensure_ascii=False) + "\n")
