@@ -83,6 +83,18 @@ def srgb_decode(encoded: Any) -> Any:
 
 
 def apply_rgb_matrix3(rgb: Any, matrix: Any) -> Any:
+    from . import _fast
+
+    native = _fast.kernel("apply_rgb_matrix3")
+    if (
+        native is not None
+        and isinstance(rgb, np.ndarray) and rgb.ndim == 2 and rgb.shape[1] == 3
+        and rgb.dtype in (np.float32, np.float64)
+        and isinstance(matrix, np.ndarray) and matrix.dtype == np.float64 and matrix.shape == (3, 3)
+    ):
+        # Same arithmetic, element for element: float64 products, the
+        # left-associative (a + b) + c sum, one round to float32.
+        return native(np.ascontiguousarray(rgb), [float(v) for v in matrix.reshape(-1)])
     out = np.empty((rgb.shape[0], 3), dtype=np.float32)
     out[:, 0] = matrix[0, 0] * rgb[:, 0] + matrix[0, 1] * rgb[:, 1] + matrix[0, 2] * rgb[:, 2]
     out[:, 1] = matrix[1, 0] * rgb[:, 0] + matrix[1, 1] * rgb[:, 1] + matrix[1, 2] * rgb[:, 2]
