@@ -25,27 +25,27 @@
     },
     "foliage": {
      "ratio_rg_bg": [
-      1.05293,
-      0.98438
+      0.97025,
+      0.88577
      ],
-     "effective_support": 0.0,
-     "basis": "global-fallback"
+     "effective_support": 186.4,
+     "basis": "class-weighted"
     },
     "magenta": {
      "ratio_rg_bg": [
-      1.05293,
-      0.98438
+      1.15327,
+      1.12364
      ],
-     "effective_support": 29.9,
-     "basis": "global-fallback"
+     "effective_support": 419.4,
+     "basis": "class-weighted"
     },
     "neutral": {
      "ratio_rg_bg": [
-      1.05293,
-      0.98438
+      0.99626,
+      0.97701
      ],
-     "effective_support": 2.8,
-     "basis": "global-fallback"
+     "effective_support": 681.4,
+     "basis": "class-weighted"
     },
     "skin": {
      "ratio_rg_bg": [
@@ -70,7 +70,7 @@
      "_SDI0237.DNG"
     ],
     "decoder_runtime": "版本27.0（版号26A428）",
-    "measured": "2026-09-16"
+    "measured": "2026-09-17"
    }
   },
   "Apple iPhone 16 Pro": {
@@ -97,26 +97,26 @@
     },
     "foliage": {
      "ratio_rg_bg": [
-      1.00489,
-      0.98458
+      0.98962,
+      0.97166
      ],
-     "effective_support": 0.0,
-     "basis": "global-fallback"
+     "effective_support": 354.6,
+     "basis": "class-weighted"
     },
     "magenta": {
      "ratio_rg_bg": [
       1.00489,
       0.98458
      ],
-     "effective_support": 0.0,
+     "effective_support": 4.4,
      "basis": "global-fallback"
     },
     "neutral": {
      "ratio_rg_bg": [
-      0.99412,
-      0.98596
+      0.99029,
+      0.98768
      ],
-     "effective_support": 64.4,
+     "effective_support": 354.4,
      "basis": "class-weighted"
     },
     "skin": {
@@ -145,7 +145,7 @@
      "Original RAW 26-07-24 194203657.dng"
     ],
     "decoder_runtime": "版本27.0（版号26A428）",
-    "measured": "2026-09-16"
+    "measured": "2026-09-17"
    }
   }
  }

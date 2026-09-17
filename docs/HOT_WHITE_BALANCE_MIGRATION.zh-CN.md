@@ -106,3 +106,8 @@ LibRaw 和 Apple RAW 都执行这一项目 WB。Apple 的 `neutralTemperature` �
 foliage、magenta、neutral 三类在两套语料上有效支持不足,回退全局值——foliage 窗口
 (`alev_material_d55`,来源为解析式"red-edge"演示光谱)的 B/G 中心 ≈ 0、方差 1e-5,对任何
 真实像素权重都是 0,它的传输值因此无关紧要;这是材质窗口数据质量问题,不在本次范围。
+
+**2026-09-17 补记**:材质窗口重拟合后(窗口 = 实测反射率的色度真值,见
+`dngscan_assets/spectral/README.md`),foliage / neutral / magenta 三类在重标里都有了真实
+支持(fp:foliage 186、neutral 681、magenta 419;iPhone:foliage 355、neutral 354),不再
+回退全局值;传输随之重跑:fp foliage R/G ×0.970、B/G ×0.886,magenta ×1.153 / ×1.124。

@@ -37,6 +37,7 @@
 |---|---|
 | `fit_film_curve.py` | 特性曲线拟合 |
 | `fit_skin_window.py` / `calibrate_skin_matrix.py` | 肤色前馈窗口/矩阵标定 |
+| `regenerate_material_presets.py` | 按各预设记录的目标 SSF 重生成全部材质/胶片分离前馈预设(窗口=实测反射率的色度真值) |
 | `calibrate_raw9_anchors.py` | RAW9 对齐锚点标定 |
 | `grain_particle_oracle.py` | 颗粒粒子 oracle(多带频谱拟合依据) |
 | `spectral_base.py` | 光谱底座共享库 |

@@ -636,8 +636,14 @@ class FilmPrefeedPresetTests(unittest.TestCase):
                     {"skin", "foliage", "cyan", "neutral", "magenta"}, names
                 )
                 for region in preset.regions:
-                    self.assertGreater(region.confidence, 0.0)
+                    # 2026-09-17 refit: confidence folds fit quality into the
+                    # weight, so an honest 0 (the matrix cannot reduce the
+                    # fp->stock divergence for that class, e.g. magenta on
+                    # Velvia/Provia) is a declared no-op, not a broken preset.
+                    self.assertGreaterEqual(region.confidence, 0.0)
                     self.assertLessEqual(region.confidence, 1.0)
+                live = [r for r in preset.regions if r.confidence > 0.0]
+                self.assertGreaterEqual(len(live), 3, [r.name for r in live])
 
     def test_neutral_axis_survives_film_separation(self) -> None:
         from dngscan._deps import np as _np

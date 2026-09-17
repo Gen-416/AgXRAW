@@ -495,12 +495,37 @@ def chromatic_adapt_xyz(xyz: np.ndarray, src_white: np.ndarray, dst_white: np.nd
 
 
 def camera_to_rec2020_matrix(camera_rgb: np.ndarray, target_rec2020: np.ndarray) -> np.ndarray:
-    return constrained_row_sum_fit(camera_rgb, target_rec2020)
+    """Observer profile: a white-preserving 3x3 fitted in LINEAR RGB.
+
+    2026-09-17: this used to be constrained_row_sum_fit, which fits in the
+    G-normalised chroma domain (its G row is the identity by construction). That is
+    the right shape for the per-material residual matrices the runtime applies, and
+    the wrong one for a colorimetric profile: on the measured A7 III SSF against the
+    AMPAS 190 it left a mean Oklab error of 0.056 and a negative channel on 22 % of
+    real reflectances (100 % of saturated greens got a negative blue). The plain
+    linear least squares below, rows summing to 1 so the balanced white maps to
+    white, reaches 0.007 with ~1 % negatives on the same data."""
+    a = np.stack([camera_rgb[:, 0] - camera_rgb[:, 2], camera_rgb[:, 1] - camera_rgb[:, 2]], axis=1)
+    matrix = np.empty((3, 3), dtype=np.float64)
+    for row in range(3):
+        coeff, *_ = np.linalg.lstsq(a, target_rec2020[:, row] - camera_rgb[:, 2], rcond=None)
+        matrix[row] = [coeff[0], coeff[1], 1.0 - coeff[0] - coeff[1]]
+    return matrix
 
 
 def camera_rec2020_response(reflectance: np.ndarray, illuminant: np.ndarray, ssf: np.ndarray, camera_to_rec2020: np.ndarray) -> np.ndarray:
     camera_rgb = integrate_response(reflectance, illuminant, ssf)
     return np.clip(camera_rgb @ camera_to_rec2020.T, 1e-8, None)
+
+
+def camera_rec2020_response_signed(reflectance: np.ndarray, illuminant: np.ndarray, ssf: np.ndarray, camera_to_rec2020: np.ndarray) -> np.ndarray:
+    """The same profiled response WITHOUT the positivity clip — what the matrix
+    fits must see. The G-normalised profile renders saturated greens with a
+    negative blue (100 % of the foliage family); clipping that to 1e-8 erased the
+    blue channel from the foliage fit (its B row came out as the identity) and
+    collapsed the foliage window onto B/G = 0 (2026-09-17 audit). Linear fits do
+    not care about sign; only the Oklab error REPORT needs positive values."""
+    return integrate_response(reflectance, illuminant, ssf) @ camera_to_rec2020.T
 
 
 def strengthen_matrix(matrix: np.ndarray, look_gain: float) -> np.ndarray:
@@ -696,6 +721,94 @@ def demo_sky_reflectance(d55: np.ndarray) -> np.ndarray:
     return np.asarray(spectra, dtype=np.float64)
 
 
+# ---------------------------------------------------------------------------
+# Material windows (2026-09-17 refit).
+#
+# A window says WHERE a material class lives in the chroma plane of the pixels the
+# runtime actually sees. Those pixels come from a properly profiled decode (LibRaw
+# with the file's DNG matrices, or RAW 9), which renders natural materials near their
+# colorimetric positions — not from this tool's crude G-normalised camera profile.
+# The old windows were the profile's own response, and for saturated greens that
+# response has a negative blue which the positivity clip flattened to 1e-8: the
+# shipped foliage window sat at B/G = 1e-7 with variance 1e-5 (weight 0 on every real
+# pixel, measured on the fp corpus) and the cyan window was dragged to B/G = 0.18 and
+# so wide it covered 84-87 % of ordinary frames.
+#
+# Windows are therefore the COLORIMETRIC TRUTH (CIE 1931 -> white-balanced Rec.2020
+# under D55) of MEASURED reflectances. Validated against real fp frames decoded at
+# 5500 K: foliage truth (R/G 0.77, B/G 0.33) against photo green clusters at
+# R/G 0.72-0.78, B/G 0.34-0.42.
+#
+# Class membership of the measured set is a declared, modelled choice: Oklab hue
+# sectors with a chroma floor, foliage additionally requiring the red-edge signature.
+MEASURED_CLASS_RULES = {
+    # name: (hue_lo_deg, hue_hi_deg, min_oklab_chroma, min_red_edge_ratio)
+    "foliage": (105.0, 150.0, 0.04, 1.3),
+    "cyan": (170.0, 250.0, 0.04, 0.0),
+    "magenta": (300.0, 370.0, 0.05, 0.0),   # 300..360 plus 0..10
+}
+MEASURED_CLASS_MIN_SAMPLES = 8
+WINDOW_MIN_STD = 0.03          # floor on each principal axis, in ratio units
+WINDOW_TRIM_MADS = 3.5         # robust trim before the covariance
+NEUTRAL_EXCLUSION_SIGMAS = 3.0 # scaled-sigma distance every non-neutral window keeps from (1, 1)
+
+
+def measured_class_spectra(real: np.ndarray, d55: np.ndarray, cmf: np.ndarray) -> dict[str, np.ndarray]:
+    """Split a measured reflectance set into material classes by colorimetry."""
+    truth = spectra_to_rec2020(real, d55, cmf)
+    lab = rec2020_to_oklab(truth)
+    hue = np.degrees(np.arctan2(lab[:, 2], lab[:, 1])) % 360.0
+    chroma = np.hypot(lab[:, 1], lab[:, 2])
+    i700 = int(np.argmin(np.abs(WL - 700.0)))
+    i670 = int(np.argmin(np.abs(WL - 670.0)))
+    edge = real[:, i700] / np.maximum(real[:, i670], 1e-6)
+    out: dict[str, np.ndarray] = {}
+    for name, (lo, hi, min_c, min_edge) in MEASURED_CLASS_RULES.items():
+        in_sector = ((hue >= lo) & (hue <= hi)) | ((hue + 360.0 >= lo) & (hue + 360.0 <= hi))
+        sel = in_sector & (chroma >= min_c) & (edge >= min_edge)
+        if int(sel.sum()) >= MEASURED_CLASS_MIN_SAMPLES:
+            out[name] = real[sel]
+    return out
+
+
+def colorimetric_window(
+    spectra: np.ndarray, d55: np.ndarray, cmf: np.ndarray, neutral_exclusion_scale: float | None = None,
+) -> tuple[list[float], list[list[float]]]:
+    """Robust Gaussian window of the class's colorimetric-truth chroma (R/G, B/G)."""
+    truth = spectra_to_rec2020(spectra, d55, cmf)
+    chroma = np.stack([truth[:, 0] / truth[:, 1], truth[:, 2] / truth[:, 1]], axis=1)
+    med = np.median(chroma, axis=0)
+    mad = np.maximum(np.median(np.abs(chroma - med), axis=0) / 0.6745, 1e-6)
+    keep = np.all(np.abs(chroma - med) <= WINDOW_TRIM_MADS * mad, axis=1)
+    kept = chroma[keep] if int(keep.sum()) >= 4 else chroma
+    mu = np.median(kept, axis=0)
+    cov = np.cov(kept.T) if kept.shape[0] >= 3 else np.diag(mad ** 2)
+    evals, evecs = np.linalg.eigh(cov)
+    evals = np.maximum(evals, WINDOW_MIN_STD ** 2)
+    cov = (evecs * evals) @ evecs.T
+    if neutral_exclusion_scale is not None:
+        # A material window must not claim neutrals (they have their own class and,
+        # in (R/G, B/G) ratio space, a saturated class's spread is heavy-tailed: the
+        # raw magenta fit reached through (1, 1) and weighed 1.0 on every pixel of
+        # ordinary frames). Shrink the covariance uniformly until the neutral point
+        # sits NEUTRAL_EXCLUSION_SIGMAS scaled sigmas away (weight <= exp(-4.5)).
+        d = np.array([1.0, 1.0]) - mu
+        m2 = float(d @ np.linalg.solve(cov * neutral_exclusion_scale ** 2, d))
+        if m2 < NEUTRAL_EXCLUSION_SIGMAS ** 2:
+            cov = cov * (m2 / NEUTRAL_EXCLUSION_SIGMAS ** 2)
+    return [float(mu[0]), float(mu[1])], [[float(cov[0, 0]), float(cov[0, 1])], [float(cov[1, 0]), float(cov[1, 1])]]
+
+
+def assert_window_sane(name: str, mu: list[float], cov: list[list[float]]) -> None:
+    """Fail closed on the 2026-09 failure shape: a window pinned to the clip floor."""
+    m = np.asarray(mu, dtype=np.float64)
+    evals = np.linalg.eigvalsh(np.asarray(cov, dtype=np.float64))
+    if not (np.all(np.isfinite(m)) and np.all(m > 0.02)):
+        raise SystemExit(f"window '{name}' centre {m.tolist()} sits on the clip floor — refusing to write it")
+    if not (np.all(np.isfinite(evals)) and float(evals.min()) >= (0.5 * WINDOW_MIN_STD) ** 2):
+        raise SystemExit(f"window '{name}' is degenerate (covariance eigenvalues {evals.tolist()})")
+
+
 MATERIAL_BASE_STRENGTH = {"skin": 1.0, "foliage": 0.9, "cyan": 0.9, "neutral": 0.5, "magenta": 0.85}
 MATERIAL_MASK_SCALE = {"skin": 1.6, "foliage": 2.0, "cyan": 2.2, "neutral": 1.2, "magenta": 2.0}
 
@@ -743,6 +856,22 @@ def material_spectra_sets(args: argparse.Namespace) -> dict[str, tuple[np.ndarra
     foliage, fol_src = from_file("foliage_reflectance.csv", demo_foliage_spectra(), "analytic foliage demo (red-edge family)")
     magenta, mag_src = from_file("magenta_reflectance.csv", demo_magenta_spectra(), "analytic magenta dye demo")
     neutral, neu_src = from_file("neutral_reflectance.csv", demo_neutral_spectra(), "analytic neutral ramps")
+    # 2026-09-17: a measured reflectance set (--profile-csv, the AMPAS 190) replaces
+    # the analytic foliage/cyan/magenta demos with its own colorimetric subsets —
+    # "a synthetic bump is not evidence" applies to these classes too. A dedicated
+    # per-material CSV still wins over the subset.
+    if getattr(args, "profile_csv", None) is not None:
+        d55 = illuminant_spd("D55", standard_data=args.standard_data)
+        cmf = cie_1931_cmf(WL, args.standard_data, args.cmf_csv)
+        real = load_spectra_csv(args.profile_csv)
+        subsets = measured_class_spectra(real, d55, cmf)
+        label = f"measured subset of {Path(args.profile_csv).name}"
+        if "foliage" in subsets and fol_src.startswith("analytic"):
+            foliage, fol_src = subsets["foliage"], f"{label} (n={len(subsets['foliage'])}, red-edge greens)"
+        if "cyan" in subsets and cyan_path is not None and Path(cyan_path).name == DEFAULT_CYAN_CSV:
+            cyan, cyan_src = subsets["cyan"], f"{label} (n={len(subsets['cyan'])})"
+        if "magenta" in subsets and mag_src.startswith("analytic"):
+            magenta, mag_src = subsets["magenta"], f"{label} (n={len(subsets['magenta'])})"
     return {
         "skin": (skin, skin_src),
         "foliage": (foliage, fol_src),
@@ -762,7 +891,7 @@ def run_material_mode(
     ill_names = [s.strip() for s in args.fit_illuminants.split(",") if s.strip()]
     if "D55" not in ill_names:
         ill_names.insert(0, "D55")
-    ills = {name: illuminant_spd(name, args.standard_data) for name in ill_names}
+    ills = {name: illuminant_spd(name, standard_data=args.standard_data) for name in ill_names}
     d55 = ills["D55"]
 
     materials = material_spectra_sets(args)
@@ -796,8 +925,14 @@ def run_material_mode(
             alexa = camera_rec2020_response(spectra, spd, alexa_ssf, alexa2020)
             per_ill[name] = (fp, alexa)
         responses[mat] = per_ill
-        src = np.concatenate([fp for fp, _ in per_ill.values()])
-        dst = np.concatenate([alexa for _, alexa in per_ill.values()])
+        # The fit sees SIGNED responses (see camera_rec2020_response_signed); the
+        # clipped pair above stays for the Oklab error report only.
+        src = np.concatenate([
+            camera_rec2020_response_signed(spectra, ills[n], fp_ssf, profiles[n][0]) for n in ill_names
+        ])
+        dst = np.concatenate([
+            camera_rec2020_response_signed(spectra, ills[n], alexa_ssf, profiles[n][1]) for n in ill_names
+        ])
         matrix = strengthen_matrix(constrained_row_sum_fit(src, dst), gain)
 
         errors: dict[str, dict[str, float]] = {}
@@ -827,16 +962,33 @@ def run_material_mode(
             row[j] = float(after.mean())
         leakage[k] = row
 
+    # Skin keeps the window fitted from real fp photographs (tools/fit_skin_window.py
+    # on the arri_skin_d55 preset) when the output file carries one — real decoded
+    # pixels beat any spectral model; every other class takes the colorimetric truth
+    # of its spectra.
+    photo_skin = existing_region_windows(args.out, "arri_skin_d55").get("skin")
+    window_sources: dict[str, str] = {}
     regions = []
     for mat, fit in fits.items():
-        fp_d55, _ = responses[mat]["D55"]
-        mu, cov = mask_params(fp_d55, MATERIAL_MASK_SCALE[mat])
+        scale = MATERIAL_MASK_SCALE[mat]
+        if mat == "skin" and photo_skin is not None:
+            mu = [float(v) for v in photo_skin["mu_rg_bg"]]
+            cov = [[float(v) for v in row] for row in photo_skin["cov_rg_bg"]]
+            scale = float(photo_skin.get("scale", scale))
+            window_sources[mat] = "arri_skin_d55 skin window (fitted from real fp photographs)"
+        else:
+            mu, cov = colorimetric_window(
+                materials[mat][0], d55, cmf,
+                neutral_exclusion_scale=None if mat == "neutral" else scale,
+            )
+            window_sources[mat] = f"colorimetric truth (CIE 1931 -> Rec.2020, D55) of: {fit['source']}"
+        assert_window_sane(mat, mu, cov)
         regions.append({
             "name": mat,
             "matrix": [[round(float(v), 8) for v in row] for row in fit["matrix"]],
             "mu_rg_bg": [round(float(v), 8) for v in mu],
             "cov_rg_bg": [[round(float(v), 10) for v in row] for row in cov],
-            "scale": MATERIAL_MASK_SCALE[mat],
+            "scale": scale,
             "strength": MATERIAL_BASE_STRENGTH[mat],
             "confidence": round(fit["confidence"], 4),
         })
@@ -849,12 +1001,17 @@ def run_material_mode(
         "working_space": "Rec2020",
         "note": (
             f"Material-aware Sigma->{args.target_name} separation: per-material constrained fits on "
-            f"{'+'.join(ill_names)} samples, windows in the D55 calibration frame "
-            f"(runtime von Kries transport applies), look_gain={gain:g}. Confidence "
+            f"{'+'.join(ill_names)} samples (signed responses), windows = colorimetric truth of "
+            f"measured spectra in the D55 frame (runtime window transport applies; skin "
+            f"keeps the photo-fitted window), look_gain={gain:g}. Confidence "
             f"folds fit quality into the effective weight. Data quality per "
             f"dngscan_assets/spectral/README.md; regenerate after replacing CSVs."
         ),
-        "sources": dict(base_sources, **{f"{m}_spectra": f["source"] for m, f in fits.items()}),
+        "sources": dict(
+            base_sources,
+            **{f"{m}_spectra": f["source"] for m, f in fits.items()},
+            **{f"{m}_window": src for m, src in window_sources.items()},
+        ),
         "regions": regions,
     }
 
@@ -1059,7 +1216,7 @@ def main() -> int:
     imx410_qe = load_curve_csv(imx410_path) if imx410_path else BUILTIN_IMX410_QE
     transmission = load_spd_csv(ir_path, normalize=False) if ir_path else sigmoid_ir_cut(WL, args.ir_cutoff, args.ir_width)
     fp_ssf = imx410_qe * transmission[:, None]
-    illum = illuminant_spd(args.illuminant, args.standard_data, args.illuminant_csv)
+    illum = illuminant_spd(args.illuminant, standard_data=args.standard_data, csv_path=args.illuminant_csv)
     cmf = cie_1931_cmf(WL, args.standard_data, args.cmf_csv)
     if args.preset_mode == "material":
         return run_material_mode(args, alexa_ssf, fp_ssf, cmf, {
