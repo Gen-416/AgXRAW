@@ -1,6 +1,6 @@
 # dngscan 使用说明
 
-[修图教程](EDITING_TUTORIAL.zh-CN.md) · [胶片教程](FILM_TUTORIAL.zh-CN.md) · [使用说明](USER_GUIDE.zh-CN.md) · [架构与技术细节](ARCHITECTURE.zh-CN.md)
+[修图教程](EDITING_TUTORIAL.zh-CN.md) · [胶片教程](FILM_TUTORIAL.zh-CN.md) · [HDR 教程](HDR_TUTORIAL.zh-CN.md) · [使用说明](USER_GUIDE.zh-CN.md) · [架构与技术细节](ARCHITECTURE.zh-CN.md)
 
 这是一份不讲数学的说明书。它回答三个问题：这个工具能处理哪些相机的照片，界面上每个数字是什么意思，导出时该怎么选。想了解处理流程的原理，请看[架构与技术细节](ARCHITECTURE.zh-CN.md)。[English version here](USER_GUIDE.md).
 
@@ -335,6 +335,8 @@ RAW 记录的亮度范围远远超过屏幕能显示的范围，"影调映射"�
 ---
 
 ## 十、输出：格式与导出档位
+
+HDR 照片是什么、一张照片能亮多少、它和"把照片拉亮"有什么不同，见 [HDR 教程](HDR_TUTORIAL.zh-CN.md)，那里还有可以直接观看的真 HDR 样张。这一节只讲导出时怎么选。
 
 **格式**：
 
