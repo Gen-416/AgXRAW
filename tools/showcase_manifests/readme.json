@@ -139,19 +139,19 @@
    "cols": [
     {
      "key": "agx",
-     "label": "AgX 基线"
+     "label": "不用胶片"
     },
     {
      "key": "observe",
-     "label": "观察 · 默认"
+     "label": "风格模式 · 默认"
     },
     {
      "key": "full",
-     "label": "接管 · 默认"
+     "label": "冲印模式 · 默认"
     },
     {
      "key": "heavy",
-     "label": "接管 · 配方 ×3 + 层间 β1.5"
+     "label": "冲印模式 · 调色 ×3 + 层间效应 1.5"
     }
    ],
    "rows": [
