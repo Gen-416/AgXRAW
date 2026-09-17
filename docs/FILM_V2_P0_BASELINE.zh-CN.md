@@ -17,10 +17,10 @@ DNGSCAN_FAST=0）。`tests/test_film_freeze.py` 逐用例重渲染并逐字节�
 1. `agx_baseline` — 纯 AgX，无胶片层；
 2. `curve_only` — 仅胶片明暗坐标（film_curve）；
 3. `prefeed_only` — 仅感色分离（scene_transform @ 强度 1.0）；
-4. `observe_combo` — 曲线 + 配对强度前馈 + 配对原色几何
+4. `observe_combo` — 曲线 + 配对强度前馈 + 配对色彩浓淡
    （golden 合成 bundle 无 WB 机制，WB 层如实缺席）；
-5. `full_bounded` — 接管 LUT + 有界灰阶数字中性化（现行 off）；
-6. `full_datasheet` — 接管 LUT + 数据手册漂移。
+5. `full_bounded` — 接管 LUT + 有界灰阶全程中性化（现行 off）；
+6. `full_datasheet` — 接管 LUT + 保留胶片偏色。
 
 ## 二 · 真实样张逐层拆解
 

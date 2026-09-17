@@ -43,10 +43,10 @@ class ClipOverlayPageWires(unittest.TestCase):
         # R5 item 2: the layer is the soft retreat mask (>= ~97% full well),
         # not the hard clip statistic; the label says so and the hard number
         # is shown next to it from the full-resolution analysis.
-        self.assertIn(">RAW 满阱</label>", PAGE)
+        self.assertIn(">RAW 过曝标记</label>", PAGE)
         self.assertNotIn(">RAW 过曝</label>", PAGE)
-        self.assertIn("硬剪切 R ", PAGE)
-        self.assertIn("≥97% 满阱", PAGE)
+        self.assertIn("完全过曝 R ", PAGE)
+        self.assertIn("读数 ≥97% 上限", PAGE)
 
     def test_new_session_resets_the_layer_before_the_new_frame_lands(self) -> None:
         # R6 item 3: the old file's marks must not sit on the new frame while
@@ -105,7 +105,7 @@ class FilmCopyMatchesShippedDesign(unittest.TestCase):
         self.assertNotIn("实验", film)
         self.assertNotIn("试点", film)
         self.assertNotIn("q(0)", film)
-        self.assertIn("接管 · 胶片显影链", film)
+        self.assertIn("完整冲印 · 胶片全流程", film)
         self.assertIn("固定 · 默认", film)
 
     def test_film_tooltips_are_basic(self) -> None:
@@ -346,7 +346,7 @@ class EveryCliDialHasAGuiControl(unittest.TestCase):
         self.assertIn('$("#filmMediaScatter").value="declared";', reset)
         # editorial_custom couples with neutralization=native and disables retimed
         full = PAGE[PAGE.index("const devCustom=$(\"#filmDevelopment\").value===\"editorial_custom\";"):]
-        full = full[: full.index("// 模拟光学")]
+        full = full[: full.index("// 颗粒与光晕")]
         self.assertIn("const canRetime=FILM_RETIMED.includes(preset)&&!devCustom;", full)
         self.assertIn('const forceNative=timing.value==="custom"||devCustom;', full)
         # the Core Image scale block follows the version block's visibility

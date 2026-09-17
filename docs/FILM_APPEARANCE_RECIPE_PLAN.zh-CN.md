@@ -50,7 +50,7 @@ Filmbox 的 Print 文档把同一负片分为：
 
 其 `Color`、`Neutralize Balance`、`Black Point` 分开，说明“保留印相的色彩扭曲”“只中和灰阶色偏”“改变黑位”不是同一个操作。Lab 模块又把 Richness、Vibrance 与 Color Density 分开：Richness 主要增强低到中等纯度颜色；Vibrance 更偏暗色并保护肤色；Color Density 改变饱和颜色的亮度而不直接改变饱和度。
 
-这正是现有 AgXRAW 缺少的表达能力。当前 `full` 只有介质响应、灰阶中性化、全局显影标量与高光 compression，没有按 stock/print 组合定义的曝光依赖 hue/chroma/lightness 路径。
+这正是现有 AgXRAW 缺少的表达能力。当前 `full` 只有介质响应、灰阶校色、全局显影标量与高光 compression，没有按 stock/print 组合定义的曝光依赖 hue/chroma/lightness 路径。
 
 ### 2.3 ACES/OCIO/FilmLight：look 必须声明处理空间
 
@@ -428,7 +428,7 @@ Velvia 绿向翠)+Velvia 肤区为最少移动区+内核隔离中性<0.5+跨家�
 
 （2026-08-11 E2 状态：清单 5 已落地——`vision3250d__print2383_extended_v1`,
 经 `--film-appearance-variant extended`(CLI/service/GUI 同名字段)选择。实现为
-同家族方向 0.6 幅度、去阴影密度块、灰轴数字中性:recipe 声明
+同家族方向 0.6 幅度、去阴影密度块、灰轴全程中性:recipe 声明
 neutralization_policy=technical-neutral,编译器的 None 默认从 recipe 声明解析
 (E2 对 A5 单一解析点的细化:默认源从"模式常量"改为"recipe 声明",显式选择仍
 优先)。黑位/gamut 宽度不属于 palette 权力(归 tone/gamut fit;§7 纸曝光 warp
@@ -439,7 +439,7 @@ owner A/B 待审;原生内核为最后批次。）
 
 （2026-08-11 A6 整改：①曝光坐标补全 `+ film_exposure_ev`(§6.1 全式,推挽状态
 下 recipe 轴随乳剂移动;默认曝光 0 不改变已认可 look,A/B 不作废);②**strength 0
-语义定案:只归零 palette**,灰阶中性化仍按解释声明解析(0 处连续;要整条回
+语义定案:只归零 palette**,灰阶校色仍按解释声明解析(0 处连续;要整条回
 technical 用 film_appearance=technical 或显式中性化,CLI 帮助已改口);③二维采样
 的"无过冲"声明改为诚实口径——hue 常数列上 PCHIP 壳性质精确,任意 hue 处
 Catmull-Rom 可轻微过冲,P2 新增在售资产密集扫描门(≤0.15°/0.005,实测≈授权幅度
@@ -512,7 +512,7 @@ appearance 在共同 Rec.2020 参考空间完成，然后才转换 sRGB/P3。验
 
 首版只暴露三个控件：
 
-- `胶片解释`：技术链 / 参考印相；
+- `成片调色`：技术链 / 参考印相；
 - `参考印相强度`：0..150%，默认 100%；
 - `灰阶平衡`：技术中性 / 印相中灰 / 介质原样。
 
@@ -587,7 +587,7 @@ Dehancer/Filmbox 只做本地受控观察，不进入 golden 或公开资产。�
 
 - `technical` 对 P0 专用 probe 与真实/合成场景冻结保持 float32 容差和 u8 逐字节一致；不哈希无关的全仓 golden 树；
 - strength 0 时 **palette 算子**严格恒等（同对象快路径），无额外 gamut fit
-  变化；灰阶中性化是解释自身的声明属性，不随 strength 归零（A6 定案，0 处
+  变化；灰阶校色是解释自身的声明属性，不随 strength 归零（A6 定案，0 处
   连续）——整条回 technical 基线用 `film_appearance=technical`；
 - 中性输入在关闭 neutral bias 时保持 `a=b=0`，EV0 DeltaE00 `< 0.1`；
 - hue 周期边界值和一阶导连续；
@@ -705,7 +705,7 @@ full 胶片核的 **37%**（300ms vs 812ms；float64 初版 66%，经 float32 �
 （2026-08-11 完成：`print` 为 crossover 第三档,print/native 比值逐通道恒定
 （构造性）,EV0 与 technical-neutral 精确一致;CLI/service 接受规范名
 technical-neutral/print-balanced/native,bounded/datasheet 留作弃用别名;
-editorial 显影与两种数字中性化互斥。reference recipe 默认 print-balanced
+editorial 显影与两种全程中性化互斥。reference recipe 默认 print-balanced
 的接线随 P4 资产声明落地。）
 
 ### P4：reference recipe 纵向切片

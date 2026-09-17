@@ -836,7 +836,7 @@ class GuiPageContractTests(unittest.TestCase):
         self.assertIn('id="shoulderWhiteOffset" min="-2" max="3"', card)
         # New declared semantics: label and title describe the white point, not
         # the start anchor.
-        self.assertIn("肩部收白", card)
+        self.assertIn("高光收白", card)
         self.assertIn("近白参考", card)
         self.assertNotIn("肩部起点", card)
 
@@ -854,8 +854,8 @@ class GuiPageContractTests(unittest.TestCase):
 
         renderer = PAGE[PAGE.index("function renderDetectedParams(") :]
         renderer = renderer[: renderer.index("\n}")]
-        self.assertIn("趾部收黑", renderer)
-        self.assertIn("肩部收白", renderer)
+        self.assertIn("暗部收黑", renderer)
+        self.assertIn("高光收白", renderer)
         self.assertIn("d.toe_end_ev", renderer)
         self.assertIn("d.shoulder_white_ev", renderer)
         self.assertIn("endpoint_note", renderer)

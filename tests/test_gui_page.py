@@ -378,7 +378,7 @@ class RealtimeHistogramPageTests(unittest.TestCase):
         renderer = PAGE[PAGE.index("function renderDisplayHistogram(") :]
         renderer = renderer[: renderer.index("\n}")]
         self.assertIn("earnedEv!=null", renderer)
-        self.assertIn("HDR 已挣余量", renderer)
+        self.assertIn("HDR 实际余量", renderer)
 
 
 class FilmModePlacementTests(unittest.TestCase):
@@ -500,7 +500,7 @@ class AppearanceFactoryDefaultTests(unittest.TestCase):
         self.assertIn(
             '<option value="reference" selected>参考印相 · 默认</option>', PAGE
         )
-        self.assertNotIn("技术中和 · 默认", PAGE)
+        self.assertNotIn("中性还原 · 默认", PAGE)
         self.assertIn(
             'APPEARANCE_FACTORY_DEFAULT={appearance:"reference",'
             'strength:"1",variant:"reference"}', PAGE,
@@ -529,7 +529,7 @@ class AppearanceFactoryDefaultTests(unittest.TestCase):
 
 
 class OpticsProfileSummaryTests(unittest.TestCase):
-    """P5 (§12.1): the 模拟光学 select shows a provenance-honest profile
+    """P5 (§12.1): the 颗粒与光晕 select shows a provenance-honest profile
     summary read from the SAME assets the renderer compiles."""
 
     def test_summary_is_injected_from_the_assets(self) -> None:
@@ -554,7 +554,7 @@ class OpticsProfileSummaryTests(unittest.TestCase):
         # instead of the tooltip.
         self.assertNotIn("bloom 是正介质的守恒内在散射", PAGE)
         optics = PAGE[PAGE.index('id="filmOptics"'):PAGE.index('id="filmOpticsSummary"')]
-        for word in ("颗粒", "halation", "bloom", "介质散射"):
+        for word in ("颗粒", "halation", "bloom", "介质柔化"):
             self.assertIn(word, optics)
         tutorial = (ROOT / "docs" / "FILM_TUTORIAL.zh-CN.md").read_text(encoding="utf-8")
         for claim in ("σ(D)", "MTF"):

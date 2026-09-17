@@ -777,7 +777,7 @@ def resolve_export_ev(
 
 
 def auto_ev_overlay_lines(result: AutoEvResult) -> list[str]:
-    lines = [f"全图亮度参考 {result.ev_boost:+.2f} EV"]
+    lines = [f"全图自动曝光 {result.ev_boost:+.2f} EV"]
     if result.ev_median_target < -1e-6 and result.ev_boost < 1e-6:
         lines.append("可靠主体已高于锚定 · 保持 EV 0")
     elif result.highlight_limited:
