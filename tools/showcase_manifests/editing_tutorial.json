@@ -373,7 +373,7 @@
    "max_delta": 40.0
   },
   {
-   "asset": "editing-tutorial/tonecore_stage_agx.jpg",
+   "asset": "editing-tutorial/tonecore_stage_default.jpg",
    "render": "stage_core_agx",
    "crop_from_old": true,
    "crop_group": "tonecore_stage"

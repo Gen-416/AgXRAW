@@ -259,7 +259,7 @@ live house 的舞台灯（SIGMA fp，ISO 12800），紫色 LED 灯排的裁切�
 
 | AgX · 默认 | 只压亮度 · 颜色不变 | 按 RAW 数据自动 |
 |---|---|---|
-| ![](assets/editing-tutorial/tonecore_stage_agx.jpg) | ![](assets/editing-tutorial/tonecore_stage_lum.jpg) | ![](assets/editing-tutorial/tonecore_stage_auto.jpg) |
+| ![](assets/editing-tutorial/tonecore_stage_default.jpg) | ![](assets/editing-tutorial/tonecore_stage_lum.jpg) | ![](assets/editing-tutorial/tonecore_stage_auto.jpg) |
 
 看什么：看那一排紫色 LED 和被它照亮的桁架。AgX 下，灯珠本身褪成了偏白的淡紫，周围的烟雾带一层青蓝，看起来像真的在发光；只压亮度下，灯珠和桁架保持浓郁的紫，颜色更"实"，但少了那种发光感。实测：裁切区里亮的像素，平均饱和度 AgX 是 0.34，另外两种是 0.40；AgX 和"只压亮度"之间有 57% 的像素差别看得出来（任一通道相差超过 8/255），明暗则几乎一样（平均亮度 80.6 对 77.4）。
 
