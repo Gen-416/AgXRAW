@@ -3,6 +3,7 @@
 //! DNG GainMap opcode application. Both replicate the NumPy reference's
 //! float32/float64 operation order element for element.
 use half::f16;
+use numpy::ndarray::{ArrayView2, ArrayViewMut2};
 
 /// raw_io._feather_masks_f16: separable [1,4,6,4,1]/16 filter with edge
 /// clamping, clipped to [0, 1] and stored as float16 (round to nearest even).
@@ -13,55 +14,45 @@ pub fn feather_masks_f16(mask: &[f32], h: usize, w: usize, c: usize) -> Vec<f16>
     if h == 0 || w == 0 || c == 0 {
         return out;
     }
-    // channels are independent: one thread each (the C++/NumPy order of
-    // operations is per element, so the split changes nothing)
-    let planes: Vec<Vec<f16>> = std::thread::scope(|s| {
-        let handles: Vec<_> = (0..c)
-            .map(|ch| {
-                s.spawn(move || {
-                    let clamp_row = |r: isize| -> usize { r.clamp(0, h as isize - 1) as usize };
-                    let clamp_col = |x: isize| -> usize { x.clamp(0, w as isize - 1) as usize };
-                    let mut vbuf = vec![0.0f32; h * w];
-                    for y in 0..h {
-                        let dst = &mut vbuf[y * w..(y + 1) * w];
-                        for (i, wgt) in K.iter().enumerate() {
-                            let r = clamp_row(y as isize + i as isize - 2);
-                            let row = &mask[(r * w) * c..(r * w + w) * c];
-                            for x in 0..w {
-                                // acc = acc + plane * weight, in that order
-                                dst[x] += row[x * c + ch] * *wgt;
-                            }
-                        }
+    // Each horizontal pass needs only one vertically filtered row. Write
+    // directly into disjoint output rows: O(workers * w * c) scratch, and
+    // obey the renderer's thread budget instead of spawning per channel.
+    let row_len = w * c;
+    let process = |row0: usize, chunk: &mut [f16]| {
+        let mut vertical = vec![0.0f32; row_len];
+        for (r, dst) in chunk.chunks_exact_mut(row_len).enumerate() {
+            let y = row0 + r;
+            vertical.fill(0.0);
+            for (i, &weight) in K.iter().enumerate() {
+                let sy = (y as isize + i as isize - 2).clamp(0, h as isize - 1) as usize;
+                let src = &mask[sy * row_len..(sy + 1) * row_len];
+                for (acc, &v) in vertical.iter_mut().zip(src) {
+                    *acc += v * weight;
+                }
+            }
+            for x in 0..w {
+                for ch in 0..c {
+                    let mut acc = 0.0f32;
+                    for (i, &weight) in K.iter().enumerate() {
+                        let sx = (x as isize + i as isize - 2).clamp(0, w as isize - 1) as usize;
+                        acc += vertical[sx * c + ch] * weight;
                     }
-                    let mut plane = vec![f16::ZERO; h * w];
-                    for y in 0..h {
-                        let row = &vbuf[y * w..(y + 1) * w];
-                        for x in 0..w {
-                            let mut acc = 0.0f32;
-                            for (i, wgt) in K.iter().enumerate() {
-                                let xi = clamp_col(x as isize + i as isize - 2);
-                                acc += row[xi] * *wgt;
-                            }
-                            let v = if acc < 0.0 {
-                                0.0
-                            } else if acc > 1.0 {
-                                1.0
-                            } else {
-                                acc
-                            };
-                            plane[y * w + x] = f16::from_f32(v);
-                        }
-                    }
-                    plane
-                })
-            })
-            .collect();
-        handles.into_iter().map(|hd| hd.join().expect("feather thread")).collect()
-    });
-    for (ch, plane) in planes.iter().enumerate() {
-        for (i, v) in plane.iter().enumerate() {
-            out[i * c + ch] = *v;
+                    dst[x * c + ch] = f16::from_f32(acc.clamp(0.0, 1.0));
+                }
+            }
         }
+    };
+    let workers = (crate::budget::workers_for(h * w) as usize).min(h);
+    if workers == 1 {
+        process(0, &mut out);
+    } else {
+        let rows = h.div_ceil(workers);
+        std::thread::scope(|s| {
+            for (i, chunk) in out.chunks_mut(rows * row_len).enumerate() {
+                let process = &process;
+                s.spawn(move || process(i * rows, chunk));
+            }
+        });
     }
     out
 }
@@ -85,19 +76,17 @@ pub struct GainMapOp<'a> {
 }
 
 /// raw_io._apply_gain_maps_mosaic for one opcode: gains the mosaic in place.
-/// `img`/`colors` are accessed through closures over the (possibly strided)
+/// `img`/`colors` are borrowed directly as the (possibly strided)
 /// visible-area views; `blacks`/`whites` are the per-CFA-channel tables (a
 /// single entry means the scalar path).
 pub fn apply_gain_map_mosaic(
-    h: usize,
-    w: usize,
+    mut img: ArrayViewMut2<'_, u16>,
+    colors: ArrayView2<'_, u8>,
     op: &GainMapOp,
     blacks: &[f32],
     whites: &[f32],
-    color_at: &dyn Fn(usize, usize) -> usize,
-    get: &dyn Fn(usize, usize) -> u16,
-    set: &mut dyn FnMut(usize, usize, u16),
 ) {
+    let (h, w) = img.dim();
     let hi = h as i64;
     let wi = w as i64;
     let bottom = op.bottom.min(hi);
@@ -156,8 +145,8 @@ pub fn apply_gain_map_mosaic(
                 + g10 * fv * (1.0 - fh)
                 + g11 * fv * fh;
             let (y, xx) = (r as usize, x as usize);
-            let sub = get(y, xx) as f32;
-            let cid = color_at(y, xx);
+            let sub = img[[y, xx]] as f32;
+            let cid = colors[[y, xx]] as usize;
             let b = if blacks_scalar { b_scalar } else { blacks[cid.min(blacks.len() - 1)] };
             let wl = if whites_scalar { w_scalar } else { whites[cid.min(whites.len() - 1)] };
             // np.clip(b + (sub - b) * gains, 0.0, wl): float32 difference, float64 product and sum
@@ -169,7 +158,7 @@ pub fn apply_gain_map_mosaic(
             if v > wl as f64 {
                 v = wl as f64;
             }
-            set(y, xx, v as u16);
+            img[[y, xx]] = v as u16;
         }
     }
 }

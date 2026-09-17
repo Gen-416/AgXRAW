@@ -5,6 +5,7 @@ use crate::stats::{
     block8_mean, median_f32, percentile_f32, retain_top_k, upper_percentile_from_top,
 };
 use half::f16;
+use numpy::ndarray::ArrayView3;
 
 #[inline(always)]
 fn nan_to_num(v: f32, nan: f32, posinf: f32, neginf: f32) -> f32 {
@@ -108,6 +109,23 @@ pub struct HdrRoundtrip {
     pub block_chroma_error: f64,
 }
 
+impl HdrRoundtrip {
+    fn invalid() -> Self {
+        Self {
+            chroma_error: f64::INFINITY,
+            relative_error: f64::INFINITY,
+            median_relative_error: f64::INFINITY,
+            p95_relative_error: f64::INFINITY,
+            p99_relative_error: f64::INFINITY,
+            p999_relative_error: f64::INFINITY,
+            block_median_relative_error: f64::INFINITY,
+            block_p95_relative_error: f64::INFINITY,
+            block_p99_relative_error: f64::INFINITY,
+            block_chroma_error: f64::INFINITY,
+        }
+    }
+}
+
 #[inline(always)]
 fn chroma_terms(a: [f32; 3], e: [f32; 3]) -> [f32; 3] {
     // np.abs(ac / max(ac.sum(axis=1), 1e-6) - ec / max(ec.sum(axis=1), 1e-6)), sums sequential
@@ -133,35 +151,38 @@ struct HdrBand {
 const BAND_ROWS: usize = 512; // multiple of 8, like gainmap._ROUNDTRIP_BAND_ROWS
 
 fn hdr_band(
-    expanded: &[f16],
-    ea: usize,
-    intended: &[f16],
-    ei: usize,
+    expanded: ArrayView3<'_, f16>,
+    intended: ArrayView3<'_, f16>,
     w: usize,
     w8: usize,
     row0: usize,
     row1: usize,
     relative: &mut [f32],
-) -> HdrBand {
-    let px = |buf: &[f16], stride: usize, y: usize, x: usize| -> [f32; 3] {
-        let o = (y * w + x) * stride;
-        [buf[o].to_f32(), buf[o + 1].to_f32(), buf[o + 2].to_f32()]
+    band: &mut HdrBand,
+) -> bool {
+    let px = |buf: ArrayView3<'_, f16>, y: usize, x: usize| -> [f32; 3] {
+        [buf[[y, x, 0]].to_f32(), buf[[y, x, 1]].to_f32(), buf[[y, x, 2]].to_f32()]
     };
-    let mut chroma = Vec::new();
+    band.chroma.clear();
+    band.block_rel.clear();
+    band.block_chroma.clear();
     for y in row0..row1 {
         for x in 0..w {
-            let a = px(expanded, ea, y, x);
-            let e = px(intended, ei, y, x);
+            let a = px(expanded, y, x);
+            let e = px(intended, y, x);
+            // Validate every RGB component before max/quantiles can hide an
+            // isolated invalid sample. Fused into the existing pixel scan.
+            if !a.iter().chain(e.iter()).all(|v| v.is_finite()) {
+                return false;
+            }
             let e_peak = max3(e[0].abs(), e[1].abs(), e[2].abs());
             let d = max3((a[0] - e[0]).abs(), (a[1] - e[1]).abs(), (a[2] - e[2]).abs());
             relative[(y - row0) * w + x] = d / (if e_peak > 0.05 { e_peak } else { 0.05 });
             if e_peak > 0.05 {
-                chroma.extend_from_slice(&chroma_terms(a, e));
+                band.chroma.extend_from_slice(&chroma_terms(a, e));
             }
         }
     }
-    let mut block_rel = Vec::new();
-    let mut block_chroma = Vec::new();
     let band_h8 = (row1 - row0) - (row1 - row0) % 8;
     if w8 > 0 && row0 % 8 == 0 {
         for by in 0..band_h8 / 8 {
@@ -169,30 +190,29 @@ fn hdr_band(
                 let mut ma = [0.0f32; 3];
                 let mut me = [0.0f32; 3];
                 for c in 0..3 {
-                    ma[c] = block8_mean(|i, j| expanded[((row0 + by * 8 + i) * w + bx * 8 + j) * ea + c].to_f32());
-                    me[c] = block8_mean(|i, j| intended[((row0 + by * 8 + i) * w + bx * 8 + j) * ei + c].to_f32());
+                    ma[c] = block8_mean(|i, j| expanded[[row0 + by * 8 + i, bx * 8 + j, c]].to_f32());
+                    me[c] = block8_mean(|i, j| intended[[row0 + by * 8 + i, bx * 8 + j, c]].to_f32());
                 }
                 let e_peak = max3(me[0].abs(), me[1].abs(), me[2].abs());
                 let d = max3((ma[0] - me[0]).abs(), (ma[1] - me[1]).abs(), (ma[2] - me[2]).abs());
-                block_rel.push(d / (if e_peak > 0.05 { e_peak } else { 0.05 }));
+                band.block_rel.push(d / (if e_peak > 0.05 { e_peak } else { 0.05 }));
                 if e_peak > 0.05 {
-                    block_chroma.extend_from_slice(&chroma_terms(ma, me));
+                    band.block_chroma.extend_from_slice(&chroma_terms(ma, me));
                 }
             }
         }
     }
-    HdrBand { chroma, block_rel, block_chroma }
+    true
 }
 
-/// gainmap._roundtrip_error. `expanded` is (h, w, ea) float16 with ea >= 3,
-/// `intended` (h, w, ei) float16 with ei >= 3. Row bands run in parallel
+/// gainmap._roundtrip_error. Both float16 views have at least 3 channels;
+/// retain their strides so an RGB slice of decoded RGBA needs no frame copy.
+/// Row bands run in parallel
 /// (every statistic is per pixel or per 8x8 block, and the top-K retention
 /// is a multiset operation), so the result is independent of the split.
 pub fn hdr_roundtrip(
-    expanded: &[f16],
-    ea: usize,
-    intended: &[f16],
-    ei: usize,
+    expanded: ArrayView3<'_, f16>,
+    intended: ArrayView3<'_, f16>,
     h: usize,
     w: usize,
 ) -> Result<HdrRoundtrip, String> {
@@ -200,43 +220,71 @@ pub fn hdr_roundtrip(
     let h8 = h - h % 8;
     let w8 = w - w % 8;
     if total == 0 {
-        return Err("empty rendition".to_string());
+        return Ok(HdrRoundtrip::invalid());
     }
     let mut relative = vec![0.0f32; total];
-    let bands: Vec<HdrBand> = std::thread::scope(|s| {
-        let workers = crate::budget::budgeted_workers(8).max(1) as usize;
-        let mut chunks = relative.chunks_mut(BAND_ROWS * w).enumerate();
-        let mut out = Vec::new();
-        loop {
-            let batch: Vec<(usize, &mut [f32])> = chunks.by_ref().take(workers).collect();
-            if batch.is_empty() {
-                break;
-            }
-            let handles: Vec<_> = batch
-                .into_iter()
-                .map(|(bi, chunk)| {
-                    let r0 = bi * BAND_ROWS;
-                    let r1 = (r0 + BAND_ROWS).min(h);
-                    s.spawn(move || hdr_band(expanded, ea, intended, ei, w, w8, r0, r1, chunk))
-                })
-                .collect();
-            for hnd in handles {
-                out.push(hnd.join().expect("band thread"));
-            }
-        }
-        out
-    });
     let top_k = ((0.01 * total as f64 * 3.0).ceil() as usize) + 8;
-    let mut chroma_top: Vec<f32> = Vec::new();
+    let workers = crate::budget::budgeted_workers(8) as usize;
+    // Share a 512-row scratch budget across workers. Every boundary remains
+    // 8-row aligned so the block-mean operation order stays unchanged.
+    let band_rows = (BAND_ROWS / workers / 8).max(1) * 8;
+    let band_count = h.div_ceil(band_rows).min(workers);
+    let band_chroma = band_rows.min(h) * w * 3;
+    let mut scratch: Vec<HdrBand> = (0..band_count)
+        .map(|_| HdrBand {
+            chroma: Vec::with_capacity(band_chroma),
+            block_rel: Vec::with_capacity(band_rows / 8 * (w8 / 8)),
+            block_chroma: Vec::with_capacity(band_rows / 8 * (w8 / 8) * 3),
+        })
+        .collect();
+    // Allocate once and reuse across batches, including the merge space.
+    // Dropping/reallocating on successive worker threads can leave large
+    // allocator caches resident even though the buffers are logically freed.
+    let mut chroma_top = Vec::with_capacity(top_k + band_chroma);
     let mut chroma_count = 0usize;
-    let mut block_rel: Vec<f32> = Vec::new();
-    let mut block_chroma: Vec<f32> = Vec::new();
-    for band in bands {
-        chroma_count += band.chroma.len();
-        retain_top_k(&mut chroma_top, &band.chroma, top_k);
-        block_rel.extend_from_slice(&band.block_rel);
-        block_chroma.extend_from_slice(&band.block_chroma);
+    let mut block_rel = Vec::with_capacity(h8 / 8 * (w8 / 8));
+    let mut block_chroma = Vec::with_capacity(h8 / 8 * (w8 / 8) * 3);
+    let mut chunks = relative.chunks_mut(band_rows * w).enumerate();
+    loop {
+        let batch: Vec<(usize, &mut [f32])> = chunks.by_ref().take(band_count).collect();
+        let active = batch.len();
+        if active == 0 {
+            break;
+        }
+        let valid = if workers == 1 {
+            let (bi, chunk) = batch.into_iter().next().unwrap();
+            let r0 = bi * band_rows;
+            hdr_band(
+                expanded, intended, w, w8, r0, (r0 + band_rows).min(h),
+                chunk, &mut scratch[0],
+            )
+        } else {
+            std::thread::scope(|s| {
+                let handles: Vec<_> = batch.into_iter()
+                    .zip(scratch.iter_mut())
+                    .map(|((bi, chunk), band)| {
+                        let r0 = bi * band_rows;
+                        s.spawn(move || hdr_band(
+                            expanded, intended, w, w8, r0, (r0 + band_rows).min(h), chunk, band,
+                        ))
+                    })
+                    .collect();
+                // Join every worker, including when one band is invalid.
+                handles.into_iter()
+                    .fold(true, |valid, hnd| hnd.join().expect("band thread") && valid)
+            })
+        };
+        if !valid {
+            return Ok(HdrRoundtrip::invalid());
+        }
+        for band in &scratch[..active] {
+            chroma_count += band.chroma.len();
+            retain_top_k(&mut chroma_top, &band.chroma, top_k);
+            block_rel.extend_from_slice(&band.block_rel);
+            block_chroma.extend_from_slice(&band.block_chroma);
+        }
     }
+    drop(scratch);
     let chroma_p99 = if chroma_count > 0 {
         upper_percentile_from_top(&mut chroma_top, chroma_count, 99.0)? as f64
     } else {
@@ -283,7 +331,7 @@ pub struct BaseRoundtrip {
 }
 
 struct BaseBand {
-    pixel_err: Vec<f32>,
+    histogram: [usize; 256],
     abs_sum: f64,
     signed_sum: [f64; 3],
     max_err: f64,
@@ -291,7 +339,7 @@ struct BaseBand {
 }
 
 fn base_band(decoded: &[u8], intended: &[u8], w: usize, w8: usize, row0: usize, row1: usize) -> BaseBand {
-    let mut pixel_err = Vec::with_capacity((row1 - row0) * w);
+    let mut histogram = [0usize; 256];
     let mut abs_sum = 0.0f64;
     let mut signed_sum = [0.0f64; 3];
     let mut max_err = 0.0f64;
@@ -307,7 +355,7 @@ fn base_band(decoded: &[u8], intended: &[u8], w: usize, w8: usize, row0: usize, 
                     pe = s.abs();
                 }
             }
-            pixel_err.push(pe);
+            histogram[pe as usize] += 1;
             if pe as f64 > max_err {
                 max_err = pe as f64;
             }
@@ -329,7 +377,7 @@ fn base_band(decoded: &[u8], intended: &[u8], w: usize, w8: usize, row0: usize, 
             }
         }
     }
-    BaseBand { pixel_err, abs_sum, signed_sum, max_err, block_err }
+    BaseBand { histogram, abs_sum, signed_sum, max_err, block_err }
 }
 
 /// gainmap._base_roundtrip_error. Sums accumulate in float64 per band and
@@ -340,47 +388,68 @@ pub fn base_roundtrip(decoded: &[u8], intended: &[u8], h: usize, w: usize) -> Re
     let total = h * w;
     let h8 = h - h % 8;
     let w8 = w - w % 8;
-    let bands: Vec<BaseBand> = std::thread::scope(|s| {
-        let workers = crate::budget::budgeted_workers(8) as usize;
-        let ranges: Vec<(usize, usize)> = (0..h)
-            .step_by(BAND_ROWS)
-            .map(|r0| (r0, (r0 + BAND_ROWS).min(h)))
-            .collect();
-        let mut out = Vec::with_capacity(ranges.len());
-        for group in ranges.chunks(workers.max(1)) {
-            let handles: Vec<_> = group
-                .iter()
-                .map(|&(r0, r1)| s.spawn(move || base_band(decoded, intended, w, w8, r0, r1)))
-                .collect();
-            for hnd in handles {
-                out.push(hnd.join().expect("band thread"));
-            }
-        }
-        out
-    });
-    let top_k = ((0.01 * total as f64).ceil() as usize) + 8;
-    let mut pixel_top: Vec<f32> = Vec::new();
+    let mut histogram = [0usize; 256];
     let mut abs_sum = 0.0f64;
     let mut signed_sum = [0.0f64; 3];
     let mut max_err = 0.0f64;
     let mut block_err: Vec<f32> = Vec::new();
-    for band in bands {
-        retain_top_k(&mut pixel_top, &band.pixel_err, top_k);
-        abs_sum += band.abs_sum;
-        for c in 0..3 {
-            signed_sum[c] += band.signed_sum[c];
+    std::thread::scope(|s| {
+        let workers = crate::budget::budgeted_workers(8) as usize;
+        let mut ranges = (0..h).step_by(BAND_ROWS);
+        loop {
+            let handles: Vec<_> = ranges.by_ref()
+                .take(workers)
+                .map(|r0| s.spawn(move || base_band(
+                    decoded, intended, w, w8, r0, (r0 + BAND_ROWS).min(h),
+                )))
+                .collect();
+            if handles.is_empty() {
+                break;
+            }
+            for hnd in handles {
+                let band = hnd.join().expect("band thread");
+                for (dst, count) in histogram.iter_mut().zip(band.histogram) {
+                    *dst += count;
+                }
+                abs_sum += band.abs_sum;
+                for c in 0..3 {
+                    signed_sum[c] += band.signed_sum[c];
+                }
+                max_err = max_err.max(band.max_err);
+                block_err.extend_from_slice(&band.block_err);
+            }
         }
-        if band.max_err > max_err {
-            max_err = band.max_err;
-        }
-        block_err.extend_from_slice(&band.block_err);
-    }
+    });
     let block_p99 = if h8 > 0 && w8 > 0 {
         percentile_f32(&mut block_err, 99.0) as f64
     } else {
         f64::INFINITY
     };
-    let p99 = upper_percentile_from_top(&mut pixel_top, total, 99.0)? as f64;
+    // Same float32 interpolation as the reference's exact upper percentile;
+    // integer code errors permit exact rank lookup without O(H*W) storage.
+    let p99 = if total == 0 {
+        0.0
+    } else {
+        let pos = (total as f64 - 1.0) * 0.99;
+        let rank_value = |rank: usize| -> f32 {
+            let mut count = 0usize;
+            for (value, &n) in histogram.iter().enumerate() {
+                count += n;
+                if count > rank {
+                    return value as f32;
+                }
+            }
+            unreachable!("histogram covers all pixels")
+        };
+        let lo = rank_value(pos.floor() as usize);
+        let hi = rank_value(pos.ceil() as usize);
+        let frac = pos - pos.floor();
+        if frac >= 0.5 {
+            (hi - (hi - lo) * ((1.0 - frac) as f32)) as f64
+        } else {
+            (lo + (hi - lo) * (frac as f32)) as f64
+        }
+    };
     let bias = signed_sum
         .iter()
         .map(|s| (s / total as f64).abs())

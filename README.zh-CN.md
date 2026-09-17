@@ -123,7 +123,7 @@ python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
 
 ### 可选的原生加速（Rust）
 
-不编译原生扩展也能正常使用，NumPy 实现是基准。可选的 Rust 内核（`rust/` 目录）会加速成像、HDR、胶片和校验等计算量大的环节；每个内核的输出都和 NumPy 基准逐位对照过。24 MP 的照片导出一张普通 JPEG 约 7 秒，HDR 约 10 秒，冲印模式带颗粒与光晕约 15 秒。
+不编译原生扩展也能正常使用，NumPy 实现是基准。可选的 Rust 内核（`rust/` 目录）会加速成像、HDR、胶片和校验等计算量大的环节；回归测试按算子的数值契约验证逐位一致或限定误差，不能把固定样本的逐位一致推广到所有 BLAS 平台和输入尺寸。24 MP 的照片导出一张普通 JPEG 约 7 秒，HDR 约 10 秒，冲印模式带颗粒与光晕约 15 秒。
 
 ```bash
 # Rust 工具链：https://rustup.rs

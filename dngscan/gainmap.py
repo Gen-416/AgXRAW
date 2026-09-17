@@ -236,6 +236,22 @@ def _roundtrip_error(path: Path, intended_hdr_half: Any) -> dict[str, float]:
     return _roundtrip_error_arrays(expanded, intended)
 
 
+def _invalid_hdr_roundtrip() -> dict[str, float]:
+    """Reject malformed or non-finite RGB before a percentile can hide it."""
+    return {
+        "chroma_error": float("inf"),
+        "relative_error": float("inf"),
+        "median_relative_error": float("inf"),
+        "p95_relative_error": float("inf"),
+        "p99_relative_error": float("inf"),
+        "p999_relative_error": float("inf"),
+        "block_median_relative_error": float("inf"),
+        "block_p95_relative_error": float("inf"),
+        "block_p99_relative_error": float("inf"),
+        "block_chroma_error": float("inf"),
+    }
+
+
 def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
     """Array-level body of _roundtrip_error (both float16 (H, W, 3))."""
     from . import _fast
@@ -245,19 +261,8 @@ def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
         # Stage 1 (2026-09-15): same float32 element math, NumPy's own
         # median/percentile/8x8-mean semantics (tests/test_rust_stage1.py).
         return {k: float(v) for k, v in native(expanded, intended).items()}
-    if expanded.shape != intended.shape:
-        return {
-            "chroma_error": float("inf"),
-            "relative_error": float("inf"),
-            "median_relative_error": float("inf"),
-            "p95_relative_error": float("inf"),
-            "p99_relative_error": float("inf"),
-            "p999_relative_error": float("inf"),
-            "block_median_relative_error": float("inf"),
-            "block_p95_relative_error": float("inf"),
-            "block_p99_relative_error": float("inf"),
-            "block_chroma_error": float("inf"),
-        }
+    if expanded.shape != intended.shape or not expanded.size:
+        return _invalid_hdr_roundtrip()
 
     height, width = expanded.shape[:2]
     total_px = height * width
@@ -282,6 +287,8 @@ def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
         row1 = min(row0 + _ROUNDTRIP_BAND_ROWS, height)
         a = expanded[row0:row1].astype(np.float32).reshape(-1, 3)
         e = intended[row0:row1].astype(np.float32).reshape(-1, 3)
+        if not (np.isfinite(a).all() and np.isfinite(e).all()):
+            return _invalid_hdr_roundtrip()
         # Normalize one RGB-vector error by that pixel's strongest intended component. A
         # tiny secondary channel must not turn a sub-code JPEG error into a huge percent.
         e_peak = np.max(np.abs(e), axis=1)

@@ -294,17 +294,17 @@ pub fn upsample_rows(
 
 #[inline(always)]
 fn reflect_index(i: i64, n: i64) -> usize {
-    // numpy 'reflect' (no edge repeat), single reflection is enough when radius < n
-    let mut k = i;
-    loop {
-        if k < 0 {
-            k = -k;
-        } else if k >= n {
-            k = 2 * (n - 1) - k;
-        } else {
-            return k as usize;
-        }
+    // NumPy 'reflect' has no edge repeat; a singleton always maps to 0.
+    // Folding a period also bounds work when the radius exceeds the image.
+    if n <= 1 {
+        return 0;
     }
+    if i >= 0 && i < n {
+        return i as usize;
+    }
+    let period = 2 * (n - 1);
+    let k = i.rem_euclid(period);
+    k.min(period - k) as usize
 }
 #[inline(always)]
 fn wrap_index(i: i64, n: i64) -> usize {

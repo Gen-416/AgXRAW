@@ -5,9 +5,12 @@
 //! inter-image term, cube normalization, tetrahedral LUT interpolation, the
 //! film compression bridge and the neutralization cast divisions.
 //!
-//! Every function reproduces its NumPy body element for element. Platform
-//! semantics (pinned in tests/test_rust_stage3.py): float64 (n,3)@(3,3) is
-//! Accelerate's FMA chain in k order; float64 (n,3)@(3,) and (3,3)@(3,) are
+//! Existing fixtures pin exact NumPy parity; this is not a universal BLAS
+//! guarantee. In particular, float32 scenes multiplied by float64 observer
+//! coefficients need not have exact products: small/tail matrix batches can
+//! differ at float64 rounding precision (tests/test_rust_stage3.py).
+//! The native float64 (n,3)@(3,3) uses an FMA chain in k order;
+//! float64 (n,3)@(3,) and (3,3)@(3,) are
 //! sequential product-sums; np.interp is fma(slope, x - xp[j], fp[j]);
 //! np.sum over 3 elements is sequential; float64 log10/log2/exp2/exp/pow
 //! match the system libm.

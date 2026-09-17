@@ -5,10 +5,11 @@
    sum, one round to float32 — as a native kernel (float32 and float64 scenes).
 2. FilmSpatialContext._layer_exposure_f32 keeps float32 rows when no film
    compression is engaged, so the halation-prep slab path reaches the native
-   Stage A kernels. A float32 scene promoted to float64 is the same numbers, and
-   float32-valued float64 products are exact — so the result is identical to the
-   float64 NumPy path on every platform (a genuinely float64 scene, i.e. with
-   compression, still stays on NumPy; see film_v2_math).
+   Stage A kernels. Promoting the scene preserves its values, but multiplication
+   by float64 observer coefficients can still round differently in BLAS tail
+   rows. Exact parity here is a gate for these fixtures, not a platform-wide
+   proof. Short-batch intermediate tolerances are covered in test_rust_stage3;
+   compressed float64 scenes still stay on NumPy.
 """
 from __future__ import annotations
 
