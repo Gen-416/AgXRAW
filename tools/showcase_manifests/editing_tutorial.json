@@ -120,6 +120,30 @@
     "--midtone-brightness",
     "0.5"
    ]
+  },
+  {
+   "name": "stage_core_agx",
+   "source": "_SDI0199.DNG",
+   "args": [
+    "--tone-core",
+    "agx"
+   ]
+  },
+  {
+   "name": "stage_core_lum",
+   "source": "_SDI0199.DNG",
+   "args": [
+    "--tone-core",
+    "lum"
+   ]
+  },
+  {
+   "name": "stage_core_gated",
+   "source": "_SDI0199.DNG",
+   "args": [
+    "--tone-core",
+    "gated"
+   ]
   }
  ],
  "assets": [
@@ -347,6 +371,24 @@
    "crop_group": "galley_hlzoom",
    "old_full": "editing-tutorial/20_kitchen_default.jpg",
    "max_delta": 40.0
+  },
+  {
+   "asset": "editing-tutorial/tonecore_stage_default.jpg",
+   "render": "stage_core_agx",
+   "crop_from_old": true,
+   "crop_group": "tonecore_stage"
+  },
+  {
+   "asset": "editing-tutorial/tonecore_stage_lum.jpg",
+   "render": "stage_core_lum",
+   "crop_from_old": true,
+   "crop_group": "tonecore_stage"
+  },
+  {
+   "asset": "editing-tutorial/tonecore_stage_auto.jpg",
+   "render": "stage_core_gated",
+   "crop_from_old": true,
+   "crop_group": "tonecore_stage"
   }
  ],
  "plates": []

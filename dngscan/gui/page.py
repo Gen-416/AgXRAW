@@ -557,11 +557,11 @@ FILM_CURVE_OPTIONS
       <select id="toneCore" title="选择亮度压缩与高光色彩路径。">
         <optgroup label="成片">
           <option value="agx" selected>AgX · 默认</option>
-          <option value="gated">RAW 实测保色</option>
+          <option value="gated">按 RAW 数据自动 · 保留真实颜色</option>
         </optgroup>
         <optgroup label="非 AgX 对照">
-          <option value="neutral">固定亮度曲线 · 诊断</option>
-          <option value="lum">只压亮度 · 对照</option>
+          <option value="neutral">固定曲线 · 诊断</option>
+          <option value="lum">只压亮度 · 颜色不变</option>
         </optgroup>
       </select>
     </div>
