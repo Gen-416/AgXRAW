@@ -320,5 +320,67 @@ class PerCameraTransportTests(unittest.TestCase):
                     self.assertLess(r, 1.35)
 
 
+class MaterialWindowSanityTests(unittest.TestCase):
+    """2026-09-17 refit. The shipped foliage window sat at B/G = 1e-7 with
+    variance 1e-5 (weight 0 on every real pixel) and the cyan window covered
+    84-87 % of ordinary frames: both came from a camera profile fitted in the
+    G-normalised chroma domain, whose saturated greens had a negative blue that
+    the positivity clip flattened. Windows are now the colorimetric truth of
+    measured reflectances; these gates pin the failure shapes shut."""
+
+    MATERIAL = [n for n, p in scene_transform.SCENE_TRANSFORMS.items()
+                if {"foliage", "magenta"} <= {r.name for r in p.regions}]
+
+    def test_every_material_window_is_a_real_window(self) -> None:
+        self.assertGreaterEqual(len(self.MATERIAL), 19)
+        for name in self.MATERIAL:
+            for region in scene_transform.SCENE_TRANSFORMS[name].regions:
+                with self.subTest(preset=name, region=region.name):
+                    mu = np.asarray(region.mu_rg_bg, dtype=np.float64)
+                    cov = np.asarray(region.cov_rg_bg, dtype=np.float64)
+                    self.assertTrue(np.all(mu > 0.05), mu)
+                    self.assertGreaterEqual(float(np.linalg.eigvalsh(cov).min()), 0.015 ** 2)
+
+    def test_real_material_chroma_lands_in_its_window(self) -> None:
+        """Photo-measured clusters (fp frames decoded at 5500 K): foliage at
+        R/G 0.72-0.78, B/G 0.34-0.42; sky/cyan at R/G 0.62-0.76, B/G 1.2-1.9."""
+        preset = scene_transform.SCENE_TRANSFORMS["portra400_d55"]
+        by_name = {r.name: r for r in preset.regions}
+        leaf = np.asarray([[0.75, 1.0, 0.38]], dtype=np.float32)
+        sky = np.asarray([[0.62, 1.0, 1.35]], dtype=np.float32)
+        self.assertGreater(float(scene_transform._region_weight(leaf, by_name["foliage"])[0]), 0.8)
+        self.assertGreater(float(scene_transform._region_weight(sky, by_name["cyan"])[0]), 0.5)
+        # The broad measured cyan class (n=28, blue-greens to sky blues) keeps a
+        # tail over greens; the owning class must still dominate by a wide margin.
+        leaf_in_cyan = float(scene_transform._region_weight(leaf, by_name["cyan"])[0])
+        leaf_in_foliage = float(scene_transform._region_weight(leaf, by_name["foliage"])[0])
+        self.assertLess(leaf_in_cyan, 0.25)
+        self.assertGreater(leaf_in_foliage, 4.0 * leaf_in_cyan)
+        self.assertLess(float(scene_transform._region_weight(sky, by_name["foliage"])[0]), 0.05)
+
+    def test_no_material_window_claims_neutrals(self) -> None:
+        grey = np.asarray([[0.18, 0.18, 0.18]], dtype=np.float32)
+        for name in self.MATERIAL:
+            for region in scene_transform.SCENE_TRANSFORMS[name].regions:
+                if region.name == "neutral":
+                    continue
+                with self.subTest(preset=name, region=region.name):
+                    self.assertLess(float(scene_transform._region_weight(grey, region)[0]), 0.02)
+
+    def test_calibrator_refuses_a_window_on_the_clip_floor(self) -> None:
+        import importlib.util
+        from pathlib import Path
+
+        spec = importlib.util.spec_from_file_location(
+            "calibrate_skin_matrix",
+            Path(__file__).resolve().parents[1] / "tools" / "calibrate_skin_matrix.py",
+        )
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        with self.assertRaises(SystemExit):
+            tool.assert_window_sane("foliage", [0.523, 1.1e-7], [[0.0058, 0.0], [0.0, 1e-5]])
+        tool.assert_window_sane("foliage", [0.778, 0.355], [[0.0136, 0.0], [0.0, 0.0074]])
+
+
 if __name__ == "__main__":
     unittest.main()
