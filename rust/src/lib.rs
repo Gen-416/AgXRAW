@@ -8,6 +8,7 @@
 mod agx;
 mod budget;
 mod evidence;
+mod lens;
 mod film_appearance;
 mod film_core;
 mod hdr;
@@ -29,7 +30,8 @@ use std::sync::atomic::Ordering;
 /// output stage float64; v11 (math review 2026-09-03): inset/outset and the
 /// punch/Oklab matrices of both kernels exact float64. v12 adds the P3
 /// luminance row and local luminance metrics to the HDR delivery scanner.
-pub const NATIVE_ABI_VERSION: i32 = 12;
+/// v13 tracks in-place GainMap clipping and adds camera-plane DNG warps.
+pub const NATIVE_ABI_VERSION: i32 = 13;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -577,6 +579,40 @@ fn as_f16_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
     Ok(arr.cast_into::<PyArrayDyn<half::f16>>()?)
 }
 
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+fn warp_dng<'py>(py: Python<'py>, image: &Bound<'py, PyAny>, coefficients: Vec<Vec<f64>>,
+    cx: f64, cy: f64, aspect: f64, fisheye: bool, loss: bool,
+) -> PyResult<Bound<'py, PyAny>> {
+    if ![1,3].contains(&coefficients.len()) || coefficients.iter().any(|r| r.len()!=6 || r.iter().any(|x| !x.is_finite()))
+        || !cx.is_finite() || !cy.is_finite() || !(0.0..=1.0).contains(&cx) || !(0.0..=1.0).contains(&cy)
+        || !aspect.is_finite() || aspect <= 0.0 {
+        return Err(PyValueError::new_err("invalid DNG warp parameters"));
+    }
+    let coeff: Vec<[f64;6]> = coefficients.iter().map(|r| r.as_slice().try_into().unwrap()).collect();
+    if loss {
+        let a = as_f16_array(py, image)?;
+        let ro = a.readonly();
+        let src = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
+            .map_err(|_| PyValueError::new_err("warp image must be H,W,3"))?;
+        let (h,w,c) = src.dim();
+        if h==0 || w==0 || c!=3 { return Err(PyValueError::new_err("warp image must be nonempty H,W,3")); }
+        let out = py.detach(|| lens::warp(src,&coeff,cx,cy,aspect,fisheye,true,
+            |v| v.to_f64(), half::f16::from_f64));
+        Ok(PyArray1::from_vec(py,out).reshape([h,w,3])?.into_any())
+    } else {
+        let a = as_view_array::<u16>(py, image, "uint16")?;
+        let ro = a.readonly();
+        let src = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
+            .map_err(|_| PyValueError::new_err("warp image must be H,W,3"))?;
+        let (h,w,c) = src.dim();
+        if h==0 || w==0 || c!=3 { return Err(PyValueError::new_err("warp image must be nonempty H,W,3")); }
+        let out = py.detach(|| lens::warp(src,&coeff,cx,cy,aspect,fisheye,false,
+            |v| v as f64, |v| v as u16));
+        Ok(PyArray1::from_vec(py,out).reshape([h,w,3])?.into_any())
+    }
+}
+
 fn as_u8_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyArrayDyn<u8>>> {
     let np = py.import("numpy")?;
     let kwargs = PyDict::new(py);
@@ -612,7 +648,7 @@ fn feather_masks_f16<'py>(py: Python<'py>, mask: &Bound<'py, PyAny>) -> PyResult
 /// visible mosaic view. `op` carries the DNG GainMap attributes (top, left,
 /// bottom, right, row_pitch, col_pitch, origin_v/h, spacing_v/h, points_v/h,
 /// gains); `colors` is the uint8 CFA index view of the same window.
-#[pyfunction]
+#[pyfunction(signature = (img, colors, op, blacks, whites, loss=None))]
 fn apply_gain_map_mosaic<'py>(
     py: Python<'py>,
     mut img: PyReadwriteArray2<'py, u16>,
@@ -620,6 +656,7 @@ fn apply_gain_map_mosaic<'py>(
     op: &Bound<'py, PyAny>,
     blacks: Vec<f32>,
     whites: Vec<f32>,
+    mut loss: Option<PyReadwriteArray2<'py, u8>>,
 ) -> PyResult<()> {
     let gains_obj = as_f64_array(py, &op.getattr("gains")?)?;
     let gshape = gains_obj.shape().to_vec();
@@ -662,7 +699,11 @@ fn apply_gain_map_mosaic<'py>(
     }
     // Keep the NumPy borrows alive while native code updates the actual
     // visible window. No per-pixel write list or contiguous mosaic copy.
-    py.detach(move || evidence::apply_gain_map_mosaic(img_view, colors_view, &gop, &blacks, &whites));
+    let loss_view = loss.as_mut().map(|m| m.as_array_mut());
+    if loss_view.as_ref().is_some_and(|m| m.shape() != [h, w]) {
+        return Err(PyValueError::new_err("loss must match img shape"));
+    }
+    py.detach(move || evidence::apply_gain_map_mosaic(img_view, colors_view, &gop, &blacks, &whites, loss_view));
     Ok(())
 }
 
@@ -1486,6 +1527,7 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(self_test, m)?)?;
     m.add_function(wrap_pyfunction!(feather_masks_f16, m)?)?;
     m.add_function(wrap_pyfunction!(apply_gain_map_mosaic, m)?)?;
+    m.add_function(wrap_pyfunction!(warp_dng, m)?)?;
     m.add_function(wrap_pyfunction!(gamut_counts, m)?)?;
     m.add_function(wrap_pyfunction!(hdr_roundtrip_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(base_roundtrip_metrics, m)?)?;

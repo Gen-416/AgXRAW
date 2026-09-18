@@ -33,7 +33,9 @@ from .constants import PROXY_LONG_EDGE
 # v15 (review batch 23): entries record proxy_scale (sensor px per proxy px)
 # so sensor-declared operator bands (chroma_nr) measure the same physical
 # scale on the preview as on the export.
-PREVIEW_CACHE_VERSION = 15
+# v16: oriented shading, ordered camera-plane DNG corrections, processing-loss
+# masks and corrected HDR evidence authority. Earlier scene/plan caches are stale.
+PREVIEW_CACHE_VERSION = 16
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -393,6 +395,11 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
             else None
         ),
         "wb_degradation": bundle.wb_degradation,
+        "lens_shading": bundle.lens_shading,
+        "scene_correction_note": bundle.scene_correction_note,
+        "scene_processing_loss_pct": bundle.scene_processing_loss_pct,
+        "evidence_stage1_note": bundle.evidence_stage1_note,
+        "camera_data_support": bundle.camera_data_support,
         "daylight_wb": (
             [float(value) for value in bundle.daylight_wb]
             if bundle.daylight_wb is not None
@@ -475,6 +482,11 @@ def _bundle_from_cache(
             else None
         ),
         wb_degradation=metadata.get("wb_degradation"),
+        lens_shading=metadata.get("lens_shading"),
+        scene_correction_note=metadata.get("scene_correction_note"),
+        scene_processing_loss_pct=metadata.get("scene_processing_loss_pct", 0.0),
+        evidence_stage1_note=metadata.get("evidence_stage1_note"),
+        camera_data_support=metadata.get("camera_data_support"),
         daylight_wb=metadata["daylight_wb"],
         shot_make=metadata["shot_make"],
         shot_model=metadata["shot_model"],

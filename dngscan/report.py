@@ -204,6 +204,9 @@ def wb_line_cn(bundle: RawBundle) -> str:
     stage1 = getattr(bundle, "evidence_stage1_note", None)
     if stage1:
         line += f"\n证据层警示: {stage1}"
+    correction = getattr(bundle, "scene_correction_note", None)
+    if correction:
+        line += f"\nDNG 校正: {correction}"
     support = getattr(bundle, "camera_data_support", None)
     if support:
         line += f"\n机型数据支撑: {support}"
@@ -361,6 +364,9 @@ def print_report(
             )
         else:
             decoder_label = "LibRaw"
+            opcodes = tuple(getattr(bundle, "scene_opcode_names", ()) or ())
+            if opcodes:
+                decoder_label += f"（已执行 DNG opcode: {'/'.join(opcodes)}）"
             highlight_note = f"高光处理={highlight_mode_cn(bundle.scene_highlight_mode)}"
         ev_label = "全图自动曝光" if auto_ev is not None else "EV 补偿"
         ev_note = (

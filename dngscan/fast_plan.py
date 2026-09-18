@@ -34,7 +34,8 @@ from .models import ToneCompressionPlan
 # kernels are exact float64 stages too.
 # v12: HDR delivery metrics take the P3 luminance row and include local
 # luminance-fidelity gates. Reject older extensions rather than omit those gates.
-NATIVE_ABI_VERSION = 12
+# v13: in-place GainMap loss output and camera-plane DNG warp kernels.
+NATIVE_ABI_VERSION = 13
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

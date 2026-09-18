@@ -21,7 +21,7 @@ if native:
             "dngscan._dngscan_fast",
             path="rust/Cargo.toml",
             binding=Binding.PyO3,
-            optional=True,
+            optional=os.environ.get("DNGSCAN_REQUIRE_NATIVE", "0") != "1",
             debug=False,
         )
     )

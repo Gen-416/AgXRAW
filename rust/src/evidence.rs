@@ -85,6 +85,7 @@ pub fn apply_gain_map_mosaic(
     op: &GainMapOp,
     blacks: &[f32],
     whites: &[f32],
+    mut loss: Option<ArrayViewMut2<'_, u8>>,
 ) {
     let (h, w) = img.dim();
     let hi = h as i64;
@@ -151,6 +152,11 @@ pub fn apply_gain_map_mosaic(
             let wl = if whites_scalar { w_scalar } else { whites[cid.min(whites.len() - 1)] };
             // np.clip(b + (sub - b) * gains, 0.0, wl): float32 difference, float64 product and sum
             let corrected = b as f64 + ((sub - b) as f64) * gains;
+            if sub < wl && corrected >= wl as f64 {
+                if let Some(ref mut mask) = loss {
+                    mask[[y, xx]] = 1;
+                }
+            }
             let mut v = corrected;
             if v < 0.0 {
                 v = 0.0;

@@ -20,7 +20,7 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 command -v cargo >/dev/null 2>&1 || { echo "cargo not found: install Rust via rustup (https://rustup.rs)" >&2; exit 1; }
 "$PYTHON" -c "import setuptools_rust" 2>/dev/null || "$PYTHON" -m pip install --quiet "setuptools-rust>=1.10"
-PYO3_PYTHON="$PYTHON" "$PYTHON" setup.py build_rust --inplace --release
+DNGSCAN_REQUIRE_NATIVE=1 PYO3_PYTHON="$PYTHON" "$PYTHON" setup.py build_rust --inplace --release
 NATIVE_MODULE="$(find dngscan -maxdepth 1 -name '_dngscan_fast*.so' -print -quit)"
 if [[ -z "$NATIVE_MODULE" ]]; then
   echo "native module was not produced" >&2
@@ -31,6 +31,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   # signature no longer matches its inode contents (cs_invalid_page).
   codesign --force --sign - "$NATIVE_MODULE"
 fi
+"$PYTHON" -c 'from dngscan import _dngscan_fast as n; from dngscan.fast_plan import NATIVE_ABI_VERSION; assert n.native_abi_version() == NATIVE_ABI_VERSION and n.self_test(), "native ABI/self-test failed"'
 echo "Installed native module into dngscan/ ($NATIVE_MODULE)"
 # This dev copy lives INSIDE the package directory; build release wheels from
 # a clean checkout so it is not shipped alongside the wheel-built one.
