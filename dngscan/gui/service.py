@@ -2377,6 +2377,12 @@ def run_export(params: dict) -> dict:
             diagnostics=want_png,
             gamut_names=None if want_png else (dg.output_gamut_space(gamut),),
         )
+    else:
+        # Analysis also resolves the endpoint used by the spatial masks.
+        # Reusing its statistics must replay that state on this fresh decode.
+        from ..raw_io import refresh_clip_masks_from_fullwell
+
+        refresh_clip_masks_from_fullwell(bundle, analysis.channel_fullwell)
     auto_ev_result = None
     if ev_auto:
         auto_ev_result = dg.compute_auto_ev(

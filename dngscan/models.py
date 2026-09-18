@@ -83,6 +83,14 @@ class RawBundle:
     lens_filter: str = "none"
     # Which DNG dark-field correction the LibRaw decode applied (gainmap/vignette/None).
     lens_shading: str | None = None
+    # Scene-space processing loss, independent of immutable sensor clip statistics.
+    processing_clip_masks: Any | None = None
+    scene_geometry_ops: tuple[Any, ...] = ()
+    scene_crop_sensor: tuple[float, float, float, float] | None = None
+    scene_correction_note: str | None = None
+    # LibRaw processing-loss coverage, or the same reference's aggregate on
+    # Core Image. None means correction evidence could not be measured.
+    scene_processing_loss_pct: float | None = 0.0
     # The WB multipliers actually applied to this decode: camera metadata for as-shot,
     # daylight metadata for the daylight anchor, or the solved fixed-Kelvin multipliers.
     # Prefeed window transport reads this so calibrated chromaticity anchors follow the
@@ -91,10 +99,8 @@ class RawBundle:
     # Non-None when a declared WB could not be fully realised for this body (missing
     # colour calibration): the render stays usable, the report must carry this note.
     wb_degradation: str | None = None
-    # R6 item 2: set when the DNG carries stage-1 linearization tags
-    # (LinearizationTable / BlackLevelDeltaH/V / non-default
-    # LinearResponseLimit) the evidence layer does not apply — evidence
-    # precision claims must degrade, and the report says so.
+    # Unsupported spatial stage-1 corrections. LibRaw already linearizes the
+    # unpacked codes and accounts for LinearResponseLimit in its white level.
     evidence_stage1_note: str | None = None
     # Consolidated per-body data-support marker (raw_io.camera_data_support_note):
     # None = fully supported; otherwise a truthful label that rendering proceeds but
@@ -152,8 +158,8 @@ class RawBundle:
     proxy_scale: float = 1.0
     # Why aligned mode fell back to identity. None is expected for unity/measured modes.
     scene_align_error: str | None = None
-    # DNG opcodes the decoder executed (Core Image path only). Reported, not acted on:
-    # their presence is why that path cannot share LibRaw's per-pixel CFA evidence.
+    # DNG opcodes applied by the scene decoder. LibRaw additionally retains the
+    # spatial recipe above so every evidence raster follows its camera planes.
     scene_opcode_names: tuple[str, ...] = ()
     # Shape of clip_masks / LibRaw scene frame when scene_decoder != "libraw".
     evidence_shape: tuple[int, int] | None = None

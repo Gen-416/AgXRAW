@@ -97,7 +97,7 @@ flowchart TB
         direction TB
         SELECT{"Scene decoder"}
         LR["LibRaw<br/>固定 AsShot 重建预条件<br/>解拜耳选择<br/>clip / blend / reconstruct"]
-        LRRGB["带方向的 linear Rec.2020 uint16<br/>关闭 auto-bright"]
+        LRRGB["DNG GainMap → 解拜耳 → 相机通道 opcode<br/>畸变/暗角 → Rec.2020 → DefaultCrop/方向<br/>uint16，关闭 auto-bright"]
         CIPROBE["CIRAWFilter 能力探测<br/>RAW 9 或显式 RAW 8/7 回退"]
         CI["固定 AsShot Core Image RAW 配方<br/>RAW 9：CoreML 重建 + 降噪<br/>旧版本：对应系统解码器<br/>高光恢复、镜头校正、DNG opcode"]
         CIRGB["extended-linear Rec.2020 RGBAh<br/>保留负分量与 1 以上数值"]
@@ -408,14 +408,17 @@ moire 值刻意保留 Apple 更保细节的默认）；高光重建与镜头校�
 
 它是**独立管线，不是 LibRaw 的后端**。Core Image 会执行文件里的 DNG opcode：在
 Sigma fp 的 DNG 上是逐平面 `WarpRectilinear` 加一张镜头阴影 `GainMap`。这个畸变校正
-把画面角落移动了数十像素（24MP 实测约 70px），所以 LibRaw 的逐像素 CFA 掩码描述的
-已经是另一批像素——它们被丢弃而不是重映射，因为沿用会让 clip retreat 作用在错误的
-位置上。于是这条路径没有逐像素 CFA 证据：`--tone-core gated` 会被拒绝，clip retreat
+把画面角落移动了数十像素。LibRaw 路径现已自行执行这些畸变，但 Apple 的重建、裁切与
+采样坐标并未暴露为可核验的对应关系，因此仍不借用 LibRaw 的空间掩码，避免把 clip retreat
+作用在错误的位置上。Core Image 路径没有逐像素 CFA 证据：`--tone-core gated` 会被拒绝，clip retreat
 不运行，`--highlight-mode` 也不适用（Core Image 有自己的高光重建）。而聚合型 RAW 事实
 （黑白电平、剪切百分比、SNR、噪声底、白平衡证词）是分布而非像素位置，依然有效，仍由
-LibRaw 提供。Tone plan 会用实测的剪切 cell 比例，从 RAW 9 亮度排序的最高端剔除等量样本。
+LibRaw 提供。Tone plan 会把实测的剪切 cell 比例与同文件 LibRaw 校正参考的处理损失覆盖率
+相加（上限 100%，保守地不扣除重叠），从 RAW 9 亮度排序的最高端剔除等量样本。
 这是聚合层面的对照启发式，不表示某个 RAW 9 像素能对应到某个 CFA site：重建高光仍可描述
 尾部拓扑，但不能反过来定义全局白点。报告会写明解码器、版本，以及被执行的 opcode。
+剔除过程不保留人为规定的最少可靠样本；剪切率无效时没有可靠证据。若不足总样本的 5%
+或不足 256 个样本，SDR 可以使用主体统计回退，HDR 不得借用该回退发放 headroom。
 
 HDR 分支按同一套证据规则接入这条路径，并有专门测试钉住：高光保色 `rho` 被压在 0.25
 上限（没有逐像素 CFA 掩码可以在局部撤回它）、无掩码 formation 的渲染保持在 `[0, peak]`
@@ -423,9 +426,29 @@ HDR 分支按同一套证据规则接入这条路径，并有专门测试钉住�
 帧实测相差 0.09 EV，门限 0.3 EV）。两条解码线的成像差异属于相机诠释取向，不是 HDR
 预算的泄漏。
 
-反方向的暗场对等性：LibRaw 路径现在同样兑现 DNG 暗场 opcode——解拜耳前施加
-`GainMap`（fp）、渲染后施加 `FixVignetteRadial`（iPhone ProRAW），证据副本取自
-校正前的传感器真值。iPhone 主摄双解码对照（同一帧、同一 AgX plan）：
+LibRaw 的 DNG 校正由 `dng_opcodes.read_plan` 读取主 RAW IFD，保留 opcode 的顺序、版本与
+必需/可选标志。OpcodeList2 的 `GainMap` 在 live mosaic 上原地执行；OpcodeList3 的
+`WarpRectilinear`、`WarpFisheye`、`FixVignetteRadial` 按文件顺序作用于相机 RGB，之后才用
+LibRaw 实际采用的 `rgb_cam` 转为 Rec.2020，并应用 `DefaultCrop` 和方向。不能把相机的逐通道
+畸变参数直接套到已经混色的 Rec.2020 三通道上。固定 AsShot 增益可以与逐通道空间变换交换，
+但 opcode 的归一化白点剪切边界也必须随 WB 缩放，不能统一替换成 65535。
+坐标公式依据 [Adobe DNG SDK](https://android.googlesource.com/platform/external/dng_sdk/+/refs/heads/android14-prebuilt-test/source/dng_lens_correction.cpp)。
+Rust 的三次插值核直接遍历输出行，不分配整幅浮点坐标图；NumPy 行带版本作为参考。
+
+传感器证据副本保持校正前数值。GainMap/暗角新造成的剪切和畸变的边界外采样记录在独立的
+`processing_clip_masks` 中；即使后续增益把数值降回白点以下，也不恢复已丢失的信息。
+传感器软掩码、剩余容量与 SNR guidance 按同一相机通道几何映射，可靠性在插值支撑范围内
+保守取值，然后与处理损失合并。这样 HDR、局部色度退让和 gated 核使用的是最终场景对应的
+可靠性，原始剪切百分比仍只描述传感器。
+
+不支持的必需 opcode 会明确拒绝 LibRaw 解码；可选 opcode 的跳过会出现在诊断中。
+这不是通用镜头数据库：没有受支持 DNG opcode 的 RAF/ARW 不因此获得厂商私有镜头校正。
+LibRaw 已执行的 `LinearizationTable` 和 `LinearResponseLimit` 不重复应用；`BlackLevelDeltaH/V`
+仍只由上游取均值，逐位置黑电平尚未完整兑现，诊断会保留这一具体限制。
+
+GUI 重用 Analysis 时会对新解码的 bundle 重放实测 full-well 掩码刷新，并保留处理损失。
+预览缓存版本提升至 16，使旧方向处理、旧校正几何和旧 HDR 证据策略的缓存失效。
+以下图片为此前暗角补偿路径的对照记录，不作为新畸变核的像素回归基准：
 
 ![iPhone 16 Pro 同帧双解码：LibRaw 施加 DNG GainMap 与 RAW 9 的 FixVignetteRadial，角部亮度一致](assets/decoder-iphone-libraw-vs-raw9.jpg)
 
@@ -438,9 +461,11 @@ green 项会在分子分母中严格约掉；这里得到的是逐文件解码�
 它不会把中位数拉到 18% 灰，也不改变画面内部的光比，但解码器色彩、几何和重建都会影响
 这个统计量；它与上文的 Evidence 获取是两个独立调用和数据契约。
 
-`--coreimage-scale unity` 会跳过该比较，保留 Core Image Apple 原始数值；`measured` 只应用旧的
+`--coreimage-scale unity` 不应用该尺度比较，保留 Core Image Apple 原始数值；`measured` 只应用旧的
 Sigma fp 固定 `1/1.0293` 倍率，用来复现早期 A/B。三个模式现在在效果上互斥，固定倍率不会
 再被后续逐文件对齐抵消。
+带 DNG opcode 的文件在三个模式下都会获取校正损失参考，供 HDR 做上述聚合排除；这不会
+改变 unity/measured 的场景尺度。若该参考无法计算，SDR 仍可渲染，HDR 不授予可靠尾部。
 
 这类对比里有两种亮度口径，**不能互相引用**。**可靠主体**中位是 scene-linear 的，量在色调
 曲线之前，且已剔除 RAW 过曝样本；**最终输出**中位量在渲染完成的图像上，此时 AgX 已经把

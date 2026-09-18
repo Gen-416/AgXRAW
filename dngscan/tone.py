@@ -197,16 +197,13 @@ def rank_trim_reconstructed_highlights(
     indices = np.flatnonzero(keep)
     if indices.size == 0:
         return keep
-    if not math.isfinite(float(clipped_cell_pct)):
-        # R3 item 1: NaN used to clamp to a silent 0% trim here. The union
-        # rate is now measured for any CFA period, so a non-finite value
-        # means the measurement itself failed — trim nothing, but do it as a
-        # stated decision rather than a NaN artefact.
+    if not math.isfinite(float(clipped_cell_pct)) or not 0 <= clipped_cell_pct <= 100:
+        # A missing/invalid measurement cannot grant reconstructed pixels
+        # authority. SDR's defensive body fallback is handled by the caller.
+        keep[:] = False
         return keep
     fraction = clamp_float(float(clipped_cell_pct) / 100.0, 0.0, 1.0)
     trim_count = int(math.ceil(indices.size * fraction))
-    min_keep = max(256, indices.size // 20)
-    trim_count = min(trim_count, max(0, indices.size - min_keep))
     if trim_count <= 0:
         return keep
     ranked = values[indices]
@@ -278,6 +275,17 @@ def reliable_scene_ev_selection(
     reaches the floor too, and a clamped sample is not evidence whoever produced it —
     but it is a correctness guard, not a workaround for one back end.)
     """
+    # Core Image has no calibrated spatial correspondence. Include the
+    # correction reference's loss coverage in its rank-domain exclusion.
+    # Summing the rates (capped at 100%) is deliberately conservative about
+    # overlap; neither this aggregate nor Apple reconstruction is pixel truth.
+    coreimage_clip_pct = getattr(analysis, "cell_union_pct", float("nan"))
+    if getattr(bundle, "scene_decoder", "libraw") == "coreimage":
+        loss_pct = getattr(bundle, "scene_processing_loss_pct", 0.0)
+        if loss_pct is None or not math.isfinite(float(loss_pct)) or not 0 <= loss_pct <= 100:
+            coreimage_clip_pct = float("nan")
+        elif math.isfinite(float(coreimage_clip_pct)) and 0 <= coreimage_clip_pct <= 100:
+            coreimage_clip_pct = min(100.0, coreimage_clip_pct + loss_pct)
     stored_sample = getattr(bundle, "_tone_plan_sample", None)
     if stored_sample is not None:
         expected_rows = np.asarray(stored_sample).shape[0]
@@ -321,7 +329,7 @@ def reliable_scene_ev_selection(
             )
         elif getattr(bundle, "scene_decoder", "libraw") == "coreimage":
             reliable = rank_trim_reconstructed_highlights(
-                ev, reliable, analysis.cell_union_pct
+                ev, reliable, coreimage_clip_pct
             )
     elif getattr(bundle, "clip_masks", None) is not None:
         masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
@@ -330,7 +338,7 @@ def reliable_scene_ev_selection(
         # RAW 9's reconstructed highlight pixels are geometrically warped relative to
         # the CFA mosaic. Use the full-resolution RAW clipped-cell rate as a rank-domain
         # constraint so those invented values cannot compile the global white endpoint.
-        reliable = rank_trim_reconstructed_highlights(ev, reliable, analysis.cell_union_pct)
+        reliable = rank_trim_reconstructed_highlights(ev, reliable, coreimage_clip_pct)
 
     # Keep evidence authority separate from the fallback needed to compile a usable SDR
     # curve. If fewer than 5% (and at least 256) trustworthy samples remain, SDR may still

@@ -542,9 +542,11 @@ class DngVignetteRadial:
 
 
 def read_dng_shading_ops(path: Path) -> dict:
-    """Pre-demosaic GainMaps (OpcodeList2) and post-demosaic radial vignette
-    (OpcodeList3 id 3). Warp opcodes are deliberately ignored on this path: geometry
-    changes would break CFA-mask alignment, the LibRaw path's defining property."""
+    """Legacy shading-only inventory for callers inspecting metadata.
+
+    Production decode uses dng_opcodes.read_plan, preserving opcode order,
+    required flags and camera-plane geometry. This helper is not an execution plan.
+    """
     gain_maps = read_dng_gain_maps(path)
     vignette = None
     try:
@@ -587,14 +589,10 @@ def read_dng_shading_ops(path: Path) -> dict:
 def read_dng_stage1_flags(path: Path) -> tuple[str, ...]:
     """Names of DNG stage-1 linearization tags present in IFD0 or the SubIFDs.
 
-    R6 item 2: the evidence layer models the mosaic as "per-channel black +
-    linear DN". LinearizationTable, BlackLevelDeltaH/V and (a non-default)
-    LinearResponseLimit are the legal DNG features that break that model —
-    when any is present the evidence-derived quantities (noise floor, clip
-    statistics, reliable tail, RAW gating) may carry spatial or tonal bias,
-    and every consumer must degrade its precision claims instead of
-    silently proceeding. Detection only; parsing/applying these corrections
-    (or delegating to a decoder that has) is the recorded follow-up.
+    This inventories tags, not unsupported features: LibRaw already applies
+    LinearizationTable and accounts for LinearResponseLimit. Its treatment of
+    BlackLevelDeltaH/V retains only their means. The caller distinguishes that
+    spatial approximation instead of warning that all these tags were ignored.
     """
     flags: set[str] = set()
     watched = {

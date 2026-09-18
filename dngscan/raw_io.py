@@ -67,6 +67,7 @@ def _fixed_asshot_wb_kwargs(camera_wb: Any) -> dict[str, Any]:
 def _apply_gain_maps_mosaic(
     raw: Any, maps: list, black_levels: list[float], white_level: int,
     camera_white_levels: list[float] | None = None,
+    loss_mask: Any | None = None,
 ) -> None:
     """Apply pre-demosaic GainMap opcodes to the live rawpy mosaic in place.
 
@@ -114,6 +115,7 @@ def _apply_gain_maps_mosaic(
             native(
                 img, colors, m,
                 [float(v) for v in blacks], [float(v) for v in whites],
+                loss_mask,
             )
             continue
         rows = np.arange(m.top, min(m.bottom, h), m.row_pitch)
@@ -164,17 +166,24 @@ def _apply_gain_maps_mosaic(
                 whites[np.clip(cidx[r0:r1], 0, whites.size - 1)]
                 if whites.size > 1 else np.float32(whites[0])
             )
-            corrected = np.clip(b + (sub - b) * gains, 0.0, wl)
+            corrected = b + (sub - b) * gains
+            if loss_mask is not None:
+                loss_view = loss_mask[m.top:min(m.bottom, h):m.row_pitch,
+                                      m.left:min(m.right, w):m.col_pitch]
+                loss_view[r0:r1] |= ((sub < wl) & (corrected >= wl)).astype(np.uint8)
+            corrected = np.clip(corrected, 0.0, wl)
             img_view[r0:r1] = corrected.astype(img.dtype)
 
 
-def _apply_vignette_render(render: Any, vignette: Any, orientation_flip: int = 0) -> Any:
+def _apply_vignette_render(render: Any, vignette: Any, orientation_flip: int = 0,
+                           loss_mask: Any | None = None, channel_limits: Any | None = None) -> Any:
     """Apply a post-demosaic FixVignetteRadial to the scene render, in row bands.
 
     g(r) = 1 + sum k_i (r/m)^(2(i+1)) with the optical centre at (cx_hat, cy_hat) and
     m the max centre-to-corner distance (DNG 1.4). A pure per-pixel scalar gain: it
     commutes with WB and matrices, so applying it to the finished linear render is
-    exact. Output clips at the container maximum.
+    exact for the gain. When operating on white-balanced camera planes, the
+    caller conjugates the DNG [0,1] clipping bounds by that same WB scaling.
     """
     # Opcode coordinates belong to the un-oriented image. Undo LibRaw's
     # orientation as a view before evaluating the radial field; this also
@@ -183,11 +192,14 @@ def _apply_vignette_render(render: Any, vignette: Any, orientation_flip: int = 0
     if orientation_flip not in inverse_flip:
         raise ValueError(f"unknown LibRaw flip code {orientation_flip}")
     working = _orient_like_libraw(render, inverse_flip[orientation_flip])
+    loss = None if loss_mask is None else _orient_like_libraw(loss_mask, inverse_flip[orientation_flip])
     h, w = working.shape[:2]
     cx, cy = float(vignette.cx_hat) * w, float(vignette.cy_hat) * h
     m2 = max((cx) ** 2 + (cy) ** 2, (w - cx) ** 2 + (cy) ** 2,
              (cx) ** 2 + (h - cy) ** 2, (w - cx) ** 2 + (h - cy) ** 2)
     limit = float(np.iinfo(render.dtype).max) if np.issubdtype(render.dtype, np.integer) else None
+    if channel_limits is not None:
+        limit = np.asarray(channel_limits, dtype=np.float32)
     xs = (np.arange(w, dtype=np.float64) + 0.5 - cx) ** 2
     k = [float(v) for v in vignette.k]
     out = working
@@ -198,6 +210,8 @@ def _apply_vignette_render(render: Any, vignette: Any, orientation_flip: int = 0
         g = 1.0 + r2 * (k[0] + r2 * (k[1] + r2 * (k[2] + r2 * (k[3] + r2 * k[4]))))
         band = out[y0:y1].astype(np.float32) * g[:, :, None].astype(np.float32)
         if limit is not None:
+            if loss is not None:
+                np.maximum(loss[y0:y1], band >= limit, out=loss[y0:y1])
             band = np.clip(band, 0.0, limit)
         out[y0:y1] = band.astype(render.dtype)
     return render
@@ -871,11 +885,12 @@ def render_to_scene_rec2020(
     half_size: bool = False,
     demosaic: Any = None,
     wb_kwargs: dict[str, Any] | None = None,
+    *, camera_rgb: bool = False,
 ) -> Any:
     if not hasattr(rawpy.ColorSpace, "Rec2020"):
         raise RuntimeError("rawpy.ColorSpace.Rec2020 is not available; cannot make scene-linear export buffer")
     return raw.postprocess(
-        output_color=rawpy.ColorSpace.Rec2020,
+        output_color=rawpy.ColorSpace.raw if camera_rgb else rawpy.ColorSpace.Rec2020,
         gamma=(1, 1),
         half_size=half_size,
         demosaic_algorithm=(None if half_size else demosaic),
@@ -883,7 +898,7 @@ def render_to_scene_rec2020(
         adjust_maximum_thr=0.0,
         highlight_mode=rawpy_highlight_mode(highlight_mode_name),
         output_bps=16,
-        user_flip=None,
+        user_flip=0 if camera_rgb else None,
         **(wb_kwargs or {"use_camera_wb": True}),
     )
 
@@ -892,6 +907,109 @@ def channel_label(color_desc: str, cid: int) -> str:
     if 0 <= int(cid) < len(color_desc):
         return color_desc[int(cid)].upper()
     return str(cid)
+
+
+def _mosaic_loss_rgb(loss: Any, colors: Any, color_desc: str) -> Any:
+    """Conservative 2x2 reduction of a one-byte per-sensel processing log."""
+    h, w = loss.shape
+    out = np.zeros(((h + 1)//2, (w + 1)//2, 3), dtype=np.float16)
+    for r in range(2):
+        for c in range(2):
+            plane = loss[r::2, c::2]
+            ids = colors[r::2, c::2]
+            for cid in np.unique(ids):
+                label = channel_label(color_desc, int(cid))[:1]
+                if label in "RGB":
+                    dest = out[:plane.shape[0], :plane.shape[1], "RGB".index(label)]
+                    np.maximum(dest, (plane != 0) & (ids == cid), out=dest)
+    return out
+
+
+def _resize_loss_to_shape(mask: Any, shape: tuple[int, int]) -> Any:
+    """Nearest expansion keeps a recorded clipping event at full strength."""
+    if mask.shape[:2] == shape:
+        return mask
+    from PIL import Image
+    out = np.empty((*shape, 3), dtype=np.float16)
+    for c in range(3):
+        plane = Image.fromarray(np.asarray(mask[..., c], dtype=np.float32))
+        out[..., c] = np.asarray(plane.resize((shape[1], shape[0]), Image.Resampling.NEAREST))
+    return out
+
+
+def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str,
+                             half_size: bool, demosaic: Any, *, track_loss: bool = True):
+    """One production recipe, also used by the Core Image scale reference."""
+    from . import dng_opcodes as ops
+    recipe = ops.read_plan(path)
+    loss = np.zeros(evidence.raw_image.shape, dtype=np.uint8) if track_loss and recipe.gain_maps else None
+    if recipe.gain_maps:
+        _apply_gain_maps_mosaic(raw, recipe.gain_maps, evidence.black_levels,
+                               evidence.white_level,
+                               list(recipe.white_levels) or evidence.camera_white_levels, loss)
+    processing = _mosaic_loss_rgb(loss, evidence.raw_colors, evidence.color_desc) if loss is not None else None
+    del loss
+    # Colour mixing must follow camera-plane opcodes. The as-shot WB is diagonal,
+    # so it commutes with the per-plane warp; keep LibRaw's demosaic/reconstruction.
+    camera_rgb = bool(recipe.post)
+    scene = render_to_scene_rec2020(raw, highlight, half_size, demosaic,
+                                   _fixed_asshot_wb_kwargs(evidence.camera_wb), camera_rgb=camera_rgb)
+    if scene.ndim != 3 or scene.shape[2] != 3:
+        raise ValueError("DNG corrections require three camera colour planes")
+    flip = evidence.orientation_flip
+    inverse = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 5, 7: 7}
+    if not camera_rgb:
+        scene = _orient_like_libraw(scene, inverse[flip])
+    # DNG stage-3 clips normalized camera planes at one. LibRaw's fixed WB
+    # commutes with a per-plane spatial operator, but its clipping bounds
+    # must be scaled too (scale_colors uses min(WB) for clip, max otherwise).
+    wb = np.asarray(evidence.camera_wb[:4], dtype=np.float64)
+    positive_wb = wb[np.isfinite(wb) & (wb > 0)]
+    if camera_rgb and (wb.size < 3 or not np.all(np.isfinite(wb[:3]) & (wb[:3] > 0))):
+        raise ValueError("DNG camera-plane corrections require explicit positive as-shot WB")
+    limits = (np.minimum(65535., 65535. * wb[:3] /
+                        (positive_wb.min() if highlight == "clip" else positive_wb.max()))
+              if camera_rgb else None)
+    shading = []
+    if recipe.gain_maps:
+        shading.append("gainmap")
+    for op in recipe.post:
+        if isinstance(op, ops.Warp):
+            scene = ops.warp_image(scene, op)
+            if track_loss:
+                # A zero raster still records out-of-frame extrapolation as loss.
+                if processing is None:
+                    processing = np.zeros((*scene.shape[:2], 3), dtype=np.float16)
+                processing = ops.warp_image(processing, op, loss=True)
+                processing = _resize_loss_to_shape(processing, scene.shape[:2])
+            for y in range(0, scene.shape[0], 128):
+                band = scene[y:y+128]
+                if processing is not None:
+                    np.maximum(processing[y:y+128], band >= limits, out=processing[y:y+128])
+                band[:] = np.minimum(band, limits).astype(np.uint16)
+        else:
+            if track_loss:
+                processing = (np.zeros(scene.shape, dtype=np.float16) if processing is None
+                              else _resize_loss_to_shape(processing, scene.shape[:2]))
+            _apply_vignette_render(scene, op, loss_mask=processing, channel_limits=limits)
+            shading.append("vignette")
+    if camera_rgb:
+        scene = ops.camera_to_rec2020(scene, raw.color_matrix)
+    scene = ops.crop_image(scene, recipe.crop, evidence.raw_image.shape)
+    # Match rawpy's contiguous handoff. A cropped/transposed view would make
+    # every downstream reshape(-1, 3) silently copy the complete frame again.
+    scene = np.ascontiguousarray(_orient_like_libraw(scene, flip))
+    if processing is not None:
+        processing = ops.crop_image(processing, recipe.crop, evidence.raw_image.shape)
+        processing = _orient_like_libraw(processing, flip)
+    return scene, processing, recipe, "+".join(shading) or None
+
+
+def _merge_processing_loss(masks: Any, processing: Any | None) -> Any:
+    if processing is not None:
+        # One float16 raster at most; never manufacture a full float32 RGB copy.
+        np.maximum(masks, _resize_loss_to_shape(processing, masks.shape[:2]), out=masks)
+    return masks
 
 
 def channel_black_level(black_levels: list[float], cid: int) -> float:
@@ -1088,6 +1206,8 @@ def build_clip_masks(
     orientation_flip: int,
     scene_shape: tuple[int, int],
     raw_pattern: Any | None = None,
+    geometry_ops: tuple = (),
+    crop_sensor: tuple | None = None,
 ) -> Any:
     """Build half-resolution RGB soft clip masks from pre-WB raw DN values."""
     binned = _build_bayer_clip_mask_planes(
@@ -1121,6 +1241,11 @@ def build_clip_masks(
                 soft[:, :, out_idx], np.where(raw_colors == cid_int, channel_soft, 0.0)
             )
         binned = _bin_2x2_max(soft)
+    if geometry_ops or crop_sensor is not None:
+        from . import dng_opcodes as ops
+        for op in geometry_ops:
+            binned = ops.warp_image(binned, op, loss=True)
+        binned = ops.crop_image(binned, crop_sensor, raw_image.shape)
     oriented = _orient_like_libraw(binned, orientation_flip)
     aligned = _resize_mask_to_shape(oriented, scene_shape)
     return _feather_masks_f16(aligned)
@@ -1191,7 +1316,10 @@ def refresh_clip_masks_from_fullwell(
         bundle.orientation_flip,
         bundle.scene_rec2020_render.shape[:2],
         bundle.raw_pattern,
+        getattr(bundle, "scene_geometry_ops", ()),
+        getattr(bundle, "scene_crop_sensor", None),
     )
+    _merge_processing_loss(bundle.clip_masks, getattr(bundle, "processing_clip_masks", None))
     bundle._clip_masks_cache_shape = None
     bundle._clip_masks_resized = None
     bundle._clip_mask_fullwell = resolved
@@ -1199,6 +1327,7 @@ def refresh_clip_masks_from_fullwell(
     bundle._raw_guidance_cache_shape = None
     bundle._raw_guidance_resized = None
     bundle._raw_guidance_has_sensor_snr = False
+    bundle._raw_guidance_has_resolved_fullwell = False
     return True
 
 
@@ -1283,6 +1412,11 @@ def load_raw(
     render_scale = 1.0
     clip_masks: Any | None = None
     lens_shading: str | None = None
+    processing_clip_masks = None
+    scene_geometry_ops = ()
+    scene_crop_sensor = None
+    scene_correction_note = None
+    scene_processing_loss_pct = 0.0
     effective_baseline_exposure = shot.baseline_exposure
     baseline_exposure_baked_in = False
 
@@ -1294,9 +1428,10 @@ def load_raw(
         # R6 item 2: per-channel-black + linear-DN is an ASSUMPTION; these
         # legal DNG features break it and the pipeline must say so instead
         # of continuing to claim exact RAW gating.
-        _stage1 = dng_metadata.read_dng_stage1_flags(path)
+        _stage1 = tuple(name for name in dng_metadata.read_dng_stage1_flags(path)
+                        if name in ("BlackLevelDeltaH", "BlackLevelDeltaV"))
         evidence_stage1_note = (
-            "DNG 携带证据层未应用的 stage-1 校正标签("
+            "LibRaw 对 DNG 空间黑电平只采用均值，未保留逐位置校正("
             + "/".join(_stage1)
             + "):噪声底/剪切统计/可靠尾部与 RAW 门控按近似口径解读"
             if _stage1
@@ -1368,29 +1503,20 @@ def load_raw(
         # been copied and cannot be mutated by GainMap application or postprocess.
         try:
             with rawpy.imread(str(path)) as raw:
-                shading_ops = dng_metadata.read_dng_shading_ops(path)
-                if shading_ops["gain_maps"]:
-                    _apply_gain_maps_mosaic(
-                        raw,
-                        shading_ops["gain_maps"],
-                        [float(x) for x in black_levels],
-                        white_level,
-                        [float(x) for x in camera_white_levels],
-                    )
-                    lens_shading = "gainmap"
                 # Demosaic/highlight always sees one immutable per-capture
                 # preconditioner.  User WB is deliberately not passed into LibRaw.
                 # Supplying the as-shot values explicitly also avoids a decoder-specific
                 # camera-WB fallback changing this fixed boundary.
-                wb_kwargs = _fixed_asshot_wb_kwargs(camera_wb)
                 demosaic_alg = resolve_demosaic_algorithm(raw, demosaic)
-                scene_rec2020_render = render_to_scene_rec2020(
-                    raw,
-                    effective_highlight_mode,
-                    scene_half_size,
-                    demosaic_alg,
-                    wb_kwargs,
+                scene_rec2020_render, processing_clip_masks, recipe, lens_shading = _decode_corrected_libraw(
+                    raw, path, evidence, effective_highlight_mode, scene_half_size, demosaic_alg,
                 )
+                from .dng_opcodes import Warp
+                scene_geometry_ops = tuple(op for op in recipe.post if isinstance(op, Warp))
+                scene_crop_sensor = recipe.crop
+                scene_opcode_names = tuple(recipe.names)
+                if recipe.skipped:
+                    scene_correction_note = "跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped)
         except Exception as exc:
             raise RuntimeError(
                 f"Cannot decode RAW scene with rawpy/libraw: {exc}"
@@ -1407,13 +1533,6 @@ def load_raw(
                 applied_wb,
                 baseline_exposure=shot.baseline_exposure,
             )
-        if shading_ops["vignette"] is not None:
-            scene_rec2020_render = _apply_vignette_render(
-                scene_rec2020_render, shading_ops["vignette"], orientation_flip
-            )
-            lens_shading = (
-                "vignette" if lens_shading is None else lens_shading + "+vignette"
-            )
         xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
         render_scale = scene_scale
         clip_masks = build_clip_masks(
@@ -1426,7 +1545,12 @@ def load_raw(
             orientation_flip,
             scene_rec2020_render.shape[:2],
             raw_pattern,
+            scene_geometry_ops,
+            scene_crop_sensor,
         )
+        _merge_processing_loss(clip_masks, processing_clip_masks)
+        if processing_clip_masks is not None:
+            scene_processing_loss_pct = float(np.mean(np.max(processing_clip_masks, axis=2) > 0) * 100)
         evidence_shape = (
             int(scene_rec2020_render.shape[0]),
             int(scene_rec2020_render.shape[1]),
@@ -1496,10 +1620,14 @@ def load_raw(
                 baseline_exposure_baked_in = abs(float(applied)) > 1e-6
             except (TypeError, ValueError, OverflowError):
                 baseline_exposure_baked_in = True
-        if coreimage_uses_file_alignment(coreimage_scale):
+        scene_opcode_names = tuple(coreimage_decode.read_dng_opcodes(path)["names"])
+        needs_correction_evidence = bool(scene_opcode_names)
+        if needs_correction_evidence:
+            scene_processing_loss_pct = None
+        if coreimage_uses_file_alignment(coreimage_scale) or needs_correction_evidence:
             # Align one decoded statistic per file. This additional LibRaw *scene
-            # comparison render is not evidence* and never replaces the RawEvidence
-            # object above. It only determines the optional scene scale policy.
+            # comparison never replaces RawEvidence. It supplies an optional
+            # scale reference plus an aggregate correction-loss estimate.
             reference_level = float("nan")
             coreimage_level = float("nan")
             try:
@@ -1516,26 +1644,13 @@ def load_raw(
                     # shading as a decoder exposure difference — measured up to
                     # +0.88 EV on iPhone Standard RAW, pulling aligned-mode
                     # RAW 9 toward the uncorrected dark reference.
-                    reference_shading = dng_metadata.read_dng_shading_ops(path)
-                    if reference_shading["gain_maps"]:
-                        _apply_gain_maps_mosaic(
-                            reference_raw,
-                            reference_shading["gain_maps"],
-                            [float(x) for x in black_levels],
-                            white_level,
-                            [float(x) for x in camera_white_levels],
-                        )
-                    reference_scene = render_to_scene_rec2020(
-                        reference_raw,
-                        effective_highlight_mode,
-                        True,
-                        None,
-                        _fixed_asshot_wb_kwargs(camera_wb),
+                    reference_scene, reference_loss, _, _ = _decode_corrected_libraw(
+                        reference_raw, path, evidence, effective_highlight_mode,
+                        True, None,
                     )
-                if reference_shading["vignette"] is not None:
-                    reference_scene = _apply_vignette_render(
-                        reference_scene, reference_shading["vignette"], orientation_flip
-                    )
+                    scene_processing_loss_pct = (float(np.mean(np.max(reference_loss, axis=2) > 0) * 100)
+                                                 if reference_loss is not None else 0.0)
+                    del reference_loss
                 # Decode the reference with the same storage-scale contract as the main
                 # LibRaw path. Normalising reconstruct by 65535 would lose its reserved
                 # WB headroom and can shift this statistic by more than one EV.
@@ -1546,31 +1661,40 @@ def load_raw(
                 # which re-exposed every Core Image + Kelvin export by up to
                 # ~0.4 EV as a function of the WB choice alone (measured
                 # +0.053 EV at 3200K, -0.234 EV at 5500K on _SDI0150).
-                reference_scale = libraw_scene_scale(
-                    float(np.iinfo(reference_scene.dtype).max),
-                    effective_highlight_mode,
-                    camera_wb,
-                    baseline_exposure=effective_baseline_exposure,
-                )
-                reference_level = scene_green_median(
-                    np.asarray(reference_scene, dtype=np.float32) / reference_scale
-                )
-                coreimage_level = scene_green_median(
-                    np.asarray(scene_rec2020_render, dtype=np.float32) / float(scene_scale)
-                )
-                raw_factor = reference_level / coreimage_level
-                if not np.isfinite(raw_factor) or not (
-                    COREIMAGE_ALIGN_MIN <= raw_factor <= COREIMAGE_ALIGN_MAX
-                ):
-                    raise ValueError(
-                        f"implausible decoded-green alignment factor {raw_factor!r}"
+                if coreimage_uses_file_alignment(coreimage_scale):
+                    reference_scale = libraw_scene_scale(
+                        float(np.iinfo(reference_scene.dtype).max),
+                        effective_highlight_mode,
+                        camera_wb,
+                        baseline_exposure=effective_baseline_exposure,
                     )
+                    reference_level = scene_green_median(
+                        np.asarray(reference_scene, dtype=np.float32) / reference_scale
+                    )
+                    coreimage_level = scene_green_median(
+                        np.asarray(scene_rec2020_render, dtype=np.float32) / float(scene_scale)
+                    )
+                    raw_factor = reference_level / coreimage_level
+                    if not np.isfinite(raw_factor) or not (
+                        COREIMAGE_ALIGN_MIN <= raw_factor <= COREIMAGE_ALIGN_MAX
+                    ):
+                        raise ValueError(
+                            f"implausible decoded-green alignment factor {raw_factor!r}"
+                        )
             except Exception as exc:  # noqa: BLE001 - a render must not fail over a metric
-                scene_align_error = f"{type(exc).__name__}: {exc}"
-            scene_align_factor = coreimage_alignment_factor(
-                reference_level, coreimage_level
-            )
-            scene_scale = float(scene_scale) / scene_align_factor
+                error = f"{type(exc).__name__}: {exc}"
+                if coreimage_uses_file_alignment(coreimage_scale):
+                    scene_align_error = error
+                if needs_correction_evidence and scene_processing_loss_pct is None:
+                    scene_correction_note = f"DNG 校正损失参考不可用，HDR 不授予可靠尾部: {error}"
+            finally:
+                # Do not carry the half-size reference into the full-size XYZ stage.
+                reference_scene = None
+            if coreimage_uses_file_alignment(coreimage_scale):
+                scene_align_factor = coreimage_alignment_factor(
+                    reference_level, coreimage_level
+                )
+                scene_scale = float(scene_scale) / scene_align_factor
         xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
         render_scale = scene_scale
         scene_decoder = "coreimage"
@@ -1623,6 +1747,11 @@ def load_raw(
         baseline_exposure_baked_in=baseline_exposure_baked_in,
         applied_wb=[float(x) for x in camera_wb],
         lens_shading=lens_shading,
+        processing_clip_masks=processing_clip_masks,
+        scene_geometry_ops=scene_geometry_ops,
+        scene_crop_sensor=scene_crop_sensor,
+        scene_correction_note=scene_correction_note,
+        scene_processing_loss_pct=scene_processing_loss_pct,
         clip_masks=clip_masks,
         scene_decoder=scene_decoder,
         scene_decoder_version=scene_decoder_version,

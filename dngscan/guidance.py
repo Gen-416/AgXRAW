@@ -214,7 +214,13 @@ def _align_cfa_rgb_map(bundle: RawBundle, values: Any, target_shape: tuple[int, 
 
     ph, pw = _cfa_bin_period(bundle)
     binned = _bin_period_min(np.asarray(values, dtype=np.float32), ph, pw)
-    oriented = raw_io._orient_like_libraw(binned, bundle.orientation_flip)
+    from .dng_opcodes import align_loss
+    # Capacity/confidence takes the minimum over the same camera-plane
+    # footprint used to form the corrected scene. Work in complementary loss.
+    if getattr(bundle, "scene_geometry_ops", ()) or getattr(bundle, "scene_crop_sensor", None):
+        oriented = 1.0 - align_loss(bundle, 1.0 - binned)
+    else:
+        oriented = raw_io._orient_like_libraw(binned, bundle.orientation_flip)
     return raw_io._resize_mask_to_shape(oriented, target_shape).astype(np.float32, copy=False)
 
 
@@ -327,6 +333,10 @@ def build_raw_guidance_maps(
         return getattr(bundle, "raw_guidance", None)
     target_shape = np.asarray(masks).shape[:2]
     headroom = _raw_headroom_rgb(bundle, target_shape, analysis)
+    processing = getattr(bundle, "processing_clip_masks", None)
+    if processing is not None:
+        from .raw_io import _resize_loss_to_shape
+        headroom *= 1.0 - _resize_loss_to_shape(processing, target_shape).astype(np.float32)
     clip_class = clip_class_from_masks(saturation_proximity_from_headroom(headroom).reshape(-1, 3)).reshape(target_shape)
     snr = _raw_snr_confidence(bundle, analysis, target_shape)
     stored_headroom = headroom.astype(np.float16, copy=False)

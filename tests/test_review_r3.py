@@ -32,13 +32,13 @@ class NonBayerCellMetricTests(unittest.TestCase):
         self.assertTrue(math.isfinite(rho))
         self.assertEqual(rho, 0.0)
 
-    def test_rank_trim_treats_non_finite_as_stated_no_trim(self) -> None:
+    def test_rank_trim_treats_non_finite_as_missing_evidence(self) -> None:
         from dngscan.tone import rank_trim_reconstructed_highlights
 
         ev = np.linspace(-5.0, 5.0, 1000).astype(np.float32)
         valid = np.ones(1000, dtype=bool)
         out = rank_trim_reconstructed_highlights(ev, valid, float("nan"))
-        self.assertTrue(bool(np.array_equal(out, valid)))
+        self.assertFalse(bool(np.any(out)))
         # And a finite rate still trims from the top.
         trimmed = rank_trim_reconstructed_highlights(ev, valid, 10.0)
         self.assertLess(int(trimmed.sum()), 1000)

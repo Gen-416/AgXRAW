@@ -39,6 +39,33 @@ class Raw9ReliableTailTests(unittest.TestCase):
 
 
 class ReliableTailAuthorityTests(unittest.TestCase):
+    def test_correction_reference_loss_is_not_reliable_hdr_evidence(self) -> None:
+        scene = np.full((512, 512, 3), 4.0, dtype=np.float32)
+        bundle = SimpleNamespace(
+            scene_rec2020_render=scene, scene_scale=1.0, exposure_gain=1.0,
+            wb_mode="camera", camera_wb=None, applied_wb=None, daylight_wb=None,
+            clip_masks=None, scene_decoder="coreimage",
+        )
+        for correction_rate in (96.0, 100.0, None, float("nan")):
+            with self.subTest(rate=correction_rate):
+                bundle.scene_processing_loss_pct = correction_rate
+                metrics = scene_tone_metrics(bundle, SimpleNamespace(cell_union_pct=0.0))
+                self.assertTrue(math.isnan(metrics.reliable_tail_ev_p9999))
+                self.assertTrue(math.isfinite(metrics.body_ev_p50))
+
+    def test_coreimage_cannot_manufacture_minimum_reliable_population(self) -> None:
+        scene = np.full((512, 512, 3), 4.0, dtype=np.float32)
+        bundle = SimpleNamespace(
+            scene_rec2020_render=scene, scene_scale=1.0, exposure_gain=1.0,
+            wb_mode="camera", camera_wb=None, applied_wb=None, daylight_wb=None,
+            clip_masks=None, scene_decoder="coreimage",
+        )
+        for rate in (96.0, 99.0, 100.0, float("nan"), float("inf"), -1.0, 101.0):
+            with self.subTest(rate=rate):
+                metrics = scene_tone_metrics(bundle, SimpleNamespace(cell_union_pct=rate))
+                self.assertTrue(math.isnan(metrics.reliable_tail_ev_p9999))
+                self.assertTrue(math.isfinite(metrics.body_ev_p50))
+
     def test_sdr_fallback_does_not_become_hdr_evidence(self) -> None:
         scene = np.ones((100, 100, 3), dtype=np.float32)
         bundle = SimpleNamespace(

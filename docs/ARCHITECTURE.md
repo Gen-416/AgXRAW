@@ -486,11 +486,31 @@ camera-interpretation choice, not an HDR budget leak.
 
 ![LibRaw vs Apple RAW 9, same frame through the same AgX plan: the differences are camera interpretation, not pipeline drift](assets/decoder-libraw-vs-raw9.jpg)
 
-Dark-field parity runs the other way too: the LibRaw path now honours the DNG
-dark-field opcodes — `GainMap` before demosaic (measured on Sigma fp), and
-`FixVignetteRadial` after the render (measured on iPhone Standard RAW, whose
-files carry `FixVignetteRadial` with no `GainMap`) — with evidence copies taken
-from the pre-correction sensor truth. Both decode paths honour the same vignette
+The LibRaw path now executes the main RAW IFD's ordered DNG recipe: stage-2
+`GainMap` in place on the mosaic, then stage-3 `WarpRectilinear`, `WarpFisheye`
+and `FixVignetteRadial` in camera RGB, before the actual LibRaw colour matrix,
+DefaultCrop and orientation. The stage-3 white bounds follow the fixed WB
+scaling. Unsupported required opcodes fail explicitly; skipped optional ones
+are reported. A separate processing-loss raster follows clipping and the
+interpolation footprint, while sensor statistics retain the original mosaic.
+RAW masks and guidance follow the same per-camera-channel geometry. This does
+not establish a pixel correspondence with Apple's opaque reconstruction, so
+Core Image still uses aggregate evidence, adding the same file's LibRaw
+correction-loss coverage to the sensor clipping rate, capped at 100% without
+discounting overlap. This reference is collected even in unity/measured mode
+without changing their scale; an unavailable correction reference cannot grant
+HDR headroom. Its rank trim no longer preserves an
+artificial minimum population: invalid rates or insufficient reliable samples
+cannot grant HDR headroom through SDR's fallback.
+
+Cached Analysis reuse replays the measured-full-well mask refresh on the fresh
+bundle, preserving processing loss. Preview cache version 16 invalidates the
+previous correction and evidence policies. LibRaw already handles DNG
+linearization tables and LinearResponseLimit; spatial BlackLevelDeltaH/V remain
+a declared mean-only approximation. These DNG operators do not provide a lens
+database for proprietary RAF/ARW corrections. The older comparison images below
+illustrate dark-field behaviour, rather than pixel baselines for the new warp.
+Both decode paths honour the same vignette
 opcode. The iPhone main-camera decoder pair (same frame, same AgX plan):
 
 ![iPhone 16 Pro, same frame decoded twice: LibRaw and RAW 9 both honouring the file's FixVignetteRadial — corner brightness agrees](assets/decoder-iphone-libraw-vs-raw9.jpg)
