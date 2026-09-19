@@ -30,6 +30,12 @@ class Warp:
     scale: float = 1.0
 
 
+@dataclass(frozen=True)
+class TrimBounds:
+    """An ordered stage-3 crop in the current un-oriented camera image."""
+    bounds: tuple[int, int, int, int]  # top, left, bottom, right
+
+
 @dataclass
 class OpcodePlan:
     stage1: list = field(default_factory=list)
@@ -129,7 +135,7 @@ def read_plan(path: Path) -> OpcodePlan:
                 supported = version <= 0x01060000 and (
                     (stage == 1 and oid in (4,5,7,8,10,11,12,13)) or
                     (stage == 2 and oid in (7,8,9,10,11,12,13)) or
-                    (stage == 3 and oid in (1,2,3,7,8,10,11,12,13,14))
+                    (stage == 3 and oid in (1,2,3,6,7,8,10,11,12,13,14))
                 )
                 if not supported:
                     label = f"OpcodeList{stage}/{name} (version {version:#x})"
@@ -137,7 +143,17 @@ def read_plan(path: Path) -> OpcodePlan:
                         plan.skipped.append(label)
                         continue
                     raise ValueError(f"LibRaw pipeline does not support required DNG {label}; use Apple RAW")
-                if oid in (4,5,7,8,10,11,12,13):
+                if stage == 3 and oid != 6 and any(isinstance(op,TrimBounds) for op in plan.post):
+                    raise ValueError("DNG operations after TrimBounds require retained image-origin coordinates; use Apple RAW")
+                if oid == 6:
+                    if length != 16:
+                        raise ValueError("invalid DNG TrimBounds size")
+                    bounds=struct.unpack('>4l',payload)
+                    t,l,b,r=bounds
+                    if min(t,l)<0 or b<=t or r<=l:
+                        raise ValueError("invalid DNG TrimBounds rectangle")
+                    plan.post.append(TrimBounds(bounds))
+                elif oid in (4,5,7,8,10,11,12,13):
                     from .dng_point_ops import parse
                     op = parse(oid,payload,stage)
                     (plan.stage1 if stage==1 else plan.stage2 if stage==2 else plan.post).append(op)
@@ -281,6 +297,59 @@ def crop_image(image: Any, crop: tuple | None, sensor_shape: tuple[int, int]) ->
     return image[y0:y1, x0:x1]
 
 
+def terminal_trim_crop(trims, shape, crop=None):
+    """Resolve terminal trims without losing their original image coordinates.
+
+    A terminal stage-3 trim commutes with only the colour matrix and final
+    DefaultCrop. Earlier trims cannot be folded here: they change the coordinate
+    contract seen by later spatial operations or demosaic.
+    """
+    t,l,b,r=0,0,int(shape[0]),int(shape[1])
+    for op in trims:
+        nt,nl,nb,nr=op.bounds
+        if nt<t or nl<l or nb>b or nr>r:
+            raise ValueError("DNG TrimBounds is outside the current image bounds")
+        t,l,b,r=nt,nl,nb,nr
+    if crop is not None:
+        y,x,h,w=crop
+        t,l,b,r=max(t,y),max(l,x),min(b,y+h),min(r,x+w)
+    if b<=t or r<=l:
+        raise ValueError("DNG DefaultCrop does not overlap TrimBounds")
+    return float(t),float(l),float(b-t),float(r-l)
+
+
+def _fractional_crop_loss(values, crop, sensor_shape, output_shape):
+    """Resample a crop not aligned to the evidence grid, taking footprint max.
+
+    Rounding a one-pixel crop on a two-pixel evidence grid moves the masks.
+    Work directly in continuous grid coordinates instead; bounded row bands
+    avoid expanding the entire sensor raster just to slice out the crop.
+    """
+    y,x,h,w=crop
+    sy,sx=values.shape[0]/sensor_shape[0],values.shape[1]/sensor_shape[1]
+    t,l,b,r=max(0.,y*sy),max(0.,x*sx),min(values.shape[0],(y+h)*sy),min(values.shape[1],(x+w)*sx)
+    if all(abs(v-round(v))<1e-9 for v in (t,l,b,r)):
+        return None
+    if b<=t or r<=l:
+        raise ValueError("DNG crop is outside the sensor evidence")
+    oh,ow=output_shape
+    ys=np.linspace(t,b,oh+1);xs=np.linspace(l,r,ow+1)
+    ylo=np.floor(ys[:-1]+1e-9).astype(np.intp);yhi=np.ceil(ys[1:]-1e-9).astype(np.intp)
+    xlo=np.floor(xs[:-1]+1e-9).astype(np.intp);xhi=np.ceil(xs[1:]-1e-9).astype(np.intp)
+    out=np.zeros((oh,ow,3),dtype=values.dtype)
+    for start in range(0,oh,128):
+        stop=min(start+128,oh)
+        for dy in range(int(np.max(yhi[start:stop]-ylo[start:stop]))):
+            yy=ylo[start:stop]+dy
+            for dx in range(int(np.max(xhi-xlo))):
+                xx=xlo+dx
+                valid=(yy[:,None]<yhi[start:stop,None])&(xx[None,:]<xhi[None,:])
+                src=values[np.minimum(yy,values.shape[0]-1)[:,None],
+                           np.minimum(xx,values.shape[1]-1)[None,:]]
+                np.maximum(out[start:stop],np.where(valid[...,None],src,0),out=out[start:stop])
+    return out
+
+
 def align_sensor_loss(values, sensor_shape, scene_shape, flip, geometry=(), crop=None):
     """Apply DefaultScale, camera warps, crop and orientation in scene order."""
     from .raw_io import _orient_like_libraw, _resize_loss_to_shape
@@ -295,6 +364,11 @@ def align_sensor_loss(values, sensor_shape, scene_shape, flip, geometry=(), crop
         values = _resize_loss_to_shape(values, target)
     for op in geometry:
         values = warp_image(values, op, loss=True)
+    if crop is not None:
+        output_shape=scene_shape[::-1] if flip & 4 else scene_shape
+        cropped=_fractional_crop_loss(values,crop,sensor_shape,output_shape)
+        if cropped is not None:
+            return _orient_like_libraw(cropped,flip)
     values = crop_image(values, crop, sensor_shape)
     return _orient_like_libraw(values, flip)
 

@@ -140,7 +140,7 @@ flowchart TB
         SPATIAL["Resolved spatial RAW evidence - LibRaw geometry only<br/>95-99% masks refreshed to measured full well<br/>headroom / clip class / SNR guidance<br/>dropped rather than borrowed by Core Image geometry"]
         EV["Intent exposure<br/>fixed EV0 mid-gray anchor x 2^EV<br/>manual EV or explicit brightness-reference search"]
         SAMPLE["Planning sample<br/>scene scale + intent exposure<br/>optional WB-aware scene prefeed"]
-        METRICS["SceneToneMetrics<br/>reliable body vs complete tail<br/>spatial mask exclusion on LibRaw<br/>aggregate rank trim on Core Image<br/>sparse-emitter classification"]
+        METRICS["SceneToneMetrics<br/>body vs reliable tail<br/>spatial mask exclusion on LibRaw<br/>independent RAW reference on Core Image<br/>explicit bounded image estimate fallback"]
         CONTROLS["Render intent<br/>output gamut, tone core, AgX primaries<br/>film observation position (WB + filter + separation + curve)<br/>prefeed, punch and bounded tone biases"]
         COMPILE["Compile independent plans<br/>SceneToneMetrics<br/>ToneCompressionPlan<br/>ColorGeometryPlan"]
         PLAN["Immutable RenderPlan"]
@@ -470,19 +470,22 @@ the image. Consequently this path has no per-pixel CFA evidence: `--tone-core ga
 refused, clip retreat does not run, and `--highlight-mode` does not apply because Core
 Image performs its own highlight recovery. Aggregate RAW facts (levels, clipping
 percentages, SNR, noise floor, white-balance testimony) are distributions rather than
-pixel positions, so they remain valid and still come from LibRaw. For tone planning,
-the measured clipped-cell percentage removes the same fraction from the top of RAW 9's
-luminance rank. This is an aggregate comparison heuristic, not a claim that a particular
-RAW 9 pixel maps to a particular CFA site: reconstructed pixels still describe highlight
-topology, but cannot set the global white endpoint. The report names the decoder, its
-version, and the opcodes that were executed.
+pixel positions, so they remain valid when LibRaw can acquire them. Tone planning uses
+an independent corrected LibRaw reference: sensor clipping and processing loss are
+combined in that reference's own coordinates before sampling. The normalized reference
+is mapped to Apple's scene units and follows the same WB, exposure, lens filter, and
+scene transform. Its tail is also bounded by Apple's actual output tail; none of this
+asserts a spatial pixel correspondence. Loss percentages are never added or used to
+delete the brightest Apple pixels, so dark-border loss cannot erase valid highlights.
 
 The HDR branch couples to this path through the same evidence rules, pinned by dedicated
 tests: chroma freedom `rho` is capped at 0.25 because no per-pixel CFA mask can withdraw
-it locally, the mask-free formation renders inside `[0, peak]`, and the rank-trimmed
-RAW 9 reliable tail tracks LibRaw's CFA-masked measurement on the same frame (0.09 EV
-apart on the daylight reference, gated at 0.3 EV). Reconstruction differences remain a
-camera-interpretation choice, not an HDR budget leak.
+it locally, the mask-free formation renders inside `[0, peak]`, and the independent
+reference preserves positive HDR headroom on the daylight fixture (tail difference
+from LibRaw below 0.3 EV on this fixture, not a universal cross-decoder guarantee).
+Missing reference capability uses an explicitly labelled decoded-image estimate,
+capped at one extra stop with zero channel separation. A successfully measured but
+empty reference never falls back to that estimate.
 
 ![LibRaw vs Apple RAW 9, same frame through the same AgX plan: the differences are camera interpretation, not pipeline drift](assets/decoder-libraw-vs-raw9.jpg)
 
@@ -495,13 +498,11 @@ are reported. A separate processing-loss raster follows clipping and the
 interpolation footprint, while sensor statistics retain the original mosaic.
 RAW masks and guidance follow the same per-camera-channel geometry. This does
 not establish a pixel correspondence with Apple's opaque reconstruction, so
-Core Image still uses aggregate evidence, adding the same file's LibRaw
-correction-loss coverage to the sensor clipping rate, capped at 100% without
-discounting overlap. This reference is collected even in unity/measured mode
-without changing their scale; an unavailable correction reference cannot grant
-HDR headroom. Its rank trim no longer preserves an
-artificial minimum population: invalid rates or insufficient reliable samples
-cannot grant HDR headroom through SDR's fallback.
+Core Image uses the independent reference described above. Unity/measured modes
+map the reference to their existing units without altering the main scene scale.
+Fewer than 256 or 5% reliable reference samples produce a present-but-empty
+reference and zero HDR headroom. Known sensor clipping of at least 95% also
+vetoes the decoded-image estimate; unavailable sensor statistics stay unknown.
 
 Cached Analysis reuse replays the measured-full-well mask refresh on the fresh
 bundle, preserving processing loss. Preview cache version 16 invalidates the
@@ -756,8 +757,8 @@ exposure.
 ### Scene statistics are not simple min/max
 
 The tone plan separates the reliable body from the highlight tail. On LibRaw, body
-statistics exclude spatial CFA-clipped samples. On Core Image, they use the aggregate
-rank-trim described above; SNR constrains the black end and gated color permission, but
+statistics exclude spatial CFA-clipped samples. Core Image uses its own body and the
+independent reference tail described above; SNR constrains the black end and gated color permission, but
 is not a second body mask. The tail only reserves space for the shoulder. Sparse emitters
 and large bright surfaces are also different: letting a few lamps define white EV makes
 the highlights harsh while the rest of the image remains dark.
@@ -1143,10 +1144,10 @@ is required to equal the SDR rendition.
 
 Selected display headroom is a ceiling, not a target. The initial request comes from a
 reliable highlight tail filtered by RAW clipping evidence. LibRaw uses its aligned
-per-pixel CFA mask; RAW9 conservatively rank-trims the luminance tail by the full-resolution
-clipped-cell fraction. Insufficient evidence means zero headroom and an explicitly refused
-HDR export; reconstructed highlights and the SDR white endpoint cannot stand in for sensor
-evidence.
+per-pixel CFA mask; Apple uses an independent filtered RAW reference. A measured empty
+reference means zero headroom and a refused HDR export. An unavailable reference permits
+only the explicitly labelled decoded-image estimate (at most one stop, no channel
+separation), never a claim of sensor-measured headroom. UI and export share this budget.
 
 That request compiles an HDR curve without rewriting its body. Below K, the darktable-style
 AgX body keeps its historical internal gamma of 2.2. Above K, a cubic Hermite in output

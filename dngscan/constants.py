@@ -73,7 +73,7 @@ OUTPUT_GAMUT_SPACES = {"srgb": "sRGB", "p3": "P3"}
 OUTPUT_GAMUT_LABELS = {"srgb": "sRGB", "p3": "Display P3"}
 
 
-JPEG_OUTPUT_FORMATS = ("sdr", "ultrahdr", "ultrahdr-heic")
+JPEG_OUTPUT_FORMATS = ("sdr", "sdr-heic", "ultrahdr", "ultrahdr-heic")
 
 
 # HDR authoring policy. Apple defines headroom as a ratio and does not mandate an absolute
@@ -165,7 +165,7 @@ DEMOSAIC_AUTO_PREFERENCE = ("DHT", "DCB", "AHD")
 DECODER_CHOICES = ("libraw", "coreimage")
 
 
-COREIMAGE_VERSION_CHOICES = ("auto", "9", "8", "7")
+COREIMAGE_VERSION_CHOICES = ("auto", "9", "8", "7", "6")
 
 # Core Image scale policy. ``aligned`` is the production comparison contract: a single
 # per-file scalar puts RAW 9 on the LibRaw decoded-green median without targeting any

@@ -93,7 +93,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--jpeg",
         type=Path,
         default=None,
-        help="可选 8-bit JPEG 输出路径",
+        help="输出路径（JPEG 或 HEIF，由 --output-format 选择）",
     )
     parser.add_argument("--heif-encoder", choices=("auto","apple","x265"), default="auto",
                         help="HEIF 编码器；auto 优先采用可调 libheif/x265")
@@ -132,9 +132,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         choices=JPEG_OUTPUT_FORMATS,
         default="sdr",
         help=(
-            "输出格式: sdr=普通 JPEG；ultrahdr=Apple ISO gain-map JPEG；"
-            "ultrahdr-heic=同内容 HEIC 容器（可调 x265 或 Apple 编码，"
-            "share 档误差也更大；主要用于需要 HEIC 的下游）"
+            "输出格式: sdr=SDR JPEG；sdr-heic=SDR HEIF；"
+            "ultrahdr=ISO gain-map JPEG；ultrahdr-heic=ISO gain-map HEIF"
         ),
     )
     parser.add_argument(
@@ -675,7 +674,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--coreimage-version",
         choices=COREIMAGE_VERSION_CHOICES,
         default="auto",
-        help="仅 --decoder coreimage：auto=选文件支持的最高版本(优先9)；显式 9/8/7 在不支持时直接报错",
+        help="仅 --decoder coreimage：auto=优先9，渲染失败按文件支持版本回退；显式 9/8/7/6 在不支持时直接报错",
     )
     parser.add_argument(
         "--coreimage-scale",
@@ -1031,7 +1030,7 @@ def main(argv: list[str]) -> int:
             available, reason = apple_gainmap_backend_status()
             if not available:
                 raise RuntimeError(reason)
-        if args.decoder == "coreimage":
+        if args.decoder == "coreimage" and args.coreimage_version != "auto":
             from . import coreimage_decode
 
             probe = coreimage_decode.probe_raw9_support(args.path)
@@ -1040,30 +1039,19 @@ def main(argv: list[str]) -> int:
             if probe["error"]:
                 raise RuntimeError(f"Apple RAW 无法探测这个文件：{probe['error']}")
             if not probe["raw9_supported"]:
-                fallback = probe["fallback_version"]
                 offered = ", ".join(str(value) for value in probe["versions_offered"]) or "none"
                 if args.coreimage_version == "9":
                     raise RuntimeError(
                         f"此文件不支持 Apple RAW 9（系统报告版本：{offered}）；"
                         "请改用 --decoder libraw，或显式选择可用的 --coreimage-version"
                     )
-                if args.coreimage_version == "auto":
-                    if fallback is None:
-                        raise RuntimeError(
-                            f"此文件不支持 Apple RAW 9，且没有 RAW 8/7 降级路径"
-                            f"（系统报告版本：{offered}）"
-                        )
-                    print(
-                        f"warning: 此文件不支持 Apple RAW 9；将明确降级到 Apple RAW {fallback}。"
-                        f"可用 --coreimage-version 9 禁止降级，或改用 --decoder libraw。",
-                        file=sys.stderr,
-                    )
-                else:
-                    print(
-                        f"warning: 此文件不支持 Apple RAW 9；当前显式使用 Apple RAW "
-                        f"{args.coreimage_version}。",
-                        file=sys.stderr,
-                    )
+                coreimage_decode.resolve_decoder_version(args.coreimage_version,
+                    tuple(probe["versions_offered"]))
+                print(
+                    f"warning: 此文件不支持 Apple RAW 9；当前显式使用 Apple RAW "
+                    f"{args.coreimage_version}。",
+                    file=sys.stderr,
+                )
         scan_requested = bool(args.scan or args.out is not None or (args.jpeg is None and args.csv is None))
         out_path = args.out if args.out is not None else (default_png_path(args.path) if scan_requested else None)
 
@@ -1168,7 +1156,7 @@ def main(argv: list[str]) -> int:
             plot_dashboard(bundle, analysis, y, ev, out_path, auto_ev=auto_ev_result)
 
         jpeg_path = args.jpeg
-        if jpeg_path is not None and args.output_format == "ultrahdr-heic":
+        if jpeg_path is not None and container_for_output_format(args.output_format) == "heic":
             if jpeg_path.suffix.lower() in {".jpg", ".jpeg", ""}:
                 jpeg_path = jpeg_path.with_suffix(".heic")
         jpeg_icc_embedded = False
@@ -1320,7 +1308,8 @@ def main(argv: list[str]) -> int:
                 chroma=args.chroma if jpeg_path is not None else "444",
             )
         else:
-            for label, path in (("JPEG 图像", jpeg_path), ("PNG 图像", out_path)):
+            output_label = "HEIF 图像" if container_for_output_format(args.output_format) == "heic" else "JPEG 图像"
+            for label, path in ((output_label, jpeg_path), ("PNG 图像", out_path)):
                 if path is not None:
                     print(f"{label}: {path}")
         if jpeg_path is not None and is_hdr_output_format(args.output_format):

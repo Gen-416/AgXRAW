@@ -51,7 +51,7 @@ class ExportSuffixTests(unittest.TestCase):
         self.assertIn("HDR gain-map · HEIC", html)
         self.assertIn("只恢复漫反射白以上的真实亮度档数", html)
         self.assertIn("/raw9-support", html)
-        self.assertIn("此文件不支持 RAW 9", html)
+        self.assertIn("此文件不提供 RAW ", html)
         self.assertIn('type="file" id="filePicker"', html)
         self.assertIn('accept=".3fr,.arw,.cr2,.cr3,.dcr,.dng', html)
         self.assertIn('apiFetch("/upload?name="', html)

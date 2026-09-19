@@ -50,19 +50,20 @@ class CameraPlaneTests(unittest.TestCase):
                 image=np.full((8,8,4),3000,np.uint16);loss=np.zeros((8,8,3),np.uint8)
                 raw_io._apply_gain_maps_mosaic(SimpleNamespace(raw_image_visible=image),[m],[0]*4,4000,loss_mask=loss)
                 np.testing.assert_array_equal(image[...,0],3000)
-                np.testing.assert_array_equal(image[...,1],4000)
+                np.testing.assert_array_equal(image[...,1],1500)
                 np.testing.assert_array_equal(image[...,2],1500)
                 np.testing.assert_array_equal(image[...,3],3000)
-                np.testing.assert_array_equal(loss[...,1],1)
+                np.testing.assert_array_equal(loss[...,1],0)
 
     def test_spatial_black_matches_sdk_range_normalization(self):
         model=SpatialBlack(np.array([-20.,0.,20.,40.]),np.array([0.,10.]),np.full((1,1,1),100.),(0,0),(150.,))
         original=np.full((2,4),1000,np.uint16);working=original.copy()
         raw=SimpleNamespace(raw_image_visible=working,raw_colors_visible=np.zeros((2,4),np.uint8))
-        apply_to_working(raw,model,[100.],4095)
-        expected=np.rint((original-model.band(0,2,4))*(4095-100)/(4095-150)+100)
+        overrides=apply_to_working(raw,model,[100.],4095)
+        expected=np.rint((original-model.band(0,2,4))*65535/(4095-150))
         np.testing.assert_array_equal(working,expected)
         np.testing.assert_array_equal(original,1000)
+        self.assertEqual(overrides,{'user_black':0,'user_cblack':[0]*4,'user_sat':65535})
 
     def test_scaled_geometry_is_shared_by_all_loss_maps(self):
         values=np.zeros((32,32,3),np.float16);values[7:9,15:18]=1

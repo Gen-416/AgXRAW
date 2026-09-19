@@ -41,11 +41,12 @@ from .models import (
 
 
 def reliable_tail_ev(plan: RenderPlan) -> float:
-    """Scene EV of the highest luminance still backed by unclipped RAW evidence.
+    """Tail EV selected by the declared reliability source.
 
-    There is deliberately no fallback to the reconstructed tail or the compiled white
-    endpoint. Neither is RAW evidence, so using either would turn a missing measurement
-    into positive HDR budget.
+    Sensor-backed paths never fall back from an empty measurement to the
+    reconstructed tail. An explicitly declared decoded-image estimate has
+    its own one-stop/chroma-neutral policy in compile_hdr_agx_plan. Neither
+    path borrows the already compiled SDR white endpoint.
     """
     scene = getattr(plan, "scene", None)
     if scene is None:
@@ -60,6 +61,12 @@ def reliable_tail_ev(plan: RenderPlan) -> float:
 # Blender's HDR_purity=0.5 as a probe starting point whose semantics are not the same
 # thing, so this stays a conservative cap until an EDR corpus says otherwise.
 RHO_BASE = 0.5
+# Explicit degraded-mode policy, not a measured sensor dynamic range or a
+# codec limit. An opaque decoder without a usable calibrated RAW reference
+# may supply a luminance estimate, capped at one extra stop with no channel
+# separation. Empty (successfully measured) reference populations never enter
+# this mode. Corpus calibration may revise the cap through the policy register.
+DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV = 1.0
 
 # Project calibration policy, not values defined by darktable, AgX, Apple, ACES or
 # ISO 21496-1. Naming them keeps a future EDR-corpus calibration from hiding in arithmetic.
@@ -77,6 +84,25 @@ MAXIMUM_WHITE_EV = 8.50
 # latitude policy awaiting corpus calibration, not values defined by darktable or AgX.
 NORMAL_SHOULDER_START_EV = 0.20
 SPARSE_EMITTER_SHOULDER_START_EV = 0.00
+
+
+def scene_headroom_ev(scene) -> float | None:
+    """Scene-supported stops before the display cap, shared with the UI.
+
+    ``None`` distinguishes absent evidence from a measured zero budget. The
+    explicit decoded-image estimate cannot bypass its policy cap in a GUI
+    annotation even when its numerical luminance tail is much higher.
+    """
+    try:
+        tail = float(getattr(scene, "reliable_tail_ev_p9999", None))
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(tail):
+        return None
+    earned = max(0.0, tail - OUTPUT_REFERENCE_WHITE_STOPS)
+    if getattr(scene, "reliability_source", "sensor-spatial") == "decoded-image-estimate":
+        earned = min(earned, DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV)
+    return earned
 
 
 def compile_channel_separation(
@@ -101,20 +127,14 @@ def compile_channel_separation(
     it cannot tell a clipped highlight from a bright one locally, and the design forbids
     fabricating a local rho from aggregate statistics.
     """
-    # cell_ge2_of_clipped_pct is conditional on cells that clipped at all, so it reads as
-    # a huge number on frames with almost no clipping -- 86 % of 0.08 % of the image. The
-    # absolute share is what matters here, and cell_k_of_all_pct already carries it.
-    k_all = getattr(analysis, "cell_k_of_all_pct", None) or {}
-    multi_pct = sum(float(k_all.get(k, 0.0) or 0.0) for k in (2, 3, 4))
-    if not k_all:
-        clipped = float(getattr(analysis, "cell_union_pct", 0.0) or 0.0)
-        conditional = float(getattr(analysis, "cell_ge2_of_clipped_pct", 0.0) or 0.0)
-        multi_pct = clipped * conditional / 100.0
-    if not math.isfinite(multi_pct):
-        # R3 item 1: a non-2x2 CFA has no multi-channel cell decomposition, so
-        # the per-channel-freedom evidence simply does not exist. That is zero
-        # confidence — a neutral HDR is always defensible — never NaN riding
-        # the plan into the blend weights.
+    # Sensel counts are not colour counts: G1+G2 is one lost RGB group.
+    # Missing group topology must never fall back to the historical 4-site
+    # Bayer statistic, which cannot distinguish green-only from R+B clipping.
+    k_all = getattr(analysis, "color_clip_k_of_all_pct", None) or {}
+    if not k_all or not all(k in k_all for k in (1, 2, 3)):
+        return 0.0
+    multi_pct = sum(float(k_all[k]) for k in (2, 3))
+    if not math.isfinite(multi_pct) or not 0.0 <= multi_pct <= 100.0:
         return 0.0
     # Multi-channel clipping is the decisive one: single-channel clipping still leaves two
     # measured channels to place the hue. 10 % of the frame is treated as total loss of
@@ -217,6 +237,7 @@ def compile_hdr_agx_plan(
     display = target if target is not None else HdrDisplayTarget()
     tail = reliable_tail_ev(scene_plan)
     scene = getattr(scene_plan, "scene", None)
+    reliability_source = str(getattr(scene, "reliability_source", "sensor-spatial"))
     sparse = bool(getattr(scene, "sparse_emitter_tail", False))
     white_margin = (
         float(white_margin_ev)
@@ -237,6 +258,7 @@ def compile_hdr_agx_plan(
     )
     headroom = float(display.display_headroom_ev)
     requested = requested_headroom_ev(tail, headroom)
+    requested = min(requested, scene_headroom_ev(scene) or 0.0)
     knee = (
         float(shoulder_start_ev)
         if shoulder_start_ev is not None
@@ -350,6 +372,8 @@ def compile_hdr_agx_plan(
         if analysis is not None
         else 0.0
     )
+    if reliability_source == "decoded-image-estimate":
+        rho = 0.0
     color = HdrColorGeometry(
         channel_separation=rho,
         raw_clip_retreat=float(scene_plan.color.raw_clip_retreat_strength)
@@ -361,12 +385,19 @@ def compile_hdr_agx_plan(
         hue_restore=float(scene_plan.tone.hue_restore),
         primaries_preset=str(scene_plan.tone.agx_primaries),
     )
-    return HdrAgxPlan(formation=formation, display=display, tone=tone, color=color)
+    return HdrAgxPlan(formation=formation, display=display, tone=tone, color=color,
+                      reliability_source=reliability_source)
 
 
 def describe_hdr_plan(plan: HdrAgxPlan) -> str:
     """One line naming capture request, solved endpoint and display capacity."""
     tone = plan.tone
+    source_note = (
+        "；解码图像估计（上限 1 EV，非传感器实测）"
+        if plan.reliability_source == "decoded-image-estimate"
+        else "；独立 RAW 参考" if plan.reliability_source == "sensor-reference"
+        else ""
+    )
     if tone.rendered_headroom_ev <= 0.0:
         tail_text = (
             f"{tone.reliable_tail_ev:+.2f}EV"
@@ -374,11 +405,11 @@ def describe_hdr_plan(plan: HdrAgxPlan) -> str:
             else "不可用"
         )
         return (
-            f"HDR: 无可用扩展白（可靠尾部 {tail_text}，"
-            f"显示容量 +{tone.display_headroom_ev:.2f}EV）"
+            f"HDR: 无可用扩展白（尾部 {tail_text}，"
+            f"显示容量 +{tone.display_headroom_ev:.2f}EV）{source_note}"
         )
     reduced = (
-        f"，RAW 请求 +{tone.requested_headroom_ev:.2f}EV"
+        f"，请求 +{tone.requested_headroom_ev:.2f}EV"
         if tone.rendered_headroom_ev + 1e-4 < tone.requested_headroom_ev
         else ""
     )
@@ -389,5 +420,5 @@ def describe_hdr_plan(plan: HdrAgxPlan) -> str:
         f"容量 +{tone.display_headroom_ev:.2f}EV{reduced}；"
         f"K {tone.shoulder_start_ev:+.2f}EV / W {tone.white_ev:+.2f}EV，"
         f"alpha {tone.shoulder_alpha:.3f}，{shape}，"
-        f"可靠尾部 {tone.reliable_tail_ev:+.2f}EV"
+        f"尾部 {tone.reliable_tail_ev:+.2f}EV{source_note}"
     )

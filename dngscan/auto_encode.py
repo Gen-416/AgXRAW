@@ -14,6 +14,9 @@ from pathlib import Path
 
 from ._deps import np
 
+HEIF_AUTO_QUALITIES = (95, 92, 90, 85, 80, 70)
+HEIF_AUTO_GAINMAP_QUALITIES = (95, 90, 85, 80)
+
 
 def coding_metrics(decoded, intended):
     """Full-resolution luma/chroma error with bounded row-band temporaries."""
@@ -138,3 +141,79 @@ def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98
             "auto_saved_pct": 100.0*(1-size/max(reference_bytes, 1)),
             "auto_attempts": attempts,
         }
+
+
+def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False):
+    """Bounded coordinate search over HEVC quality, sampling and auxiliary precision.
+
+    ``encode(q, chroma, auxiliary_quality, path)`` must verify the completed file.
+    The q95/444 reference and every candidate retain the same absolute and
+    additional-error gates. Search at most 14 distinct combinations; this is not
+    an exhaustive optimum or a claim that HEVC q70 equals JPEG q95.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".agxraw-heif-search-", dir=out_path.parent) as td:
+        reference = info = selected = None
+        reference_bytes = 0
+        attempts, tried = [], set()
+
+        def attempt(quality, chroma, auxiliary):
+            nonlocal reference, reference_bytes, selected, info
+            key = (quality, chroma, auxiliary)
+            if key in tried:
+                return
+            tried.add(key)
+            path = Path(td) / f"q{quality}-{chroma}-aux{auxiliary}.heic"
+            record = {"quality": quality, "chroma": chroma,
+                      "gainmap_quality": auxiliary, "accepted": False}
+            try:
+                candidate = encode(quality, chroma, auxiliary, path)
+                size = path.stat().st_size
+                if reference is None:
+                    # A lower-quality candidate must not become a weaker oracle
+                    # when the declared high-quality reference failed.
+                    reference, reference_bytes = candidate, size
+                    selected, info = path, candidate
+                    accepted = True
+                else:
+                    # Keep a smaller valid primary even if the auxiliary makes
+                    # its saving less than 5% of the WHOLE file. Otherwise that
+                    # valid step cannot participate in a better joint result.
+                    accepted = size < reference_bytes and additional_error_acceptable(candidate, reference)
+                record.update(bytes=size, accepted=accepted,
+                              metrics={k: v for k, v in candidate.items()
+                                       if k.startswith("coding_") or k in (
+                                           "chroma_error", "block_p95_luma_error",
+                                           "highlight_max_luma_error")})
+                if accepted and size < selected.stat().st_size:
+                    selected, info = path, candidate
+            except (RuntimeError, ValueError) as exc:
+                record["reason"] = str(exc)
+                if reference is None:
+                    raise RuntimeError("HEIF 高质量参考未通过回读：" + str(exc)) from exc
+            finally:
+                attempts.append(record)
+
+        auxiliary = 100 if gainmap else None
+        for quality in HEIF_AUTO_QUALITIES:
+            attempt(quality, "444", auxiliary)
+        selected_quality = int(info["delivery_quality"])
+        # Also test the next higher quality: changing chroma can trade code
+        # allocation against detail, so a single fixed-quality probe is insufficient.
+        for chroma in ("422", "420"):
+            for quality in dict.fromkeys((selected_quality, min(95, selected_quality + 5))):
+                attempt(quality, chroma, auxiliary)
+        if gainmap:
+            quality = int(info["delivery_quality"])
+            chroma = str(info["delivery_chroma_requested"])
+            for auxiliary in HEIF_AUTO_GAINMAP_QUALITIES:
+                attempt(quality, chroma, auxiliary)
+        size = selected.stat().st_size
+        os.replace(selected, out_path)
+        return {**info, "delivery_profile": "auto", "output_path": str(out_path),
+                "file_size_bytes": size, "auto_reference_quality": reference["delivery_quality"],
+                "auto_reference_chroma": "444", "auto_reference_bytes": reference_bytes,
+                "auto_saved_pct": 100.0 * (1 - size / max(reference_bytes, 1)),
+                "auto_search": "bounded-quality-chroma-gainmap" if gainmap else "bounded-quality-chroma",
+                "auto_attempts": attempts}

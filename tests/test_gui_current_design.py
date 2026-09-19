@@ -423,9 +423,14 @@ class ServiceDialParsingTests(unittest.TestCase):
 class GreyingGapWires(unittest.TestCase):
     def test_runtime_context_and_per_file_versions_grey_the_decoder(self) -> None:
         body = PAGE[PAGE.index("async function ensureRaw9Support"):]
-        body = body[: body.index("if(j.raw9_supported)return true;")]
-        self.assertIn("j.runtime_interactive===false", body)
+        body = body[: body.index("let DETECTED_READY")]
+        self.assertLess(body.index('if(body.coreimageVersion==="auto")return true;'), body.index('await raw9Probe'))
+        self.assertNotIn("window.confirm", body)
+        self.assertIn('if(!j.coreimage_available||j.probe_error)', body)
         self.assertIn('o.disabled=!ok;o.title=ok?"":"此文件不提供 RAW "+o.value;', body)
+        refresh = PAGE.split('async function fetchDecodeSupport(input){', 1)[1].split('const PREVIEW_CLIENT_ID', 1)[0]
+        self.assertIn('$("#input").value.trim()===input', refresh)
+        self.assertIn('o.disabled=!ok', refresh)
 
     def test_core_deps_and_optics_assets_flags_are_baked_and_acted_on(self) -> None:
         self.assertIn("CORE_DEPS_MISSING_JSON", PAGE)

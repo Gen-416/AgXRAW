@@ -466,18 +466,29 @@ def _parse_gain_map_payload(data: bytes) -> DngGainMap | None:
 
     if len(data) < 76:
         return None
-    head = struct.unpack(">4L2L2L2L", data[:40])
+    head = struct.unpack(">4l6L", data[:40])
     top, left, bottom, right, plane, planes, row_pitch, col_pitch, pv, ph = head
     sv, sh, ov, oh = struct.unpack(">4d", data[40:72])
     (mp,) = struct.unpack(">L", data[72:76])
     n = pv * ph * mp
-    if n <= 0 or len(data) < 76 + 4 * n or pv > 4096 or ph > 4096 or mp > 4:
+    if n <= 0 or len(data) != 76 + 4 * n or pv > 4096 or ph > 4096 or mp > 4:
+        return None
+    if planes < 1 or row_pitch < 1 or col_pitch < 1:
+        return None
+    if (bottom <= top or right <= left) and (row_pitch != 1 or col_pitch != 1):
+        return None
+    if bottom > top and right > left and (
+        bottom-top>0x7fffffff or right-left>0x7fffffff
+        or row_pitch>bottom-top or col_pitch>right-left
+    ):
+        return None
+    if not all(_np.isfinite(v) for v in (sv,sh,ov,oh)) or sv <= 0 or sh <= 0:
         return None
     gains = _np.frombuffer(data, dtype=">f4", count=n, offset=76).astype(_np.float32)
     return DngGainMap(
         top=top, left=left, bottom=bottom, right=right,
         plane=int(plane), planes=int(planes),
-        row_pitch=max(1, row_pitch), col_pitch=max(1, col_pitch),
+        row_pitch=row_pitch, col_pitch=col_pitch,
         points_v=pv, points_h=ph,
         spacing_v=sv, spacing_h=sh, origin_v=ov, origin_h=oh,
         map_planes=mp, gains=gains.reshape(pv, ph, mp),

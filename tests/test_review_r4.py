@@ -239,9 +239,11 @@ class GuiSourcePins(unittest.TestCase):
     def test_restore_settings_accepts_custom_timing(self) -> None:
         self.assertIn('["fixed","retimed","custom"].includes(s.filmPrintTiming)', self.src)
 
-    def test_libraw_fallback_rewrites_body_from_dom(self) -> None:
-        self.assertIn('body.highlight=$("#highlight").value;', self.src)
-        self.assertIn('body.demosaic=$("#demosaic").value;', self.src)
+    def test_auto_fallback_keeps_the_request_for_server_capability_selection(self) -> None:
+        body = self.src.split('async function ensureRaw9Support(body){', 1)[1].split('let DETECTED_READY', 1)[0]
+        self.assertIn('if(body.coreimageVersion==="auto")return true;', body)
+        self.assertNotIn('body.decoder="libraw"', body)
+        self.assertNotIn('window.confirm', body)
 
     def test_preview_metrics_run_before_annotation(self) -> None:
         from pathlib import Path as _P

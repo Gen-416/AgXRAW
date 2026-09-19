@@ -52,7 +52,17 @@ class SpatialBlack:
 
 def read(path,raw) -> SpatialBlack | None:
     tags=sensor_tags(path,{277,50713,50714,50715,50716,50829})
-    if not (50715 in tags or 50716 in tags):return None
+    if not tags:return None
+    repeat=tags.get(50713,[1,1]);planes=int(tags.get(277,[1])[0])
+    if len(repeat)!=2 or min(repeat)<1 or max(repeat)>64 or planes not in (1,3,4):
+        raise ValueError('invalid DNG black pattern dimensions')
+    values=tags.get(50714,[0.] * (int(repeat[0])*int(repeat[1])*planes))
+    # A nonuniform repeat pattern is calibration even without delta tags.
+    # Uniform integer patterns are already handled exactly by LibRaw; retain
+    # that native path instead of introducing unnecessary re-quantization.
+    if not (50715 in tags or 50716 in tags or len(set(values))>1
+            or any(not math.isfinite(v) or v!=int(v) for v in values)):
+        return None
     h,w=raw.raw_image_visible.shape[:2]
     area=tags.get(50829,[0,0,tags[257][0],tags[256][0]])
     ah,aw=int(area[2]-area[0]),int(area[3]-area[1])
@@ -61,10 +71,7 @@ def read(path,raw) -> SpatialBlack | None:
         raise ValueError('DNG black-delta active area does not cover visible pixels')
     hor=np.asarray(tags.get(50715,np.zeros(aw)),dtype=np.float32)
     ver=np.asarray(tags.get(50716,np.zeros(ah)),dtype=np.float32)
-    repeat=tags.get(50713,[1,1]);planes=int(tags.get(277,[1])[0])
-    if len(repeat)!=2 or min(repeat)<1 or max(repeat)>64 or planes not in (1,3,4):
-        raise ValueError('invalid DNG black pattern dimensions')
-    black=np.asarray(tags.get(50714,[0.]),dtype=np.float32)
+    black=np.asarray(values,dtype=np.float32)
     if black.size != repeat[0]*repeat[1]*planes or hor.size!=aw or ver.size!=ah:
         raise ValueError('invalid DNG spatial black calibration shape')
     black=black.reshape(int(repeat[0]),int(repeat[1]),planes)
@@ -81,26 +88,31 @@ def read(path,raw) -> SpatialBlack | None:
 def apply_to_working(raw,model,black_levels,white,loss=None):
     """Normalize against maximum black as specified by the Adobe DNG SDK.
 
-    Feed equivalent uniform-black codes to LibRaw; its later subtraction and
-    scaling reproduce the DNG range mapping. The independent evidence copy is
-    untouched, including physical saturation at the original stored WhiteLevel.
+    The working buffer becomes zero-black uint16 normalized camera data. Its
+    postprocess call MUST use the returned overrides: these explicitly clear
+    LibRaw's retained cblack repeat pattern as well as its channel pedestals.
+    Stage-2 opcodes then operate on [0, 65535], independently of evidence codes.
     """
     image=raw.raw_image_visible
-    colors=np.asarray(raw.raw_colors_visible) if image.ndim==2 else None
-    levels=np.asarray(black_levels,dtype=np.float32)
+    whites=np.atleast_1d(np.asarray(white,dtype=np.float64))
+    if not np.isfinite(whites).all() or np.any(whites<=0):
+        raise ValueError('invalid DNG white level for spatial black normalization')
     for y in range(0,image.shape[0],128):
         y1=min(y+128,image.shape[0]);band=image[y:y1]
         n=1 if image.ndim==2 else min(3,image.shape[2])
         for c in range(n):
             src=band if n==1 else band[...,c]
-            black=levels[colors[y:y1]] if n==1 else levels[c]
             actual=model.band(y,y1,image.shape[1],c)
             maximum=model.max_black[min(c,len(model.max_black)-1)]
-            v=(src.astype(np.float32)-actual)*(float(white)-black)/(float(white)-maximum)+black
+            ceiling=float(whites[min(c,len(whites)-1)])
+            if maximum >= ceiling:
+                raise ValueError('DNG black level reaches white level')
+            v=(src.astype(np.float64)-actual)*65535.0/(ceiling-maximum)
             if loss is not None:
                 target=loss[y:y1] if n==1 else loss[y:y1,...,c]
-                target |= ((src<float(white)) & (v>=white)).astype(np.uint8)
-            src[:]=np.rint(np.clip(v,0,min(float(white),np.iinfo(image.dtype).max))).astype(image.dtype)
+                target |= ((src<ceiling) & (v>=65535.)).astype(np.uint8)
+            src[:]=np.rint(np.clip(v,0,65535.)).astype(image.dtype)
+    return {'user_black':0,'user_cblack':[0,0,0,0],'user_sat':65535}
 
 
 def corrected_plane(bundle,yoff,xoff,ph,pw):

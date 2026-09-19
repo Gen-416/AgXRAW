@@ -35,7 +35,7 @@ import math
 from typing import Any
 
 import dngscan as dg
-from dngscan.constants import OUTPUT_REFERENCE_WHITE_STOPS
+from dngscan.hdr_agx_plan import scene_headroom_ev
 from dngscan.tone import (
     compute_exposure_gain,
     exposure_mode_for_tone_core,
@@ -168,11 +168,8 @@ def display_histogram(rgb_u8: Any) -> dict[str, Any]:
 def hdr_earned_ev(plan: Any) -> float | None:
     """Scene-earned HDR headroom above diffuse white, from the compiled plan.
 
-    Same definition as service.detected_scene_params: reliable tail p99.99 minus
-    the output reference white. None whenever the evidence tail is absent — the
-    page then draws nothing rather than inventing a number.
+    Uses the same source-aware budget as HDR compilation and detected scene
+    parameters, including the bounded decoded-image estimate policy. None
+    means absent evidence, while zero means a measured lack of headroom.
     """
-    tail = _finite_or_none(getattr(plan.scene, "reliable_tail_ev_p9999", None))
-    if tail is None:
-        return None
-    return max(0.0, tail - float(OUTPUT_REFERENCE_WHITE_STOPS))
+    return scene_headroom_ev(plan.scene)

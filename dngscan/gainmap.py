@@ -444,7 +444,7 @@ def _hdr_roundtrip_is_acceptable(
     )
 
 
-def read_primary_rgb_u8(path: Path) -> Any:
+def read_primary_rgb_u8(path: Path, output_gamut: str = "p3") -> Any:
     """Decode the primary SDR image without requiring Pillow HEIC support.
 
     JPEG still goes through Pillow when available (matches historical base gates). HEIC
@@ -472,7 +472,11 @@ def read_primary_rgb_u8(path: Path) -> Any:
     height = int(round(float(extent.size.height)))
     if width <= 0 or height <= 0:
         raise RuntimeError(f"主图尺寸无效：{path}")
-    p3 = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceDisplayP3)
+    if output_gamut not in ("srgb", "p3"):
+        raise ValueError("unknown primary readback gamut")
+    p3 = Quartz.CGColorSpaceCreateWithName(
+        Quartz.kCGColorSpaceDisplayP3 if output_gamut == "p3" else Quartz.kCGColorSpaceSRGB
+    )
     context = Quartz.CIContext.contextWithOptions_(
         {Quartz.kCIContextCacheIntermediates: _nsnumber_bool(False)}
     )
@@ -751,6 +755,50 @@ def write_apple_gainmap_file(
         (delivery.heif_encoder == "auto" and heif_encoder.available()))
     if delivery.heif_encoder not in ("auto", "apple", "x265"):
         raise ValueError("未知 HEIF 编码器")
+    if delivery.name == "auto" and use_heif:
+        from .auto_encode import coding_metrics, select_heif_encoding
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".agxraw-gainmap-search-", dir=out_path.parent) as td:
+            reference_template = Path(td) / "gainmap-reference.heic"
+            auxiliary_rgb = None
+            def encode_heif(quality, chroma, auxiliary, path):
+                nonlocal auxiliary_rgb
+                # ImageIO couples lower auxiliary quality to sampling changes.
+                # Re-encode numerical RGB from ONE high-precision template with
+                # explicit 4:4:4, retaining the ISO parameters and resolution.
+                template = reference_template
+                if auxiliary != 100:
+                    from .heif_gainmap import iso_gainmap_item, replace_image_item
+                    import shutil
+
+                    template = Path(td) / f"gainmap-x265-q{auxiliary}.heic"
+                    if not template.exists():
+                        item = iso_gainmap_item(reference_template)
+                        if auxiliary_rgb is None:
+                            auxiliary_rgb = heif_encoder.read_rgb_item(reference_template, item)
+                        donor = Path(td) / f"auxiliary-q{auxiliary}.heic"
+                        heif_encoder.encode(auxiliary_rgb, donor, auxiliary, "444", bit_depth=8,
+                                            preset=delivery.heif_preset, tune=delivery.heif_tune,
+                                            auxiliary=True)
+                        shutil.copyfile(reference_template, template)
+                        replace_image_item(template, donor, item)
+                candidate = replace(delivery, name="share", quality=quality, chroma=chroma)
+                info = write_apple_gainmap_file(
+                    base_rgb_u8, hdr_rgba_half, path, hdr_headroom_ev,
+                    delivery=candidate, _template_path=template,
+                    _verify_roundtrip_capability=_verify_roundtrip_capability,
+                    _gainmap_quality=100,
+                )
+                info.update(coding_metrics(read_primary_rgb_u8(path), base_rgb_u8))
+                info["gainmap_encoding_quality"] = auxiliary
+                info["gainmap_encoder"] = "Apple ImageIO" if auxiliary == 100 else "x265"
+                info["gainmap_chroma_requested"] = "444"
+                if auxiliary != 100 and info["gainmap_pixel_format"] != "444f":
+                    raise RuntimeError("独立 HEIF gain map 未保持 4:4:4 数值图")
+                return info
+
+            return select_heif_encoding(out_path, encode_heif, gainmap=True)
     if delivery.name == "auto":
         from .auto_encode import coding_metrics, select_encoding
         # The auxiliary image is calculated only once. HEVC quality numbers
@@ -867,8 +915,8 @@ def write_apple_gainmap_file(
         encode_request_options[pixel_request] = NSNumber.numberWithUnsignedInt_(
             int.from_bytes((profile.chroma + "f").encode("ascii"), "big"))
     gainmap_quality = (100 if profile.is_archive else 95) if _gainmap_quality is None else _gainmap_quality
-    if gainmap_quality not in (95, 100):
-        raise ValueError("gain-map 编码精度必须为 95/100")
+    if not isinstance(gainmap_quality, int) or not 1 <= gainmap_quality <= 100:
+        raise ValueError("gain-map 编码精度必须为 1–100 的整数")
     options = {
         # Auxiliary precision is independent of primary quality/sampling.
         Quartz.kCGImageDestinationLossyCompressionQuality: float(gainmap_quality)/100.0
@@ -987,11 +1035,16 @@ def write_apple_gainmap_file(
                 # Manual primary controls do not fix auxiliary precision. A
                 # second template can preserve the same requested primary
                 # while satisfying the original HDR gates.
-                return write_apple_gainmap_file(
-                    base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev,
-                    delivery=delivery, _verify_roundtrip_capability=_verify_roundtrip_capability,
-                    _gainmap_quality=100,
-                )
+                for auxiliary in ((97, 98, 99, 100) if use_heif else (100,)):
+                    try:
+                        return write_apple_gainmap_file(
+                            base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev,
+                            delivery=delivery, _verify_roundtrip_capability=_verify_roundtrip_capability,
+                            _gainmap_quality=auxiliary,
+                        )
+                    except HdrRoundtripError:
+                        if auxiliary == 100:
+                            raise
             raise HdrRoundtripError(
                 "写出的 HDR rendition 无法从文件还原："
                 f"中位相对误差={roundtrip['median_relative_error']:.4f}，"

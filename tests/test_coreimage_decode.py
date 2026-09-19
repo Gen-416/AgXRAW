@@ -131,6 +131,23 @@ class CoreImageVersionTests(unittest.TestCase):
         chosen = coreimage_decode.resolve_decoder_version("auto", ("7", "8"))
         self.assertEqual(chosen, "8")
 
+    def test_raw6_only_file_is_available_across_probe_cli_and_gui(self) -> None:
+        from dngscan.cli import parse_args
+        from dngscan.gui.service import parse_decoder
+        from dngscan.decode_support import _coreimage_tier
+        from dngscan.constants import COREIMAGE_VERSION_CHOICES
+        self.assertEqual(coreimage_decode.COREIMAGE_DECODER_VERSIONS,COREIMAGE_VERSION_CHOICES)
+        for version in ('auto','6'):
+            self.assertEqual(coreimage_decode.resolve_decoder_version(version,('6.dng',)),'6.dng')
+        self.assertEqual(parse_args(['camera.dng','--decoder','coreimage',
+            '--coreimage-version','6']).coreimage_version,'6')
+        self.assertEqual(parse_decoder({'decoder':'coreimage','coreimageVersion':'6'}),('coreimage','6'))
+        with patch.object(coreimage_decode,'available',return_value=True), \
+             patch.object(coreimage_decode,'supported_versions',return_value=('6.dng',)):
+            result=coreimage_decode.probe_raw9_support(Path('camera.dng'))
+            self.assertEqual(result['fallback_version'],'6')
+            self.assertEqual(_coreimage_tier(Path('camera.dng'),False)['status'],'raw6')
+
     def test_explicit_unsupported_raises(self) -> None:
         with self.assertRaises(RuntimeError):
             coreimage_decode.resolve_decoder_version("9", ("7", "8"))

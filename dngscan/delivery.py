@@ -260,7 +260,7 @@ def resolve_hdr_chroma(
 
 
 def container_for_output_format(output_format: str) -> str:
-    return "heic" if str(output_format) == "ultrahdr-heic" else "jpeg"
+    return "heic" if str(output_format) in ("sdr-heic", "ultrahdr-heic") else "jpeg"
 
 
 def profile_from_encode_settings(

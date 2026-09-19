@@ -283,8 +283,8 @@ class Raw9HdrCouplingTests(unittest.TestCase):
     """RAW 9 scene-referred data must couple into the same HDR AgX contract.
 
     The Core Image decoder is a separate pipeline: warped geometry, no per-pixel CFA
-    masks, aggregate-only RAW evidence. These gates pin the couplings that keep its HDR
-    output honest — capped chroma freedom, rank-trimmed reliable tail, mask-free
+    masks, independent RAW reference evidence. These gates pin the couplings that keep its HDR
+    output honest — capped chroma freedom, separately measured reliable tail, mask-free
     formation — against the LibRaw path on the same frame.
     """
 
@@ -326,34 +326,25 @@ class Raw9HdrCouplingTests(unittest.TestCase):
         )
         self.assertGreater(libraw_rho, rho)
 
-    def test_aggregate_correction_loss_cannot_grant_more_headroom(self) -> None:
-        """An unaligned decoder may withdraw more evidence than spatial masks.
-
-        Correction losses are now included in the conservative rank exclusion.
-        A two-sided equality gate would require granting back lost evidence;
-        retain the upper bound and prove adding losses only withdraws headroom.
-        """
+    def test_independent_reference_preserves_valid_daylight_headroom(self) -> None:
         libraw_tail = self.pairs["libraw"][3].tone.reliable_tail_ev
-        raw9_tail = self.pairs["coreimage"][3].tone.reliable_tail_ev
-        self.assertTrue(math.isfinite(libraw_tail) and math.isfinite(raw9_tail))
-        self.assertLessEqual(raw9_tail, libraw_tail + 0.3)
-        bundle, analysis, _, _ = self.pairs["coreimage"]
-        self.assertGreater(bundle.scene_processing_loss_pct, 0.0)
-        without_losses = dataclasses.replace(bundle, scene_processing_loss_pct=0.0)
-        unguarded = build_render_plan(without_losses, analysis, RENDER_MODE, "p3")
-        self.assertLess(raw9_tail, reliable_tail_ev(unguarded))
+        bundle, analysis, _, hdr = self.pairs["coreimage"]
+        self.assertEqual(hdr.reliability_source, "sensor-reference")
+        self.assertIsNotNone(bundle.scene_reliable_reference_rec2020)
+        self.assertGreater(len(bundle.scene_reliable_reference_rec2020), 256)
+        self.assertGreater(hdr.tone.rendered_headroom_ev, 0.0)
+        self.assertTrue(math.isfinite(libraw_tail) and math.isfinite(hdr.tone.reliable_tail_ev))
+        self.assertLess(abs(hdr.tone.reliable_tail_ev - libraw_tail), 0.3)
+        # The diagnostic coverage is not a second exclusion applied on top
+        # of a reference that already excluded the spatial loss pixels.
+        for coverage in (0.0, 100.0, None):
+            adjusted = dataclasses.replace(bundle, scene_processing_loss_pct=coverage)
+            plan = build_render_plan(adjusted, analysis, RENDER_MODE, "p3")
+            self.assertEqual(hdr.tone.reliable_tail_ev, reliable_tail_ev(plan))
 
     def test_mask_free_hdr_formation_renders_in_volume(self) -> None:
         bundle, _, plan, hdr_plan = self.pairs["coreimage"]
-        self.assertGreaterEqual(hdr_plan.tone.rendered_headroom_ev, 0.0)
-        if hdr_plan.tone.rendered_headroom_ev == 0.0:
-            # The internal bounded formation remains valid at SDR volume;
-            # the public HDR exporter must refuse to label it as HDR.
-            from dngscan.export import export_ultrahdr_jpeg
-            with mock.patch("dngscan.export.apple_gainmap_backend_status", return_value=(True, "ok")):
-                with self.assertRaisesRegex(RuntimeError, "不支持任何 HDR 余量"):
-                    export_ultrahdr_jpeg(bundle.path, Path("unused-hdr.jpg"), 95,
-                                        bundle, self.pairs["coreimage"][1], plan)
+        self.assertGreater(hdr_plan.tone.rendered_headroom_ev, 0.0)
         rendered = scene_render_to_hdr_display_linear(bundle, plan, hdr_plan, "p3")
         self.assertTrue(bool(np.all(np.isfinite(rendered))))
         self.assertGreaterEqual(float(np.min(rendered)), 0.0)

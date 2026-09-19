@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +51,7 @@ class RawBundle:
     render_scale: float
     scene_rec2020_render: Any
     scene_scale: float
-    white_level: int
+    white_level: int | None
     black_levels: list[float]
     camera_wb: list[float]
     color_desc: str
@@ -91,6 +91,14 @@ class RawBundle:
     # LibRaw processing-loss coverage, or the same reference's aggregate on
     # Core Image. None means correction evidence could not be measured.
     scene_processing_loss_pct: float | None = 0.0
+    # Independent LibRaw samples in normalized, scene-linear Rec.2020, mapped
+    # into this decoder's exposure units. Never spatially registered to Apple.
+    # None means unavailable; an empty array means no reliable samples survived.
+    scene_reliable_reference_rec2020: Any | None = None
+    scene_reliable_reference_pct: float | None = None
+    scene_reliability_source: str = "sensor-spatial"
+    scene_reference_error: str | None = None
+    scene_decoder_fallback: str | None = None
     # The WB multipliers actually applied to this decode: camera metadata for as-shot,
     # daylight metadata for the daylight anchor, or the solved fixed-Kelvin multipliers.
     # Prefeed window transport reads this so calibrated chromaticity anchors follow the
@@ -172,6 +180,7 @@ class RawBundle:
     evidence: RawEvidence | None = None
     evidence_provider: str = "libraw"
     evidence_provider_version: str | None = None
+    evidence_error: str | None = None
     # Camera ColorMatrix (XYZ -> camera channels) used by the project-owned hot-WB
     # stage.  The decoder always reconstructs with the fixed as-shot preconditioner;
     # this matrix lets later WB choices recover/reapply camera-channel gains without
@@ -240,7 +249,9 @@ class Analysis:
     gamut_out_pct: dict[str, float]
     bright_pixel_pct: float
     survivor_channel: str
-    container_bits_est: int
+    container_bits_est: int | None
+    # RGB groups, merging both green CFA sites; distinct from sensel counts.
+    color_clip_k_of_all_pct: dict[int, float] = field(default_factory=dict)
     prior_id: str | None = None
     gain_e_per_dn: float | None = None
     noise_floor_e: float | None = None
@@ -450,11 +461,9 @@ class ToneCompressionPlan:
 class SceneToneMetrics:
     """Scene-referred luminance facts used only to compile the tone plan.
 
-    On LibRaw, the reliable distribution excludes CFA sites with exhausted headroom. On
-    Core Image, opcode geometry prevents that mapping, so an equal aggregate RAW-clipped
-    fraction is removed from the top luminance rank instead. The latter is a conservative
-    comparison heuristic, not pixel-level evidence. Neither path mixes creative or
-    output-gamut decisions into these metrics.
+    LibRaw excludes unreliable sites spatially. Apple uses independently filtered
+    LibRaw reference samples when available; otherwise its decoded distribution is
+    explicitly an estimate. Sensor masks are never projected onto Apple's geometry.
     """
 
     reliable_sample_pct: float
@@ -474,6 +483,7 @@ class SceneToneMetrics:
     # This is the only tail statistic allowed to set a global white endpoint or grant
     # HDR display budget. It is NaN when too little trustworthy evidence remains.
     reliable_tail_ev_p9999: float = float("nan")
+    reliability_source: str = "sensor-spatial"
 
 
 @dataclass(frozen=True)
@@ -729,3 +739,4 @@ class HdrAgxPlan:
     display: HdrDisplayTarget
     tone: HdrToneCurve
     color: HdrColorGeometry
+    reliability_source: str = "sensor-spatial"

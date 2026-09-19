@@ -117,7 +117,7 @@ flowchart TB
         SPATIAL["解析后的空间 RAW 证据 - 仅 LibRaw 几何<br/>95-99% mask 按实测 full well 刷新<br/>headroom / clip class / SNR guidance<br/>Core Image 几何不借用这些 mask"]
         EV["Intent exposure<br/>固定 EV0 中灰锚点 x 2^EV<br/>手动 EV 或显式自动曝光搜索"]
         SAMPLE["Plan 采样<br/>scene scale + intent exposure<br/>可选且随 WB 适配的 scene 前馈"]
-        METRICS["SceneToneMetrics<br/>可靠主体与完整尾部分离<br/>LibRaw 按空间 mask 排除<br/>Core Image 按聚合比例 rank trim<br/>点状发光体分类"]
+        METRICS["SceneToneMetrics<br/>主体与可靠尾部分离<br/>LibRaw 按空间 mask 排除<br/>Core Image 使用独立 RAW 参考<br/>参考缺失时明确标记图像估计"]
         CONTROLS["渲染意图<br/>输出色域、tone core、AgX primaries<br/>胶片型号（WB 声明+滤镜+分离+曲线预设）<br/>前馈、punch 与有界明暗微调"]
         COMPILE["分别编译<br/>SceneToneMetrics<br/>ToneCompressionPlan<br/>ColorGeometryPlan"]
         PLAN["不可变 RenderPlan"]
@@ -324,6 +324,11 @@ ceiling，没有才回退到逐通道 metadata white level。它不会拿一个�
 每个通道都按扣黑后的 full-well 从 95% 处的 0 平滑渐入到 99% 处的 1，让颜色能在插值形成
 硬断层前开始退让。如果绿色比红色更早到满阱，硬统计与软权限图都会保留这个通道差别。
 
+2×2 cell 的旧指标保留“裁切感光点数量”语义；HDR 通道分离另用 `color_clip_k_of_all_pct`
+统计丢失的 R/G/B 颜色组数量。Bayer 的 G1、G2 同时裁切仍只算一种颜色，不能与 R+B 裁切
+混为一谈。X-Trans 按一个完整 CFA 周期聚合，Linear RGB 按像素聚合；未知颜色布局不给
+通道分离权限，不能把缺失证据当作零裁切。
+
 高光重建可以补出连续的亮度和看起来合理的颜色，但它不能重新获得传感器没有记录的信号。
 因此剪切证据在重建之前保存，后面重建得再平滑，也不能反过来定义全图的 white endpoint。
 
@@ -385,22 +390,26 @@ LibRaw 会把 `blend` 和 `reconstruct` 的 uint16 整幅缩暗，倍数正好�
 
 ## 解码器：LibRaw 与可选的 Core Image / RAW 9
 
-RAW 入口现在显式分成两层：`RawEvidence` 先且只由 LibRaw 获取传感器 mosaic、CFA、
-黑白电平、白平衡证词与颜色矩阵；随后 scene decoder 才选择 LibRaw 或 Apple RAW 生成
-scene-linear RGB。`acquire_raw_evidence(path)` 刻意没有 decoder 参数，因此切换 scene
-decoder 不会改变 Evidence 的来源、数值、版本记录或失败条件。`RawBundle` 暂时保留旧的
-扁平字段作为兼容外观，同时携带同一份 `evidence` 对象与 provider provenance。
+RAW 入口区分三种能力：LibRaw 解包提供 `RawEvidence` 的传感器 mosaic、CFA、
+黑白电平、白平衡证词与颜色矩阵；场景解码器生成 scene-linear RGB；可选的 LibRaw
+校正参考提供尺度和独立可靠样本。`acquire_raw_evidence(path)` 没有 decoder 参数，
+切换场景解码器不会改写已有证据，但证据失败不再阻断仍能工作的 Apple 解码。
+Apple-only 时 `evidence`、原始数组和白电平为缺席状态，CFA/SNR/剪切统计不可用，
+不会以零剪切或伪造的 Bayer 数组替代。报告和缓存保存实际解码器、证据来源及失败原因。
 
 两层各自打开解码句柄，LibRaw scene 的 GainMap / postprocess 不可能回写 Evidence 副本。
-Apple 的 `aligned` 模式额外做的 half-size LibRaw RGB 渲染只是 scene scale A/B 对照，
-不是 Evidence，也不会替换 `RawEvidence`。因此“Apple scene + LibRaw Evidence”就是默认
-组合，而不是研究开关。
+Apple 的 half-size LibRaw 校正参考不会替换 `RawEvidence`。它在自己的几何中用传感器
+剪切与处理损失筛样本，再转换到 Apple 的场景曝光单位；`aligned` 模式同时用绿色中位数
+校准曝光比例。参考失败保留已有原始证据和 Apple 场景，尺度标为 decoder-native，
+HDR 改用明确标记的有上限图像估计。缺少项目白平衡标定时保留 Apple AsShot。
 
 `--decoder coreimage` 是另一种 capture decoder，与 tone core 的选择彼此独立；它不是
 默认画质升级。解码前，dngscan 会查询当前文件的
 `CIRAWFilter.supportedDecoderVersions()`，不会把相机型号名单当作文件必然支持 RAW 9 的
-依据。文件只支持 RAW 8/7 时，GUI 会先询问是否使用旧版解码器，CLI 则输出明确警告；显式
-指定 `--coreimage-version 9` 会直接拒绝不支持的文件，不会静默降级。解码结果以 signed
+依据。自动模式按文件提供的版本从高到低尝试，配置或渲染失败时以新 filter 重试旧版；
+Apple 全部失败且 LibRaw 可解码时回退 LibRaw。报告显示实际采用版本和回退原因。
+显式指定 `--coreimage-version 9/8/7/6` 则保持严格，失败直接报错。支持探针只报告预检能力，
+不再把“解包和颜色矩阵可用”表述成已完成全部校正与渲染。解码结果以 signed
 RGBA half-float 渲染到 extended-linear Rec.2020。负色彩分量和 diffuse white 以上的值
 会原样交给 AgX，不再经过 uint16 百分位缩放。look 类控制项按中性线性交接配置（RAW 9 的
 moire 值刻意保留 Apple 更保细节的默认）；高光重建与镜头校正则显式开启。配置遵循 Apple
@@ -413,28 +422,31 @@ Sigma fp 的 DNG 上是逐平面 `WarpRectilinear` 加一张镜头阴影 `GainMa
 作用在错误的位置上。Core Image 路径没有逐像素 CFA 证据：`--tone-core gated` 会被拒绝，clip retreat
 不运行，`--highlight-mode` 也不适用（Core Image 有自己的高光重建）。而聚合型 RAW 事实
 （黑白电平、剪切百分比、SNR、噪声底、白平衡证词）是分布而非像素位置，依然有效，仍由
-LibRaw 提供。Tone plan 会把实测的剪切 cell 比例与同文件 LibRaw 校正参考的处理损失覆盖率
-相加（上限 100%，保守地不扣除重叠），从 RAW 9 亮度排序的最高端剔除等量样本。
-这是聚合层面的对照启发式，不表示某个 RAW 9 像素能对应到某个 CFA site：重建高光仍可描述
-尾部拓扑，但不能反过来定义全局白点。报告会写明解码器、版本，以及被执行的 opcode。
-剔除过程不保留人为规定的最少可靠样本；剪切率无效时没有可靠证据。若不足总样本的 5%
-或不足 256 个样本，SDR 可以使用主体统计回退，HDR 不得借用该回退发放 headroom。
+LibRaw 提供。Apple 的主体亮度使用自身输出，可靠尾部则使用同文件的独立 LibRaw 参考：
+在参考图自己的坐标内合并传感器软剪切掩码与处理损失，排除不可靠样本后再取样。两种损失
+按空间并集处理，不再相加百分比，也不再从 Apple 图像的最亮端按比例删像素。因此暗部或
+边缘的处理损失不会错误地删除有效高光。
 
-HDR 分支按同一套证据规则接入这条路径，并有专门测试钉住：高光保色 `rho` 被压在 0.25
-上限（没有逐像素 CFA 掩码可以在局部撤回它）、无掩码 formation 的渲染保持在 `[0, peak]`
-体积内，聚合损失约束不得扩大 RAW 9 的可靠尾部。不能再要求它与空间掩码结果双向接近：
-2026-09-19 的 `_SDI0150` 检查中，RAW 剪切 1.274% 加参考校正损失 1.648% 后，RAW 9
-可靠尾部为 +1.705 EV，而 LibRaw 的逐像素筛选得到 +3.692 EV；前者不授予 HDR 余量。
-这是没有空间对应关系时的明确保守限制，不代表两个解码器测得了同样精确的高光证据。
+参考样本归一化到当前 Apple scene unit，随后与主图接受相同的白平衡、曝光、镜头滤镜和
+scene transform。其 p99.99 尾部还受 Apple 实际输出尾部限制；它只提供全局亮度约束，不
+声称两幅图的像素对应。参考成功但有效样本不足 5% 或不足 256 个时，保存空参考并拒绝
+授予 HDR 余量。参考无法取得则是另一种能力状态：使用明确标为 `decoded-image-estimate`
+的图像域估计，扩展最多 1 EV，且关闭 HDR 通道分离；这是工程降级策略，不能视为传感器
+实测。已知传感器剪切达到 95% 时仍否决该估计。不存在传感器数据时，裁切率和噪声保持未知。
+
+有独立 RAW 参考时，高光保色 `rho` 仍受 0.25 上限约束，HDR formation 保持在 `[0, peak]`
+内。验收同时约束两个方向：真实裁切不能产生额外余量，有效高光也不能因无关的暗部损失
+而消失。固定 Sigma 日光样张要求可靠尾部与 LibRaw 相差小于 0.3 EV，并且 HDR 余量大于零；
+这个样张回归条件不表示不同解码器在所有相机、场景和色彩上都应相同。
 
 LibRaw 的 DNG 校正由 `dng_opcodes.read_plan` 读取主 RAW IFD，保留指令顺序、版本和必需/可选标志。场景句柄与原始证据句柄独立；只有前者可修改。
 
 1. OpcodeList1 在原始码值域执行坏点修复、MapTable、MapPolynomial 和行列偏移/增益。存在单调可逆的 LinearizationTable 时，先恢复存储码值，再执行指令并重新线性化；无法逆转的表明确拒绝，不能猜测已丢失的原始码值。
-2. BlackLevelDeltaH/V 和 BlackLevelRepeatDim 组成逐位置黑电平，按 DNG SDK 的最大黑电平归一化到工作缓冲；证据的传感器 DN 不改写，噪声估计和 headroom 读取同一空间黑电平模型。
-3. OpcodeList2 按顺序执行 GainMap、查表、多项式与行列变换。GainMap 在工作马赛克上原地运行；Linear DNG 按真实图像平面执行，不把 RGB 当成 CFA。Linear DNG 可测颜色平面剪切，但不声明独立感光点噪声或电子域 SNR。
-4. LibRaw 固定 AsShot 重建后，OpcodeList3 的 WarpRectilinear、WarpFisheye、WarpRectilinear2、FixVignetteRadial 及点变换作用于相机 RGB，然后才混色到浮点 Rec.2020。可选 WarpRectilinear2 生效后跳过紧跟的旧版兼容 warp，避免双重畸变。带像素坐标的 stage-3 点变换在全尺寸执行后才缩预览。
+2. BlackLevel、BlackLevelRepeatDim 和可选的 BlackLevelDeltaH/V 组成逐位置黑电平；没有 Delta 标签的非均匀重复图案也必须执行。按 DNG SDK 的最大黑电平将工作缓冲一次归一化为零黑、白值 65535，并用显式 `user_black` / `user_cblack` 清除 LibRaw 后续重复图案扣黑。stage-2 指令接收同一归一化工作域。均匀整数黑电平保留 LibRaw 原生路径，避免无意义的重新量化；证据的传感器 DN 始终不改写，噪声估计和 headroom 读取同一空间黑电平模型。
+3. OpcodeList2 按顺序执行 GainMap、查表、多项式与行列变换。GainMap 在工作马赛克上原地运行，AreaSpec 的空矩形表示整幅图像，带负边界的矩形与图像相交后保留 pitch 相位。Linear DNG 按真实图像平面执行，图像平面 `p` 读取增益平面 `min(p, map_planes−1)`，与指令的起始平面分别解释。Linear DNG 可测颜色平面剪切，但不声明独立感光点噪声或电子域 SNR。
+4. LibRaw 固定 AsShot 重建后，OpcodeList3 的 WarpRectilinear、WarpFisheye、WarpRectilinear2、FixVignetteRadial 及点变换作用于相机 RGB，然后才混色到浮点 Rec.2020。可选 WarpRectilinear2 生效后跳过紧跟的旧版兼容 warp，避免双重畸变。方形像素图像支持列表尾部一个或连续多个 TrimBounds，逐次验证矩形包含关系，保留原图坐标并与 DefaultCrop 求交；它后面只能有颜色转换与最终裁剪。带像素坐标的 stage-3 点变换和 TrimBounds 在全尺寸执行后才缩预览。
 5. 相机矩阵按 LibRaw 的实际选择规则解析：rawpy `color_matrix` 暴露的是文件候选 `cmatrix`，符合条件的 DNG 才采用；非 DNG RGB 相机从 `rgb_xyz_matrix` 按 LibRaw 的 D65 行归一化求逆。转换结果保留负值与超过 65535 的值，`scene_scale` 仍以原相机码值尺度定义。
-6. DefaultScale 的像素比例由 LibRaw 执行一次。校正后的图像、传感器剪切、headroom 和处理损失采用同一几何顺序，再执行 DefaultCrop 与方向。
+6. DefaultScale 的像素比例由 LibRaw 执行一次。校正后的图像、传感器剪切、headroom 和处理损失采用同一几何顺序，再执行 DefaultCrop 与方向。裁剪边界不落在半尺寸证据网格上时，以实际场景像素覆盖的来源范围取最大损失，避免将奇数坐标先四舍五入后造成错位。半尺寸 TrimBounds 预览若舍弃末尾单行/列，返回的几何范围也记录实际保留区域；Apple 的独立 LibRaw 参考使用同一份已执行配方。
 
 畸变公式依据 [Adobe DNG SDK](https://android.googlesource.com/platform/external/dng_sdk/+/refs/heads/android14-prebuilt-test/source/dng_lens_correction.cpp) 与 [DNG 1.7.1 规范](https://helpx.adobe.com/content/dam/help/en/camera-raw/digital-negative/jcr_content/root/content/flex/items/position/position-par/download_section_733958301/download-1/DNG_Spec_1_7_1_0.pdf)。Rust 三次插值核直接遍历输出行，不分配整幅浮点坐标图，支持多项式、扩展多项式和厂商径向样条；NumPy 行带版本作为数值参考。
 
@@ -442,7 +454,9 @@ Fujifilm RAF 和 Sony ARW 可读取文件自带的暗角、畸变与横向色差
 
 校正新增的剪切、坏点替代和边界外采样进入独立 `processing_clip_masks`；后续降低增益不能恢复这些已丢失的信息。传感器硬剪切百分比仍只描述原始证据。可靠性经过插值支撑范围时取保守值，因此 HDR 不会把校正后出现的像素当成新的传感器余量。
 
-实现没有声明覆盖整个 DNG 规范：TrimBounds、未实现的 opcode 阶段组合、不可逆线性化表上的 stage-1 操作，以及非方形像素与 stage-3 点变换的组合仍会明确拒绝必需操作，提示选择 Apple RAW；可选操作的跳过写入诊断。这些边界没有通过静默忽略来伪装支持。
+尚未支持的具体组合包括：stage-1/2 TrimBounds、TrimBounds 后仍有其他 stage-3 指令、不可逆线性化表上的 stage-1 操作，以及非方形像素与 stage-3 点变换或 TrimBounds 的组合。前级裁剪需要正确改变后续图像原点、CFA 相位和标定坐标，不能挪到导出末尾代替执行。当前对这些必需组合明确报错；按可选标志跳过的未支持指令写入诊断。
+
+校准回归使用完整合成 DNG 文件经过实际 LibRaw 解码，覆盖非均匀黑图案及零 Delta 标签、归一化后 stage-2 运算、GainMap 空区域/绝对平面、奇数坐标 TrimBounds，以及主场景和独立参考样本的裁剪与畸变一致性。Rust/NumPy 对照只验证计算路径一致，不能替代这些文件语义测试。
 
 噪声估计按独立 CFA 相位计算，防止颜色差被误认作噪声。空间相关性检查参与证据可用性判断；检测到相关处理、Linear DNG、可疑 ISO、读出模式不匹配或无法校准 DN 尺度时，不启用电子域先验。等面积确定性采样消除固定步长与周期高光对齐的盲区；默认 AgX 自动曝光与预览共享全尺寸统计样本。
 
@@ -463,14 +477,14 @@ green 项会在分子分母中严格约掉；这里得到的是逐文件解码�
 `--coreimage-scale unity` 不应用该尺度比较，保留 Core Image Apple 原始数值；`measured` 只应用旧的
 Sigma fp 固定 `1/1.0293` 倍率，用来复现早期 A/B。三个模式现在在效果上互斥，固定倍率不会
 再被后续逐文件对齐抵消。
-带 DNG opcode 的文件在三个模式下都会获取校正损失参考，供 HDR 做上述聚合排除；这不会
-改变 unity/measured 的场景尺度。若该参考无法计算，SDR 仍可渲染，HDR 不授予可靠尾部。
+有 LibRaw 证据时，三个模式都会尝试取得经过矫正的独立 RAW 参考。unity/measured 不改变
+主图尺度，而是把参考样本映射到主图现有单位。参考失败不使已取得的传感器证据失效，
+HDR 转入上述有上限、明确标记来源的图像域估计。
 
 这类对比里有两种亮度口径，**不能互相引用**。**可靠主体**中位是 scene-linear 的，量在色调
-曲线之前，且已剔除 RAW 过曝样本；**最终输出**中位量在渲染完成的图像上，此时 AgX 已经把
-两端都压过。同一对解码器在 `_SDI0150` 上，前者相差 +0.123 EV，后者只有 +0.02~0.03 EV
-——色调曲线吸收掉了 scene-linear 偏移的大部分，两个数字差了约 5 倍。它们都是正确答案，
-只是回答的不是同一个问题；引用时必须写明是哪一个。
+曲线之前；LibRaw 可排除空间过曝样本，Apple 的主体统计则不能假装具备同样的空间筛选。
+**最终输出**中位量在渲染完成的图像上，此时 AgX 已经压缩两端。两者回答的问题不同，引用
+解码器比较数据时必须注明统计人口与处理阶段，不能把输出亮度差当成 scene-linear 尺度差。
 
 除对齐之外，差别主要来自相机解释本身——色彩分离、噪声重建和高光走向。另有三点行为差异
 来自解码器本身而非口味：
@@ -480,8 +494,8 @@ Sigma fp 固定 `1/1.0293` 倍率，用来复现早期 A/B。三个模式现在�
   已编译 plan 搜索最终输出的高光安全上限。这让按钮可以跨解码器工作，却不会把 EV 0 变成
   隐式自动曝光。要比较解码器本身，仍应固定 `--ev`。
 - **Apple 缓冲保留 diffuse white 以上的镜面值，但重建结果不等于传感器测量。** 完整的
-  RAW 9 尾部仍用来区分大面积高光与点状灯源；全局白点只读取减去全分辨率 CFA 剪切比例之后
-  的可靠排序。这样既保留 Apple 的平滑重建，也不让它虚构已经丢失的传感器余量。
+  RAW 9 尾部用来区分大面积高光与点状灯源；可用时由独立 RAW 参考约束全局白点与 HDR
+  预算，参考缺失时则明确报告为有上限的解码图像估计。
 - **固定 `--ev` 依旧不能完全隔离解码器差异。** 两个缓冲可能编译出略有差别的 plan，Core
   Image 还执行了不同的几何。`tools/decode_ab.py` 会让每个缓冲分别走过两套 plan，把解码与
   plan 的影响拆开。当前 SD 卡抽样里，ISO 3200 的输出中位只差 +0.006 EV，明亮 ISO 100
@@ -627,8 +641,8 @@ GUI 与 CLI 默认执行自动曝光（`--ev auto`）：尝试把可靠场景中
 
 ### 场景统计不是简单 min/max
 
-Tone plan 会把可靠主体和高光尾部分开。LibRaw 路径剔除空间 CFA clip mask 对应的样本；
-Core Image 路径使用前文的聚合 rank trim。SNR 会约束黑端和 gated 颜色权限，但不是另一张
+Tone plan 会把主体和可靠高光尾部分开。LibRaw 路径剔除空间 CFA clip mask 对应的样本；
+Core Image 的主体来自自身图像，可靠尾部使用前文的独立参考。SNR 会约束黑端和 gated 颜色权限，但不是另一张
 主体 mask。尾部只负责给肩部留出空间。点状灯源与大面积明亮表面也不是同一种高光：
 前者可以进入 roll-off，后者如果被同样压到顶端，会让整张图显得又暗又刺眼。
 
@@ -1053,9 +1067,10 @@ Rec.2020 在 display formation 前分成 SDR AgX 与 HDR AgX 两条独立 DRT。
 与 SDR 成片一致。
 
 HDR 可用余量不是用户所选屏幕容量的同义词。屏幕容量只是上限；初始请求由
-RAW 过曝证据筛过的可信最亮高光决定。LibRaw 用逐像素 CFA mask，RAW9 则按全分辨率
-剪切 cell 比例从亮度顶部做保守的 rank trim。没有足够 RAW 证据时 headroom 就是 0，导出会
-明确失败，不会用重建高光或 SDR white endpoint 冒充传感器信息。
+所选证据来源支持的高光尾部决定。LibRaw 使用逐像素 CFA mask，Apple 使用独立 RAW 参考。
+参考成功但没有足够可靠样本时 headroom 为零，HDR 导出明确失败；参考不可用时允许单独
+标记的图像域估计，最多 1 EV 且不使用通道分离。GUI 与导出消费同一个来源及预算函数，
+不会把估计值标为传感器实测，也不会以 SDR white endpoint 补造余量。
 
 这个请求会编译成一条不改写 body 的 HDR 曲线。K 以下继续使用 darktable 式 AgX body，内部
 gamma 固定为历史值 2.2；K 以上在 output-stop 坐标中接 cubic Hermite，从实际渲染 body

@@ -288,6 +288,11 @@ class HdrEarnedTests(unittest.TestCase):
         self.assertAlmostEqual(hdr_earned_ev(_plan(tail=tail)), 1.25)
         self.assertEqual(hdr_earned_ev(_plan(tail=float(OUTPUT_REFERENCE_WHITE_STOPS) - 1.0)), 0.0)
 
+    def test_decoded_image_estimate_gui_budget_obeys_the_same_cap(self) -> None:
+        plan = _plan(tail=float(OUTPUT_REFERENCE_WHITE_STOPS) + 4.0)
+        plan.scene.reliability_source = "decoded-image-estimate"
+        self.assertEqual(hdr_earned_ev(plan), 1.0)
+
     def test_absent_tail_is_none(self) -> None:
         self.assertIsNone(hdr_earned_ev(_plan(tail=float("nan"))))
 

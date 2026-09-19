@@ -39,6 +39,7 @@ from ._deps import np
 from .constants import (
     COREIMAGE_SCALE_DEFAULT_MODE,
     COREIMAGE_SCALE_MEASURED_RATIO,
+    COREIMAGE_VERSION_CHOICES,
 )
 
 # Fixed decode-time multipliers only. Per-file ``aligned`` scaling belongs to raw_io,
@@ -96,7 +97,7 @@ def scale_compensation_for_mode(mode: str) -> float:
             f"expected one of {tuple(COREIMAGE_SCALE_MODES)}"
         ) from None
 
-COREIMAGE_DECODER_VERSIONS = ("auto", "9", "8", "7")
+COREIMAGE_DECODER_VERSIONS = COREIMAGE_VERSION_CHOICES
 
 # DNG opcode IDs (DNG 1.7 spec, Chapter 6) that make Apple's decoded frame geometrically
 # or radiometrically incomparable to LibRaw's. WarpRectilinear is the decisive one: it is
@@ -256,7 +257,7 @@ def probe_raw9_support(path: Path) -> dict[str, Any]:
     result["versions_offered"] = offered
     result["raw9_supported"] = "9" in majors
     if not result["raw9_supported"]:
-        for major in ("8", "7"):
+        for major in ("8", "7", "6"):
             if major in majors:
                 result["fallback_version"] = major
                 break
@@ -273,12 +274,20 @@ def _normalize_version_token(token: str) -> str:
 def resolve_decoder_version(requested: str, offered: tuple[str, ...]) -> str:
     """Pick a concrete version string from the filter's offered list.
 
-    ``auto`` selects the highest of 9/8/7 present (preferring bare tokens over ``*.dng``).
+    ``auto`` selects the highest of 9/8/7/6 present (preferring bare tokens over ``*.dng``).
     An explicit unsupported version raises rather than silently downgrading.
     """
     if not offered:
         raise RuntimeError("CIRAWFilter reports no supported decoder versions for this file")
     requested = str(requested).strip().lower()
+    # Internal preview/export pinning carries the exact token. Bare public
+    # versions retain their preferred-token behavior, but 9.dng must not become
+    # 9 after a failed bare-9 render selected this offered alternative.
+    if requested.endswith(".dng") and _normalize_version_token(requested) in COREIMAGE_DECODER_VERSIONS:
+        exact = next((item for item in offered if item.lower() == requested), None)
+        if exact is None:
+            raise RuntimeError(f"decoder version {requested!r} is not offered for this file")
+        return exact
     if requested not in COREIMAGE_DECODER_VERSIONS:
         raise ValueError(
             f"unknown coreimage version {requested!r}; "
@@ -783,16 +792,35 @@ def decode_scene_rec2020(
     path = Path(path)
     offered = supported_versions(path)
     resolved = resolve_decoder_version(version, offered)
-    filt = _open_filter(path)
-    scale_factor = preview_scale_factor(filt) if half_size else 1.0
-    cfg = configure_linear_filter(
-        filt,
-        version=resolved,
-        scale_factor=scale_factor,
-        exposure=float(exposure),
-        neutral_cct=neutral_cct,
-    )
-    rgb = _render_linear_rec2020(filt, interactive=bool(half_size))
+    candidates = [resolved]
+    if version == "auto":
+        for major in (9, 8, 7, 6):
+            matches = sorted(v for v in offered if str(v).split(".")[0] == str(major))
+            for candidate in matches:
+                if candidate not in candidates:
+                    candidates.append(candidate)
+    failures = []
+    for candidate in candidates:
+        try:
+            # A failed render can leave a filter in an unusable state. Retry each
+            # advertised decoder with a fresh object, including all linear controls.
+            filt = _open_filter(path)
+            scale_factor = preview_scale_factor(filt) if half_size else 1.0
+            cfg = configure_linear_filter(
+                filt, version=candidate, scale_factor=scale_factor,
+                exposure=float(exposure), neutral_cct=neutral_cct,
+            )
+            rgb = _render_linear_rec2020(filt, interactive=bool(half_size))
+            if (rgb.ndim != 3 or rgb.shape[2] != 3 or not rgb.size
+                    or not np.isfinite(rgb).all()):
+                raise RuntimeError("decoder returned an empty, non-finite or invalid RGB buffer")
+            break
+        except Exception as exc:
+            failures.append(f"RAW {candidate}: {type(exc).__name__}: {exc}")
+            if version != "auto":
+                raise
+    else:
+        raise RuntimeError("All offered Apple RAW decoders failed: " + "; ".join(failures))
     if abs(float(scale_compensation) - 1.0) > 1e-12:
         rgb = (rgb.astype(np.float32) * np.float32(scale_compensation)).astype(np.float16)
     extent = (int(rgb.shape[0]), int(rgb.shape[1]))
@@ -803,6 +831,7 @@ def decode_scene_rec2020(
         "version_requested": version,
         "version": cfg["version"],
         "versions_offered": offered,
+        "fallback_errors": failures,
         "extent": extent,
         "shape": (int(rgb.shape[0]), int(rgb.shape[1])),
         "half_size": bool(half_size),

@@ -182,36 +182,6 @@ def subsample_step(pixel_count: int, max_samples: int = 800_000) -> int:
     return max(1, int(math.ceil(pixel_count / max_samples)))
 
 
-def rank_trim_reconstructed_highlights(
-    ev: Any, valid: Any, clipped_cell_pct: float
-) -> Any:
-    """Exclude a RAW-measured fraction of the brightest reconstructed samples.
-
-    Core Image applies DNG warps, so LibRaw's CFA clip mask cannot be mapped to its
-    pixels without a calibrated geometric transform. The aggregate clipped-cell rate is
-    still valid. Removing that fraction from the top of the luminance ranking restores
-    the body/tail contract without pretending that the two frames align spatially.
-    """
-    values = np.asarray(ev, dtype=np.float32)
-    keep = np.asarray(valid, dtype=bool).copy()
-    indices = np.flatnonzero(keep)
-    if indices.size == 0:
-        return keep
-    if not math.isfinite(float(clipped_cell_pct)) or not 0 <= clipped_cell_pct <= 100:
-        # A missing/invalid measurement cannot grant reconstructed pixels
-        # authority. SDR's defensive body fallback is handled by the caller.
-        keep[:] = False
-        return keep
-    fraction = clamp_float(float(clipped_cell_pct) / 100.0, 0.0, 1.0)
-    trim_count = int(math.ceil(indices.size * fraction))
-    if trim_count <= 0:
-        return keep
-    ranked = values[indices]
-    top = np.argpartition(ranked, ranked.size - trim_count)[-trim_count:]
-    keep[indices[top]] = False
-    return keep
-
-
 def tone_plan_sample_scene_rec2020(
     bundle: RawBundle,
     max_samples: int = 800_000,
@@ -252,10 +222,11 @@ def reliable_scene_ev_selection(
 
     Returns ``(ev, body_mask, evidence_mask, evidence_ok)`` where ``ev`` is the
     subsampled intent-scene luminance in EV relative to 18% gray, ``evidence_mask``
-    marks samples trustworthy enough to grant headroom (RAW-clip and floor-clamp
-    excluded, no fallback), ``body_mask`` is the possibly-fallback population SDR
-    body percentiles may use, and ``evidence_ok`` says whether the evidence mask
-    kept enough samples to speak for a reliable tail.
+    marks eligible tail samples in this image (RAW-clip/floor-clamp excluded
+    on LibRaw; explicitly estimated on an unreferenced Apple decode). A
+    referenced Apple decode has no spatial evidence mask: its independent
+    population is consumed by scene_tone_metrics. ``body_mask`` may fallback
+    for SDR; ``evidence_ok`` never promotes that SDR fallback into HDR.
 
     Tone planning (:func:`scene_tone_metrics`) and any observer of the planner's
     inputs — for example the GUI's scene EV histogram — must consume this one
@@ -275,17 +246,6 @@ def reliable_scene_ev_selection(
     reaches the floor too, and a clamped sample is not evidence whoever produced it —
     but it is a correctness guard, not a workaround for one back end.)
     """
-    # Core Image has no calibrated spatial correspondence. Include the
-    # correction reference's loss coverage in its rank-domain exclusion.
-    # Summing the rates (capped at 100%) is deliberately conservative about
-    # overlap; neither this aggregate nor Apple reconstruction is pixel truth.
-    coreimage_clip_pct = getattr(analysis, "cell_union_pct", float("nan"))
-    if getattr(bundle, "scene_decoder", "libraw") == "coreimage":
-        loss_pct = getattr(bundle, "scene_processing_loss_pct", 0.0)
-        if loss_pct is None or not math.isfinite(float(loss_pct)) or not 0 <= loss_pct <= 100:
-            coreimage_clip_pct = float("nan")
-        elif math.isfinite(float(coreimage_clip_pct)) and 0 <= coreimage_clip_pct <= 100:
-            coreimage_clip_pct = min(100.0, coreimage_clip_pct + loss_pct)
     stored_sample = getattr(bundle, "_tone_plan_sample", None)
     if stored_sample is not None:
         expected_rows = np.asarray(stored_sample).shape[0]
@@ -328,18 +288,31 @@ def reliable_scene_ev_selection(
                 np.max(np.asarray(stored_masks, dtype=np.float32), axis=1)
                 < np.float32(0.10)
             )
-        elif getattr(bundle, "scene_decoder", "libraw") == "coreimage":
-            reliable = rank_trim_reconstructed_highlights(
-                ev, reliable, coreimage_clip_pct
-            )
     elif getattr(bundle, "clip_masks", None) is not None:
         masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
         reliable &= np.max(masks.reshape(-1, 3)[indices], axis=1) < np.float32(0.10)
-    elif getattr(bundle, "scene_decoder", "libraw") == "coreimage":
-        # RAW 9's reconstructed highlight pixels are geometrically warped relative to
-        # the CFA mosaic. Use the full-resolution RAW clipped-cell rate as a rank-domain
-        # constraint so those invented values cannot compile the global white endpoint.
-        reliable = rank_trim_reconstructed_highlights(ev, reliable, coreimage_clip_pct)
+
+    if getattr(bundle, "scene_decoder", "libraw") == "coreimage":
+        # A percentage has no location: loss in the reference's dark border
+        # cannot justify deleting Apple's brightest pixels. Sensor-backed
+        # tail measurements use an independent, calibrated reference sample
+        # in scene_tone_metrics; there is no per-pixel correspondence here.
+        reference = getattr(bundle, "scene_reliable_reference_rec2020", None)
+        if reference is not None:
+            reliable[:] = False
+        else:
+            # The explicitly labelled decoded-image estimate still honours a
+            # known absence of sufficient sensor support. An unavailable
+            # correction render alone does not erase valid sensor facts.
+            clipped = float(getattr(analysis, "cell_union_pct", float("nan")))
+            if not math.isfinite(clipped):
+                groups = getattr(analysis, "color_clip_k_of_all_pct", None) or {}
+                if all(k in groups for k in (1, 2, 3)):
+                    values = [float(groups[k]) for k in (1, 2, 3)]
+                    if all(math.isfinite(v) and 0 <= v <= 100 for v in values):
+                        clipped = sum(values)
+            if math.isfinite(clipped) and clipped >= 95.0:
+                reliable[:] = False
 
     # Keep evidence authority separate from the fallback needed to compile a usable SDR
     # curve. If fewer than 5% (and at least 256) trustworthy samples remain, SDR may still
@@ -368,11 +341,11 @@ def scene_tone_metrics(
 ) -> SceneToneMetrics:
     """Measure the reliable scene body separately from its highlight tail.
 
-    Reconstruction may make a clipped lamp visually plausible, but it cannot restore its
-    sensor headroom. On LibRaw we therefore exclude soft CFA-clipped sites from body
-    percentiles. Core Image's opcode geometry prevents spatial reuse, so that path removes
-    the aggregate clipped-cell fraction from the brightest luminance ranks instead. The
-    complete rendered tail remains available only for topology classification. The sample
+    Reconstruction may make a clipped lamp visually plausible, but it cannot restore
+    sensor headroom. LibRaw uses aligned clip masks. Core Image uses an independent
+    LibRaw reference population, mapped into its scene units without claiming spatial
+    correspondence. An unavailable reference permits only an explicitly labelled,
+    bounded decoded-image HDR estimate; an empty valid reference grants no HDR. The sample
     selection itself lives in :func:`reliable_scene_ev_selection` and is shared with the
     GUI's scene EV histogram by declaration.
     """
@@ -391,6 +364,38 @@ def scene_tone_metrics(
         if evidence_ok
         else float("nan")
     )
+    source = str(getattr(bundle, "scene_reliability_source", "sensor-spatial"))
+    if getattr(bundle, "scene_decoder", "libraw") == "coreimage":
+        reference = getattr(bundle, "scene_reliable_reference_rec2020", None)
+        if reference is None:
+            source = "decoded-image-estimate"
+        else:
+            source = "sensor-reference"
+            reliable_tail_p9999 = float("nan")
+            reliable_sample_pct = float(getattr(bundle, "scene_reliable_reference_pct", None) or 0.0)
+            ref = np.asarray(reference, dtype=np.float32).reshape(-1, 3)
+            if ref.shape[0] >= 256:
+                # The stored reference is already normalized scene RGB, before
+                # intent exposure/filter/transform. It was hot-WB transformed
+                # alongside the scene during rebalance_raw_bundle.
+                gain = bundle.exposure_gain if plan_exposure_gain is None else plan_exposure_gain
+                ref = ref * np.float32(gain)
+                name = getattr(bundle, "lens_filter", "none") or "none"
+                if name != "none":
+                    from .lens_filter import apply_lens_filter_rec2020
+                    ref = apply_lens_filter_rec2020(ref, name)
+                ref = scene_transform_engine.apply_scene_transform_rec2020(
+                    ref, scene_transform, scene_transform_strength,
+                    scene_transform_engine.window_transport(bundle),
+                )
+                ref_y = rec2020_to_xyz(ref)[:, 1]
+                valid = np.isfinite(ref_y) & (ref_y > 2.0 ** EV_REPORT_FLOOR)
+                if int(np.count_nonzero(valid)) >= 256:
+                    ref_ev = np.log2(ref_y[valid]) - GRAY_EV
+                    # A reference may cap Apple's measured tail, never supply
+                    # luminance the selected decoder did not actually output.
+                    reliable_tail_p9999 = min(float(np.percentile(ref_ev, 99.99)),
+                                             float(np.percentile(ev, 99.99)))
     reliable_ev = ev[body_mask]
 
     p1, p5, p50, p95, p99, p999 = [
@@ -419,6 +424,7 @@ def scene_tone_metrics(
         sparse_emitter_tail=sparse_emitter,
         raw_clip_union_pct=float(analysis.cell_union_pct),
         reliable_tail_ev_p9999=reliable_tail_p9999,
+        reliability_source=source,
     )
 
 
@@ -584,10 +590,12 @@ def build_tone_compression_plan(
                 min_white_ev,
                 8.5,
             )
+            tail_source = ("解码图像估计尾部（非传感器实测）"
+                           if metrics.reliability_source == "decoded-image-estimate" else "可靠尾部")
             if metrics.reliable_tail_ev_p9999 + white_margin < min_white_ev:
-                notes.append(f"白端点=可靠尾部（受最低白点 +{min_white_ev:.2f}EV 保护）")
+                notes.append(f"白端点={tail_source}（受最低白点 +{min_white_ev:.2f}EV 保护）")
             else:
-                notes.append("白端点=可靠尾部 p99.99")
+                notes.append(f"白端点={tail_source} p99.99")
         else:
             notes.append("白端点证据缺席，回退自适应白点（含重建尾部）")
         endpoint_note = "；".join(notes)

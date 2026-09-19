@@ -93,9 +93,10 @@ def _scene_plan(**tone_overrides) -> RenderPlan:
 def _formation_setup(channel_separation: float | None = None, **tone_overrides):
     """Compile a real HdrAgxPlan and everything _form_hdr_chunk consumes."""
     plan = _scene_plan(**tone_overrides)
-    # SimpleNamespace analysis: no clipping evidence recorded, so
-    # compile_channel_separation grants the full RHO_BASE (0.5).
-    hdr_plan = compile_hdr_agx_plan(plan, analysis=SimpleNamespace())
+    # Explicitly measured zero RGB-group clipping grants full RHO_BASE;
+    # absent topology must not be mistaken for a zero-clipping measurement.
+    hdr_plan = compile_hdr_agx_plan(plan, analysis=SimpleNamespace(
+        color_clip_k_of_all_pct={1: 0.0, 2: 0.0, 3: 0.0}))
     if channel_separation is not None:
         hdr_plan = dataclasses.replace(
             hdr_plan,

@@ -1,0 +1,267 @@
+{
+  "has_iso_gainmap": true,
+  "headroom": 2.443359375,
+  "profile": "Display P3",
+  "width": 4000,
+  "height": 6000,
+  "bit_depth": 10,
+  "chroma_subsampling": "4:4:4",
+  "gainmap_width": 4000,
+  "gainmap_height": 6000,
+  "gainmap_pixel_format": "444f",
+  "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+  "preset": "slow",
+  "tune": "ssim",
+  "delivery_quality": 90,
+  "delivery_chroma_requested": "444",
+  "delivery_container": "heic",
+  "headroom_error_ev": 0.0,
+  "file_headroom_ev": 1.2888660741658198,
+  "base_mean_code_error": 0.4030729722222222,
+  "base_p99_code_error": 2.0,
+  "base_max_code_error": 8.0,
+  "base_channel_bias_code_error": 0.024776625,
+  "base_block_p99_code_error": 0.34375,
+  "chroma_error": 0.01307740993797779,
+  "relative_error": 0.04924454540014267,
+  "median_relative_error": 0.01220703125,
+  "p95_relative_error": 0.03538874164223671,
+  "p99_relative_error": 0.04924454540014267,
+  "p999_relative_error": 0.0677490234375,
+  "block_median_relative_error": 0.002370472066104412,
+  "block_p95_relative_error": 0.006070137023925781,
+  "block_p99_relative_error": 0.00805125292390585,
+  "block_chroma_error": 0.0020026862621307373,
+  "block_p95_luma_error": 0.0067250365391373634,
+  "highlight_max_luma_error": 0.04675820842385292,
+  "gainmap_as_rgb": true,
+  "delivery_profile": "auto",
+  "gainmap_encoding_quality": 80,
+  "coding_luma_rmse": 0.28377753181983134,
+  "coding_chroma_rmse": 0.7121306305434406,
+  "coding_local_luma_p99": 0.32823437452316284,
+  "gainmap_encoder": "x265",
+  "gainmap_chroma_requested": "444",
+  "file_size_bytes": 46302617,
+  "auto_reference_quality": 95,
+  "auto_reference_chroma": "444",
+  "auto_reference_bytes": 56443247,
+  "auto_saved_pct": 17.966064213137845,
+  "auto_search": "bounded-quality-chroma-gainmap",
+  "auto_attempts": [
+    {
+      "quality": 95,
+      "chroma": "444",
+      "gainmap_quality": 100,
+      "accepted": true,
+      "bytes": 56443247,
+      "metrics": {
+        "chroma_error": 0.010773122310638428,
+        "block_p95_luma_error": 0.00559989083558321,
+        "highlight_max_luma_error": 0.04739653691649437,
+        "coding_luma_rmse": 0.260925284438563,
+        "coding_chroma_rmse": 0.6460731110020284,
+        "coding_local_luma_p99": 0.2685000002384186
+      }
+    },
+    {
+      "quality": 92,
+      "chroma": "444",
+      "gainmap_quality": 100,
+      "accepted": true,
+      "bytes": 56062893,
+      "metrics": {
+        "chroma_error": 0.011172652244567871,
+        "block_p95_luma_error": 0.0057652536779642105,
+        "highlight_max_luma_error": 0.04990140721201897,
+        "coding_luma_rmse": 0.26785394270437857,
+        "coding_chroma_rmse": 0.6661129718899385,
+        "coding_local_luma_p99": 0.2984062731266022
+      }
+    },
+    {
+      "quality": 90,
+      "chroma": "444",
+      "gainmap_quality": 100,
+      "accepted": true,
+      "bytes": 55150055,
+      "metrics": {
+        "chroma_error": 0.012160062789916992,
+        "block_p95_luma_error": 0.006207776255905628,
+        "highlight_max_luma_error": 0.04790790379047394,
+        "coding_luma_rmse": 0.28377753181983134,
+        "coding_chroma_rmse": 0.7121306305434406,
+        "coding_local_luma_p99": 0.32823437452316284
+      }
+    },
+    {
+      "quality": 85,
+      "chroma": "444",
+      "gainmap_quality": 100,
+      "accepted": false,
+      "bytes": 52059061,
+      "metrics": {
+        "chroma_error": 0.015270471572875977,
+        "block_p95_luma_error": 0.007510972209274769,
+        "highlight_max_luma_error": 0.04355405271053314,
+        "coding_luma_rmse": 0.33786349235530466,
+        "coding_chroma_rmse": 0.8732985286795362,
+        "coding_local_luma_p99": 0.3920624852180481
+      }
+    },
+    {
+      "quality": 80,
+      "chroma": "444",
+      "gainmap_quality": 100,
+      "accepted": false,
+      "bytes": 47308073,
+      "metrics": {
+        "chroma_error": 0.021131813526153564,
+        "block_p95_luma_error": 0.010302082635462284,
+        "highlight_max_luma_error": 0.05584515258669853,
+        "coding_luma_rmse": 0.4422631527185757,
+        "coding_chroma_rmse": 1.187727484680414,
+        "coding_local_luma_p99": 0.5187035799026489
+      }
+    },
+    {
+      "quality": 70,
+      "chroma": "444",
+      "gainmap_quality": 100,
+      "accepted": false,
+      "bytes": 40663289,
+      "metrics": {
+        "chroma_error": 0.03333685174584389,
+        "block_p95_luma_error": 0.01773814484477043,
+        "highlight_max_luma_error": 0.0726466178894043,
+        "coding_luma_rmse": 0.7074219013206962,
+        "coding_chroma_rmse": 1.9032104130956486,
+        "coding_local_luma_p99": 0.8428442478179932
+      }
+    },
+    {
+      "quality": 90,
+      "chroma": "422",
+      "gainmap_quality": 100,
+      "accepted": false,
+      "bytes": 53210122,
+      "metrics": {
+        "chroma_error": 0.046983543783426285,
+        "block_p95_luma_error": 0.009410372003912926,
+        "highlight_max_luma_error": 0.08343128859996796,
+        "coding_luma_rmse": 0.3862108900206086,
+        "coding_chroma_rmse": 2.5634226369146087,
+        "coding_local_luma_p99": 0.45582878589630127
+      }
+    },
+    {
+      "quality": 95,
+      "chroma": "422",
+      "gainmap_quality": 100,
+      "accepted": false,
+      "bytes": 53673298,
+      "metrics": {
+        "chroma_error": 0.04696798324584961,
+        "block_p95_luma_error": 0.009324834682047367,
+        "highlight_max_luma_error": 0.08385387808084488,
+        "coding_luma_rmse": 0.3803492479235968,
+        "coding_chroma_rmse": 2.5618328466856846,
+        "coding_local_luma_p99": 0.44662511348724365
+      }
+    },
+    {
+      "quality": 90,
+      "chroma": "420",
+      "gainmap_quality": 100,
+      "accepted": false,
+      "bytes": 47465583,
+      "metrics": {
+        "chroma_error": 0.046744316816329956,
+        "block_p95_luma_error": 0.010267317295074463,
+        "highlight_max_luma_error": 0.08119652420282364,
+        "coding_luma_rmse": 0.40309661598911917,
+        "coding_chroma_rmse": 2.796975620839172,
+        "coding_local_luma_p99": 0.4730468690395355
+      }
+    },
+    {
+      "quality": 95,
+      "chroma": "420",
+      "gainmap_quality": 100,
+      "accepted": false,
+      "bytes": 47804287,
+      "metrics": {
+        "chroma_error": 0.046729862689971924,
+        "block_p95_luma_error": 0.010185743682086468,
+        "highlight_max_luma_error": 0.08463333547115326,
+        "coding_luma_rmse": 0.3974991874715095,
+        "coding_chroma_rmse": 2.795765896713768,
+        "coding_local_luma_p99": 0.46670326590538025
+      }
+    },
+    {
+      "quality": 90,
+      "chroma": "444",
+      "gainmap_quality": 95,
+      "accepted": true,
+      "bytes": 54181091,
+      "metrics": {
+        "chroma_error": 0.012470364570617676,
+        "block_p95_luma_error": 0.006251288112252951,
+        "highlight_max_luma_error": 0.051174674183130264,
+        "coding_luma_rmse": 0.28377753181983134,
+        "coding_chroma_rmse": 0.7121306305434406,
+        "coding_local_luma_p99": 0.32823437452316284
+      }
+    },
+    {
+      "quality": 90,
+      "chroma": "444",
+      "gainmap_quality": 90,
+      "accepted": true,
+      "bytes": 52887062,
+      "metrics": {
+        "chroma_error": 0.012536108493804932,
+        "block_p95_luma_error": 0.006292711012065411,
+        "highlight_max_luma_error": 0.051174674183130264,
+        "coding_luma_rmse": 0.28377753181983134,
+        "coding_chroma_rmse": 0.7121306305434406,
+        "coding_local_luma_p99": 0.32823437452316284
+      }
+    },
+    {
+      "quality": 90,
+      "chroma": "444",
+      "gainmap_quality": 85,
+      "accepted": true,
+      "bytes": 51059177,
+      "metrics": {
+        "chroma_error": 0.012654423713684082,
+        "block_p95_luma_error": 0.0063914828933775425,
+        "highlight_max_luma_error": 0.05203913524746895,
+        "coding_luma_rmse": 0.28377753181983134,
+        "coding_chroma_rmse": 0.7121306305434406,
+        "coding_local_luma_p99": 0.32823437452316284
+      }
+    },
+    {
+      "quality": 90,
+      "chroma": "444",
+      "gainmap_quality": 80,
+      "accepted": true,
+      "bytes": 46302617,
+      "metrics": {
+        "chroma_error": 0.01307740993797779,
+        "block_p95_luma_error": 0.0067250365391373634,
+        "highlight_max_luma_error": 0.04675820842385292,
+        "coding_luma_rmse": 0.28377753181983134,
+        "coding_chroma_rmse": 0.7121306305434406,
+        "coding_local_luma_p99": 0.32823437452316284
+      }
+    }
+  ],
+  "seconds": 281.69832383400353,
+  "source": "Existing 4000x6000 SDR/HDR formation masters; no re-formation, no spatial resizing.",
+  "validation": "Original SDR/HDR absolute gates and additional-error budgets unchanged; every candidate decoded from its written file.",
+  "limitations": "Single full-resolution pair; engineering fidelity validation, not a perceptual optimum across cameras."
+}

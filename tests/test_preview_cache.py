@@ -123,52 +123,31 @@ class PreviewCacheTest(unittest.TestCase):
             )
         self.assertEqual(transform.call_count, 1)
 
-    def test_parallel_balance_analysis_is_bit_exact(self) -> None:
+    def test_balanced_preview_and_export_reanalyze_the_same_full_scene_samples(self) -> None:
         from dataclasses import replace
+        from dngscan.analysis import analyze
+        from dngscan.raw_io import rebalance_raw_bundle, scene_rec2020_to_xyz_render
+        from dngscan.tone import build_render_plan
 
-        from dngscan.analysis import (
-            compute_ev_metrics,
-            compute_gamut_metrics,
-            luminance_from_xyz_render,
-            reanalyze_balanced_scene,
-        )
-
-        bundle = _bundle()
-        capture = _analysis()
-        y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
-        (_ev, raw_p1, p1, p50, p99, p999, dr, floor, gray) = compute_ev_metrics(y)
-        gamut, bright = compute_gamut_metrics(
-            bundle.xyz_render, bundle.render_scale, y
-        )
-        expected = replace(
-            capture,
-            ev_p1=p1,
-            ev_raw_p1=raw_p1,
-            ev_median=p50,
-            ev_p99=p99,
-            ev_p999=p999,
-            ev_dr_p1_p999=dr,
-            ev_floor_hit_pct=floor,
-            median_vs_gray_ev=gray,
-            median_y=float(np.median(y)),
-            gamut_out_pct=gamut,
-            bright_pixel_pct=bright,
-        )
-        actual = reanalyze_balanced_scene(capture, bundle)
-        for name in (
-            "ev_p1",
-            "ev_raw_p1",
-            "ev_median",
-            "ev_p99",
-            "ev_p999",
-            "ev_dr_p1_p999",
-            "ev_floor_hit_pct",
-            "median_vs_gray_ev",
-            "median_y",
-            "gamut_out_pct",
-            "bright_pixel_pct",
-        ):
-            self.assertEqual(getattr(actual, name), getattr(expected, name), name)
+        rng = np.random.default_rng(20260919)
+        scene = rng.uniform(0.01, 0.8, (320, 640, 3)).astype(np.float32)
+        scene[20:22, 25:27] *= 12  # Highlights disappear in an averaged proxy.
+        source = replace(_bundle(), scene_rec2020_render=scene, scene_scale=1.,
+                         xyz_render=scene_rec2020_to_xyz_render(scene, 1.), render_scale=1.)
+        capture, _, _ = analyze(source, margin=4, diagnostics=False)
+        with patch("dngscan.gui.preview_cache.PROXY_LONG_EDGE", 160):
+            proxy = build_proxy_entry(source, capture, False)
+        self.assertLess(proxy.bundle.scene_rec2020_render.shape[1], scene.shape[1])
+        balanced_proxy = PreviewCache._build_balance(proxy, "daylight")
+        full = rebalance_raw_bundle(source, "daylight")
+        full_analysis, _, _ = analyze(full, margin=4, diagnostics=False)
+        for name in ("ev_p1", "ev_raw_p1", "ev_median", "ev_p99", "ev_p999",
+                     "ev_dr_p1_p999", "ev_floor_hit_pct", "median_vs_gray_ev",
+                     "median_y", "gamut_out_pct", "bright_pixel_pct"):
+            self.assertEqual(getattr(balanced_proxy.analysis, name), getattr(full_analysis, name), name)
+        preview_plan = build_render_plan(balanced_proxy.bundle, balanced_proxy.analysis, "agx", "p3")
+        full_plan = build_render_plan(full, full_analysis, "agx", "p3")
+        self.assertEqual(preview_plan, full_plan)
 
     def test_realtime_proxy_has_one_fixed_1920px_long_edge(self) -> None:
         image = np.zeros((600, 2400, 3), dtype=np.float32)
@@ -429,7 +408,7 @@ class SceneDecoderRuntimeBindingTest(unittest.TestCase):
             metadata = {
                 "version": PREVIEW_CACHE_VERSION,
                 "has_guidance": False,
-                "bundle": {"scene_decoder_runtime": "macOS 26.0"},
+                "bundle": {"scene_decoder": "coreimage", "scene_decoder_runtime": "macOS 26.0"},
             }
             with open(entry, "wb") as handle:
                 np.savez(handle, metadata=np.asarray(_json.dumps(metadata)))
