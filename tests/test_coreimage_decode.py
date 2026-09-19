@@ -141,12 +141,18 @@ class CoreImageVersionTests(unittest.TestCase):
             self.assertEqual(coreimage_decode.resolve_decoder_version(version,('6.dng',)),'6.dng')
         self.assertEqual(parse_args(['camera.dng','--decoder','coreimage',
             '--coreimage-version','6']).coreimage_version,'6')
-        self.assertEqual(parse_decoder({'decoder':'coreimage','coreimageVersion':'6'}),('coreimage','6'))
+        # Version plumbing is independent of the host's optional Quartz install.
+        # The GUI's availability gate must see the same mocked capability as the probe.
         with patch.object(coreimage_decode,'available',return_value=True), \
              patch.object(coreimage_decode,'supported_versions',return_value=('6.dng',)):
+            self.assertEqual(parse_decoder({'decoder':'coreimage','coreimageVersion':'6'}),('coreimage','6'))
             result=coreimage_decode.probe_raw9_support(Path('camera.dng'))
             self.assertEqual(result['fallback_version'],'6')
             self.assertEqual(_coreimage_tier(Path('camera.dng'),False)['status'],'raw6')
+        with patch.object(coreimage_decode,'available',return_value=False):
+            with self.assertRaisesRegex(RuntimeError, 'Core Image.*不可用'):
+                parse_decoder({'decoder':'coreimage','coreimageVersion':'6'})
+            self.assertEqual(parse_decoder({'decoder':'libraw'}),('libraw','auto'))
 
     def test_explicit_unsupported_raises(self) -> None:
         with self.assertRaises(RuntimeError):

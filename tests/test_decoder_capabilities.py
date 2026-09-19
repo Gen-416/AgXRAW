@@ -99,12 +99,30 @@ class AppleOnlyContractTests(unittest.TestCase):
             path.touch()
             params = {'input': str(path), 'decoder': 'coreimage', 'coreimageVersion': 'auto',
                       'filmOpticsSeed': 1234}
-            with patch.object(service.PREVIEW_STORE, 'peek', return_value=SimpleNamespace(bundle=preview)), \
+            # Exercise the real parser and payload assembly without requiring Quartz.
+            with patch.object(ci, 'available', return_value=True), \
+                 patch.object(service.PREVIEW_STORE, 'peek', return_value=SimpleNamespace(bundle=preview)), \
                  patch.object(service.mp, 'get_context', return_value=context):
                 with self.assertRaisesRegex(RuntimeError, 'captured child payload'):
                     service.run_export_isolated(params)
         self.assertEqual(captured['_previewDecode']['scene_decoder_version'], '8')
         self.assertEqual(captured['filmOpticsSeed'], 1234)
+
+    def test_unavailable_coreimage_refuses_export_before_spawning(self):
+        from dngscan.gui import service
+
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'image.dng'
+            path.touch()
+            params = {'input': str(path), 'decoder': 'coreimage', 'coreimageVersion': 'auto',
+                      'filmOpticsSeed': 1234}
+            with patch.object(ci, 'available', return_value=False), \
+                 patch.object(service.PREVIEW_STORE, 'peek') as peek, \
+                 patch.object(service.mp, 'get_context') as get_context:
+                with self.assertRaisesRegex(RuntimeError, 'Core Image.*不可用'):
+                    service.run_export_isolated(params)
+                peek.assert_not_called()
+                get_context.assert_not_called()
 
     def test_evidence_failure_keeps_scene_analysis_report_and_cache_usable(self):
         # This is fault injection, not a claim about any real private RAW codec.
