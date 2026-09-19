@@ -159,6 +159,24 @@ class DngCalibrationRegressionTests(unittest.TestCase):
                 expected[1:6:2,1:6:3]=1900
                 np.testing.assert_array_equal(pixels,expected)
 
+    def test_disjoint_gain_area_leaves_image_unchanged(self):
+        from dngscan.metadata import _parse_gain_map_payload
+        for bounds in ((-5,-5,-1,-1),(-5,2,-1,6),(2,-5,6,-1),
+                       (10,10,14,14),(2,10,6,14),(10,2,14,6)):
+            payload=bytearray(gain_payload([2.]))
+            struct.pack_into('>4l',payload,0,*bounds)
+            struct.pack_into('>2L',payload,24,2,3)
+            op=_parse_gain_map_payload(payload)
+            self.assertIsNotNone(op)
+            for fast in ('0','1') if _fast.available() else ('0',):
+                with self.subTest(bounds=bounds,fast=fast),patch.dict(os.environ,DNGSCAN_FAST=fast):
+                    pixels=np.full((8,8),1000,np.uint16)
+                    raw=SimpleNamespace(raw_image_visible=pixels,
+                        raw_colors_visible=np.zeros((8,8),np.uint8))
+                    raw_io._apply_gain_maps_mosaic(raw,[op],[100.],4000)
+                    np.testing.assert_array_equal(pixels,np.full((8,8),1000,np.uint16))
+                    self.assertEqual((op.top,op.left,op.bottom,op.right),bounds)
+
     def test_fractional_evidence_crop_uses_exact_sensor_footprints(self):
         values=np.arange(4*4*3,dtype=np.float16).reshape(4,4,3)
         full=np.repeat(np.repeat(values,2,axis=0),2,axis=1)[1:5,1:5]
