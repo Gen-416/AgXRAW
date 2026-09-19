@@ -134,30 +134,9 @@ class FusedFilmPairTests(unittest.TestCase):
 
 
 class NoiseFloorLocalityTests(unittest.TestCase):
-    def test_tile_local_matches_full_frame_reference(self) -> None:
-        from types import SimpleNamespace
-
-        from dngscan.analysis import (
-            estimate_noise_floor,
-            estimate_raw_noise_floor,
-            normalized_raw_signal,
-        )
-
-        rng = np.random.default_rng(1)
-        h, w = 320, 480
-        raw = (rng.normal(600, 30, (h, w))
-               + rng.uniform(0, 12000, (h, w))).astype(np.uint16)
-        colors = np.indices((h, w)).sum(axis=0) % 4
-        b = SimpleNamespace(
-            raw_image=raw, raw_colors=colors,
-            black_levels=[512.0, 514.0, 512.0, 513.0],
-        )
-        fw = {0: 16000, 1: 15800, 2: 16000, 3: 15900}
-        got = estimate_raw_noise_floor(b, fw)
-        want = estimate_noise_floor(
-            normalized_raw_signal(raw, colors, b.black_levels, fw)
-        )
-        self.assertAlmostEqual(got, want, places=12)
+    def test_noise_is_independent_of_mosaic_colour(self) -> None:
+        from tests.test_automatic_defaults import AutomaticAnalysisTests
+        AutomaticAnalysisTests().test_noise_is_invariant_to_channel_offsets_and_linear_gradients()
 
 
 if __name__ == "__main__":

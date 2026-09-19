@@ -290,6 +290,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
 
 <div class="card" id="mobileExposureCard" data-mobile-card="exposure">
   <div class="secTitle">曝光</div>
+  <label><input type="checkbox" id="autoExposure" checked> 根据 RAW 分析自动设置曝光</label>
   <div class="row">
     <div class="evMain">
       <div class="labelRow"><label title="0 EV 保留拍摄时的亮度关系。">曝光 EV</label><span class="val" id="evval">+0.00</span></div>
@@ -685,9 +686,10 @@ GRADE_OPTIONS
       </div>
       <div style="flex:1;min-width:160px">
         <label>导出档位</label>
-        <select id="deliveryProfile" title="只影响最后编码，不重算 AgX/HDR。archive=q100/4:4:4 验证级保真（全尺寸约 60MB）；share=q90/4:2:0 流媒体发布档（约 11–27MB，微信原图 25MB 限制内，HDR gain map 完整保留）。">
-          <option value="archive">存档 · 最高质量</option>
-          <option value="share">分享 · 小体积</option>
+        <select id="deliveryProfile" title="JPEG 从 95–99 选择；HEIF 使用独立质量刻度。两者均按实际回读损失选择较小文件。">
+          <option value="auto">自动 · 质量与体积平衡</option>
+          <option value="share">手动 · 默认 95 / 4:2:0</option>
+          <option value="archive">存档 · 100 / 4:4:4</option>
         </select>
       </div>
       <div style="flex:1;min-width:140px">
@@ -699,17 +701,27 @@ GRADE_OPTIONS
       </div>
       <div style="flex:0;min-width:110px">
         <label>质量</label>
-        <input type="number" id="quality" min="1" max="100" value="100">
+        <input type="number" id="quality" min="1" max="100" value="95">
       </div>
       <div style="flex:1;min-width:140px">
         <label>色度采样</label>
-        <select id="chroma" title="4:4:4 保留完整色度，4:2:0 文件更小。Ultrahdr 主图采样主要由 quality 决定。">
+        <select id="chroma" title="4:4:4 保留完整色度，4:2:2 折中，4:2:0 文件更小；质量和采样可独立设置。">
           <option value="444">4:4:4 · 完整</option>
           <option value="422">4:2:2</option>
-          <option value="420">4:2:0 · 最小</option>
+          <option value="420" selected>4:2:0 · 平衡</option>
         </select>
       </div>
     </div>
+    <details id="heifControls" style="margin-top:12px;display:none">
+      <summary>HEIF 压缩设置</summary>
+      <div class="row" style="margin-top:8px">
+        <div><label>编码器</label><select id="heifEncoder"><option value="auto">自动</option><option value="x265">x265 · 可调</option><option value="apple">Apple · 系统</option></select></div>
+        <div><label>位深</label><select id="heifBitDepth"><option value="10">10-bit</option><option value="8">8-bit</option></select></div>
+        <div><label>编码速度</label><select id="heifPreset"><option value="slow">慢 · 默认</option><option value="medium">中</option><option value="fast">快</option><option value="slower">更慢</option></select></div>
+        <div><label>纹理策略</label><select id="heifTune"><option value="ssim">均衡</option><option value="grain">保留颗粒</option><option value="psnr">像素误差优先</option></select></div>
+      </div>
+      <div class="muted">可调设置需要安装 libheif/x265。Apple 编码器采用系统位深与编码策略；实际采样、位深和质量会在导出结果中显示。</div>
+    </details>
     <div class="row" id="hdrBlock" style="margin-top:12px">
       <div style="min-width:220px">
         <div class="labelRow"><label>HDR 亮度上限</label><span class="val" id="hdrHeadroomVal">+3.00 EV</span></div>
@@ -814,7 +826,8 @@ dashboardTabs.forEach((tab,index)=>{
 let initialDashboardPanel="capturePanel";
 try{initialDashboardPanel=localStorage.getItem(DASHBOARD_PANEL_KEY)||initialDashboardPanel;}catch(error){}
 setDashboardPanel(initialDashboardPanel);
-const STORE_KEY="dngscan.settings.v9";
+const STORE_KEY="dngscan.settings.v10";
+const V9_STORE_KEY="dngscan.settings.v9";
 const V8_STORE_KEY="dngscan.settings.v8";
 const V7_STORE_KEY="dngscan.settings.v7";
 const V6_STORE_KEY="dngscan.settings.v6";
@@ -859,25 +872,19 @@ function updateToneCoreUi(){
   $("#controlHint").textContent=CONTROL_HINTS[core]||"";
 }
 function applyDeliveryConstraints(){
-  // Archive pins q100/4:4:4 by contract; share leaves the knobs to the user. Restoring
-  // saved settings must not clobber them, so this only enforces, never fills defaults.
-  // HDR containers additionally pin chroma to what Core Image actually emits at the
-  // profile's quality (q100→4:4:4, share→4:2:0): the control would otherwise promise a
-  // subsampling the encoder cannot honour.
   const archive=$("#deliveryProfile").value==="archive";
-  const share=$("#deliveryProfile").value==="share";
-  const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);
+  const auto=$("#deliveryProfile").value==="auto";
+  const heif=$("#format").value==="ultrahdr-heic";
+  $("#heifControls").style.display=heif?"block":"none";
+  for(const id of ["heifBitDepth","heifPreset","heifTune"])$("#"+id).disabled=$("#heifEncoder").value==="apple";
   if(archive){$("#quality").value="100";$("#chroma").value="444";}
-  else if(share){$("#quality").value="90";$("#chroma").value="420";}
-  else if(hdr){$("#chroma").value="420";}
-  // 档即工作点（owner 决策 2026-08-14）：share 与 archive 一样钉死自己的
-  // 编码点（q90/4:2:0——Core Image 在该 quality 下本就固定 4:2:0）。
-  $("#quality").disabled=archive||share;
-  $("#chroma").disabled=archive||share||hdr;
+  else if(auto){$("#quality").value=heif?"95":"99";$("#chroma").value=heif?"444":"422";}
+  $("#quality").disabled=archive||auto;
+  $("#chroma").disabled=archive||auto;
 }
 function applyDeliveryDefaults(){
   // Only on an explicit profile switch: seed share's calibrated defaults.
-  if($("#deliveryProfile").value==="share"){$("#quality").value="90";$("#chroma").value="420";}
+  if($("#deliveryProfile").value==="share"){$("#quality").value="95";$("#chroma").value="420";}
   applyDeliveryConstraints();
 }
 function updateToneCoreExportUi(){
@@ -1067,7 +1074,7 @@ function updateDecoderUi(){
 }
 function saveSettings(){
   try{localStorage.setItem(STORE_KEY,JSON.stringify({
-    ev:$("#ev").value,quality:$("#quality").value,
+    autoExposure:$("#autoExposure").checked,ev:$("#ev").value,quality:$("#quality").value,
     film:$("#film").value,
     filmMode:$("#filmMode").value,filmNeutralization:$("#filmNeutralization").value,
     filmExposure:$("#filmExposure").value,filmPrintTiming:$("#filmPrintTiming").value,
@@ -1086,6 +1093,7 @@ function saveSettings(){
     colorHeadY:$("#colorHeadY").value,colorHeadM:$("#colorHeadM").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
+    heifEncoder:$("#heifEncoder").value,heifBitDepth:+$("#heifBitDepth").value,heifPreset:$("#heifPreset").value,heifTune:$("#heifTune").value,
     toneCore:$("#toneCore").dataset.librawValue||$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
     grade:$("#grade").value,gradeStrength:$("#gradeStrength").value,
     sceneTransform:$("#sceneTransform").value,sceneTransformStrength:$("#sceneTransformStrength").value,punch:$("#punch").value,
@@ -1106,14 +1114,15 @@ function saveSettings(){
   }));}catch(e){}
 }
 function restoreSettings(){
-  let s={};let migrated=false;
+  let s={};let migrated=false;let current=null;
   try{
-    const current=localStorage.getItem(STORE_KEY);
+    current=localStorage.getItem(STORE_KEY);
+    const v9=localStorage.getItem(V9_STORE_KEY);
     const v8=localStorage.getItem(V8_STORE_KEY);
     const v7=localStorage.getItem(V7_STORE_KEY);
     const v6=localStorage.getItem(V6_STORE_KEY);
     const v5=localStorage.getItem(V5_STORE_KEY);
-    s=JSON.parse(current||v8||v7||v6||v5||localStorage.getItem(LEGACY_STORE_KEY)||"{}")||{};
+    s=JSON.parse(current||v9||v8||v7||v6||v5||localStorage.getItem(LEGACY_STORE_KEY)||"{}")||{};
     // v7 and earlier labelled smooth as the default. The pinned darktable scene
     // default is base, so move stored old defaults to the corrected baseline.
     if(!current&&s.agxPrimaries==="smooth"){
@@ -1123,6 +1132,8 @@ function restoreSettings(){
       s.toneCore="agx";migrated=true;
     }
   }catch(e){}
+  if(s.autoExposure!==undefined)$("#autoExposure").checked=!!s.autoExposure;
+  if(!current&&s.deliveryProfile==="archive"){s.deliveryProfile="auto";migrated=true;}
   if(s.ev!==undefined)$("#ev").value=s.ev;
   if(s.quality)$("#quality").value=s.quality;
   if(s.highlight)$("#highlight").value=s.highlight;
@@ -1132,6 +1143,7 @@ function restoreSettings(){
   if(s.decoder&&[...$("#decoder").options].some(o=>o.value===s.decoder))$("#decoder").value=s.decoder;
   if(s.coreimageVersion&&[...$("#coreimageVersion").options].some(o=>o.value===s.coreimageVersion))$("#coreimageVersion").value=s.coreimageVersion;
   if(s.chroma)$("#chroma").value=s.chroma;
+  for(const id of ["heifEncoder","heifBitDepth","heifPreset","heifTune"]){if(s[id]!=null&&[...$("#"+id).options].some(o=>o.value===String(s[id])))$("#"+id).value=String(s[id]);}
   if(s.lensFilter&&[...$("#lensFilter").options].some(o=>o.value===s.lensFilter))$("#lensFilter").value=s.lensFilter;
   if(s.filmCurve&&[...$("#filmCurve").options].some(o=>o.value===s.filmCurve))$("#filmCurve").value=s.filmCurve;
   if(s.colorHeadY!==undefined)$("#colorHeadY").value=s.colorHeadY;
@@ -1213,6 +1225,7 @@ $("#gamut").addEventListener("change",()=>{saveSettings();scheduleLivePreview();
 $("#highlight").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#demosaic").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#chroma").addEventListener("change",saveSettings);
+for(const id of ["heifEncoder","heifBitDepth","heifPreset","heifTune"])$("#"+id).addEventListener("change",()=>{applyDeliveryConstraints();saveSettings();});
 $("#grade").addEventListener("change",()=>{updateGradeUi();saveSettings();scheduleLivePreview();});
 $("#deliveryProfile").addEventListener("change",()=>{applyDeliveryDefaults();saveSettings();});
 $("#decoder").addEventListener("change",()=>{updateDecoderUi();saveSettings();preparePreview();});
@@ -1582,7 +1595,8 @@ $("#lumNorm").addEventListener("change",()=>{saveSettings();scheduleLivePreview(
 $("#agxPrimaries").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#sceneTransform").addEventListener("change",()=>{updateSceneTransformUi();saveSettings();scheduleLivePreview();});
 $("#format").addEventListener("change",()=>{updateFormatUi();saveSettings();scheduleLivePreview();});
-$("#ev").oninput=()=>{setEvLabel();saveSettings();scheduleLivePreview();};
+$("#autoExposure").onchange=()=>{saveSettings();scheduleLivePreview();};
+$("#ev").oninput=()=>{$("#autoExposure").checked=false;setEvLabel();saveSettings();scheduleLivePreview();};
 $("#hdrHeadroom").oninput=()=>{setHdrLabel();saveSettings();};
 $("#gradeStrength").oninput=()=>{setGradeStrengthLabel();saveSettings();scheduleLivePreview();};
 $("#punch").oninput=()=>{setPunchLabel();saveSettings();scheduleLivePreview();};
@@ -1643,7 +1657,7 @@ if(!MATPLOTLIB_AVAILABLE){
 }
 updateInterimageBetaUi();
 checkHdrBackend();
-document.querySelectorAll("button[data-ev]").forEach(b=>b.onclick=()=>{$("#ev").value=b.dataset.ev;setEvLabel();saveSettings();scheduleLivePreview();});
+document.querySelectorAll("button[data-ev]").forEach(b=>b.onclick=()=>{$("#autoExposure").checked=false;$("#ev").value=b.dataset.ev;setEvLabel();saveSettings();scheduleLivePreview();});
 let lastSavedPath="";
 
 const SESSION_TOKEN=SESSION_TOKEN_VALUE;
@@ -1727,6 +1741,7 @@ function payload(){
     filmPrintMedium:$("#filmPrintMedium").value||"",filmPrintExposure:$("#filmPrintExposure").value,
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
+    heifEncoder:$("#heifEncoder").value,heifBitDepth:+$("#heifBitDepth").value,heifPreset:$("#heifPreset").value,heifTune:$("#heifTune").value,
     toneCore:$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
     grade:$("#grade").value,gradeStrength:+$("#gradeStrength").value,
     sceneTransform:$("#sceneTransform").value,sceneTransformStrength:+$("#sceneTransformStrength").value,
@@ -1740,11 +1755,12 @@ function payload(){
     hdrRho:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?($("#hdrRho").value||"auto"):"auto",
     hdrWhiteMargin:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?($("#hdrWhiteMargin").value||"auto"):"auto",
     hdrShoulderStart:["ultrahdr","ultrahdr-heic"].includes($("#format").value)?($("#hdrShoulderStart").value||"auto"):"auto",
-    ev:+$("#ev").value,quality:+$("#quality").value,
+    evAuto:$("#autoExposure").checked,ev:+$("#ev").value,quality:+$("#quality").value,
     outdir:$("#outdir").value.trim(),png:$("#png").checked
   };
   // auto=不显式声明中性化,由编译器按成片调色解析(A5 item 6:单一解析点)
   if(p.filmNeutralization==="auto")delete p.filmNeutralization;
+  if(p.deliveryProfile==="auto"){delete p.quality;delete p.chroma;}
   return p;
 }
 
@@ -1935,7 +1951,7 @@ async function requestPreview({includeMetrics=false,busy=false,evAuto=false,pref
   body.previewSession=PREVIEW_SESSION_ID;
   body.generation=generation;
   body.includeMetrics=!!includeMetrics;
-  if(evAuto)body.evAuto=true;
+  if(evAuto){$("#autoExposure").checked=true;body.evAuto=true;saveSettings();}
   if(previewAbort)previewAbort.abort();
   const controller=new AbortController();previewAbort=controller;
   if(busy)beginBusy();
@@ -2034,12 +2050,14 @@ function setPreviewImage(b64, ondone){
 function fmtMB(bytes){return bytes>=1048576?(bytes/1048576).toFixed(2)+" MB":Math.round(bytes/1024)+" KB";}
 function renderDeliveryReport(j){
   const box=$("#deliveryReport");const body=$("#deliveryReportBody");
-  const c=j.hdr_container;
+  const c=j.delivery||j.hdr_container;
   if(!c||typeof c!=="object"){box.style.display="none";body.innerHTML="";return;}
   const rows=[];
   const add=(k,v,warn)=>{if(v!==undefined&&v!==null&&v!=="")rows.push("<dt>"+k+"</dt><dd"+(warn?' class="warn"':"")+">"+v+"</dd>");};
   add("交付",(c.delivery_profile||"")+" · "+(c.delivery_container==="heic"?"HEIC":"JPEG")+" · q"+c.delivery_quality);
+  if(c.auto_saved_pct!==undefined)add("自动编码", "相对 q"+c.auto_reference_quality+" / "+c.auto_reference_chroma+" · 节省 "+(+c.auto_saved_pct).toFixed(1)+"%");
   if(c.file_size_bytes!==undefined)add("文件大小",fmtMB(c.file_size_bytes));
+  if(c.encoder)add("HEIF 编码",c.encoder+" · "+c.bit_depth+" bit"+(c.preset?" · "+c.preset+" / "+c.tune:""));
   add("主图采样",c.chroma_subsampling,c.chroma_subsampling!=="4:4:4"&&c.delivery_profile==="archive");
   if(c.rendered_headroom_ev!==undefined){
     add("HDR 余量","场景挣得 +"+(+c.rendered_headroom_ev).toFixed(2)+" EV · 实际使用(p99.99) +"+(+c.actual_headroom_ev).toFixed(2)+" EV"+(isFinite(+c.file_headroom_ev)?" · 文件声明(峰值) +"+(+c.file_headroom_ev).toFixed(2)+" EV":"")+" · 容量 +"+(+c.display_headroom_ev).toFixed(2)+" EV");
@@ -2051,6 +2069,7 @@ function renderDeliveryReport(j){
   if(c.block_p99_relative_error!==undefined){
     add("HDR 回读误差","块级 p99 "+(+c.block_p99_relative_error*100).toFixed(2)+"% · 块级色品 "+(+c.block_chroma_error*100).toFixed(2)+"% · 像素色品 "+(+c.chroma_error*100).toFixed(2)+"%");
   }
+  if(c.coding_luma_rmse!==undefined)add("编码回读", "亮度 RMSE "+(+c.coding_luma_rmse).toFixed(2)+" 码值");
   if(c.base_mean_code_error!==undefined){
     add("SDR 底图误差","平均 "+(+c.base_mean_code_error).toFixed(2)+" 码值 · 8×8 p99 "+(+c.base_block_p99_code_error).toFixed(2)+" 码值");
   }

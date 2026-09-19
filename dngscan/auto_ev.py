@@ -399,11 +399,28 @@ def max_safe_ev(
                 bundle, (sh, sw)
             ).astype(np.float32)
             sample_masks = area_decimate(masks, dh, dw).reshape(-1, 3)
+    elif tone_core != "gated":
+        # Use the SAME full-resolution population on a cached preview and an
+        # export. Preview pixels have already averaged away small highlights.
+        from .sampling import sample_indices
+        stored = getattr(bundle, "_tone_plan_sample", None)
+        source_indices = None if stored is not None else sample_indices(flat.shape[0])
+        canonical = np.asarray(stored) if stored is not None else flat[source_indices, :3]
+        selected = sample_indices(canonical.shape[0], max_samples)
+        sample_rgb = canonical[selected]
+        sample_masks = None
+        if stored is not None:
+            stored_masks = getattr(bundle, "_tone_plan_sample_masks", None)
+            if stored_masks is not None:
+                sample_masks = np.asarray(stored_masks)[selected]
+        elif getattr(bundle, "clip_masks", None) is not None:
+            masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
+            sample_masks = masks.reshape(-1, 3)[source_indices[selected]]
     else:
         sample_rgb = flat[::step, :3]
         sample_masks = None
     sample_raw_guidance = None
-    if spatial_shape is None and getattr(bundle, "clip_masks", None) is not None:
+    if spatial_shape is None and tone_core == "gated" and getattr(bundle, "clip_masks", None) is not None:
         masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2]).reshape(-1, 3)
         sample_masks = masks[::step]
         if tone_core == "gated":

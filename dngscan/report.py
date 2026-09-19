@@ -101,6 +101,8 @@ def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
             "传感器标定数据不完整，绝对档位/动态范围数字可能有偏差，渲染仍可正常使用）"
         )
     parts = [f"机型/先验: {analysis.prior_id} @ {iso}"]
+    if analysis.prior_quality_status:
+        parts.append(f"证据状态={analysis.prior_quality_status}")
     if analysis.gain_e_per_dn is not None:
         parts.append(f"增益≈{analysis.gain_e_per_dn:.2f} e⁻/DN")
     if analysis.noise_floor_e is not None:
@@ -167,6 +169,9 @@ def matrix_health_line_cn(bundle: RawBundle) -> str:
 
 
 def health_line_cn(analysis: Analysis) -> str:
+    status=getattr(analysis,"noise_evidence_status","independent")
+    if status != "independent":
+        return f"RAW 健康度: {status}；不声明独立感光点噪声/电子域 SNR"
     if not math.isfinite(analysis.health_lag1_corr):
         return "RAW 健康度: n/a"
     return (
@@ -752,6 +757,9 @@ def csv_row(
             else ""
         ),
         "prior_id": analysis.prior_id or "",
+        "prior_quality_status": analysis.prior_quality_status or "",
+        "noise_evidence_status": analysis.noise_evidence_status,
+        "capture_shutter": bundle.shot_shutter or "",
         "gain_e_per_dn": analysis.gain_e_per_dn if analysis.gain_e_per_dn is not None else "",
         "noise_floor_e": analysis.noise_floor_e if analysis.noise_floor_e is not None else "",
         "prior_read_noise_e": analysis.prior_read_noise_e if analysis.prior_read_noise_e is not None else "",

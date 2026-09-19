@@ -212,8 +212,10 @@ pub fn apply_agx_core_f32(input: &[f32], output: &mut [f32], plan: &NativeAgxPla
     }
     let block = block_pixels(n, workers) * 3;
     std::thread::scope(|s| {
+        let mut handles = Vec::new();
         for (i, o) in input.chunks(block).zip(output.chunks_mut(block)) {
-            s.spawn(move || run_range(i, o, plan));
+            handles.push(s.spawn(move || run_range(i, o, plan)));
         }
+        crate::budget::join_workers(handles);
     });
 }

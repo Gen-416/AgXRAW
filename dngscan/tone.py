@@ -223,15 +223,15 @@ def tone_plan_sample_scene_rec2020(
     stored = getattr(bundle, "_tone_plan_sample", None)
     if stored is not None:
         # R2 item 20: a cache-proxy bundle carries the FULL-resolution sample
-        # rows taken at entry build with the exporter's own stride — the plan
+        # rows taken at entry build with the exporter's own sampler — the plan
         # compiled here is statistics-identical to the export's.
         rows = np.asarray(stored)[:, :3]
     else:
         flat = bundle.scene_rec2020_render.reshape(
             -1, bundle.scene_rec2020_render.shape[-1]
         )
-        step = subsample_step(flat.shape[0], max_samples)
-        rows = flat[::step, :3]
+        from .sampling import sample_indices
+        rows = flat[sample_indices(flat.shape[0], max_samples), :3]
     rec2020 = scene_intent_rec2020(rows, bundle, gain)
     wb_adapt = scene_transform_engine.window_transport(bundle)
     return scene_transform_engine.apply_scene_transform_rec2020(
@@ -293,8 +293,9 @@ def reliable_scene_ev_selection(
         flat = bundle.scene_rec2020_render.reshape(
             -1, bundle.scene_rec2020_render.shape[-1]
         )
-        step = subsample_step(flat.shape[0], max_samples)
-        expected_rows = flat[::step, :3].shape[0]
+        from .sampling import sample_indices
+        indices = sample_indices(flat.shape[0], max_samples)
+        expected_rows = indices.size
     if rec2020_sample is None:
         gain = bundle.exposure_gain if exposure_gain is None else exposure_gain
         rec = tone_plan_sample_scene_rec2020(
@@ -333,7 +334,7 @@ def reliable_scene_ev_selection(
             )
     elif getattr(bundle, "clip_masks", None) is not None:
         masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
-        reliable &= np.max(masks.reshape(-1, 3)[::step], axis=1) < np.float32(0.10)
+        reliable &= np.max(masks.reshape(-1, 3)[indices], axis=1) < np.float32(0.10)
     elif getattr(bundle, "scene_decoder", "libraw") == "coreimage":
         # RAW 9's reconstructed highlight pixels are geometrically warped relative to
         # the CFA mosaic. Use the full-resolution RAW clipped-cell rate as a rank-domain

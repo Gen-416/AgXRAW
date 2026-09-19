@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ from .delivery import (
 from .gainmap import apple_gainmap_backend_status, encode_finished_pair
 from .models import Analysis, RawBundle, RenderPlan, ToneCompressionPlan
 from .render import render_output_u8
+from .delivery_integrity import encoded_content_signature
 
 
 def chroma_to_subsampling(name: str) -> int:
@@ -188,12 +190,15 @@ def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
     ImageIO or the source metadata is unavailable (non-macOS hosts keep the
     previous pixels-only behaviour).
     """
-    tmp_path = out_jpeg.with_name(f"{out_jpeg.name}.meta.{os.getpid()}.tmp")
+    tmp_path = out_jpeg.with_name(f"{out_jpeg.name}.meta.{uuid.uuid4().hex}.tmp")
     try:
         meta = _scrubbed_capture_metadata(src_raw, out_jpeg)
         if meta is None:
             return False
+        signature = encoded_content_signature(out_jpeg, "jpeg")
         if not _rewrite_with_metadata(out_jpeg, tmp_path, meta, "public.jpeg"):
+            return False
+        if encoded_content_signature(tmp_path, "jpeg") != signature:
             return False
         tmp_path.replace(out_jpeg)
         return True
@@ -222,7 +227,7 @@ def carry_capture_metadata_hdr(
     from .gainmap import inspect_gainmap_file
 
     uti = "public.heic" if str(container) == "heic" else "public.jpeg"
-    tmp_path = out_path.with_name(f"{out_path.name}.meta.{os.getpid()}.tmp")
+    tmp_path = out_path.with_name(f"{out_path.name}.meta.{uuid.uuid4().hex}.tmp")
     try:
         pre = inspect_gainmap_file(out_path)
         if not pre.get("has_iso_gainmap"):
@@ -230,6 +235,7 @@ def carry_capture_metadata_hdr(
         meta = _scrubbed_capture_metadata(src_raw, out_path)
         if meta is None:
             return False
+        signature = encoded_content_signature(out_path, container)
         if not _rewrite_with_metadata(
             out_path, tmp_path, meta, uti, merge=(uti == "public.jpeg")
         ):
@@ -252,8 +258,12 @@ def carry_capture_metadata_hdr(
             and post.get("profile") == pre.get("profile")
             and post.get("chroma_subsampling") == pre.get("chroma_subsampling")
             and post.get("gainmap_pixel_format") == pre.get("gainmap_pixel_format")
+            and all(post.get(k) == pre.get(k) for k in
+                    ("width", "height", "bit_depth", "gainmap_width", "gainmap_height"))
             and headroom_ok
         ):
+            return False
+        if encoded_content_signature(tmp_path, container) != signature:
             return False
         tmp_path.replace(out_path)
         return True
@@ -461,6 +471,7 @@ def export_srgb_jpeg(
     lum_norm: str = "y",
     agx_primaries: str = "base",
     return_rgb: bool = False,
+    delivery: DeliveryProfile | None = None,
 ) -> Any:
     try:
         rgb = render_output_u8(
@@ -469,9 +480,49 @@ def export_srgb_jpeg(
             scene_transform, scene_transform_strength,
             tone_core, lum_norm, agx_primaries,
         )
-        embedded = save_jpeg_array(rgb, out_path, quality, output_gamut, subsampling)
-        carry_capture_metadata(path, out_path)
-        return (embedded, rgb) if return_rgb else embedded
+        if delivery is not None and delivery.name == "auto":
+            from PIL import Image, JpegImagePlugin
+            from .auto_encode import coding_metrics, select_encoding
+
+            def encode(q, candidate, subsampling=1):
+                embedded = save_jpeg_array(rgb, candidate, q, output_gamut, subsampling)
+                with Image.open(candidate) as im:
+                    im.load()
+                    if (not embedded or im.size != (rgb.shape[1], rgb.shape[0])
+                            or im.info.get("icc_profile") != output_icc_profile_bytes(output_gamut)):
+                        raise RuntimeError("JPEG 回读尺寸或 ICC 配置不符")
+                    if JpegImagePlugin.get_sampling(im) != subsampling:
+                        raise RuntimeError("JPEG 主图采样与编码请求不符")
+                    decoded = np.asarray(im.convert("RGB"))
+                    metrics = coding_metrics(decoded, rgb)
+                return {**metrics, "icc_embedded": embedded,
+                        "delivery_quality": q, "delivery_container": "jpeg",
+                        "delivery_chroma_requested": "422" if subsampling == 1 else "420",
+                        "chroma_subsampling": "4:2:2" if subsampling == 1 else "4:2:0"}
+
+            info = select_encoding(out_path, encode, encode_420=lambda q, p: encode(q, p, 2))
+            info["exif_carried"] = carry_capture_metadata(path, out_path)
+            info["file_size_bytes"] = out_path.stat().st_size
+            if return_rgb:
+                with Image.open(out_path) as im:
+                    info["_decoded_rgb"] = np.asarray(im.convert("RGB"))
+            return info
+        from PIL import Image, JpegImagePlugin
+        import tempfile
+        out_path.parent.mkdir(parents=True,exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".agxraw-jpeg-",dir=out_path.parent) as td:
+            candidate=Path(td)/"verified.jpg"
+            embedded = save_jpeg_array(rgb, candidate, quality, output_gamut, subsampling)
+            carry_capture_metadata(path, candidate)
+            with Image.open(candidate) as im:
+                im.load()
+                if (not embedded or im.size != (rgb.shape[1], rgb.shape[0])
+                        or im.info.get("icc_profile") != output_icc_profile_bytes(output_gamut)
+                        or JpegImagePlugin.get_sampling(im) != subsampling):
+                    raise RuntimeError("JPEG 回读尺寸、ICC 或采样与请求不符")
+                decoded = np.asarray(im.convert("RGB")) if return_rgb else None
+            os.replace(candidate,out_path)
+        return (embedded, decoded) if return_rgb else embedded
     except Exception as exc:
         raise RuntimeError(f"Cannot export 8-bit {output_gamut_label(output_gamut)} JPEG: {exc}") from exc
 
@@ -548,5 +599,5 @@ def export_jpeg(
         path, out_path, quality, bundle, analysis, tone_plan, output_gamut, subsampling,
         look, look_strength, display_filter, filter_strength,
         scene_transform, scene_transform_strength,
-        tone_core, lum_norm, agx_primaries, return_rgb,
+        tone_core, lum_norm, agx_primaries, return_rgb, delivery,
     )

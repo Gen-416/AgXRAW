@@ -559,12 +559,12 @@ def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, i
             f"HDR capacity 必须在 0–{dg.MAX_HDR_HEADROOM_EV:.6f} EV "
             "（对应最多 4000 nit）"
         )
-    quality = int(params.get("quality", 100))
+    quality = int(params.get("quality", 95))
     if not 1 <= quality <= 100:
         raise ValueError("质量需在 1-100 之间")
     want_png = bool(params.get("png", False))
     outdir = Path(str(params["outdir"])).expanduser() if params.get("outdir") else None
-    ev_auto = bool(params.get("evAuto", False))
+    ev_auto = bool(params.get("evAuto", "ev" not in params))
     return inp, highlight, gamut, output_format, ev, hdr_headroom, quality, want_png, outdir, ev_auto
 
 
@@ -1205,12 +1205,12 @@ def export_preview_jpeg(
         chroma_nr=chroma_nr,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
-    if auto_ev is None:
-        frame = cached.get_frame(frame_key)
-        if frame is not None:
-            ensure_current()
-            frame["cache_hit"] = True
-            return frame
+    frame_key = (frame_key, tuple(auto_ev_payload(auto_ev).values()) if auto_ev is not None else None)
+    frame = cached.get_frame(frame_key)
+    if frame is not None:
+        ensure_current()
+        frame["cache_hit"] = True
+        return frame
     with SCHEDULER.slot("preview"):
         try:
             ensure_current()
@@ -1219,7 +1219,7 @@ def export_preview_jpeg(
             # this request queued (the observable S2 acceptance signal)
             SCHEDULER.note_dropped()
             raise
-        rgb_u8 = cached.get_pixels(pixel_key) if auto_ev is None else None
+        rgb_u8 = cached.get_pixels(pixel_key)
         pixel_cache_hit = rgb_u8 is not None
         # The compiled plan is consulted even on a pixel-cache hit: the histogram
         # annotations (curve endpoints, reliable tail, earned HDR headroom) must
@@ -1282,8 +1282,7 @@ def export_preview_jpeg(
                 dither_noise=cached.get_or_build_dither_noise(),
             )
             ensure_current()
-            if auto_ev is None:
-                rgb_u8 = cached.put_pixels(pixel_key, rgb_u8)
+            rgb_u8 = cached.put_pixels(pixel_key, rgb_u8)
         icc_profile = dg.output_icc_profile_bytes(gamut)
         # Both histograms ride the same response as the frame they describe, so
         # the page's latest-wins logic keeps image and histograms in lockstep.
@@ -1307,7 +1306,7 @@ def export_preview_jpeg(
         # overlay counted the annotation box's own near-white text as clipped
         # highlights, on exactly the path whose metrics judge headroom.
         metrics = preview_metrics_from_u8(rgb_u8, gamut) if include_metrics else {}
-        if auto_ev is not None:
+        if auto_ev is not None and include_metrics:
             rgb_u8 = annotate_preview_rgb_u8(rgb_u8, dg.auto_ev_overlay_lines(auto_ev))
         preview = preview_b64_from_u8(rgb_u8, icc_profile=icc_profile)
         ensure_current()
@@ -1333,8 +1332,7 @@ def export_preview_jpeg(
         "display_histogram": display_hist,
         "hdr_earned_ev": hdr_earned_ev(render_plan),
     }
-    if auto_ev is None:
-        cached.put_frame(frame_key, payload)
+    cached.put_frame(frame_key, payload)
     return payload
 
 
@@ -1749,54 +1747,64 @@ def run_preview(params: dict) -> dict:
             film_optics_seed = int(getattr(cached, "realization_id", 0) or 0)
         auto_ev_result = None
         if ev_auto:
-            auto_ev_result = dg.compute_auto_ev(
-                cached.bundle,
-                cached.analysis,
-                gamut,
-                look=look,
-                look_strength=look_strength,
-                display_filter=display_filter,
-                filter_strength=filter_strength,
-                scene_transform=scene_transform,
-                scene_transform_strength=scene_transform_strength,
-                punch_scale=punch_scale,
-                tone_core=tone_core,
-                lum_norm=lum_norm,
-                agx_primaries=agx_primaries,
-                adjustments=adjustments,
-                endpoint_mode=endpoint_mode,
-                film_curve=film_curve,
-                film_mode=film_mode,
-                film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta_dial=film_interimage_beta,
-                color_head_y=color_head_y,
-                color_head_m=color_head_m,
-                lens_filter=lens_filter,
-                chroma_nr=chroma_nr,
-            )
+            ignored = {"ev", "generation", "previewSession", "includeMetrics", "quality",
+                       "chroma", "deliveryProfile", "outdir", "png", "evAuto",
+                       "heifEncoder", "heifBitDepth", "heifPreset", "heifTune"}
+            auto_key = json.dumps({k: v for k, v in params.items() if k not in ignored},
+                                  sort_keys=True, ensure_ascii=True)
+            auto_ev_result = cached._auto_ev_cache.get(auto_key)
+            if auto_ev_result is None:
+                auto_ev_result = dg.compute_auto_ev(
+                    cached.bundle,
+                    cached.analysis,
+                    gamut,
+                    look=look,
+                    look_strength=look_strength,
+                    display_filter=display_filter,
+                    filter_strength=filter_strength,
+                    scene_transform=scene_transform,
+                    scene_transform_strength=scene_transform_strength,
+                    punch_scale=punch_scale,
+                    tone_core=tone_core,
+                    lum_norm=lum_norm,
+                    agx_primaries=agx_primaries,
+                    adjustments=adjustments,
+                    endpoint_mode=endpoint_mode,
+                    film_curve=film_curve,
+                    film_mode=film_mode,
+                    film_crossover=film_crossover,
+                    film_exposure_ev=film_exposure_ev,
+                    film_print_timing=film_print_timing,
+                    film_print_medium=film_print_medium,
+                    film_print_exposure_ev=film_print_exposure_ev,
+                    film_grain=film_grain,
+                    film_halation=film_halation,
+                    film_bloom=film_bloom,
+                    film_interimage=film_interimage,
+                    film_appearance=film_appearance,
+                    film_appearance_strength=film_appearance_strength,
+                    film_richness=film_richness,
+                    film_color_density=film_color_density,
+                    film_neutral_bias=film_neutral_bias,
+                    film_appearance_variant=film_appearance_variant,
+                    film_optics_seed=film_optics_seed,
+                    film_media_scatter=film_media_scatter,
+                    film_development=film_development,
+                    film_dev_contrast=film_dev_contrast,
+                    film_dev_fog=film_dev_fog,
+                    film_dev_density=film_dev_density,
+                    film_compression=film_compression,
+                    film_compression_knee=film_compression_knee,
+                    film_highlight_density=film_highlight_density,
+                    film_interimage_beta_dial=film_interimage_beta,
+                    color_head_y=color_head_y,
+                    color_head_m=color_head_m,
+                    lens_filter=lens_filter,
+                    chroma_nr=chroma_nr,
+                )
+                cached._auto_ev_cache[auto_key] = auto_ev_result
+                while len(cached._auto_ev_cache) > 8:
+                    cached._auto_ev_cache.popitem(last=False)
             if not is_current():
                 raise PreviewSuperseded()
             ev = auto_ev_result.ev
@@ -2268,7 +2276,12 @@ def run_export(params: dict) -> dict:
     hdr_rho, hdr_white_margin, hdr_shoulder_start = parse_hdr_dials(
         params, output_format
     )
-    delivery_name = str(params.get("deliveryProfile", params.get("delivery_profile", "archive")))
+    delivery_name = str(params.get("deliveryProfile", params.get("delivery_profile", "auto")))
+    if "deliveryProfile" not in params and "delivery_profile" not in params and (
+        params.get("quality") is not None or params.get("chroma") is not None
+    ):
+        # Keep explicit legacy API encode knobs manual, just like the CLI.
+        delivery_name = "archive" if quality == 100 and chroma == "444" else "share"
     try:
         delivery = dg.resolve_delivery_profile(
             delivery_name,
@@ -2282,6 +2295,12 @@ def run_export(params: dict) -> dict:
         delivery = dg.resolve_hdr_chroma(
             delivery, explicit_chroma=params.get("chroma")
         )
+    from dataclasses import replace
+    delivery = replace(delivery,
+        heif_encoder=str(params.get("heifEncoder", "auto")),
+        heif_bit_depth=int(params.get("heifBitDepth", 10)),
+        heif_preset=str(params.get("heifPreset", "slow")),
+        heif_tune=str(params.get("heifTune", "ssim")))
     quality = int(delivery.quality)
     chroma = str(delivery.chroma)
     wb = str(params.get("wb", "camera"))
@@ -2636,6 +2655,8 @@ def run_export(params: dict) -> dict:
         delivery=delivery_name,
         quality=int(quality),
         chroma=str(chroma),
+        heif_settings=((delivery.heif_encoder,delivery.heif_bit_depth,delivery.heif_preset,delivery.heif_tune)
+                       if delivery.container=="heic" else None),
     )
     out_ext = ".heic" if output_format == "ultrahdr-heic" else ".jpg"
     out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
@@ -2705,7 +2726,8 @@ def run_export(params: dict) -> dict:
                 out_path = Path(str(hdr_export_info["output_path"]))
             if hdr_export_info is not None and out_path.is_file():
                 hdr_export_info["file_size_bytes"] = out_path.stat().st_size
-            rendered_u8 = export_result[1] if isinstance(export_result, tuple) else None
+            rendered_u8 = (export_result.pop("_decoded_rgb", None) if isinstance(export_result, dict)
+                           else export_result[1] if isinstance(export_result, tuple) else None)
             if rendered_u8 is None and output_format == "ultrahdr-heic":
                 from dngscan.gainmap import read_primary_rgb_u8
 
@@ -2775,7 +2797,7 @@ def run_export(params: dict) -> dict:
                 if rendered_u8 is not None
                 else make_preview_b64(out_path, icc_profile=icc_profile)
             )
-            if auto_ev_result is not None:
+            if auto_ev_result is not None and want_png:
                 np = dg.np
                 if rendered_u8 is None:
                     from PIL import Image
@@ -2821,7 +2843,8 @@ def run_export(params: dict) -> dict:
         "hdr_diagnostics": (
             hdr_export_info.get("diagnostics") if hdr_export_info is not None else None
         ),
-        "hdr_container": hdr_export_info,
+        "hdr_container": hdr_export_info if dg.is_hdr_output_format(output_format) else None,
+        "delivery": hdr_export_info,
         "highlight": dg.highlight_mode_cn(highlight),
         "gamut": dg.output_gamut_label(gamut),
         "scene_transform": dg.scene_transform_label(scene_transform),

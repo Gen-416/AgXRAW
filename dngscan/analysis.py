@@ -228,6 +228,9 @@ def compute_generic_cell_union(
     Bayer-only: on other periods those fields remain NaN and their consumers
     must treat "no topology" as no evidence, never as zero clipping.
     """
+    if raw_image.ndim == 3:
+        thresholds_rgb = np.asarray([thresholds[c] for c in range(3)])
+        return float(np.mean(np.any(raw_image >= thresholds_rgb, axis=2)) * 100.0)
     try:
         pattern = np.asarray(raw_pattern)
         ph, pw = int(pattern.shape[0]), int(pattern.shape[1])
@@ -371,56 +374,43 @@ def normalized_raw_signal(
 
 
 def estimate_raw_noise_floor(bundle: RawBundle, fullwell_by_channel: dict[int, int]) -> float:
-    """Tile-local port of estimate_noise_floor over the NORMALIZED raw
-    signal. The old path materialized full-frame black/fullwell maps and a
-    normalized copy (three frame-sized float arrays) only to reduce them to
-    32x48 tile means/stds (review batch 17); normalization is pointwise, so
-    doing it per tile yields the identical statistic with tile-sized
-    temporaries only."""
-    raw = bundle.raw_image
-    colors = bundle.raw_colors
-    h = min(raw.shape[0], colors.shape[0])
-    w = min(raw.shape[1], colors.shape[1])
-    rows, cols = min(32, h), min(48, w)
-    if rows <= 0 or cols <= 0:
-        return 0.0
-    fallback = max(fullwell_by_channel.values()) if fullwell_by_channel else 1
-    max_color = int(np.max(colors)) if colors.size else -1
-    levels = np.zeros(max_color + 1, dtype=np.float32)
-    denoms = np.ones(max_color + 1, dtype=np.float32)
-    for cid in range(max_color + 1):
+    """Single-frame noise estimate on separate CFA phases.
+
+    Mixed-colour mosaic variance measures colour, not noise. The diagonal
+    second difference cancels constant fields and linear gradients; its L2 norm
+    is two, so MAD / (2 * 0.67449) estimates independent per-sensel sigma.
+    The darkest 10% of tiles still include photon noise; this is a scene-derived
+    bound, not a replacement for calibrated read-noise measurements.
+    """
+    if bundle.raw_image.ndim == 3:
+        # Spatial noise in a demosaiced/possibly denoised Linear DNG cannot
+        # establish independent sensel noise or electron-domain confidence.
+        return float("nan")
+    estimates = []
+    for cid in np.unique(bundle.raw_colors):
+        cid = int(cid)
         black = float(bundle.black_levels[cid]) if cid < len(bundle.black_levels) else 0.0
-        levels[cid] = black
-        denoms[cid] = max(float(fullwell_by_channel.get(cid, fallback)) - black, 1.0)
-    y_edges = np.linspace(0, h, rows + 1, dtype=int)
-    x_edges = np.linspace(0, w, cols + 1, dtype=int)
-    means: list[float] = []
-    stds: list[float] = []
-    for r in range(rows):
-        y0, y1 = int(y_edges[r]), int(y_edges[r + 1])
-        if y1 <= y0:
-            continue
-        for c in range(cols):
-            x0, x1 = int(x_edges[c]), int(x_edges[c + 1])
-            if x1 <= x0:
+        denom = max(float(fullwell_by_channel.get(cid, bundle.white_level)) - black, 1.0)
+        for yoff, xoff in cfa_positions_for_channel(bundle, cid):
+            ph, pw = np.asarray(bundle.raw_pattern).shape
+            from .spatial_black import corrected_plane
+            plane = corrected_plane(bundle, yoff, xoff, ph, pw)
+            tile = min(16, *plane.shape)
+            if tile < 4:
                 continue
-            cid_tile = colors[y0:y1, x0:x1]
-            tile = (
-                raw[y0:y1, x0:x1].astype(np.float32) - levels[cid_tile]
-            )
-            np.clip(tile, 0.0, None, out=tile)
-            tile /= denoms[cid_tile]
-            np.nan_to_num(tile, copy=False, nan=0.0, posinf=1.0, neginf=0.0)
-            if tile.size:
-                means.append(float(np.mean(tile, dtype=np.float64)))
-                stds.append(float(np.std(tile, dtype=np.float64)))
-    if not means:
-        return 0.0
-    means_arr = np.asarray(means)
-    stds_arr = np.asarray(stds)
-    count = max(1, int(math.ceil(len(means) * 0.10)))
-    darkest = np.argsort(means_arr)[:count]
-    return float(np.median(stds_arr[darkest]))
+            h, w = (n // tile * tile for n in plane.shape)
+            # One phase at a time bounds temporaries; no full-frame level maps.
+            cells = plane[:h, :w].astype(np.float32).reshape(h//tile, tile, w//tile, tile)
+            means = cells.mean(axis=(1, 3), dtype=np.float64).ravel()
+            residual = np.diff(np.diff(cells, axis=1), axis=3)
+            sigma = (np.median(np.abs(residual), axis=(1, 3)) / 1.3489795).ravel()
+            count = max(1, int(math.ceil(means.size * .10)))
+            dark = np.argpartition(means, count - 1)[:count]
+            # Quantized constant patches constrain noise below one code; they
+            # do not demonstrate an arbitrarily large sensor dynamic range.
+            floor = 1.0 / math.sqrt(12.0) if np.issubdtype(bundle.raw_image.dtype, np.integer) else 0.0
+            estimates.append(max(float(np.median(sigma[dark])), floor) / denom)
+    return float(np.median(estimates)) if estimates else float("nan")
 
 
 def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
@@ -551,7 +541,8 @@ def group_tile_signal_noise(
         for yoff, xoff in cfa_positions_for_channel(bundle, cid):
             pattern = np.asarray(bundle.raw_pattern)
             ph, pw = pattern.shape
-            plane = bundle.raw_image[yoff::ph, xoff::pw]
+            from .spatial_black import corrected_plane
+            plane = corrected_plane(bundle, yoff, xoff, ph, pw)
             sig, noise = tile_signal_noise_from_plane(plane, black)
             if sig.size:
                 signals.append(sig)
@@ -755,7 +746,7 @@ def raw_health_metrics(bundle: RawBundle, channel_ids: list[int], labels: dict[i
     lag-1 correlation: residuals of the darkest CFA green tiles should be ~white noise;
     clearly positive correlation means spatial filtering was applied before writing the
     file. histogram emptiness: missing DN codes in the dense value range indicate the
-    data was rescaled/requantized in camera. Heuristics — reported, never acted on."""
+    data was rescaled/requantized in camera. Heuristics: correlation can withdraw independent-sensel noise evidence."""
     green_ids = [cid for cid in channel_ids if labels[cid].startswith("G")]
     if not green_ids:
         return float("nan"), float("nan")
@@ -767,7 +758,8 @@ def raw_health_metrics(bundle: RawBundle, channel_ids: list[int], labels: dict[i
     if not positions:
         return float("nan"), float("nan")
     yoff, xoff = positions[0]
-    plane = bundle.raw_image[yoff::ph, xoff::pw].astype(np.float32, copy=False)
+    from .spatial_black import corrected_plane
+    plane = corrected_plane(bundle,yoff,xoff,ph,pw).astype(np.float32,copy=False)
 
     # Scene cancellation: the two green CFA planes sample (nearly) the same image, so
     # their difference is almost pure sensor noise. White noise -> lag-1 ~ 0; in-camera
@@ -776,7 +768,7 @@ def raw_health_metrics(bundle: RawBundle, channel_ids: list[int], labels: dict[i
     lag1 = float("nan")
     if len(positions) >= 2:
         y2, x2 = positions[1]
-        plane2 = bundle.raw_image[y2::ph, x2::pw].astype(np.float32, copy=False)
+        plane2 = corrected_plane(bundle,y2,x2,ph,pw).astype(np.float32,copy=False)
         h = min(plane.shape[0], plane2.shape[0])
         w = min(plane.shape[1], plane2.shape[1])
         diff = plane[:h, :w] - plane2[:h, :w]
@@ -804,7 +796,7 @@ def raw_health_metrics(bundle: RawBundle, channel_ids: list[int], labels: dict[i
             if den_h > 0 and den_v > 0:
                 lag1 = float(0.5 * (num_h / den_h + num_v / den_v))
 
-    vals = plane.reshape(-1).astype(np.int64)
+    vals = bundle.raw_image[yoff::ph,xoff::pw].reshape(-1).astype(np.int64)
     p05, p60 = np.percentile(vals, [5.0, 60.0])
     lo, hi = int(p05), int(max(p60, p05 + 32))
     hist_empty = float("nan")
@@ -833,6 +825,8 @@ def raw_health_verdict_cn(lag1: float, hist_empty: float) -> str:
 def sensor_prior_evidence(
     make: str | None, model: str | None, iso: int | None,
     *, nf: float, fullwell: float, mean_black: float,
+    coding_range: float | None = None, shutter: str | None = None,
+    noise_status: str = "independent",
 ):
     """EVERYTHING analyze() derives from sensor priors, in one place.
 
@@ -841,7 +835,7 @@ def sensor_prior_evidence(
     floor) is None TOGETHER, so SNR guidance, endpoint evidence and the DR
     clamp all degrade to frame-derived estimates. The prior's identity and
     the gate reason are still reported for diagnostics."""
-    prior = sensor_priors.find_priors(make, model)
+    prior = sensor_priors.find_priors(make, model, shutter=shutter)
     prior_id = prior["id"] if prior else None
     _pq = prior.get("quality") if prior else None
     quality_status = (_pq or {}).get("status") if isinstance(_pq, dict) else None
@@ -850,8 +844,16 @@ def sensor_prior_evidence(
     usable, gate_reason = sensor_priors.prior_usability(prior)
     if not usable:
         quality_status = quality_status or gate_reason
+    if usable and iso and prior.get("suspect_iso_min") and iso >= prior["suspect_iso_min"]:
+        usable, quality_status = False, "suspect-iso"
+    if noise_status != "independent":
+        usable, quality_status = False, noise_status
     use = usable and iso
-    gain_e = sensor_priors.gain_e_per_dn(prior, iso) if use else None
+    gain_e = (sensor_priors.gain_for_file(prior, iso, coding_range)
+              if use and coding_range is not None
+              else sensor_priors.gain_e_per_dn(prior, iso) if use else None)
+    if use and coding_range is not None and gain_e is None:
+        use, quality_status = False, "unmatched-dn-scale"
     prior_rn_e = sensor_priors.read_noise_e(prior, iso) if use else None
     prior_pdr = sensor_priors.pdr_ev(prior, iso) if use else None
     noise_e = None
@@ -909,7 +911,7 @@ def analyze(
     y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
     ev, raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray = compute_ev_metrics(y)
     nf = estimate_raw_noise_floor(bundle, channel_fullwell)
-    usable_dr = math.log2(1.0 / max(nf, NOISE_DR_EPS))
+    usable_dr = math.log2(1.0 / max(nf, NOISE_DR_EPS)) if math.isfinite(nf) else float("nan")
     # Review R2 item 1: the SNR curve is a RENDER input now, not a diagnostic.
     # compile_channel_separation's design lists a tail-SNR confidence factor,
     # and gating this behind `diagnostics` made the same photograph render
@@ -923,6 +925,21 @@ def analyze(
         bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names
     )
 
+    # This is decision evidence, so requesting a CSV must not change rendering.
+    health_lag1, health_hist = raw_health_metrics(bundle, channel_ids, labels)
+    noise_status = ("linear-camera-rgb" if raw_image.ndim == 3 else
+                    "spatially-correlated" if math.isfinite(health_lag1) and health_lag1 >= .20
+                    else "independent")
+    if noise_status != "independent":
+        # Correlation suppresses spatial sigma: do not grant high sensor-SNR
+        # confidence or a deep physical noise floor from processed samples.
+        usable_dr = float("nan")
+        for curve in snr_curves.values():
+            curve["snr_db"][:] = np.nan
+            curve["count"][:] = 0
+        snr1_dr = {k: float("nan") for k in snr1_dr}
+        snr1_stop = {k: float("nan") for k in snr1_stop}
+
     # Priors layer: electron-domain calibration from public measurements
     # (best-effort). Extracted into sensor_prior_evidence() so the whole
     # analyze-level prior behaviour is testable at its real seam (R11 item 2).
@@ -930,17 +947,15 @@ def analyze(
     (prior_id, prior_quality_status, prior_model_spread, prior_mode_match,
      gain_e, prior_rn_e, prior_pdr, noise_e) = sensor_prior_evidence(
         bundle.shot_make, bundle.shot_model, bundle.shot_iso,
-        nf=nf, fullwell=fullwell, mean_black=mean_black)
+        nf=nf, fullwell=fullwell, mean_black=mean_black,
+        coding_range=float(bundle.white_level) - mean_black,
+        shutter=getattr(bundle, "shot_shutter", None), noise_status=noise_status)
     # Effective DR for downstream tone planning: the empirical single-frame estimate,
     # gently bounded by the published PDR when available (never replaced by it).
     if prior_pdr is not None and math.isfinite(usable_dr):
         usable_dr_eff = clamp_float(usable_dr, prior_pdr - 1.5, prior_pdr + 1.5)
     else:
         usable_dr_eff = usable_dr
-    if diagnostics:
-        health_lag1, health_hist = raw_health_metrics(bundle, channel_ids, labels)
-    else:
-        health_lag1 = health_hist = float("nan")
 
     survivor_id = min(channel_ids, key=lambda cid: clip_pct.get(cid, float("inf")))
     analysis = Analysis(
@@ -990,6 +1005,7 @@ def analyze(
         prior_read_noise_e=prior_rn_e,
         prior_pdr_ev=prior_pdr,
         usable_dr_eff_ev=usable_dr_eff,
+        noise_evidence_status=noise_status,
         health_lag1_corr=health_lag1,
         health_hist_empty_pct=health_hist,
     )

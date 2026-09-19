@@ -29,7 +29,7 @@ class GainMapInterfaceTests(unittest.TestCase):
                 ]
             )
 
-    def test_cli_hdr_keeps_fixed_delivery_defaults(self) -> None:
+    def test_cli_hdr_uses_automatic_delivery_defaults(self) -> None:
         args = parse_args(
             [
                 "photo.dng",
@@ -38,9 +38,9 @@ class GainMapInterfaceTests(unittest.TestCase):
             ]
         )
         self.assertEqual(args.grade, "none")
-        self.assertEqual(args.jpeg_quality, 100)
-        self.assertEqual(args.chroma, "444")
-        self.assertEqual(args.delivery_profile, "archive")
+        self.assertEqual(args.jpeg_quality, 99)
+        self.assertEqual(args.chroma, "422")
+        self.assertEqual(args.delivery_profile, "auto")
         self.assertEqual(args.hdr_drt, "agx")
 
     def test_cli_hdr_rejects_non_agx_tone_core(self) -> None:
@@ -54,13 +54,45 @@ class GainMapInterfaceTests(unittest.TestCase):
             )
 
 class AppleGainMapWriterTests(unittest.TestCase):
-    def test_writer_refuses_chroma_conflict_before_backend_or_file_access(self) -> None:
+    def test_auto_upgrades_failed_auxiliary_before_comparing_primary_candidates(self) -> None:
+        from dngscan import gainmap
+        from dngscan.delivery import resolve_delivery_profile
+
+        write_auto = gainmap.write_apple_gainmap_file
+        base = np.zeros((8, 8, 3), np.uint8)
+        calls = []
+        def encode(base, hdr, path, headroom, *, delivery, _template_path,
+                   _gainmap_quality, **kwargs):
+            calls.append((delivery.quality, _gainmap_quality))
+            if _gainmap_quality == 95:
+                _template_path.write_bytes(b"low precision")
+                raise gainmap.HdrRoundtripError("local HDR highlight lost")
+            if len(calls) == 2:
+                self.assertFalse(_template_path.exists())
+                _template_path.write_bytes(b"high precision")
+            self.assertEqual(_template_path.read_bytes(), b"high precision")
+            path.write_bytes(b"x" * delivery.quality)
+            return {"delivery_quality": delivery.quality, "delivery_chroma_requested": "444",
+                    "gainmap_encoding_quality": _gainmap_quality}
+        with tempfile.TemporaryDirectory() as td, \
+             mock.patch("dngscan.heif_encoder.available", return_value=True), \
+             mock.patch("dngscan.gainmap.write_apple_gainmap_file", side_effect=encode), \
+             mock.patch("dngscan.gainmap.read_primary_rgb_u8", return_value=base):
+            info = write_auto(base, np.ones((8,8,4), np.float16), Path(td)/"out.heic", 3.,
+                              delivery=resolve_delivery_profile("auto", container="heic"))
+        self.assertEqual(calls[:2], [(95,95), (95,100)])
+        self.assertTrue(all(aux == 100 for _,aux in calls[1:]))
+        self.assertEqual(info["gainmap_encoding_quality"], 100)
+        self.assertEqual(info["auto_reference_quality"], 95)
+        self.assertEqual(info["delivery_quality"], 80)
+
+    def test_writer_accepts_quality_sampling_pair_before_backend(self) -> None:
         from dngscan.delivery import resolve_delivery_profile
         from dngscan.gainmap import write_apple_gainmap_file
 
-        with mock.patch("dngscan.gainmap.apple_gainmap_backend_status", side_effect=AssertionError):
-            with self.assertRaisesRegex(ValueError, "chroma=420"):
-                write_apple_gainmap_file(None, None, Path("unused.jpg"), 3,
+        with mock.patch("dngscan.gainmap.apple_gainmap_backend_status", return_value=(False,"reached backend")):
+            with self.assertRaisesRegex(RuntimeError, "reached backend"):
+                write_apple_gainmap_file(np.zeros((4,4,3),np.uint8), np.ones((4,4,4),np.float16), Path("unused.jpg"), 3,
                     delivery=resolve_delivery_profile("share", quality=100, chroma="420"))
 
     def test_quality_only_legacy_entry_resolves_sampling(self) -> None:

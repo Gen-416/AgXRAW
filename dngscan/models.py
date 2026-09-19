@@ -32,14 +32,13 @@ class RawEvidence:
     camera_white_levels: list[float]
     orientation_flip: int
     xyz_to_cam: Any | None
+    shot_shutter: str | None = None
+    spatial_black: Any | None = None
+    sample_kind: str = "cfa"  # cfa or linear-camera-rgb; never sensor SNR for the latter
     provider: str = "libraw"
     provider_version: str | None = None
-    # LibRaw's decode matrix ``rgb_cam`` (camera -> linear sRGB, 3x4 with the second
-    # green in the fourth column).  Captured beside ``xyz_to_cam`` because some bodies
-    # (e.g. Sigma fp DNGs) ship an all-zero Adobe-table ``rgb_xyz_matrix`` while LibRaw
-    # still decodes through a fully valid ``rgb_cam`` built from the DNG ColorMatrix
-    # tags.  This is what the fixed reconstruction actually applied, so the hot-WB
-    # stage can fall back to it without guessing.
+    # File-authored LibRaw cmatrix candidate exposed by rawpy.color_matrix.
+    # DNG may adopt it; non-DNG RGB cameras derive rgb_cam from xyz_to_cam.
     color_matrix: Any | None = None
 
 
@@ -69,6 +68,7 @@ class RawBundle:
     shot_make: str | None = None
     shot_model: str | None = None
     shot_iso: int | None = None
+    shot_shutter: str | None = None
     # DNG BaselineExposure as written by the camera, or None when the file omits it. This
     # is file-authored baseline rendering compensation, not shutter/aperture/ISO or an
     # auto-gray target. Both decoders honour it before dngscan's explicit EV adjustment.
@@ -252,6 +252,7 @@ class Analysis:
     prior_model_spread: float | None = None
     prior_mode_match: str | None = None
     usable_dr_eff_ev: float = float("nan")
+    noise_evidence_status: str = "independent"
     health_lag1_corr: float = float("nan")
     health_hist_empty_pct: float = float("nan")
 

@@ -3,8 +3,9 @@
 
 Formation produces finished SDR/HDR masters at full precision. This module only
 describes how those masters are packaged. Archive keeps the historical Ultrahdr
-contract (quality 100, 4:4:4, tight round-trip gates). Share lowers JPEG quality so
-Core Image may emit 4:2:0 and uses wider engineering gates calibrated for that loss.
+contract (quality 100, 4:4:4, tight round-trip gates). Auto searches q95–q99;
+share defaults to q95 / 4:2:0 with independent overrides. Both retain the engineering gates
+previously calibrated for q90 / 4:2:0 delivery.
 """
 from __future__ import annotations
 
@@ -12,13 +13,13 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 
-DELIVERY_PROFILE_CHOICES = ("archive", "share")
-DEFAULT_DELIVERY_PROFILE = "archive"
+DELIVERY_PROFILE_CHOICES = ("auto", "archive", "share")
+DEFAULT_DELIVERY_PROFILE = "auto"
 DELIVERY_CONTAINER_CHOICES = ("jpeg", "heic")
 
 # Share defaults for Ultrahdr / SDR when the user picks the profile without overriding
 # quality/chroma. Archive keeps the historical q100 / 444 Ultrahdr defaults.
-SHARE_JPEG_QUALITY = 90
+SHARE_JPEG_QUALITY = 95
 SHARE_CHROMA = "420"
 ARCHIVE_JPEG_QUALITY = 100
 ARCHIVE_CHROMA = "444"
@@ -140,8 +141,20 @@ class DeliveryProfile:
     # None derives the gates from the profile name, so a hand-built profile cannot
     # silently judge share-quality encodes against archive tolerances (or vice versa).
     tolerances: DeliveryTolerances | None = None
+    heif_encoder: str = "auto"  # auto selects libheif when installed, otherwise Apple
+    heif_bit_depth: int = 10
+    heif_preset: str = "slow"
+    heif_tune: str = "ssim"
 
     def __post_init__(self) -> None:
+        if self.heif_encoder not in ("auto","apple","x265"):
+            raise ValueError("HEIF encoder 必须为 auto/apple/x265")
+        if self.heif_bit_depth not in (8,10):
+            raise ValueError("HEIF bit depth 必须为 8/10")
+        if self.heif_preset not in ("fast","medium","slow","slower"):
+            raise ValueError("未知 HEIF preset")
+        if self.heif_tune not in ("ssim","psnr","grain"):
+            raise ValueError("未知 HEIF tune")
         if self.tolerances is None:
             object.__setattr__(
                 self, "tolerances", tolerances_for(self.name, self.container)
@@ -169,7 +182,11 @@ def resolve_delivery_profile(
         raise ValueError(
             f"未知 delivery profile：{name}（可选：{'/'.join(DELIVERY_PROFILE_CHOICES)}）"
         )
-    if key == "archive":
+    if key == "auto":
+        if quality is not None or chroma is not None:
+            raise ValueError("自动编码会选择质量与采样；指定编码参数请使用 share 档")
+        q, c = 99, "420" if container == "heic" else "422"
+    elif key == "archive":
         if quality is not None and int(quality) != ARCHIVE_JPEG_QUALITY:
             raise ValueError(
                 "delivery profile=archive 固定 JPEG quality 100；"
@@ -216,13 +233,8 @@ def reprofile_for_container(
     if profile.container == container:
         return profile
     standard = profile.tolerances == tolerances_for(profile.name, profile.container)
-    return DeliveryProfile(
-        name=profile.name,
-        quality=profile.quality,
-        chroma=profile.chroma,
-        container=container,
-        tolerances=None if standard else profile.tolerances,
-    )
+    return replace(profile, container=container,
+                   tolerances=tolerances_for(profile.name, container) if standard else profile.tolerances)
 
 
 def is_hdr_output_format(output_format: str) -> bool:
@@ -232,19 +244,19 @@ def is_hdr_output_format(output_format: str) -> bool:
 def resolve_hdr_chroma(
     profile: DeliveryProfile, *, explicit_chroma: str | None
 ) -> DeliveryProfile:
-    """Resolve Core Image's quality-dependent sampling at every HDR entry.
+    """Keep requested sampling independent of quality; verify the written file.
 
-    Profile names choose error tolerances, not codec sampling. With no explicit
-    request, follow quality; a contradictory request is refused before rendering.
-    The writer additionally checks the actual container before publishing it.
+    JPEG's primary is encoded by libjpeg and repackaged with ImageIO's gain map.
+    HEIF uses libheif/x265 when available, otherwise ImageIO; unsupported combinations fail readback
+    instead of being silently coerced by a quality/preset lookup table.
     """
-    expected = "444" if int(profile.quality) == 100 else "420"
-    if explicit_chroma is not None and str(explicit_chroma) != expected:
-        raise ValueError(
-            f"HDR gain-map quality={profile.quality} 要求 chroma={expected}；"
-            f"不能兑现 chroma={explicit_chroma}，请修改质量或省略采样参数"
-        )
-    return replace(profile, chroma=expected)
+    if explicit_chroma is not None:
+        if str(explicit_chroma) not in ("444", "422", "420"):
+            raise ValueError(f"未知 chroma：{explicit_chroma}")
+        return replace(profile, chroma=str(explicit_chroma))
+    if profile.name == "auto":
+        return replace(profile, chroma="422" if profile.container == "jpeg" else "420")
+    return profile
 
 
 def container_for_output_format(output_format: str) -> str:
@@ -272,7 +284,7 @@ def hdr_profile_from_encode_settings(
     quality: int, chroma: str | None = None, container: str = "jpeg"
 ) -> DeliveryProfile:
     """Legacy HDR API defaults follow quality; explicit sampling is validated."""
-    profile = profile_from_encode_settings(quality, chroma or "444", container)
+    profile = profile_from_encode_settings(quality, chroma or ("444" if quality == 100 else "420"), container)
     return resolve_hdr_chroma(profile, explicit_chroma=chroma)
 
 

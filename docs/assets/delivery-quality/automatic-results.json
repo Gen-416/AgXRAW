@@ -1,0 +1,1184 @@
+[
+  {
+    "sample": "DSC00225",
+    "mode": "sdr",
+    "container": "jpeg",
+    "seconds": 4.43043354099791,
+    "info": {
+      "coding_luma_rmse": 0.8781026761596016,
+      "coding_chroma_rmse": 2.0698729437849352,
+      "coding_local_luma_p99": 0.848687469959259,
+      "icc_embedded": true,
+      "delivery_quality": 98,
+      "delivery_container": "jpeg",
+      "delivery_chroma_requested": "422",
+      "chroma_subsampling": "4:2:2",
+      "delivery_profile": "auto",
+      "file_size_bytes": 20808065,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "422",
+      "auto_reference_bytes": 26885324,
+      "auto_saved_pct": 22.60437330046683,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 26885324,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.5904308674511346,
+            "coding_chroma_rmse": 1.856349160984311,
+            "coding_local_luma_p99": 0.557937502861023
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 20808065,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.8781026761596016,
+            "coding_chroma_rmse": 2.0698729437849352,
+            "coding_local_luma_p99": 0.848687469959259
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 17259683,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.1604625556431443,
+            "coding_chroma_rmse": 2.2767465501067927,
+            "coding_local_luma_p99": 1.1408437490463257
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 14648318,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.3786103818808098,
+            "coding_chroma_rmse": 2.4501345602750577,
+            "coding_local_luma_p99": 1.383079171180725
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 12418595,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.573599934152745,
+            "coding_chroma_rmse": 2.6078001911261306,
+            "coding_local_luma_p99": 1.611875057220459
+          }
+        },
+        {
+          "quality": 98,
+          "chroma": "420",
+          "bytes": 17692008,
+          "accepted": false,
+          "metrics": {
+            "coding_luma_rmse": 0.8792582103199417,
+            "coding_chroma_rmse": 2.422270336824703,
+            "coding_local_luma_p99": 0.8496729731559753
+          }
+        }
+      ],
+      "exif_carried": false
+    }
+  },
+  {
+    "sample": "DSCF0214",
+    "mode": "sdr",
+    "container": "jpeg",
+    "seconds": 4.674259666993748,
+    "info": {
+      "coding_luma_rmse": 0.8060754669247548,
+      "coding_chroma_rmse": 1.9638071956085232,
+      "coding_local_luma_p99": 0.8183125257492065,
+      "icc_embedded": true,
+      "delivery_quality": 98,
+      "delivery_container": "jpeg",
+      "delivery_chroma_requested": "422",
+      "chroma_subsampling": "4:2:2",
+      "delivery_profile": "auto",
+      "file_size_bytes": 18601367,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "422",
+      "auto_reference_bytes": 25818993,
+      "auto_saved_pct": 27.954715352376446,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 25818993,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.5935943591055173,
+            "coding_chroma_rmse": 1.7669176132508457,
+            "coding_local_luma_p99": 0.5616250038146973
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 18601367,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.8060754669247548,
+            "coding_chroma_rmse": 1.9638071956085232,
+            "coding_local_luma_p99": 0.8183125257492065
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 14835019,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.9700636208197438,
+            "coding_chroma_rmse": 2.1303548037394413,
+            "coding_local_luma_p99": 1.0604844093322754
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 12221048,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.0921158342820692,
+            "coding_chroma_rmse": 2.2604834611973534,
+            "coding_local_luma_p99": 1.2560468912124634
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 10043526,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.196017018819511,
+            "coding_chroma_rmse": 2.374202571153348,
+            "coding_local_luma_p99": 1.4404582977294922
+          }
+        },
+        {
+          "quality": 98,
+          "chroma": "420",
+          "bytes": 15389256,
+          "accepted": false,
+          "metrics": {
+            "coding_luma_rmse": 0.8066230713970874,
+            "coding_chroma_rmse": 2.3315719968553084,
+            "coding_local_luma_p99": 0.8183282017707825
+          }
+        }
+      ],
+      "exif_carried": false
+    }
+  },
+  {
+    "sample": "Original RAW 26-05-11 193721820",
+    "mode": "sdr",
+    "container": "jpeg",
+    "seconds": 1.7430687919986667,
+    "info": {
+      "coding_luma_rmse": 0.8919805907456542,
+      "coding_chroma_rmse": 2.9338187707239607,
+      "coding_local_luma_p99": 0.8819670081138611,
+      "icc_embedded": true,
+      "delivery_quality": 98,
+      "delivery_container": "jpeg",
+      "delivery_chroma_requested": "422",
+      "chroma_subsampling": "4:2:2",
+      "delivery_profile": "auto",
+      "file_size_bytes": 8645964,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "422",
+      "auto_reference_bytes": 10891625,
+      "auto_saved_pct": 20.618236489045483,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 10891625,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.6025457884060549,
+            "coding_chroma_rmse": 2.7722139105787287,
+            "coding_local_luma_p99": 0.6142309904098511
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 8645964,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.8919805907456542,
+            "coding_chroma_rmse": 2.9338187707239607,
+            "coding_local_luma_p99": 0.8819670081138611
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 7326653,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.2019722835584348,
+            "coding_chroma_rmse": 3.1210834303551236,
+            "coding_local_luma_p99": 1.190185785293579
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 6321239,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.4791410954750621,
+            "coding_chroma_rmse": 3.3079933584311156,
+            "coding_local_luma_p99": 1.4990936517715454
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 5445709,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.7486743495310555,
+            "coding_chroma_rmse": 3.4965994581574726,
+            "coding_local_luma_p99": 1.8233281373977661
+          }
+        },
+        {
+          "quality": 98,
+          "chroma": "420",
+          "bytes": 7287524,
+          "accepted": false,
+          "metrics": {
+            "coding_luma_rmse": 0.8950211982818789,
+            "coding_chroma_rmse": 3.6898107160102427,
+            "coding_local_luma_p99": 0.9026805758476257
+          }
+        }
+      ],
+      "exif_carried": false
+    }
+  },
+  {
+    "sample": "_SDI0133",
+    "mode": "hdr",
+    "container": "heic",
+    "seconds": 10.444419415995071,
+    "info": {
+      "has_iso_gainmap": true,
+      "headroom": 2.470703125,
+      "profile": "Display P3",
+      "width": 6000,
+      "height": 4000,
+      "chroma_subsampling": "4:2:0",
+      "gainmap_width": 6000,
+      "gainmap_height": 4000,
+      "gainmap_pixel_format": "420f",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.3049216695816725,
+      "base_mean_code_error": 2.242381986111111,
+      "base_p99_code_error": 21.0,
+      "base_max_code_error": 135.0,
+      "base_channel_bias_code_error": 0.29047066666666665,
+      "base_block_p99_code_error": 3.328125,
+      "chroma_error": 0.08217361569404602,
+      "relative_error": 0.238189697265625,
+      "median_relative_error": 0.035777125507593155,
+      "p95_relative_error": 0.14868353307247162,
+      "p99_relative_error": 0.238189697265625,
+      "p999_relative_error": 0.3917222023010254,
+      "block_median_relative_error": 0.00845889002084732,
+      "block_p95_relative_error": 0.029383797198534012,
+      "block_p99_relative_error": 0.04452649876475334,
+      "block_chroma_error": 0.016343720257282257,
+      "block_p95_luma_error": 0.027777424082159996,
+      "highlight_max_luma_error": 0.1144036129117012,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "delivery_quality": 95,
+      "delivery_chroma_requested": "420",
+      "delivery_container": "heic",
+      "coding_luma_rmse": 0.534421996465958,
+      "coding_chroma_rmse": 4.554877561610083,
+      "coding_local_luma_p99": 0.6089689135551453,
+      "file_size_bytes": 30835890,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "420",
+      "auto_reference_bytes": 37413669,
+      "auto_saved_pct": 17.5812187786234,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 37413669,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.39008648135401347,
+            "coding_chroma_rmse": 4.535906777932275,
+            "coding_local_luma_p99": 0.4380468726158142
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 35922506,
+          "accepted": false,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.4100888376699919,
+            "coding_chroma_rmse": 4.538493358591608,
+            "coding_local_luma_p99": 0.419921875
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 34300314,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.44364817543466895,
+            "coding_chroma_rmse": 4.5437824800155795,
+            "coding_local_luma_p99": 0.44270312786102295
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 32656902,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.48212686007566447,
+            "coding_chroma_rmse": 4.548318976753573,
+            "coding_local_luma_p99": 0.48182809352874756
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 30835890,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.534421996465958,
+            "coding_chroma_rmse": 4.554877561610083,
+            "coding_local_luma_p99": 0.6089689135551453
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample": "_SDI0133",
+    "mode": "hdr",
+    "container": "jpeg",
+    "seconds": 7.108794040999783,
+    "info": {
+      "has_iso_gainmap": true,
+      "headroom": 2.470703125,
+      "profile": "Display P3",
+      "width": 6000,
+      "height": 4000,
+      "chroma_subsampling": "4:2:0",
+      "gainmap_width": 6000,
+      "gainmap_height": 4000,
+      "gainmap_pixel_format": "420f",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.3049216695816725,
+      "base_mean_code_error": 2.5876193194444443,
+      "base_p99_code_error": 19.0,
+      "base_max_code_error": 120.0,
+      "base_channel_bias_code_error": 0.20202308333333333,
+      "base_block_p99_code_error": 1.53125,
+      "chroma_error": 0.07804882526397705,
+      "relative_error": 0.23888221383094788,
+      "median_relative_error": 0.04513668268918991,
+      "p95_relative_error": 0.159912109375,
+      "p99_relative_error": 0.23888221383094788,
+      "p999_relative_error": 0.36285400390625,
+      "block_median_relative_error": 0.005713423248380423,
+      "block_p95_relative_error": 0.01757942885160446,
+      "block_p99_relative_error": 0.025147801265120506,
+      "block_chroma_error": 0.010008112527430058,
+      "block_p95_luma_error": 0.0391029454767704,
+      "highlight_max_luma_error": 0.15855902433395386,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "delivery_quality": 95,
+      "delivery_chroma_requested": "420",
+      "delivery_container": "jpeg",
+      "coding_luma_rmse": 1.1852433088194982,
+      "coding_chroma_rmse": 4.559299308236991,
+      "coding_local_luma_p99": 1.3461092710494995,
+      "file_size_bytes": 16354805,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "420",
+      "auto_reference_bytes": 17726792,
+      "auto_saved_pct": 7.739623728873224,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 17726792,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.1122604173108432,
+            "coding_chroma_rmse": 4.484744848666261,
+            "coding_local_luma_p99": 1.2332971096038818
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 17180931,
+          "accepted": false,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.123555302972036,
+            "coding_chroma_rmse": 4.48489089622417,
+            "coding_local_luma_p99": 1.2402504682540894
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 16536136,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.1734671924322837,
+            "coding_chroma_rmse": 4.556185221289208,
+            "coding_local_luma_p99": 1.3085941076278687
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 16370320,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.1852729788409424,
+            "coding_chroma_rmse": 4.556476714556637,
+            "coding_local_luma_p99": 1.346641182899475
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 16354805,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.1852433088194982,
+            "coding_chroma_rmse": 4.559299308236991,
+            "coding_local_luma_p99": 1.3461092710494995
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample": "_SDI0133",
+    "mode": "sdr",
+    "container": "jpeg",
+    "seconds": 2.9334170000001905,
+    "info": {
+      "coding_luma_rmse": 0.9978144788376466,
+      "coding_chroma_rmse": 3.533945785839764,
+      "coding_local_luma_p99": 1.0796409845352173,
+      "icc_embedded": true,
+      "delivery_quality": 97,
+      "delivery_container": "jpeg",
+      "delivery_chroma_requested": "422",
+      "chroma_subsampling": "4:2:2",
+      "delivery_profile": "auto",
+      "file_size_bytes": 11369777,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "422",
+      "auto_reference_bytes": 18391953,
+      "auto_saved_pct": 38.18069783018693,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 18391953,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.5830322664389769,
+            "coding_chroma_rmse": 3.219980532583515,
+            "coding_local_luma_p99": 0.5559377074241638
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 13966594,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.8048193947893825,
+            "coding_chroma_rmse": 3.3583887852858783,
+            "coding_local_luma_p99": 0.818484365940094
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 11369777,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.9978144788376466,
+            "coding_chroma_rmse": 3.533945785839764,
+            "coding_local_luma_p99": 1.0796409845352173
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 9487446,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.15036670129904,
+            "coding_chroma_rmse": 3.718826131712308,
+            "coding_local_luma_p99": 1.299031376838684
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 7908606,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.2899786734841412,
+            "coding_chroma_rmse": 3.907906499499077,
+            "coding_local_luma_p99": 1.50629723072052
+          }
+        },
+        {
+          "quality": 97,
+          "chroma": "420",
+          "bytes": 9169856,
+          "accepted": false,
+          "metrics": {
+            "coding_luma_rmse": 0.9990365578456588,
+            "coding_chroma_rmse": 4.209113087814642,
+            "coding_local_luma_p99": 1.0811562538146973
+          }
+        }
+      ],
+      "exif_carried": false
+    }
+  },
+  {
+    "sample": "_SDI0150",
+    "mode": "hdr",
+    "container": "heic",
+    "seconds": 12.685377624999091,
+    "info": {
+      "has_iso_gainmap": true,
+      "headroom": 2.396484375,
+      "profile": "Display P3",
+      "width": 4000,
+      "height": 6000,
+      "chroma_subsampling": "4:2:0",
+      "gainmap_width": 4000,
+      "gainmap_height": 6000,
+      "gainmap_pixel_format": "420f",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.260919533662905,
+      "base_mean_code_error": 1.7542187916666667,
+      "base_p99_code_error": 15.0,
+      "base_max_code_error": 66.0,
+      "base_channel_bias_code_error": 0.29261575,
+      "base_block_p99_code_error": 2.71875,
+      "chroma_error": 0.05517618730664253,
+      "relative_error": 0.18506494164466858,
+      "median_relative_error": 0.03313840180635452,
+      "p95_relative_error": 0.1158432736992836,
+      "p99_relative_error": 0.18506494164466858,
+      "p999_relative_error": 0.31218013167381287,
+      "block_median_relative_error": 0.008801519870758057,
+      "block_p95_relative_error": 0.025682566687464714,
+      "block_p99_relative_error": 0.03871002793312073,
+      "block_chroma_error": 0.012333096005022526,
+      "block_p95_luma_error": 0.022250579670071602,
+      "highlight_max_luma_error": 0.659014880657196,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "delivery_quality": 95,
+      "delivery_chroma_requested": "420",
+      "delivery_container": "heic",
+      "coding_luma_rmse": 0.5344275560367758,
+      "coding_chroma_rmse": 3.3136759170640806,
+      "coding_local_luma_p99": 0.6217815279960632,
+      "file_size_bytes": 28100862,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "420",
+      "auto_reference_bytes": 34457854,
+      "auto_saved_pct": 18.44860100689961,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 34457854,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.38581321023087073,
+            "coding_chroma_rmse": 3.2795838087775464,
+            "coding_local_luma_p99": 0.4364843964576721
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 32924307,
+          "accepted": false,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.40686405842305373,
+            "coding_chroma_rmse": 3.2842299895359344,
+            "coding_local_luma_p99": 0.41609394550323486
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 31413486,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.4402952285316707,
+            "coding_chroma_rmse": 3.293960762605225,
+            "coding_local_luma_p99": 0.43662500381469727
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 29917851,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.47927563091607944,
+            "coding_chroma_rmse": 3.3031779953738423,
+            "coding_local_luma_p99": 0.4751562178134918
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 28100862,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.5344275560367758,
+            "coding_chroma_rmse": 3.3136759170640806,
+            "coding_local_luma_p99": 0.6217815279960632
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample": "_SDI0150",
+    "mode": "hdr",
+    "container": "jpeg",
+    "seconds": 7.741170374996727,
+    "info": {
+      "has_iso_gainmap": true,
+      "headroom": 2.396484375,
+      "profile": "Display P3",
+      "width": 4000,
+      "height": 6000,
+      "chroma_subsampling": "4:2:0",
+      "gainmap_width": 4000,
+      "gainmap_height": 6000,
+      "gainmap_pixel_format": "420f",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.260919533662905,
+      "base_mean_code_error": 2.1874781944444446,
+      "base_p99_code_error": 14.0,
+      "base_max_code_error": 60.0,
+      "base_channel_bias_code_error": 0.17023604166666667,
+      "base_block_p99_code_error": 1.421875,
+      "chroma_error": 0.057791970670223236,
+      "relative_error": 0.2007978856563568,
+      "median_relative_error": 0.044708251953125,
+      "p95_relative_error": 0.13624100387096405,
+      "p99_relative_error": 0.2007978856563568,
+      "p999_relative_error": 0.302734375,
+      "block_median_relative_error": 0.005544855259358883,
+      "block_p95_relative_error": 0.01571349799633026,
+      "block_p99_relative_error": 0.022077560424804688,
+      "block_chroma_error": 0.006976475473493338,
+      "block_p95_luma_error": 0.03492521494626999,
+      "highlight_max_luma_error": 0.34609687328338623,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "delivery_quality": 95,
+      "delivery_chroma_requested": "420",
+      "delivery_container": "jpeg",
+      "coding_luma_rmse": 1.1780284686442986,
+      "coding_chroma_rmse": 3.5446241913478524,
+      "coding_local_luma_p99": 1.295468807220459,
+      "file_size_bytes": 13738093,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "420",
+      "auto_reference_bytes": 14994829,
+      "auto_saved_pct": 8.38112925462504,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 14994829,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.10919678735724,
+            "coding_chroma_rmse": 3.4662591150447573,
+            "coding_local_luma_p99": 1.1964689493179321
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 14483031,
+          "accepted": false,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.12036924821459,
+            "coding_chroma_rmse": 3.4663374440282086,
+            "coding_local_luma_p99": 1.2036563158035278
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 13907137,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.1694006742394014,
+            "coding_chroma_rmse": 3.540735711036396,
+            "coding_local_luma_p99": 1.2677812576293945
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 13753025,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.178044562649087,
+            "coding_chroma_rmse": 3.5408210831976925,
+            "coding_local_luma_p99": 1.2947344779968262
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 13738093,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.1780284686442986,
+            "coding_chroma_rmse": 3.5446241913478524,
+            "coding_local_luma_p99": 1.295468807220459
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample": "_SDI0150",
+    "mode": "sdr",
+    "container": "jpeg",
+    "seconds": 3.210357749994728,
+    "info": {
+      "coding_luma_rmse": 0.8060068505873921,
+      "coding_chroma_rmse": 2.4302865048545077,
+      "coding_local_luma_p99": 0.8145783543586731,
+      "icc_embedded": true,
+      "delivery_quality": 98,
+      "delivery_container": "jpeg",
+      "delivery_chroma_requested": "422",
+      "chroma_subsampling": "4:2:2",
+      "delivery_profile": "auto",
+      "file_size_bytes": 13260259,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "422",
+      "auto_reference_bytes": 17679360,
+      "auto_saved_pct": 24.99581998443382,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 17679360,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.5818146572948694,
+            "coding_chroma_rmse": 2.244740762852222,
+            "coding_local_luma_p99": 0.5552968978881836
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 13260259,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.8060068505873921,
+            "coding_chroma_rmse": 2.4302865048545077,
+            "coding_local_luma_p99": 0.8145783543586731
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 10805476,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.9970902215421474,
+            "coding_chroma_rmse": 2.6407369721849965,
+            "coding_local_luma_p99": 1.063437581062317
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 9050330,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.145331609033735,
+            "coding_chroma_rmse": 2.840296436171074,
+            "coding_local_luma_p99": 1.2609063386917114
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 7559269,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.2788731537052211,
+            "coding_chroma_rmse": 3.028420196976893,
+            "coding_local_luma_p99": 1.442250370979309
+          }
+        },
+        {
+          "quality": 98,
+          "chroma": "420",
+          "bytes": 10818907,
+          "accepted": false,
+          "metrics": {
+            "coding_luma_rmse": 0.8063863762229978,
+            "coding_chroma_rmse": 2.980568194235797,
+            "coding_local_luma_p99": 0.8146721124649048
+          }
+        }
+      ],
+      "exif_carried": false
+    }
+  },
+  {
+    "sample": "_SDI0199",
+    "mode": "hdr",
+    "container": "heic",
+    "seconds": 10.531164208994596,
+    "info": {
+      "has_iso_gainmap": true,
+      "headroom": 2.310546875,
+      "profile": "Display P3",
+      "width": 6000,
+      "height": 4000,
+      "chroma_subsampling": "4:2:0",
+      "gainmap_width": 6000,
+      "gainmap_height": 4000,
+      "gainmap_pixel_format": "420f",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.2082343583397885,
+      "base_mean_code_error": 4.174273194444444,
+      "base_p99_code_error": 27.0,
+      "base_max_code_error": 145.0,
+      "base_channel_bias_code_error": 0.3421000416666667,
+      "base_block_p99_code_error": 4.15625,
+      "chroma_error": 0.15658560395240784,
+      "relative_error": 0.51544189453125,
+      "median_relative_error": 0.090484619140625,
+      "p95_relative_error": 0.3334905803203583,
+      "p99_relative_error": 0.51544189453125,
+      "p999_relative_error": 0.8132854700088501,
+      "block_median_relative_error": 0.02149900048971176,
+      "block_p95_relative_error": 0.06688256561756134,
+      "block_p99_relative_error": 0.09915905445814133,
+      "block_chroma_error": 0.025538044050335884,
+      "block_p95_luma_error": 0.02354143001139164,
+      "highlight_max_luma_error": 0.6994286179542542,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "delivery_quality": 95,
+      "delivery_chroma_requested": "420",
+      "delivery_container": "heic",
+      "coding_luma_rmse": 0.6913187148164376,
+      "coding_chroma_rmse": 6.988703902515527,
+      "coding_local_luma_p99": 0.8913282752037048,
+      "file_size_bytes": 40690193,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "420",
+      "auto_reference_bytes": 48481192,
+      "auto_saved_pct": 16.070147367663733,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 48481192,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.5478341885284237,
+            "coding_chroma_rmse": 6.958795282932332,
+            "coding_local_luma_p99": 0.759718656539917
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 47153403,
+          "accepted": false,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.539881273612278,
+            "coding_chroma_rmse": 6.960037076682959,
+            "coding_local_luma_p99": 0.7669225931167603
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 44878844,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.580621979705017,
+            "coding_chroma_rmse": 6.970983148323589,
+            "coding_local_luma_p99": 0.7904223799705505
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 42945727,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.6274363258397426,
+            "coding_chroma_rmse": 6.977885193793124,
+            "coding_local_luma_p99": 0.8296569585800171
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 40690193,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 0.6913187148164376,
+            "coding_chroma_rmse": 6.988703902515527,
+            "coding_local_luma_p99": 0.8913282752037048
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample": "_SDI0199",
+    "mode": "hdr",
+    "container": "jpeg",
+    "seconds": 7.846691124999779,
+    "info": {
+      "has_iso_gainmap": true,
+      "headroom": 2.310546875,
+      "profile": "Display P3",
+      "width": 6000,
+      "height": 4000,
+      "chroma_subsampling": "4:2:0",
+      "gainmap_width": 6000,
+      "gainmap_height": 4000,
+      "gainmap_pixel_format": "420f",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.2082343583397885,
+      "base_mean_code_error": 4.323402180555555,
+      "base_p99_code_error": 24.0,
+      "base_max_code_error": 123.0,
+      "base_channel_bias_code_error": 0.11949291666666667,
+      "base_block_p99_code_error": 1.8125,
+      "chroma_error": 0.141391783952713,
+      "relative_error": 0.46192896366119385,
+      "median_relative_error": 0.0970458984375,
+      "p95_relative_error": 0.3150719106197357,
+      "p99_relative_error": 0.46192896366119385,
+      "p999_relative_error": 0.701904296875,
+      "block_median_relative_error": 0.018246274441480637,
+      "block_p95_relative_error": 0.054093923419713974,
+      "block_p99_relative_error": 0.07883761078119278,
+      "block_chroma_error": 0.013599087484180927,
+      "block_p95_luma_error": 0.0430179238319397,
+      "highlight_max_luma_error": 0.6796846985816956,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "delivery_quality": 95,
+      "delivery_chroma_requested": "420",
+      "delivery_container": "jpeg",
+      "coding_luma_rmse": 1.6194417833465367,
+      "coding_chroma_rmse": 6.679425815865697,
+      "coding_local_luma_p99": 1.629406213760376,
+      "file_size_bytes": 26632332,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "420",
+      "auto_reference_bytes": 28483992,
+      "auto_saved_pct": 6.500703974358646,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 28483992,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.4504742030935067,
+            "coding_chroma_rmse": 6.558862425433962,
+            "coding_local_luma_p99": 1.4523124694824219
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 27785293,
+          "accepted": false,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.4595329266643844,
+            "coding_chroma_rmse": 6.558959392196839,
+            "coding_local_luma_p99": 1.4583593606948853
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 26961408,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.5395007378517127,
+            "coding_chroma_rmse": 6.676261103219682,
+            "coding_local_luma_p99": 1.5295003652572632
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 26651106,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.6194212880954117,
+            "coding_chroma_rmse": 6.676473675432489,
+            "coding_local_luma_p99": 1.6293751001358032
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 26632332,
+          "accepted": true,
+          "chroma": "420",
+          "metrics": {
+            "coding_luma_rmse": 1.6194417833465367,
+            "coding_chroma_rmse": 6.679425815865697,
+            "coding_local_luma_p99": 1.629406213760376
+          }
+        }
+      ]
+    }
+  },
+  {
+    "sample": "_SDI0199",
+    "mode": "sdr",
+    "container": "jpeg",
+    "seconds": 6.144618709004135,
+    "info": {
+      "coding_luma_rmse": 0.9078656359774598,
+      "coding_chroma_rmse": 4.6680485852363836,
+      "coding_local_luma_p99": 0.8963907957077026,
+      "icc_embedded": true,
+      "delivery_quality": 98,
+      "delivery_container": "jpeg",
+      "delivery_chroma_requested": "422",
+      "chroma_subsampling": "4:2:2",
+      "delivery_profile": "auto",
+      "file_size_bytes": 23216728,
+      "auto_reference_quality": 99,
+      "auto_reference_chroma": "422",
+      "auto_reference_bytes": 27409717,
+      "auto_saved_pct": 15.297454548691613,
+      "auto_attempts": [
+        {
+          "quality": 99,
+          "bytes": 27409717,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.622244591986279,
+            "coding_chroma_rmse": 4.542408669414897,
+            "coding_local_luma_p99": 0.6599374413490295
+          }
+        },
+        {
+          "quality": 98,
+          "bytes": 23216728,
+          "accepted": true,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 0.9078656359774598,
+            "coding_chroma_rmse": 4.6680485852363836,
+            "coding_local_luma_p99": 0.8963907957077026
+          }
+        },
+        {
+          "quality": 97,
+          "bytes": 20329020,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.2306697747140605,
+            "coding_chroma_rmse": 4.859707917179121,
+            "coding_local_luma_p99": 1.1963750123977661
+          }
+        },
+        {
+          "quality": 96,
+          "bytes": 17935310,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.5416814973584563,
+            "coding_chroma_rmse": 5.094997244542587,
+            "coding_local_luma_p99": 1.5083593130111694
+          }
+        },
+        {
+          "quality": 95,
+          "bytes": 15807474,
+          "accepted": false,
+          "chroma": "422",
+          "metrics": {
+            "coding_luma_rmse": 1.8633633831510152,
+            "coding_chroma_rmse": 5.36076048094914,
+            "coding_local_luma_p99": 1.8422971963882446
+          }
+        },
+        {
+          "quality": 98,
+          "chroma": "420",
+          "bytes": 18802933,
+          "accepted": false,
+          "metrics": {
+            "coding_luma_rmse": 0.9127769781514412,
+            "coding_chroma_rmse": 6.018032193149073,
+            "coding_local_luma_p99": 0.9294843673706055
+          }
+        }
+      ],
+      "exif_carried": false
+    }
+  }
+]

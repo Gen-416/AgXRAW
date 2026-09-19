@@ -49,14 +49,18 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
     LibRaw applies LinearizationTable while unpacking, and its exposed white
     level accounts for LinearResponseLimit. Applying either again would corrupt
     this contract. BlackLevelDeltaH/V are reduced to means by the pinned LibRaw
-    TIFF reader; per-position residuals are not represented by this per-channel
-    black model. load_raw reports that specific remaining approximation.
+    TIFF reader; the separate spatial_black calibration restores the position-dependent
+    model for working pixels and analysis, while these acquired codes stay immutable.
     """
     path = Path(path)
     try:
         with rawpy.imread(str(path)) as raw:
             raw_image = np.asarray(raw.raw_image_visible).copy()
-            raw_colors = np.asarray(raw.raw_colors_visible).copy()
+            if raw_image.ndim == 3 and raw_image.shape[2] in (3, 4):
+                raw_image = raw_image[..., :3].copy()
+                raw_colors = np.broadcast_to(np.arange(3, dtype=np.uint8), raw_image.shape)
+            else:
+                raw_colors = np.asarray(raw.raw_colors_visible).copy()
             if raw_image.size == 0 or raw_colors.size == 0:
                 raise RuntimeError("decoded RAW has no visible sensor pixels")
             if raw_image.shape != raw_colors.shape:
@@ -68,7 +72,7 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
             if white_level is None:
                 white_level = int(np.max(raw_image))
 
-            raw_pattern_attr = getattr(raw, "raw_pattern", None)
+            raw_pattern_attr = getattr(raw, "raw_pattern", None) if raw_image.ndim == 2 else None
             raw_pattern = (
                 []
                 if raw_pattern_attr is None
@@ -83,14 +87,18 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
             )
             matrix = getattr(raw, "rgb_xyz_matrix", None)
             xyz_to_cam = None if matrix is None else np.asarray(matrix).copy()
-            # rgb_cam: the camera -> linear-sRGB matrix LibRaw actually decodes
-            # through.  Some DNGs (Sigma fp) leave rgb_xyz_matrix all-zero while
-            # this matrix is valid, so both are evidence.
+            # rawpy exposes cmatrix (the file-authored candidate), not rgb_cam.
+            # It is adopted for supported DNGs; other cameras use cam_xyz.
+            # Keep both sources without conflating their meanings.
             decode_matrix = getattr(raw, "color_matrix", None)
             color_matrix = (
                 None if decode_matrix is None else np.asarray(decode_matrix).copy()
             )
 
+            from .spatial_black import read as read_spatial_black
+            spatial_black = read_spatial_black(path, raw)
+            from .embedded_lens import read as read_embedded_lens
+            lens = read_embedded_lens(path)
             return RawEvidence(
                 path=path,
                 raw_image=raw_image,
@@ -120,6 +128,9 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
                 ),
                 orientation_flip=orientation_flip,
                 xyz_to_cam=xyz_to_cam,
+                shot_shutter=lens.shutter if lens is not None else None,
+                spatial_black=spatial_black,
+                sample_kind="linear-camera-rgb" if raw_image.ndim == 3 else "cfa",
                 provider_version=libraw_runtime_id(),
                 color_matrix=color_matrix,
             )

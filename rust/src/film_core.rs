@@ -92,10 +92,12 @@ where
     }
     let chunk = (n + workers - 1) / workers * 3;
     std::thread::scope(|s| {
+        let mut handles = Vec::new();
         for (i, o) in inp.chunks(chunk).zip(out.chunks_mut(chunk)) {
             let fref = &f;
-            s.spawn(move || fref(i, o));
+            handles.push(s.spawn(move || fref(i, o)));
         }
+        crate::budget::join_workers(handles);
     });
 }
 

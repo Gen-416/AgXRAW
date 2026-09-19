@@ -14,7 +14,7 @@ from typing import Any, Callable, Hashable
 
 import dngscan as dg
 from dngscan.guidance import raw_color_permission, raw_guidance_for_shape
-from dngscan.models import Analysis, RawBundle, RawGuidanceMaps
+from dngscan.models import Analysis, AutoEvResult, RawBundle, RawGuidanceMaps
 from dngscan.retreat import resize_clip_masks
 
 from .constants import PROXY_LONG_EDGE
@@ -35,7 +35,8 @@ from .constants import PROXY_LONG_EDGE
 # scale on the preview as on the export.
 # v16: oriented shading, ordered camera-plane DNG corrections, processing-loss
 # masks and corrected HDR evidence authority. Earlier scene/plan caches are stale.
-PREVIEW_CACHE_VERSION = 16
+# v17: phase-separated noise and non-periodic full-resolution planning samples.
+PREVIEW_CACHE_VERSION = 18
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -62,6 +63,7 @@ class PreviewEntry:
         default_factory=lambda: __import__("secrets").randbits(32) | 1,
         init=False, repr=False,
     )
+    _auto_ev_cache: OrderedDict[str, AutoEvResult] = field(default_factory=OrderedDict, init=False, repr=False)
     _plan_cache: OrderedDict[Hashable, Any] = field(
         default_factory=OrderedDict, init=False, repr=False
     )
@@ -408,6 +410,7 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "shot_make": bundle.shot_make,
         "shot_model": bundle.shot_model,
         "shot_iso": bundle.shot_iso,
+        "shot_shutter": bundle.shot_shutter,
         "baseline_exposure": bundle.baseline_exposure,
         "baseline_exposure_baked_in": bool(bundle.baseline_exposure_baked_in),
         "evidence_provider": str(
@@ -491,6 +494,7 @@ def _bundle_from_cache(
         shot_make=metadata["shot_make"],
         shot_model=metadata["shot_model"],
         shot_iso=metadata["shot_iso"],
+        shot_shutter=metadata.get("shot_shutter"),
         baseline_exposure=metadata.get("baseline_exposure"),
         baseline_exposure_baked_in=bool(
             metadata.get("baseline_exposure_baked_in", False)
@@ -563,17 +567,17 @@ def build_proxy_entry(
 ) -> PreviewEntry:
     """Discard full RAW state after reducing the scene and evidence to proxy geometry."""
     np = dg.np
-    # R2 item 20: take the exporter's exact tone-plan sample stride from the
+    # R2 item 20: take the exporter's exact stratified tone-plan samples from the
     # FULL-resolution scene (and the same rows of the full-resolution clip
     # masks) before the proxy discards them. ~10 MB per entry at the 800k
     # sample cap, stored at source dtype so the compile is bit-identical.
-    from dngscan.tone import subsample_step as _subsample_step
+    from dngscan.sampling import sample_indices
 
     _flat = source.scene_rec2020_render.reshape(
         -1, source.scene_rec2020_render.shape[-1]
     )
-    _step = _subsample_step(_flat.shape[0])
-    tone_sample = np.ascontiguousarray(_flat[::_step, :3])
+    _indices = sample_indices(_flat.shape[0])
+    tone_sample = np.ascontiguousarray(_flat[_indices, :3])
     tone_sample_masks = None
     if source.clip_masks is not None:
         from dngscan import retreat as _retreat
@@ -582,7 +586,7 @@ def build_proxy_entry(
             source, source.scene_rec2020_render.shape[:2]
         ).reshape(-1, 3)
         tone_sample_masks = np.ascontiguousarray(
-            _masks[::_step].astype(np.float16, copy=False)
+            _masks[_indices].astype(np.float16, copy=False)
         )
     del _flat
     proxy_scene = downsample_mean(source.scene_rec2020_render, PROXY_LONG_EDGE)

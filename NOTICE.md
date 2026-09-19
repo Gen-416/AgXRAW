@@ -23,6 +23,31 @@ used by Eary Chow's AgX LUT generator:
 
 No third-party display or camera LUT is distributed with dngscan.
 
+## Embedded lens metadata and RAW processing references
+
+The Sony/Fujifilm coefficient conventions in `dngscan/embedded_lens.py` are
+adapted from darktable's metadata-driven lens correction (GPL-3.0-or-later),
+with tag layouts cross-checked against Exiv2:
+
+- https://github.com/darktable-org/darktable/blob/master/src/common/exif.cc
+- https://github.com/darktable-org/darktable/blob/master/src/iop/lens.cc
+- https://github.com/Exiv2/exiv2/blob/main/src/fujimn_int.cpp
+
+The implementation reads profiles authored in each photograph; no third-party
+lens-profile database is bundled. This code is distributed under the project's
+GPL-3.0-or-later license.
+
+Camera-matrix reconstruction follows LibRaw's `cam_xyz_coeff` normalization and
+matrix constants. DNG black-delta normalization and opcode stage conventions
+were checked against the DNG specification and Adobe's DNG SDK reference:
+
+- https://github.com/LibRaw/LibRaw/blob/master/src/utils/utils_dcraw.cpp
+- https://helpx.adobe.com/camera-raw/digital-negative.html
+- https://android.googlesource.com/platform/external/dng_sdk/+/refs/heads/android14-prebuilt-test/source/dng_linearization_info.cpp
+
+These references document the numerical conventions implemented by this
+project; the DNG SDK is not bundled or linked.
+
 ## Status A / Status M densitometer responsivities
 
 `dngscan_assets/spectral/densitometer/` carries the ISO 5-3 Status A and

@@ -31,7 +31,8 @@ use std::sync::atomic::Ordering;
 /// punch/Oklab matrices of both kernels exact float64. v12 adds the P3
 /// luminance row and local luminance metrics to the HDR delivery scanner.
 /// v13 tracks in-place GainMap clipping and adds camera-plane DNG warps.
-pub const NATIVE_ABI_VERSION: i32 = 13;
+/// v14 adds WarpRectilinear2 and embedded lens radial splines.
+pub const NATIVE_ABI_VERSION: i32 = 14;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -581,15 +582,32 @@ fn as_f16_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
+#[pyo3(signature=(image, coefficients, cx, cy, aspect, fisheye, loss, knots=None, scales=None, scale=1.0))]
 fn warp_dng<'py>(py: Python<'py>, image: &Bound<'py, PyAny>, coefficients: Vec<Vec<f64>>,
     cx: f64, cy: f64, aspect: f64, fisheye: bool, loss: bool,
+    knots: Option<Vec<f64>>, scales: Option<Vec<Vec<f64>>>, scale: f64,
 ) -> PyResult<Bound<'py, PyAny>> {
-    if ![1,3].contains(&coefficients.len()) || coefficients.iter().any(|r| r.len()!=6 || r.iter().any(|x| !x.is_finite()))
+    if ![1,3].contains(&coefficients.len()) || coefficients.iter().any(|r| ![6,20].contains(&r.len()) || r.iter().any(|x| !x.is_finite()))
         || !cx.is_finite() || !cy.is_finite() || !(0.0..=1.0).contains(&cx) || !(0.0..=1.0).contains(&cy)
         || !aspect.is_finite() || aspect <= 0.0 {
         return Err(PyValueError::new_err("invalid DNG warp parameters"));
     }
-    let coeff: Vec<[f64;6]> = coefficients.iter().map(|r| r.as_slice().try_into().unwrap()).collect();
+    let knots = knots.unwrap_or_default();
+    let scales = scales.unwrap_or_default();
+    if !scale.is_finite() || scale <= 0.0 || (!knots.is_empty() &&
+        (knots.len()<2 || knots.iter().any(|x| !x.is_finite()) ||
+         knots.windows(2).any(|a| a[1]<=a[0]) || scales.len()!=3 ||
+         scales.iter().any(|r| r.len()!=knots.len() || r.iter().any(|x| !x.is_finite() || *x<=0.0)))) {
+        return Err(PyValueError::new_err("invalid radial spline"));
+    }
+    let coeff: Vec<[f64;6]> = coefficients.iter().map(|r| if r.len()==6 {
+        r.as_slice().try_into().unwrap()
+    } else {[1.0,0.0,0.0,0.0,r[15],r[16]]}).collect();
+    for r in &coefficients {
+        if r.len()==20 && (!(0.0..=1.0).contains(&r[17]) || r[18]<=r[17] || r[18]>1.0 || ![0.0,1.0].contains(&r[19])) {
+            return Err(PyValueError::new_err("invalid extended DNG radial parameters"));
+        }
+    }
     if loss {
         let a = as_f16_array(py, image)?;
         let ro = a.readonly();
@@ -597,7 +615,7 @@ fn warp_dng<'py>(py: Python<'py>, image: &Bound<'py, PyAny>, coefficients: Vec<V
             .map_err(|_| PyValueError::new_err("warp image must be H,W,3"))?;
         let (h,w,c) = src.dim();
         if h==0 || w==0 || c!=3 { return Err(PyValueError::new_err("warp image must be nonempty H,W,3")); }
-        let out = py.detach(|| lens::warp(src,&coeff,cx,cy,aspect,fisheye,true,
+        let out = py.detach(|| lens::warp(src,&coeff,&coefficients,cx,cy,aspect,fisheye,true,&knots,&scales,scale,
             |v| v.to_f64(), half::f16::from_f64));
         Ok(PyArray1::from_vec(py,out).reshape([h,w,3])?.into_any())
     } else {
@@ -607,7 +625,7 @@ fn warp_dng<'py>(py: Python<'py>, image: &Bound<'py, PyAny>, coefficients: Vec<V
             .map_err(|_| PyValueError::new_err("warp image must be H,W,3"))?;
         let (h,w,c) = src.dim();
         if h==0 || w==0 || c!=3 { return Err(PyValueError::new_err("warp image must be nonempty H,W,3")); }
-        let out = py.detach(|| lens::warp(src,&coeff,cx,cy,aspect,fisheye,false,
+        let out = py.detach(|| lens::warp(src,&coeff,&coefficients,cx,cy,aspect,fisheye,false,&knots,&scales,scale,
             |v| v as f64, |v| v as u16));
         Ok(PyArray1::from_vec(py,out).reshape([h,w,3])?.into_any())
     }

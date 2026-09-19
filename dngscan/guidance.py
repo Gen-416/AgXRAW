@@ -240,6 +240,20 @@ def _raw_headroom_rgb(
     """
     from . import raw_io
 
+    if bundle.raw_image.ndim == 3:
+        from .raw_io import _resize_loss_to_shape, _orient_like_libraw
+        from .dng_opcodes import align_loss
+        headroom = np.empty(bundle.raw_image.shape, dtype=np.float16)
+        for c in range(3):
+            black = raw_io.channel_black_level(bundle.black_levels, c)
+            model=getattr(getattr(bundle,"evidence",None),"spatial_black",None)
+            if model is not None:black=model.band(0,bundle.raw_image.shape[0],bundle.raw_image.shape[1],c)
+            white = float((getattr(analysis, "channel_fullwell", None) or {}).get(c)
+                          or raw_io.channel_fullwell(bundle.white_level, bundle.camera_white_levels, c))
+            headroom[..., c] = np.clip((white - bundle.raw_image[..., c].astype(np.float32)) /
+                                       np.maximum(white - black, 1.0), 0.0, 1.0)
+        # Loss uses footprint maximum, equivalently headroom uses minimum.
+        return 1.0 - _resize_loss_to_shape(align_loss(bundle, 1.0-headroom), target_shape)
     resolved = dict(getattr(analysis, "channel_fullwell", None) or {})
     raw = np.asarray(bundle.raw_image, dtype=np.float32)
     colors = np.asarray(bundle.raw_colors)
@@ -251,13 +265,15 @@ def _raw_headroom_rgb(
         if out_idx is None:
             continue
         black = raw_io.channel_black_level(bundle.black_levels, cid_i)
+        model=getattr(getattr(bundle,"evidence",None),"spatial_black",None)
+        if model is not None:black=model.band(0,raw.shape[0],raw.shape[1])
         fullwell = float(
             resolved.get(cid_i)
             or raw_io.channel_fullwell(
                 bundle.white_level, bundle.camera_white_levels, cid_i
             )
         )
-        channel_headroom = np.clip((np.float32(fullwell) - raw) / np.float32(max(fullwell - black, 1.0)), 0.0, 1.0)
+        channel_headroom = np.clip((np.float32(fullwell) - raw) / np.maximum(fullwell-black,1.0), 0.0, 1.0)
         plane = np.where(colors == cid_i, channel_headroom, np.float32(1.0))
         headroom[:, :, out_idx] = np.minimum(headroom[:, :, out_idx], plane)
     return _align_cfa_rgb_map(bundle, headroom, target_shape)
@@ -311,6 +327,8 @@ def _raw_snr_confidence(bundle: RawBundle, analysis: Analysis | None, target_sha
         if out_idx is None:
             continue
         black = raw_io.channel_black_level(bundle.black_levels, cid_i)
+        model=getattr(getattr(bundle,"evidence",None),"spatial_black",None)
+        if model is not None:black=model.band(0,raw.shape[0],raw.shape[1])
         electrons = np.maximum(raw - np.float32(black), 0.0) * np.float32(gain)
         snr = electrons / np.sqrt(np.maximum(electrons + rn2, np.float32(EPS)))
         plane = np.where(colors == cid_i, smoothstep(np.float32(1.0), np.float32(10.0), snr), np.float32(1.0))

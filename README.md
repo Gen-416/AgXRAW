@@ -20,6 +20,17 @@ questions into one measurable, reproducible pipeline.
 [Sensor support](docs/SENSOR_SUPPORT.zh-CN.md) (Chinese) ·
 [Full documentation index](docs/README.md)
 
+The default workflow now uses AgX with analysis-driven exposure and tone planning.
+Automatic JPEG delivery searches q95–q99 using actual codec readback, with
+4:2:2 as the reference sampling. HDR JPEG now has independent quality and
+sampling controls while retaining its ISO gain map. HEIF can use libheif/x265
+with 8/10-bit output, adjustable sampling, preset and tune; its automatic mode
+searches its own quality range against a q95/4:4:4/10-bit reference. Every HDR
+candidate must pass SDR and HDR reconstruction checks. Use `--ev 0` for the fixed
+exposure anchor, `--delivery-profile share` for manual controls (initially
+q95/4:2:0), or `--delivery-profile archive` for explicit q100/4:4:4.
+[Full-resolution quality/size measurements](docs/DELIVERY_QUALITY_STUDY.zh-CN.md).
+
 ## What it does
 
 ### Develops a RAW into a photograph

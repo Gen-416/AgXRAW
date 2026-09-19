@@ -193,6 +193,7 @@ pub fn finalize_u8(
     }
     let block = block_pixels(n, workers) * 3;
     std::thread::scope(|s| {
+        let mut handles = Vec::new();
         let mut nb_chunks = noise_b.map(|nb| nb.chunks(block));
         for ((i, na), o) in input
             .chunks(block)
@@ -200,8 +201,9 @@ pub fn finalize_u8(
             .zip(output.chunks_mut(block))
         {
             let nb = nb_chunks.as_mut().and_then(|it| it.next());
-            s.spawn(move || finalize_range(i, na, nb, o, plan, input_is_rec2020));
+            handles.push(s.spawn(move || finalize_range(i, na, nb, o, plan, input_is_rec2020)));
         }
+        crate::budget::join_workers(handles);
     });
 }
 
@@ -223,8 +225,10 @@ pub fn fit_output_gamut_f32(input: &[f32], output: &mut [f32], plan: &NativeOutp
     }
     let block = block_pixels(n, workers) * 3;
     std::thread::scope(|s| {
+        let mut handles = Vec::new();
         for (i, o) in input.chunks(block).zip(output.chunks_mut(block)) {
-            s.spawn(move || fit_range(i, o, plan));
+            handles.push(s.spawn(move || fit_range(i, o, plan)));
         }
+        crate::budget::join_workers(handles);
     });
 }
