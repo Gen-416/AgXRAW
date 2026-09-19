@@ -130,6 +130,10 @@ def _apply_gain_maps_mosaic(
             top=m.top+max(0,(-m.top+m.row_pitch-1)//m.row_pitch)*m.row_pitch
             left=m.left+max(0,(-m.left+m.col_pitch-1)//m.col_pitch)*m.col_pitch
             m.top,m.left,m.bottom,m.right=top,left,min(m.bottom,h),min(m.right,w)
+        if m.bottom <= m.top or m.right <= m.left:
+            # An empty intersection is a no-op, not the authored empty AreaSpec.
+            # Do not pass negative clipped bounds into the unsigned Rust ABI.
+            continue
         if int(getattr(m, "plane", 0)) > 0 or int(getattr(m, "planes", 1)) < 1:
             # Targets image planes the 1-plane mosaic does not have (or none).
             continue
