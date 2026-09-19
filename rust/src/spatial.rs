@@ -29,10 +29,12 @@ where
     }
     let chunk_rows = (rows + workers - 1) / workers;
     std::thread::scope(|s| {
+        let mut handles = Vec::with_capacity(workers);
         for (i, chunk) in out.chunks_mut(chunk_rows * row_len.max(1)).enumerate() {
             let fref = &f;
-            s.spawn(move || fref(i * chunk_rows, chunk));
+            handles.push(s.spawn(move || fref(i * chunk_rows, chunk)));
         }
+        crate::budget::join_workers(handles);
     });
 }
 
@@ -47,10 +49,12 @@ where
     }
     let chunk_rows = (rows + workers - 1) / workers;
     std::thread::scope(|s| {
+        let mut handles = Vec::with_capacity(workers);
         for (i, chunk) in out.chunks_mut(chunk_rows * row_len.max(1)).enumerate() {
             let fref = &f;
-            s.spawn(move || fref(i * chunk_rows, chunk));
+            handles.push(s.spawn(move || fref(i * chunk_rows, chunk)));
         }
+        crate::budget::join_workers(handles);
     });
 }
 

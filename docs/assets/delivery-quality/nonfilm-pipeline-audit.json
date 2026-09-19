@@ -1,0 +1,65 @@
+[
+  {
+    "sample": "_SDI0150.DNG",
+    "scene_shape": [
+      6000,
+      4000,
+      3
+    ],
+    "scene_dtype": "float32",
+    "corrections": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "auto_ev": 0.046875,
+    "proxy_ev_identical": true,
+    "proxy_tone_identical": true,
+    "diagnostics_ev_identical": true,
+    "noise_status": "independent",
+    "prior_status": null,
+    "reliable_tail_ev": 3.7623822689056396,
+    "hdr_headroom_ev": 1.2884510805732274
+  },
+  {
+    "sample": "DSC00225.ARW",
+    "scene_shape": [
+      4688,
+      7028,
+      3
+    ],
+    "scene_dtype": "float32",
+    "corrections": [
+      "Sony embedded lens shading",
+      "Sony embedded lens distortion/TCA"
+    ],
+    "auto_ev": 0.0390625,
+    "proxy_ev_identical": true,
+    "proxy_tone_identical": true,
+    "diagnostics_ev_identical": true,
+    "noise_status": "independent",
+    "prior_status": "unmatched-dn-scale",
+    "reliable_tail_ev": 2.7418692111968994,
+    "hdr_headroom_ev": 0.2679380228644872
+  },
+  {
+    "sample": "DSCF0214.RAF",
+    "scene_shape": [
+      5178,
+      7752,
+      3
+    ],
+    "scene_dtype": "float32",
+    "corrections": [
+      "Fujifilm embedded lens shading",
+      "Fujifilm embedded lens distortion/TCA"
+    ],
+    "auto_ev": 1.5666446685791016,
+    "proxy_ev_identical": true,
+    "proxy_tone_identical": true,
+    "diagnostics_ev_identical": true,
+    "noise_status": "independent",
+    "prior_status": null,
+    "reliable_tail_ev": 0.892440676689148,
+    "hdr_headroom_ev": 0.0
+  }
+]

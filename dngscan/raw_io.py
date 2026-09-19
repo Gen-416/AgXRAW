@@ -86,6 +86,22 @@ def _apply_gain_maps_mosaic(
     map planes, which is only coincidentally right for map_planes == 1.
     """
     img = raw.raw_image_visible
+    if img.ndim == 3:
+        # Linear DNG contains image planes, unlike a one-plane CFA mosaic.
+        # Reuse the in-place strided kernel per plane, without copying RGB.
+        from types import SimpleNamespace
+        for m in maps:
+            for c in range(m.plane, min(m.plane + m.planes, min(3, img.shape[2]))):
+                mp = min(c - m.plane, m.map_planes - 1)
+                single = replace(m, plane=0, planes=1, map_planes=1,
+                                 gains=np.asarray(m.gains)[..., mp:mp+1])
+                view = SimpleNamespace(raw_image_visible=img[..., c],
+                    raw_colors_visible=np.broadcast_to(np.uint8(0), img.shape[:2]))
+                _apply_gain_maps_mosaic(view, [single],
+                    [channel_black_level(black_levels,c)], white_level,
+                    [channel_fullwell(white_level,camera_white_levels or [],c)],
+                    None if loss_mask is None else loss_mask[..., c])
+        return
     colors = raw.raw_colors_visible
     h, w = img.shape
     blacks = np.asarray(black_levels or [0.0], dtype=np.float32)
@@ -482,10 +498,10 @@ def _libraw_applied_xyz_to_cam(bundle: Any, evidence: Any) -> Any:
 
 
 def color_matrix_xyz_to_cam(color_matrix: Any | None) -> Any | None:
-    """Equivalent XYZ->camera matrix from LibRaw's decode matrix (``rgb_cam``).
+    """Equivalent XYZ->camera matrix from an adopted LibRaw ``cmatrix``.
 
-    ``color_matrix`` is LibRaw's camera -> linear-sRGB(D65) matrix — the one every
-    ``postprocess`` output conversion really goes through (Rec.2020 output is
+    When LibRaw adopts ``color_matrix`` it becomes the camera -> linear-sRGB(D65)
+    ``rgb_cam`` matrix that output conversion goes through (Rec.2020 output is
     ``(sRGB->Rec2020) @ rgb_cam``).  Its underlying camera->sRGB rows are normalized so
     the post-WB camera neutral maps to sRGB white; on DNGs LibRaw builds it from
     ColorMatrix2 (measured on Sigma fp: it equals the D65-row-normalized ColorMatrix2
@@ -911,6 +927,8 @@ def channel_label(color_desc: str, cid: int) -> str:
 
 def _mosaic_loss_rgb(loss: Any, colors: Any, color_desc: str) -> Any:
     """Conservative 2x2 reduction of a one-byte per-sensel processing log."""
+    if loss.ndim == 3:
+        return loss[..., :3].astype(np.float16)
     h, w = loss.shape
     out = np.zeros(((h + 1)//2, (w + 1)//2, 3), dtype=np.float16)
     for r in range(2):
@@ -942,20 +960,87 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     """One production recipe, also used by the Core Image scale reference."""
     from . import dng_opcodes as ops
     recipe = ops.read_plan(path)
-    loss = np.zeros(evidence.raw_image.shape, dtype=np.uint8) if track_loss and recipe.gain_maps else None
-    if recipe.gain_maps:
-        _apply_gain_maps_mosaic(raw, recipe.gain_maps, evidence.black_levels,
-                               evidence.white_level,
-                               list(recipe.white_levels) or evidence.camera_white_levels, loss)
+    from . import embedded_lens
+    lens = embedded_lens.read(path)
+    if lens is not None:
+        recipe.post.extend((lens.vignette,lens.warp))
+        recipe.names.extend((lens.source+" shading",lens.source+" distortion/TCA"))
+    loss = np.zeros(evidence.raw_image.shape, dtype=np.uint8) if track_loss and (recipe.stage1 or recipe.stage2 or evidence.spatial_black is not None) else None
+    from . import dng_point_ops
+    # Area/pitch/table coordinates are sensor pixels. Reduced demosaic would
+    # discard them before a stage-3 point transform, so process that uncommon
+    # recipe at full resolution and reduce only the finished scene.
+    reduce_after_ops = half_size and any(isinstance(op,dng_point_ops.PointOp) for op in recipe.post)
+    if recipe.stage1:
+        from .spatial_black import sensor_tags
+        tags = sensor_tags(path,{50712})
+        table=np.asarray(tags.get(50712,()),dtype=np.uint16)
+        image=raw.raw_image
+        if table.size:
+            if np.any(np.diff(table.astype(np.int64))<=0):
+                raise ValueError("stage-1 opcodes need original codes; LibRaw's non-invertible LinearizationTable has discarded them")
+            for y in range(0,image.shape[0],128):
+                band=image[y:y+128]
+                index=np.searchsorted(table,band)
+                if np.any(index>=table.size) or not np.array_equal(table[index],band):
+                    raise ValueError("cannot recover DNG stage-1 codes from LinearizationTable")
+                band[:]=index
+        full_loss=np.zeros(image.shape,dtype=np.uint8) if track_loss else None
+        for op in recipe.stage1:
+            if isinstance(op,dng_point_ops.BadPixels):
+                dng_point_ops.repair_bad_pixels(raw,op,loss)
+            else:
+                dng_point_ops.apply(image,op,loss=full_loss)
+        if full_loss is not None:
+            y,x=raw.sizes.top_margin,raw.sizes.left_margin
+            visible_loss=full_loss[y:y+loss.shape[0],x:x+loss.shape[1]]
+            if visible_loss.ndim==3:visible_loss=visible_loss[...,:3]
+            np.maximum(loss,visible_loss,out=loss)
+        if table.size:
+            for y in range(0,image.shape[0],128):
+                image[y:y+128]=table[np.minimum(image[y:y+128],table.size-1)]
+        if loss is not None:
+            levels=np.asarray(list(recipe.white_levels) or evidence.camera_white_levels
+                              or [evidence.white_level],dtype=np.float32)
+            work=raw.raw_image_visible
+            if work.ndim==3:work=work[...,:3]
+            for y in range(0,work.shape[0],128):
+                cid=np.minimum(evidence.raw_colors[y:y+128],levels.size-1)
+                wl=levels[cid]
+                loss[y:y+128] |= ((evidence.raw_image[y:y+128]<wl)&(work[y:y+128]>=wl)).astype(np.uint8)
+    if evidence.spatial_black is not None:
+        from .spatial_black import apply_to_working
+        apply_to_working(raw, evidence.spatial_black, evidence.black_levels, evidence.white_level, loss)
+        recipe.names.insert(0, "SpatialBlackLevel")
+    for op in recipe.stage2:
+        if isinstance(op,dng_point_ops.PointOp):
+            img=raw.raw_image_visible
+            levels=list(recipe.white_levels) or evidence.camera_white_levels or [evidence.white_level]
+            levels=(levels*4)[:4]
+            dng_point_ops.apply(img,op,black=evidence.black_levels,white=levels,
+                               colors=np.asarray(raw.raw_colors_visible) if img.ndim==2 else None,loss=loss)
+        else:
+            _apply_gain_maps_mosaic(raw, [op], evidence.black_levels,
+                                   evidence.white_level,
+                                   list(recipe.white_levels) or evidence.camera_white_levels, loss)
     processing = _mosaic_loss_rgb(loss, evidence.raw_colors, evidence.color_desc) if loss is not None else None
     del loss
     # Colour mixing must follow camera-plane opcodes. The as-shot WB is diagonal,
     # so it commutes with the per-plane warp; keep LibRaw's demosaic/reconstruction.
-    camera_rgb = bool(recipe.post)
-    scene = render_to_scene_rec2020(raw, highlight, half_size, demosaic,
+    camera_rgb = True
+    scene = render_to_scene_rec2020(raw, highlight, half_size and not reduce_after_ops, demosaic,
                                    _fixed_asshot_wb_kwargs(evidence.camera_wb), camera_rgb=camera_rgb)
     if scene.ndim != 3 or scene.shape[2] != 3:
         raise ValueError("DNG corrections require three camera colour planes")
+    if processing is not None:
+        # DefaultScale and half-size affect the *input* geometry of every
+        # subsequent warp, so transport the raster before resampling it.
+        processing = _resize_loss_to_shape(processing, scene.shape[:2])
+    # LibRaw has already applied DefaultScale (pixel_aspect) before returning
+    # this buffer. The remaining pixel aspect is one; applying the DNG aspect
+    # a second time distorts both the image and its evidence footprints.
+    recipe.post = [replace(op, aspect=1.0) if isinstance(op, ops.Warp) else op
+                   for op in recipe.post]
     flip = evidence.orientation_flip
     inverse = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 5, 7: 7}
     if not camera_rgb:
@@ -974,7 +1059,12 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     if recipe.gain_maps:
         shading.append("gainmap")
     for op in recipe.post:
-        if isinstance(op, ops.Warp):
+        if isinstance(op,dng_point_ops.PointOp):
+            if scene.shape[:2] != evidence.raw_image.shape[:2]:
+                raise ValueError("stage-3 point-op coordinates require a full-resolution square-pixel decode")
+            if processing is None and track_loss:processing=np.zeros(scene.shape,dtype=np.float16)
+            dng_point_ops.apply(scene,op,black=0.,white=limits,loss=processing)
+        elif isinstance(op, ops.Warp):
             scene = ops.warp_image(scene, op)
             if track_loss:
                 # A zero raster still records out-of-frame extrapolation as loss.
@@ -991,10 +1081,15 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
             if track_loss:
                 processing = (np.zeros(scene.shape, dtype=np.float16) if processing is None
                               else _resize_loss_to_shape(processing, scene.shape[:2]))
-            _apply_vignette_render(scene, op, loss_mask=processing, channel_limits=limits)
+            if isinstance(op, embedded_lens.RadialVignette):
+                embedded_lens.apply_vignette(scene, op, processing, limits)
+            else:
+                _apply_vignette_render(scene, op, loss_mask=processing, channel_limits=limits)
             shading.append("vignette")
     if camera_rgb:
-        scene = ops.camera_to_rec2020(scene, raw.color_matrix)
+        scene = ops.camera_to_rec2020(scene, ops.libraw_camera_matrix(
+            raw.color_matrix, raw.rgb_xyz_matrix,
+            is_dng=dng_metadata.is_dng_container(path)))
     scene = ops.crop_image(scene, recipe.crop, evidence.raw_image.shape)
     # Match rawpy's contiguous handoff. A cropped/transposed view would make
     # every downstream reshape(-1, 3) silently copy the complete frame again.
@@ -1002,6 +1097,16 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     if processing is not None:
         processing = ops.crop_image(processing, recipe.crop, evidence.raw_image.shape)
         processing = _orient_like_libraw(processing, flip)
+    if reduce_after_ops:
+        # Box reduction is bounded to row bands. Permission takes maximum.
+        h,w=scene.shape[:2];hh,ww=h//2,w//2
+        reduced=np.empty((hh,ww,3),dtype=np.float32)
+        for y in range(0,hh,64):
+            end=min(y+64,hh)
+            reduced[y:end]=scene[2*y:2*end,:2*ww].reshape(end-y,2,ww,2,3).mean(axis=(1,3))
+        scene=reduced
+        if processing is not None:
+            processing=_bin_2x2_max(processing)
     return scene, processing, recipe, "+".join(shading) or None
 
 
@@ -1208,9 +1313,23 @@ def build_clip_masks(
     raw_pattern: Any | None = None,
     geometry_ops: tuple = (),
     crop_sensor: tuple | None = None,
+    spatial_black: Any | None = None,
 ) -> Any:
     """Build half-resolution RGB soft clip masks from pre-WB raw DN values."""
-    binned = _build_bayer_clip_mask_planes(
+    if spatial_black is not None:
+        from .spatial_black import clip_mask
+        levels=[channel_fullwell(white_level,camera_white_levels,int(c)) for c in range(4)]
+        binned=clip_mask(raw_image,raw_colors,color_desc,black_levels,levels,spatial_black)
+    elif raw_image.ndim == 3:
+        soft = np.empty(raw_image.shape, dtype=np.float32)
+        for c in range(3):
+            black = channel_black_level(black_levels, c)
+            white = channel_fullwell(white_level, camera_white_levels, c)
+            soft[..., c] = _smoothstep(.95, .99,
+                (raw_image[..., c].astype(np.float32) - black) / max(white - black, 1.0))
+        binned = _bin_2x2_max(soft)
+    else:
+        binned = _build_bayer_clip_mask_planes(
         raw_image,
         raw_pattern,
         color_desc,
@@ -1241,12 +1360,9 @@ def build_clip_masks(
                 soft[:, :, out_idx], np.where(raw_colors == cid_int, channel_soft, 0.0)
             )
         binned = _bin_2x2_max(soft)
-    if geometry_ops or crop_sensor is not None:
-        from . import dng_opcodes as ops
-        for op in geometry_ops:
-            binned = ops.warp_image(binned, op, loss=True)
-        binned = ops.crop_image(binned, crop_sensor, raw_image.shape)
-    oriented = _orient_like_libraw(binned, orientation_flip)
+    from .dng_opcodes import align_sensor_loss
+    oriented = align_sensor_loss(binned, raw_image.shape, scene_shape,
+                                 orientation_flip, geometry_ops, crop_sensor)
     aligned = _resize_mask_to_shape(oriented, scene_shape)
     return _feather_masks_f16(aligned)
 
@@ -1318,6 +1434,7 @@ def refresh_clip_masks_from_fullwell(
         bundle.raw_pattern,
         getattr(bundle, "scene_geometry_ops", ()),
         getattr(bundle, "scene_crop_sensor", None),
+        getattr(getattr(bundle,"evidence",None),"spatial_black",None),
     )
     _merge_processing_loss(bundle.clip_masks, getattr(bundle, "processing_clip_masks", None))
     bundle._clip_masks_cache_shape = None
@@ -1425,18 +1542,9 @@ def load_raw(
     # cannot change the source, values, provenance, or failure domain of analysis data.
     try:
         evidence = acquire_raw_evidence(path)
-        # R6 item 2: per-channel-black + linear-DN is an ASSUMPTION; these
-        # legal DNG features break it and the pipeline must say so instead
-        # of continuing to claim exact RAW gating.
-        _stage1 = tuple(name for name in dng_metadata.read_dng_stage1_flags(path)
-                        if name in ("BlackLevelDeltaH", "BlackLevelDeltaV"))
         evidence_stage1_note = (
-            "LibRaw 对 DNG 空间黑电平只采用均值，未保留逐位置校正("
-            + "/".join(_stage1)
-            + "):噪声底/剪切统计/可靠尾部与 RAW 门控按近似口径解读"
-            if _stage1
-            else None
-        )
+            "Linear DNG：颜色平面剪切可测；不声明 CFA 独立噪声或电子域校准"
+            if evidence.sample_kind == "linear-camera-rgb" else None)
     except EvidenceAcquisitionError as exc:
         if exc.unsupported_format or "unsupported file format" in str(exc).lower():
             message = _unsupported_format_guidance(path, shot, exc)
@@ -1524,15 +1632,13 @@ def load_raw(
         if scene_rec2020_render.ndim != 3 or scene_rec2020_render.shape[2] < 3:
             raise RuntimeError("scene Rec.2020 render did not produce a 3-channel image")
 
-        if np.issubdtype(scene_rec2020_render.dtype, np.integer):
-            encoded_max = float(np.iinfo(scene_rec2020_render.dtype).max)
-            applied_wb = camera_wb
-            scene_scale = libraw_scene_scale(
-                encoded_max,
-                effective_highlight_mode,
-                applied_wb,
-                baseline_exposure=shot.baseline_exposure,
-            )
+        # Camera -> Rec.2020 now retains signed/over-range float values in
+        # the same 16-bit code units as LibRaw's camera-plane buffer.
+        applied_wb = camera_wb
+        scene_scale = libraw_scene_scale(
+            65535.0, effective_highlight_mode, applied_wb,
+            baseline_exposure=shot.baseline_exposure,
+        )
         xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
         render_scale = scene_scale
         clip_masks = build_clip_masks(
@@ -1547,6 +1653,7 @@ def load_raw(
             raw_pattern,
             scene_geometry_ops,
             scene_crop_sensor,
+            evidence.spatial_black,
         )
         _merge_processing_loss(clip_masks, processing_clip_masks)
         if processing_clip_masks is not None:
@@ -1663,7 +1770,7 @@ def load_raw(
                 # +0.053 EV at 3200K, -0.234 EV at 5500K on _SDI0150).
                 if coreimage_uses_file_alignment(coreimage_scale):
                     reference_scale = libraw_scene_scale(
-                        float(np.iinfo(reference_scene.dtype).max),
+                        65535.0,
                         effective_highlight_mode,
                         camera_wb,
                         baseline_exposure=effective_baseline_exposure,
@@ -1743,6 +1850,7 @@ def load_raw(
         shot_make=shot.make,
         shot_model=shot.model,
         shot_iso=shot.iso,
+        shot_shutter=getattr(evidence, "shot_shutter", None),
         baseline_exposure=effective_baseline_exposure,
         baseline_exposure_baked_in=baseline_exposure_baked_in,
         applied_wb=[float(x) for x in camera_wb],

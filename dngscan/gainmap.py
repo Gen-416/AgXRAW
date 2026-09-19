@@ -41,6 +41,10 @@ HDR_BLOCK_P99_RELATIVE_ERROR_LIMIT = ARCHIVE_TOLERANCES.hdr_block_p99_relative_e
 HDR_BLOCK_CHROMA_ERROR_LIMIT = ARCHIVE_TOLERANCES.hdr_block_chroma_error
 
 
+class HdrRoundtripError(RuntimeError):
+    """The encoded HDR rendition failed the unchanged delivery error gates."""
+
+
 def _apple_gainmap_api_status() -> tuple[bool, str]:
     """Report API availability without claiming RGB round-trip correctness."""
     if platform.system() != "Darwin":
@@ -663,6 +667,7 @@ def inspect_gainmap_file(path: Path) -> dict[str, Any]:
         "profile": str(primary.get(Quartz.kCGImagePropertyProfileName, "")),
         "width": int(primary.get(Quartz.kCGImagePropertyPixelWidth, 0)),
         "height": int(primary.get(Quartz.kCGImagePropertyPixelHeight, 0)),
+        "bit_depth": int(primary.get(Quartz.kCGImagePropertyDepth, 0)),
         "chroma_subsampling": str(first.get("ChromaSubsampling", "")),
         "gainmap_width": int(gainmap.get("Width", 0)) if gainmap is not None else 0,
         "gainmap_height": int(gainmap.get("Height", 0)) if gainmap is not None else 0,
@@ -735,8 +740,52 @@ def write_apple_gainmap_file(
     *,
     delivery: DeliveryProfile,
     _verify_roundtrip_capability: bool = True,
+    _template_path: Path | None = None,
+    _gainmap_quality: int | None = None,
 ) -> dict[str, Any]:
     """Write JPEG or HEIC ISO gain-map packaging from finished formation masters."""
+    from dataclasses import replace
+    from . import heif_encoder
+    use_heif = delivery.container == "heic" and (
+        delivery.heif_encoder == "x265" or
+        (delivery.heif_encoder == "auto" and heif_encoder.available()))
+    if delivery.heif_encoder not in ("auto", "apple", "x265"):
+        raise ValueError("未知 HEIF 编码器")
+    if delivery.name == "auto":
+        from .auto_encode import coding_metrics, select_encoding
+        # The auxiliary image is calculated only once. HEVC quality numbers
+        # are its own scale (95 is already at the x265 QP floor on many frames).
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".agxraw-master-",dir=out_path.parent) as td:
+            template = Path(td)/("gainmap.heic" if delivery.container == "heic" else "gainmap.jpg")
+            qualities = (95,92,90,87,85,82,80) if use_heif else (99,98,97,96,95)
+            gainmap_quality = 95
+            def encode(quality, path):
+                nonlocal gainmap_quality
+                candidate = replace(delivery, name="share", quality=quality,
+                                    chroma="444" if use_heif else delivery.chroma)
+                def write_candidate():
+                    return write_apple_gainmap_file(
+                        base_rgb_u8, hdr_rgba_half, path, hdr_headroom_ev,
+                        delivery=candidate, _template_path=template if use_heif or delivery.container=="jpeg" else None,
+                        _verify_roundtrip_capability=_verify_roundtrip_capability,
+                        _gainmap_quality=gainmap_quality,
+                    )
+                try:
+                    info = write_candidate()
+                except HdrRoundtripError:
+                    if quality != qualities[0] or gainmap_quality == 100 or not (use_heif or delivery.container=="jpeg"):
+                        raise
+                    # A compressed RGB gain map can lose narrow highlights
+                    # even with a near-lossless primary. Upgrade its template
+                    # before establishing the reference; every subsequent
+                    # primary candidate uses the SAME higher-precision map.
+                    gainmap_quality = 100
+                    template.unlink(missing_ok=True)
+                    info = write_candidate()
+                info.update(coding_metrics(read_primary_rgb_u8(path), base_rgb_u8))
+                return info
+            return select_encoding(out_path, encode, qualities=qualities)
     profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
     quality = int(profile.quality)
     tolerances = profile.tolerances
@@ -813,8 +862,17 @@ def write_apple_gainmap_file(
         encode_request_options[subsample_key] = NSNumber.numberWithInt_(
             int(tolerances.gainmap_subsample_factor)
         )
+    pixel_request = getattr(Quartz, "kCGImageDestinationEncodeBasePixelFormatRequest", None)
+    if pixel_request is not None and container == "heic":
+        encode_request_options[pixel_request] = NSNumber.numberWithUnsignedInt_(
+            int.from_bytes((profile.chroma + "f").encode("ascii"), "big"))
+    gainmap_quality = (100 if profile.is_archive else 95) if _gainmap_quality is None else _gainmap_quality
+    if gainmap_quality not in (95, 100):
+        raise ValueError("gain-map 编码精度必须为 95/100")
     options = {
-        Quartz.kCGImageDestinationLossyCompressionQuality: float(quality) / 100.0,
+        # Auxiliary precision is independent of primary quality/sampling.
+        Quartz.kCGImageDestinationLossyCompressionQuality: float(gainmap_quality)/100.0
+            if use_heif or container == "jpeg" else float(quality)/100.0,
         Quartz.kCIImageRepresentationHDRImage: hdr_image,
         Quartz.kCIImageRepresentationHDRGainMapAsRGB: _nsnumber_bool(True),
         Quartz.kCGImageDestinationEncodeRequest: Quartz.kCGImageDestinationEncodeToISOGainmap,
@@ -826,30 +884,55 @@ def write_apple_gainmap_file(
     temp_path = out_path.with_name(f".{out_path.name}.{uuid.uuid4().hex}.tmp{suffix}")
     label = "HEIC" if container == "heic" else "JPEG"
     try:
-        url = NSURL.fileURLWithPath_(str(temp_path))
-        if container == "heic":
-            result = context.writeHEIFRepresentationOfImage_toURL_format_colorSpace_options_error_(
-                base_image,
-                url,
-                Quartz.kCIFormatRGBA8,
-                p3,
-                options,
-                None,
-            )
+        if _template_path is not None and _template_path.exists():
+            import shutil
+            shutil.copyfile(_template_path, temp_path)
         else:
-            result = context.writeJPEGRepresentationOfImage_toURL_colorSpace_options_error_(
-                base_image,
-                url,
-                p3,
-                options,
-                None,
-            )
-        success, error = result if isinstance(result, tuple) else (bool(result), None)
-        if not success:
-            raise RuntimeError(f"Core Image 写入 ISO gain-map {label} 失败：{error}")
+            url = NSURL.fileURLWithPath_(str(temp_path))
+            if container == "heic":
+                result = context.writeHEIFRepresentationOfImage_toURL_format_colorSpace_options_error_(
+                    base_image,
+                    url,
+                    Quartz.kCIFormatRGBA8,
+                    p3,
+                    options,
+                    None,
+                )
+            else:
+                result = context.writeJPEGRepresentationOfImage_toURL_colorSpace_options_error_(
+                    base_image,
+                    url,
+                    p3,
+                    options,
+                    None,
+                )
+            success, error = result if isinstance(result, tuple) else (bool(result), None)
+            if not success:
+                raise RuntimeError(f"Core Image 写入 ISO gain-map {label} 失败：{error}")
 
+            if _template_path is not None:
+                import shutil
+                shutil.copyfile(temp_path, _template_path)
         _ = (base_data, hdr_data, base_rgba, hdr)
+        if container == "jpeg":
+            from .jpeg_gainmap import replace_primary
+            replace_primary(temp_path, base, quality, profile.chroma)
+        encoder_info = {"encoder":"Apple ImageIO"} if container == "heic" else {}
+        if use_heif:
+            donor = temp_path.with_name(temp_path.name + ".base.heic")
+            try:
+                encoder_info = heif_encoder.encode(base, donor, quality, profile.chroma,
+                    bit_depth=profile.heif_bit_depth, preset=profile.heif_preset, tune=profile.heif_tune)
+                from .heif_gainmap import replace_primary
+                replace_primary(temp_path, donor)
+            finally:
+                donor.unlink(missing_ok=True)
         info = inspect_gainmap_file(temp_path)
+        if use_heif and info["bit_depth"] != profile.heif_bit_depth:
+            raise RuntimeError("HEIF 回读位深与请求不符")
+        info.update(encoder_info)
+        if (info["width"],info["height"]) != (base.shape[1],base.shape[0]):
+            raise RuntimeError("HDR 文件主图尺寸与输入不符")
         if not info["has_iso_gainmap"]:
             raise RuntimeError(f"Core Image 输出不含 ISO 21496-1 gain map")
         if info["profile"] != "Display P3":
@@ -900,7 +983,16 @@ def write_apple_gainmap_file(
         roundtrip = _roundtrip_error(temp_path, hdr)
         info.update(roundtrip)
         if not _hdr_roundtrip_is_acceptable(roundtrip, tolerances):
-            raise RuntimeError(
+            if _gainmap_quality is None and not profile.is_archive and (use_heif or container == "jpeg"):
+                # Manual primary controls do not fix auxiliary precision. A
+                # second template can preserve the same requested primary
+                # while satisfying the original HDR gates.
+                return write_apple_gainmap_file(
+                    base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev,
+                    delivery=delivery, _verify_roundtrip_capability=_verify_roundtrip_capability,
+                    _gainmap_quality=100,
+                )
+            raise HdrRoundtripError(
                 "写出的 HDR rendition 无法从文件还原："
                 f"中位相对误差={roundtrip['median_relative_error']:.4f}，"
                 f"p95相对误差={roundtrip['p95_relative_error']:.4f}，"
@@ -919,6 +1011,7 @@ def write_apple_gainmap_file(
         info["delivery_quality"] = quality
         info["delivery_chroma_requested"] = profile.chroma
         info["delivery_container"] = container
+        info["gainmap_encoding_quality"] = gainmap_quality if use_heif or container == "jpeg" else quality
         return info
     finally:
         try:

@@ -97,7 +97,7 @@ flowchart TB
         direction TB
         SELECT{"Scene decoder"}
         LR["LibRaw<br/>固定 AsShot 重建预条件<br/>解拜耳选择<br/>clip / blend / reconstruct"]
-        LRRGB["DNG GainMap → 解拜耳 → 相机通道 opcode<br/>畸变/暗角 → Rec.2020 → DefaultCrop/方向<br/>uint16，关闭 auto-bright"]
+        LRRGB["DNG GainMap → 解拜耳 → 相机通道 opcode<br/>畸变/暗角 → Rec.2020 → DefaultCrop/方向<br/>相机码值 uint16 → Rec.2020 float32，关闭 auto-bright"]
         CIPROBE["CIRAWFilter 能力探测<br/>RAW 9 或显式 RAW 8/7 回退"]
         CI["固定 AsShot Core Image RAW 配方<br/>RAW 9：CoreML 重建 + 降噪<br/>旧版本：对应系统解码器<br/>高光恢复、镜头校正、DNG opcode"]
         CIRGB["extended-linear Rec.2020 RGBAh<br/>保留负分量与 1 以上数值"]
@@ -250,7 +250,7 @@ flowchart TB
 
     ENCODE --> FORMAT{"输出格式"}
     FORMAT -->|SDR| SDRJPEG["SDR JPEG<br/>ICC + quality + 4:4:4 / 4:2:2 / 4:2:0"]
-    FORMAT -->|HDR| BASE["HDR 模式的 SDR 底图<br/>Display P3；archive q100/4:4:4，share q90/4:2:0<br/>禁用 look / filter / highlight fade"]
+    FORMAT -->|HDR| BASE["HDR 模式的 SDR 底图<br/>Display P3；auto q95–99，share q95/4:2:0，archive q100/4:4:4<br/>禁用 look / filter / highlight fade"]
     BASE --> PACKAGE["Core Image ISO 21496-1 写入<br/>RGB 辅助 gain map + content headroom<br/>JPEG 或 HEIC 容器"]
     ALT --> PACKAGE
     PACKAGE --> VERIFY["回读验证<br/>P3 profile、RGB gain map、声明余量、archive 要求 4:4:4<br/>SDR 码值误差 + HDR 块级与像素级色品门禁<br/>按档位与容器分别标定"]
@@ -422,32 +422,31 @@ LibRaw 提供。Tone plan 会把实测的剪切 cell 比例与同文件 LibRaw �
 
 HDR 分支按同一套证据规则接入这条路径，并有专门测试钉住：高光保色 `rho` 被压在 0.25
 上限（没有逐像素 CFA 掩码可以在局部撤回它）、无掩码 formation 的渲染保持在 `[0, peak]`
-体积内、rank-trim 后的 RAW 9 可靠尾部与 LibRaw 的 CFA 掩码测量在同一帧上对齐（日景参考
-帧实测相差 0.09 EV，门限 0.3 EV）。两条解码线的成像差异属于相机诠释取向，不是 HDR
-预算的泄漏。
+体积内，聚合损失约束不得扩大 RAW 9 的可靠尾部。不能再要求它与空间掩码结果双向接近：
+2026-09-19 的 `_SDI0150` 检查中，RAW 剪切 1.274% 加参考校正损失 1.648% 后，RAW 9
+可靠尾部为 +1.705 EV，而 LibRaw 的逐像素筛选得到 +3.692 EV；前者不授予 HDR 余量。
+这是没有空间对应关系时的明确保守限制，不代表两个解码器测得了同样精确的高光证据。
 
-LibRaw 的 DNG 校正由 `dng_opcodes.read_plan` 读取主 RAW IFD，保留 opcode 的顺序、版本与
-必需/可选标志。OpcodeList2 的 `GainMap` 在 live mosaic 上原地执行；OpcodeList3 的
-`WarpRectilinear`、`WarpFisheye`、`FixVignetteRadial` 按文件顺序作用于相机 RGB，之后才用
-LibRaw 实际采用的 `rgb_cam` 转为 Rec.2020，并应用 `DefaultCrop` 和方向。不能把相机的逐通道
-畸变参数直接套到已经混色的 Rec.2020 三通道上。固定 AsShot 增益可以与逐通道空间变换交换，
-但 opcode 的归一化白点剪切边界也必须随 WB 缩放，不能统一替换成 65535。
-坐标公式依据 [Adobe DNG SDK](https://android.googlesource.com/platform/external/dng_sdk/+/refs/heads/android14-prebuilt-test/source/dng_lens_correction.cpp)。
-Rust 的三次插值核直接遍历输出行，不分配整幅浮点坐标图；NumPy 行带版本作为参考。
+LibRaw 的 DNG 校正由 `dng_opcodes.read_plan` 读取主 RAW IFD，保留指令顺序、版本和必需/可选标志。场景句柄与原始证据句柄独立；只有前者可修改。
 
-传感器证据副本保持校正前数值。GainMap/暗角新造成的剪切和畸变的边界外采样记录在独立的
-`processing_clip_masks` 中；即使后续增益把数值降回白点以下，也不恢复已丢失的信息。
-传感器软掩码、剩余容量与 SNR guidance 按同一相机通道几何映射，可靠性在插值支撑范围内
-保守取值，然后与处理损失合并。这样 HDR、局部色度退让和 gated 核使用的是最终场景对应的
-可靠性，原始剪切百分比仍只描述传感器。
+1. OpcodeList1 在原始码值域执行坏点修复、MapTable、MapPolynomial 和行列偏移/增益。存在单调可逆的 LinearizationTable 时，先恢复存储码值，再执行指令并重新线性化；无法逆转的表明确拒绝，不能猜测已丢失的原始码值。
+2. BlackLevelDeltaH/V 和 BlackLevelRepeatDim 组成逐位置黑电平，按 DNG SDK 的最大黑电平归一化到工作缓冲；证据的传感器 DN 不改写，噪声估计和 headroom 读取同一空间黑电平模型。
+3. OpcodeList2 按顺序执行 GainMap、查表、多项式与行列变换。GainMap 在工作马赛克上原地运行；Linear DNG 按真实图像平面执行，不把 RGB 当成 CFA。Linear DNG 可测颜色平面剪切，但不声明独立感光点噪声或电子域 SNR。
+4. LibRaw 固定 AsShot 重建后，OpcodeList3 的 WarpRectilinear、WarpFisheye、WarpRectilinear2、FixVignetteRadial 及点变换作用于相机 RGB，然后才混色到浮点 Rec.2020。可选 WarpRectilinear2 生效后跳过紧跟的旧版兼容 warp，避免双重畸变。带像素坐标的 stage-3 点变换在全尺寸执行后才缩预览。
+5. 相机矩阵按 LibRaw 的实际选择规则解析：rawpy `color_matrix` 暴露的是文件候选 `cmatrix`，符合条件的 DNG 才采用；非 DNG RGB 相机从 `rgb_xyz_matrix` 按 LibRaw 的 D65 行归一化求逆。转换结果保留负值与超过 65535 的值，`scene_scale` 仍以原相机码值尺度定义。
+6. DefaultScale 的像素比例由 LibRaw 执行一次。校正后的图像、传感器剪切、headroom 和处理损失采用同一几何顺序，再执行 DefaultCrop 与方向。
 
-不支持的必需 opcode 会明确拒绝 LibRaw 解码；可选 opcode 的跳过会出现在诊断中。
-这不是通用镜头数据库：没有受支持 DNG opcode 的 RAF/ARW 不因此获得厂商私有镜头校正。
-LibRaw 已执行的 `LinearizationTable` 和 `LinearResponseLimit` 不重复应用；`BlackLevelDeltaH/V`
-仍只由上游取均值，逐位置黑电平尚未完整兑现，诊断会保留这一具体限制。
+畸变公式依据 [Adobe DNG SDK](https://android.googlesource.com/platform/external/dng_sdk/+/refs/heads/android14-prebuilt-test/source/dng_lens_correction.cpp) 与 [DNG 1.7.1 规范](https://helpx.adobe.com/content/dam/help/en/camera-raw/digital-negative/jcr_content/root/content/flex/items/position/position-par/download_section_733958301/download-1/DNG_Spec_1_7_1_0.pdf)。Rust 三次插值核直接遍历输出行，不分配整幅浮点坐标图，支持多项式、扩展多项式和厂商径向样条；NumPy 行带版本作为数值参考。
 
-GUI 重用 Analysis 时会对新解码的 bundle 重放实测 full-well 掩码刷新，并保留处理损失。
-预览缓存版本提升至 16，使旧方向处理、旧校正几何和旧 HDR 证据策略的缓存失效。
+Fujifilm RAF 和 Sony ARW 可读取文件自带的暗角、畸变与横向色差曲线。标签布局与数学约定对照 [darktable 的 EXIF 解析](https://github.com/darktable-org/darktable/blob/master/src/common/exif.cc) 和 [镜头模块](https://github.com/darktable-org/darktable/blob/master/src/iop/lens.cc)。没有文件参数时不套用猜测的镜头配置；DNG 由 opcode 负责，避免重复应用私有曲线。这仍不是通用镜头数据库。
+
+校正新增的剪切、坏点替代和边界外采样进入独立 `processing_clip_masks`；后续降低增益不能恢复这些已丢失的信息。传感器硬剪切百分比仍只描述原始证据。可靠性经过插值支撑范围时取保守值，因此 HDR 不会把校正后出现的像素当成新的传感器余量。
+
+实现没有声明覆盖整个 DNG 规范：TrimBounds、未实现的 opcode 阶段组合、不可逆线性化表上的 stage-1 操作，以及非方形像素与 stage-3 点变换的组合仍会明确拒绝必需操作，提示选择 Apple RAW；可选操作的跳过写入诊断。这些边界没有通过静默忽略来伪装支持。
+
+噪声估计按独立 CFA 相位计算，防止颜色差被误认作噪声。空间相关性检查参与证据可用性判断；检测到相关处理、Linear DNG、可疑 ISO、读出模式不匹配或无法校准 DN 尺度时，不启用电子域先验。等面积确定性采样消除固定步长与周期高光对齐的盲区；默认 AgX 自动曝光与预览共享全尺寸统计样本。
+
+GUI 重用 Analysis 时会对新解码的 bundle 重放实测 full-well 掩码刷新，并保留处理损失。预览缓存版本为 18，旧计算和几何结果失效。
 以下图片为此前暗角补偿路径的对照记录，不作为新畸变核的像素回归基准：
 
 ![iPhone 16 Pro 同帧双解码：LibRaw 施加 DNG GainMap 与 RAW 9 的 FixVignetteRadial，角部亮度一致](assets/decoder-iphone-libraw-vs-raw9.jpg)
@@ -548,12 +547,7 @@ LibRaw 路径一样通过 `scene_scale` 恢复一次。这样交接像素本身�
 但两种解码器的颜色和几何并不完全一致，所以统计仍可能受内容影响；因此这里把它称作 A/B
 标尺，而不是物理标定。
 
-预览与导出的统计对齐（现状）：GUI 预览在两种解码器上都做**全分辨率解码**后再下采样显示，
-预览看到的噪声与导出同源；早年 Core Image 预览解码 1280px 代理、LibRaw 预览做 2×2 超像素
-合并的不对称已不存在（当时实测的预览→导出黑端位移 −0.01/−0.22/+0.01 EV 对
-−0.05/+0.02/−0.04 EV 仅作历史记录保留）。残余的已知边界只剩一条：预览的 tone 端点仍在
-下采样样本上编译，与导出在全分样本上编译可有微差；代理解码路径（`scene_half_size`）仍
-服务于 CLI 的半尺寸探测，不再是 GUI 预览的口径。
+预览与导出的统计对齐：GUI 先全分辨率解码，缓存从原尺寸图像按等面积分层、散列偏移抽取的最多 80 万个样本及对应蒙版。预览与导出据此编译 tone plan，避免固定步长与周期性细节重合。默认 AgX 的自动曝光检查也复用这份样本，不能改用已经缩图、稀释小高光的代理像素。分层抽样仍有统计误差，不声称等同于完整逐像素分位数。
 
 **BaselineExposure 在两条管线上都被遵从。** Apple 明确把它定义为 RAW 文件请求的 baseline
 exposure，默认值可以随相机设置变化；ProRAW 还会随场景动态范围写入逐图配方。它不是快门/
@@ -627,11 +621,9 @@ RAW 9 随系统分发，一次 macOS 更新就可能换掉模型，而 `decoderV
 18% 灰。文件存在 DNG `BaselineExposure` 时，会更早按文件冲洗方式遵从。常数缩放不会
 破坏场景意图：暗场景进 AgX 前依然暗，明亮场景依然亮。
 
-GUI 里的“自动曝光”是一个主动调用的对照读数，也就是 CLI 的 `--ev auto`。它会尝试把
-可靠主体中位放到 18% 灰，并受新增高光剪切预算约束。这个中位来自当前解码器、当前
-scene transform 之后的可靠 scene body，RAW 已剪切样本不会定义它。高光搜索会在同一份固定
-plan 上尝试候选 EV，不会边测边改变目标。全图统计仍可能被占比很大的背景误导，所以它只是参考，
-不是默认曝光。
+GUI 与 CLI 默认执行自动曝光（`--ev auto`）：尝试把可靠场景中位对到 18% 灰，但只允许高光预算以内的正向提亮；高调场景不会被自动压暗。白平衡默认遵从拍摄记录。自动曝光与曲线编译共用全分辨率统计样本，手动 EV 可以覆盖建议。全图中位并非主体识别，因而保留显式手动控制。
+
+单帧噪声估计按 CFA 相位分别进行：16×16 同色块内使用对角二阶差分的 MAD，除以系数范数和正态 MAD 系数，避免颜色均值和线性梯度被算作噪声。取暗部块统计后再聚合相位；整数输入保留量化下界。它仍含暗部光子噪声与可能的纹理影响，是单帧估计而非台架读出噪声。
 
 ### 场景统计不是简单 min/max
 
@@ -1096,13 +1088,25 @@ JPEG）；任一门禁不过就不会保留输出文件。现在 HDR 不支持 d
 因为这些 SDR 算子还没有独立 HDR 定义。数学约束和验收线在
 [`docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md`](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md)。
 
+### 自动交付默认值
+
+默认 `auto`，只渲染一次。JPEG 实际试编码 q99、98、97、96、95，自动质量不低于 95；SDR 优先 4:2:2，并在误差预算允许时尝试 4:2:0。HDR JPEG 同样支持独立 420/422/444：ImageIO 计算 gain map，libjpeg 编码主图，重封装时重定位 MPF 地址并保留辅助图字节。HEIF 有 libheif/x265 时默认 10-bit / 4:4:4 / slow / ssim，候选为 95、92、90、87、85、82、80；这是 HEVC 自己的质量刻度。HEIF 主图替换会重建 item extent 与属性关联，辅助图及 ISO tmap 元数据不重新计算。缺少 x265 时自动使用 Apple 路径，采样以逐文件验收结果为准。
+
+`share` 是手动档，初始为 q95/420，质量与采样可独立修改；`archive` 固定 q100/444。HEIF 可调位深为 8/10-bit，编码速度 fast/medium/slow/slower，纹理策略 ssim/psnr/grain。12-bit 在本机部分采样组合回读异常，未作为交付选项。
+
+候选至少节省 5% 字节，且亮度、色度与局部误差满足 `auto_encode.additional_error_acceptable`。默认 SDR 亮度 RMSE 预算为 1.0 码值，局部绝对误差 p99 为 1.5 码值；参考本身超过时使用相对预算。色度保持接近参考，避免质量值掩盖采样损失。HDR 继续经过既有绝对门禁并限制相对参考的 HDR 误差。容差是工程政策，不能等同于主观无损或全局最优。
+
+SDR 检查尺寸、ICC 字节和实际采样，用最终回读像素生成统计。候选在私有临时目录完成，最后原子替换输出；不写处理配方文件。全尺寸数据、六张样张与政策依据见 [交付质量实测](DELIVERY_QUALITY_STUDY.zh-CN.md)。
+
+下节仅保留旧 Core Image 单一编码路径的历史回归对照；关于中间质量和采样不能选择的结论，已被上面的主图独立编码方案替代。
+
 ### 导出档位的实测定位
 
 两个导出档位是两个被测量过的操作点，不是一根质量滑杆。在全分辨率回归样张（24.5 MP
 Sigma fp）上：archive q100/4:4:4 约 60 MB——验证级母版，约为源 DNG 的两倍，因为去拜耳
 后的三通道 q100 JPEG 加 gain map 本来就比无损压缩的 14-bit 拜耳马赛克大。share
 q90/4:2:0 为 11–27 MB，gain map 与 content headroom 完整保留；最坏情况（高 ISO 舞台帧）
-仍在微信原图 25 MB 上限之内。两档之间没有值得买的中间点：Core Image 的主图色度采样由
+仍在微信原图 25 MB 上限之内。在当时仅用 Core Image 的路径上，中间档位收益很小：主图色度采样由
 quality 涌现，实测只有恰好 q100 才输出 4:4:4，而 q90 到 q99 保真度几乎不变、体积单调
 增长——损失由 4:2:0 主导，不由 quality 数字主导。
 

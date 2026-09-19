@@ -40,18 +40,18 @@ class DeliveryProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "share"):
             resolve_delivery_profile("archive", quality=90)
 
-    def test_cli_ultrahdr_archive_defaults(self) -> None:
+    def test_cli_ultrahdr_auto_defaults(self) -> None:
         args = parse_args(["photo.dng", "--output-format", "ultrahdr"])
-        self.assertEqual(args.delivery_profile, "archive")
-        self.assertEqual(args.jpeg_quality, 100)
-        self.assertEqual(args.chroma, "444")
-        self.assertEqual(args.delivery.name, "archive")
+        self.assertEqual(args.delivery_profile, "auto")
+        self.assertEqual(args.jpeg_quality, 99)
+        self.assertEqual(args.chroma, "422")
+        self.assertEqual(args.delivery.name, "auto")
 
     def test_cli_ultrahdr_share_defaults(self) -> None:
         args = parse_args(
             ["photo.dng", "--output-format", "ultrahdr", "--delivery-profile", "share"]
         )
-        self.assertEqual(args.jpeg_quality, 90)
+        self.assertEqual(args.jpeg_quality, 95)
         self.assertEqual(args.chroma, "420")
         self.assertEqual(args.delivery.name, "share")
 
@@ -75,7 +75,7 @@ class DeliveryProfileTests(unittest.TestCase):
             ["photo.dng", "--output-format", "ultrahdr-heic", "--jpeg", "out.jpg"]
         )
         self.assertEqual(args.delivery.container, "heic")
-        self.assertEqual(args.jpeg_quality, 100)
+        self.assertEqual(args.jpeg_quality, 99)
 
     def test_cli_explicit_knobs_without_profile_are_honoured(self) -> None:
         """Pre-profile invocations keep working; gates are inferred, not vetoed."""
@@ -89,41 +89,30 @@ class DeliveryProfileTests(unittest.TestCase):
         self.assertEqual((args.jpeg_quality, args.chroma), (90, "420"))
         self.assertEqual(args.delivery.name, "share")
         args = parse_args(["photo.dng", "--jpeg", "out.jpg"])
-        self.assertEqual(args.delivery.name, "archive")
-        self.assertEqual(args.jpeg_quality, 100)
+        self.assertEqual(args.delivery.name, "auto")
+        self.assertEqual(args.jpeg_quality, 99)
 
-    def test_cli_hdr_rejects_unhonourable_chroma(self) -> None:
-        for extra in (
-            ["--chroma", "422"],
-            ["--delivery-profile", "share", "--chroma", "444"],
-            ["--delivery-profile", "share", "--jpeg-quality", "100", "--chroma", "420"],
-            ["--jpeg-quality", "100", "--chroma", "420"],
-        ):
-            with self.subTest(extra=extra):
-                with self.assertRaises(SystemExit):
-                    parse_args(
-                        ["photo.dng", "--output-format", "ultrahdr", *extra]
-                    )
-
-    def test_hdr_sampling_follows_quality_even_under_share(self) -> None:
+    def test_cli_hdr_quality_and_sampling_are_independent(self) -> None:
         for output in ("ultrahdr", "ultrahdr-heic"):
-            for q, expected in ((100, "444"), (99, "420"), (90, "420")):
-                for explicit in (False, True):
-                    args = ["photo.dng", "--output-format", output,
-                            "--delivery-profile", "share", "--jpeg-quality", str(q)]
-                    if explicit:
-                        args += ["--chroma", expected]
-                    result = parse_args(args)
-                    self.assertEqual(result.chroma, expected)
-                    self.assertEqual(result.delivery.name, "share")
-        # The same q100/420 combination remains meaningful with Pillow's SDR codec.
-        self.assertEqual(parse_args(["photo.dng", "--jpeg-quality", "100", "--chroma", "420"]).chroma, "420")
+            for q in range(95,101):
+                for chroma in ("420","422","444"):
+                    args = parse_args(["photo.dng", "--output-format", output,
+                        "--delivery-profile", "share", "--jpeg-quality", str(q),
+                        "--chroma",chroma])
+                    self.assertEqual((args.delivery.quality,args.delivery.chroma),(q,chroma))
 
-    def test_shared_resolver_refuses_explicit_conflicts(self) -> None:
-        profile = resolve_delivery_profile("share", quality=100)
-        self.assertEqual(resolve_hdr_chroma(profile, explicit_chroma=None).chroma, "444")
-        with self.assertRaises(ValueError):
-            resolve_hdr_chroma(profile, explicit_chroma="420")
+    def test_shared_resolver_honours_explicit_sampling(self) -> None:
+        profile=resolve_delivery_profile("share",quality=100)
+        self.assertEqual(resolve_hdr_chroma(profile,explicit_chroma="420").chroma,"420")
+        self.assertEqual(resolve_hdr_chroma(profile,explicit_chroma="422").chroma,"422")
+
+    def test_heif_knobs_survive_cli_and_reprofile(self) -> None:
+        args=parse_args(["photo.dng","--output-format","ultrahdr-heic",
+                        "--heif-encoder","x265","--heif-bit-depth","8",
+                        "--heif-preset","slower","--heif-tune","grain"])
+        self.assertEqual((args.delivery.heif_bit_depth,args.delivery.heif_preset,args.delivery.heif_tune),(8,"slower","grain"))
+        moved=reprofile_for_container(args.delivery,"jpeg")
+        self.assertEqual(moved.heif_bit_depth,8)
 
     def test_share_heic_gets_its_own_calibration(self) -> None:
         jpeg = resolve_delivery_profile("share", container="jpeg")

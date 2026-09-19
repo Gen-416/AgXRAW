@@ -12,7 +12,7 @@ from dngscan.gui.service import export_plan_fingerprint, export_suffix_parts
 
 
 class ExportSuffixTests(unittest.TestCase):
-    def test_export_api_rejects_q100_420_before_decode(self) -> None:
+    def test_export_api_accepts_q100_420_before_decode(self) -> None:
         import tempfile
         from pathlib import Path
         from unittest import mock
@@ -24,9 +24,9 @@ class ExportSuffixTests(unittest.TestCase):
             with (
                 mock.patch.object(service.dg, "require_dependencies"),
                 mock.patch.object(service.dg, "apple_gainmap_backend_status", return_value=(True, "ok")),
-                mock.patch.object(service.dg, "load_raw", side_effect=AssertionError("decode must not run")),
+                mock.patch.object(service.dg, "load_raw", side_effect=RuntimeError("sampling accepted; reached decode")),
             ):
-                with self.assertRaisesRegex(ValueError, "chroma=420"):
+                with self.assertRaisesRegex(RuntimeError, "sampling accepted"):
                     service.run_export({"input": str(source), "format": "ultrahdr", "deliveryProfile": "share",
                                         "quality": 100, "chroma": "420"})
 

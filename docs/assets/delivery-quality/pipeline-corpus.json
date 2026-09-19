@@ -1,0 +1,579 @@
+[
+  {
+    "sample": "DSC00225.ARW",
+    "shape": [
+      2344,
+      3514,
+      3
+    ],
+    "auto_ev": 0.03125,
+    "opcodes": [
+      "Sony embedded lens shading",
+      "Sony embedded lens distortion/TCA"
+    ],
+    "processing_loss_pct": 0.09762267361563011,
+    "noise_status": "independent",
+    "prior_status": "unmatched-dn-scale",
+    "seconds": 5.648472957997001
+  },
+  {
+    "sample": "DSCF0214.RAF",
+    "shape": [
+      2589,
+      3876,
+      3
+    ],
+    "auto_ev": 1.5596115589141846,
+    "opcodes": [
+      "Fujifilm embedded lens shading",
+      "Fujifilm embedded lens distortion/TCA"
+    ],
+    "processing_loss_pct": 0.0,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 8.950710583005275
+  },
+  {
+    "sample": "_SDI0016.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 2.6347833333333335,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 3.5719596249982715
+  },
+  {
+    "sample": "_SDI0094.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 0.020116666666666665,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 4.011639208998531
+  },
+  {
+    "sample": "_SDI0115.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 20.672783333333335,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 4.052954209000745
+  },
+  {
+    "sample": "_SDI0127.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 0.029500000000000002,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 3.6537455829966348
+  },
+  {
+    "sample": "_SDI0133.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 0.125,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 3.508895916005713
+  },
+  {
+    "sample": "_SDI0150.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 1.6534166666666665,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 4.474224875004438
+  },
+  {
+    "sample": "_SDI0164.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 0.04593333333333333,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 6.8145553750000545
+  },
+  {
+    "sample": "_SDI0165.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 0.11689999999999999,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 7.003765041998122
+  },
+  {
+    "sample": "_SDI0173.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0078125,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 1.0123,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 4.825929917002213
+  },
+  {
+    "sample": "_SDI0175.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 1.7387,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 4.809495000001334
+  },
+  {
+    "sample": "_SDI0199.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.015625,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 0.7166,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 5.9706437080021715
+  },
+  {
+    "sample": "_SDI0207.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 4.202766666666666,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 5.16302587500104
+  },
+  {
+    "sample": "_SDI0222.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 0.4694833333333333,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 3.084639332999359
+  },
+  {
+    "sample": "_SDI0231.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 8.463766666666666,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 2.928575958998408
+  },
+  {
+    "sample": "_SDI0238.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 10.04695,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 2.809976541000651
+  },
+  {
+    "sample": "ideal_A_none.dng",
+    "shape": [
+      400,
+      600,
+      3
+    ],
+    "auto_ev": 0.0078125,
+    "opcodes": [],
+    "processing_loss_pct": 0.0,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 0.3283171669972944
+  },
+  {
+    "sample": "ideal_B_ptc.dng",
+    "shape": [
+      400,
+      600,
+      3
+    ],
+    "auto_ev": 0.0078125,
+    "opcodes": [],
+    "processing_loss_pct": 0.0,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 0.37692854199849535
+  },
+  {
+    "sample": "DSCF0614.RAF",
+    "shape": [
+      3126,
+      2088,
+      3
+    ],
+    "auto_ev": 0.1015625,
+    "opcodes": [
+      "Fujifilm embedded lens shading",
+      "Fujifilm embedded lens distortion/TCA"
+    ],
+    "processing_loss_pct": 0.2549835393670194,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 3.8562139170026057
+  },
+  {
+    "sample": "Original RAW 26-05-10 173311434.dng",
+    "shape": [
+      2016,
+      1512,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 2.5571223859914336,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 2.6308520000020508
+  },
+  {
+    "sample": "Original RAW 26-05-11 193721820.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 2.0374700806248427,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 2.366745916995569
+  },
+  {
+    "sample": "Original RAW 26-05-11 193727279.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 0.5643017237759301,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 2.655073624999204
+  },
+  {
+    "sample": "Original RAW 26-05-11 193738485.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 1.0205065822625345,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.3461375420010881
+  },
+  {
+    "sample": "Original RAW 26-05-12 210128342.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 1.6372656315612664,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.3770820420031669
+  },
+  {
+    "sample": "Original RAW 26-06-17 222639798.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 0.007611069119005627,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.5674453340034233
+  },
+  {
+    "sample": "Original RAW 26-06-26 131513584.dng",
+    "shape": [
+      2016,
+      1512,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 0.6086558851935836,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.4536113330032094
+  },
+  {
+    "sample": "Original RAW 26-06-28 133947250.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 4.114865467792055,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.4419602920024772
+  },
+  {
+    "sample": "Original RAW 26-07-05 115326540.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 0.10422571806500379,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.523352458003501
+  },
+  {
+    "sample": "Original RAW 26-07-11 202403093.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 5.390506897203326,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.578509667000617
+  },
+  {
+    "sample": "Original RAW 26-07-12 182506394.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 2.139399355421181,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.5358035000026575
+  },
+  {
+    "sample": "Original RAW 26-07-24 194203657.dng",
+    "shape": [
+      1512,
+      2016,
+      3
+    ],
+    "auto_ev": 0.0859375,
+    "opcodes": [
+      "FixVignetteRadial"
+    ],
+    "processing_loss_pct": 0.1627522150835643,
+    "noise_status": "independent",
+    "prior_status": "no-prior",
+    "seconds": 1.6406683750028606
+  },
+  {
+    "sample": "_SDI0200.DNG",
+    "shape": [
+      3000,
+      2000,
+      3
+    ],
+    "auto_ev": 0.0078125,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 1.14555,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 3.434002458998293
+  },
+  {
+    "sample": "_SDI0206.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0078125,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 2.208266666666667,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 3.202522791994852
+  },
+  {
+    "sample": "_SDI0237.DNG",
+    "shape": [
+      2000,
+      3000,
+      3
+    ],
+    "auto_ev": 0.0,
+    "opcodes": [
+      "GainMap",
+      "WarpRectilinear"
+    ],
+    "processing_loss_pct": 2.8528000000000002,
+    "noise_status": "independent",
+    "prior_status": null,
+    "seconds": 2.9941352089954307
+  }
+]

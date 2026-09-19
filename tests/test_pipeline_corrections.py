@@ -35,7 +35,7 @@ def write_dng_tags(path, opcodes):
     path.write_bytes(b'II'+struct.pack('<HLH',42,8,len(tags))+entries+bytes(4)+data)
 
 
-def write_sensor_dng(path, limit=1., lut=False, spatial_black=False):
+def write_sensor_dng(path, limit=1., lut=False, spatial_black=False, *, linear=False, scale=None, opcodes=None):
     pix=np.full((128,128),int(.88*4095),dtype='<u2')
     entries=[]
     def add(tag,typ,values):
@@ -49,6 +49,14 @@ def write_sensor_dng(path, limit=1., lut=False, spatial_black=False):
     for tag,typ,v in [(254,4,[0]),(256,4,[128]),(257,4,[128]),(258,3,[16]),(259,3,[1]),(262,3,[32803]),(271,2,'Review'),(272,2,'Synthetic'),(273,4,[0]),(277,3,[1]),(278,4,[128]),(279,4,[pix.nbytes]),(284,3,[1]),(33421,3,[2,2]),(33422,1,[0,1,1,2]),(50706,1,[1,4,0,0]),(50707,1,[1,1,0,0]),(50708,2,'Review Synthetic'),(50710,1,[0,1,2]),(50711,3,[1]),(50713,3,[1,1]),(50714,5,[0]),(50717,4,[8190 if lut else 4095]),(50719,4,[0,0]),(50720,4,[128,128]),(50721,10,[1,0,0,0,1,0,0,0,1]),(50728,5,[1,1,1]),(50730,10,[1]),(50734,5,[limit]),(50778,3,[21])]: add(tag,typ,v)
     if lut:add(50712,3,list(range(0,8192,2)))
     if spatial_black:add(50715,10,np.linspace(-64,64,128))
+    if linear:
+        pix=np.repeat(pix[...,None],3,axis=2)
+        entries=[e for e in entries if e[0] not in (262,277,279,33421,33422,50710,50711)]
+        add(262,3,[34892]);add(277,3,[3]);add(279,4,[pix.nbytes])
+    if scale is not None:add(50718,5,scale)
+    for tag,ops in (opcodes or {}).items():
+        data=struct.pack('>L',len(ops))+b''.join(struct.pack('>4L',oid,0x01060000,0,len(payload))+payload for oid,payload in ops)
+        entries.append((tag,7,len(data),data))
     entries.sort();off=8+2+12*len(entries)+4;body=bytearray();heads=[]
     for tag,typ,n,data in entries:
         if tag==273:
@@ -60,7 +68,7 @@ def write_sensor_dng(path, limit=1., lut=False, spatial_black=False):
             if len(body)%2:body+=b'\0'
     payload=b''.join(struct.pack('<HHL',tag,typ,n)+(data if data is not None else struct.pack('<L',off+len(body))) for tag,typ,n,data in heads)
     path.write_bytes(b'II'+struct.pack('<HLH',42,8,len(entries))+payload+struct.pack('<L',0)+body+pix.tobytes())
-    return int(pix[0,0])
+    return int(pix.flat[0])
 
 
 class OpcodeTests(unittest.TestCase):
@@ -138,7 +146,9 @@ class Stage1ProviderTests(unittest.TestCase):
             self.assertTrue(np.all(limited.clip_masks==1))
             write_sensor_dng(p,spatial_black=True)
             spatial=raw_io.load_raw(p)
-            self.assertIn('BlackLevelDeltaH',spatial.evidence_stage1_note)
+            self.assertIsNone(spatial.evidence_stage1_note)
+            self.assertIsNotNone(spatial.evidence.spatial_black)
+            self.assertIn('SpatialBlackLevel',spatial.scene_opcode_names)
             np.testing.assert_array_equal(spatial.raw_image,stored)
 
 

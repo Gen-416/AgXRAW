@@ -25,10 +25,15 @@ class Warp:
     cy: float
     fisheye: bool = False
     aspect: float = 1.0
+    knots: tuple[float, ...] = ()
+    scales: tuple[tuple[float, ...], ...] = ()
+    scale: float = 1.0
 
 
 @dataclass
 class OpcodePlan:
+    stage1: list = field(default_factory=list)
+    stage2: list = field(default_factory=list)
     gain_maps: list = field(default_factory=list)
     post: list = field(default_factory=list)
     names: list[str] = field(default_factory=list)
@@ -37,7 +42,9 @@ class OpcodePlan:
     white_levels: tuple[float, ...] = ()
 
 
-NAMES = {1: "WarpRectilinear", 2: "WarpFisheye", 3: "FixVignetteRadial", 9: "GainMap"}
+NAMES = {1:"WarpRectilinear",2:"WarpFisheye",3:"FixVignetteRadial",4:"FixBadPixelsConstant",
+         5:"FixBadPixelsList",6:"TrimBounds",7:"MapTable",8:"MapPolynomial",9:"GainMap",
+         10:"DeltaPerRow",11:"DeltaPerColumn",12:"ScalePerRow",13:"ScalePerColumn",14:"WarpRectilinear2"}
 
 
 def read_plan(path: Path) -> OpcodePlan:
@@ -105,6 +112,7 @@ def read_plan(path: Path) -> OpcodePlan:
             if count > 1024:
                 raise ValueError("too many DNG opcodes")
             pos = 4
+            previous_optional_warp2 = False
             for _ in range(count):
                 if pos + 16 > len(blob):
                     raise ValueError(f"truncated DNG OpcodeList{stage}")
@@ -115,8 +123,13 @@ def read_plan(path: Path) -> OpcodePlan:
                 payload = blob[pos:pos + length]
                 pos += length
                 name = NAMES.get(oid, f"Opcode{oid}")
-                supported = version <= 0x01040000 and (
-                    (stage == 2 and oid == 9) or (stage == 3 and oid in (1, 2, 3))
+                if previous_optional_warp2 and oid in (1,2):
+                    continue  # DNG 1.6 fallback warp skip rule.
+                previous_optional_warp2 = False
+                supported = version <= 0x01060000 and (
+                    (stage == 1 and oid in (4,5,7,8,10,11,12,13)) or
+                    (stage == 2 and oid in (7,8,9,10,11,12,13)) or
+                    (stage == 3 and oid in (1,2,3,7,8,10,11,12,13,14))
                 )
                 if not supported:
                     label = f"OpcodeList{stage}/{name} (version {version:#x})"
@@ -124,13 +137,39 @@ def read_plan(path: Path) -> OpcodePlan:
                         plan.skipped.append(label)
                         continue
                     raise ValueError(f"LibRaw pipeline does not support required DNG {label}; use Apple RAW")
-                if oid == 9:
+                if oid in (4,5,7,8,10,11,12,13):
+                    from .dng_point_ops import parse
+                    op = parse(oid,payload,stage)
+                    (plan.stage1 if stage==1 else plan.stage2 if stage==2 else plan.post).append(op)
+                elif oid == 14:
+                    planes=struct.unpack_from(">L",payload)[0] if length>=4 else 0
+                    if planes not in (1,3) or length != 4+planes*19*8+20:
+                        raise ValueError("invalid WarpRectilinear2 planes or size")
+                    vals=struct.unpack_from(f">{planes*19+2}d",payload,4)
+                    reciprocal=struct.unpack_from(">L",payload,length-4)[0]
+                    if reciprocal not in (0,1) or not np.isfinite(vals).all() or not all(0<=v<=1 for v in vals[-2:]):
+                        raise ValueError("invalid WarpRectilinear2 parameters")
+                    coeff=tuple(tuple(vals[i*19:(i+1)*19])+(float(reciprocal),) for i in range(planes))
+                    if any(not 0<=c[17]<c[18]<=1 for c in coeff):
+                        raise ValueError("invalid WarpRectilinear2 radius range")
+                    # Division poles and non-invertible radial fields cannot
+                    # be sent to a sampler as NaN/Inf coordinates.
+                    for c in coeff:
+                        r=np.linspace(0.,1.,8193)
+                        f=np.polynomial.polynomial.polyval(np.clip(r,c[17],c[18]),c[:15])
+                        mapped=r/f if reciprocal else r*f
+                        if np.any(f<=0) or not np.isfinite(mapped).all() or np.any(np.diff(mapped)<=0):
+                            raise ValueError("non-invertible WarpRectilinear2 radial field")
+                    plan.post.append(Warp(coeff,vals[-2],vals[-1],aspect=aspect))
+                    previous_optional_warp2=bool(flags&1)
+                elif oid == 9:
                     op = md._parse_gain_map_payload(payload)
                     if op is None or not np.all(np.isfinite(op.gains)) or np.any(op.gains < 0):
                         raise ValueError("invalid DNG GainMap")
                     if not all(math.isfinite(v) for v in (op.spacing_v, op.spacing_h, op.origin_v, op.origin_h)):
                         raise ValueError("invalid DNG GainMap coordinates")
                     plan.gain_maps.append(op)
+                    plan.stage2.append(op)
                 elif oid == 3:
                     if length != 56:
                         raise ValueError("invalid DNG FixVignetteRadial size")
@@ -160,15 +199,28 @@ def _coordinates(op: Warp, h: int, w: int, y0: int, y1: int, channel: int):
     radius = math.hypot(max(cx, w - cx), max(cy, h - cy) / op.aspect)
     x = (np.arange(w, dtype=np.float64)[None, :] - cx) / radius
     y = (np.arange(y0, y1, dtype=np.float64)[:, None] - cy) / (radius * op.aspect)
+    if op.knots:
+        x,y = x/op.scale,y/op.scale
+        factor = np.interp(np.sqrt(x*x+y*y),op.knots,op.scales[channel])
+        return cy+radius*op.aspect*y*factor, cx+radius*x*factor
     rr = np.minimum(x * x + y * y, 1.0)
-    k0, k1, k2, k3, t0, t1 = op.coefficients[min(channel, len(op.coefficients) - 1)]
-    if op.fisheye:
+    coeff = op.coefficients[min(channel,len(op.coefficients)-1)]
+    if len(coeff)==20:
+        t0,t1=coeff[15:17]
+        radius=np.sqrt(np.clip(rr,coeff[17]**2,coeff[18]**2))
+        ratio=np.polynomial.polynomial.polyval(radius,coeff[:15])
+        if coeff[19]:ratio=1.0/ratio
+        # Preserve the image-space normalization radius below.
+        radius=math.hypot(max(cx,w-cx),max(cy,h-cy)/op.aspect)
+    elif op.fisheye:
+        k0,k1,k2,k3,t0,t1=coeff
         r = np.sqrt(rr)
         t = np.arctan(r)
         t2 = t * t
         ratio = np.divide(t * (k0 + t2 * (k1 + t2 * (k2 + t2 * k3))), r,
                           out=np.ones_like(r), where=rr >= 1e-12)
     else:
+        k0,k1,k2,k3,t0,t1=coeff
         ratio = k0 + rr * (k1 + rr * (k2 + rr * k3))
     sx = cx + radius * (x * ratio + t1 * (rr + 2 * x * x) + 2 * t0 * x * y)
     sy = cy + radius * op.aspect * (y * ratio + t0 * (rr + 2 * y * y) + 2 * t1 * x * y)
@@ -185,11 +237,12 @@ def warp_image(image: Any, op: Warp, *, loss: bool = False) -> Any:
     image = np.asarray(image)
     if image.ndim != 3 or image.shape[2] != 3 or min(image.shape[:2]) < 1:
         raise ValueError("DNG warp requires a nonempty 3-channel image")
-    if not op.fisheye and all(tuple(k) == (1., 0., 0., 0., 0., 0.) for k in op.coefficients):
+    if not op.knots and not op.fisheye and all(tuple(k) == (1., 0., 0., 0., 0., 0.) for k in op.coefficients):
         return image
     native = _fast.kernel("warp_dng")
     if native is not None:
-        return native(image, op.coefficients, op.cx, op.cy, op.aspect, op.fisheye, loss)
+        return native(image, op.coefficients, op.cx, op.cy, op.aspect, op.fisheye, loss,
+                      op.knots, op.scales, op.scale)
     h, w = image.shape[:2]
     out = np.empty_like(image, dtype=np.float16 if loss else np.uint16)
     for y0 in range(0, h, 64):
@@ -228,33 +281,83 @@ def crop_image(image: Any, crop: tuple | None, sensor_shape: tuple[int, int]) ->
     return image[y0:y1, x0:x1]
 
 
+def align_sensor_loss(values, sensor_shape, scene_shape, flip, geometry=(), crop=None):
+    """Apply DefaultScale, camera warps, crop and orientation in scene order."""
+    from .raw_io import _orient_like_libraw, _resize_loss_to_shape
+    if geometry:
+        sh, sw = scene_shape
+        if flip & 4:
+            sh, sw = sw, sh
+        if crop is not None:
+            _, _, ch, cw = crop
+            sh, sw = sh * sensor_shape[0] / ch, sw * sensor_shape[1] / cw
+        target = (values.shape[0], max(1, round(values.shape[0] * sw / sh)))
+        values = _resize_loss_to_shape(values, target)
+    for op in geometry:
+        values = warp_image(values, op, loss=True)
+    values = crop_image(values, crop, sensor_shape)
+    return _orient_like_libraw(values, flip)
+
+
 def align_loss(bundle: Any, values: Any) -> Any:
     """Warp an un-oriented RAW-space loss raster into the scene geometry."""
-    from .raw_io import _orient_like_libraw
-    for op in getattr(bundle, "scene_geometry_ops", ()):
-        values = warp_image(values, op, loss=True)
-    values = crop_image(values, getattr(bundle, "scene_crop_sensor", None), bundle.raw_image.shape)
-    return _orient_like_libraw(values, bundle.orientation_flip)
+    return align_sensor_loss(values, bundle.raw_image.shape,
+        bundle.scene_rec2020_render.shape[:2], bundle.orientation_flip,
+        getattr(bundle,"scene_geometry_ops",()), getattr(bundle,"scene_crop_sensor",None))
+
+
+def libraw_camera_matrix(cmatrix: Any, cam_xyz: Any = None, *, is_dng=True) -> Any:
+    """Recover the three-colour rgb_cam used by LibRaw's default matrix path.
+
+    rawpy.color_matrix exposes rawdata.color.cmatrix, NOT rgb_cam. DNG adopts
+    that matrix when cmatrix[0][0] > .125. Other RGB cameras derive rgb_cam
+    from cam_xyz by cam_xyz_coeff's row normalization and inversion.
+    """
+    embedded = np.asarray(cmatrix, dtype=np.float64)
+    if (is_dng and embedded.ndim == 2 and embedded.shape[0] >= 3
+            and embedded.shape[1] >= 3 and embedded[0, 0] > .125):
+        matrix = embedded[:3, :3].copy()
+        if embedded.shape[1] >= 4:
+            matrix[:, 1] += embedded[:3, 3]
+    else:
+        xyz = np.asarray(cam_xyz, dtype=np.float64)
+        if xyz.ndim != 2 or xyz.shape[0] < 3 or xyz.shape[1] != 3:
+            raise ValueError("camera RGB conversion needs a calibrated colour matrix")
+        if xyz.shape[0] > 3 and np.any(xyz[3]):
+            raise ValueError("four-colour camera matrices require a four-plane decode")
+        # These are LibRaw's exact xyz_rgb constants, not rounded display
+        # matrices; using a different white changes the channel normalization.
+        srgb_xyz = np.asarray(((.4124564,.3575761,.1804375),
+                               (.2126729,.7151522,.0721750),
+                               (.0193339,.1191920,.9503041)))
+        cam_rgb = xyz[:3] @ srgb_xyz
+        neutral = cam_rgb.sum(axis=1)
+        if not np.isfinite(cam_rgb).all() or np.any(neutral <= .00001):
+            raise ValueError("camera RGB conversion needs a calibrated colour matrix")
+        try:
+            matrix = np.linalg.inv(cam_rgb / neutral[:, None])
+        except np.linalg.LinAlgError as exc:
+            raise ValueError("singular camera colour matrix") from exc
+    matrix = matrix.astype(np.float32)
+    if matrix.shape != (3, 3) or not np.all(np.isfinite(matrix)) or abs(np.linalg.det(matrix)) < 1e-9:
+        raise ValueError("camera RGB conversion needs a valid LibRaw colour matrix")
+    return matrix
 
 
 def camera_to_rec2020(image: Any, rgb_cam: Any) -> Any:
-    """LibRaw's actual camera matrix and Rec.2020 coefficients, in row bands.
-
-    Read rgb_cam AFTER postprocess: LibRaw can adopt an embedded DNG matrix at
-    processing time. Do not invert a clipped Rec.2020 image to recover planes.
-    """
-    matrix = np.asarray(rgb_cam, dtype=np.float32)[:3, :3]
-    if matrix.shape != (3, 3) or not np.all(np.isfinite(matrix)) or abs(np.linalg.det(matrix)) < 1e-9:
-        raise ValueError("DNG camera-plane correction requires a valid LibRaw colour matrix")
+    """Convert corrected camera planes without clipping negative/over-range RGB."""
+    matrix = np.asarray(rgb_cam, dtype=np.float32)
+    if matrix.shape != (3, 3) or not np.isfinite(matrix).all():
+        raise ValueError("camera conversion requires a finite 3x3 matrix")
     rec = np.asarray(((.627452, .329249, .043299), (.069109, .919531, .011360),
                       (.016398, .088030, .895572)), dtype=np.float64)
     out_matrix = np.zeros((3, 3), dtype=np.float32)
     for k in range(3):
         out_matrix += (rec[:, k, None] * matrix[None, k, :]).astype(np.float32)
-    out = np.empty_like(image, dtype=np.uint16)
+    out = np.empty_like(image, dtype=np.float32)
     for y in range(0, image.shape[0], 128):
         src = image[y:y+128].astype(np.float32)
         for c in range(3):
             v = src[..., 0]*out_matrix[c, 0] + src[..., 1]*out_matrix[c, 1] + src[..., 2]*out_matrix[c, 2]
-            out[y:y+128, :, c] = np.clip(v, 0, 65535).astype(np.uint16)
+            out[y:y+128, :, c] = v
     return out

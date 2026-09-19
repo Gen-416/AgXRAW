@@ -288,10 +288,12 @@ pub fn apply_hdr_formation_f32(
     }
     let block = block_pixels(n, workers) * 3;
     std::thread::scope(|s| {
+        let mut handles = Vec::new();
         let mut mask_chunks = clip_masks.map(|m| m.chunks(block));
         for (i, o) in input.chunks(block).zip(output.chunks_mut(block)) {
             let m = mask_chunks.as_mut().and_then(|it| it.next());
-            s.spawn(move || run_range(i, m, o, plan));
+            handles.push(s.spawn(move || run_range(i, m, o, plan)));
         }
+        crate::budget::join_workers(handles);
     });
 }

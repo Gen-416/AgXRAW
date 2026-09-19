@@ -48,10 +48,12 @@ pub fn feather_masks_f16(mask: &[f32], h: usize, w: usize, c: usize) -> Vec<f16>
     } else {
         let rows = h.div_ceil(workers);
         std::thread::scope(|s| {
+            let mut handles = Vec::new();
             for (i, chunk) in out.chunks_mut(rows * row_len).enumerate() {
                 let process = &process;
-                s.spawn(move || process(i * rows, chunk));
+                handles.push(s.spawn(move || process(i * rows, chunk)));
             }
+            crate::budget::join_workers(handles);
         });
     }
     out

@@ -35,7 +35,8 @@ from .models import ToneCompressionPlan
 # v12: HDR delivery metrics take the P3 luminance row and include local
 # luminance-fidelity gates. Reject older extensions rather than omit those gates.
 # v13: in-place GainMap loss output and camera-plane DNG warp kernels.
-NATIVE_ABI_VERSION = 13
+# v14: WarpRectilinear2 and radial spline warps for embedded lens profiles.
+NATIVE_ABI_VERSION = 14
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

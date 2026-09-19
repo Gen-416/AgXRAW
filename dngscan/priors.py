@@ -41,6 +41,7 @@ SIGMA_FP = {
     "model_equals": {"SIGMA FP", "FP"},
     "unity_gain_ev": 8.93,
     "fwc_e": 74884,
+    "reference_dn_range": 15359.0,
     "pdr_log2iso_ev": [
         (6.6439, 11.02), (6.9739, 10.98), (7.3139, 11.0), (7.6439, 11.0),
         (7.9739, 10.7), (8.3139, 10.41), (8.6439, 9.85), (8.9739, 9.22),
@@ -352,6 +353,30 @@ def pdr_ev(priors: dict[str, Any], iso: int) -> float | None:
     return float(_interp(curve, math.log2(iso)))
 
 
+def gain_for_file(prior: dict[str, Any], iso: int, code_range: float) -> float | None:
+    """Transport measured e-/DN to this file's linear DN storage scale.
+
+    FWC/gain at the measurement anchor gives its reference DN span. Only
+    power-of-two rescalings within 5% are accepted; a different saturation
+    convention/readout is not silently interpreted as a storage shift.
+    """
+    gain = gain_e_per_dn(prior, iso)
+    anchor = prior.get("measured_iso") or prior.get("base_iso")
+    if not anchor:
+        curve = prior.get("read_noise_log2iso_log2e") or []
+        anchor = 2 ** min((p[0] for p in curve), default=float("nan"))
+    fwc = float(prior.get("fwc_e") or 0)
+    base_gain = gain_e_per_dn(prior, anchor) if anchor and math.isfinite(anchor) else None
+    if gain is None or not base_gain or fwc <= 0 or code_range <= 0:
+        return None
+    reference = float(prior.get("reference_dn_range") or fwc / base_gain)
+    ratio = code_range / reference
+    power = round(math.log2(ratio))
+    if abs(math.log2(ratio) - power) > math.log2(1.05):
+        return None
+    return gain / (2.0 ** power)
+
+
 def prior_usability(entry: dict[str, Any] | None) -> tuple[bool, str]:
     """SINGLE availability criterion for every rendering consumer
     (R10 item 1): SNR guidance, noise floors, endpoint evidence and any
@@ -366,6 +391,6 @@ def prior_usability(entry: dict[str, Any] | None) -> tuple[bool, str]:
     spread = q.get("estimator_spread")
     if spread is not None and math.isfinite(spread) and spread > 0.10:
         return False, "estimator-spread"
-    if entry.get("mode_match") == "model-only-ambiguous-shutter":
+    if entry.get("mode_match") in ("model-only-ambiguous-shutter", "model-only"):
         return False, "ambiguous-shutter"
     return True, entry.get("mode_match") or "ok"

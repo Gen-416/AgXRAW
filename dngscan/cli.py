@@ -95,11 +95,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="可选 8-bit JPEG 输出路径",
     )
+    parser.add_argument("--heif-encoder", choices=("auto","apple","x265"), default="auto",
+                        help="HEIF 编码器；auto 优先采用可调 libheif/x265")
+    parser.add_argument("--heif-bit-depth", type=int, choices=(8,10), default=10)
+    parser.add_argument("--heif-preset", choices=("fast","medium","slow","slower"), default="slow")
+    parser.add_argument("--heif-tune", choices=("ssim","psnr","grain"), default="ssim")
     parser.add_argument(
         "--jpeg-quality",
         type=int,
         default=None,
-        help="JPEG 质量 1-100；默认跟随 --delivery-profile（archive=100，share=90）",
+        help="JPEG 质量 1-100；默认跟随 --delivery-profile（auto=95–99 自动选择，archive=100，share=95）",
     )
     parser.add_argument(
         "--chroma",
@@ -107,7 +112,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "色度采样: 444/422/420；默认跟随 --delivery-profile（archive=444，share=420）。"
-            "Ultrahdr 的主图采样由 Core Image 按 quality 决定；share 档通常为 4:2:0。"
+            "JPEG 与可调 HEIF 主图采样独立于 quality；实际文件必须通过回读。"
         ),
     )
     parser.add_argument(
@@ -116,8 +121,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "交付编码档: archive=q100/4:4:4 严格 round-trip；"
-            "share=q90/4:2:0 倾向，体积更小、门禁放宽。只影响最后编码，不重算 AgX/HDR。"
-            "缺省时：未显式给 --jpeg-quality/--chroma 则为 archive；"
+            "auto=JPEG q95–99 / HEIF 独立刻度，按回读误差选择；share=手动，默认q95/4:2:0。"
+            "缺省时：未显式给 --jpeg-quality/--chroma 则为 auto；"
             "给了则按参数值推断门禁档（恰好 q100 且 444 走 archive——严格档合同"
             "只在其标定过的编码点成立，其余组合走 share）。"
         ),
@@ -128,7 +133,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="sdr",
         help=(
             "输出格式: sdr=普通 JPEG；ultrahdr=Apple ISO gain-map JPEG；"
-            "ultrahdr-heic=同内容 HEIC 容器（实测在本机 Core Image 下并不更小，"
+            "ultrahdr-heic=同内容 HEIC 容器（可调 x265 或 Apple 编码，"
             "share 档误差也更大；主要用于需要 HEIC 的下游）"
         ),
     )
@@ -186,8 +191,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--ev",
-        default="0",
-        help="手动曝光补偿（档），或 auto=按可靠 scene body 中位计算 18%% 灰参考（高光保护；仅显式指定时应用）",
+        default="auto",
+        help="默认 auto：按可靠场景统计计算曝光并保护高光；指定数字可改为手动曝光补偿",
     )
     parser.add_argument(
         "--highlight-mode",
@@ -947,6 +952,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             args.delivery = resolve_hdr_chroma(args.delivery, explicit_chroma=args.chroma)
         except ValueError as exc:
             parser.error(str(exc))
+    from dataclasses import replace
+    args.delivery = replace(args.delivery, heif_encoder=args.heif_encoder,
+                            heif_bit_depth=args.heif_bit_depth, heif_preset=args.heif_preset,
+                            heif_tune=args.heif_tune)
     args.delivery_profile = str(args.delivery.name)
     args.jpeg_quality = int(args.delivery.quality)
     args.chroma = str(args.delivery.chroma)
@@ -1246,7 +1255,7 @@ def main(argv: list[str]) -> int:
                 chroma=args.chroma,
             )
             jpeg_icc_embedded = (
-                str(export_result.get("profile", "")) == "Display P3"
+                bool(export_result.get("icc_embedded", str(export_result.get("profile", "")) == "Display P3"))
                 if isinstance(export_result, dict)
                 else bool(export_result)
             )
@@ -1256,6 +1265,13 @@ def main(argv: list[str]) -> int:
             # and CSV must name the file that EXISTS, not the one requested.
             if isinstance(export_result, dict) and export_result.get("output_path"):
                 jpeg_path = Path(str(export_result["output_path"]))
+            if isinstance(export_result, dict) and export_result.get("delivery_quality"):
+                args.jpeg_quality = int(export_result["delivery_quality"])
+                if export_result.get("delivery_profile") == "auto":
+                    args.chroma = str(export_result["delivery_chroma_requested"])
+                    print(f"自动编码: q{args.jpeg_quality}/{export_result['chroma_subsampling']}，"
+                          f"{export_result['file_size_bytes']/1048576:.2f} MiB，"
+                          f"较 q{export_result['auto_reference_quality']} 参考节省 {export_result['auto_saved_pct']:.1f}%")
 
         if args.csv is not None:
             # Only built on demand: without --scan/--csv the analysis deliberately
