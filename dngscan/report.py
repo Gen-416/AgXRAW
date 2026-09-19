@@ -31,6 +31,8 @@ def _optics_budget_mib_report() -> int:
 
 def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
     lines = ["Darktable 修图建议:"]
+    if analysis.noise_evidence_status == "unavailable":
+        return lines + ["仅有解码场景统计，无法判断传感器过曝或噪声余量。", "曝光与压缩按场景亮度估计；RAW 恢复能力未知。"]
     max_clip = max(analysis.clip_pct.values()) if analysis.clip_pct else 0.0
     if analysis.ev_p999 > -0.10 or max_clip > 0.05:
         lines.append("曝光: 避免全局加曝光；高光已贴近白点，优先局部提暗部。")
@@ -39,19 +41,18 @@ def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]
     else:
         lines.append("曝光: 高光余量有限；全局曝光先小步调整，再看剪切图。")
 
-    if analysis.cfa_cell_supported and math.isfinite(analysis.cell_union_pct):
-        if analysis.cell_union_pct <= 0.01:
+    groups = getattr(analysis, "color_clip_k_of_all_pct", None) or {}
+    if all(k in groups and math.isfinite(float(groups[k])) for k in (1, 2, 3)):
+        union = sum(float(groups[k]) for k in (1, 2, 3))
+        multi = float(groups[2]) + float(groups[3])
+        if union <= 0.01:
             lines.append("高光: RAW 过曝很少，高光重建风险低。")
-        elif analysis.cell_ge2_of_clipped_pct >= 50.0:
-            lines.append(
-                f"高光: {format_pct(analysis.cell_union_pct)}% CFA cell 剪切，且多通道占比高；细节修复有限。"
-            )
+        elif multi / union >= 0.5:
+            lines.append(f"高光: {format_pct(union)}% 采样单元剪切，且多个 RGB 颜色组丢失的占比高；细节修复有限。")
         else:
-            lines.append(
-                f"高光: {format_pct(analysis.cell_union_pct)}% CFA cell 剪切，多为单通道；可尝试高光重建。"
-            )
+            lines.append(f"高光: {format_pct(union)}% 采样单元剪切，多为单个 RGB 颜色组；可尝试高光重建。")
     else:
-        lines.append("高光: 非 2x2 CFA，剪切结构无法按 Bayer cell 判断。")
+        lines.append("高光: RGB 颜色组剪切结构不可用，无法判断多色通道损失。")
 
     finite_dr = [v for v in analysis.snr1_dr.values() if math.isfinite(v)]
     if finite_dr:
@@ -140,6 +141,8 @@ def matrix_health_line_cn(bundle: RawBundle) -> str:
 
     wb_mode = str(getattr(bundle, "wb_mode", "camera") or "camera")
     cct = kelvin_mode_cct(wb_mode)
+    if bundle.scene_decoder == "coreimage" and bundle.evidence_provider == "unavailable":
+        return "色彩矩阵: Apple 内部标定；项目热白平衡缺少传感器标定，使用 Apple AsShot"
     try:
         _decode, target, source = resolve_hot_wb_c0(bundle, cct)
     except Exception:
@@ -242,19 +245,25 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
     if analysis.cfa_cell_supported:
         cell_line = (
             f"2x2 剪切 cell: {format_pct(analysis.cell_union_pct)}%  "
-            f"剪切 cell 中 >=2通道: {format_pct(analysis.cell_ge2_of_clipped_pct)}%"
+            f"剪切 cell 中 >=2感光点: {format_pct(analysis.cell_ge2_of_clipped_pct)}%"
         )
-        cell_mix = "2x2 剪切通道数分布: " + " ".join(
+        cell_mix = "2x2 剪切感光点数分布: " + " ".join(
             f"{k}={format_pct(analysis.cell_k_of_clipped_pct[k])}%" for k in range(1, 5)
         )
     else:
         cell_line = "2x2 剪切 cell: n/a (非 2x2 CFA)"
-        cell_mix = "2x2 剪切通道数分布: n/a"
+        cell_mix = "2x2 剪切感光点数分布: n/a"
     return darktable_guidance_lines(bundle, analysis) + [
         "",
         "关键 RAW 指标:",
         f"文件: {bundle.path.name}",
-        f"可见传感器: {bundle.raw_image.shape[1]} x {bundle.raw_image.shape[0]}",
+        (f"可见传感器: {bundle.raw_image.shape[1]} x {bundle.raw_image.shape[0]}"
+         if bundle.raw_image is not None else "可见传感器: 不可用（解码场景可用）"),
+        f"实际解码: {bundle.scene_decoder} {bundle.scene_decoder_version or ''}；传感器证据: {bundle.evidence_provider}",
+        f"HDR 证据来源: {bundle.scene_reliability_source}",
+        *([f"解码回退: {bundle.scene_decoder_fallback}"] if bundle.scene_decoder_fallback else []),
+        *([f"证据不可用: {bundle.evidence_error}"] if bundle.evidence_error else []),
+        *([f"HDR 参考不可用: {bundle.scene_reference_error}"] if bundle.scene_reference_error else []),
         f"方向标记: flip={bundle.orientation_flip}  JPEG 导出: 按相机方向自动转正",
         f"white_level 标签: {bundle.white_level}  容器位深估计: {analysis.container_bits_est}",
         "黑电平 DN: " + format_channel_values(black, analysis.labels, analysis.channel_ids, "{:.1f}"),
@@ -341,7 +350,7 @@ def print_report(
         decoder_runtime = getattr(bundle, "scene_decoder_runtime", None)
         if decoder == "coreimage":
             opcodes = tuple(getattr(bundle, "scene_opcode_names", ()) or ())
-            opcode_note = f"，已执行 DNG opcode: {'/'.join(opcodes)}" if opcodes else ""
+            opcode_note = f"，DNG opcode 交由 Apple 处理: {'/'.join(opcodes)}" if opcodes else ""
             scale_mode = getattr(bundle, "scene_scale_mode", None)
             align = getattr(bundle, "scene_align_factor", 1.0)
             align_err = getattr(bundle, "scene_align_error", None)
@@ -719,17 +728,17 @@ def csv_row(
     row: dict[str, Any] = {
         "file": str(bundle.path),
         "filename": bundle.path.name,
-        "width": int(bundle.raw_image.shape[1]),
-        "height": int(bundle.raw_image.shape[0]),
+        "width": int(bundle.raw_image.shape[1]) if bundle.raw_image is not None else "",
+        "height": int(bundle.raw_image.shape[0]) if bundle.raw_image is not None else "",
         "orientation_flip": int(bundle.orientation_flip),
-        "white_level": int(bundle.white_level),
-        "container_bits_est": int(analysis.container_bits_est),
-        "fullwell_reference": int(analysis.fullwell),
-        "fullwell_min_channel_ceil": int(analysis.fullwell),
+        "white_level": bundle.white_level,
+        "container_bits_est": analysis.container_bits_est,
+        "fullwell_reference": int(analysis.fullwell) if math.isfinite(analysis.fullwell) else "",
+        "fullwell_min_channel_ceil": int(analysis.fullwell) if math.isfinite(analysis.fullwell) else "",
         "fullwell_channels": channel_list(analysis.fullwell_channel_ids, analysis.labels),
         "fullwell_note": analysis.fullwell_note,
-        "threshold_reference": int(analysis.threshold),
-        "unified_threshold_thr": int(analysis.threshold),
+        "threshold_reference": int(analysis.threshold) if math.isfinite(analysis.threshold) else "",
+        "unified_threshold_thr": int(analysis.threshold) if math.isfinite(analysis.threshold) else "",
         "cfa_cell_supported": analysis.cfa_cell_supported,
         "cell_clip_union_pct": analysis.cell_union_pct,
         "cell_clip_ge2_of_clipped_pct": analysis.cell_ge2_of_clipped_pct,
@@ -751,6 +760,11 @@ def csv_row(
         "scene_decoder": getattr(bundle, "scene_decoder", "libraw") or "libraw",
         "scene_decoder_version": getattr(bundle, "scene_decoder_version", None) or "",
         "scene_decoder_runtime": getattr(bundle, "scene_decoder_runtime", None) or "",
+        "evidence_provider": bundle.evidence_provider,
+        "evidence_error": bundle.evidence_error or "",
+        "scene_reliability_source": bundle.scene_reliability_source,
+        "scene_reference_error": bundle.scene_reference_error or "",
+        "scene_decoder_fallback": bundle.scene_decoder_fallback or "",
         "scene_geometry_corr": (
             getattr(bundle, "scene_geometry_corr", None)
             if getattr(bundle, "scene_geometry_corr", None) is not None
@@ -831,8 +845,10 @@ def csv_row(
         row[f"ceil_spike_ok_{label}"] = analysis.ceil_spike_ok[cid]
         row[f"clip_pct_{label}"] = analysis.clip_pct[cid]
     for k in range(1, 5):
-        row[f"cell_clip_{k}_of_clipped_pct"] = analysis.cell_k_of_clipped_pct[k]
-        row[f"cell_clip_{k}_of_all_pct"] = analysis.cell_k_of_all_pct[k]
+        row[f"cell_clip_{k}_of_clipped_pct"] = analysis.cell_k_of_clipped_pct.get(k, "")
+        row[f"cell_clip_{k}_of_all_pct"] = analysis.cell_k_of_all_pct.get(k, "")
+    for k in range(1, 4):
+        row[f"rgb_clip_{k}_of_all_pct"] = analysis.color_clip_k_of_all_pct.get(k, "")
     return row
 
 

@@ -2,7 +2,6 @@
 """Per-frame RAW sensor analysis and metrics."""
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 import math
 from dataclasses import replace
 from typing import Any
@@ -210,6 +209,48 @@ def compute_cell_metrics(
     return union_pct, ge2_of_clipped, k_clipped, k_all
 
 
+def compute_color_clip_metrics(
+    raw_image: Any, raw_colors: Any, thresholds: dict[int, int],
+    labels: dict[int, str], raw_pattern: list[list[int]],
+) -> dict[int, float]:
+    """Absolute cell share with exactly 1/2/3 distinct RGB groups clipped.
+
+    This differs from the historical Bayer photosite count: both green sites
+    still measure one colour. For arbitrary CFA periods, a cell is one whole
+    pattern period; for linear camera RGB it is one pixel. Unknown colour
+    layouts carry no colour-separation authority.
+    """
+    groups = {cid: label[:1].upper() for cid, label in labels.items()}
+    if set(groups.values()) != {"R", "G", "B"}:
+        return {}
+    raw = np.asarray(raw_image)
+    colors = np.asarray(raw_colors)
+    if raw.ndim == 3:
+        if colors.shape != raw.shape:
+            return {}
+        clipped = raw >= channel_threshold_map(colors, thresholds)
+        per_group = [np.any(clipped & np.isin(colors, [c for c, g in groups.items() if g == group]),
+                            axis=2) for group in ("R", "G", "B")]
+    else:
+        pattern = np.asarray(raw_pattern)
+        if pattern.ndim != 2 or not pattern.size:
+            return {}
+        ph, pw = pattern.shape
+        h, w = raw.shape
+        h, w = h // ph * ph, w // pw * pw
+        if not h or not w:
+            return {}
+        colors = colors[:h, :w]
+        clipped = raw[:h, :w] >= channel_threshold_map(colors, thresholds)
+        per_group = []
+        for group in ("R", "G", "B"):
+            ids = [cid for cid, name in groups.items() if name == group]
+            group_clipped = clipped & np.isin(colors, ids)
+            per_group.append(group_clipped.reshape(h // ph, ph, w // pw, pw).any(axis=(1, 3)))
+    counts = np.sum(per_group, axis=0)
+    return {k: float(np.mean(counts == k) * 100.0) for k in (1, 2, 3)}
+
+
 def nan_cell_metrics() -> tuple[float, float, dict[int, float], dict[int, float]]:
     nan = float("nan")
     return nan, nan, {k: nan for k in range(1, 5)}, {k: nan for k in range(1, 5)}
@@ -223,10 +264,9 @@ def compute_generic_cell_union(
 
     A "cell" is one CFA pattern period (6x6 for X-Trans). The union metric —
     the share of cells containing at least one clipped photosite — is
-    meaningful for any period and is what the RAW9 rank-domain highlight trim
-    consumes. The 2x2 multi-channel decomposition (ge2 / k-of-cell) stays
-    Bayer-only: on other periods those fields remain NaN and their consumers
-    must treat "no topology" as no evidence, never as zero clipping.
+    meaningful for any period. The historical 2x2 photosite decomposition
+    (ge2 / k-of-cell) stays Bayer-only; HDR colour separation uses the
+    independent RGB-group metric, never this photosite count.
     """
     if raw_image.ndim == 3:
         thresholds_rgb = np.asarray([thresholds[c] for c in range(3)])
@@ -863,6 +903,63 @@ def sensor_prior_evidence(
             gain_e, prior_rn_e, prior_pdr, noise_e)
 
 
+def balanced_scene_metrics(
+    bundle: RawBundle,
+    gamut_names: tuple[str, ...] | list[str] | None = None,
+) -> tuple[Any, ...]:
+    """WB-dependent statistics from identical full-scene sample rows everywhere.
+
+    A preview raster has averaged away fine detail and small highlights. Its
+    persisted canonical sample, after the same hot-WB transform as the full
+    image, is the evidence shared with export. Neither path meters the proxy.
+    """
+    from .color import rec2020_to_xyz
+    from .sampling import sample_indices
+
+    sample = getattr(bundle, "_tone_plan_sample", None)
+    if sample is None:
+        flat = bundle.scene_rec2020_render.reshape(-1, bundle.scene_rec2020_render.shape[-1])
+        sample = flat[sample_indices(flat.shape[0]), :3]
+    sample = np.asarray(sample)[:, :3]
+    y = np.clip(rec2020_to_xyz(sample.astype(np.float32) / np.float32(bundle.scene_scale))[:, 1], 0, None)
+    y = np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0)
+    metrics = compute_ev_metrics(y)
+    gamut, bright = compute_gamut_metrics(sample, bundle.scene_scale, y, gamut_names)
+    return (*metrics[1:], float(np.median(y)), gamut, bright)
+
+
+def _analyze_decoded_scene(
+    bundle: RawBundle,
+    gamut_names: tuple[str, ...] | list[str] | None,
+) -> tuple[Analysis, Any, Any]:
+    """Keep decoded scene measurements without inventing absent sensor facts."""
+    y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
+    if getattr(bundle, "wb_mode", "camera") != "camera":
+        raw_p1, p1, p50, p99, p999, dr, floor, gray, median_y, gamut, bright = balanced_scene_metrics(bundle, gamut_names)
+        ev = np.log2(np.clip(y, EPS, None)).astype(np.float32, copy=False)
+    else:
+        ev, raw_p1, p1, p50, p99, p999, dr, floor, gray = compute_ev_metrics(y)
+        gamut, bright = compute_gamut_metrics(bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names)
+        median_y = float(np.median(y))
+    nan = float("nan")
+    analysis = Analysis(
+        channel_ids=[], labels={}, ceilings={}, ceil_spike_counts={},
+        ceil_near_counts={}, ceil_spike_ok={}, fullwell_channel_ids=[],
+        fullwell_note="sensor evidence unavailable; decoded-image statistics only",
+        saturation_levels={}, channel_fullwell={}, channel_thresholds={},
+        fullwell=nan, threshold=nan, clip_pct={}, cfa_cell_supported=False,
+        cell_union_pct=nan, cell_ge2_of_clipped_pct=nan,
+        cell_k_of_clipped_pct={}, cell_k_of_all_pct={}, color_clip_k_of_all_pct={},
+        ev_p1=p1, ev_raw_p1=raw_p1, ev_median=p50, ev_p99=p99, ev_p999=p999,
+        ev_dr_p1_p999=dr, ev_floor_hit_pct=floor, median_vs_gray_ev=gray,
+        median_y=median_y, noise_floor=nan, usable_dr_ev=nan,
+        snr_curves={}, snr1_dr={}, snr1_stop={}, gamut_out_pct=gamut,
+        bright_pixel_pct=bright, survivor_channel="unavailable", container_bits_est=None,
+        usable_dr_eff_ev=nan, noise_evidence_status="unavailable",
+    )
+    return analysis, y, ev
+
+
 def analyze(
     bundle: RawBundle,
     margin: int,
@@ -872,6 +969,8 @@ def analyze(
 ) -> tuple[Analysis, Any, Any]:
     raw_image = bundle.raw_image
     raw_colors = bundle.raw_colors
+    if raw_image is None or raw_colors is None:
+        return _analyze_decoded_scene(bundle, gamut_names)
     channel_ids = [int(x) for x in sorted(np.unique(raw_colors).tolist())]
     labels = channel_labels(bundle.color_desc, channel_ids)
 
@@ -897,19 +996,25 @@ def analyze(
             raw_image, raw_colors, channel_thresholds
         )
     else:
-        # R3 item 1: "not applicable" used to be spelled NaN across the board,
-        # and NaN flowed into the RAW9 highlight rank trim (clamping to a 0%
-        # trim) and the HDR channel-separation compile (NaN rho). The union
-        # metric generalises to any CFA period, so measure it; only the 2x2
-        # multi-channel decomposition stays NaN, and its consumers now treat
-        # missing topology as zero confidence rather than zero clipping.
+        # Preserve unavailable historical 2x2 photosite statistics as NaN.
+        # Union coverage generalizes to every complete CFA period; the
+        # separate RGB-group decomposition below supplies HDR colour evidence.
         _, cell_ge2, cell_k_clipped, cell_k_all = nan_cell_metrics()
         cell_union = compute_generic_cell_union(
             raw_image, raw_colors, channel_thresholds, bundle.raw_pattern
         )
 
+    color_clip_k = compute_color_clip_metrics(raw_image, raw_colors, channel_thresholds, labels, bundle.raw_pattern)
     y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
-    ev, raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray = compute_ev_metrics(y)
+    balanced = getattr(bundle, "wb_mode", "camera") != "camera"
+    if balanced:
+        raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray, median_y, gamut_pct, bright_pct = balanced_scene_metrics(bundle, gamut_names)
+        # Diagnostics still receive their full image-domain EV plane; the
+        # decision reductions above run only once on the canonical sample.
+        ev = np.log2(np.clip(y, EPS, None)).astype(np.float32, copy=False)
+    else:
+        ev, raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray = compute_ev_metrics(y)
+        median_y = float(np.median(y))
     nf = estimate_raw_noise_floor(bundle, channel_fullwell)
     usable_dr = math.log2(1.0 / max(nf, NOISE_DR_EPS)) if math.isfinite(nf) else float("nan")
     # Review R2 item 1: the SNR curve is a RENDER input now, not a diagnostic.
@@ -921,9 +1026,10 @@ def analyze(
     snr_curves, snr1_dr, snr1_stop = compute_snr_curves(
         bundle, channel_ids, labels, channel_fullwell
     )
-    gamut_pct, bright_pct = compute_gamut_metrics(
-        bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names
-    )
+    if not balanced:
+        gamut_pct, bright_pct = compute_gamut_metrics(
+            bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names
+        )
 
     # This is decision evidence, so requesting a CSV must not change rendering.
     health_lag1, health_hist = raw_health_metrics(bundle, channel_ids, labels)
@@ -978,6 +1084,7 @@ def analyze(
         cell_ge2_of_clipped_pct=cell_ge2,
         cell_k_of_clipped_pct=cell_k_clipped,
         cell_k_of_all_pct=cell_k_all,
+        color_clip_k_of_all_pct=color_clip_k,
         ev_p1=p1,
         ev_raw_p1=raw_p1,
         ev_median=p50,
@@ -986,7 +1093,7 @@ def analyze(
         ev_dr_p1_p999=dr,
         ev_floor_hit_pct=floor_hit_pct,
         median_vs_gray_ev=vs_gray,
-        median_y=float(np.median(y)),
+        median_y=median_y,
         noise_floor=nf,
         usable_dr_ev=usable_dr,
         snr_curves=snr_curves,
@@ -1021,39 +1128,12 @@ def reanalyze_balanced_scene(
     """Refresh only WB-dependent scene facts on an invariant capture analysis.
 
     Ceiling/noise/clip/CFA/SNR facts come from the RAW and are intentionally reused.
-    EV and gamut facts come from the newly balanced scene.  Preview BalanceContexts run
-    this over their fixed 1920px proxy; export still runs ``analyze`` on the full scene.
-    Both paths share the identical WB matrix and pixel pipeline, while avoiding every
-    sensor-domain scan on an interactive balance change.
+    EV and gamut facts use the same transformed full-resolution sample as
+    ``analyze`` on export. This avoids both sensor rescans and proxy averaging
+    changing exposure or colour decisions after a white-balance adjustment.
     """
-    y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
-    # EV percentiles and gamut occupancy are independent read-only reductions over the
-    # same luminance plane.  NumPy releases the GIL for their heavy kernels, so running
-    # the two original functions concurrently removes their serialized wall time while
-    # preserving every operation, dtype, percentile definition, and result bit.
-    with ThreadPoolExecutor(
-        max_workers=2, thread_name_prefix="dngscan-balance-analysis"
-    ) as pool:
-        ev_future = pool.submit(compute_ev_metrics, y)
-        gamut_future = pool.submit(
-            compute_gamut_metrics,
-            bundle.scene_rec2020_render,
-            bundle.scene_scale,
-            y,
-            gamut_names,
-        )
-        (
-            _ev,
-            raw_p1,
-            p1,
-            p50,
-            p99,
-            p999,
-            dr,
-            floor_hit_pct,
-            vs_gray,
-        ) = ev_future.result()
-        gamut_pct, bright_pct = gamut_future.result()
+    (raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray,
+     median_y, gamut_pct, bright_pct) = balanced_scene_metrics(bundle, gamut_names)
     return replace(
         capture,
         ev_p1=p1,
@@ -1064,7 +1144,7 @@ def reanalyze_balanced_scene(
         ev_dr_p1_p999=dr,
         ev_floor_hit_pct=floor_hit_pct,
         median_vs_gray_ev=vs_gray,
-        median_y=float(np.median(y)),
+        median_y=median_y,
         gamut_out_pct=gamut_pct,
         bright_pixel_pct=bright_pct,
     )

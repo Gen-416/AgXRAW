@@ -63,6 +63,39 @@ class JpegRepackTests(unittest.TestCase):
 
 
 class HeifRepackTests(unittest.TestCase):
+    def test_sdr_icc_embedding_keeps_coded_payloads_and_does_not_add_hdr_brand(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td)/'sdr.heic'
+            path.write_bytes(heif_fixture(hdr=False))
+            before = heif._parse(path.read_bytes())
+            heif.embed_primary_icc(path, b'ICC-profile')
+            after = heif._parse(path.read_bytes())
+            self.assertEqual(after[7], before[7])
+            self.assertEqual(after[4], before[4])
+            self.assertEqual(heif.primary_icc(path), b'ICC-profile')
+            self.assertEqual(after[0][0], before[0][0])
+
+    def test_auxiliary_replacement_preserves_primary_and_iso_parameters(self):
+        with tempfile.TemporaryDirectory() as td:
+            path, donor = Path(td)/'pair.heic', Path(td)/'auxiliary.heic'
+            path.write_bytes(heif_fixture())
+            donor.write_bytes(heif_fixture(hdr=False).replace(b'original-image', b'new-gain-codes'))
+            before = heif._parse(path.read_bytes())
+            heif.replace_image_item(path, donor, 2)
+            after = heif._parse(path.read_bytes())
+            self.assertEqual(after[2], before[2])
+            self.assertEqual(after[7][1], before[7][1])
+            self.assertEqual(after[7][3], before[7][3])
+            self.assertEqual(after[7][2], b'new-gain-codes')
+            self.assertEqual(after[4], before[4])
+
+    def test_unknown_auxiliary_encoding_is_not_reinterpreted_as_rgb_gain(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td)/'pair.heic'
+            path.write_bytes(heif_fixture())
+            with self.assertRaisesRegex(ValueError, 'sample depth'):
+                heif.iso_gainmap_item(path)
+
     def test_item_payloads_and_references_survive(self):
         with tempfile.TemporaryDirectory() as td:
             p=Path(td)/'gain.heic';d=Path(td)/'donor.heic'

@@ -65,7 +65,7 @@ def configure_plot_fonts() -> None:
 def exposure_zone_map(y: Any, nf: float) -> Any:
     y_ds = downsample_mean(y)
     ev_ds = np.log2(np.clip(y_ds, EPS, None))
-    noise_ev = math.log2(max(nf, EPS))
+    noise_ev = math.log2(max(nf, EPS)) if math.isfinite(nf) else -13.0
     near_noise_cut = max(noise_ev + 1.0, -12.0)
 
     zones = np.zeros(y_ds.shape, dtype=np.uint8)
@@ -213,6 +213,10 @@ def threshold_stop_for_channel_ids(
 
 
 def plot_snr_panel(ax: Any, analysis: Analysis) -> None:
+    if analysis.noise_evidence_status == "unavailable":
+        ax.text(.5, .5, "传感器证据不可用\n无法测量 RAW SNR", ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+        return
     x_min = EV_REPORT_FLOOR
     x_max = 0.25
     finite_snr1_stops = [v for v in analysis.snr1_stop.values() if math.isfinite(v)]
@@ -424,17 +428,17 @@ def plot_dashboard(
     ax_zone.set_title("曝光区域: 空间 EV 图")
     ax_zone.set_axis_off()
     handles = [
-        Patch(facecolor="#080812", label="接近噪声底"),
+        Patch(facecolor="#080812", label="接近噪声底" if math.isfinite(analysis.noise_floor) else "低于 -12EV（无噪声测量）"),
         Patch(facecolor="#15376d", label="阴影"),
         Patch(facecolor="#238b45", label="中间调"),
         Patch(facecolor="#f3c04d", label="高光"),
-        Patch(facecolor="#d7191c", label="剪切"),
+        Patch(facecolor="#d7191c", label="接近/超过场景白点"),
     ]
     ax_zone.legend(handles=handles, fontsize=7, loc="lower right", framealpha=0.75)
     ax_zone.text(
         0.01,
         0.02,
-        "伪色: 红色=剪切，不代表红光",
+        "伪色: 红色=接近/超过场景白点，不代表传感器剪切",
         transform=ax_zone.transAxes,
         fontsize=7,
         color="white",
@@ -443,8 +447,11 @@ def plot_dashboard(
         bbox={"facecolor": "black", "alpha": 0.35, "edgecolor": "none", "pad": 2},
     )
 
-    clip_rgb = clipped_rgb_map(bundle, analysis)
-    ax_clip.imshow(clip_rgb, interpolation="nearest")
+    if bundle.raw_image is None:
+        ax_clip.text(.5, .5, "传感器证据不可用\n无 RAW 剪切地图", ha="center", va="center", transform=ax_clip.transAxes)
+    else:
+        clip_rgb = clipped_rgb_map(bundle, analysis)
+        ax_clip.imshow(clip_rgb, interpolation="nearest")
     ax_clip.set_title("剪切通道: 高光修复地图")
     ax_clip.set_axis_off()
     clip_handles = [
@@ -453,7 +460,8 @@ def plot_dashboard(
         Patch(facecolor=channel_color("B"), label="B 剪切"),
         Patch(facecolor="#ffffff", edgecolor="#999999", label="RGB 全剪切"),
     ]
-    ax_clip.legend(handles=clip_handles, fontsize=7, loc="lower right", framealpha=0.75)
+    if bundle.raw_image is not None:
+        ax_clip.legend(handles=clip_handles, fontsize=7, loc="lower right", framealpha=0.75)
 
     ax_text.set_axis_off()
     ax_text.set_title("摘要: Darktable 修图提示与关键指标")

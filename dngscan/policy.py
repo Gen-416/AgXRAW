@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 
 from . import constants as _c
 
-POLICY_VERSION = 5
+POLICY_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,13 @@ class PolicyEntry:
 
 
 ENTRIES: tuple[PolicyEntry, ...] = (
+    PolicyEntry(
+        name="DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV",
+        value=1.0, unit="stops",
+        rationale="When sensor-filtered reference samples are unavailable, allow at most one estimated HDR stop and no channel-separation freedom; this is an engineering fallback, not sensor measurement.",
+        constrained_by="Opaque-decoder RAW corpus with independently measured highlight retention and rendering comparisons.",
+        history=("v6: separate decoded-image estimates from sensor-spatial and sensor-reference evidence.",),
+    ),
     PolicyEntry(
         name="MIDGRAY_HEADROOM_STOPS",
         value=float(_c.MIDGRAY_HEADROOM_STOPS),
@@ -437,6 +444,7 @@ def _fingerprint(entries: tuple[PolicyEntry, ...]) -> str:
 # entry set) without bumping the version breaks the match; bumping demands
 # a new pinned line here — a conscious, reviewable act.
 POLICY_FINGERPRINTS = {
+    6: "f8d0336616c2691bd3943430ada18db6da616ab03ba22c585b610b74f1f0ce5e",
     2: "de4a3ff468320ff60e213ca4895fcc7c2e3f0e657c56d34b857f4f01ea85c418",
     # v3 (R2 item 1): TAIL_SNR_WINDOW_EV / TAIL_SNR_ZERO_DB / TAIL_SNR_FULL_DB
     # registered — the HDR channel-separation tail-SNR factor goes live.

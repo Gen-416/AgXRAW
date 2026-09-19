@@ -386,7 +386,7 @@ def raw9_support(params: dict) -> dict:
         message = f"此文件不支持 Apple RAW 9；系统最高可使用 RAW {fallback}。"
     else:
         detail = "、".join(offered) if offered else "无"
-        message = f"此文件不支持 Apple RAW 9，也没有可用的 RAW 8/7 降级路径（报告版本：{detail}）。"
+        message = f"此文件不支持 Apple RAW 9，也没有可用的 RAW 8/7/6 降级路径（报告版本：{detail}）。"
     # GUI review 2026-08-27 item 5: the API can exist while the runtime
     # context cannot be built; surface both contexts so the page can grey
     # the decoder with the reason instead of failing at the first preview.
@@ -1899,9 +1899,8 @@ def detected_scene_params(
     scene = plan.scene
     tone = plan.tone
     reliable_tail = _finite_or_none(getattr(scene, "reliable_tail_ev_p9999", None))
-    earned = None
-    if reliable_tail is not None:
-        earned = max(0.0, reliable_tail - float(dg.OUTPUT_REFERENCE_WHITE_STOPS))
+    from ..hdr_agx_plan import scene_headroom_ev
+    earned = scene_headroom_ev(scene)
     # Compiled transition facts: the toe-end near-black crossing and the
     # shoulder-white near-white crossing, after every clamp — the two numbers the
     # offset sliders move, measured from the same params the render consumes. The
@@ -1919,6 +1918,12 @@ def detected_scene_params(
             pass
     return {
         "data_support": getattr(bundle, "camera_data_support", None),
+        "decoder_actual": f"{bundle.scene_decoder} {bundle.scene_decoder_version or ''}".strip(),
+        "decoder_fallback": bundle.scene_decoder_fallback,
+        "evidence_provider": bundle.evidence_provider,
+        "evidence_error": bundle.evidence_error,
+        "reliability_source": scene.reliability_source,
+        "reference_error": bundle.scene_reference_error,
         "wb_degradation": getattr(bundle, "wb_degradation", None),
         "raw_clip_union_pct": _finite_or_none(analysis.cell_union_pct),
         "reliable_tail_ev": reliable_tail,
@@ -2216,6 +2221,7 @@ def _cached_full_analysis(
     demosaic: str,
     coreimage_scale: str = "aligned",
     margin: int = 4,
+    decoded_bundle: Any | None = None,
 ) -> Any | None:
     """The preview session's persisted full-resolution Analysis, or None.
 
@@ -2252,9 +2258,45 @@ def _cached_full_analysis(
             metadata = json.loads(str(payload["metadata"].item()))
         if int(metadata.get("version", -1)) != pc.PREVIEW_CACHE_VERSION:
             return None
+        if decoded_bundle is not None:
+            # Runtime fallback is per attempt. A cache requested as Apple auto
+            # may contain pixels from RAW 8 or LibRaw, or lack sensor evidence.
+            stored = metadata.get("bundle", {})
+            current = pc._bundle_metadata(decoded_bundle)
+            fields = ("scene_decoder", "scene_decoder_version", "scene_decoder_runtime",
+                      "scene_reliability_source", "evidence_provider", "scene_scale",
+                      "scene_align_error", "scene_reference_error", "scene_decoder_fallback")
+            if any(stored.get(field) != current.get(field) for field in fields):
+                return None
         return pc._analysis_from_json(metadata["analysis"])
     except Exception:
         return None
+
+
+def _preview_decode_contract(bundle):
+    fields = ("scene_decoder", "scene_decoder_version", "evidence_provider",
+              "scene_reliability_source", "scene_scale", "scene_decoder_fallback")
+    return {field: getattr(bundle, field) for field in fields}
+
+
+def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, preview=None):
+    """Pin a displayed auto result; export must not silently switch algorithms."""
+    chosen_decoder, chosen_version = decoder, version
+    pinned = preview is not None and decoder == "coreimage" and version == "auto"
+    if pinned:
+        chosen_decoder = preview.scene_decoder
+        if chosen_decoder == "coreimage":
+            chosen_version = str(preview.scene_decoder_version)
+    bundle = dg.load_raw(inp, highlight, demosaic=demosaic, wb_mode=wb,
+                         decoder=chosen_decoder, coreimage_version=chosen_version,
+                         coreimage_scale=scale)
+    if pinned:
+        fields = ("scene_decoder", "scene_decoder_version", "evidence_provider",
+                  "scene_reliability_source", "scene_scale")
+        if any(getattr(preview, field) != getattr(bundle, field) for field in fields):
+            raise RuntimeError("解码或证据能力与已显示预览不同，请刷新预览后再导出")
+        bundle.scene_decoder_fallback = preview.scene_decoder_fallback
+    return bundle
 
 
 def run_export(params: dict) -> dict:
@@ -2348,14 +2390,14 @@ def run_export(params: dict) -> dict:
     )
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
+    preview_entry = PREVIEW_STORE.peek(
+        inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic,
+        coreimage_scale=coreimage_scale, margin=clip_margin,
+    ) if hasattr(PREVIEW_STORE, "peek") else None
     if film_optics_seed is None:
         # the same realization the preview showed, when its entry is loaded;
         # a cold export (no preview session) mints its own
-        entry = PREVIEW_STORE.peek(
-            inp, highlight, wb, tone_core == "gated",
-            decoder, coreimage_version, demosaic,
-            coreimage_scale=coreimage_scale, margin=clip_margin,
-        ) if hasattr(PREVIEW_STORE, "peek") else None
+        entry = preview_entry
         if entry is not None:
             film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
         else:
@@ -2366,14 +2408,13 @@ def run_export(params: dict) -> dict:
                 decoder, coreimage_version, demosaic,
                 coreimage_scale, clip_margin,
             )
-    bundle = dg.load_raw(
-        inp,
-        highlight,
-        demosaic=demosaic,
-        wb_mode=wb,
-        decoder=decoder,
-        coreimage_version=coreimage_version,
-        coreimage_scale=coreimage_scale,
+    preview_contract = preview_entry.bundle if preview_entry is not None else None
+    if preview_contract is None and isinstance(params.get("_previewDecode"), dict):
+        from types import SimpleNamespace
+        preview_contract = SimpleNamespace(**params["_previewDecode"])
+    bundle = _load_export_scene(
+        inp, highlight, wb, decoder, coreimage_version, demosaic, coreimage_scale,
+        preview=preview_contract,
     )
     bundle.lens_filter = lens_filter
 
@@ -2388,6 +2429,7 @@ def run_export(params: dict) -> dict:
         analysis = _cached_full_analysis(
             inp, highlight, wb, decoder, coreimage_version, demosaic,
             coreimage_scale, clip_margin,
+            decoded_bundle=bundle,
         )
     if analysis is None:
         analysis, y, ev_img = dg.analyze(
@@ -2658,7 +2700,7 @@ def run_export(params: dict) -> dict:
         heif_settings=((delivery.heif_encoder,delivery.heif_bit_depth,delivery.heif_preset,delivery.heif_tune)
                        if delivery.container=="heic" else None),
     )
-    out_ext = ".heic" if output_format == "ultrahdr-heic" else ".jpg"
+    out_ext = ".heic" if dg.container_for_output_format(output_format) == "heic" else ".jpg"
     out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
     # Staged ownership (plan S4; GUI in batch 18, unconditional in batch 19):
     # the diagnostic dashboard is the LAST consumer of the analysis buffers,
@@ -2716,7 +2758,7 @@ def run_export(params: dict) -> dict:
                 lum_norm=lum_norm,
                 agx_primaries=agx_primaries,
                 punch_scale=punch_scale,
-                return_rgb=output_format == "sdr",
+                return_rgb=not dg.is_hdr_output_format(output_format),
                 delivery=delivery,
                 chroma=chroma,
             )
@@ -2728,10 +2770,10 @@ def run_export(params: dict) -> dict:
                 hdr_export_info["file_size_bytes"] = out_path.stat().st_size
             rendered_u8 = (export_result.pop("_decoded_rgb", None) if isinstance(export_result, dict)
                            else export_result[1] if isinstance(export_result, tuple) else None)
-            if rendered_u8 is None and output_format == "ultrahdr-heic":
+            if rendered_u8 is None and dg.container_for_output_format(output_format) == "heic":
                 from dngscan.gainmap import read_primary_rgb_u8
 
-                rendered_u8 = read_primary_rgb_u8(out_path)
+                rendered_u8 = read_primary_rgb_u8(out_path, gamut)
             if rendered_u8 is not None:
                 metrics = output_luminance_metrics_u8(rendered_u8, gamut, ev)
             else:
@@ -2837,7 +2879,7 @@ def run_export(params: dict) -> dict:
             if output_format == "ultrahdr-heic"
             else "HDR gain-map JPEG"
             if dg.is_hdr_output_format(output_format)
-            else "SDR JPEG"
+            else "SDR HEIC" if output_format == "sdr-heic" else "SDR JPEG"
         ),
         "hdr_headroom": hdr_headroom if dg.is_hdr_output_format(output_format) else 0.0,
         "hdr_diagnostics": (
@@ -2880,6 +2922,21 @@ def run_export_isolated(params: dict) -> dict:
     # resolved integer travels in the payload; an explicit seed passes
     # through unchanged.
     params = dict(params)
+    # The export worker has a fresh PREVIEW_STORE. Carry only small capability
+    # facts across the process boundary, so auto cannot reselect another decoder.
+    params.pop("_previewDecode", None)
+    try:
+        inp, highlight, _, _, _, _, _, _, _, _ = parse_job_params(params)
+        decoder, version = parse_decoder(params)
+        demosaic = parse_demosaic(params, decoder)
+        scale, margin = parse_decode_extras(params, decoder)
+        core, _ = parse_tone_core(params)
+        preview = PREVIEW_STORE.peek(inp, highlight, str(params.get("wb", "camera")),
+            core == "gated", decoder, version, demosaic, coreimage_scale=scale, margin=margin)
+        if preview is not None:
+            params["_previewDecode"] = _preview_decode_contract(preview.bundle)
+    except (ValueError, OSError, AttributeError):
+        pass  # The worker reports invalid public parameters through the normal path.
     raw_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
     if raw_seed in (None, "", "auto"):
         try:

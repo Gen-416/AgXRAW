@@ -80,7 +80,7 @@ def _apply_gain_maps_mosaic(
     R3 item 2 — plane semantics follow the DNG SDK (dng_opcode_GainMap /
     dng_gain_map::Interpolate): the opcode applies to image planes
     [plane, plane+planes), and the gain for image plane p reads map plane
-    min(p - plane, map_planes - 1). The mosaic stage has exactly ONE image
+    min(p, map_planes - 1). The mosaic stage has exactly ONE image
     plane (index 0), so an opcode with plane > 0 does not apply here at all,
     and an applicable opcode reads map plane 0 — never an average across
     map planes, which is only coincidentally right for map_planes == 1.
@@ -92,7 +92,7 @@ def _apply_gain_maps_mosaic(
         from types import SimpleNamespace
         for m in maps:
             for c in range(m.plane, min(m.plane + m.planes, min(3, img.shape[2]))):
-                mp = min(c - m.plane, m.map_planes - 1)
+                mp = min(c, m.map_planes - 1)
                 single = replace(m, plane=0, planes=1, map_planes=1,
                                  gains=np.asarray(m.gains)[..., mp:mp+1])
                 view = SimpleNamespace(raw_image_visible=img[..., c],
@@ -116,6 +116,20 @@ def _apply_gain_maps_mosaic(
 
     native = _fast.kernel("apply_gain_map_mosaic")
     for m in maps:
+        from copy import copy
+        m=copy(m)
+        # DNG AreaSpec's empty rectangle means the complete image. Resolve it
+        # before dispatch so both native and NumPy kernels see identical bounds.
+        if m.bottom <= m.top or m.right <= m.left:
+            if m.row_pitch != 1 or m.col_pitch != 1:
+                raise ValueError("empty DNG GainMap area requires unit pitches")
+            m.top,m.left,m.bottom,m.right=0,0,h,w
+        else:
+            # AreaSpec coordinates are signed. Intersect with the image while
+            # retaining the declared pitch's phase, as dng_area_spec::Overlap.
+            top=m.top+max(0,(-m.top+m.row_pitch-1)//m.row_pitch)*m.row_pitch
+            left=m.left+max(0,(-m.left+m.col_pitch-1)//m.col_pitch)*m.col_pitch
+            m.top,m.left,m.bottom,m.right=top,left,min(m.bottom,h),min(m.right,w)
         if int(getattr(m, "plane", 0)) > 0 or int(getattr(m, "planes", 1)) < 1:
             # Targets image planes the 1-plane mosaic does not have (or none).
             continue
@@ -849,6 +863,11 @@ def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
         tone_sample = apply_hot_wb_rec2020(
             np.asarray(tone_sample)[None, :, :], transform
         )[0]
+    reference = bundle.scene_reliable_reference_rec2020
+    if reference is not None and np.asarray(reference).size:
+        reference = apply_hot_wb_rec2020(
+            np.asarray(reference)[None, :, :], transform
+        )[0]
     return replace(
         bundle,
         scene_rec2020_render=scene,
@@ -858,6 +877,7 @@ def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
         applied_wb=[float(value) for value in target_wb],
         wb_degradation=note,
         _tone_plan_sample=tone_sample,
+        scene_reliable_reference_rec2020=reference,
         _clip_masks_cache_shape=None,
         _clip_masks_resized=None,
         _raw_guidance_cache_shape=None,
@@ -901,7 +921,7 @@ def render_to_scene_rec2020(
     half_size: bool = False,
     demosaic: Any = None,
     wb_kwargs: dict[str, Any] | None = None,
-    *, camera_rgb: bool = False,
+    *, camera_rgb: bool = False, calibration_kwargs: dict[str, Any] | None = None,
 ) -> Any:
     if not hasattr(rawpy.ColorSpace, "Rec2020"):
         raise RuntimeError("rawpy.ColorSpace.Rec2020 is not available; cannot make scene-linear export buffer")
@@ -915,6 +935,7 @@ def render_to_scene_rec2020(
         highlight_mode=rawpy_highlight_mode(highlight_mode_name),
         output_bps=16,
         user_flip=0 if camera_rgb else None,
+        **(calibration_kwargs or {}),
         **(wb_kwargs or {"use_camera_wb": True}),
     )
 
@@ -970,7 +991,7 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     # Area/pitch/table coordinates are sensor pixels. Reduced demosaic would
     # discard them before a stage-3 point transform, so process that uncommon
     # recipe at full resolution and reduce only the finished scene.
-    reduce_after_ops = half_size and any(isinstance(op,dng_point_ops.PointOp) for op in recipe.post)
+    reduce_after_ops = half_size and any(isinstance(op,(dng_point_ops.PointOp,ops.TrimBounds)) for op in recipe.post)
     if recipe.stage1:
         from .spatial_black import sensor_tags
         tags = sensor_tags(path,{50712})
@@ -1008,28 +1029,34 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
                 cid=np.minimum(evidence.raw_colors[y:y+128],levels.size-1)
                 wl=levels[cid]
                 loss[y:y+128] |= ((evidence.raw_image[y:y+128]<wl)&(work[y:y+128]>=wl)).astype(np.uint8)
+    working_black = evidence.black_levels
+    working_white = list(recipe.white_levels) or evidence.camera_white_levels or [evidence.white_level]
+    calibration_kwargs = None
     if evidence.spatial_black is not None:
         from .spatial_black import apply_to_working
-        apply_to_working(raw, evidence.spatial_black, evidence.black_levels, evidence.white_level, loss)
+        calibration_kwargs = apply_to_working(raw, evidence.spatial_black,
+            evidence.black_levels, list(recipe.white_levels) or [evidence.white_level], loss)
+        working_black, working_white = [0.] * 4, [65535.] * 4
         recipe.names.insert(0, "SpatialBlackLevel")
     for op in recipe.stage2:
         if isinstance(op,dng_point_ops.PointOp):
             img=raw.raw_image_visible
-            levels=list(recipe.white_levels) or evidence.camera_white_levels or [evidence.white_level]
+            levels=working_white
             levels=(levels*4)[:4]
-            dng_point_ops.apply(img,op,black=evidence.black_levels,white=levels,
+            dng_point_ops.apply(img,op,black=working_black,white=levels,
                                colors=np.asarray(raw.raw_colors_visible) if img.ndim==2 else None,loss=loss)
         else:
-            _apply_gain_maps_mosaic(raw, [op], evidence.black_levels,
-                                   evidence.white_level,
-                                   list(recipe.white_levels) or evidence.camera_white_levels, loss)
+            _apply_gain_maps_mosaic(raw, [op], working_black,
+                                   65535 if calibration_kwargs else evidence.white_level,
+                                   working_white, loss)
     processing = _mosaic_loss_rgb(loss, evidence.raw_colors, evidence.color_desc) if loss is not None else None
     del loss
     # Colour mixing must follow camera-plane opcodes. The as-shot WB is diagonal,
     # so it commutes with the per-plane warp; keep LibRaw's demosaic/reconstruction.
     camera_rgb = True
     scene = render_to_scene_rec2020(raw, highlight, half_size and not reduce_after_ops, demosaic,
-                                   _fixed_asshot_wb_kwargs(evidence.camera_wb), camera_rgb=camera_rgb)
+                                   _fixed_asshot_wb_kwargs(evidence.camera_wb), camera_rgb=camera_rgb,
+                                   calibration_kwargs=calibration_kwargs)
     if scene.ndim != 3 or scene.shape[2] != 3:
         raise ValueError("DNG corrections require three camera colour planes")
     if processing is not None:
@@ -1058,8 +1085,15 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     shading = []
     if recipe.gain_maps:
         shading.append("gainmap")
+    terminal_trims=[]
     for op in recipe.post:
-        if isinstance(op,dng_point_ops.PointOp):
+        if terminal_trims and not isinstance(op,ops.TrimBounds):
+            raise ValueError("DNG operations after TrimBounds require retained image-origin coordinates; use Apple RAW")
+        if isinstance(op,ops.TrimBounds):
+            if scene.shape[:2] != evidence.raw_image.shape[:2]:
+                raise ValueError("stage-3 TrimBounds coordinates require a full-resolution square-pixel decode")
+            terminal_trims.append(op)
+        elif isinstance(op,dng_point_ops.PointOp):
             if scene.shape[:2] != evidence.raw_image.shape[:2]:
                 raise ValueError("stage-3 point-op coordinates require a full-resolution square-pixel decode")
             if processing is None and track_loss:processing=np.zeros(scene.shape,dtype=np.float16)
@@ -1086,6 +1120,8 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
             else:
                 _apply_vignette_render(scene, op, loss_mask=processing, channel_limits=limits)
             shading.append("vignette")
+    if terminal_trims:
+        recipe.crop=ops.terminal_trim_crop(terminal_trims,evidence.raw_image.shape,recipe.crop)
     if camera_rgb:
         scene = ops.camera_to_rec2020(scene, ops.libraw_camera_matrix(
             raw.color_matrix, raw.rgb_xyz_matrix,
@@ -1107,6 +1143,12 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         scene=reduced
         if processing is not None:
             processing=_bin_2x2_max(processing)
+        if terminal_trims and recipe.crop is not None:
+            # Box reduction drops an unmatched final row/column. Record the
+            # actual retained sensor window so independently rebuilt masks and
+            # Apple reference samples cannot stretch it over the discarded edge.
+            cy,cx,_,_=recipe.crop
+            recipe.crop=(float(round(cy)),float(round(cx)),float(2*hh),float(2*ww))
     return scene, processing, recipe, "+".join(shading) or None
 
 
@@ -1470,8 +1512,8 @@ def _unsupported_format_guidance(path: Path, shot: Any, exc: Exception) -> str:
             "  1. 用 Adobe DNG Converter（免费，支持 HE）把 NEF 转成 DNG，"
             "转换后本工具全功能可用；",
             "  2. 相机内改用『无损压缩』RAW（同世代机身的无损 NEF 可正常解码）；",
-            "  3. Apple RAW 只替换场景解码；Evidence 始终由 LibRaw 获取，"
-            "因此切换 --decoder 不能绕过此格式缺口。",
+            "  3. 可尝试 --decoder coreimage --coreimage-version auto；若 Apple 支持该文件，"
+            "可导出场景图像，但无 LibRaw 传感器证据时不会声明 RAW 剪切/SNR 测量。",
         ]
     else:
         lines += [
@@ -1533,9 +1575,15 @@ def load_raw(
     scene_geometry_ops = ()
     scene_crop_sensor = None
     scene_correction_note = None
-    scene_processing_loss_pct = 0.0
+    scene_processing_loss_pct = 0.0 if decoder == "libraw" else None
     effective_baseline_exposure = shot.baseline_exposure
     baseline_exposure_baked_in = False
+    evidence_error = None
+    scene_reference_error = None
+    scene_decoder_fallback = None
+    reliable_reference = None
+    reliable_reference_pct = None
+    reliability_source = "sensor-spatial"
 
     # Evidence is acquired before scene decoding through a decoder-independent API.
     # This call is intentionally identical for LibRaw and Apple RAW: scene selection
@@ -1550,25 +1598,29 @@ def load_raw(
             message = _unsupported_format_guidance(path, shot, exc)
         else:
             message = f"Cannot acquire RAW evidence with rawpy/libraw: {exc}"
-        raise RuntimeError(message) from exc
+        if decoder == "libraw":
+            raise RuntimeError(message) from exc
+        evidence = None
+        evidence_stage1_note = "传感器证据不可用；仅使用解码图像统计，不声明 RAW 剪切或传感器 SNR"
+        evidence_error = message
 
-    raw_image = evidence.raw_image
-    raw_colors = evidence.raw_colors
-    white_level = evidence.white_level
-    daylight_wb = evidence.daylight_wb
-    raw_pattern = evidence.raw_pattern
-    black_levels = evidence.black_levels
-    camera_wb = evidence.camera_wb
-    camera_white_levels = evidence.camera_white_levels
-    orientation_flip = evidence.orientation_flip
-    color_desc = evidence.color_desc
+    raw_image = getattr(evidence, "raw_image", None)
+    raw_colors = getattr(evidence, "raw_colors", None)
+    white_level = getattr(evidence, "white_level", None)
+    daylight_wb = getattr(evidence, "daylight_wb", None)
+    raw_pattern = getattr(evidence, "raw_pattern", [])
+    black_levels = getattr(evidence, "black_levels", [])
+    camera_wb = getattr(evidence, "camera_wb", [])
+    camera_white_levels = getattr(evidence, "camera_white_levels", [])
+    orientation_flip = getattr(evidence, "orientation_flip", 0)
+    color_desc = getattr(evidence, "color_desc", "")
 
     # Fixed-Kelvin WB is a scene recipe derived from evidence calibration. It is not
     # evidence itself, and therefore remains free to degrade per scene decoder.
     kelvin_wb, wb_note = solve_wb_for_mode(
         requested_wb_mode,
         path,
-        evidence.xyz_to_cam,
+        getattr(evidence, "xyz_to_cam", None),
         make=shot.make,
         model=shot.model,
     )
@@ -1681,26 +1733,33 @@ def load_raw(
         # declared white on the LibRaw path (tests/test_wb.py).
         neutral_cct = None
         from . import coreimage_decode
+        scale_compensation = coreimage_decode.scale_compensation_for_mode(coreimage_scale)
 
         # A10 item 2: the decode below renders with interactive=half_size,
         # so the precheck probes THAT workload — preview and export
         # contexts carry different options and can fail independently.
-        if not coreimage_decode.runtime_available(
-            interactive=bool(scene_half_size)
-        ):
-            raise RuntimeError(
-                "Core Image decoder unavailable on this system "
-                "(macOS + PyObjC Quartz / CIRAWFilter required)"
+        try:
+            if not coreimage_decode.runtime_available(interactive=bool(scene_half_size)):
+                raise RuntimeError("Core Image runtime unavailable for this workload")
+            ci_float, info = coreimage_decode.decode_scene_rec2020(
+                path, half_size=scene_half_size, version=coreimage_version,
+                scale_compensation=scale_compensation,
+                neutral_cct=neutral_cct,
             )
-        ci_float, info = coreimage_decode.decode_scene_rec2020(
-            path,
-            half_size=scene_half_size,
-            version=coreimage_version,
-            scale_compensation=coreimage_decode.scale_compensation_for_mode(
-                coreimage_scale
-            ),
-            neutral_cct=neutral_cct,
-        )
+        except Exception as exc:
+            # Auto is a capability ladder; an explicitly selected Apple version
+            # stays strict so failed experiments cannot silently use another decoder.
+            if coreimage_version != "auto" or evidence is None:
+                raise RuntimeError(f"Cannot decode Apple RAW scene: {exc}; evidence: {evidence_error or 'available'}") from exc
+            fallback = load_raw(
+                path, scene_highlight_mode=effective_highlight_mode,
+                scene_half_size=scene_half_size, demosaic=demosaic,
+                wb_mode=requested_wb_mode, decoder="libraw",
+            )
+            return replace(fallback, scene_decoder_fallback=f"Apple RAW auto → LibRaw: {exc}")
+        failures = info.get("fallback_errors") or []
+        scene_decoder_fallback = "; ".join(failures) if failures else None
+        reliability_source = "decoded-image-estimate"
         scene_rec2020_render, scene_scale = coreimage_decode.scene_float_to_half(ci_float)
         ci_authored_baseline = info.get("baseline_exposure_authored")
         if ci_authored_baseline is not None:
@@ -1731,7 +1790,7 @@ def load_raw(
         needs_correction_evidence = bool(scene_opcode_names)
         if needs_correction_evidence:
             scene_processing_loss_pct = None
-        if coreimage_uses_file_alignment(coreimage_scale) or needs_correction_evidence:
+        if evidence is not None:
             # Align one decoded statistic per file. This additional LibRaw *scene
             # comparison never replaces RawEvidence. It supplies an optional
             # scale reference plus an aggregate correction-loss estimate.
@@ -1751,13 +1810,12 @@ def load_raw(
                     # shading as a decoder exposure difference — measured up to
                     # +0.88 EV on iPhone Standard RAW, pulling aligned-mode
                     # RAW 9 toward the uncorrected dark reference.
-                    reference_scene, reference_loss, _, _ = _decode_corrected_libraw(
+                    reference_scene, reference_loss, reference_recipe, _ = _decode_corrected_libraw(
                         reference_raw, path, evidence, effective_highlight_mode,
                         True, None,
                     )
                     scene_processing_loss_pct = (float(np.mean(np.max(reference_loss, axis=2) > 0) * 100)
                                                  if reference_loss is not None else 0.0)
-                    del reference_loss
                 # Decode the reference with the same storage-scale contract as the main
                 # LibRaw path. Normalising reconstruct by 65535 would lose its reserved
                 # WB headroom and can shift this statistic by more than one EV.
@@ -1768,40 +1826,46 @@ def load_raw(
                 # which re-exposed every Core Image + Kelvin export by up to
                 # ~0.4 EV as a function of the WB choice alone (measured
                 # +0.053 EV at 3200K, -0.234 EV at 5500K on _SDI0150).
+                reference_scale = libraw_scene_scale(
+                    65535.0, effective_highlight_mode, camera_wb,
+                    baseline_exposure=effective_baseline_exposure,
+                )
+                reference_level = scene_green_median(
+                    np.asarray(reference_scene, dtype=np.float32) / reference_scale
+                )
+                coreimage_level = scene_green_median(
+                    np.asarray(scene_rec2020_render, dtype=np.float32) / float(scene_scale)
+                )
+                raw_factor = reference_level / coreimage_level
+                if not np.isfinite(raw_factor) or not (COREIMAGE_ALIGN_MIN <= raw_factor <= COREIMAGE_ALIGN_MAX):
+                    raise ValueError(f"implausible decoded-green alignment factor {raw_factor!r}")
+                from .scene_reference import reliable_reference_samples
+                reliable_reference, reliable_reference_pct = reliable_reference_samples(
+                    evidence, reference_scene, reference_scale, reference_loss, reference_recipe,
+                )
                 if coreimage_uses_file_alignment(coreimage_scale):
-                    reference_scale = libraw_scene_scale(
-                        65535.0,
-                        effective_highlight_mode,
-                        camera_wb,
-                        baseline_exposure=effective_baseline_exposure,
-                    )
-                    reference_level = scene_green_median(
-                        np.asarray(reference_scene, dtype=np.float32) / reference_scale
-                    )
-                    coreimage_level = scene_green_median(
-                        np.asarray(scene_rec2020_render, dtype=np.float32) / float(scene_scale)
-                    )
-                    raw_factor = reference_level / coreimage_level
-                    if not np.isfinite(raw_factor) or not (
-                        COREIMAGE_ALIGN_MIN <= raw_factor <= COREIMAGE_ALIGN_MAX
-                    ):
-                        raise ValueError(
-                            f"implausible decoded-green alignment factor {raw_factor!r}"
-                        )
+                    scene_align_factor = float(raw_factor)
+                    scene_scale = float(scene_scale) / scene_align_factor
+                # Even unity mode needs a common exposure unit for the reference.
+                # This scalar does not imply spatial correspondence or identical color.
+                reliable_reference *= np.float32(scene_align_factor / raw_factor)
+                reliability_source = "sensor-reference"
             except Exception as exc:  # noqa: BLE001 - a render must not fail over a metric
                 error = f"{type(exc).__name__}: {exc}"
+                scene_reference_error = error
                 if coreimage_uses_file_alignment(coreimage_scale):
                     scene_align_error = error
                 if needs_correction_evidence and scene_processing_loss_pct is None:
-                    scene_correction_note = f"DNG 校正损失参考不可用，HDR 不授予可靠尾部: {error}"
+                    scene_correction_note = f"DNG 校正损失参考不可用；HDR 使用有上限的解码图像估计: {error}"
             finally:
                 # Do not carry the half-size reference into the full-size XYZ stage.
                 reference_scene = None
+                reference_loss = None
+        else:
+            scene_processing_loss_pct = None
+            scene_reference_error = evidence_error
             if coreimage_uses_file_alignment(coreimage_scale):
-                scene_align_factor = coreimage_alignment_factor(
-                    reference_level, coreimage_level
-                )
-                scene_scale = float(scene_scale) / scene_align_factor
+                scene_align_error = "LibRaw evidence unavailable; using Apple-native scale"
         xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
         render_scale = scene_scale
         scene_decoder = "coreimage"
@@ -1860,6 +1924,11 @@ def load_raw(
         scene_crop_sensor=scene_crop_sensor,
         scene_correction_note=scene_correction_note,
         scene_processing_loss_pct=scene_processing_loss_pct,
+        scene_reliable_reference_rec2020=reliable_reference,
+        scene_reliable_reference_pct=reliable_reference_pct,
+        scene_reliability_source=reliability_source,
+        scene_reference_error=scene_reference_error,
+        scene_decoder_fallback=scene_decoder_fallback,
         clip_masks=clip_masks,
         scene_decoder=scene_decoder,
         scene_decoder_version=scene_decoder_version,
@@ -1872,17 +1941,18 @@ def load_raw(
         scene_geometry_crop=scene_geometry_crop,
         scene_geometry_corr=scene_geometry_corr,
         evidence=evidence,
-        evidence_provider=evidence.provider,
-        evidence_provider_version=evidence.provider_version,
+        evidence_provider=getattr(evidence, "provider", "unavailable"),
+        evidence_provider_version=getattr(evidence, "provider_version", None),
+        evidence_error=evidence_error,
         wb_xyz_to_cam=(
             None
-            if evidence.xyz_to_cam is None
+            if getattr(evidence, "xyz_to_cam", None) is None
             else np.asarray(evidence.xyz_to_cam, dtype=np.float64).copy()
         ),
         decode_wb=[float(x) for x in camera_wb],
         wb_color_matrix=(
             None
-            if evidence.color_matrix is None
+            if getattr(evidence, "color_matrix", None) is None
             else np.asarray(evidence.color_matrix, dtype=np.float64).copy()
         ),
     )

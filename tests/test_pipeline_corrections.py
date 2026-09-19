@@ -35,7 +35,8 @@ def write_dng_tags(path, opcodes):
     path.write_bytes(b'II'+struct.pack('<HLH',42,8,len(tags))+entries+bytes(4)+data)
 
 
-def write_sensor_dng(path, limit=1., lut=False, spatial_black=False, *, linear=False, scale=None, opcodes=None):
+def write_sensor_dng(path, limit=1., lut=False, spatial_black=False, *, linear=False, scale=None, opcodes=None,
+                     black_pattern=None, black_deltas=None, signal=None):
     pix=np.full((128,128),int(.88*4095),dtype='<u2')
     entries=[]
     def add(tag,typ,values):
@@ -49,6 +50,14 @@ def write_sensor_dng(path, limit=1., lut=False, spatial_black=False, *, linear=F
     for tag,typ,v in [(254,4,[0]),(256,4,[128]),(257,4,[128]),(258,3,[16]),(259,3,[1]),(262,3,[32803]),(271,2,'Review'),(272,2,'Synthetic'),(273,4,[0]),(277,3,[1]),(278,4,[128]),(279,4,[pix.nbytes]),(284,3,[1]),(33421,3,[2,2]),(33422,1,[0,1,1,2]),(50706,1,[1,4,0,0]),(50707,1,[1,1,0,0]),(50708,2,'Review Synthetic'),(50710,1,[0,1,2]),(50711,3,[1]),(50713,3,[1,1]),(50714,5,[0]),(50717,4,[8190 if lut else 4095]),(50719,4,[0,0]),(50720,4,[128,128]),(50721,10,[1,0,0,0,1,0,0,0,1]),(50728,5,[1,1,1]),(50730,10,[1]),(50734,5,[limit]),(50778,3,[21])]: add(tag,typ,v)
     if lut:add(50712,3,list(range(0,8192,2)))
     if spatial_black:add(50715,10,np.linspace(-64,64,128))
+    if black_deltas is not None:add(50715,10,black_deltas)
+    if black_pattern is not None:
+        pattern=np.atleast_2d(np.asarray(black_pattern,dtype=np.uint16))
+        entries=[e for e in entries if e[0] not in (50713,50714)]
+        add(50713,3,list(pattern.shape));add(50714,5,pattern.ravel().tolist())
+        pix[:]=np.tile(pattern,(128//pattern.shape[0]+1,128//pattern.shape[1]+1))[:128,:128]
+        pix[:]+=int(1000 if signal is None else signal)
+    elif signal is not None:pix[:]=signal
     if linear:
         pix=np.repeat(pix[...,None],3,axis=2)
         entries=[e for e in entries if e[0] not in (262,277,279,33421,33422,50710,50711)]

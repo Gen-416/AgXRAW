@@ -563,9 +563,10 @@ def compute_auto_ev(
 ) -> AutoEvResult:
     """Reference the reliable decoded scene body to 18% gray without changing EV 0.
 
-    The body statistic is measured after the selected decoder and scene transform, while
-    excluding unreliable RAW-clipped highlights. This makes the optional reference
-    decoder-independent without introducing a hidden fixed correction. Highlight safety
+    The body statistic is measured after the selected decoder and scene transform.
+    Aligned LibRaw masks exclude unreliable RAW-clipped highlights; Apple body
+    statistics remain decoded-image measurements without a fabricated spatial mask.
+    This introduces no hidden fixed correction. Highlight safety
     limits upward boost only; high-key scenes are never darkened toward gray.
 
     The internal reference plan compiles with the caller's endpoint mode, the full

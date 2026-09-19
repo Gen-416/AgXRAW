@@ -54,7 +54,7 @@ class GainMapInterfaceTests(unittest.TestCase):
             )
 
 class AppleGainMapWriterTests(unittest.TestCase):
-    def test_auto_upgrades_failed_auxiliary_before_comparing_primary_candidates(self) -> None:
+    def test_auto_keeps_auxiliary_templates_separate_and_preserves_reference(self) -> None:
         from dngscan import gainmap
         from dngscan.delivery import resolve_delivery_profile
 
@@ -64,27 +64,32 @@ class AppleGainMapWriterTests(unittest.TestCase):
         def encode(base, hdr, path, headroom, *, delivery, _template_path,
                    _gainmap_quality, **kwargs):
             calls.append((delivery.quality, _gainmap_quality))
-            if _gainmap_quality == 95:
-                _template_path.write_bytes(b"low precision")
-                raise gainmap.HdrRoundtripError("local HDR highlight lost")
-            if len(calls) == 2:
-                self.assertFalse(_template_path.exists())
-                _template_path.write_bytes(b"high precision")
-            self.assertEqual(_template_path.read_bytes(), b"high precision")
+            self.assertEqual(_gainmap_quality, 100)
+            expected = f"precision-{_gainmap_quality}".encode()
+            if not _template_path.exists():
+                _template_path.write_bytes(expected)
+            self.assertEqual(_template_path.read_bytes(), expected)
             path.write_bytes(b"x" * delivery.quality)
             return {"delivery_quality": delivery.quality, "delivery_chroma_requested": "444",
-                    "gainmap_encoding_quality": _gainmap_quality}
+                    "gainmap_encoding_quality": _gainmap_quality, "gainmap_pixel_format": "444f"}
         with tempfile.TemporaryDirectory() as td, \
              mock.patch("dngscan.heif_encoder.available", return_value=True), \
+             mock.patch("dngscan.heif_encoder.read_rgb_item", return_value=base) as read_aux, \
+             mock.patch("dngscan.heif_encoder.encode") as encode_aux, \
+             mock.patch("dngscan.heif_gainmap.iso_gainmap_item", return_value=53), \
+             mock.patch("dngscan.heif_gainmap.replace_image_item"), \
              mock.patch("dngscan.gainmap.write_apple_gainmap_file", side_effect=encode), \
              mock.patch("dngscan.gainmap.read_primary_rgb_u8", return_value=base):
             info = write_auto(base, np.ones((8,8,4), np.float16), Path(td)/"out.heic", 3.,
                               delivery=resolve_delivery_profile("auto", container="heic"))
-        self.assertEqual(calls[:2], [(95,95), (95,100)])
-        self.assertTrue(all(aux == 100 for _,aux in calls[1:]))
+        self.assertEqual(calls[0], (95,100))
+        self.assertEqual({aux for _, aux in calls}, {100})
+        read_aux.assert_called_once()
+        self.assertEqual({call.args[2] for call in encode_aux.call_args_list}, {95,90,85,80})
+        self.assertTrue(all(call.kwargs["auxiliary"] for call in encode_aux.call_args_list))
         self.assertEqual(info["gainmap_encoding_quality"], 100)
         self.assertEqual(info["auto_reference_quality"], 95)
-        self.assertEqual(info["delivery_quality"], 80)
+        self.assertEqual(info["delivery_quality"], 70)
 
     def test_writer_accepts_quality_sampling_pair_before_backend(self) -> None:
         from dngscan.delivery import resolve_delivery_profile

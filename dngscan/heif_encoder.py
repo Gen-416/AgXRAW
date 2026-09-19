@@ -48,6 +48,12 @@ def _library():
     bind('heif_context_encode_image', _Error, P, P, P, P, C.POINTER(P))
     bind('heif_image_handle_release', None, P)
     bind('heif_context_write_to_file', _Error, P, C.c_char_p)
+    bind('heif_context_read_from_file', _Error, P, C.c_char_p, P)
+    bind('heif_context_get_image_handle', _Error, P, C.c_uint32, C.POINTER(P))
+    bind('heif_image_handle_get_width', I, P)
+    bind('heif_image_handle_get_height', I, P)
+    bind('heif_decode_image', _Error, P, C.POINTER(P), I, I, P)
+    bind('heif_image_get_plane_readonly', P, P, I, C.POINTER(I))
     return lib
 
 
@@ -70,7 +76,7 @@ def available() -> bool:
 
 def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
            bit_depth: int = 10, preset: str = 'slow', tune: str = 'ssim',
-           output_gamut: str = 'p3') -> dict:
+           output_gamut: str = 'p3', auxiliary: bool = False) -> dict:
     """Encode finished nonlinear RGB, uint8 or float [0,1], as HEVC.
 
     Float input preserves master precision; increasing bit depth on uint8 input
@@ -119,12 +125,17 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
             band = np.rint(np.clip(band,0,1)*((1<<bit_depth)-1)).astype(np.uint8 if bit_depth==8 else '<u2')
             for i,row in enumerate(band):
                 C.memmove(ptr+(y+i)*stride.value,row.ctypes.data,row.nbytes)
-        nclx = _Nclx(1,12 if output_gamut=='p3' else 1,13,1,1)
+        # Gain-map RGB is numerical data, not display RGB. Preserve the
+        # unspecified transfer/primaries and BT.601 YCbCr matrix of ImageIO's
+        # RGB auxiliary; attaching the primary's ICC would transform gains.
+        nclx = _Nclx(1,2 if auxiliary else 12 if output_gamut=='p3' else 1,
+                     2 if auxiliary else 13,6 if auxiliary else 1,1)
         check(lib.heif_image_set_nclx_color_profile(img,C.byref(nclx)))
-        icc = output_icc_profile_bytes(output_gamut)
-        if not icc:
-            raise RuntimeError('missing HEIF output ICC')
-        check(lib.heif_image_set_raw_color_profile(img,b'prof',icc,len(icc)))
+        if not auxiliary:
+            icc = output_icc_profile_bytes(output_gamut)
+            if not icc:
+                raise RuntimeError('missing HEIF output ICC')
+            check(lib.heif_image_set_raw_color_profile(img,b'prof',icc,len(icc)))
         check(lib.heif_context_encode_image(ctx,img,enc,None,C.byref(handle)))
         check(lib.heif_context_write_to_file(ctx,str(path).encode()))
         return {'encoder':name,'bit_depth':bit_depth,'preset':preset,'tune':tune,
@@ -135,3 +146,84 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
         if img: lib.heif_image_release(img)
         if enc: lib.heif_encoder_release(enc)
         lib.heif_context_free(ctx)
+
+
+def read_rgb_item(path: Path, item: int):
+    """Decode an 8-bit data image without display colour management or HDR expansion."""
+    lib = _library()
+    ctx = lib.heif_context_alloc()
+    handle, image = C.c_void_p(), C.c_void_p()
+    if not ctx:
+        raise MemoryError('heif_context_alloc')
+    def check(error):
+        if error.code:
+            raise RuntimeError('libheif decode: ' + error.message.decode(errors='replace'))
+    try:
+        check(lib.heif_context_read_from_file(ctx, str(path).encode(), None))
+        check(lib.heif_context_get_image_handle(ctx, int(item), C.byref(handle)))
+        width, height = lib.heif_image_handle_get_width(handle), lib.heif_image_handle_get_height(handle)
+        if min(width, height) <= 0:
+            raise ValueError('invalid HEIF data-image dimensions')
+        check(lib.heif_decode_image(handle, C.byref(image), 1, 10, None))
+        stride = C.c_int()
+        ptr = lib.heif_image_get_plane_readonly(image, 10, C.byref(stride))
+        if not ptr or stride.value < width * 3:
+            raise ValueError('invalid HEIF RGB plane')
+        out = np.empty((height, width, 3), np.uint8)
+        for row in range(height):
+            C.memmove(out[row].ctypes.data, ptr + row * stride.value, width * 3)
+        return out
+    finally:
+        if image: lib.heif_image_release(image)
+        if handle: lib.heif_image_handle_release(handle)
+        lib.heif_context_free(ctx)
+
+
+def encode_apple(rgb, path: Path, quality: int, chroma: str = "420", *,
+                 bit_depth: int = 10, preset="slow", tune="ssim", output_gamut="p3"):
+    """System SDR writer. The caller verifies every requested property after writing.
+
+    Apple does not expose x265 preset/tune; those controls apply only to x265.
+    Unsupported depth/sampling requests must fail the caller's readback gate.
+    """
+    import Quartz
+    from Foundation import NSData, NSNumber, NSURL
+    from .gainmap import _ciimage_from_rgba
+    from .color import output_icc_profile_bytes
+    if not 1 <= quality <= 100 or chroma not in ("420", "422", "444") or bit_depth not in (8, 10):
+        raise ValueError("invalid Apple HEIF controls")
+    if output_gamut not in ("srgb", "p3"):
+        raise ValueError("invalid Apple HEIF gamut")
+    icc = output_icc_profile_bytes(output_gamut)
+    if not icc:
+        raise RuntimeError("missing HEIF output ICC")
+    color = Quartz.CGColorSpaceCreateWithICCData(NSData.dataWithBytes_length_(icc, len(icc)))
+    source = np.asarray(rgb)
+    if source.dtype != np.uint8 or source.ndim != 3 or source.shape[2] != 3 or not source.size:
+        raise ValueError("Apple SDR HEIF requires HxWx3 uint8 RGB")
+    rgba = np.ones((*source.shape[:2], 4), dtype=np.float16 if bit_depth == 10 else np.uint8)
+    rgba[..., :3] = source.astype(np.float32) / 255 if bit_depth == 10 else source
+    if bit_depth == 8:
+        rgba[..., 3] = 255
+    pixel_format = Quartz.kCIFormatRGBAh if bit_depth == 10 else Quartz.kCIFormatRGBA8
+    image, owner = _ciimage_from_rgba(rgba, pixel_format, color)
+    context = Quartz.CIContext.contextWithOptions_({Quartz.kCIContextCacheIntermediates: False})
+    if context is None or color is None:
+        raise RuntimeError("Core Image 无法创建 SDR HEIF 编码上下文")
+    request = {}
+    key = getattr(Quartz, "kCGImageDestinationEncodeBasePixelFormatRequest", None)
+    if key is not None:
+        request[key] = NSNumber.numberWithUnsignedInt_(int.from_bytes((chroma + "f").encode(), "big"))
+    options = {Quartz.kCGImageDestinationLossyCompressionQuality: quality / 100.,
+               Quartz.kCGImageDestinationEncodeRequestOptions: request}
+    result = context.writeHEIFRepresentationOfImage_toURL_format_colorSpace_options_error_(
+        image, NSURL.fileURLWithPath_(str(path)),
+        Quartz.kCIFormatRGB10 if bit_depth == 10 else Quartz.kCIFormatRGBA8,
+        color, options, None)
+    success, error = result if isinstance(result, tuple) else (bool(result), None)
+    if not success:
+        raise RuntimeError(f"Apple SDR HEIF 编码失败：{error}")
+    from .heif_gainmap import embed_primary_icc
+    embed_primary_icc(path, icc)
+    return {"encoder": "Apple ImageIO", "delivery_quality": quality,
+            "delivery_chroma_requested": chroma, "delivery_container": "heic"}

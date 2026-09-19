@@ -36,7 +36,7 @@ from .constants import PROXY_LONG_EDGE
 # v16: oriented shading, ordered camera-plane DNG corrections, processing-loss
 # masks and corrected HDR evidence authority. Earlier scene/plan caches are stale.
 # v17: phase-separated noise and non-periodic full-resolution planning samples.
-PREVIEW_CACHE_VERSION = 18
+PREVIEW_CACHE_VERSION = 19
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -179,6 +179,7 @@ INT_KEY_ANALYSIS_FIELDS = {
     "clip_pct",
     "cell_k_of_clipped_pct",
     "cell_k_of_all_pct",
+    "color_clip_k_of_all_pct",
     # NOT snr1_dr / snr1_stop: their keys are channel-GROUP strings
     # ("R"/"G"/"B"), and int()-ing them made every disk read raise since the
     # SNR curves went always-on (R2) — the broad read guard swallowed it, so
@@ -367,7 +368,7 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
     return {
         "render_scale": float(bundle.render_scale),
         "scene_scale": float(bundle.scene_scale),
-        "white_level": int(bundle.white_level),
+        "white_level": int(bundle.white_level) if bundle.white_level is not None else None,
         "black_levels": [float(value) for value in bundle.black_levels],
         "camera_wb": [float(value) for value in bundle.camera_wb],
         "color_desc": str(bundle.color_desc),
@@ -400,6 +401,11 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "lens_shading": bundle.lens_shading,
         "scene_correction_note": bundle.scene_correction_note,
         "scene_processing_loss_pct": bundle.scene_processing_loss_pct,
+        "scene_reliable_reference_pct": bundle.scene_reliable_reference_pct,
+        "scene_reliability_source": bundle.scene_reliability_source,
+        "scene_reference_error": bundle.scene_reference_error,
+        "scene_decoder_fallback": bundle.scene_decoder_fallback,
+        "evidence_error": bundle.evidence_error,
         "evidence_stage1_note": bundle.evidence_stage1_note,
         "camera_data_support": bundle.camera_data_support,
         "daylight_wb": (
@@ -449,6 +455,7 @@ def _bundle_from_cache(
     guidance: RawGuidanceMaps | None,
     tone_sample: Any | None = None,
     tone_sample_masks: Any | None = None,
+    reliable_reference: Any | None = None,
 ) -> RawBundle:
     np = dg.np
     evidence_shape = metadata.get("evidence_shape")
@@ -461,7 +468,7 @@ def _bundle_from_cache(
         render_scale=float(metadata["render_scale"]),
         scene_rec2020_render=scene,
         scene_scale=float(metadata["scene_scale"]),
-        white_level=int(metadata["white_level"]),
+        white_level=int(metadata["white_level"]) if metadata["white_level"] is not None else None,
         black_levels=[float(value) for value in metadata["black_levels"]],
         camera_wb=[float(value) for value in metadata["camera_wb"]],
         color_desc=str(metadata["color_desc"]),
@@ -488,6 +495,12 @@ def _bundle_from_cache(
         lens_shading=metadata.get("lens_shading"),
         scene_correction_note=metadata.get("scene_correction_note"),
         scene_processing_loss_pct=metadata.get("scene_processing_loss_pct", 0.0),
+        scene_reliable_reference_rec2020=reliable_reference,
+        scene_reliable_reference_pct=metadata.get("scene_reliable_reference_pct"),
+        scene_reliability_source=metadata.get("scene_reliability_source", "sensor-spatial"),
+        scene_reference_error=metadata.get("scene_reference_error"),
+        scene_decoder_fallback=metadata.get("scene_decoder_fallback"),
+        evidence_error=metadata.get("evidence_error"),
         evidence_stage1_note=metadata.get("evidence_stage1_note"),
         camera_data_support=metadata.get("camera_data_support"),
         daylight_wb=metadata["daylight_wb"],
@@ -620,6 +633,8 @@ def build_proxy_entry(
         proxy_guidance,
         tone_sample=tone_sample,
         tone_sample_masks=tone_sample_masks,
+        reliable_reference=(None if source.scene_reliable_reference_rec2020 is None
+                            else np.asarray(source.scene_reliable_reference_rec2020).copy()),
     )
     return PreviewEntry(bundle=bundle, analysis=analysis)
 
@@ -640,7 +655,8 @@ def _read_disk_entry(
                 return None
             if expected_runtime:
                 stored = str(metadata.get("bundle", {}).get("scene_decoder_runtime") or "")
-                if stored != expected_runtime:
+                actual = metadata.get("bundle", {}).get("scene_decoder", "libraw")
+                if actual == "coreimage" and stored != expected_runtime:
                     return None
             scene = np.asarray(payload["scene"]).copy()
             masks = np.asarray(payload["masks"]).copy() if bool(metadata.get("has_masks", False)) else None
@@ -671,6 +687,8 @@ def _read_disk_entry(
                 source_path, metadata["bundle"], scene, masks, guidance,
                 tone_sample=tone_sample,
                 tone_sample_masks=tone_sample_masks,
+                reliable_reference=(np.asarray(payload["reliable_reference"]).copy()
+                                    if "reliable_reference" in payload.files else None),
             )
             return PreviewEntry(bundle=bundle, analysis=_analysis_from_json(metadata["analysis"]))
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
@@ -725,6 +743,8 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
                 }
                 if getattr(bundle, "_tone_plan_sample", None) is not None:
                     values["tone_sample"] = np.asarray(bundle._tone_plan_sample)
+                if bundle.scene_reliable_reference_rec2020 is not None:
+                    values["reliable_reference"] = np.asarray(bundle.scene_reliable_reference_rec2020)
                 if getattr(bundle, "_tone_plan_sample_masks", None) is not None:
                     values["tone_sample_masks"] = np.asarray(
                         bundle._tone_plan_sample_masks

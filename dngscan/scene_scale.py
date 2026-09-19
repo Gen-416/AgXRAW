@@ -71,7 +71,11 @@ def scene_scale_contract_from_bundle(
         user_ev_gain=user,
         baseline_baked_in=baseline_baked,
         scale_mode=scale_mode,
-        calibration_confidence=calibration_confidence_for_mode(decoder, scale_mode),
+        calibration_confidence=(
+            "decoder-native" if decoder == "coreimage" and scale_mode == "aligned"
+            and getattr(bundle, "scene_align_error", None)
+            else calibration_confidence_for_mode(decoder, scale_mode)
+        ),
     )
 
 

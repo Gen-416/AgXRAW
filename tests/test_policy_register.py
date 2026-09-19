@@ -16,6 +16,7 @@ class RegisterConsistencyTests(unittest.TestCase):
         from dngscan import tone as t
 
         live = {
+            "DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV": h.DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV,
             "RHO_BASE": h.RHO_BASE,
             "MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT": h.MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT,
             "P3_PRESSURE_ZERO_CONFIDENCE_PCT": h.P3_PRESSURE_ZERO_CONFIDENCE_PCT,

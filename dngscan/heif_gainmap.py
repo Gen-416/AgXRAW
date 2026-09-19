@@ -115,7 +115,37 @@ def _parse(data):
 
 def replace_primary(path: Path, donor: Path) -> None:
     """Install a single-item HEVC donor, preserving all original HDR auxiliaries."""
+    replace_image_item(path, donor)
+
+
+def iso_gainmap_item(path: Path) -> int:
+    """Resolve the RGB gain-map input of the single ISO tmap derived image."""
+    _, _, primary, infos, refs, props, assocs, _ = _parse(path.read_bytes())
+    tone_maps = [item for item, info in infos.items() if info[8:12] == b'tmap']
+    if len(tone_maps) != 1:
+        raise ValueError('expected one ISO tone-map rendition')
+    inputs = [targets for kind, source, targets in refs if kind == b'dimg' and source == tone_maps[0]]
+    if len(inputs) != 1 or len(inputs[0]) != 2 or inputs[0][0] != primary:
+        raise ValueError('unsupported ISO tone-map input ordering')
+    auxiliary = inputs[0][1]
+    if auxiliary == primary or infos.get(auxiliary, b'')[8:12] not in (b'grid', b'hvc1'):
+        raise ValueError('unsupported ISO gain-map image')
+    descriptions = [props[index - 1] for _, index in assocs.get(auxiliary, [])]
+    pixels = [value for kind, value in descriptions if kind == b'pixi']
+    colours = [value for kind, value in descriptions if kind == b'colr']
+    if pixels != [b'\0\0\0\0\3\10\10\10'] or colours != [b'nclx\0\2\0\2\0\6\x80']:
+        raise ValueError('unsupported gain-map sample depth or numerical colour encoding')
+    return auxiliary
+
+
+def replace_image_item(path: Path, donor: Path, item: int | None = None) -> None:
+    """Replace one same-size image; preserve ISO parameters and all unrelated payloads."""
     top,children,primary,infos,refs,props,assocs,payloads=_parse(path.read_bytes())
+    file_primary = primary
+    if item is not None:
+        if item not in infos or infos[item][8:12] not in (b'grid', b'hvc1'):
+            raise ValueError('replacement target is not a HEVC image')
+        primary = item
     dtop,_,dp,dinfos,drefs,dprops,dassoc,dpayloads=_parse(donor.read_bytes())
     def dimensions(properties, associations, item):
         values=[properties[i-1][1] for _,i in associations.get(item,[]) if properties[i-1][0]==b'ispe']
@@ -165,6 +195,40 @@ def replace_primary(path: Path, donor: Path) -> None:
             raise ValueError('rotated HEIF primary requires explicit pixel transform')
     offset=len(props);props+=dprops
     assocs[primary]=prior+[(e,i+offset) for e,i in dassoc.get(dp,[])]
+    ftyp=_one(dtop if primary == file_primary else top,b'ftyp')
+    brands=[ftyp[i:i+4] for i in range(8,len(ftyp),4)]
+    if b'tmap' not in brands:brands.append(b'tmap')
+    ftyp=ftyp[:8]+b''.join(brands)
+    _write_items(path, children, infos, refs, props, assocs, payloads, ftyp)
+
+
+def embed_primary_icc(path: Path, icc: bytes) -> None:
+    """Attach the requested ICC without decoding or changing any image payload.
+
+    ImageIO may express sRGB using NCLX alone. The HEVC VUI retains the codec's
+    YCbCr description; install one authoritative ICC colour property, as the
+    libheif primary writer does, instead of accepting an untagged rendition.
+    """
+    top, children, primary, infos, refs, props, assocs, payloads = _parse(path.read_bytes())
+    if not icc:
+        raise ValueError('empty HEIF ICC profile')
+    previous = [(e, i) for e, i in assocs.get(primary, []) if props[i-1][0] != b'colr']
+    props.append((b'colr', b'prof' + bytes(icc)))
+    assocs[primary] = previous + [(True, len(props))]
+    _write_items(path, children, infos, refs, props, assocs, payloads, _one(top, b'ftyp'))
+
+
+def primary_icc(path: Path) -> bytes | None:
+    _, _, primary, _, _, props, assocs, _ = _parse(path.read_bytes())
+    profiles = [props[i-1][1][4:] for _, i in assocs.get(primary, [])
+                if props[i-1][0] == b'colr' and props[i-1][1][:4] in (b'prof', b'rICC')]
+    if len(profiles) > 1:
+        raise ValueError('ambiguous HEIF ICC properties')
+    return profiles[0] if profiles else None
+
+
+def _write_items(path, children, infos, refs, props, assocs, payloads, ftyp):
+    """Relocate verified internal item payloads after property/image replacement."""
     if len(props)>=0x8000:raise ValueError('too many HEIF properties')
     iinf=_box(b'iinf',bytes(4)+struct.pack('>H',len(infos))+b''.join(_box(b'infe',v) for v in infos.values()))
     iref=_box(b'iref',bytes(4)+b''.join(_box(t,struct.pack('>HH',src,len(targets))+b''.join(struct.pack('>H',i) for i in targets)) for t,src,targets in refs))
@@ -173,11 +237,7 @@ def replace_primary(path: Path, donor: Path) -> None:
         if len(values)>255:raise ValueError('too many HEIF item properties')
         assocdata.append(struct.pack('>HB',item,len(values))+b''.join(struct.pack('>H',i|(0x8000 if e else 0)) for e,i in values))
     iprp=_box(b'iprp',_box(b'ipco',b''.join(_box(k,v) for k,v in props))+_box(b'ipma',b'\0\0\0\1'+struct.pack('>L',len(assocs))+b''.join(assocdata)))
-    # Codec brands describe the new primary, tmap remains explicitly advertised.
-    ftyp=_one(dtop,b'ftyp')
-    brands=[ftyp[i:i+4] for i in range(8,len(ftyp),4)]
-    if b'tmap' not in brands:brands.append(b'tmap')
-    prefix=_box(b'ftyp',ftyp[:8]+b''.join(brands))
+    prefix=_box(b'ftyp',ftyp)
     def make_meta(start):
         records=[]
         for item,payload in payloads.items():

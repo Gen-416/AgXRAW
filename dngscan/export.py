@@ -180,7 +180,7 @@ def _rewrite_with_metadata(
     return ok and tmp_path.is_file()
 
 
-def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
+def carry_capture_metadata(src_raw: Path, out_jpeg: Path, container: str = "jpeg") -> bool:
     """Losslessly copy the capture's EXIF/TIFF/GPS/XMP metadata into a written JPEG.
 
     R3 item 6: a final-photo converter that drops shot time, body, lens,
@@ -195,10 +195,21 @@ def carry_capture_metadata(src_raw: Path, out_jpeg: Path) -> bool:
         meta = _scrubbed_capture_metadata(src_raw, out_jpeg)
         if meta is None:
             return False
-        signature = encoded_content_signature(out_jpeg, "jpeg")
-        if not _rewrite_with_metadata(out_jpeg, tmp_path, meta, "public.jpeg"):
+        if container not in ("jpeg", "heic"):
+            raise ValueError("unknown metadata container")
+        signature = encoded_content_signature(out_jpeg, container)
+        if not _rewrite_with_metadata(out_jpeg, tmp_path, meta,
+                                      "public.heic" if container == "heic" else "public.jpeg",
+                                      merge=container == "jpeg"):
             return False
-        if encoded_content_signature(tmp_path, "jpeg") != signature:
+        if container == "heic":
+            from .heif_gainmap import primary_icc, embed_primary_icc
+            icc = primary_icc(out_jpeg)
+            if icc is not None and primary_icc(tmp_path) != icc:
+                # ImageIO normalizes SDR sRGB to NCLX while copying metadata.
+                # Restore the original ICC before the unchanged-content gate.
+                embed_primary_icc(tmp_path, icc)
+        if encoded_content_signature(tmp_path, container) != signature:
             return False
         tmp_path.replace(out_jpeg)
         return True
@@ -480,6 +491,11 @@ def export_srgb_jpeg(
             scene_transform, scene_transform_strength,
             tone_core, lum_norm, agx_primaries,
         )
+        if delivery is not None and delivery.container == "heic":
+            from .heif_delivery import save_sdr_heif
+
+            return save_sdr_heif(rgb, out_path, delivery, output_gamut,
+                                 source_raw=path, return_rgb=return_rgb)
         if delivery is not None and delivery.name == "auto":
             from PIL import Image, JpegImagePlugin
             from .auto_encode import coding_metrics, select_encoding
@@ -524,7 +540,8 @@ def export_srgb_jpeg(
             os.replace(candidate,out_path)
         return (embedded, decoded) if return_rgb else embedded
     except Exception as exc:
-        raise RuntimeError(f"Cannot export 8-bit {output_gamut_label(output_gamut)} JPEG: {exc}") from exc
+        container = "HEIF" if delivery is not None and delivery.container == "heic" else "JPEG"
+        raise RuntimeError(f"Cannot export {output_gamut_label(output_gamut)} {container}: {exc}") from exc
 
 
 def export_jpeg(
@@ -593,8 +610,18 @@ def export_jpeg(
             delivery=profile,
             chroma=chroma,
         )
-    if output_format != "sdr":
+    if output_format == "sdr-heic":
+        from .delivery import profile_from_encode_settings
+
+        delivery = (reprofile_for_container(delivery, "heic") if delivery is not None
+                    else profile_from_encode_settings(quality, chroma or
+                         {0: "444", 1: "422", 2: "420"}[subsampling], "heic"))
+        if out_path.suffix.lower() not in (".heic", ".heif"):
+            out_path = out_path.with_suffix(".heic")
+    elif output_format != "sdr":
         raise ValueError(f"unknown output format: {output_format}")
+    elif delivery is not None and delivery.container != "jpeg":
+        delivery = reprofile_for_container(delivery, "jpeg")
     return export_srgb_jpeg(
         path, out_path, quality, bundle, analysis, tone_plan, output_gamut, subsampling,
         look, look_strength, display_filter, filter_strength,

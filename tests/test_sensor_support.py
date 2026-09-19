@@ -133,31 +133,37 @@ class DecodeSupportProbeTests(unittest.TestCase):
                         return_value=ci_probe), \
              mock.patch("dngscan.dng_metadata.read_dng_shot_info") as shot, \
              mock.patch("dngscan.priors.find_priors", return_value=None), \
+             mock.patch("dngscan.dng_opcodes.read_plan"), \
              mock.patch.object(Path, "is_file", return_value=True):
             shot.return_value.make = "NIKON CORPORATION"
             shot.return_value.model = "Z50_2"
             return decode_support.probe_decode_support(Path("/x/DSC_0001.NEF"))
 
-    def test_format_gap_blocks_coreimage_and_says_so(self) -> None:
+    def test_format_gap_keeps_apple_only_available_and_marks_missing_evidence(self) -> None:
         report = self._probe(
             {"status": "unsupported_format", "detail": "TicoRAW"},
             {"coreimage_available": True, "raw9_supported": True,
              "versions_offered": ("9",), "fallback_version": None, "error": None},
         )
-        self.assertTrue(report["coreimage"]["blocked_by_libraw"])
+        self.assertFalse(report["coreimage"]["blocked_by_libraw"])
+        self.assertFalse(report["coreimage"]["render_verified"])
         joined = "\n".join(report["lines"])
         self.assertIn("格式缺口", joined)
-        self.assertIn("统一 Evidence 策略要求 LibRaw", joined)
+        self.assertIn("传感器证据不可用", joined)
+        self.assertIn("HDR 使用图像估计", joined)
         self.assertEqual(report["evidence"]["provider"], "libraw")
 
-    def test_full_support_reads_clean(self) -> None:
+    def test_calibrated_unpack_preflight_does_not_claim_verified_render(self) -> None:
         report = self._probe(
             {"status": "full", "detail": "机型颜色矩阵在 LibRaw 表内"},
             {"coreimage_available": True, "raw9_supported": True,
              "versions_offered": ("9", "8"), "fallback_version": None, "error": None},
         )
         joined = "\n".join(report["lines"])
-        self.assertIn("✓ 完整支持", joined)
+        self.assertIn("✓ 解包/标定预检通过", joined)
+        self.assertIn("尚未验证实际渲染", joined)
+        self.assertFalse(report["libraw"]["render_verified"])
+        self.assertIsNone(report["libraw"]["correction_preflight_error"])
         self.assertIn("RAW 9", joined)
         self.assertFalse(report["coreimage"]["blocked_by_libraw"])
 
@@ -168,7 +174,7 @@ class DecodeSupportProbeTests(unittest.TestCase):
              "versions_offered": ("8",), "fallback_version": "8", "error": None},
         )
         joined = "\n".join(report["lines"])
-        self.assertIn("仅 RAW 8", joined)
+        self.assertIn("提供 RAW 8", joined)
         self.assertIn("△ 可用", joined)
 
 

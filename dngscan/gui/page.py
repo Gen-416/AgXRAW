@@ -208,7 +208,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
   <div class="row">
     <div style="flex:1;min-width:170px" id="decoderBlock">
       <label>解码器</label>
-      <select id="decoder" title="scene-linear RGB 来源；CFA 统计始终由 LibRaw 读取。">
+      <select id="decoder" title="scene-linear RGB 来源；传感器统计可用时由 LibRaw 读取，缺失时明确使用图像域估计。">
         <option value="libraw">LibRaw · 默认</option>
         <option value="coreimage">Apple RAW · 9 优先</option>
       </select>
@@ -220,6 +220,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
         <option value="9">9</option>
         <option value="8">8</option>
         <option value="7">7</option>
+        <option value="6">6</option>
       </select>
     </div>
     <div style="flex:1;min-width:150px;display:none" id="coreimageScaleBlock">
@@ -680,6 +681,7 @@ GRADE_OPTIONS
         <select id="format">
           <option value="sdr">SDR JPEG</option>
           <option value="ultrahdr">HDR gain-map · JPEG</option>
+          <option value="sdr-heic">SDR · HEIC</option>
           <option value="ultrahdr-heic">HDR gain-map · HEIC</option>
         </select>
         <div class="ctlFact" id="formatModeHint" style="display:none"></div>
@@ -720,7 +722,7 @@ GRADE_OPTIONS
         <div><label>编码速度</label><select id="heifPreset"><option value="slow">慢 · 默认</option><option value="medium">中</option><option value="fast">快</option><option value="slower">更慢</option></select></div>
         <div><label>纹理策略</label><select id="heifTune"><option value="ssim">均衡</option><option value="grain">保留颗粒</option><option value="psnr">像素误差优先</option></select></div>
       </div>
-      <div class="muted">可调设置需要安装 libheif/x265。Apple 编码器采用系统位深与编码策略；实际采样、位深和质量会在导出结果中显示。</div>
+      <div class="muted">自动压缩与可调设置需要 libheif/x265。Apple 的 SDR 输出请用手动档、8-bit、4:2:0；导出会核对实际采样和位深。</div>
     </details>
     <div class="row" id="hdrBlock" style="margin-top:12px">
       <div style="min-width:220px">
@@ -874,9 +876,10 @@ function updateToneCoreUi(){
 function applyDeliveryConstraints(){
   const archive=$("#deliveryProfile").value==="archive";
   const auto=$("#deliveryProfile").value==="auto";
-  const heif=$("#format").value==="ultrahdr-heic";
+  const heif=["sdr-heic","ultrahdr-heic"].includes($("#format").value);
   $("#heifControls").style.display=heif?"block":"none";
-  for(const id of ["heifBitDepth","heifPreset","heifTune"])$("#"+id).disabled=$("#heifEncoder").value==="apple";
+  for(const id of ["heifPreset","heifTune"])$("#"+id).disabled=$("#heifEncoder").value==="apple";
+  $("#heifBitDepth").disabled=$("#heifEncoder").value==="apple"&&$("#format").value!=="sdr-heic";
   if(archive){$("#quality").value="100";$("#chroma").value="444";}
   else if(auto){$("#quality").value=heif?"95":"99";$("#chroma").value=heif?"444":"422";}
   $("#quality").disabled=archive||auto;
@@ -891,7 +894,7 @@ function updateToneCoreExportUi(){
   const hdr=["ultrahdr","ultrahdr-heic"].includes($("#format").value);
   const incompatible=hdr&&$("#toneCore").value!=="agx";
   const hint=$("#toneCoreExportHint");
-  hint.textContent=incompatible?"当前影调映射可继续用于实时预览；HDR 容器导出目前只支持 AgX。请切换到 AgX，或改用 SDR JPEG。":"";
+  hint.textContent=incompatible?"当前影调映射可继续用于实时预览；HDR 容器导出目前只支持 AgX。请切换到 AgX，或改用 SDR 输出。":"";
   hint.style.display=incompatible?"block":"none";
   $("#exportConfirm").disabled=incompatible;
   $("#exportConfirm").title=incompatible?"HDR 容器导出目前只支持 AgX":"";
@@ -1007,7 +1010,7 @@ function toneCoreText(j){
 }
 function highlightText(v){return ({clip:"保持过曝",blend:"高光混合",reconstruct:"高光重建"})[v]||v;}
 function gamutText(v){return ({srgb:"sRGB",p3:"Display P3"})[v]||v;}
-function formatText(v){return ({sdr:"SDR JPEG",ultrahdr:"HDR gain-map JPEG","ultrahdr-heic":"HDR gain-map HEIC"})[v]||v;}
+function formatText(v){return ({sdr:"SDR JPEG","sdr-heic":"SDR HEIC",ultrahdr:"HDR gain-map JPEG","ultrahdr-heic":"HDR gain-map HEIC"})[v]||v;}
 function decoderText(j){
   if(j.decoder!=="coreimage")return "";
   const version=(j.decoder_version||"").replace(/\\.dng$/i,"");
@@ -1770,7 +1773,6 @@ async function postJob(path, body, signal){
 }
 const RAW9_PROBES=new Map();
 const RAW9_PROBE_REQUESTS=new Map();
-const RAW9_APPROVALS=new Map();
 function raw9Probe(input){
   const cached=RAW9_PROBES.get(input);
   if(cached)return Promise.resolve(cached);
@@ -1788,23 +1790,13 @@ function raw9Probe(input){
 }
 async function ensureRaw9Support(body){
   if(body.decoder!=="coreimage")return true;
+  // Auto owns the complete runtime ladder on the server. A version probe
+  // cannot prove a render will work, and must not pin auto to one version.
+  if(body.coreimageVersion==="auto")return true;
   const key=body.input;
   const j=await raw9Probe(key);
   if(!j.ok){setStatus("RAW 9 探测失败："+(j.error||"未知错误"),"err");return false;}
-  const switchToLibRaw=(message)=>{
-    window.alert(message+"\\n\\n将改用 LibRaw。");
-    $("#decoder").value="libraw";updateDecoderUi();saveSettings();
-    body.decoder="libraw";body.coreimageVersion="auto";
-    // R4: the body was captured while the UI was coreimage-forced
-    // (highlight=reconstruct, demosaic=auto); updateDecoderUi just restored
-    // the user's stashed libraw values into the DOM, and the request must
-    // render what the UI now shows — not a one-off hybrid.
-    body.highlight=$("#highlight").value;
-    body.demosaic=$("#demosaic").value;
-    if(body.toneCore!==undefined)body.toneCore=$("#toneCore").value;
-    setStatus(message+" 已改用 LibRaw。","warn");
-  };
-  if(!j.coreimage_available||j.probe_error||j.runtime_interactive===false){switchToLibRaw(j.message);return true;}
+  if(!j.coreimage_available||j.probe_error){setStatus(j.message||"Apple RAW 不可用","err");return false;}
   const offered=(j.versions_offered||[]).map(v=>String(v).replace(/\\.dng$/i,""));
   // Per-file greying (GUI review 2026-08-27): versions this file does not
   // offer are disabled in the select with the reason, not merely rejected
@@ -1824,22 +1816,6 @@ async function ensureRaw9Support(body){
     }
     return true;
   }
-  if(j.raw9_supported)return true;
-  if(!j.fallback_version){switchToLibRaw(j.message);return true;}
-  const approved=RAW9_APPROVALS.get(key);
-  if(approved===j.fallback_version){body.coreimageVersion=approved;return true;}
-  const useFallback=window.confirm(
-    j.message+"\\n\\n确定：继续使用 Apple RAW "+j.fallback_version+"\\n取消：改用 LibRaw"
-  );
-  if(useFallback){
-    RAW9_APPROVALS.set(key,j.fallback_version);
-    body.coreimageVersion=j.fallback_version;
-    setStatus("此文件将使用 Apple RAW "+j.fallback_version+"。","warn");
-  }else{
-    $("#decoder").value="libraw";updateDecoderUi();saveSettings();
-    body.decoder="libraw";body.coreimageVersion="auto";
-    setStatus("此文件不支持 RAW 9，已改用 LibRaw。","warn");
-  }
   return true;
 }
 let DETECTED_READY=false;
@@ -1853,7 +1829,11 @@ function renderDetectedParams(d){
     return;
   }
   const ev=v=>(v>=0?"+":"")+(+v).toFixed(2)+" EV";
-  setFact("#decoderFact",d.data_support?"⚠ 机型数据："+d.data_support:"",true);
+  const decoderBits=[d.decoder_actual?"实际解码 "+d.decoder_actual:""];
+  if(d.evidence_provider==="unavailable")decoderBits.push("传感器证据不可用");
+  if(d.decoder_fallback)decoderBits.push("已回退："+d.decoder_fallback);
+  if(d.data_support)decoderBits.push(d.data_support);
+  setFact("#decoderFact",decoderBits.filter(Boolean).join(" · "),!!(d.decoder_fallback||d.evidence_error||d.data_support));
   setFact("#wbFact",d.wb_degradation?"⚠ 白平衡："+d.wb_degradation:"",true);
   setFact("#clipFact",d.raw_clip_union_pct!==null?"实测 RAW 过曝 "+(+d.raw_clip_union_pct).toFixed(2)+"%（≥1 通道）":"");
   const evBits=[];
@@ -1865,10 +1845,12 @@ function renderDetectedParams(d){
   if(d.contrast!==null)toneBits.push("对比 "+(+d.contrast).toFixed(2));
   if(d.toe_end_ev!==null&&d.toe_end_ev!==undefined)toneBits.push("暗部收黑 "+ev(d.toe_end_ev));
   if(d.shoulder_white_ev!==null&&d.shoulder_white_ev!==undefined)toneBits.push("高光收白 "+ev(d.shoulder_white_ev));
-  if(d.endpoint_mode==="evidence")toneBits.push("端点 传感器实测范围"+(d.endpoint_note?"（"+d.endpoint_note+"）":""));
+  if(d.endpoint_mode==="evidence")toneBits.push("端点 证据约束"+(d.endpoint_note?"（"+d.endpoint_note+"）":""));
   setFact("#toneFact",toneBits.join(" · "));
   if(d.reliable_tail_ev!==null){
-    const bits=["实测可靠尾部 "+ev(d.reliable_tail_ev)+"（p99.99）"];
+    const estimated=d.reliability_source==="decoded-image-estimate";
+    const source=estimated?"解码图像估计（上限1EV，非传感器实测）":d.reliability_source==="sensor-reference"?"独立传感器参考尾部":"实测可靠尾部";
+    const bits=[source+" "+ev(d.reliable_tail_ev)+"（p99.99）"];
     if(d.hdr_earned_ev!==null)bits.push("场景可用余量 +"+(+d.hdr_earned_ev).toFixed(2)+" EV");
     setFact("#hdrSceneFact",bits.join(" · "));
   }else{
@@ -1901,7 +1883,17 @@ async function fetchDecodeSupport(input){
   // file changes; preview reconfiguration must not replay this success notice.
   try{
     const j=await raw9Probe(input);
-    if($("#input").value.trim()===input&&j&&j.support_lines)renderDecodeSupport(j.support_lines);
+    if($("#input").value.trim()===input&&j){
+      if(j.support_lines)renderDecodeSupport(j.support_lines);
+      // Auto does not wait for preflight. Refresh explicit choices here on
+      // every new file, including re-enabling versions disabled for the last one.
+      const offered=(j.versions_offered||[]).map(v=>String(v).replace(/\\.dng$/i,""));
+      for(const o of $("#coreimageVersion").options){
+        if(o.value==="auto")continue;
+        const ok=!j.ok||j.probe_error||offered.includes(o.value);
+        o.disabled=!ok;o.title=ok?"":"此文件不提供 RAW "+o.value;
+      }
+    }
   }catch(_){/* probe display is best-effort */}
 }
 const PREVIEW_CLIENT_ID=(globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+"-"+Math.random());
@@ -2200,7 +2192,7 @@ $("#exportConfirm").onclick=async()=>{
   // R7 item 3: the export context is probed separately from the interactive
   // one — a host whose preview context works but whose export context does
   // not must fail HERE with the reason, not after the full-size decode.
-  if(body.decoder==="coreimage"){
+  if(body.decoder==="coreimage"&&body.coreimageVersion!=="auto"){
     let pj=null;try{pj=await raw9Probe(body.input);}catch(e){pj=null;}
     if(pj&&pj.ok&&pj.runtime_export===false){
       setStatus("Core Image 导出上下文在此系统不可用（预览上下文可用）：请把解码器切到 LibRaw 再导出。","err");return;
