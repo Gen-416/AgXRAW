@@ -7,6 +7,7 @@ SDR/HDR pair.
 """
 from __future__ import annotations
 
+import math
 import os
 import platform
 import tempfile
@@ -126,7 +127,9 @@ def _read_expanded_hdr_rgba_half(path: Path) -> Any:
         Quartz.kCIFormatRGBAh,
         linear_p3,
     )
-    return np.frombuffer(memoryview(buf), dtype=np.float16).reshape(height, width, 4).copy()
+    # Retain the bitmap owner without another full-frame half RGBA allocation.
+    # The returned ndarray is read-only and keeps the bitmap owner alive.
+    return np.frombuffer(memoryview(buf).toreadonly(), dtype=np.float16).reshape(height, width, 4)
 
 
 @lru_cache(maxsize=1)
@@ -256,7 +259,7 @@ def _exact_upper_percentile(top_values: Any, total_count: int, q: float) -> floa
     return float(v_lo + diff * frac)
 
 
-def _roundtrip_error(path: Path, intended_hdr_half: Any) -> dict[str, float]:
+def _roundtrip_error(path: Path, intended_hdr_half: Any, *, _workspace: Any = None) -> dict[str, float]:
     """How far the file's expanded HDR rendition sits from the one that was written.
 
     The whole rendition is measured. RGB gain maps can carry chromatic corrections below
@@ -272,7 +275,7 @@ def _roundtrip_error(path: Path, intended_hdr_half: Any) -> dict[str, float]:
     """
     expanded = _read_expanded_hdr_rgba_half(path)[..., :3]
     intended = np.asarray(intended_hdr_half)[..., :3]
-    return _roundtrip_error_arrays(expanded, intended)
+    return _roundtrip_error_arrays(expanded, intended, _workspace=_workspace)
 
 
 def _invalid_hdr_roundtrip() -> dict[str, float]:
@@ -293,11 +296,24 @@ def _invalid_hdr_roundtrip() -> dict[str, float]:
     }
 
 
-def _roundtrip_error_arrays(expanded: Any, intended: Any) -> dict[str, float]:
+def _roundtrip_error_arrays(expanded: Any, intended: Any, *, _workspace: Any = None) -> dict[str, float]:
     """Array-level body of _roundtrip_error (both float16 (H, W, 3))."""
     from . import _fast
 
     native = _fast.kernel("hdr_roundtrip_metrics")
+    if any(isinstance(array, np.ndarray) and array.dtype == np.float16
+           and not _metric_view_is_borrowable(array, np.float16, allow_extra_channels=True)
+           for array in (expanded, intended)):
+        native = None
+    if (native is not None and _workspace is not None
+            and _metric_view_is_borrowable(expanded, np.float16, allow_extra_channels=True)
+            and _metric_view_is_borrowable(intended, np.float16, allow_extra_channels=True)
+            and expanded.shape == intended.shape):
+        try:
+            return {k: float(v) for k, v in _workspace.measure(
+                expanded, intended, _HDR_LUMA_WEIGHTS.tolist()).items()}
+        except Exception as exc:
+            _fast.handle_kernel_error("HdrMetricsWorkspace", exc)
     if native is not None and expanded.shape == intended.shape:
         # Stage 1 (2026-09-15): same float32 element math, NumPy's own
         # median/percentile/8x8-mean semantics (tests/test_rust_stage1.py).
@@ -444,7 +460,7 @@ def _hdr_roundtrip_is_acceptable(
     )
 
 
-def read_primary_rgb_u8(path: Path, output_gamut: str = "p3") -> Any:
+def read_primary_rgb_u8(path: Path, output_gamut: str = "p3", *, _borrow_rgb: bool = False) -> Any:
     """Decode the primary SDR image without requiring Pillow HEIC support.
 
     JPEG still goes through Pillow when available (matches historical base gates). HEIC
@@ -491,6 +507,11 @@ def read_primary_rgb_u8(path: Path, output_gamut: str = "p3") -> Any:
         Quartz.kCIFormatRGBA8,
         p3,
     )
+    if _borrow_rgb:
+        # The private bitmap remains owned by the readonly view. Metrics accept
+        # the four-byte pixel stride, so a complete RGB repack is unnecessary.
+        owner = np.frombuffer(memoryview(rgba).toreadonly(), dtype=np.uint8).reshape(rgba.shape)
+        return owner[..., :3]
     return np.ascontiguousarray(rgba[:, :, :3])
 
 
@@ -736,19 +757,143 @@ def write_apple_gainmap_heic(
     )
 
 
-def _search_sdr_metrics(path: Path, base: Any, session: Any = None) -> dict[str, float]:
-    """Measure an actual packaged primary once for both absolute and search gates."""
+def _metric_view_is_borrowable(array: Any, dtype: Any, *, allow_extra_channels: bool = False) -> bool:
+    """Match Rust's ndarray view preconditions without inspecting any pixels."""
+    if (type(array) is not np.ndarray or array.ndim != 3
+            or (array.shape[2] < 3 if allow_extra_channels else array.shape[2] != 3)
+            or array.dtype != np.dtype(dtype) or not array.flags.aligned):
+        return False
+    limit = int(np.iinfo(np.intp).max)
+    return (all(stride % array.itemsize == 0 and stride != -limit - 1
+                for stride in array.strides)
+            and array.size * array.itemsize <= limit
+            and math.prod(max(dim, 1) for dim in array.shape) <= limit
+            and array.itemsize + sum(max(dim - 1, 0) * abs(stride)
+                for dim, stride in zip(array.shape, array.strides)) <= limit)
+
+
+def _new_hdr_metrics_workspace() -> Any:
+    """One export's bounded scratch; never stores input owners or metric results."""
+    from . import _fast
+
+    if _fast.kernel("hdr_roundtrip_metrics") is None:
+        return None
+    constructor = _fast.kernel("HdrMetricsWorkspace")
+    if constructor is not None:
+        try:
+            return constructor()
+        except Exception as exc:
+            _fast.handle_kernel_error("HdrMetricsWorkspace", exc)
+    return None
+
+
+def _base_and_coding_metrics_arrays(decoded: Any, intended: Any) -> dict[str, float]:
+    """Share one uint8 scan; keep both established reference functions intact."""
+    from . import _fast
     from .auto_encode import coding_metrics
 
+    if (_metric_view_is_borrowable(decoded, np.uint8)
+            and _metric_view_is_borrowable(intended, np.uint8)
+            and decoded.size and decoded.shape == intended.shape
+            and "base_roundtrip_metrics" not in _fast._skipped_kernels()):
+        native = _fast.kernel("base_and_coding_metrics_u8")
+        if native is not None:
+            try:
+                return {k: float(v) for k, v in native(decoded, intended, np.getbufsize()).items()}
+            except Exception as exc:
+                _fast.handle_kernel_error("base_and_coding_metrics_u8", exc)
+    return {**_base_roundtrip_error_arrays(decoded, intended),
+            **coding_metrics(decoded, intended)}
+
+
+def _search_sdr_metrics(path: Path, base: Any, session: Any = None) -> dict[str, float]:
+    """Measure an actual packaged primary once for both absolute and search gates."""
     cached = session.metrics(path) if session is not None else None
     if cached is not None:
         return cached
-    decoded = read_primary_rgb_u8(path)
-    metrics = {**_base_roundtrip_error_arrays(decoded, base),
-               **coding_metrics(decoded, base)}
+    decoded = read_primary_rgb_u8(path, _borrow_rgb=True)
+    metrics = _base_and_coding_metrics_arrays(decoded, base)
     if session is not None:
         session.remember_metrics(path, metrics)
     return metrics
+
+
+class _PreparedGainmapMaster:
+    """One export's immutable input/CI owners; no candidate or decoded-frame cache."""
+
+    @staticmethod
+    def _identity(array):
+        return (id(array), array.shape, array.strides, array.dtype.str,
+                int(array.__array_interface__["data"][0]), bool(array.flags.writeable))
+
+    def __init__(self, base_rgb_u8, hdr_rgba_half, hdr_headroom_ev, *,
+                 verify_capability=True, metrics_workspace=None):
+        self._closed = False
+        try:
+            base, hdr = np.asarray(base_rgb_u8), np.asarray(hdr_rgba_half)
+            if base.dtype != np.uint8 or base.ndim != 3 or base.shape[2] != 3:
+                raise ValueError("HDR gain-map 底图必须是 HxWx3 uint8")
+            if hdr.dtype != np.float16 or hdr.shape != base.shape[:2] + (4,):
+                raise ValueError("HDR alternate 必须是与底图同尺寸的 HxWx4 float16")
+            # Immutable bytes are the single private snapshot: caller aliases cannot
+            # change later candidates, and flags.writeable cannot be re-enabled.
+            self.base = np.frombuffer(base.tobytes(order="C"), np.uint8).reshape(base.shape)
+            self.hdr = np.frombuffer(hdr.tobytes(order="C"), np.float16).reshape(hdr.shape)
+            self.headroom_ev = float(hdr_headroom_ev)
+            self._master_identity = (self._identity(self.base), self._identity(self.hdr),
+                                     self.headroom_ev.hex())
+            peaks = []
+            for row in range(0, self.hdr.shape[0], _ROUNDTRIP_BAND_ROWS):
+                band = self.hdr[row:row + _ROUNDTRIP_BAND_ROWS]
+                if not bool(np.all(np.isfinite(band))):
+                    raise ValueError("HDR alternate 含 NaN/Inf，无法声明可靠的 content headroom")
+                if band.size:
+                    peaks.append(np.max(band[..., :3]))
+
+            ok, reason = (apple_gainmap_backend_status() if verify_capability
+                          else _apple_gainmap_api_status())
+            if not ok:
+                raise RuntimeError(reason)
+            import Quartz  # type: ignore
+            self.p3 = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceDisplayP3)
+            self.linear_p3 = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceExtendedLinearDisplayP3)
+            if self.p3 is None or self.linear_p3 is None:
+                raise RuntimeError("系统未提供 Display P3 / Extended Linear Display P3 色彩空间")
+
+            packed = np.empty(self.base.shape[:2] + (4,), dtype=np.uint8)
+            packed[..., :3], packed[..., 3] = self.base, np.uint8(255)
+            self.base_rgba = np.frombuffer(memoryview(packed).toreadonly(), np.uint8).reshape(packed.shape)
+            self.base_image, self.base_data = _ciimage_from_rgba(self.base_rgba, Quartz.kCIFormatRGBA8, self.p3)
+            self.hdr_image, self.hdr_data = _ciimage_from_rgba(self.hdr, Quartz.kCIFormatRGBAh, self.linear_p3)
+            self.base_image = self.base_image.imageBySettingContentHeadroom_(1.0)
+            self.actual_headroom = float(np.max(np.asarray(peaks, dtype=np.float16)))
+            requested_headroom = float(2.0 ** self.headroom_ev)
+            if self.actual_headroom > requested_headroom * 1.001:
+                raise RuntimeError(
+                    f"HDR rendition 超过所选余量：{self.actual_headroom:.3f}x > {requested_headroom:.3f}x")
+            if self.actual_headroom <= 1.0 + 1e-3:
+                raise RuntimeError("该场景没有高于 reference white 的有效 HDR 内容")
+            self.hdr_image = self.hdr_image.imageBySettingContentHeadroom_(self.actual_headroom)
+            self.context = Quartz.CIContext.contextWithOptions_(
+                {Quartz.kCIContextCacheIntermediates: _nsnumber_bool(False)})
+            if self.context is None:
+                raise RuntimeError("Core Image 无法创建 HDR 编码 CIContext")
+            self.workspace = metrics_workspace if metrics_workspace is not None else _new_hdr_metrics_workspace()
+        except BaseException:
+            self.close()
+            raise
+
+    def validate(self, base, hdr, headroom_ev):
+        if self._closed or (self._identity(base), self._identity(hdr), float(headroom_ev).hex()) != self._master_identity:
+            raise ValueError("prepared gain-map master belongs to a different or closed export")
+
+    def close(self):
+        # CIImage/NSData retain borrowed pointers. Release those objects before
+        # their NumPy owners, and release every export-local owner on all exits.
+        self._closed = True
+        for name in ("context", "base_image", "hdr_image", "base_data", "hdr_data",
+                     "base_rgba", "base", "hdr", "p3", "linear_p3", "workspace"):
+            setattr(self, name, None)
 
 
 def write_apple_gainmap_file(
@@ -764,23 +909,46 @@ def write_apple_gainmap_file(
     _primary_session: Any = None,
     _collect_coding_metrics: bool = False,
     _sdr_precheck: Any = None,
+    _jpeg_primary_session: Any = None,
+    _hdr_metrics_workspace: Any = None,
 ) -> dict[str, Any]:
-    """Write JPEG or HEIC ISO gain-map packaging from finished formation masters."""
-    from dataclasses import replace
+    """Prepare one immutable pair, then encode/verify its delivery candidates."""
     from . import heif_encoder
     use_heif = delivery.container == "heic" and (
         delivery.heif_encoder == "x265" or
         (delivery.heif_encoder == "auto" and heif_encoder.available()))
     if delivery.heif_encoder not in ("auto", "apple", "x265"):
         raise ValueError("未知 HEIF 编码器")
+    if delivery.name != "auto":
+        profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
+        if str(profile.container) not in ("jpeg", "heic"):
+            raise ValueError(f"不支持的 gain-map 容器：{profile.container}")
+        if not 1 <= int(profile.quality) <= 100:
+            raise ValueError("编码 quality 必须在 1-100 之间")
+    prepared = _PreparedGainmapMaster(base_rgb_u8, hdr_rgba_half, hdr_headroom_ev,
+        verify_capability=_verify_roundtrip_capability, metrics_workspace=_hdr_metrics_workspace)
+    try:
+        return _write_gainmap_prepared(prepared, out_path, delivery=delivery, use_heif=use_heif,
+            _template_path=_template_path, _gainmap_quality=_gainmap_quality,
+            _primary_session=_primary_session, _collect_coding_metrics=_collect_coding_metrics,
+            _sdr_precheck=_sdr_precheck, _jpeg_primary_session=_jpeg_primary_session)
+    finally:
+        prepared.close()
+
+
+def _write_gainmap_prepared(prepared, out_path, *, delivery, use_heif,
+                            _template_path=None, _gainmap_quality=None, _primary_session=None,
+                            _collect_coding_metrics=False, _sdr_precheck=None,
+                            _jpeg_primary_session=None):
+    """Schedule candidates; input preparation is never repeated by this layer."""
+    from dataclasses import replace
+    from . import heif_encoder
+    base_rgb_u8, hdr_rgba_half, hdr_headroom_ev = prepared.base, prepared.hdr, prepared.headroom_ev
+    _hdr_metrics_workspace = prepared.workspace
     if delivery.name == "auto" and use_heif:
         from .auto_encode import select_heif_encoding
         from .gainmap_session import PrimarySearchSession
 
-        # Own the fixed SDR master for this search. A writable caller view must
-        # not change the meaning of cached primary encodes or their metrics.
-        base_rgb_u8 = np.array(base_rgb_u8, copy=True, order="C")
-        base_rgb_u8.flags.writeable = False
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".agxraw-gainmap-search-", dir=out_path.parent) as td:
             reference_template = Path(td) / "gainmap-reference.heic"
@@ -808,14 +976,15 @@ def write_apple_gainmap_file(
                         shutil.copyfile(reference_template, template)
                         replace_image_item(template, donor, item)
                 candidate = replace(delivery, name="share", quality=quality, chroma=chroma)
-                info = write_apple_gainmap_file(
+                info = _write_gainmap_candidate(
                     base_rgb_u8, hdr_rgba_half, path, hdr_headroom_ev,
                     delivery=candidate, _template_path=template,
-                    _verify_roundtrip_capability=_verify_roundtrip_capability,
+                    _prepared_master=prepared, _use_heif=use_heif,
                     _gainmap_quality=100,
                     _primary_session=primary_session,
                     _collect_coding_metrics=True,
                     _sdr_precheck=sdr_precheck,
+                    _hdr_metrics_workspace=_hdr_metrics_workspace,
                 )
                 info["gainmap_encoding_quality"] = auxiliary
                 info["gainmap_encoder"] = "Apple ImageIO" if auxiliary == 100 else "x265"
@@ -830,6 +999,10 @@ def write_apple_gainmap_file(
             )
     if delivery.name == "auto":
         from .auto_encode import select_encoding
+        if delivery.container == "jpeg":
+            from .jpeg_gainmap import PrimaryCodestreamSession
+
+            _jpeg_primary_session = PrimaryCodestreamSession(base_rgb_u8)
         # The auxiliary image is calculated only once. HEVC quality numbers
         # are its own scale (95 is already at the x265 QP floor on many frames).
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -842,12 +1015,14 @@ def write_apple_gainmap_file(
                 candidate = replace(delivery, name="share", quality=quality,
                                     chroma="444" if use_heif else delivery.chroma)
                 def write_candidate():
-                    return write_apple_gainmap_file(
+                    return _write_gainmap_candidate(
                         base_rgb_u8, hdr_rgba_half, path, hdr_headroom_ev,
                         delivery=candidate, _template_path=template if use_heif or delivery.container=="jpeg" else None,
-                        _verify_roundtrip_capability=_verify_roundtrip_capability,
+                        _prepared_master=prepared, _use_heif=use_heif,
                         _gainmap_quality=gainmap_quality,
                         _collect_coding_metrics=True,
+                        _jpeg_primary_session=_jpeg_primary_session,
+                        _hdr_metrics_workspace=_hdr_metrics_workspace,
                     )
                 try:
                     info = write_candidate()
@@ -863,6 +1038,49 @@ def write_apple_gainmap_file(
                     info = write_candidate()
                 return info
             return select_encoding(out_path, encode, qualities=qualities)
+    return _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev,
+        delivery=delivery, _prepared_master=prepared, _use_heif=use_heif,
+        _template_path=_template_path, _gainmap_quality=_gainmap_quality,
+        _primary_session=_primary_session, _collect_coding_metrics=_collect_coding_metrics,
+        _sdr_precheck=_sdr_precheck, _jpeg_primary_session=_jpeg_primary_session,
+        _hdr_metrics_workspace=_hdr_metrics_workspace)
+
+
+def _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *,
+                             delivery, _prepared_master, _use_heif,
+                             _template_path=None, _gainmap_quality=None, _primary_session=None,
+                             _collect_coding_metrics=False, _sdr_precheck=None,
+                             _jpeg_primary_session=None, _hdr_metrics_workspace=None):
+    """One candidate plus the established manual auxiliary precision ladder."""
+    args = (base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev)
+    common = dict(delivery=delivery, _prepared_master=_prepared_master, _use_heif=_use_heif,
+                  _hdr_metrics_workspace=_hdr_metrics_workspace)
+    try:
+        return _write_gainmap_once(*args, **common, _template_path=_template_path,
+            _gainmap_quality=_gainmap_quality, _primary_session=_primary_session,
+            _collect_coding_metrics=_collect_coding_metrics, _sdr_precheck=_sdr_precheck,
+            _jpeg_primary_session=_jpeg_primary_session)
+    except HdrRoundtripError:
+        profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
+        if _gainmap_quality is not None or profile.is_archive or not (_use_heif or profile.container == "jpeg"):
+            raise
+        for auxiliary in ((97, 98, 99, 100) if _use_heif else (100,)):
+            try:
+                # As before, a manual retry builds a fresh higher precision
+                # auxiliary, while all attempts borrow this one prepared pair.
+                return _write_gainmap_once(*args, **common, _gainmap_quality=auxiliary)
+            except HdrRoundtripError:
+                if auxiliary == 100:
+                    raise
+        raise
+
+
+def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *,
+                        delivery, _prepared_master, _use_heif,
+                        _template_path=None, _gainmap_quality=None, _primary_session=None,
+                        _collect_coding_metrics=False, _sdr_precheck=None,
+                        _jpeg_primary_session=None, _hdr_metrics_workspace=None):
+    """Write and validate a manual candidate using the export's fixed CI owners."""
     profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
     quality = int(profile.quality)
     tolerances = profile.tolerances
@@ -872,57 +1090,17 @@ def write_apple_gainmap_file(
     if not 1 <= quality <= 100:
         raise ValueError("编码 quality 必须在 1-100 之间")
 
-    base = np.asarray(base_rgb_u8)
-    hdr = np.asarray(hdr_rgba_half)
-    if base.dtype != np.uint8 or base.ndim != 3 or base.shape[2] != 3:
-        raise ValueError("HDR gain-map 底图必须是 HxWx3 uint8")
-    if hdr.dtype != np.float16 or hdr.shape != base.shape[:2] + (4,):
-        raise ValueError("HDR alternate 必须是与底图同尺寸的 HxWx4 float16")
-    if not bool(np.all(np.isfinite(hdr))):
-        raise ValueError("HDR alternate 含 NaN/Inf，无法声明可靠的 content headroom")
-
-    ok, reason = (
-        apple_gainmap_backend_status()
-        if _verify_roundtrip_capability
-        else _apple_gainmap_api_status()
-    )
-    if not ok:
-        raise RuntimeError(reason)
-
+    prepared = _prepared_master
+    prepared.validate(base_rgb_u8, hdr_rgba_half, hdr_headroom_ev)
+    base, hdr = prepared.base, prepared.hdr
+    actual_headroom = prepared.actual_headroom
+    base_image, hdr_image, context, p3 = (
+        prepared.base_image, prepared.hdr_image, prepared.context, prepared.p3)
+    use_heif = _use_heif
+    from . import heif_encoder
     import Quartz  # type: ignore
     from Foundation import NSNumber, NSURL  # type: ignore
 
-    if not base.flags.c_contiguous:
-        base = np.ascontiguousarray(base)
-    if not hdr.flags.c_contiguous:
-        hdr = np.ascontiguousarray(hdr)
-
-    p3 = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceDisplayP3)
-    linear_p3 = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceExtendedLinearDisplayP3)
-    if p3 is None or linear_p3 is None:
-        raise RuntimeError("系统未提供 Display P3 / Extended Linear Display P3 色彩空间")
-
-    base_rgba = np.empty(base.shape[:2] + (4,), dtype=np.uint8)
-    base_rgba[:, :, :3] = base
-    base_rgba[:, :, 3] = np.uint8(255)
-    base_image, base_data = _ciimage_from_rgba(base_rgba, Quartz.kCIFormatRGBA8, p3)
-    hdr_image, hdr_data = _ciimage_from_rgba(hdr, Quartz.kCIFormatRGBAh, linear_p3)
-    base_image = base_image.imageBySettingContentHeadroom_(1.0)
-    requested_headroom = float(2.0 ** float(hdr_headroom_ev))
-    actual_headroom = float(np.max(hdr[:, :, :3]))
-    if actual_headroom > requested_headroom * 1.001:
-        raise RuntimeError(
-            f"HDR rendition 超过所选余量：{actual_headroom:.3f}x > {requested_headroom:.3f}x"
-        )
-    if actual_headroom <= 1.0 + 1e-3:
-        raise RuntimeError("该场景没有高于 reference white 的有效 HDR 内容")
-    hdr_image = hdr_image.imageBySettingContentHeadroom_(actual_headroom)
-
-    context = Quartz.CIContext.contextWithOptions_(
-        {Quartz.kCIContextCacheIntermediates: _nsnumber_bool(False)}
-    )
-    if context is None:
-        raise RuntimeError("Core Image 无法创建 HDR 编码 CIContext")
     encode_request_options: dict[str, Any] = {
         Quartz.kCGImageDestinationEncodeBaseIsSDR: _nsnumber_bool(True),
     }
@@ -990,10 +1168,13 @@ def write_apple_gainmap_file(
             if _template_path is not None:
                 import shutil
                 shutil.copyfile(temp_path, _template_path)
-        _ = (base_data, hdr_data, base_rgba, hdr)
         if container == "jpeg":
-            from .jpeg_gainmap import replace_primary
-            replace_primary(temp_path, base, quality, profile.chroma)
+            from .jpeg_gainmap import replace_primary, replace_primary_codestream
+            if _jpeg_primary_session is None:
+                replace_primary(temp_path, base, quality, profile.chroma)
+            else:
+                replace_primary_codestream(temp_path, _jpeg_primary_session.primary(
+                    base, quality, profile.chroma))
         encoder_info = {"encoder":"Apple ImageIO"} if container == "heic" else {}
         if use_heif:
             from .heif_gainmap import replace_primary
@@ -1073,23 +1254,9 @@ def write_apple_gainmap_file(
             raise RuntimeError(reason)
         if _sdr_precheck is not None:
             _sdr_precheck(base_roundtrip, encoded_bytes=temp_path.stat().st_size)
-        roundtrip = _roundtrip_error(temp_path, hdr)
+        roundtrip = _roundtrip_error(temp_path, hdr, _workspace=_hdr_metrics_workspace)
         info.update(roundtrip)
         if not _hdr_roundtrip_is_acceptable(roundtrip, tolerances):
-            if _gainmap_quality is None and not profile.is_archive and (use_heif or container == "jpeg"):
-                # Manual primary controls do not fix auxiliary precision. A
-                # second template can preserve the same requested primary
-                # while satisfying the original HDR gates.
-                for auxiliary in ((97, 98, 99, 100) if use_heif else (100,)):
-                    try:
-                        return write_apple_gainmap_file(
-                            base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev,
-                            delivery=delivery, _verify_roundtrip_capability=_verify_roundtrip_capability,
-                            _gainmap_quality=auxiliary,
-                        )
-                    except HdrRoundtripError:
-                        if auxiliary == 100:
-                            raise
             raise HdrRoundtripError(
                 "写出的 HDR rendition 无法从文件还原："
                 f"中位相对误差={roundtrip['median_relative_error']:.4f}，"

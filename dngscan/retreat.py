@@ -87,6 +87,37 @@ def clip_masks_for_shape(bundle: Any, shape: tuple[int, int]) -> Any:
     return resized
 
 
+class _RenderMaskChunks:
+    """A render-local borrowed mask; materialize/clamp only the requested chunk."""
+    def __init__(self, masks: Any):
+        self._flat = masks.reshape(-1, 3)
+
+    def __getitem__(self, key: Any) -> Any:
+        return np.clip(np.asarray(self._flat[key], dtype=np.float32), 0.0, 1.0)
+
+
+def clip_masks_for_render(bundle: Any, shape: tuple[int, int]) -> Any:
+    """Keep same-sized masks in storage dtype until a render chunk uses them.
+
+    Cropped/resized geometry retains the public PIL/bilinear cache contract.
+    This view belongs only to the current render and introduces no bundle cache.
+    """
+    masks = getattr(bundle, "clip_masks", None)
+    if masks is None:
+        return None
+    crop = getattr(bundle, "scene_geometry_crop", None)
+    evidence_shape = getattr(bundle, "evidence_shape", None)
+    uses_crop = crop is not None and evidence_shape is not None and (
+        abs(masks.shape[0] - int(evidence_shape[0])) <= 1
+        and abs(masks.shape[1] - int(evidence_shape[1])) <= 1
+    )
+    if (type(masks) is np.ndarray and masks.shape == (*shape, 3)
+            and masks.dtype in (np.dtype(np.float16), np.dtype(np.float32))
+            and masks.flags.c_contiguous and not uses_crop):
+        return _RenderMaskChunks(masks)
+    return clip_masks_for_shape(bundle, shape).reshape(-1, 3)
+
+
 def retreat_strength_from_masks(masks_rgb: Any) -> Any:
     """Continuous R/G/B clip classing: G-only < single R/B < multi-channel clip."""
     masks = np.clip(np.asarray(masks_rgb, dtype=np.float32), 0.0, 1.0)

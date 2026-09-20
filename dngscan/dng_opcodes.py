@@ -16,6 +16,7 @@ from typing import Any
 
 from ._deps import np
 from . import metadata as md
+from .source_metadata import cached_source_metadata
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ NAMES = {1:"WarpRectilinear",2:"WarpFisheye",3:"FixVignetteRadial",4:"FixBadPixe
          10:"DeltaPerRow",11:"DeltaPerColumn",12:"ScalePerRow",13:"ScalePerColumn",14:"WarpRectilinear2"}
 
 
+@cached_source_metadata
 def read_plan(path: Path) -> OpcodePlan:
     """Read only the main RAW IFD; refuse unsupported required operations.
 

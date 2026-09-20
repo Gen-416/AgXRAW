@@ -192,7 +192,7 @@ class NativeOutputParityTests(unittest.TestCase):
         from dngscan import _dngscan_fast as ext
 
         self.assertEqual(ext.native_abi_version(), NATIVE_ABI_VERSION)
-        self.assertEqual(NATIVE_ABI_VERSION, 17)  # ceiling and channel clipping counts
+        self.assertEqual(NATIVE_ABI_VERSION, 18)  # borrowed B3 and shared delivery metrics
         self.assertEqual(NATIVE_OUTPUT_GAMUT_FIT_ITERS, 16)
         self.assertEqual(NATIVE_OUTPUT_GAMUT_TOLERANCE, 1e-4)
         for gamut in ("srgb", "p3"):

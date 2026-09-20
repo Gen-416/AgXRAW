@@ -113,9 +113,17 @@ def output_highlight_margin(
     exactly the dark lamp-lit scenes the brightness reference exists for."""
     if np is None:
         return 0.0
-    y_p999, max_p999, clip_pct, near_pct = output_highlight_stats(
-        rgb_linear, gamut, percentile_mask
+    return _highlight_margin_from_stats(
+        output_highlight_stats(rgb_linear, gamut, percentile_mask), baseline
     )
+
+
+def _highlight_margin_from_stats(
+    stats: tuple[float, float, float, float],
+    baseline: tuple[float, float, float, float] | None = None,
+) -> float:
+    """Evaluate the existing gates without repeating the percentile reductions."""
+    y_p999, max_p999, clip_pct, near_pct = stats
     clip_limit = 0.03
     near_limit = 0.25
     if baseline is not None:
@@ -414,20 +422,20 @@ def max_safe_ev(
             if stored_masks is not None:
                 sample_masks = np.asarray(stored_masks)[selected]
         elif getattr(bundle, "clip_masks", None) is not None:
-            masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
-            sample_masks = masks.reshape(-1, 3)[source_indices[selected]]
+            masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
+            sample_masks = masks[source_indices[selected]]
     else:
         sample_rgb = flat[::step, :3]
         sample_masks = None
     sample_raw_guidance = None
     if spatial_shape is None and tone_core == "gated" and getattr(bundle, "clip_masks", None) is not None:
-        masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2]).reshape(-1, 3)
+        masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
         sample_masks = masks[::step]
         if tone_core == "gated":
             from .guidance import flatten_raw_guidance, raw_guidance_for_shape
 
             guidance = raw_guidance_for_shape(bundle, bundle.scene_rec2020_render.shape[:2], analysis)
-            sample_raw_guidance = flatten_raw_guidance(guidance, 0, masks.shape[0], step=step)
+            sample_raw_guidance = flatten_raw_guidance(guidance, 0, flat.shape[0], step=step)
     baseline_stats: tuple[float, float, float, float] | None = None
     body_percentile_mask: Any | None = None
 
@@ -489,18 +497,18 @@ def max_safe_ev(
         body_percentile_mask = _mask
     del _base, _mask
     baseline_stats = output_highlight_stats(baseline_rgb, gamut, body_percentile_mask)
-    if output_highlight_margin(
-        baseline_rgb, gamut, baseline_stats, body_percentile_mask
-    ) <= 0.0:
+    if _highlight_margin_from_stats(baseline_stats, baseline_stats) <= 0.0:
         return float(from_ev)
 
     low = float(from_ev)
     high = low + 0.5
-    while margin_at(high) > 0.0 and high < from_ev + search_hi:
+    high_margin = margin_at(high)
+    while high_margin > 0.0 and high < from_ev + search_hi:
         low = high
         high += 0.5
+        high_margin = margin_at(high)
 
-    if margin_at(high) > 0.0:
+    if high_margin > 0.0:
         return float(high)
 
     for _ in range(6):
@@ -560,6 +568,7 @@ def compute_auto_ev(
     color_head_m: float = 0.0,
     chroma_nr: float = 0.0,
     lens_filter: str | None = None,
+    *, _plan_sink: list | None = None,
 ) -> AutoEvResult:
     """Reference the reliable decoded scene body to 18% gray without changing EV 0.
 
@@ -580,6 +589,15 @@ def compute_auto_ev(
 
     if lens_filter is not None and lens_filter != getattr(bundle, "lens_filter", "none"):
         bundle = replace(bundle, lens_filter=lens_filter)
+    if (film_curve == "none" and film_mode != "full" and tone_core != "gated"
+            and getattr(bundle, "_tone_plan_sample", None) is None
+            and getattr(bundle, "scene_rec2020_render", None) is not None):
+        from .prepared_sample import PreparedSceneSample
+
+        # Share the exact storage population, not a zero-EV transformed image.
+        # The temporary object's source indices die here; only bounded rows and
+        # matching masks stay alive through this one plan/probe computation.
+        bundle = PreparedSceneSample.from_bundle(bundle).bind(bundle)
     reference_bundle = replace(
         bundle,
         exposure_gain=compute_exposure_gain(exposure_mode_for_tone_core(tone_core), 0.0),
@@ -681,6 +699,10 @@ def compute_auto_ev(
     boost_target = max(target, baseline_ev)
     ev = min(boost_target, cap)
     limited = boost_target > cap + 1e-6
+    if _plan_sink is not None:
+        # Job-local handoff only: callers reusing this plan must preserve the
+        # entire compile declaration. The public result remains scalar-only.
+        _plan_sink.append(reference_plan)
     return AutoEvResult(
         ev=float(ev),
         ev_median_target=float(target),
@@ -739,6 +761,7 @@ def resolve_export_ev(
     color_head_m: float = 0.0,
     chroma_nr: float = 0.0,
     lens_filter: str | None = None,
+    *, _plan_sink: list | None = None,
 ) -> tuple[float, AutoEvResult | None]:
     if not is_ev_auto(ev):
         return float(ev), None
@@ -790,6 +813,7 @@ def resolve_export_ev(
         color_head_m=color_head_m,
         chroma_nr=chroma_nr,
         lens_filter=lens_filter,
+        _plan_sink=_plan_sink,
     )
     return result.ev, result
 

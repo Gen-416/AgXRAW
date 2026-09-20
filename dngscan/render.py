@@ -604,7 +604,7 @@ def scene_render_to_display_linear(
     clip_masks = None
     raw_guidance = None
     if color_plan is not None and getattr(bundle, "clip_masks", None) is not None:
-        clip_masks = retreat_engine.clip_masks_for_shape(bundle, (h, w)).reshape(-1, 3)
+        clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
         if str(getattr(tone_plan, "tone_core", "agx")) == "gated":
             # Review batch 21 item 5: same evidence as the streaming u8 path
             # below — without the analysis the gated guidance builds against
@@ -913,7 +913,7 @@ def render_output_u8(
     clip_masks = None
     raw_guidance = None
     if color_plan is not None and getattr(bundle, "clip_masks", None) is not None:
-        clip_masks = retreat_engine.clip_masks_for_shape(bundle, (h, w)).reshape(-1, 3)
+        clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
         if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
@@ -1039,13 +1039,15 @@ def render_output_u8(
     ]
     rng = np.random.default_rng(0)
 
-    def quantize_chunk(start: int, end: int, pixels: Any) -> None:
+    def quantize_chunk(start: int, end: int, pixels: Any, noise_pair: Any = None) -> None:
         noise = (
             flat_dither_noise[start:end]
             if flat_dither_noise is not None
             else None
         )
-        if flat_dither_noise_a is not None:
+        if noise_pair is not None:
+            noise_a, noise_b = noise_pair
+        elif flat_dither_noise_a is not None:
             noise_a = flat_dither_noise_a[start:end]
             noise_b = flat_dither_noise_b[start:end]
         elif noise is None:
@@ -1101,8 +1103,23 @@ def render_output_u8(
             group_parts.append(pixels)
             group_end = min(group_start + quantize_chunk_size, flat_scene.shape[0])
             if end == group_end:
-                merged = group_parts[0] if len(group_parts) == 1 else np.concatenate(group_parts, axis=0)
-                quantize_chunk(group_start, group_end, merged)
+                if native_output_plan is not None and len(group_parts) > 1:
+                    # Draw the complete group's A then B in the historical order;
+                    # pass borrowed slices without concatenating the RGB chunks.
+                    pair = (generate_dither_noise(rng, (group_end - group_start, 3))
+                            if flat_dither_noise is None and flat_dither_noise_a is None
+                            else None)
+                    offset = group_start
+                    for part in group_parts:
+                        next_offset = offset + len(part)
+                        part_noise = (tuple(n[offset - group_start:next_offset - group_start]
+                                            for n in pair) if pair is not None else None)
+                        quantize_chunk(offset, next_offset, part, part_noise)
+                        offset = next_offset
+                    del pair, part_noise, part
+                else:
+                    merged = group_parts[0] if len(group_parts) == 1 else np.concatenate(group_parts, axis=0)
+                    quantize_chunk(group_start, group_end, merged)
                 group_start = group_end
                 group_parts = []
 

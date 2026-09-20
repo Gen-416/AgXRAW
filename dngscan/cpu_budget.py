@@ -116,3 +116,53 @@ def claim(share: int):
     the pool initializer."""
     with native_budget(share), inner(share):
         yield share
+
+
+def ordered_budget_map(pool, fn, values, *, max_workers: int):
+    """Run independent items within this caller's share and join before return.
+
+    The existing executor may be wider than the caller's budget. Submit only
+    bounded batches, propagate each batch's inner share, and preserve item order.
+    A failed submit or computation still drains every successfully submitted
+    future before releasing the native claim or the input owners.
+    """
+    values = tuple(values)
+    if not values:
+        return []
+    available = max(1, current_inner())
+    workers = min(len(values), max(1, int(max_workers)), available)
+    if workers == 1:
+        with claim(available):
+            return [fn(value) for value in values]
+    width = (len(values) + workers - 1) // workers
+    batches = [values[start:start + width] for start in range(0, len(values), width)]
+    share = max(1, available // len(batches))
+
+    def run(batch):
+        with inner(share):
+            return [fn(value) for value in batch]
+
+    futures, results = [], []
+    failure = None
+    with native_budget(share):
+        try:
+            for batch in batches:
+                futures.append(pool.submit(run, batch))
+        except BaseException as exc:
+            failure = exc
+        for future in futures:
+            while True:
+                try:
+                    results.extend(future.result())
+                except BaseException as exc:
+                    if failure is None:
+                        failure = exc
+                    # A caller interrupt can abort result() while its worker
+                    # is still running. Keep this claim and block on that same
+                    # future again; terminal worker errors need no retry.
+                    if not future.done():
+                        continue
+                break
+        if failure is not None:
+            raise failure
+    return results

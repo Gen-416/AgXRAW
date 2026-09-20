@@ -74,6 +74,25 @@ def available() -> bool:
         return False
 
 
+@lru_cache(maxsize=1)
+def _u8_to_u10_lut():
+    # Exact legacy float32 /255, clip, *1023, rint sequence for every input code.
+    codes = np.arange(256, dtype=np.float32)
+    codes /= 255.0
+    quantized = np.rint(np.clip(codes, 0, 1) * 1023).astype('<u2')
+    return np.frombuffer(quantized.tobytes(), dtype='<u2')
+
+
+def _quantized_band(rgb, bit_depth):
+    if rgb.dtype == np.uint8:
+        if bit_depth == 8:
+            return np.ascontiguousarray(rgb)
+        return _u8_to_u10_lut()[rgb]
+    band = rgb.astype(np.float32)
+    return np.rint(np.clip(band, 0, 1) * ((1 << bit_depth) - 1)).astype(
+        np.uint8 if bit_depth == 8 else '<u2')
+
+
 def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
            bit_depth: int = 10, preset: str = 'slow', tune: str = 'ssim',
            output_gamut: str = 'p3', auxiliary: bool = False) -> dict:
@@ -90,7 +109,8 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
     if tune not in ('ssim','psnr','grain') or output_gamut not in ('srgb','p3'):
         raise ValueError('invalid HEIF tune/gamut')
     rgb = np.asarray(rgb)
-    if rgb.ndim != 3 or rgb.shape[2] != 3 or not np.isfinite(rgb).all():
+    if (rgb.ndim != 3 or rgb.shape[2] != 3
+            or (rgb.dtype != np.uint8 and not np.isfinite(rgb).all())):
         raise ValueError('HEIF requires finite HxWx3 RGB')
     lib = _library()
     def check(error):
@@ -119,10 +139,7 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
         if not ptr or stride.value < w*3*(1 if bit_depth==8 else 2):
             raise RuntimeError('invalid libheif interleaved plane')
         for y in range(0,h,128):
-            band = rgb[y:y+128].astype(np.float32)
-            if rgb.dtype == np.uint8:
-                band /= 255.0
-            band = np.rint(np.clip(band,0,1)*((1<<bit_depth)-1)).astype(np.uint8 if bit_depth==8 else '<u2')
+            band = _quantized_band(rgb[y:y+128], bit_depth)
             for i,row in enumerate(band):
                 C.memmove(ptr+(y+i)*stride.value,row.ctypes.data,row.nbytes)
         # Gain-map RGB is numerical data, not display RGB. Preserve the

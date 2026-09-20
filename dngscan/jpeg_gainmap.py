@@ -40,8 +40,37 @@ def _segments(data: bytes):
         pos = end
 
 
-def replace_primary(path: Path, rgb, quality: int, chroma: str) -> None:
+def encode_primary_codestream(rgb, quality: int, chroma: str) -> bytes:
     from PIL import Image
+
+    encoded = io.BytesIO()
+    Image.fromarray(rgb).save(encoded, format='JPEG', quality=int(quality),
+                             subsampling={'444':0,'422':1,'420':2}[chroma], optimize=True)
+    return encoded.getvalue()
+
+
+class PrimaryCodestreamSession:
+    """Reuse one immutable primary across an auxiliary-quality retry."""
+    def __init__(self, base):
+        if base.flags.writeable or not base.flags.c_contiguous:
+            raise ValueError('JPEG primary session requires a readonly contiguous master')
+        self._base, self._key, self._coded = base, None, None
+
+    def primary(self, base, quality: int, chroma: str) -> bytes:
+        if base is not self._base:
+            raise ValueError('JPEG primary session cannot change its master')
+        key = (int(quality), str(chroma))
+        if key != self._key:
+            coded = encode_primary_codestream(base, quality, chroma)
+            self._key, self._coded = key, coded
+        return self._coded
+
+
+def replace_primary_codestream(path: Path, coded: bytes) -> None:
+    replace_primary(path, None, 0, '', _coded=coded)
+
+
+def replace_primary(path: Path, rgb, quality: int, chroma: str, *, _coded=None) -> None:
     source = path.read_bytes()
     segments = list(_segments(source))
     if not segments or segments[-1][0] != 0xda:
@@ -55,10 +84,7 @@ def replace_primary(path: Path, rgb, quality: int, chroma: str) -> None:
     metadata = [(m, source[a:b], a, p-a) for m,a,b,p in segments if 0xe0 <= m <= 0xef]
     if sum(blob[off:off+4] == b'MPF\0' for _,blob,_,off in metadata) != 1:
         raise ValueError('ISO gain-map JPEG must have exactly one MPF index')
-    encoded = io.BytesIO()
-    Image.fromarray(rgb).save(encoded, format='JPEG', quality=int(quality),
-                             subsampling={'444':0,'422':1,'420':2}[chroma], optimize=True)
-    coded = encoded.getvalue()
+    coded = encode_primary_codestream(rgb, quality, chroma) if _coded is None else _coded
     parts = [coded[a:b] for m,a,b,_ in _segments(coded) if not 0xe0 <= m <= 0xef]
     scan_end = list(_segments(coded))[-1][2]
     body = b''.join(parts) + coded[scan_end:]

@@ -133,6 +133,8 @@ class RawBundle:
     # the cached-Analysis export refresh must construct it before planning.
     # Distinct from Apple's intentionally unavailable spatial sensor mask.
     _clip_masks_pending: bool = field(default=False, kw_only=True, repr=False)
+    # Internal analysis-only Y storage; public loads still expose complete XYZ.
+    _analysis_y_render: Any | None = field(default=None, kw_only=True, repr=False)
     # Per-channel endpoints used to build clip_masks. None means the initial metadata
     # white levels; analysis records observed full wells here when it rebuilds the mask.
     _clip_mask_fullwell: dict[int, int] | None = None
@@ -149,13 +151,13 @@ class RawBundle:
     # dataclasses.replace copies preserve it — an ad-hoc attribute was lost on
     # every bundle stage transition, re-running full-frame guidance builds.
     _raw_guidance_has_resolved_fullwell: bool = False
-    # R2 item 20: FULL-RESOLUTION tone-plan sample rows (storage RGB units,
-    # the exact `flat[::step]` stride the exporter takes) and the identically
-    # strided clip-mask rows, attached to cache-proxy bundles at entry build.
+    # FULL-RESOLUTION deterministic tone-plan rows (storage RGB units) and
+    # matching clip-mask rows, attached to cache proxies at entry build or
+    # a private AutoEV bundle for one job. Both use sampling.sample_indices.
     # Tone-plan compilation prefers these when present, so a preview plan's
     # endpoints are compiled from the SAME statistics the export sees instead
-    # of the proxy's downsampled pixels. None on full bundles (which sample
-    # their own scene) and on pre-v14 cache entries.
+    # of the proxy's downsampled pixels. Public full bundles normally leave
+    # these unset and sample their own scene.
     _tone_plan_sample: Any | None = None
     _tone_plan_sample_masks: Any | None = None
     # Scene-linear RGB producer. Mosaic and levels are always LibRaw-derived; per-pixel

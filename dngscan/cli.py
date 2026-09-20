@@ -1064,6 +1064,7 @@ def main(argv: list[str]) -> int:
             coreimage_version=args.coreimage_version,
             coreimage_scale=args.coreimage_scale,
             _defer_clip_masks=True,
+            _analysis_luminance_only=not scan_requested,
         )
         # Render intent, not capture data: the declared filter rides the bundle so the
         # tail, HDR budget and every formation see the scene through the glass.
@@ -1073,6 +1074,7 @@ def main(argv: list[str]) -> int:
             bundle,
             args.margin,
             diagnostics=diagnostics_requested,
+            _return_planes=scan_requested,
             gamut_names=None
             if diagnostics_requested
             else (output_gamut_space("p3" if is_hdr_output_format(args.output_format) else args.output_gamut),),
@@ -1092,6 +1094,7 @@ def main(argv: list[str]) -> int:
             shoulder_white_offset=args.shoulder_white_offset,
         )
         auto_ev_result: AutoEvResult | None = None
+        auto_ev_plan: list = []
         jpeg_output_gamut = "p3" if is_hdr_output_format(args.output_format) else args.output_gamut
         if is_ev_auto(ev_input):
             if args.jpeg is None and not scan_requested:
@@ -1146,6 +1149,7 @@ def main(argv: list[str]) -> int:
                 chroma_nr=args.chroma_nr,
                 color_head_y=args.color_head_y,
                 color_head_m=args.color_head_m,
+                _plan_sink=auto_ev_plan,
             )
         else:
             resolved_ev = float(ev_input)
@@ -1162,6 +1166,7 @@ def main(argv: list[str]) -> int:
                 jpeg_path = jpeg_path.with_suffix(".heic")
         jpeg_icc_embedded = False
         render_plan = (
+            auto_ev_plan[0] if auto_ev_plan and jpeg_path is not None else
             build_render_plan(
                 bundle,
                 analysis,
@@ -1208,7 +1213,7 @@ def main(argv: list[str]) -> int:
             if jpeg_path is not None
             else None
         )
-        if render_plan is not None:
+        if render_plan is not None and not auto_ev_plan:
             render_plan = apply_render_adjustments(render_plan, cli_adjustments)
         if jpeg_path is not None:
             # Staged ownership (scheduler plan S4): analysis and the optional
