@@ -17,6 +17,30 @@ from ._deps import np
 HEIF_AUTO_QUALITIES = (95, 92, 90, 85, 80, 70)
 HEIF_AUTO_GAINMAP_QUALITIES = (95, 90, 85, 80)
 
+# The staged SDR gate and the completed-file gate use the same policy. Keep
+# the operation order (including the floor) shared with the JPEG selector.
+_ADDITIONAL_ERROR_RULES = (
+    ("coding_luma_rmse", 1.12, .05, 1.0),
+    ("coding_chroma_rmse", 1.10, .10, 0.0),
+    ("coding_local_luma_p99", 1.12, .10, 1.5),
+    ("block_p95_luma_error", 1.10, .002, .04),
+    ("highlight_max_luma_error", 1.00, .02, 0.0),
+    ("chroma_error", 1.05, .002, 0.0),
+)
+_SDR_ADDITIONAL_ERROR_RULES = tuple(
+    rule for rule in _ADDITIONAL_ERROR_RULES if rule[0].startswith("coding_")
+)
+
+
+class EncodingStageRejected(RuntimeError):
+    """A failed stage with only the measurements that actually completed."""
+
+    def __init__(self, reason, *, metrics, rejected_at, file_size_bytes=None):
+        super().__init__(reason)
+        self.metrics = dict(metrics)
+        self.rejected_at = str(rejected_at)
+        self.file_size_bytes = file_size_bytes
+
 
 def coding_metrics(decoded, intended):
     """Full-resolution luma/chroma error with bounded row-band temporaries."""
@@ -55,6 +79,16 @@ def coding_metrics(decoded, intended):
     }
 
 
+def _additional_error_acceptable(candidate, reference, rules):
+    for key, ratio, offset, floor in rules:
+        if key not in reference:
+            continue
+        value = float(candidate.get(key, float("inf")))
+        if not math.isfinite(value) or value > max(floor, float(reference[key])*ratio + offset):
+            return False
+    return True
+
+
 def additional_error_acceptable(candidate, reference):
     """Modest additional error only; never loosen the delivery's absolute gates."""
     # One 8-bit code of luma RMS and 1.5 codes of local MAE are the default
@@ -63,20 +97,27 @@ def additional_error_acceptable(candidate, reference):
     # HDR local MAE has a 0.04 reference-white floor: a 0.004 rise from
     # 0.020 to 0.024 should not veto an otherwise faithful q98 delivery.
     # Absolute HDR gates, worst-highlight and chroma budgets still apply.
-    for key, ratio, offset, floor in (
-        ("coding_luma_rmse", 1.12, .05, 1.0),
-        ("coding_chroma_rmse", 1.10, .10, 0.0),
-        ("coding_local_luma_p99", 1.12, .10, 1.5),
-        ("block_p95_luma_error", 1.10, .002, .04),
-        ("highlight_max_luma_error", 1.00, .02, 0.0),
-        ("chroma_error", 1.05, .002, 0.0),
-    ):
-        if key not in reference:
-            continue
-        value = float(candidate.get(key, float("inf")))
-        if not math.isfinite(value) or value > max(floor, float(reference[key])*ratio + offset):
-            return False
-    return True
+    return _additional_error_acceptable(candidate, reference, _ADDITIONAL_ERROR_RULES)
+
+
+def _require_coding_metrics(metrics, *, file_size_bytes=None):
+    """The opt-in staged protocol must measure every coding gate, not skip it."""
+    for key, *_ in _SDR_ADDITIONAL_ERROR_RULES:
+        try:
+            valid = key in metrics and math.isfinite(float(metrics[key]))
+        except (TypeError, ValueError, OverflowError):
+            valid = False
+        if not valid:
+            raise EncodingStageRejected(
+                f"编码预检缺少有效测量：{key}", metrics=metrics,
+                rejected_at="sdr_additional", file_size_bytes=file_size_bytes,
+            )
+
+
+def _attempt_metrics(metrics):
+    return {k: v for k, v in metrics.items()
+            if k.startswith(("coding_", "base_"))
+            or k in ("chroma_error", "block_p95_luma_error", "highlight_max_luma_error")}
 
 
 def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98,97,96,95)):
@@ -143,13 +184,22 @@ def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98
         }
 
 
-def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False):
+def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False,
+                         staged_sdr: bool = False, on_selected=None):
     """Bounded coordinate search over HEVC quality, sampling and auxiliary precision.
 
     ``encode(q, chroma, auxiliary_quality, path)`` must verify the completed file.
     The q95/444 reference and every candidate retain the same absolute and
     additional-error gates. Search at most 14 distinct combinations; this is not
     an exhaustive optimum or a claim that HEVC q70 equals JPEG q95.
+
+    With ``staged_sdr=True``, encode also receives ``sdr_precheck``. The reference
+    gets None and must finish its complete verification. Other candidates call
+    ``sdr_precheck(metrics, encoded_bytes=optional_size)`` after SDR measurements,
+    before HDR readback; failure raises EncodingStageRejected. Passing the precheck
+    does not accept a file: complete verification and all final gates still apply.
+    ``on_selected(info)`` runs when the reference or a strictly smaller winner is
+    selected, allowing a caller to retain that winner's private reusable resources.
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,6 +207,14 @@ def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False):
         reference = info = selected = None
         reference_bytes = 0
         attempts, tried = [], set()
+
+        def sdr_precheck(metrics, *, encoded_bytes=None):
+            _require_coding_metrics(metrics, file_size_bytes=encoded_bytes)
+            if not _additional_error_acceptable(metrics, reference, _SDR_ADDITIONAL_ERROR_RULES):
+                raise EncodingStageRejected(
+                    "SDR 编码附加误差超出参考预算", metrics=metrics,
+                    rejected_at="sdr_additional", file_size_bytes=encoded_bytes,
+                )
 
         def attempt(quality, chroma, auxiliary):
             nonlocal reference, reference_bytes, selected, info
@@ -167,33 +225,50 @@ def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False):
             path = Path(td) / f"q{quality}-{chroma}-aux{auxiliary}.heic"
             record = {"quality": quality, "chroma": chroma,
                       "gainmap_quality": auxiliary, "accepted": False}
+            winner_changed = False
             try:
-                candidate = encode(quality, chroma, auxiliary, path)
+                if staged_sdr:
+                    candidate = encode(
+                        quality, chroma, auxiliary, path,
+                        sdr_precheck=None if reference is None else sdr_precheck,
+                    )
+                else:
+                    candidate = encode(quality, chroma, auxiliary, path)
                 size = path.stat().st_size
+                if staged_sdr:
+                    _require_coding_metrics(candidate, file_size_bytes=size)
                 if reference is None:
                     # A lower-quality candidate must not become a weaker oracle
                     # when the declared high-quality reference failed.
                     reference, reference_bytes = candidate, size
                     selected, info = path, candidate
                     accepted = True
+                    winner_changed = True
                 else:
                     # Keep a smaller valid primary even if the auxiliary makes
                     # its saving less than 5% of the WHOLE file. Otherwise that
                     # valid step cannot participate in a better joint result.
                     accepted = size < reference_bytes and additional_error_acceptable(candidate, reference)
                 record.update(bytes=size, accepted=accepted,
-                              metrics={k: v for k, v in candidate.items()
-                                       if k.startswith("coding_") or k in (
-                                           "chroma_error", "block_p95_luma_error",
-                                           "highlight_max_luma_error")})
+                              metrics=_attempt_metrics(candidate))
                 if accepted and size < selected.stat().st_size:
                     selected, info = path, candidate
+                    winner_changed = True
             except (RuntimeError, ValueError) as exc:
                 record["reason"] = str(exc)
+                if isinstance(exc, EncodingStageRejected):
+                    record.update(metrics=_attempt_metrics(exc.metrics),
+                                  rejected_at=exc.rejected_at)
+                    if exc.file_size_bytes is not None:
+                        record["bytes"] = exc.file_size_bytes
                 if reference is None:
                     raise RuntimeError("HEIF 高质量参考未通过回读：" + str(exc)) from exc
             finally:
                 attempts.append(record)
+            # Resource-management callback errors are not candidate rejections.
+            # Propagate them before publishing any destination file.
+            if winner_changed and on_selected is not None:
+                on_selected(info)
 
         auxiliary = 100 if gainmap else None
         for quality in HEIF_AUTO_QUALITIES:
