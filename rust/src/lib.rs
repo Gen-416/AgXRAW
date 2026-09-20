@@ -36,7 +36,8 @@ use std::sync::atomic::Ordering;
 /// v14 adds WarpRectilinear2 and embedded lens radial splines.
 /// v15 adds crop-footprint and in-place processing-loss maxima.
 /// v16 adds exact sensor RGB-group clipping counts.
-pub const NATIVE_ABI_VERSION: i32 = 16;
+/// v17 adds exact per-channel sensor ceiling and clipping scans.
+pub const NATIVE_ABI_VERSION: i32 = 17;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -664,6 +665,83 @@ fn sensor_rgb_clip_counts_u16(
     };
     py.detach(|| sensor::rgb_clip_counts(samples, &thresholds, &groups, sample_count))
         .map(|counts| counts.to_vec())
+        .map_err(|e| PyRuntimeError::new_err(format!("sensor workers: {e}")))
+}
+
+fn sensor_channel_views<'a>(
+    raw: numpy::ndarray::ArrayViewD<'a, u16>, colors: numpy::ndarray::ArrayViewD<'a, u8>,
+) -> PyResult<sensor::ChannelSamples<'a>> {
+    if raw.ndim() == 2 {
+        Ok(sensor::ChannelSamples::Mosaic(
+            raw.into_dimensionality::<numpy::ndarray::Ix2>()
+                .map_err(|_| PyValueError::new_err("raw must be 2-D"))?,
+            colors.into_dimensionality::<numpy::ndarray::Ix2>()
+                .map_err(|_| PyValueError::new_err("colors must be 2-D"))?,
+        ))
+    } else {
+        Ok(sensor::ChannelSamples::Linear(
+            raw.into_dimensionality::<numpy::ndarray::Ix3>()
+                .map_err(|_| PyValueError::new_err("raw must be 3-D"))?,
+            colors.into_dimensionality::<numpy::ndarray::Ix3>()
+                .map_err(|_| PyValueError::new_err("colors must be 3-D"))?,
+        ))
+    }
+}
+
+#[pyfunction]
+fn sensor_ceiling_counts_u16(
+    py: Python<'_>, raw: &Bound<'_, PyAny>, colors: &Bound<'_, PyAny>, windows: Vec<u32>,
+) -> PyResult<(Vec<u16>, Vec<u64>, Vec<u64>, Vec<u64>)> {
+    let raw = raw.cast::<PyArrayDyn<u16>>()
+        .map_err(|_| PyValueError::new_err("raw must be a uint16 array"))?;
+    let colors = colors.cast::<PyArrayDyn<u8>>()
+        .map_err(|_| PyValueError::new_err("colors must be a uint8 array"))?;
+    let sample_count = sensor_view_shape(raw, "raw")?;
+    sensor_view_shape(colors, "colors")?;
+    if raw.shape() != colors.shape() {
+        return Err(PyValueError::new_err("colors must match raw shape"));
+    }
+    let windows: [u32; 256] = windows.try_into()
+        .map_err(|_| PyValueError::new_err("windows must have 256 entries"))?;
+    if windows.iter().any(|&window| window > u16::MAX as u32) {
+        return Err(PyValueError::new_err("windows must be between 0 and 65535"));
+    }
+    if sample_count == 0 {
+        return Ok((vec![0; 256], vec![0; 256], vec![0; 256], vec![0; 256]));
+    }
+    let windows = windows.map(|window| window as u16);
+    let raw_read = raw.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let colors_read = colors.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let samples = sensor_channel_views(raw_read.as_array(), colors_read.as_array())?;
+    py.detach(|| sensor::ceiling_counts(samples, &windows, sample_count))
+        .map(|counts| (counts.ceilings.to_vec(), counts.totals.to_vec(),
+                       counts.exact.to_vec(), counts.near.to_vec()))
+        .map_err(|e| PyRuntimeError::new_err(format!("sensor workers: {e}")))
+}
+
+#[pyfunction]
+fn sensor_channel_clip_counts_u16(
+    py: Python<'_>, raw: &Bound<'_, PyAny>, colors: &Bound<'_, PyAny>, thresholds: Vec<i32>,
+) -> PyResult<(Vec<u64>, Vec<u64>)> {
+    let raw = raw.cast::<PyArrayDyn<u16>>()
+        .map_err(|_| PyValueError::new_err("raw must be a uint16 array"))?;
+    let colors = colors.cast::<PyArrayDyn<u8>>()
+        .map_err(|_| PyValueError::new_err("colors must be a uint8 array"))?;
+    let sample_count = sensor_view_shape(raw, "raw")?;
+    sensor_view_shape(colors, "colors")?;
+    if raw.shape() != colors.shape() {
+        return Err(PyValueError::new_err("colors must match raw shape"));
+    }
+    let thresholds: [i32; 256] = thresholds.try_into()
+        .map_err(|_| PyValueError::new_err("thresholds must have 256 entries"))?;
+    if sample_count == 0 {
+        return Ok((vec![0; 256], vec![0; 256]));
+    }
+    let raw_read = raw.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let colors_read = colors.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let samples = sensor_channel_views(raw_read.as_array(), colors_read.as_array())?;
+    py.detach(|| sensor::channel_clip_counts(samples, &thresholds, sample_count))
+        .map(|(totals, hits)| (totals.to_vec(), hits.to_vec()))
         .map_err(|e| PyRuntimeError::new_err(format!("sensor workers: {e}")))
 }
 
@@ -1774,6 +1852,8 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(finalize_output_u8_noise_f32, m)?)?;
     m.add_function(wrap_pyfunction!(self_test, m)?)?;
     m.add_function(wrap_pyfunction!(sensor_rgb_clip_counts_u16, m)?)?;
+    m.add_function(wrap_pyfunction!(sensor_ceiling_counts_u16, m)?)?;
+    m.add_function(wrap_pyfunction!(sensor_channel_clip_counts_u16, m)?)?;
     m.add_function(wrap_pyfunction!(feather_masks_f16, m)?)?;
     m.add_function(wrap_pyfunction!(crop_loss_footprint, m)?)?;
     m.add_function(wrap_pyfunction!(merge_processing_loss_f16_inplace, m)?)?;

@@ -1,0 +1,2800 @@
+{
+  "baseline_commit": "3847943de8d4df8d55ac2e4591ce448961ca4fc4",
+  "optimized_revision": "Exact sensor ceiling and channel clip counts in the enclosing commit, ABI 17; production source fingerprints below.",
+  "measurement_date": "2026-09-20",
+  "measurement": "Both sides retain prior native kernels including RGB counts, SensorSummary and deferred masks. Reference skips only sensor_ceiling_counts_u16 and sensor_channel_clip_counts_u16. All real runs also compare against independent unmodified 3847943/ABI16 outputs.",
+  "timing": "Seconds; no encoding, startup imports or hashing. Lazy imports inside stages remain timed. Sequential fresh processes with mode order alternated by pair; three pairs each for Sigma/Sony/Fuji LibRaw and one Apple pair. SDR/HDR share preparation and must not be added.",
+  "identity": "Complete identity includes masks_loaded, masks_analyzed, processing loss, independent reference, decisions and SDR/HDR masters. No excluded fields; source SHA-256 also must match baseline.",
+  "memory": "Process high-water RSS includes decode, input generation and hashing; not kernel scratch, live allocations or GPU memory. No whole-pipeline peak-memory reduction claimed.",
+  "pipeline": {
+    "sigma": {
+      "pairs": 3,
+      "sample": "_SDI0150.DNG",
+      "source_sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "cf4d886beafda25709d6f0969a6849548c4a2c4507a5cf27114d380fde8382ef",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "3ff72999464a16251a899cfebd3d863f4b4f8108c3243b44a943a9e316e7676b"
+        },
+        "processing_loss": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "dc3c7ff596a1cee42ff255fde95c2a8dc0dfc31e344cbc9b54427eba53a62953"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "d09a47d21d37a4e9ff7883ddfc715836548aca3a247a9e0c0146fe86426975c1"
+        },
+        "hdr_base": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "d09a47d21d37a4e9ff7883ddfc715836548aca3a247a9e0c0146fe86426975c1"
+        },
+        "hdr_alternate": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "dd980c016b5cafea0977aacaa0ece687d5dd823dca8ac1ca04c8fb1010d0384d"
+        }
+      },
+      "decisions_sha256": "a20b2696cb1f3264f99f1bc6a5a299e91f0d258b90d773c63b436b9710f7e5aa",
+      "sensor_decisions": {
+        "ceilings": {
+          "0": 16383,
+          "1": 16382,
+          "2": 16292,
+          "3": 16382
+        },
+        "ceil_spike_counts": {
+          "0": 55828,
+          "1": 76370,
+          "2": 340,
+          "3": 76294
+        },
+        "ceil_near_counts": {
+          "0": 60836,
+          "1": 76376,
+          "2": 340,
+          "3": 76298
+        },
+        "ceil_spike_ok": {
+          "0": true,
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "fullwell_channel_ids": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "fullwell_note": "all channels have ceiling pile",
+        "channel_fullwell": {
+          "0": 16383,
+          "1": 16382,
+          "2": 16292,
+          "3": 16382
+        },
+        "channel_thresholds": {
+          "0": 16379,
+          "1": 16378,
+          "2": 16288,
+          "3": 16378
+        },
+        "fullwell": 16292,
+        "threshold": 16288,
+        "clip_pct": {
+          "0": 0.9928893060855738,
+          "1": 1.2465092779117422,
+          "2": 0.005548599859783618,
+          "3": 1.2452853220603193
+        }
+      },
+      "auto_ev": {
+        "ev": 0.0546875,
+        "ev_median_target": 1.044471263885498,
+        "ev_boost": 0.0546875,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0546875,
+        "anchored_median_ev": -0.989783763885498
+      },
+      "hdr_headroom_ev": 1.2957221319800878,
+      "hdr_rho": 0.45035798260742416,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            7.419033249025233,
+            7.442607543052873,
+            7.515267417009454
+          ],
+          "median": 7.442607543052873,
+          "min": 7.419033249025233,
+          "max": 7.515267417009454
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            8.39869579198421,
+            8.453074918041239,
+            8.46880691597471
+          ],
+          "median": 8.453074918041239,
+          "min": 8.39869579198421,
+          "max": 8.46880691597471
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2350.34375,
+            2909.3125,
+            2904.296875
+          ],
+          "median": 2904.296875,
+          "min": 2350.34375,
+          "max": 2909.3125
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              3.9878041660122108,
+              4.093982209014939,
+              4.12889374999213
+            ],
+            "median": 4.093982209014939,
+            "min": 3.9878041660122108,
+            "max": 4.12889374999213
+          },
+          "analyze": {
+            "runs": [
+              1.5918392080056947,
+              1.6258701249898877,
+              1.6416352080123033
+            ],
+            "median": 1.6258701249898877,
+            "min": 1.5918392080056947,
+            "max": 1.6416352080123033
+          },
+          "auto_ev": {
+            "runs": [
+              0.5606664170045406,
+              0.4426363750244491,
+              0.4447096249787137
+            ],
+            "median": 0.4447096249787137,
+            "min": 0.4426363750244491,
+            "max": 0.5606664170045406
+          },
+          "render_plan": {
+            "runs": [
+              0.1117778749903664,
+              0.11380804202053696,
+              0.11810204200446606
+            ],
+            "median": 0.11380804202053696,
+            "min": 0.1117778749903664,
+            "max": 0.11810204200446606
+          },
+          "hdr_plan": {
+            "runs": [
+              0.0002954169758595526,
+              0.0002523750008549541,
+              0.00023933299235068262
+            ],
+            "median": 0.0002523750008549541,
+            "min": 0.00023933299235068262,
+            "max": 0.0002954169758595526
+          },
+          "render_sdr": {
+            "runs": [
+              1.1669455830124207,
+              1.1663107920030598,
+              1.1819267920218408
+            ],
+            "median": 1.1669455830124207,
+            "min": 1.1663107920030598,
+            "max": 1.1819267920218408
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.146312708995538,
+              2.1765257919905707,
+              2.135226957994746
+            ],
+            "median": 2.146312708995538,
+            "min": 2.135226957994746,
+            "max": 2.1765257919905707
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.1072969580127392
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.11361925001256168
+            }
+          },
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.10934116700082086
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.1156594589992892
+            }
+          },
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.11115558299934492
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.11492991601699032
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.1072969580127392,
+            0.10934116700082086,
+            0.11115558299934492
+          ],
+          "median": 0.10934116700082086,
+          "min": 0.1072969580127392,
+          "max": 0.11115558299934492
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.11361925001256168,
+            0.1156594589992892,
+            0.11492991601699032
+          ],
+          "median": 0.11492991601699032,
+          "min": 0.11361925001256168,
+          "max": 0.1156594589992892
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.22091620802530088,
+            0.22500062600011006,
+            0.22608549901633523
+          ],
+          "median": 0.22500062600011006,
+          "min": 0.22091620802530088,
+          "max": 0.22608549901633523
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_ceiling_counts_u16,sensor_channel_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            7.133869249984855,
+            7.17854616601835,
+            7.287213374016574
+          ],
+          "median": 7.17854616601835,
+          "min": 7.133869249984855,
+          "max": 7.287213374016574
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            8.13561570798629,
+            8.113034666021122,
+            8.220253666018834
+          ],
+          "median": 8.13561570798629,
+          "min": 8.113034666021122,
+          "max": 8.220253666018834
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2903.390625,
+            2909.21875,
+            2903.6875
+          ],
+          "median": 2903.6875,
+          "min": 2903.390625,
+          "max": 2909.21875
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              3.9929976249986794,
+              4.06555895798374,
+              4.138976290996652
+            ],
+            "median": 4.06555895798374,
+            "min": 3.9929976249986794,
+            "max": 4.138976290996652
+          },
+          "analyze": {
+            "runs": [
+              1.3910218329983763,
+              1.3955505000194535,
+              1.411678958014818
+            ],
+            "median": 1.3955505000194535,
+            "min": 1.3910218329983763,
+            "max": 1.411678958014818
+          },
+          "auto_ev": {
+            "runs": [
+              0.4785024169832468,
+              0.43288283300353214,
+              0.4481779589841608
+            ],
+            "median": 0.4481779589841608,
+            "min": 0.43288283300353214,
+            "max": 0.4785024169832468
+          },
+          "render_plan": {
+            "runs": [
+              0.11293787500471808,
+              0.11346449999837205,
+              0.11763250001240522
+            ],
+            "median": 0.11346449999837205,
+            "min": 0.11293787500471808,
+            "max": 0.11763250001240522
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00022366701159626245,
+              0.00021620799088850617,
+              0.00022575000184588134
+            ],
+            "median": 0.00022366701159626245,
+            "min": 0.00021620799088850617,
+            "max": 0.00022575000184588134
+          },
+          "render_sdr": {
+            "runs": [
+              1.1584094999998342,
+              1.1710893750132527,
+              1.1707476660085376
+            ],
+            "median": 1.1707476660085376,
+            "min": 1.1584094999998342,
+            "max": 1.1710893750132527
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.1599322909896728,
+              2.105361667025136,
+              2.1035622080089524
+            ],
+            "median": 2.105361667025136,
+            "min": 2.1035622080089524,
+            "max": 2.1599322909896728
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.006558374996529892
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.006655499979387969
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.0033025830052793026
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.0033801249810494483
+            }
+          },
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.00674837501719594
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.006841541995527223
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.0031500000040978193
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.003232000017305836
+            }
+          },
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.006834958010585979
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.006933208991540596
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.003353125008288771
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.0034273329947609454
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.006655499979387969,
+            0.006841541995527223,
+            0.006933208991540596
+          ],
+          "median": 0.006841541995527223,
+          "min": 0.006655499979387969,
+          "max": 0.006933208991540596
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.0033801249810494483,
+            0.003232000017305836,
+            0.0034273329947609454
+          ],
+          "median": 0.0033801249810494483,
+          "min": 0.003232000017305836,
+          "max": 0.0034273329947609454
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.010035624960437417,
+            0.010073542012833059,
+            0.010360541986301541
+          ],
+          "median": 0.010073542012833059,
+          "min": 0.010035624960437417,
+          "max": 0.010360541986301541
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 3.5479685783110337,
+        "pipeline_hdr_s": 3.755547101296852,
+        "sensor_scans_wall_s": 95.52288267285614
+      }
+    },
+    "sony": {
+      "pairs": 3,
+      "sample": "DSC00225.ARW",
+      "source_sha256": "752749232a3d9baa84fec24b4663557ec743a495fbe5d65b8600ed72d7bfa6d2",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "4baa047a0d97944f458015a0e729dc732b7355aa0f3de4882b36210a035e8641",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "59709c59d951f548a2700a2c17583f01672fae5d7de6b9d631f0e0c2d440a05d"
+        },
+        "processing_loss": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "b57b32e4bf814d8977a8f31ea6f36eb488ae0a435b10b2100a5de91201a0b8c9"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "5331671504b6b7e378dd10c3d2dae41245b82a76bb3b183913a7f96e16219cfc"
+        },
+        "hdr_base": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "5331671504b6b7e378dd10c3d2dae41245b82a76bb3b183913a7f96e16219cfc"
+        },
+        "hdr_alternate": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "fc544d27613fbe7349c57ca44b3c7cef4243c9b6c064e5a4eeabca3d8652ca8e"
+        }
+      },
+      "decisions_sha256": "89f9a5b841f4a71bfc97d222231f46aef2f502ccc5f8387a294b4f3995023b15",
+      "sensor_decisions": {
+        "ceilings": {
+          "0": 34016,
+          "1": 39002,
+          "2": 39002,
+          "3": 39002
+        },
+        "ceil_spike_counts": {
+          "0": 1,
+          "1": 3873,
+          "2": 774,
+          "3": 3409
+        },
+        "ceil_near_counts": {
+          "0": 1,
+          "1": 3873,
+          "2": 774,
+          "3": 3409
+        },
+        "ceil_spike_ok": {
+          "0": false,
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "fullwell_channel_ids": [
+          1,
+          2,
+          3
+        ],
+        "fullwell_note": "weak ceiling channels excluded from fullwell",
+        "channel_fullwell": {
+          "0": 32800,
+          "1": 39002,
+          "2": 39002,
+          "3": 39002
+        },
+        "channel_thresholds": {
+          "0": 32796,
+          "1": 38998,
+          "2": 38998,
+          "3": 38998
+        },
+        "fullwell": 39002,
+        "threshold": 38998,
+        "clip_pct": {
+          "0": 0.00012140613557471722,
+          "1": 0.047020596308087984,
+          "2": 0.009396834893483114,
+          "3": 0.0413873516174211
+        }
+      },
+      "auto_ev": {
+        "ev": 0.0390625,
+        "ev_median_target": 1.2259010076522827,
+        "ev_boost": 0.0390625,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0390625,
+        "anchored_median_ev": -1.1868385076522827
+      },
+      "hdr_headroom_ev": 0.2679380228644872,
+      "hdr_rho": 0.4995325863780373,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            11.198704791982891,
+            10.658161125000333,
+            10.338653625018196
+          ],
+          "median": 10.658161125000333,
+          "min": 10.338653625018196,
+          "max": 11.198704791982891
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            12.368977250007447,
+            12.029236624017358,
+            11.538325626053847
+          ],
+          "median": 12.029236624017358,
+          "min": 11.538325626053847,
+          "max": 12.368977250007447
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3671.6875,
+            3566.53125,
+            4243.953125
+          ],
+          "median": 3671.6875,
+          "min": 3566.53125,
+          "max": 4243.953125
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              5.911544083006447,
+              5.726540582982125,
+              5.708343750011409
+            ],
+            "median": 5.726540582982125,
+            "min": 5.708343750011409,
+            "max": 5.911544083006447
+          },
+          "analyze": {
+            "runs": [
+              2.6464355000061914,
+              2.455588874989189,
+              2.2571923750219867
+            ],
+            "median": 2.455588874989189,
+            "min": 2.2571923750219867,
+            "max": 2.6464355000061914
+          },
+          "auto_ev": {
+            "runs": [
+              0.6536670420027804,
+              0.6745647080242634,
+              0.550849291990744
+            ],
+            "median": 0.6536670420027804,
+            "min": 0.550849291990744,
+            "max": 0.6745647080242634
+          },
+          "render_plan": {
+            "runs": [
+              0.15723924999474548,
+              0.13554091702098958,
+              0.12167191700427793
+            ],
+            "median": 0.13554091702098958,
+            "min": 0.12167191700427793,
+            "max": 0.15723924999474548
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00031674999627284706,
+              0.00024908300838433206,
+              0.0002010420139413327
+            ],
+            "median": 0.00024908300838433206,
+            "min": 0.0002010420139413327,
+            "max": 0.00031674999627284706
+          },
+          "render_sdr": {
+            "runs": [
+              1.8298189169727266,
+              1.6659260419837665,
+              1.700596290989779
+            ],
+            "median": 1.700596290989779,
+            "min": 1.6659260419837665,
+            "max": 1.8298189169727266
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.9997746250010096,
+              3.0367524579924066,
+              2.900067250011489
+            ],
+            "median": 2.9997746250010096,
+            "min": 2.900067250011489,
+            "max": 3.0367524579924066
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.14613608401850797
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.15884058398660272
+            }
+          },
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.16256175001035444
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.16280783302499913
+            }
+          },
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.1441702919837553
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.15362320799613371
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.14613608401850797,
+            0.16256175001035444,
+            0.1441702919837553
+          ],
+          "median": 0.14613608401850797,
+          "min": 0.1441702919837553,
+          "max": 0.16256175001035444
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.15884058398660272,
+            0.16280783302499913,
+            0.15362320799613371
+          ],
+          "median": 0.15884058398660272,
+          "min": 0.15362320799613371,
+          "max": 0.16280783302499913
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.3049766680051107,
+            0.32536958303535357,
+            0.297793499979889
+          ],
+          "median": 0.3049766680051107,
+          "min": 0.297793499979889,
+          "max": 0.32536958303535357
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_ceiling_counts_u16,sensor_channel_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            10.506897666986333,
+            10.57216654199874,
+            10.052909706981154
+          ],
+          "median": 10.506897666986333,
+          "min": 10.052909706981154,
+          "max": 10.57216654199874
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            11.744536624959437,
+            12.143587292026496,
+            11.21858016596525
+          ],
+          "median": 11.744536624959437,
+          "min": 11.21858016596525,
+          "max": 12.143587292026496
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3775.171875,
+            3665.875,
+            4029.25
+          ],
+          "median": 3775.171875,
+          "min": 3665.875,
+          "max": 4029.25
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              5.852252374985255,
+              5.832582957984414,
+              5.720173749985406
+            ],
+            "median": 5.832582957984414,
+            "min": 5.720173749985406,
+            "max": 5.852252374985255
+          },
+          "analyze": {
+            "runs": [
+              2.0782771660014987,
+              2.0356442500196863,
+              1.9698902080126572
+            ],
+            "median": 2.0356442500196863,
+            "min": 1.9698902080126572,
+            "max": 2.0782771660014987
+          },
+          "auto_ev": {
+            "runs": [
+              0.6534178339934442,
+              0.6786169999977574,
+              0.5630613749963231
+            ],
+            "median": 0.6534178339934442,
+            "min": 0.5630613749963231,
+            "max": 0.6786169999977574
+          },
+          "render_plan": {
+            "runs": [
+              0.13554237500648014,
+              0.14705579201108776,
+              0.12634591598180123
+            ],
+            "median": 0.13554237500648014,
+            "min": 0.12634591598180123,
+            "max": 0.14705579201108776
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00027054199017584324,
+              0.0002512079954613,
+              0.00021200001356191933
+            ],
+            "median": 0.0002512079954613,
+            "min": 0.00021200001356191933,
+            "max": 0.00027054199017584324
+          },
+          "render_sdr": {
+            "runs": [
+              1.7874079169996548,
+              1.878266541985795,
+              1.6734384580049664
+            ],
+            "median": 1.7874079169996548,
+            "min": 1.6734384580049664,
+            "max": 1.878266541985795
+          },
+          "render_hdr_pair": {
+            "runs": [
+              3.024776332982583,
+              3.449436084018089,
+              2.8388969169755
+            ],
+            "median": 3.024776332982583,
+            "min": 2.8388969169755,
+            "max": 3.449436084018089
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.007986416982021183
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.008099166996544227
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.006052415992598981
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.006177707982715219
+            }
+          },
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.00877929202397354
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.008874833001755178
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.006904790992848575
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.006983458006288856
+            }
+          },
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.007681708026211709
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.007752749981591478
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.005787208006950095
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.005843375023687258
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.008099166996544227,
+            0.008874833001755178,
+            0.007752749981591478
+          ],
+          "median": 0.008099166996544227,
+          "min": 0.007752749981591478,
+          "max": 0.008874833001755178
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.006177707982715219,
+            0.006983458006288856,
+            0.005843375023687258
+          ],
+          "median": 0.006177707982715219,
+          "min": 0.005843375023687258,
+          "max": 0.006983458006288856
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.014276874979259446,
+            0.015858291008044034,
+            0.013596125005278736
+          ],
+          "median": 0.014276874979259446,
+          "min": 0.013596125005278736,
+          "max": 0.015858291008044034
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 1.419226602412571,
+        "pipeline_hdr_s": 2.366733716830327,
+        "sensor_scans_wall_s": 95.31869927209638
+      }
+    },
+    "fuji": {
+      "pairs": 3,
+      "sample": "DSCF0214.RAF",
+      "source_sha256": "649f3899eb5e8504353e9e332440ab98e401937c309ddadacfda0a1a6b251af2",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "6220d259d755161a6b978174b74db73cdfdb295f0c5c0ccbd074fa5668647e45",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "17fbca4b09eb7ea15adf6929ca9f450e0b740a78967c29ee297cc65bf36f4d79"
+        },
+        "processing_loss": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "17fbca4b09eb7ea15adf6929ca9f450e0b740a78967c29ee297cc65bf36f4d79"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "cb959387aec082306e9318c5954c239bb943c0a1ebf3ffa759ff9c9320632ea1"
+        },
+        "hdr_base": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "cb959387aec082306e9318c5954c239bb943c0a1ebf3ffa759ff9c9320632ea1"
+        },
+        "hdr_alternate": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "a90eeab1170334cd2360e4fc9d904689b6f819a5f7f84b82ce6016319d22900b"
+        }
+      },
+      "decisions_sha256": "d96eea09de22e8e73361801d69906c5087130f0d02387e3a88785575ce4e6c5e",
+      "sensor_decisions": {
+        "ceilings": {
+          "0": 2909,
+          "1": 4623,
+          "2": 3246
+        },
+        "ceil_spike_counts": {
+          "0": 1,
+          "1": 3,
+          "2": 1
+        },
+        "ceil_near_counts": {
+          "0": 1,
+          "1": 4,
+          "2": 1
+        },
+        "ceil_spike_ok": {
+          "0": false,
+          "1": false,
+          "2": false
+        },
+        "fullwell_channel_ids": [
+          0,
+          1,
+          2
+        ],
+        "fullwell_note": "no ceiling pile; fullwell from metadata white_level",
+        "channel_fullwell": {
+          "0": 16383,
+          "1": 16383,
+          "2": 16383
+        },
+        "channel_thresholds": {
+          "0": 16379,
+          "1": 16379,
+          "2": 16379
+        },
+        "fullwell": 16383,
+        "threshold": 16379,
+        "clip_pct": {
+          "0": 0.0,
+          "1": 0.0,
+          "2": 0.0
+        }
+      },
+      "auto_ev": {
+        "ev": 1.5666446685791016,
+        "ev_median_target": 1.5666446685791016,
+        "ev_boost": 1.5666446685791016,
+        "highlight_limited": false,
+        "highlight_cap_ev": 1.828125,
+        "anchored_median_ev": 0.0
+      },
+      "hdr_headroom_ev": 0.0,
+      "hdr_rho": 0.5,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            22.79128679301357,
+            22.75198362499941,
+            23.022933000000194
+          ],
+          "median": 22.79128679301357,
+          "min": 22.75198362499941,
+          "max": 23.022933000000194
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            23.748919960024068,
+            23.66281812498346,
+            23.993928790994687
+          ],
+          "median": 23.748919960024068,
+          "min": 23.66281812498346,
+          "max": 23.993928790994687
+        },
+        "peak_rss_mib": {
+          "runs": [
+            4208.84375,
+            4390.125,
+            4125.640625
+          ],
+          "median": 4208.84375,
+          "min": 4125.640625,
+          "max": 4390.125
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              16.76079904200742,
+              16.778503042005468,
+              16.804205833002925
+            ],
+            "median": 16.778503042005468,
+            "min": 16.76079904200742,
+            "max": 16.804205833002925
+          },
+          "analyze": {
+            "runs": [
+              3.6025912089971825,
+              3.4729426249978133,
+              3.632541333005065
+            ],
+            "median": 3.6025912089971825,
+            "min": 3.4729426249978133,
+            "max": 3.632541333005065
+          },
+          "auto_ev": {
+            "runs": [
+              0.6225511670054402,
+              0.6524424999952316,
+              0.7624961249821354
+            ],
+            "median": 0.6524424999952316,
+            "min": 0.6225511670054402,
+            "max": 0.7624961249821354
+          },
+          "render_plan": {
+            "runs": [
+              0.11396129199420102,
+              0.1423820829950273,
+              0.12532041702070273
+            ],
+            "median": 0.12532041702070273,
+            "min": 0.11396129199420102,
+            "max": 0.1423820829950273
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00020745801157318056,
+              0.000184582982910797,
+              0.00022537499899044633
+            ],
+            "median": 0.00020745801157318056,
+            "min": 0.000184582982910797,
+            "max": 0.00022537499899044633
+          },
+          "render_sdr": {
+            "runs": [
+              1.691384083009325,
+              1.705713375005871,
+              1.6983692919893656
+            ],
+            "median": 1.6983692919893656,
+            "min": 1.691384083009325,
+            "max": 1.705713375005871
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.648809792008251,
+              2.6163632920070086,
+              2.6691397079848684
+            ],
+            "median": 2.648809792008251,
+            "min": 2.6163632920070086,
+            "max": 2.6691397079848684
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.14174179200199433
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.15575904201250523
+            }
+          },
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.14068037501419894
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.15027250000275671
+            }
+          },
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.1449234590108972
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.15296824998222291
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.14174179200199433,
+            0.14068037501419894,
+            0.1449234590108972
+          ],
+          "median": 0.14174179200199433,
+          "min": 0.14068037501419894,
+          "max": 0.1449234590108972
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.15575904201250523,
+            0.15027250000275671,
+            0.15296824998222291
+          ],
+          "median": 0.15296824998222291,
+          "min": 0.15027250000275671,
+          "max": 0.15575904201250523
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.29750083401449956,
+            0.29095287501695566,
+            0.2978917089931201
+          ],
+          "median": 0.29750083401449956,
+          "min": 0.29095287501695566,
+          "max": 0.2978917089931201
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_ceiling_counts_u16,sensor_channel_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            22.729249124007765,
+            22.515083958016476,
+            22.2820090840396
+          ],
+          "median": 22.515083958016476,
+          "min": 22.2820090840396,
+          "max": 22.729249124007765
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            23.725406542042037,
+            23.460198042012053,
+            23.253646001045126
+          ],
+          "median": 23.460198042012053,
+          "min": 23.253646001045126,
+          "max": 23.725406542042037
+        },
+        "peak_rss_mib": {
+          "runs": [
+            4123.6875,
+            4376.328125,
+            4461.71875
+          ],
+          "median": 4376.328125,
+          "min": 4123.6875,
+          "max": 4461.71875
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              16.817775792005705,
+              16.801502999995137,
+              16.748688584018964
+            ],
+            "median": 16.801502999995137,
+            "min": 16.748688584018964,
+            "max": 16.817775792005705
+          },
+          "analyze": {
+            "runs": [
+              3.3732178330246825,
+              3.2487316250044387,
+              3.195894375006901
+            ],
+            "median": 3.2487316250044387,
+            "min": 3.195894375006901,
+            "max": 3.3732178330246825
+          },
+          "auto_ev": {
+            "runs": [
+              0.7418171250028536,
+              0.6223310000204947,
+              0.5362576250045095
+            ],
+            "median": 0.6223310000204947,
+            "min": 0.5362576250045095,
+            "max": 0.7418171250028536
+          },
+          "render_plan": {
+            "runs": [
+              0.11891720799030736,
+              0.13606499999877997,
+              0.12023345800116658
+            ],
+            "median": 0.12023345800116658,
+            "min": 0.11891720799030736,
+            "max": 0.13606499999877997
+          },
+          "hdr_plan": {
+            "runs": [
+              0.000188209000043571,
+              0.00019749999046325684,
+              0.00018108400399796665
+            ],
+            "median": 0.000188209000043571,
+            "min": 0.00018108400399796665,
+            "max": 0.00019749999046325684
+          },
+          "render_sdr": {
+            "runs": [
+              1.677521165984217,
+              1.7064533329976257,
+              1.680935042008059
+            ],
+            "median": 1.680935042008059,
+            "min": 1.677521165984217,
+            "max": 1.7064533329976257
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.6734903750184458,
+              2.6513699170027394,
+              2.652390875009587
+            ],
+            "median": 2.652390875009587,
+            "min": 2.6513699170027394,
+            "max": 2.6734903750184458
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.015478040993912145
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.01556516598793678
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.009358249983051792
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.009425541997188702
+            }
+          },
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.015246708004269749
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.015327125001931563
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.009398624999448657
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.009463040973059833
+            }
+          },
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.01648058299906552
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.016560416988795623
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.009380250005051494
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.009444709023227915
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.01556516598793678,
+            0.015327125001931563,
+            0.016560416988795623
+          ],
+          "median": 0.01556516598793678,
+          "min": 0.015327125001931563,
+          "max": 0.016560416988795623
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.009425541997188702,
+            0.009463040973059833,
+            0.009444709023227915
+          ],
+          "median": 0.009444709023227915,
+          "min": 0.009425541997188702,
+          "max": 0.009463040973059833
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.024990707985125482,
+            0.024790165974991396,
+            0.02600512601202354
+          ],
+          "median": 0.024990707985125482,
+          "min": 0.024790165974991396,
+          "max": 0.02600512601202354
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 1.2118790724960804,
+        "pipeline_hdr_s": 1.2157265193449396,
+        "sensor_scans_wall_s": 91.59978557105238
+      }
+    },
+    "sigma-apple": {
+      "pairs": 1,
+      "sample": "_SDI0150.DNG",
+      "source_sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "1b63a2647a127629831973c7749d4ed1ff33d2debb60be986c85dc98c38f43bb",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": null,
+        "processing_loss": null,
+        "reference_samples": {
+          "shape": [
+            196302,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "4a5dff19ffe043112bc72aa2cd06183ce14c8827ab57e48823f7e62b164479fe"
+        },
+        "sdr": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "6d1a18588e11f2989df6ee89c264bb76f02ec67123b3ce2680df7f7a043e9f00"
+        },
+        "hdr_base": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "6d1a18588e11f2989df6ee89c264bb76f02ec67123b3ce2680df7f7a043e9f00"
+        },
+        "hdr_alternate": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "7453e90df717ba2a2d4d8752fc308cded1c7e74499632925e2a6ea3038e8ab29"
+        }
+      },
+      "decisions_sha256": "69c21b90308b4bb462a7f0b9e4b6ed899ff3fb14108efcc8d41ac88a14740887",
+      "sensor_decisions": {
+        "ceilings": {
+          "0": 16383,
+          "1": 16382,
+          "2": 16292,
+          "3": 16382
+        },
+        "ceil_spike_counts": {
+          "0": 55828,
+          "1": 76370,
+          "2": 340,
+          "3": 76294
+        },
+        "ceil_near_counts": {
+          "0": 60836,
+          "1": 76376,
+          "2": 340,
+          "3": 76298
+        },
+        "ceil_spike_ok": {
+          "0": true,
+          "1": true,
+          "2": true,
+          "3": true
+        },
+        "fullwell_channel_ids": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "fullwell_note": "all channels have ceiling pile",
+        "channel_fullwell": {
+          "0": 16383,
+          "1": 16382,
+          "2": 16292,
+          "3": 16382
+        },
+        "channel_thresholds": {
+          "0": 16379,
+          "1": 16378,
+          "2": 16288,
+          "3": 16378
+        },
+        "fullwell": 16292,
+        "threshold": 16288,
+        "clip_pct": {
+          "0": 0.9928893060855738,
+          "1": 1.2465092779117422,
+          "2": 0.005548599859783618,
+          "3": 1.2452853220603193
+        }
+      },
+      "auto_ev": {
+        "ev": 0.0546875,
+        "ev_median_target": 0.9799513816833496,
+        "ev_boost": 0.0546875,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0546875,
+        "anchored_median_ev": -0.9252638816833496
+      },
+      "hdr_headroom_ev": 1.2475293924933935,
+      "hdr_rho": 0.25,
+      "decoder": "coreimage",
+      "decoder_version": "9",
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            6.286934833042324
+          ],
+          "median": 6.286934833042324,
+          "min": 6.286934833042324,
+          "max": 6.286934833042324
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            7.1194107080227695
+          ],
+          "median": 7.1194107080227695,
+          "min": 7.1194107080227695,
+          "max": 7.1194107080227695
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2775.53125
+          ],
+          "median": 2775.53125,
+          "min": 2775.53125,
+          "max": 2775.53125
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              3.804369375022361
+            ],
+            "median": 3.804369375022361,
+            "min": 3.804369375022361,
+            "max": 3.804369375022361
+          },
+          "analyze": {
+            "runs": [
+              0.979499915993074
+            ],
+            "median": 0.979499915993074,
+            "min": 0.979499915993074,
+            "max": 0.979499915993074
+          },
+          "auto_ev": {
+            "runs": [
+              0.26738983401446603
+            ],
+            "median": 0.26738983401446603,
+            "min": 0.26738983401446603,
+            "max": 0.26738983401446603
+          },
+          "render_plan": {
+            "runs": [
+              0.06543520800187252
+            ],
+            "median": 0.06543520800187252,
+            "min": 0.06543520800187252,
+            "max": 0.06543520800187252
+          },
+          "hdr_plan": {
+            "runs": [
+              0.0001976249914150685
+            ],
+            "median": 0.0001976249914150685,
+            "min": 0.0001976249914150685,
+            "max": 0.0001976249914150685
+          },
+          "render_sdr": {
+            "runs": [
+              1.17024050001055
+            ],
+            "median": 1.17024050001055,
+            "min": 1.17024050001055,
+            "max": 1.17024050001055
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.002518749999581
+            ],
+            "median": 2.002518749999581,
+            "min": 2.002518749999581,
+            "max": 2.002518749999581
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.10696145900874399
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.11327312502544373
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.10696145900874399
+          ],
+          "median": 0.10696145900874399,
+          "min": 0.10696145900874399,
+          "max": 0.10696145900874399
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.11327312502544373
+          ],
+          "median": 0.11327312502544373,
+          "min": 0.11327312502544373,
+          "max": 0.11327312502544373
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.22023458403418772
+          ],
+          "median": 0.22023458403418772,
+          "min": 0.22023458403418772,
+          "max": 0.22023458403418772
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_ceiling_counts_u16,sensor_channel_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            6.02199104099418
+          ],
+          "median": 6.02199104099418,
+          "min": 6.02199104099418,
+          "max": 6.02199104099418
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            6.854448749974836
+          ],
+          "median": 6.854448749974836,
+          "min": 6.854448749974836,
+          "max": 6.854448749974836
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2781.859375
+          ],
+          "median": 2781.859375,
+          "min": 2781.859375,
+          "max": 2781.859375
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              3.651368541002739
+            ],
+            "median": 3.651368541002739,
+            "min": 3.651368541002739,
+            "max": 3.651368541002739
+          },
+          "analyze": {
+            "runs": [
+              0.8732524999941234
+            ],
+            "median": 0.8732524999941234,
+            "min": 0.8732524999941234,
+            "max": 0.8732524999941234
+          },
+          "auto_ev": {
+            "runs": [
+              0.2673764170031063
+            ],
+            "median": 0.2673764170031063,
+            "min": 0.2673764170031063,
+            "max": 0.2673764170031063
+          },
+          "render_plan": {
+            "runs": [
+              0.06584541697520763
+            ],
+            "median": 0.06584541697520763,
+            "min": 0.06584541697520763,
+            "max": 0.06584541697520763
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00019833300029858947
+            ],
+            "median": 0.00019833300029858947,
+            "min": 0.00019833300029858947,
+            "max": 0.00019833300029858947
+          },
+          "render_sdr": {
+            "runs": [
+              1.1641481660190038
+            ],
+            "median": 1.1641481660190038,
+            "min": 1.1641481660190038,
+            "max": 1.1641481660190038
+          },
+          "render_hdr_pair": {
+            "runs": [
+              1.9964075419993605
+            ],
+            "median": 1.9964075419993605,
+            "min": 1.9964075419993605,
+            "max": 1.9964075419993605
+          }
+        },
+        "sensor_channel_calls": [
+          {
+            "native.sensor_ceiling_counts_u16": {
+              "count": 1,
+              "wall_s": 0.006702332990244031
+            },
+            "detect_ceilings": {
+              "count": 1,
+              "wall_s": 0.006779999996069819
+            },
+            "native.sensor_channel_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.0027356669888831675
+            },
+            "compute_clip_pct_by_thresholds": {
+              "count": 1,
+              "wall_s": 0.0027809590101242065
+            }
+          }
+        ],
+        "detect_ceilings_wall_s": {
+          "runs": [
+            0.006779999996069819
+          ],
+          "median": 0.006779999996069819,
+          "min": 0.006779999996069819,
+          "max": 0.006779999996069819
+        },
+        "compute_clip_pct_by_thresholds_wall_s": {
+          "runs": [
+            0.0027809590101242065
+          ],
+          "median": 0.0027809590101242065,
+          "min": 0.0027809590101242065,
+          "max": 0.0027809590101242065
+        },
+        "sensor_scans_wall_s": {
+          "runs": [
+            0.009560959006194025
+          ],
+          "median": 0.009560959006194025,
+          "min": 0.009560959006194025,
+          "max": 0.009560959006194025
+        },
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 4.214196569299156,
+        "pipeline_hdr_s": 3.721683843149426,
+        "sensor_scans_wall_s": 95.65873859088822
+      }
+    }
+  },
+  "synthetic": {
+    "24mp": {
+      "size": [
+        6000,
+        4000
+      ],
+      "repeats_per_entrypoint": 3,
+      "method": "One fresh process per mode; reference first. Three repetitions per entrypoint, not independent pipeline measurements. Input generation, hashes and threshold preparation are outside both timers.",
+      "complete_identity_exact": true,
+      "identity": {
+        "bayer": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint16",
+              "sha256": "39cec64e8aedc6e1a07046f20d1d961c4e322399b0f8fd7245f396baa0f37c75"
+            },
+            "colors": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint8",
+              "sha256": "c9df701a4e6baf8a991058406d9b80834d6fc3d6b18c1f1a47649988c29e657f"
+            },
+            "color_strides": [
+              6000,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ],
+            "channel_ids": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "saturation_levels": {
+              "0": 16383,
+              "1": 16383,
+              "2": 16383,
+              "3": 16383
+            },
+            "margin": 4,
+            "seed": 371
+          },
+          "thresholds": {
+            "0": 16379,
+            "1": 16379,
+            "2": 16379,
+            "3": 16379
+          },
+          "ceilings": {
+            "0": 16383,
+            "1": 16383,
+            "2": 16383,
+            "3": 16383
+          },
+          "exact_counts": {
+            "0": 365,
+            "1": 365,
+            "2": 338,
+            "3": 357
+          },
+          "near_counts": {
+            "0": 1113,
+            "1": 1069,
+            "2": 1091,
+            "3": 1101
+          },
+          "spike_ok": {
+            "0": true,
+            "1": true,
+            "2": true,
+            "3": true
+          },
+          "clip_pct_by_channel": {
+            "0": 0.031316666666666666,
+            "1": 0.030366666666666667,
+            "2": 0.031149999999999997,
+            "3": 0.030449999999999998
+          }
+        },
+        "xtrans": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint16",
+              "sha256": "39cec64e8aedc6e1a07046f20d1d961c4e322399b0f8fd7245f396baa0f37c75"
+            },
+            "colors": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint8",
+              "sha256": "b2c1c8b5711f042d05a10c4bc14c934382ff8781b5c33c3a10e15e80bf0749f7"
+            },
+            "color_strides": [
+              6000,
+              1
+            ],
+            "pattern": [
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                2,
+                1,
+                2,
+                0,
+                1,
+                0
+              ],
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ],
+              [
+                0,
+                1,
+                0,
+                2,
+                1,
+                2
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ]
+            ],
+            "channel_ids": [
+              0,
+              1,
+              2
+            ],
+            "saturation_levels": {
+              "0": 16383,
+              "1": 16383,
+              "2": 16383
+            },
+            "margin": 4,
+            "seed": 371
+          },
+          "thresholds": {
+            "0": 16379,
+            "1": 16379,
+            "2": 16379
+          },
+          "ceilings": {
+            "0": 16383,
+            "1": 16383,
+            "2": 16383
+          },
+          "exact_counts": {
+            "0": 342,
+            "1": 763,
+            "2": 320
+          },
+          "near_counts": {
+            "0": 1036,
+            "1": 2351,
+            "2": 987
+          },
+          "spike_ok": {
+            "0": true,
+            "1": true,
+            "2": true
+          },
+          "clip_pct_by_channel": {
+            "0": 0.03281455090943184,
+            "1": 0.030005999700015,
+            "2": 0.030864429026814178
+          }
+        },
+        "linear_rgb": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                4000,
+                6000,
+                3
+              ],
+              "dtype": "uint16",
+              "sha256": "3a0fe11fdd58246cc01f7d945a46620eb6a8d510913ee713b3fd793ceb8f94dc"
+            },
+            "colors": {
+              "shape": [
+                4000,
+                6000,
+                3
+              ],
+              "dtype": "uint8",
+              "sha256": "0542f3544d6d58690308211d54e4bbdb08428bfbc1543475babcad313d91ae57"
+            },
+            "color_strides": [
+              0,
+              0,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1,
+                2
+              ]
+            ],
+            "channel_ids": [
+              0,
+              1,
+              2
+            ],
+            "saturation_levels": {
+              "0": 16383,
+              "1": 16383,
+              "2": 16383
+            },
+            "margin": 4,
+            "seed": 371
+          },
+          "thresholds": {
+            "0": 16379,
+            "1": 16379,
+            "2": 16379
+          },
+          "ceilings": {
+            "0": 16383,
+            "1": 16383,
+            "2": 16383
+          },
+          "exact_counts": {
+            "0": 1453,
+            "1": 1494,
+            "2": 1432
+          },
+          "near_counts": {
+            "0": 4365,
+            "1": 4500,
+            "2": 4408
+          },
+          "spike_ok": {
+            "0": true,
+            "1": true,
+            "2": true
+          },
+          "clip_pct_by_channel": {
+            "0": 0.030266666666666667,
+            "1": 0.031145833333333334,
+            "2": 0.03034166666666667
+          }
+        }
+      },
+      "cases": {
+        "bayer": {
+          "detect_ceilings": {
+            "reference": {
+              "wall_s": [
+                0.10329133301274851,
+                0.10337483300827444,
+                0.10660266599734314
+              ],
+              "median_s": 0.10337483300827444
+            },
+            "native": {
+              "wall_s": [
+                0.006595416984055191,
+                0.00651508301962167,
+                0.0064552080002613366
+              ],
+              "median_s": 0.00651508301962167
+            },
+            "median_speedup": 15.867001647858878
+          },
+          "compute_clip_pct_by_thresholds": {
+            "reference": {
+              "wall_s": [
+                0.11237145800259896,
+                0.10944320799899288,
+                0.10894504201132804
+              ],
+              "median_s": 0.10944320799899288
+            },
+            "native": {
+              "wall_s": [
+                0.0037016669812146574,
+                0.003065416996832937,
+                0.003969000012148172
+              ],
+              "median_s": 0.0037016669812146574
+            },
+            "median_speedup": 29.56592490745356
+          }
+        },
+        "xtrans": {
+          "detect_ceilings": {
+            "reference": {
+              "wall_s": [
+                0.08249987498857081,
+                0.08295887499116361,
+                0.08306524998624809
+              ],
+              "median_s": 0.08295887499116361
+            },
+            "native": {
+              "wall_s": [
+                0.010979584010783583,
+                0.010976165998727083,
+                0.010972541000228375
+              ],
+              "median_s": 0.010976165998727083
+            },
+            "median_speedup": 7.558092233734842
+          },
+          "compute_clip_pct_by_thresholds": {
+            "reference": {
+              "wall_s": [
+                0.0877173749904614,
+                0.08986637499765493,
+                0.08752212498802692
+              ],
+              "median_s": 0.0877173749904614
+            },
+            "native": {
+              "wall_s": [
+                0.0059849999961443245,
+                0.005870749999303371,
+                0.006040667009074241
+              ],
+              "median_s": 0.0059849999961443245
+            },
+            "median_speedup": 14.65620301536691
+          }
+        },
+        "linear_rgb": {
+          "detect_ceilings": {
+            "reference": {
+              "wall_s": [
+                0.46576820898917504,
+                0.45897687500109896,
+                0.4576200000010431
+              ],
+              "median_s": 0.45897687500109896
+            },
+            "native": {
+              "wall_s": [
+                0.018168750015320256,
+                0.018484874977730215,
+                0.01843120899866335
+              ],
+              "median_s": 0.01843120899866335
+            },
+            "median_speedup": 24.902157803884943
+          },
+          "compute_clip_pct_by_thresholds": {
+            "reference": {
+              "wall_s": [
+                0.4834900409914553,
+                0.4790339579922147,
+                0.47815650000120513
+              ],
+              "median_s": 0.4790339579922147
+            },
+            "native": {
+              "wall_s": [
+                0.009602875012205914,
+                0.00912112498190254,
+                0.009619332995498553
+              ],
+              "median_s": 0.009602875012205914
+            },
+            "median_speedup": 49.88443121287423
+          }
+        }
+      },
+      "sensor_channel_calls": {
+        "reference": {
+          "detect_ceilings": {
+            "count": 9,
+            "wall_s": 1.9441401660151314
+          },
+          "compute_clip_pct_by_thresholds": {
+            "count": 9,
+            "wall_s": 2.0365301670099143
+          }
+        },
+        "native": {
+          "native.sensor_ceiling_counts_u16": {
+            "count": 9,
+            "wall_s": 0.10692458198172972
+          },
+          "detect_ceilings": {
+            "count": 9,
+            "wall_s": 0.10756662706262432
+          },
+          "native.sensor_channel_clip_counts_u16": {
+            "count": 9,
+            "wall_s": 0.05638933298178017
+          },
+          "compute_clip_pct_by_thresholds": {
+            "count": 9,
+            "wall_s": 0.05696537499898113
+          }
+        }
+      },
+      "process_peak_rss_mib": {
+        "reference": 476.5,
+        "native": 285.671875
+      }
+    },
+    "60mp": {
+      "size": [
+        10000,
+        6000
+      ],
+      "repeats_per_entrypoint": 3,
+      "method": "One fresh process per mode; reference first. Three repetitions per entrypoint, not independent pipeline measurements. Input generation, hashes and threshold preparation are outside both timers.",
+      "complete_identity_exact": true,
+      "identity": {
+        "bayer": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint16",
+              "sha256": "360b13ad966265bca3b82484261cc7c1b574d62c6a25bb3faba5dbb9b4612fdb"
+            },
+            "colors": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint8",
+              "sha256": "cc13cd6527e35d6c5441c422545755f8d0cff76689fd4c2bcc0be0ee4073c080"
+            },
+            "color_strides": [
+              10000,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ],
+            "channel_ids": [
+              0,
+              1,
+              2,
+              3
+            ],
+            "saturation_levels": {
+              "0": 16383,
+              "1": 16383,
+              "2": 16383,
+              "3": 16383
+            },
+            "margin": 4,
+            "seed": 371
+          },
+          "thresholds": {
+            "0": 16379,
+            "1": 16379,
+            "2": 16379,
+            "3": 16379
+          },
+          "ceilings": {
+            "0": 16383,
+            "1": 16383,
+            "2": 16383,
+            "3": 16383
+          },
+          "exact_counts": {
+            "0": 904,
+            "1": 911,
+            "2": 907,
+            "3": 904
+          },
+          "near_counts": {
+            "0": 2755,
+            "1": 2763,
+            "2": 2772,
+            "3": 2706
+          },
+          "spike_ok": {
+            "0": true,
+            "1": true,
+            "2": true,
+            "3": true
+          },
+          "clip_pct_by_channel": {
+            "0": 0.03038,
+            "1": 0.030573333333333334,
+            "2": 0.03089333333333333,
+            "3": 0.030373333333333332
+          }
+        },
+        "xtrans": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint16",
+              "sha256": "360b13ad966265bca3b82484261cc7c1b574d62c6a25bb3faba5dbb9b4612fdb"
+            },
+            "colors": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint8",
+              "sha256": "d3f744abf0b08e1c9c5f391c11564b953fb326da7031ded20a89445e9103f3da"
+            },
+            "color_strides": [
+              10002,
+              1
+            ],
+            "pattern": [
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                2,
+                1,
+                2,
+                0,
+                1,
+                0
+              ],
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ],
+              [
+                0,
+                1,
+                0,
+                2,
+                1,
+                2
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ]
+            ],
+            "channel_ids": [
+              0,
+              1,
+              2
+            ],
+            "saturation_levels": {
+              "0": 16383,
+              "1": 16383,
+              "2": 16383
+            },
+            "margin": 4,
+            "seed": 371
+          },
+          "thresholds": {
+            "0": 16379,
+            "1": 16379,
+            "2": 16379
+          },
+          "ceilings": {
+            "0": 16383,
+            "1": 16383,
+            "2": 16383
+          },
+          "exact_counts": {
+            "0": 837,
+            "1": 1973,
+            "2": 816
+          },
+          "near_counts": {
+            "0": 2458,
+            "1": 6104,
+            "2": 2434
+          },
+          "spike_ok": {
+            "0": true,
+            "1": true,
+            "2": true
+          },
+          "clip_pct_by_channel": {
+            "0": 0.030773269331733293,
+            "1": 0.030446391072178558,
+            "2": 0.030608265206630167
+          }
+        },
+        "linear_rgb": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                6000,
+                10000,
+                3
+              ],
+              "dtype": "uint16",
+              "sha256": "dbf73fb403674292da6f6b8a6098b540020c77d5fda48e9a0698fec764c5d660"
+            },
+            "colors": {
+              "shape": [
+                6000,
+                10000,
+                3
+              ],
+              "dtype": "uint8",
+              "sha256": "835bbd0793d3b191b4f810cce9a9d57419810a11e19c334f1d217e3b20161806"
+            },
+            "color_strides": [
+              0,
+              0,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1,
+                2
+              ]
+            ],
+            "channel_ids": [
+              0,
+              1,
+              2
+            ],
+            "saturation_levels": {
+              "0": 16383,
+              "1": 16383,
+              "2": 16383
+            },
+            "margin": 4,
+            "seed": 371
+          },
+          "thresholds": {
+            "0": 16379,
+            "1": 16379,
+            "2": 16379
+          },
+          "ceilings": {
+            "0": 16383,
+            "1": 16383,
+            "2": 16383
+          },
+          "exact_counts": {
+            "0": 3668,
+            "1": 3743,
+            "2": 3594
+          },
+          "near_counts": {
+            "0": 10931,
+            "1": 11118,
+            "2": 10944
+          },
+          "spike_ok": {
+            "0": true,
+            "1": true,
+            "2": true
+          },
+          "clip_pct_by_channel": {
+            "0": 0.030289999999999997,
+            "1": 0.030848333333333335,
+            "2": 0.03040333333333333
+          }
+        }
+      },
+      "cases": {
+        "bayer": {
+          "detect_ceilings": {
+            "reference": {
+              "wall_s": [
+                0.26529716700315475,
+                0.2584554169734474,
+                0.2569034170010127
+              ],
+              "median_s": 0.2584554169734474
+            },
+            "native": {
+              "wall_s": [
+                0.014320499991299585,
+                0.014803790982114151,
+                0.015570999996270984
+              ],
+              "median_s": 0.014803790982114151
+            },
+            "median_speedup": 17.458731840088237
+          },
+          "compute_clip_pct_by_thresholds": {
+            "reference": {
+              "wall_s": [
+                0.27078404198982753,
+                0.2706541249935981,
+                0.2721659590024501
+              ],
+              "median_s": 0.27078404198982753
+            },
+            "native": {
+              "wall_s": [
+                0.008010749996174127,
+                0.008159958000760525,
+                0.007508166978368536
+              ],
+              "median_s": 0.008010749996174127
+            },
+            "median_speedup": 33.80258304392871
+          }
+        },
+        "xtrans": {
+          "detect_ceilings": {
+            "reference": {
+              "wall_s": [
+                0.21625037500052713,
+                0.21174995801993646,
+                0.21023762499680743
+              ],
+              "median_s": 0.21174995801993646
+            },
+            "native": {
+              "wall_s": [
+                0.026587540982291102,
+                0.026372249994892627,
+                0.027369874995201826
+              ],
+              "median_s": 0.026587540982291102
+            },
+            "median_speedup": 7.964255068228184
+          },
+          "compute_clip_pct_by_thresholds": {
+            "reference": {
+              "wall_s": [
+                0.22805762497591786,
+                0.22594433298218064,
+                0.23105579099501483
+              ],
+              "median_s": 0.22805762497591786
+            },
+            "native": {
+              "wall_s": [
+                0.01407112501328811,
+                0.014285958983236924,
+                0.014054125000257045
+              ],
+              "median_s": 0.01407112501328811
+            },
+            "median_speedup": 16.207490499910342
+          }
+        },
+        "linear_rgb": {
+          "detect_ceilings": {
+            "reference": {
+              "wall_s": [
+                1.1804302500095218,
+                1.1712119579897262,
+                1.1731782499991823
+              ],
+              "median_s": 1.1731782499991823
+            },
+            "native": {
+              "wall_s": [
+                0.04555425001308322,
+                0.04207295799278654,
+                0.04486354099935852
+              ],
+              "median_s": 0.04486354099935852
+            },
+            "median_speedup": 26.149925393003574
+          },
+          "compute_clip_pct_by_thresholds": {
+            "reference": {
+              "wall_s": [
+                1.2166099999740254,
+                1.2445708340092096,
+                1.2156882499984931
+              ],
+              "median_s": 1.2166099999740254
+            },
+            "native": {
+              "wall_s": [
+                0.023095374985132366,
+                0.02329108299454674,
+                0.024397958011832088
+              ],
+              "median_s": 0.02329108299454674
+            },
+            "median_speedup": 52.23501201120087
+          }
+        }
+      },
+      "sensor_channel_calls": {
+        "reference": {
+          "detect_ceilings": {
+            "count": 9,
+            "wall_s": 4.943691666965606
+          },
+          "compute_clip_pct_by_thresholds": {
+            "count": 9,
+            "wall_s": 5.175513207010226
+          }
+        },
+        "native": {
+          "native.sensor_ceiling_counts_u16": {
+            "count": 9,
+            "wall_s": 0.2568624989653472
+          },
+          "detect_ceilings": {
+            "count": 9,
+            "wall_s": 0.2575036250054836
+          },
+          "native.sensor_channel_clip_counts_u16": {
+            "count": 9,
+            "wall_s": 0.136361584009137
+          },
+          "compute_clip_pct_by_thresholds": {
+            "count": 9,
+            "wall_s": 0.1368647929339204
+          }
+        }
+      },
+      "process_peak_rss_mib": {
+        "reference": 1053.75,
+        "native": 576.96875
+      }
+    }
+  },
+  "source_sha256": {
+    "dngscan/analysis.py": "703eb2b68447c835db82e3f2bcdd7162d08d46e1bf63c1525ab343d6bbe10887",
+    "dngscan/fast_plan.py": "3cc91efa9af76c082cf62218d1ba35eb8dcd7d4e3648bc0e00a0136981bfe172",
+    "rust/src/lib.rs": "7bca218cb41fe8baaab934cd9a3e4cc8689893d4817682587e93f525d10112d0",
+    "rust/src/sensor.rs": "3de97a97132903d435564bf53e0e87f653175a56720c5df4f41ae039d1f316fd",
+    "tools/benchmark_sensor_channels.py": "227ffe7cc600dec97b2faf744b54655f9ee359fe8c544e2c8c6380f591621ff5"
+  },
+  "environment": {
+    "python": "3.14.4",
+    "numpy": "2.5.2",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "native_abi": 17,
+    "cpus": 10
+  },
+  "verification": {
+    "cargo_lib": {
+      "run": 10,
+      "passed": 10,
+      "skipped": 0
+    },
+    "strict-full": {
+      "run": 1767,
+      "skipped": [
+        [
+          "test_coreimage_decode.SubjectiveControlTests.test_highlight_recovery_stays_on_and_keeps_clipped_highlights_neutral",
+          "frame carries too few clipped highlights to judge"
+        ],
+        [
+          "test_display_filter.DisplayFilterTests.test_kodak_filter_no_channel_crush_on_green",
+          "Kodak cube missing"
+        ],
+        [
+          "test_display_filter.DisplayFilterTests.test_kodak_filter_preserves_color",
+          "Kodak cube missing"
+        ],
+        [
+          "test_display_filter.DisplayFilterTests.test_red_filter_preserves_color",
+          "RED IPP2 cube missing"
+        ],
+        [
+          "test_ideal_image_validation.IdealImageValidationTests.test_declared_truth_recovered",
+          "DNGSCAN_IDEAL_IMAGE_DIR not set"
+        ],
+        [
+          "test_self_review_2026_08.CliSentinelTests.test_explicit_flags_override_the_film_combo",
+          "no film combo table exposed"
+        ]
+      ],
+      "failures": [],
+      "errors": []
+    },
+    "numpy-targeted": {
+      "run": 255,
+      "skipped": [
+        [
+          "tests.test_coreimage_decode.SubjectiveControlTests.test_highlight_recovery_stays_on_and_keeps_clipped_highlights_neutral",
+          "frame carries too few clipped highlights to judge"
+        ]
+      ],
+      "failures": [],
+      "errors": []
+    }
+  }
+}

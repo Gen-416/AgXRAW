@@ -57,6 +57,7 @@ GUI 上的描述性文案只有最基础的一句;每个控件的来龙去脉、
 | [performance-sensor-summary.zh-CN.md](performance-sensor-summary.zh-CN.md) | 第三批第一步：RAW 只读所有权、SensorSummary 复用与缓存失效、原版 master 对照 |
 | [performance-deferred-masks.zh-CN.md](performance-deferred-masks.zh-CN.md) | 第三批第二步：分析后一次构建最终 mask、浮点白点兼容与公开加载合同 |
 | [performance-sensor-rgb.zh-CN.md](performance-sensor-rgb.zh-CN.md) | 第三批第三步：ABI 16 精确 RGB 过曝分组计数、步长借用与完整管线对照 |
+| [performance-sensor-channels.zh-CN.md](performance-sensor-channels.zh-CN.md) | 第三批第四步：ABI 17 精确 ceiling／逐通道剪切扫描、完整感光点计数与旧版对照 |
 | [archived/](archived) | 更早的审查发现与 HDR 对比记录 |
 
 数据文件:`film_v2_p0_decomposition*.json` 是 P0 基线的分解测量数据。
