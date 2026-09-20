@@ -27,7 +27,7 @@ from .constants import (
 )
 from .histogram import display_histogram, hdr_earned_ev, scene_ev_base, scene_ev_histogram
 from .preview_cache import PREVIEW_STORE, PreviewEntry
-from .preview_scheduler import PREVIEW_COORDINATOR
+from .preview_scheduler import PREVIEW_COORDINATOR, PreviewSuperseded
 
 
 # RENDER_LOCK retired (scheduler plan S2): concurrency is owned by the
@@ -35,8 +35,14 @@ from .preview_scheduler import PREVIEW_COORDINATOR
 from .scheduler import SCHEDULER
 
 
-class PreviewSuperseded(RuntimeError):
-    """The browser has already requested a newer parameter generation."""
+def _selection_check(params: dict) -> Callable[[], bool]:
+    client = str(params.get("previewClient", "") or "")
+    try:
+        epoch = int(params.get("selectionEpoch", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("selectionEpoch 必须是整数") from exc
+    accepted = PREVIEW_COORDINATOR.register_selection(client, epoch)
+    return lambda: accepted and PREVIEW_COORDINATOR.selection_is_current(client, epoch)
 
 
 def make_preview_b64(
@@ -1272,8 +1278,10 @@ def export_preview_jpeg(
             film_interimage_beta=film_interimage_beta,
             chroma_nr=chroma_nr,
         )
+        # A shared plan may have returned this slot while another owner built
+        # it; reacquiring admission is another latest-selection boundary.
+        ensure_current()
         if rgb_u8 is None:
-            ensure_current()
             rgb_u8 = dg.render_output_u8(
                 proxy_bundle, cached.analysis, gamut, render_plan,
                 look, look_strength, display_filter, filter_strength,
@@ -1282,7 +1290,7 @@ def export_preview_jpeg(
                 dither_noise=cached.get_or_build_dither_noise(),
             )
             ensure_current()
-            rgb_u8 = cached.put_pixels(pixel_key, rgb_u8)
+            rgb_u8 = cached.put_pixels(pixel_key, rgb_u8, _take_ownership=True)
         icc_profile = dg.output_icc_profile_bytes(gamut)
         # Both histograms ride the same response as the frame they describe, so
         # the page's latest-wins logic keeps image and histograms in lockstep.
@@ -1300,6 +1308,7 @@ def export_preview_jpeg(
                 proxy_bundle, cached.analysis, scene_transform, scene_transform_strength
             ),
         )
+        ensure_current()
         scene_hist = scene_ev_histogram(scene_hist_base, render_plan, ev)
         display_hist = display_histogram(rgb_u8)
         # R4: metrics read the RENDERED frame — measuring after the auto-EV
@@ -1687,12 +1696,13 @@ def run_preview(params: dict) -> dict:
         generation = int(params.get("generation", 0) or 0)
     except (TypeError, ValueError) as exc:
         raise ValueError("generation 必须是整数") from exc
+    selection_current = _selection_check(params)
     session = str(params.get("previewSession", "") or f"legacy:{inp}")
-    if not PREVIEW_COORDINATOR.register(session, generation):
+    if not selection_current() or not PREVIEW_COORDINATOR.register(session, generation):
         return {"ok": True, "superseded": True, "generation": generation}
 
     def is_current() -> bool:
-        return PREVIEW_COORDINATOR.is_current(session, generation)
+        return selection_current() and PREVIEW_COORDINATOR.is_current(session, generation)
 
     wb = str(params.get("wb", "camera"))
     if wb not in dg.WB_CHOICES:
@@ -1737,6 +1747,7 @@ def run_preview(params: dict) -> dict:
             demosaic,
             coreimage_scale=coreimage_scale,
             margin=clip_margin,
+            _is_current=is_current,
         )
         if not is_current():
             raise PreviewSuperseded()
@@ -1747,64 +1758,61 @@ def run_preview(params: dict) -> dict:
             film_optics_seed = int(getattr(cached, "realization_id", 0) or 0)
         auto_ev_result = None
         if ev_auto:
-            ignored = {"ev", "generation", "previewSession", "includeMetrics", "quality",
-                       "chroma", "deliveryProfile", "outdir", "png", "evAuto",
-                       "heifEncoder", "heifBitDepth", "heifPreset", "heifTune"}
-            auto_key = json.dumps({k: v for k, v in params.items() if k not in ignored},
-                                  sort_keys=True, ensure_ascii=True)
-            auto_ev_result = cached._auto_ev_cache.get(auto_key)
-            if auto_ev_result is None:
-                auto_ev_result = dg.compute_auto_ev(
-                    cached.bundle,
-                    cached.analysis,
-                    gamut,
-                    look=look,
-                    look_strength=look_strength,
-                    display_filter=display_filter,
-                    filter_strength=filter_strength,
-                    scene_transform=scene_transform,
-                    scene_transform_strength=scene_transform_strength,
-                    punch_scale=punch_scale,
-                    tone_core=tone_core,
-                    lum_norm=lum_norm,
-                    agx_primaries=agx_primaries,
-                    adjustments=adjustments,
-                    endpoint_mode=endpoint_mode,
-                    film_curve=film_curve,
-                    film_mode=film_mode,
-                    film_crossover=film_crossover,
-                    film_exposure_ev=film_exposure_ev,
-                    film_print_timing=film_print_timing,
-                    film_print_medium=film_print_medium,
-                    film_print_exposure_ev=film_print_exposure_ev,
-                    film_grain=film_grain,
-                    film_halation=film_halation,
-                    film_bloom=film_bloom,
-                    film_interimage=film_interimage,
-                    film_appearance=film_appearance,
-                    film_appearance_strength=film_appearance_strength,
-                    film_richness=film_richness,
-                    film_color_density=film_color_density,
-                    film_neutral_bias=film_neutral_bias,
-                    film_appearance_variant=film_appearance_variant,
-                    film_optics_seed=film_optics_seed,
-                    film_media_scatter=film_media_scatter,
-                    film_development=film_development,
-                    film_dev_contrast=film_dev_contrast,
-                    film_dev_fog=film_dev_fog,
-                    film_dev_density=film_dev_density,
-                    film_compression=film_compression,
-                    film_compression_knee=film_compression_knee,
-                    film_highlight_density=film_highlight_density,
-                    film_interimage_beta_dial=film_interimage_beta,
-                    color_head_y=color_head_y,
-                    color_head_m=color_head_m,
-                    lens_filter=lens_filter,
-                    chroma_nr=chroma_nr,
-                )
-                cached._auto_ev_cache[auto_key] = auto_ev_result
-                while len(cached._auto_ev_cache) > 8:
-                    cached._auto_ev_cache.popitem(last=False)
+            auto_options = dict(
+                look=look,
+                look_strength=look_strength,
+                display_filter=display_filter,
+                filter_strength=filter_strength,
+                scene_transform=scene_transform,
+                scene_transform_strength=scene_transform_strength,
+                punch_scale=punch_scale,
+                tone_core=tone_core,
+                lum_norm=lum_norm,
+                agx_primaries=agx_primaries,
+                adjustments=adjustments,
+                endpoint_mode=endpoint_mode,
+                film_curve=film_curve,
+                film_mode=film_mode,
+                film_crossover=film_crossover,
+                film_exposure_ev=film_exposure_ev,
+                film_print_timing=film_print_timing,
+                film_print_medium=film_print_medium,
+                film_print_exposure_ev=film_print_exposure_ev,
+                film_grain=film_grain,
+                film_halation=film_halation,
+                film_bloom=film_bloom,
+                film_interimage=film_interimage,
+                film_appearance=film_appearance,
+                film_appearance_strength=film_appearance_strength,
+                film_richness=film_richness,
+                film_color_density=film_color_density,
+                film_neutral_bias=film_neutral_bias,
+                film_appearance_variant=film_appearance_variant,
+                film_optics_seed=film_optics_seed,
+                film_media_scatter=film_media_scatter,
+                film_development=film_development,
+                film_dev_contrast=film_dev_contrast,
+                film_dev_fog=film_dev_fog,
+                film_dev_density=film_dev_density,
+                film_compression=film_compression,
+                film_compression_knee=film_compression_knee,
+                film_highlight_density=film_highlight_density,
+                film_interimage_beta_dial=film_interimage_beta,
+                color_head_y=color_head_y,
+                color_head_m=color_head_m,
+                lens_filter=lens_filter,
+                chroma_nr=chroma_nr,
+            )
+            # Cache actual normalized inputs, not request spelling/UI metadata.
+            auto_key = json.dumps(
+                {"gamut": gamut, "output_format": output_format, **auto_options},
+                sort_keys=True, default=lambda value: dataclasses.asdict(value),
+            )
+            auto_ev_result = cached.get_or_build_auto_ev(
+                auto_key, lambda: dg.compute_auto_ev(
+                    cached.bundle, cached.analysis, gamut, **auto_options
+                ),
+            )
             if not is_current():
                 raise PreviewSuperseded()
             ev = auto_ev_result.ev
@@ -1943,6 +1951,20 @@ def detected_scene_params(
 
 
 def prepare_preview(params: dict) -> dict:
+    is_current = _selection_check(params)
+    try:
+        if not is_current():
+            raise PreviewSuperseded()
+        with SCHEDULER.slot("prepare"):
+            if not is_current():
+                raise PreviewSuperseded()
+            return _prepare_preview_current(params, is_current)
+    except PreviewSuperseded:
+        SCHEDULER.note_dropped()
+        return {"ok": True, "superseded": True, "prepared": False}
+
+
+def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> dict:
     """Warm the fixed proxy and current immutable base plan after selection."""
     inp, highlight, gamut, output_format, _, _, _, _, _, _ = parse_job_params(params)
     wb = str(params.get("wb", "camera"))
@@ -1976,70 +1998,76 @@ def prepare_preview(params: dict) -> dict:
     )
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
-    with SCHEDULER.slot("prepare"):
-        entry = PREVIEW_STORE.get(
-            inp,
-            highlight,
-            wb,
-            tone_core == "gated",
-            decoder,
-            coreimage_version,
-            demosaic,
-            coreimage_scale=coreimage_scale,
-            margin=clip_margin,
-        )
-        proxy_bundle = entry.bundle
-        if film_optics_seed is None:
-            film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
-        if lens_filter != "none":
-            import dataclasses as _dc
+    if not is_current():
+        raise PreviewSuperseded()
+    entry = PREVIEW_STORE.get(
+        inp,
+        highlight,
+        wb,
+        tone_core == "gated",
+        decoder,
+        coreimage_version,
+        demosaic,
+        coreimage_scale=coreimage_scale,
+        margin=clip_margin,
+        _is_current=is_current,
+    )
+    if not is_current():
+        raise PreviewSuperseded()
+    proxy_bundle = entry.bundle
+    if film_optics_seed is None:
+        film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
+    if lens_filter != "none":
+        import dataclasses as _dc
 
-            proxy_bundle = _dc.replace(proxy_bundle, lens_filter=lens_filter)
-        # Compile the plan the automatic first frame will consume.  UI-only tone
-        # adjustments are applied after this immutable base plan and stay sub-ms.
-        detected_plan = _cached_render_plan(
-            entry,
-            proxy_bundle,
-            gamut,
-            scene_transform,
-            scene_transform_strength,
-            punch_scale,
-            tone_core,
-            lum_norm,
-            agx_primaries,
-            film_curve,
-            adjustments,
-            endpoint_mode,
-            color_head_y,
-            color_head_m,
-            film_mode,
-            film_crossover,
-            film_exposure_ev,
-            film_print_timing,
-            film_print_medium,
-            film_print_exposure_ev,
-            film_grain=film_grain,
-            film_halation=film_halation,
-            film_bloom=film_bloom,
-            film_interimage=film_interimage,
-            film_appearance=film_appearance,
-            film_appearance_strength=film_appearance_strength,
-            film_richness=film_richness,
-            film_color_density=film_color_density,
-            film_neutral_bias=film_neutral_bias,
-            film_appearance_variant=film_appearance_variant,
-            film_optics_seed=film_optics_seed,
-            film_media_scatter=film_media_scatter,
-            film_development=film_development,
-            film_dev_contrast=film_dev_contrast,
-            film_dev_fog=film_dev_fog,
-            film_dev_density=film_dev_density,
-            film_compression=film_compression,
-            film_compression_knee=film_compression_knee,
-            film_highlight_density=film_highlight_density,
-            film_interimage_beta=film_interimage_beta,
-            chroma_nr=chroma_nr,
-        )
+        proxy_bundle = _dc.replace(proxy_bundle, lens_filter=lens_filter)
+    # Compile the plan the automatic first frame will consume.  UI-only tone
+    # adjustments are applied after this immutable base plan and stay sub-ms.
+    detected_plan = _cached_render_plan(
+        entry,
+        proxy_bundle,
+        gamut,
+        scene_transform,
+        scene_transform_strength,
+        punch_scale,
+        tone_core,
+        lum_norm,
+        agx_primaries,
+        film_curve,
+        adjustments,
+        endpoint_mode,
+        color_head_y,
+        color_head_m,
+        film_mode,
+        film_crossover,
+        film_exposure_ev,
+        film_print_timing,
+        film_print_medium,
+        film_print_exposure_ev,
+        film_grain=film_grain,
+        film_halation=film_halation,
+        film_bloom=film_bloom,
+        film_interimage=film_interimage,
+        film_appearance=film_appearance,
+        film_appearance_strength=film_appearance_strength,
+        film_richness=film_richness,
+        film_color_density=film_color_density,
+        film_neutral_bias=film_neutral_bias,
+        film_appearance_variant=film_appearance_variant,
+        film_optics_seed=film_optics_seed,
+        film_media_scatter=film_media_scatter,
+        film_development=film_development,
+        film_dev_contrast=film_dev_contrast,
+        film_dev_fog=film_dev_fog,
+        film_dev_density=film_dev_density,
+        film_compression=film_compression,
+        film_compression_knee=film_compression_knee,
+        film_highlight_density=film_highlight_density,
+        film_interimage_beta=film_interimage_beta,
+        chroma_nr=chroma_nr,
+    )
+    if not is_current():
+        raise PreviewSuperseded()
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
         detected = detected_scene_params(entry.bundle, entry.analysis, detected_plan)
@@ -2047,6 +2075,8 @@ def prepare_preview(params: dict) -> dict:
         # Detection is guidance, not a gate: a plan-compile failure here must not
         # block the preview session it decorates.
         detected = None
+    if not is_current():
+        raise PreviewSuperseded()
     return {
         "ok": True,
         "prepared": True,
@@ -2222,6 +2252,7 @@ def _cached_full_analysis(
     coreimage_scale: str = "aligned",
     margin: int = 4,
     decoded_bundle: Any | None = None,
+    envelope: str | None = None,
 ) -> Any | None:
     """The preview session's persisted full-resolution Analysis, or None.
 
@@ -2251,6 +2282,17 @@ def _cached_full_analysis(
             Path(inp), highlight, wb, decoder, coreimage_version, demosaic,
             coreimage_scale if decoder == "coreimage" else "aligned", int(margin),
         )
+        if envelope is not None and decoded_bundle is not None:
+            from dngscan.fast_plan import NATIVE_ABI_VERSION
+            try:
+                data = json.loads(envelope)
+                if (data.get("schema") == 1 and data.get("cache_version") == pc.PREVIEW_CACHE_VERSION
+                        and data.get("native_abi") == NATIVE_ABI_VERSION
+                        and data.get("digest") == digest
+                        and data.get("source_bundle") == pc._bundle_metadata(decoded_bundle)):
+                    return pc._analysis_from_json(data["analysis"])
+            except (TypeError, ValueError, KeyError):
+                pass
         cache_path = pc._cache_dir() / f"{digest}.npz"
         if not cache_path.is_file():
             return None
@@ -2261,16 +2303,24 @@ def _cached_full_analysis(
         if decoded_bundle is not None:
             # Runtime fallback is per attempt. A cache requested as Apple auto
             # may contain pixels from RAW 8 or LibRaw, or lack sensor evidence.
-            stored = metadata.get("bundle", {})
             current = pc._bundle_metadata(decoded_bundle)
-            fields = ("scene_decoder", "scene_decoder_version", "scene_decoder_runtime",
-                      "scene_reliability_source", "evidence_provider", "scene_scale",
-                      "scene_align_error", "scene_reference_error", "scene_decoder_fallback")
-            if any(stored.get(field) != current.get(field) for field in fields):
+            if metadata.get("source_bundle") != current:
                 return None
         return pc._analysis_from_json(metadata["analysis"])
     except Exception:
         return None
+
+
+def _preview_analysis_envelope(entry: PreviewEntry) -> str | None:
+    """Small private snapshot; no proxy pixels cross the process boundary."""
+    from . import preview_cache as pc
+    from dngscan.fast_plan import NATIVE_ABI_VERSION
+    if not isinstance(entry, PreviewEntry) or not entry.cache_digest or entry.source_metadata is None:
+        return None
+    return json.dumps({"schema": 1, "cache_version": pc.PREVIEW_CACHE_VERSION,
+                       "native_abi": NATIVE_ABI_VERSION, "digest": entry.cache_digest,
+                       "source_bundle": entry.source_metadata,
+                       "analysis": pc._analysis_to_json(entry.analysis)}, allow_nan=True)
 
 
 def _preview_decode_contract(bundle):
@@ -2279,7 +2329,8 @@ def _preview_decode_contract(bundle):
     return {field: getattr(bundle, field) for field in fields}
 
 
-def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, preview=None):
+def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, preview=None,
+                       analysis_luminance_only=False):
     """Pin a displayed auto result; export must not silently switch algorithms."""
     chosen_decoder, chosen_version = decoder, version
     pinned = preview is not None and decoder == "coreimage" and version == "auto"
@@ -2289,7 +2340,8 @@ def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, pr
             chosen_version = str(preview.scene_decoder_version)
     bundle = dg.load_raw(inp, highlight, demosaic=demosaic, wb_mode=wb,
                          decoder=chosen_decoder, coreimage_version=chosen_version,
-                         coreimage_scale=scale, _defer_clip_masks=True)
+                         coreimage_scale=scale, _defer_clip_masks=True,
+                         _analysis_luminance_only=analysis_luminance_only)
     if pinned:
         fields = ("scene_decoder", "scene_decoder_version", "evidence_provider",
                   "scene_reliability_source", "scene_scale")
@@ -2415,6 +2467,7 @@ def run_export(params: dict) -> dict:
     bundle = _load_export_scene(
         inp, highlight, wb, decoder, coreimage_version, demosaic, coreimage_scale,
         preview=preview_contract,
+        analysis_luminance_only=not want_png,
     )
     bundle.lens_filter = lens_filter
 
@@ -2430,6 +2483,7 @@ def run_export(params: dict) -> dict:
             inp, highlight, wb, decoder, coreimage_version, demosaic,
             coreimage_scale, clip_margin,
             decoded_bundle=bundle,
+            envelope=params.get("_previewAnalysis"),
         )
     if analysis is None:
         analysis, y, ev_img = dg.analyze(
@@ -2437,6 +2491,7 @@ def run_export(params: dict) -> dict:
             clip_margin,
             diagnostics=want_png,
             gamut_names=None if want_png else (dg.output_gamut_space(gamut),),
+            _return_planes=bool(want_png),
         )
     else:
         # Analysis also resolves the endpoint used by the spatial masks.
@@ -2444,7 +2499,9 @@ def run_export(params: dict) -> dict:
         from ..raw_io import refresh_clip_masks_from_fullwell
 
         refresh_clip_masks_from_fullwell(bundle, analysis.channel_fullwell)
+        bundle = dg.release_analysis_buffers(bundle)
     auto_ev_result = None
+    auto_plans = []
     if ev_auto:
         auto_ev_result = dg.compute_auto_ev(
             bundle,
@@ -2465,81 +2522,85 @@ def run_export(params: dict) -> dict:
             film_curve=film_curve,
             film_mode=film_mode,
             film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta_dial=film_interimage_beta,
+            film_exposure_ev=film_exposure_ev,
+            film_print_timing=film_print_timing,
+            film_print_medium=film_print_medium,
+            film_print_exposure_ev=film_print_exposure_ev,
+            film_grain=film_grain,
+            film_halation=film_halation,
+            film_bloom=film_bloom,
+            film_interimage=film_interimage,
+            film_appearance=film_appearance,
+            film_appearance_strength=film_appearance_strength,
+            film_richness=film_richness,
+            film_color_density=film_color_density,
+            film_neutral_bias=film_neutral_bias,
+            film_appearance_variant=film_appearance_variant,
+            film_optics_seed=film_optics_seed,
+            film_media_scatter=film_media_scatter,
+            film_development=film_development,
+            film_dev_contrast=film_dev_contrast,
+            film_dev_fog=film_dev_fog,
+            film_dev_density=film_dev_density,
+            film_compression=film_compression,
+            film_compression_knee=film_compression_knee,
+            film_highlight_density=film_highlight_density,
+            film_interimage_beta_dial=film_interimage_beta,
             color_head_y=color_head_y,
             color_head_m=color_head_m,
             lens_filter=lens_filter,
             chroma_nr=chroma_nr,
+            _plan_sink=auto_plans,
         )
         ev = auto_ev_result.ev
     bundle = dg.with_intent_exposure(bundle, user_ev=ev, tone_core=tone_core)
-    render_plan = dg.build_render_plan(
-        bundle,
-        analysis,
-        RENDER_MODE,
-        gamut,
-        scene_transform,
-        scene_transform_strength,
-        punch_scale,
-        tone_core,
-        lum_norm,
-        agx_primaries=agx_primaries,
-        adjustments=adjustments,
-        film_curve=film_curve,
-        film_mode=film_mode,
-        film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta_dial=film_interimage_beta,
-        endpoint_mode=endpoint_mode,
-        color_head_y=color_head_y,
-        color_head_m=color_head_m,
-        chroma_nr=chroma_nr,
-    )
+    if auto_plans:
+        render_plan = auto_plans[-1]
+    else:
+        render_plan = dg.build_render_plan(
+            bundle,
+            analysis,
+            RENDER_MODE,
+            gamut,
+            scene_transform,
+            scene_transform_strength,
+            punch_scale,
+            tone_core,
+            lum_norm,
+            agx_primaries=agx_primaries,
+            adjustments=adjustments,
+            film_curve=film_curve,
+            film_mode=film_mode,
+            film_crossover=film_crossover,
+            film_exposure_ev=film_exposure_ev,
+            film_print_timing=film_print_timing,
+            film_print_medium=film_print_medium,
+            film_print_exposure_ev=film_print_exposure_ev,
+            film_grain=film_grain,
+            film_halation=film_halation,
+            film_bloom=film_bloom,
+            film_interimage=film_interimage,
+            film_appearance=film_appearance,
+            film_appearance_strength=film_appearance_strength,
+            film_richness=film_richness,
+            film_color_density=film_color_density,
+            film_neutral_bias=film_neutral_bias,
+            film_appearance_variant=film_appearance_variant,
+            film_optics_seed=film_optics_seed,
+            film_media_scatter=film_media_scatter,
+            film_development=film_development,
+            film_dev_contrast=film_dev_contrast,
+            film_dev_fog=film_dev_fog,
+            film_dev_density=film_dev_density,
+            film_compression=film_compression,
+            film_compression_knee=film_compression_knee,
+            film_highlight_density=film_highlight_density,
+            film_interimage_beta_dial=film_interimage_beta,
+            endpoint_mode=endpoint_mode,
+            color_head_y=color_head_y,
+            color_head_m=color_head_m,
+            chroma_nr=chroma_nr,
+        )
 
     # review batch 24: the id the render resolves, not the raw payload key
     grade_id, grade_strength = resolve_grade_id(params)
@@ -2758,7 +2819,7 @@ def run_export(params: dict) -> dict:
                 lum_norm=lum_norm,
                 agx_primaries=agx_primaries,
                 punch_scale=punch_scale,
-                return_rgb=not dg.is_hdr_output_format(output_format),
+                return_rgb=True,
                 delivery=delivery,
                 chroma=chroma,
             )
@@ -2925,6 +2986,7 @@ def run_export_isolated(params: dict) -> dict:
     # The export worker has a fresh PREVIEW_STORE. Carry only small capability
     # facts across the process boundary, so auto cannot reselect another decoder.
     params.pop("_previewDecode", None)
+    params.pop("_previewAnalysis", None)
     try:
         inp, highlight, _, _, _, _, _, _, _, _ = parse_job_params(params)
         decoder, version = parse_decoder(params)
@@ -2935,6 +2997,10 @@ def run_export_isolated(params: dict) -> dict:
             core == "gated", decoder, version, demosaic, coreimage_scale=scale, margin=margin)
         if preview is not None:
             params["_previewDecode"] = _preview_decode_contract(preview.bundle)
+            if str(params.get("wb", "camera")) == "camera":
+                envelope = _preview_analysis_envelope(preview)
+                if envelope is not None:
+                    params["_previewAnalysis"] = envelope
     except (ValueError, OSError, AttributeError):
         pass  # The worker reports invalid public parameters through the normal path.
     raw_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))

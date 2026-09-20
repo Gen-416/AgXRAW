@@ -24,9 +24,11 @@ from __future__ import annotations
 
 import ast
 import inspect
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 
@@ -80,10 +82,40 @@ class ChromaNrParser(unittest.TestCase):
                     self.assertIn("chroma_nr", kwargs)
 
     def test_parsed_in_every_entry_point(self) -> None:
-        for fn in ("run_preview", "prepare_preview", "run_export"):
-            body = SERVICE_SRC[SERVICE_SRC.index(f"def {fn}("):]
-            body = body[: body.index("\ndef ", 1)]
-            self.assertIn("chroma_nr = parse_chroma_nr(params, output_format)", body, fn)
+        from dngscan.gui import service
+        from dngscan.gui.preview_scheduler import PreviewCoordinator
+        from dngscan.gui.scheduler import RenderScheduler
+
+        class Parsed(Exception):
+            pass
+
+        original = service.parse_chroma_nr
+
+        def parsed(params, output_format):
+            # Exercise the real parser, then stop before any RAW work. This
+            # follows public entry points through scheduling wrappers rather
+            # than assuming the parser lives in their immediate source body.
+            self.assertAlmostEqual(original(params, output_format), .3)
+            raise Parsed()
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input.dng"
+            source.touch()
+            for fn in ("run_preview", "prepare_preview", "run_export"):
+                for output_format in service.dg.JPEG_OUTPUT_FORMATS:
+                    params = {"input": str(source), "format": output_format,
+                              "chromaNr": "0.3", "decoder": "libraw"}
+                    with self.subTest(fn=fn, output_format=output_format), \
+                         mock.patch.object(service, "PREVIEW_COORDINATOR", PreviewCoordinator()), \
+                         mock.patch.object(service, "SCHEDULER", RenderScheduler()), \
+                         mock.patch.object(service.dg, "require_dependencies"), \
+                         mock.patch.object(service.dg, "apple_gainmap_backend_status", return_value=(True, "available")), \
+                         mock.patch.object(service.dg, "load_raw", side_effect=AssertionError("unexpected RAW work")) as decode, \
+                         mock.patch.object(service, "parse_chroma_nr", side_effect=parsed) as parse:
+                        with self.assertRaises(Parsed):
+                            getattr(service, fn)(params)
+                        parse.assert_called_once_with(params, output_format)
+                        decode.assert_not_called()
 
     def test_preview_pixel_key_and_plan_key_include_it(self) -> None:
         from dngscan.gui import service
