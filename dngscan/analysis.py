@@ -527,6 +527,14 @@ def luminance_from_xyz_render(xyz_render: Any, render_scale: float) -> Any:
     return np.clip(y, 0.0, None)
 
 
+def _bundle_luminance(bundle: RawBundle) -> Any:
+    stored_y = getattr(bundle, "_analysis_y_render", None)
+    if stored_y is None:
+        return luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
+    y = stored_y.astype(np.float32, copy=False) / np.float32(bundle.render_scale)
+    return np.clip(np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0), 0.0, None)
+
+
 def compute_ev_metrics(y: Any) -> tuple[Any, float, float, float, float, float, float, float, float, float]:
     ev = np.log2(np.clip(y, EPS, None)).astype(np.float32, copy=False)
     ev_report = np.maximum(ev, EV_REPORT_FLOOR)
@@ -588,7 +596,10 @@ def normalized_raw_signal(
     return np.nan_to_num(signal, nan=0.0, posinf=1.0, neginf=0.0)
 
 
-def estimate_raw_noise_floor(bundle: RawBundle, fullwell_by_channel: dict[int, int]) -> float:
+def estimate_raw_noise_floor(
+    bundle: RawBundle, fullwell_by_channel: dict[int, int], *, _phase_stats: dict | None = None,
+    _prepared_phases: Any = None,
+) -> float:
     """Single-frame noise estimate on separate CFA phases.
 
     Mixed-colour mosaic variance measures colour, not noise. The diagonal
@@ -601,6 +612,8 @@ def estimate_raw_noise_floor(bundle: RawBundle, fullwell_by_channel: dict[int, i
         # Spatial noise in a demosaiced/possibly denoised Linear DNG cannot
         # establish independent sensel noise or electron-domain confidence.
         return float("nan")
+    if _prepared_phases is not None:
+        return _prepared_phases.noise_floor(bundle, fullwell_by_channel)
     estimates = []
     for cid in np.unique(bundle.raw_colors):
         cid = int(cid)
@@ -610,6 +623,11 @@ def estimate_raw_noise_floor(bundle: RawBundle, fullwell_by_channel: dict[int, i
             ph, pw = np.asarray(bundle.raw_pattern).shape
             from .spatial_black import corrected_plane
             plane = corrected_plane(bundle, yoff, xoff, ph, pw)
+            if _phase_stats is not None:
+                # Share one corrected/converted CFA phase with SNR, retaining only
+                # O(N / tile_area) reductions after this phase is processed.
+                plane = plane.astype(np.float32, copy=False)
+                _phase_stats[(cid, yoff, xoff)] = tile_signal_noise_from_plane(plane, black)
             tile = min(16, *plane.shape)
             if tile < 4:
                 continue
@@ -743,7 +761,8 @@ def tile_signal_noise_from_plane(plane: Any, black: float, tile_size: int = SNR_
 
 
 def group_tile_signal_noise(
-    bundle: RawBundle, fullwell_by_channel: dict[int, int], ids: list[int]
+    bundle: RawBundle, fullwell_by_channel: dict[int, int], ids: list[int],
+    *, _phase_stats: dict | None = None,
 ) -> tuple[Any, Any, Any]:
     signals: list[Any] = []
     noises: list[Any] = []
@@ -757,8 +776,12 @@ def group_tile_signal_noise(
             pattern = np.asarray(bundle.raw_pattern)
             ph, pw = pattern.shape
             from .spatial_black import corrected_plane
-            plane = corrected_plane(bundle, yoff, xoff, ph, pw)
-            sig, noise = tile_signal_noise_from_plane(plane, black)
+            cached = None if _phase_stats is None else _phase_stats.get((cid, yoff, xoff))
+            if cached is None:
+                plane = corrected_plane(bundle, yoff, xoff, ph, pw)
+                sig, noise = tile_signal_noise_from_plane(plane, black)
+            else:
+                sig, noise = cached
             if sig.size:
                 signals.append(sig)
                 noises.append(noise)
@@ -809,7 +832,8 @@ def interpolate_zero_db_stop(stops: Any, snr_db: Any) -> float:
 
 
 def compute_snr_curves(
-    bundle: RawBundle, channel_ids: list[int], labels: dict[int, str], fullwell_by_channel: dict[int, int]
+    bundle: RawBundle, channel_ids: list[int], labels: dict[int, str], fullwell_by_channel: dict[int, int],
+    *, _phase_stats: dict | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, float], dict[str, float]]:
     curves: dict[str, dict[str, Any]] = {}
     snr1_dr: dict[str, float] = {}
@@ -819,7 +843,7 @@ def compute_snr_curves(
     centers = (bins[:-1] + bins[1:]) * 0.5
 
     for group_name, ids in groups:
-        sig, noise, denom = group_tile_signal_noise(bundle, fullwell_by_channel, ids)
+        sig, noise, denom = group_tile_signal_noise(bundle, fullwell_by_channel, ids, _phase_stats=_phase_stats)
         if sig.size == 0:
             snr_db = np.full(centers.shape, np.nan, dtype=np.float32)
             counts = np.zeros(centers.shape, dtype=np.int32)
@@ -865,6 +889,7 @@ def compute_gamut_metrics(
     scene_scale: float,
     y: Any,
     gamut_names: tuple[str, ...] | list[str] | None = None,
+    *, _median_y: float | None = None,
 ) -> tuple[dict[str, float], float]:
     """Out-of-gamut pressure from the SCENE Rec.2020 buffer, converted to
     float XYZ per chunk. A8 item 3: the packed uint16 XYZ render clips Z at
@@ -877,7 +902,7 @@ def compute_gamut_metrics(
     if not names:
         names = tuple(XYZ_TO_RGB.keys())
     flat_y = y.reshape(-1)
-    median_y = float(np.median(flat_y))
+    median_y = float(np.median(flat_y)) if _median_y is None else _median_y
     bright_flat = flat_y > median_y
     if not np.any(bright_flat):
         bright_flat = (flat_y >= median_y) & (flat_y > EPS)
@@ -908,6 +933,9 @@ def compute_gamut_metrics(
             [float(v) for v in np.asarray(_RGB_TO_XYZ["Rec2020"], dtype=np.float64).reshape(-1)],
             [[float(v) for v in np.asarray(XYZ_TO_RGB[name], dtype=np.float64).reshape(-1)] for name in names],
             float(EPS), float(GAMUT_EPS),
+            # Exact full-population median is already available. Non-f32
+            # external Y inputs keep the historical native-conversion path.
+            **({"median": median_y} if flat_y.dtype == np.float32 else {}),
         )
         if int(native_bright) != bright_total:
             raise RuntimeError("native gamut_counts disagrees on the bright population")
@@ -955,13 +983,16 @@ def estimate_container_bits(white_level: int, raw_image: Any) -> int:
     return 0
 
 
-def raw_health_metrics(bundle: RawBundle, channel_ids: list[int], labels: dict[int, str]) -> tuple[float, float]:
+def raw_health_metrics(bundle: RawBundle, channel_ids: list[int], labels: dict[int, str],
+                       *, _prepared_phases: Any = None) -> tuple[float, float]:
     """Demosaic-independent checks for in-camera processing baked into the raw.
 
     lag-1 correlation: residuals of the darkest CFA green tiles should be ~white noise;
     clearly positive correlation means spatial filtering was applied before writing the
     file. histogram emptiness: missing DN codes in the dense value range indicate the
     data was rescaled/requantized in camera. Heuristics: correlation can withdraw independent-sensel noise evidence."""
+    if _prepared_phases is not None:
+        return _prepared_phases.health
     green_ids = [cid for cid in channel_ids if labels[cid].startswith("G")]
     if not green_ids:
         return float("nan"), float("nan")
@@ -1099,23 +1130,26 @@ def balanced_scene_metrics(
     y = np.clip(rec2020_to_xyz(sample.astype(np.float32) / np.float32(bundle.scene_scale))[:, 1], 0, None)
     y = np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0)
     metrics = compute_ev_metrics(y)
-    gamut, bright = compute_gamut_metrics(sample, bundle.scene_scale, y, gamut_names)
-    return (*metrics[1:], float(np.median(y)), gamut, bright)
+    median_y = float(np.median(y))
+    gamut, bright = compute_gamut_metrics(sample, bundle.scene_scale, y, gamut_names, _median_y=median_y)
+    return (*metrics[1:], median_y, gamut, bright)
 
 
 def _analyze_decoded_scene(
     bundle: RawBundle,
     gamut_names: tuple[str, ...] | list[str] | None,
+    *, _return_planes: bool = True,
 ) -> tuple[Analysis, Any, Any]:
     """Keep decoded scene measurements without inventing absent sensor facts."""
-    y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
+    y = _bundle_luminance(bundle)
     if getattr(bundle, "wb_mode", "camera") != "camera":
         raw_p1, p1, p50, p99, p999, dr, floor, gray, median_y, gamut, bright = balanced_scene_metrics(bundle, gamut_names)
-        ev = np.log2(np.clip(y, EPS, None)).astype(np.float32, copy=False)
+        ev = (np.log2(np.clip(y, EPS, None)).astype(np.float32, copy=False)
+              if _return_planes else None)
     else:
         ev, raw_p1, p1, p50, p99, p999, dr, floor, gray = compute_ev_metrics(y)
-        gamut, bright = compute_gamut_metrics(bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names)
         median_y = float(np.median(y))
+        gamut, bright = compute_gamut_metrics(bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names, _median_y=median_y)
     nan = float("nan")
     analysis = Analysis(
         channel_ids=[], labels={}, ceilings={}, ceil_spike_counts={},
@@ -1132,7 +1166,7 @@ def _analyze_decoded_scene(
         bright_pixel_pct=bright, survivor_channel="unavailable", container_bits_est=None,
         usable_dr_eff_ev=nan, noise_evidence_status="unavailable",
     )
-    return analysis, y, ev
+    return (analysis, y, ev) if _return_planes else (analysis, None, None)
 
 
 def analyze(
@@ -1141,11 +1175,12 @@ def analyze(
     *,
     diagnostics: bool = True,
     gamut_names: tuple[str, ...] | list[str] | None = None,
+    _return_planes: bool = True,
 ) -> tuple[Analysis, Any, Any]:
     raw_image = bundle.raw_image
     raw_colors = bundle.raw_colors
     if raw_image is None or raw_colors is None:
-        return _analyze_decoded_scene(bundle, gamut_names)
+        return _analyze_decoded_scene(bundle, gamut_names, _return_planes=_return_planes)
     from .sensor_summary import summarize_sensor
 
     summary = summarize_sensor(raw_image, raw_colors, bundle.white_level,
@@ -1180,17 +1215,24 @@ def analyze(
         )
 
     color_clip_k = compute_color_clip_metrics(raw_image, raw_colors, channel_thresholds, labels, bundle.raw_pattern)
-    y = luminance_from_xyz_render(bundle.xyz_render, bundle.render_scale)
+    y = _bundle_luminance(bundle)
     balanced = getattr(bundle, "wb_mode", "camera") != "camera"
     if balanced:
         raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray, median_y, gamut_pct, bright_pct = balanced_scene_metrics(bundle, gamut_names)
         # Diagnostics still receive their full image-domain EV plane; the
         # decision reductions above run only once on the canonical sample.
-        ev = np.log2(np.clip(y, EPS, None)).astype(np.float32, copy=False)
+        ev = (np.log2(np.clip(y, EPS, None)).astype(np.float32, copy=False)
+              if _return_planes else None)
     else:
         ev, raw_p1, p1, p50, p99, p999, dr, floor_hit_pct, vs_gray = compute_ev_metrics(y)
         median_y = float(np.median(y))
-    nf = estimate_raw_noise_floor(bundle, channel_fullwell)
+    if not _return_planes:
+        ev = None
+    from .phase_statistics import build_phase_statistics
+    prepared_phases = build_phase_statistics(bundle, channel_ids, labels)
+    phase_stats: dict = {} if prepared_phases is None else prepared_phases.snr
+    nf = estimate_raw_noise_floor(bundle, channel_fullwell, _phase_stats=phase_stats,
+                                  _prepared_phases=prepared_phases)
     usable_dr = math.log2(1.0 / max(nf, NOISE_DR_EPS)) if math.isfinite(nf) else float("nan")
     # Review R2 item 1: the SNR curve is a RENDER input now, not a diagnostic.
     # compile_channel_separation's design lists a tail-SNR confidence factor,
@@ -1199,15 +1241,20 @@ def analyze(
     # Always-on costs ~0.2 s at 61 MP (vectorized tile means/stds), which the
     # one analyze() per loaded file absorbs.
     snr_curves, snr1_dr, snr1_stop = compute_snr_curves(
-        bundle, channel_ids, labels, channel_fullwell
+        bundle, channel_ids, labels, channel_fullwell, _phase_stats=phase_stats
     )
+    del phase_stats
     if not balanced:
         gamut_pct, bright_pct = compute_gamut_metrics(
-            bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names
+            bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names, _median_y=median_y
         )
 
+    if not _return_planes:
+        y = None
     # This is decision evidence, so requesting a CSV must not change rendering.
-    health_lag1, health_hist = raw_health_metrics(bundle, channel_ids, labels)
+    health_lag1, health_hist = raw_health_metrics(bundle, channel_ids, labels,
+                                               _prepared_phases=prepared_phases)
+    del prepared_phases
     noise_status = ("linear-camera-rgb" if raw_image.ndim == 3 else
                     "spatially-correlated" if math.isfinite(health_lag1) and health_lag1 >= .20
                     else "independent")
@@ -1291,7 +1338,7 @@ def analyze(
         health_lag1_corr=health_lag1,
         health_hist_empty_pct=health_hist,
     )
-    return analysis, y, ev
+    return (analysis, y, ev) if _return_planes else (analysis, None, None)
 
 
 def reanalyze_balanced_scene(

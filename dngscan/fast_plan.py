@@ -39,7 +39,9 @@ from .models import ToneCompressionPlan
 # v15: crop-footprint and in-place processing-loss maxima.
 # v16: exact unsigned-sensor RGB clip-group counts with strided inputs.
 # v17: exact unsigned-sensor ceiling and per-channel clipping counts.
-NATIVE_ABI_VERSION = 17
+# v18: borrowed exact B3 smoothing, optional shared gamut median, fused u8
+# delivery metrics and export-local HDR metric workspaces.
+NATIVE_ABI_VERSION = 18
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

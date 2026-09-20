@@ -74,12 +74,15 @@ def _apply_gated_core(
             mapped, float(getattr(plan, "punch_strength", 0.0))
         )
 
-    from .cpu_budget import current_inner
+    from .cpu_budget import current_inner, ordered_budget_map
 
     if parallel_formation and rgb.shape[0] >= 64 * 1024 and current_inner() > 1:
-        lum_future = _GATED_POOL.submit(lum_engine.apply_lum_core, rgb, plan)
-        agx_mapped = agx_branch()
-        lum_mapped = lum_future.result()
+        # Divide this caller's allowance between the independent branches. The
+        # helper joins both even on failure; a pool worker never inherits the
+        # whole-machine default. AgX retains its former exception precedence.
+        agx_mapped, lum_mapped = ordered_budget_map(
+            _GATED_POOL, lambda branch: branch(),
+            (agx_branch, lambda: lum_engine.apply_lum_core(rgb, plan)), max_workers=2)
     else:
         lum_mapped = lum_engine.apply_lum_core(rgb, plan)
         agx_mapped = agx_branch()

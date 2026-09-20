@@ -47,15 +47,14 @@ pub fn gamut_counts(
     matrices: &[[f64; 9]],
     eps: f32,
     gamut_eps: f32,
+    known_median: Option<f32>,
 ) -> (Vec<u64>, usize) {
     let n = y.len();
     let mut counts = vec![0u64; matrices.len()];
     if n == 0 {
         return (counts, 0);
     }
-    let mut ycopy = y.to_vec();
-    let median = median_f32(&mut ycopy);
-    drop(ycopy);
+    let median = known_median.unwrap_or_else(|| median_f32(&mut y.to_vec()));
     let mut bright: Vec<bool> = y.iter().map(|&v| v > median).collect();
     if !bright.iter().any(|&b| b) {
         bright = y.iter().map(|&v| v >= median && v > eps).collect();
@@ -112,7 +111,7 @@ pub struct HdrRoundtrip {
 }
 
 impl HdrRoundtrip {
-    fn invalid() -> Self {
+    pub fn invalid() -> Self {
         Self {
             chroma_error: f64::INFINITY,
             relative_error: f64::INFINITY,
@@ -154,6 +153,45 @@ struct HdrBand {
     highlight_max: f32,
     // Five f64 sums per 8-column group, reused for each 8-row strip.
     luma_sums: Vec<[f64; 5]>,
+}
+
+/// Capacity only: no source owners, identity, values or completed metrics are cached.
+#[derive(Default)]
+pub struct HdrWorkspace {
+    relative: Vec<f32>,
+    scratch: Vec<HdrBand>,
+    chroma_top: Vec<f32>,
+    block_rel: Vec<f32>,
+    block_chroma: Vec<f32>,
+    luma_blocks: Vec<f32>,
+}
+
+impl HdrWorkspace {
+    pub fn retained_bytes(&self) -> usize {
+        let scalar = self.relative.capacity() + self.chroma_top.capacity()
+            + self.block_rel.capacity() + self.block_chroma.capacity() + self.luma_blocks.capacity();
+        scalar * 4 + self.scratch.capacity() * std::mem::size_of::<HdrBand>()
+            + self.scratch.iter().map(|b| {
+                (b.chroma.capacity() + b.block_rel.capacity() + b.block_chroma.capacity()
+                    + b.luma_blocks.capacity()) * 4 + b.luma_sums.capacity() * 40
+            }).sum::<usize>()
+    }
+
+    pub fn reset(&mut self, limit: usize) {
+        if self.retained_bytes() > limit {
+            *self = Self::default();
+        } else {
+            self.relative.clear();
+            self.chroma_top.clear();
+            self.block_rel.clear();
+            self.block_chroma.clear();
+            self.luma_blocks.clear();
+            for band in &mut self.scratch {
+                band.chroma.clear(); band.block_rel.clear(); band.block_chroma.clear();
+                band.luma_blocks.clear(); band.luma_sums.fill([0.0; 5]); band.highlight_max = 0.0;
+            }
+        }
+    }
 }
 
 const BAND_ROWS: usize = 512; // multiple of 8, like gainmap._ROUNDTRIP_BAND_ROWS
@@ -252,13 +290,34 @@ pub fn hdr_roundtrip(
     w: usize,
     luma: &[f32; 3],
 ) -> Result<HdrRoundtrip, String> {
+    hdr_roundtrip_work(expanded, intended, h, w, luma, &mut HdrWorkspace::default(), false)
+}
+
+pub fn hdr_roundtrip_workspace(
+    expanded: ArrayView3<'_, f16>, intended: ArrayView3<'_, f16>,
+    h: usize, w: usize, luma: &[f32; 3], workspace: &mut HdrWorkspace, limit: usize,
+) -> Result<HdrRoundtrip, String> {
+    workspace.reset(limit);
+    let result = hdr_roundtrip_work(expanded, intended, h, w, luma, workspace, true);
+    // Clear lengths even after an invalid band. Capacity beyond the allowance is
+    // transient for this call and is released before another candidate arrives.
+    workspace.reset(limit);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn hdr_roundtrip_work(
+    expanded: ArrayView3<'_, f16>, intended: ArrayView3<'_, f16>,
+    h: usize, w: usize, luma: &[f32; 3], workspace: &mut HdrWorkspace, shared_ranks: bool,
+) -> Result<HdrRoundtrip, String> {
     let total = h * w;
     let h8 = h - h % 8;
     let w8 = w - w % 8;
     if total == 0 {
         return Ok(HdrRoundtrip::invalid());
     }
-    let mut relative = vec![0.0f32; total];
+    let HdrWorkspace { relative, scratch, chroma_top, block_rel, block_chroma, luma_blocks } = workspace;
+    relative.resize(total, 0.0);
     let top_k = ((0.01 * total as f64 * 3.0).ceil() as usize) + 8;
     let workers = crate::budget::budgeted_workers(8) as usize;
     // Share a 512-row scratch budget across workers. Every boundary remains
@@ -266,24 +325,24 @@ pub fn hdr_roundtrip(
     let band_rows = (BAND_ROWS / workers / 8).max(1) * 8;
     let band_count = h.div_ceil(band_rows).min(workers);
     let band_chroma = band_rows.min(h) * w * 3;
-    let mut scratch: Vec<HdrBand> = (0..band_count)
-        .map(|_| HdrBand {
+    scratch.resize_with(band_count, || HdrBand {
             chroma: Vec::with_capacity(band_chroma),
             block_rel: Vec::with_capacity(band_rows / 8 * (w8 / 8)),
             block_chroma: Vec::with_capacity(band_rows / 8 * (w8 / 8) * 3),
             luma_blocks: Vec::with_capacity(band_rows.div_ceil(8) * w.div_ceil(8)),
             highlight_max: 0.0,
             luma_sums: vec![[0.0; 5]; w.div_ceil(8)],
-        })
-        .collect();
+        });
+    for band in scratch.iter_mut() { band.luma_sums.resize(w.div_ceil(8), [0.0; 5]); }
     // Allocate once and reuse across batches, including the merge space.
     // Dropping/reallocating on successive worker threads can leave large
     // allocator caches resident even though the buffers are logically freed.
-    let mut chroma_top = Vec::with_capacity(top_k + band_chroma);
+    chroma_top.clear();
+    chroma_top.reserve(top_k + band_chroma);
     let mut chroma_count = 0usize;
-    let mut block_rel = Vec::with_capacity(h8 / 8 * (w8 / 8));
-    let mut block_chroma = Vec::with_capacity(h8 / 8 * (w8 / 8) * 3);
-    let mut luma_blocks = Vec::with_capacity(h.div_ceil(8) * w.div_ceil(8));
+    block_rel.clear(); block_rel.reserve(h8 / 8 * (w8 / 8));
+    block_chroma.clear(); block_chroma.reserve(h8 / 8 * (w8 / 8) * 3);
+    luma_blocks.clear(); luma_blocks.reserve(h.div_ceil(8) * w.div_ceil(8));
     let mut highlight_max = 0.0f32;
     let mut chunks = relative.chunks_mut(band_rows * w).enumerate();
     loop {
@@ -320,32 +379,49 @@ pub fn hdr_roundtrip(
         }
         for band in &scratch[..active] {
             chroma_count += band.chroma.len();
-            retain_top_k(&mut chroma_top, &band.chroma, top_k);
+            retain_top_k(chroma_top, &band.chroma, top_k);
             block_rel.extend_from_slice(&band.block_rel);
             block_chroma.extend_from_slice(&band.block_chroma);
             luma_blocks.extend_from_slice(&band.luma_blocks);
             highlight_max = highlight_max.max(band.highlight_max);
         }
     }
-    drop(scratch);
+    if !shared_ranks {
+        scratch.clear();
+        scratch.shrink_to_fit();
+    }
     let chroma_p99 = if chroma_count > 0 {
-        upper_percentile_from_top(&mut chroma_top, chroma_count, 99.0)? as f64
+        if shared_ranks {
+            crate::stats::upper_percentile_selected(chroma_top, chroma_count, 99.0)? as f64
+        } else {
+            upper_percentile_from_top(chroma_top, chroma_count, 99.0)? as f64
+        }
     } else {
         0.0
     };
-    let median_relative = median_f32(&mut relative) as f64;
-    let p95 = percentile_f32(&mut relative, 95.0) as f64;
-    let p99 = percentile_f32(&mut relative, 99.0) as f64;
-    let p999 = percentile_f32(&mut relative, 99.9) as f64;
-    drop(relative);
+    let (median_relative, p95, p99, p999) = if shared_ranks {
+        let (median, p) = crate::stats::median_and_percentiles(relative, &[95.0, 99.0, 99.9]);
+        (median as f64, p[0] as f64, p[1] as f64, p[2] as f64)
+    } else {
+        (median_f32(relative) as f64, percentile_f32(relative, 95.0) as f64,
+         percentile_f32(relative, 99.0) as f64, percentile_f32(relative, 99.9) as f64)
+    };
+    if !shared_ranks {
+        relative.clear();
+        relative.shrink_to_fit();
+    }
     let (bm, bp95, bp99, bchroma) = if h8 > 0 && w8 > 0 {
-        let bm = median_f32(&mut block_rel) as f64;
-        let bp95 = percentile_f32(&mut block_rel, 95.0) as f64;
-        let bp99 = percentile_f32(&mut block_rel, 99.0) as f64;
+        let (bm, bp95, bp99) = if shared_ranks {
+            let (median, p) = crate::stats::median_and_percentiles(block_rel, &[95.0, 99.0]);
+            (median as f64, p[0] as f64, p[1] as f64)
+        } else {
+            (median_f32(block_rel) as f64, percentile_f32(block_rel, 95.0) as f64,
+             percentile_f32(block_rel, 99.0) as f64)
+        };
         let bchroma = if block_chroma.is_empty() {
             0.0
         } else {
-            percentile_f32(&mut block_chroma, 99.0) as f64
+            percentile_f32(block_chroma, 99.0) as f64
         };
         (bm, bp95, bp99, bchroma)
     } else {
@@ -362,7 +438,7 @@ pub fn hdr_roundtrip(
         block_p95_relative_error: bp95,
         block_p99_relative_error: bp99,
         block_chroma_error: bchroma,
-        block_p95_luma_error: percentile_f32(&mut luma_blocks, 95.0) as f64,
+        block_p95_luma_error: percentile_f32(luma_blocks, 95.0) as f64,
         highlight_max_luma_error: highlight_max as f64,
     })
 }
@@ -430,6 +506,12 @@ fn base_band(decoded: &[u8], intended: &[u8], w: usize, w8: usize, row0: usize, 
 /// a declared last-bits difference, far below any delivery tolerance);
 /// everything else is exact.
 pub fn base_roundtrip(decoded: &[u8], intended: &[u8], h: usize, w: usize) -> Result<BaseRoundtrip, String> {
+    base_roundtrip_with_workers(decoded, intended, h, w, crate::budget::budgeted_workers(8) as usize)
+}
+
+fn base_roundtrip_with_workers(
+    decoded: &[u8], intended: &[u8], h: usize, w: usize, workers: usize,
+) -> Result<BaseRoundtrip, String> {
     let total = h * w;
     let h8 = h - h % 8;
     let w8 = w - w % 8;
@@ -438,33 +520,42 @@ pub fn base_roundtrip(decoded: &[u8], intended: &[u8], h: usize, w: usize) -> Re
     let mut signed_sum = [0.0f64; 3];
     let mut max_err = 0.0f64;
     let mut block_err: Vec<f32> = Vec::new();
-    std::thread::scope(|s| {
-        let workers = crate::budget::budgeted_workers(8) as usize;
-        let mut ranges = (0..h).step_by(BAND_ROWS);
-        loop {
-            let handles: Vec<_> = ranges.by_ref()
-                .take(workers)
-                .map(|r0| s.spawn(move || base_band(
-                    decoded, intended, w, w8, r0, (r0 + BAND_ROWS).min(h),
-                )))
-                .collect();
-            if handles.is_empty() {
-                break;
-            }
-            for hnd in handles {
-                let band = hnd.join().expect("band thread");
-                for (dst, count) in histogram.iter_mut().zip(band.histogram) {
-                    *dst += count;
-                }
-                abs_sum += band.abs_sum;
-                for c in 0..3 {
-                    signed_sum[c] += band.signed_sum[c];
-                }
-                max_err = max_err.max(band.max_err);
-                block_err.extend_from_slice(&band.block_err);
-            }
+    let mut merge = |band: BaseBand| {
+        for (dst, count) in histogram.iter_mut().zip(band.histogram) {
+            *dst += count;
         }
-    });
+        abs_sum += band.abs_sum;
+        for c in 0..3 {
+            signed_sum[c] += band.signed_sum[c];
+        }
+        max_err = max_err.max(band.max_err);
+        block_err.extend_from_slice(&band.block_err);
+    };
+    if workers == 1 {
+        // Keep the same bands and accumulation order, without creating a
+        // temporary OS thread for every band under a one-thread allowance.
+        for r0 in (0..h).step_by(BAND_ROWS) {
+            merge(base_band(decoded, intended, w, w8, r0, (r0 + BAND_ROWS).min(h)));
+        }
+    } else {
+        std::thread::scope(|s| {
+            let mut ranges = (0..h).step_by(BAND_ROWS);
+            loop {
+                let handles: Vec<_> = ranges.by_ref()
+                    .take(workers)
+                    .map(|r0| s.spawn(move || base_band(
+                        decoded, intended, w, w8, r0, (r0 + BAND_ROWS).min(h),
+                    )))
+                    .collect();
+                if handles.is_empty() {
+                    break;
+                }
+                for hnd in handles {
+                    merge(hnd.join().expect("band thread"));
+                }
+            }
+        });
+    }
     let block_p99 = if h8 > 0 && w8 > 0 {
         percentile_f32(&mut block_err, 99.0) as f64
     } else {
@@ -506,4 +597,26 @@ pub fn base_roundtrip(decoded: &[u8], intended: &[u8], h: usize, w: usize) -> Re
         channel_bias_code_error: if total > 0 { bias } else { 0.0 },
         block_p99_code_error: block_p99,
     })
+}
+
+#[cfg(test)]
+mod base_worker_tests {
+    #[test]
+    fn one_worker_keeps_parallel_band_arithmetic() {
+        let (h, w) = (super::BAND_ROWS + 9, 17);
+        let intended: Vec<u8> = (0..h*w*3).map(|i| (i % 251) as u8).collect();
+        let decoded: Vec<u8> = intended.iter().enumerate()
+            .map(|(i, &v)| v.saturating_add((i % 5) as u8)).collect();
+        let serial = super::base_roundtrip_with_workers(&decoded, &intended, h, w, 1).unwrap();
+        let parallel = super::base_roundtrip_with_workers(&decoded, &intended, h, w, 2).unwrap();
+        for (a, b) in [
+            (serial.mean_code_error, parallel.mean_code_error),
+            (serial.p99_code_error, parallel.p99_code_error),
+            (serial.max_code_error, parallel.max_code_error),
+            (serial.channel_bias_code_error, parallel.channel_bias_code_error),
+            (serial.block_p99_code_error, parallel.block_p99_code_error),
+        ] {
+            assert_eq!(a.to_bits(), b.to_bits());
+        }
+    }
 }

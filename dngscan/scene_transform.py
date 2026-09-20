@@ -527,10 +527,11 @@ def _apply_scene_transform_rec2020(
         # serial oracle instead of stacking the region pool on the render pool
         and __import__("dngscan.cpu_budget", fromlist=["current_inner"]).current_inner() > 1
     ):
-        futures = [_REGION_POOL.submit(region_weight, region) for region in preset.regions]
-        # Collect in declaration order; the accumulation below therefore retains the
-        # exact float32 order of the serial oracle.
-        weights = [future.result() for future in futures]
+        from .cpu_budget import ordered_budget_map
+        # The shared executor's width is not this render's allowance. Bound its
+        # submitted work to the actual share and retain declaration-order sums.
+        weights = ordered_budget_map(
+            _REGION_POOL, region_weight, preset.regions, max_workers=_REGION_WORKERS)
     else:
         weights = [region_weight(region) for region in preset.regions]
     total = np.zeros((rgb32.shape[0],), dtype=np.float32)

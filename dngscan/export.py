@@ -26,6 +26,7 @@ from .gainmap import apple_gainmap_backend_status, encode_finished_pair
 from .models import Analysis, RawBundle, RenderPlan, ToneCompressionPlan
 from .render import render_output_u8
 from .delivery_integrity import encoded_content_signature
+from .delivery_transaction import DeliveryTransaction
 
 
 def chroma_to_subsampling(name: str) -> int:
@@ -311,6 +312,7 @@ def export_ultrahdr_jpeg(
     hdr_drt: str = DEFAULT_HDR_DRT,
     delivery: DeliveryProfile | None = None,
     chroma: str | None = None,
+    return_rgb: bool = False,
 ) -> dict[str, Any]:
     """Write Display P3 Ultrahdr (JPEG or HEIC) carrying an ISO 21496-1 gain map."""
     output_gamut = "p3"
@@ -384,10 +386,13 @@ def export_ultrahdr_jpeg(
             base_u8, hdr_linear = render_ultrahdr_film_pair(
                 bundle, analysis, plan, hdr_plan, output_gamut
             )
+            actual = achieved_headroom(hdr_linear)
+            alternate = to_gainmap_alternate(hdr_linear, float(hdr_plan.tone.peak_linear))
+            del hdr_linear
         else:
-            from .hdr_agx import render_ultrahdr_agx_pair
+            from .hdr_agx import render_ultrahdr_agx_pair_packed
 
-            base_u8, hdr_linear = render_ultrahdr_agx_pair(
+            base_u8, alternate, actual = render_ultrahdr_agx_pair_packed(
                 bundle,
                 analysis,
                 plan,
@@ -396,30 +401,27 @@ def export_ultrahdr_jpeg(
                 scene_transform,
                 scene_transform_strength,
             )
-        actual = achieved_headroom(hdr_linear)
         # Encode-boundary guard at the scene-authorized content peak, not the display
         # capacity: the design contract (§9) keeps the alternate's ceiling at 2^H_content,
         # and the renderer already fitted its volume to exactly this endpoint.
-        peak = float(hdr_plan.tone.peak_linear)
         pair = FinishedPair(
             sdr_rgb_u8=base_u8,
-            hdr_rgba_f16=to_gainmap_alternate(hdr_linear, peak),
+            hdr_rgba_f16=alternate,
             display_headroom_ev=float(hdr_plan.tone.display_headroom_ev),
             output_gamut=output_gamut,
         )
-        # The float32 rendition (a full-frame buffer) has served its purpose; the pair
-        # carries the float16 alternate from here on.
-        del hdr_linear
-        info = encode_finished_pair(pair, out_path, profile)
-        # EXIF/XMP carry AFTER the writer's own verification gates: the
-        # rewrite is re-inspected and may only replace the verified file
-        # when every gate quantity is unchanged (metadata never costs the
-        # delivery contract).
-        info["exif_carried"] = carry_capture_metadata_hdr(
-            path, out_path, profile.container
-        )
-        if info["exif_carried"] and out_path.is_file():
-            info["file_size_bytes"] = out_path.stat().st_size
+        with DeliveryTransaction(out_path) as transaction:
+            info = encode_finished_pair(pair, transaction.path, profile)
+            # Metadata keeps its best-effort, unchanged-content gate. The
+            # verified original remains private until the final read succeeds.
+            info["exif_carried"] = carry_capture_metadata_hdr(
+                path, transaction.path, profile.container
+            )
+            if return_rgb:
+                from .gainmap import read_primary_rgb_u8
+                info["_decoded_rgb"] = read_primary_rgb_u8(transaction.path, output_gamut)
+            info["file_size_bytes"] = transaction.path.stat().st_size
+            transaction.commit()
         info["output_path"] = str(out_path)
         info["hdr_plan"] = (
             "胶片印相+scene HDR 扩展：" + describe_hdr_plan(hdr_plan)
@@ -516,12 +518,15 @@ def export_srgb_jpeg(
                         "delivery_chroma_requested": "422" if subsampling == 1 else "420",
                         "chroma_subsampling": "4:2:2" if subsampling == 1 else "4:2:0"}
 
-            info = select_encoding(out_path, encode, encode_420=lambda q, p: encode(q, p, 2))
-            info["exif_carried"] = carry_capture_metadata(path, out_path)
-            info["file_size_bytes"] = out_path.stat().st_size
-            if return_rgb:
-                with Image.open(out_path) as im:
-                    info["_decoded_rgb"] = np.asarray(im.convert("RGB"))
+            with DeliveryTransaction(out_path) as transaction:
+                info = select_encoding(transaction.path, encode, encode_420=lambda q, p: encode(q, p, 2))
+                info["exif_carried"] = carry_capture_metadata(path, transaction.path)
+                info["file_size_bytes"] = transaction.path.stat().st_size
+                if return_rgb:
+                    with Image.open(transaction.path) as im:
+                        info["_decoded_rgb"] = np.asarray(im.convert("RGB"))
+                transaction.commit()
+            info["output_path"] = str(out_path)
             return info
         from PIL import Image, JpegImagePlugin
         import tempfile
@@ -609,6 +614,7 @@ def export_jpeg(
             hdr_drt=hdr_drt,
             delivery=profile,
             chroma=chroma,
+            return_rgb=return_rgb,
         )
     if output_format == "sdr-heic":
         from .delivery import profile_from_encode_settings

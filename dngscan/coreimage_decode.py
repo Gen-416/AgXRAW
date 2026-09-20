@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from ._deps import np
+from .source_metadata import cached_source_metadata
 from .constants import (
     COREIMAGE_SCALE_DEFAULT_MODE,
     COREIMAGE_SCALE_MEASURED_RATIO,
@@ -687,85 +688,99 @@ def geometry_correlation(coreimage_rgb: np.ndarray, libraw_rgb: np.ndarray) -> f
     )
 
 
-def read_dng_opcodes(path: Path) -> dict[str, Any]:
-    """Report which DNG OpcodeList entries the file carries.
+def _opcode_summary_ids(source) -> tuple[int, ...] | None:
+    """Read only TIFF entries and opcode headers, preserving the Apple policy.
 
-    Core Image executes these during decode; LibRaw does not. They are therefore the
-    reason the two decoders are separate pipelines rather than interchangeable back
-    ends, and knowing which are present is worth stating in the render report.
-    Best-effort and never fatal: a parse failure returns an empty result."""
+    This is intentionally independent of the stricter LibRaw opcode executor:
+    diagnostics follow all previously visited IFDs and retain unknown opcode IDs.
+    An IFD table is at most 65535 * 12 bytes; opcode payloads are skipped entirely.
+    """
+    source.seek(0, 2)
+    length = source.tell()
+
+    def read_at(offset: int, size: int) -> bytes:
+        if offset < 0 or size < 0 or offset > length - size:
+            raise ValueError("opcode summary range is outside the file")
+        source.seek(offset)
+        data = source.read(size)
+        if len(data) != size:
+            raise ValueError("opcode summary source changed or is truncated")
+        return data
+
+    if length < 8:
+        return None
+    head = read_at(0, 8)
+    if head[:2] not in (b"II", b"MM"):
+        return None
+    # Preserve the existing best-effort policy, which does not reject a TIFF
+    # header based on magic or opcode flags/version before reporting its IDs.
+    order = "<" if head[:2] == b"II" else ">"
+    found: list[int] = []
+    seen_ifds: set[int] = set()
+
+    def walk(offset: int, depth: int = 0) -> None:
+        if depth > 3 or offset in seen_ifds or offset <= 0 or offset + 2 > length:
+            return
+        seen_ifds.add(offset)
+        count = struct.unpack(order + "H", read_at(offset, 2))[0]
+        if count > (length - offset - 2) // 12:
+            return
+        entries = read_at(offset + 2, count * 12)
+        for i in range(count):
+            entry = offset + 2 + i * 12
+            tag, typ, cnt, value = struct.unpack_from(order + "HHII", entries, i * 12)
+            if tag in (0xC740, 0xC741, 0xC74E):
+                # At most four BYTE/ASCII/UNDEFINED values live in the entry.
+                value_off = entry + 8 if cnt <= 4 and typ in (1, 2, 7) else value
+                if value_off + 4 > length:
+                    continue
+                # Keep the old diagnostic bounds: the file, not a required
+                # execution recipe or a possibly incomplete tag byte count.
+                n_ops = struct.unpack(">I", read_at(value_off, 4))[0]
+                cursor = value_off + 4
+                for _ in range(min(n_ops, 16)):
+                    if cursor + 16 > length:
+                        break
+                    op_id, _, _, size = struct.unpack(">IIII", read_at(cursor, 16))
+                    found.append(int(op_id))
+                    cursor += 16 + size
+            elif tag == 0x014A and typ in (4, 13):
+                if cnt == 1:
+                    walk(value, depth + 1)
+                else:
+                    for k in range(min(cnt, 8)):
+                        pos = value + k * 4
+                        if pos + 4 <= length:
+                            walk(struct.unpack(order + "I", read_at(pos, 4))[0], depth + 1)
+        next_pos = offset + 2 + count * 12
+        if next_pos + 4 <= length:
+            next_ifd = struct.unpack(order + "I", read_at(next_pos, 4))[0]
+            if next_ifd:
+                walk(next_ifd, depth + 1)
+
+    walk(struct.unpack(order + "I", head[4:8])[0])
+    return tuple(sorted(set(found)))
+
+
+@cached_source_metadata(cacheable=lambda value: value["parsed"])
+def read_dng_opcodes(path: Path) -> dict[str, Any]:
+    """Report DNG OpcodeList IDs without retaining the complete RAW file.
+
+    Core Image executes these opcodes during decode. This diagnostic parser
+    remains best-effort and independent of LibRaw's required-opcode policy.
+    """
     result: dict[str, Any] = {"ids": (), "names": (), "geometry": False, "parsed": False}
     try:
-        data = path.read_bytes()
-        if len(data) < 8 or data[:2] not in (b"II", b"MM"):
-            return result
-        order = "<" if data[:2] == b"II" else ">"
-        found: list[int] = []
-        seen_ifds: set[int] = set()
-
-        def walk(offset: int, depth: int = 0) -> None:
-            if depth > 3 or offset in seen_ifds or offset <= 0 or offset + 2 > len(data):
-                return
-            seen_ifds.add(offset)
-            count = struct.unpack(order + "H", data[offset : offset + 2])[0]
-            if count > (len(data) - offset - 2) // 12:
-                return
-            for i in range(count):
-                entry = offset + 2 + i * 12
-                if entry + 12 > len(data):
-                    return
-                tag, typ, cnt = struct.unpack(order + "HHI", data[entry : entry + 8])
-                if tag in (0xC740, 0xC741, 0xC74E):  # OpcodeList1/2/3
-                    # Opcode lists are TIFF BYTE/UNDEFINED arrays. Values of at most four
-                    # bytes are inline; larger payloads use the value field as an offset.
-                    value_off = (
-                        entry + 8
-                        if cnt <= 4 and typ in (1, 2, 7)
-                        else struct.unpack(order + "I", data[entry + 8 : entry + 12])[0]
-                    )
-                    if value_off + 4 > len(data):
-                        continue
-                    # Opcode payloads are always big-endian, independent of TIFF order.
-                    n_ops = struct.unpack(">I", data[value_off : value_off + 4])[0]
-                    cursor = value_off + 4
-                    for _ in range(min(n_ops, 16)):
-                        if cursor + 16 > len(data):
-                            break
-                        op_id = struct.unpack(">I", data[cursor : cursor + 4])[0]
-                        size = struct.unpack(">I", data[cursor + 12 : cursor + 16])[0]
-                        found.append(int(op_id))
-                        cursor += 16 + size
-                elif tag == 0x014A:  # SubIFDs
-                    sub_off = struct.unpack(order + "I", data[entry + 8 : entry + 12])[0]
-                    # A single LONG/IFD offset is stored inline. Only arrays of multiple
-                    # offsets are indirect. Treating count=1 as an array pointer skips the
-                    # actual SubIFD and can silently miss its DNG opcodes.
-                    if cnt == 1 and typ in (4, 13):
-                        walk(sub_off, depth + 1)
-                    elif typ in (4, 13):
-                        for k in range(min(cnt, 8)):
-                            pos = sub_off + k * 4
-                            if pos + 4 <= len(data):
-                                walk(
-                                    struct.unpack(order + "I", data[pos : pos + 4])[0],
-                                    depth + 1,
-                                )
-
-            next_pos = offset + 2 + count * 12
-            if next_pos + 4 <= len(data):
-                next_ifd = struct.unpack(order + "I", data[next_pos : next_pos + 4])[0]
-                if next_ifd:
-                    walk(next_ifd, depth + 1)
-
-        walk(struct.unpack(order + "I", data[4:8])[0])
-        ids = tuple(sorted(set(found)))
-        result.update(
-            ids=ids,
-            names=tuple(_DNG_OPCODE_NAMES.get(i, f"opcode{i}") for i in ids),
-            geometry=any(i in DNG_GEOMETRY_OPCODES for i in ids),
-            parsed=True,
-        )
-    except Exception:  # pragma: no cover - diagnostics must never break a render
+        with path.open("rb") as source:
+            ids = _opcode_summary_ids(source)
+        if ids is not None:
+            result.update(
+                ids=ids,
+                names=tuple(_DNG_OPCODE_NAMES.get(i, f"opcode{i}") for i in ids),
+                geometry=any(i in DNG_GEOMETRY_OPCODES for i in ids),
+                parsed=True,
+            )
+    except Exception:  # diagnostics must never break a render
         return result
     return result
 
@@ -869,7 +884,14 @@ def scene_headroom(rgb: np.ndarray, *, percentile: float = 99.995) -> float:
 
 def scene_float_to_half(rgb: np.ndarray) -> tuple[np.ndarray, float]:
     """Preserve Core Image's signed extended-linear values in a compact handoff."""
-    linear = np.asarray(rgb, dtype=np.float32)
     limit = float(np.finfo(np.float16).max)
+    source = np.asarray(rgb)
+    if source.dtype == np.dtype(np.float16):
+        # The decoder already owns a half raster. Every finite half is within
+        # this range, so another full RGB float32 conversion and clip are inert.
+        # Keep an independent writable owner even for finite/read-only inputs.
+        linear = source.copy()
+        return np.nan_to_num(linear, copy=False, nan=0.0, posinf=limit, neginf=-limit), 1.0
+    linear = np.asarray(rgb, dtype=np.float32)
     finite = np.nan_to_num(linear, nan=0.0, posinf=limit, neginf=-limit)
     return np.clip(finite, -limit, limit).astype(np.float16), 1.0

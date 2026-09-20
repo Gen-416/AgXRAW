@@ -62,6 +62,13 @@ class AppleGainMapWriterTests(unittest.TestCase):
         base = np.zeros((8, 8, 3), np.uint8)
         caller_base = base
         calls = []
+        def prepared_master(base, hdr, headroom, **kwargs):
+            from types import SimpleNamespace
+            return SimpleNamespace(
+                base=np.frombuffer(base.tobytes(), base.dtype).reshape(base.shape),
+                hdr=np.frombuffer(hdr.tobytes(), hdr.dtype).reshape(hdr.shape),
+                headroom_ev=headroom, workspace=None, close=lambda: None)
+
         def encode(base, hdr, path, headroom, *, delivery, _template_path,
                    _gainmap_quality, **kwargs):
             calls.append((delivery.quality, _gainmap_quality))
@@ -85,7 +92,8 @@ class AppleGainMapWriterTests(unittest.TestCase):
              mock.patch("dngscan.heif_encoder.encode") as encode_aux, \
              mock.patch("dngscan.heif_gainmap.iso_gainmap_item", return_value=53), \
              mock.patch("dngscan.heif_gainmap.replace_image_item"), \
-             mock.patch("dngscan.gainmap.write_apple_gainmap_file", side_effect=encode), \
+             mock.patch("dngscan.gainmap._PreparedGainmapMaster", side_effect=prepared_master), \
+             mock.patch("dngscan.gainmap._write_gainmap_candidate", side_effect=encode), \
              mock.patch("dngscan.gainmap.read_primary_rgb_u8", return_value=base):
             info = write_auto(base, np.ones((8,8,4), np.float16), Path(td)/"out.heic", 3.,
                               delivery=resolve_delivery_profile("auto", container="heic"))

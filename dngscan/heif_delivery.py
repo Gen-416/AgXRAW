@@ -13,10 +13,10 @@ from .delivery import DeliveryProfile
 def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="srgb",
                   *, source_raw: Path | None = None, return_rgb=False):
     from . import heif_encoder
-    from .auto_encode import coding_metrics, select_heif_encoding
+    from .auto_encode import select_heif_encoding
     from .color import output_icc_profile_bytes
     from .gainmap import (inspect_gainmap_file, read_primary_rgb_u8,
-                          _base_roundtrip_error_arrays, _base_roundtrip_is_acceptable)
+                          _base_and_coding_metrics_arrays, _base_roundtrip_is_acceptable)
     from .heif_gainmap import _parse
 
     if delivery.container != "heic":
@@ -46,12 +46,11 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
                     if props[i-1][0] == b"colr" and props[i-1][1][:4] in (b"prof", b"rICC")]
         if output_icc_profile_bytes(output_gamut) not in profiles:
             raise RuntimeError("SDR HEIF 回读 ICC 与请求不符")
-        decoded = read_primary_rgb_u8(path, output_gamut)
-        metrics = _base_roundtrip_error_arrays(decoded, rgb)
+        decoded = read_primary_rgb_u8(path, output_gamut, _borrow_rgb=True)
+        metrics = _base_and_coding_metrics_arrays(decoded, rgb)
         if not _base_roundtrip_is_acceptable(metrics, profile.tolerances):
             raise RuntimeError("SDR HEIF 回读误差超出交付门限")
         info.update(metrics)
-        info.update(coding_metrics(decoded, rgb))
         return info, decoded
 
     def encode(q, chroma, auxiliary, candidate):
@@ -79,7 +78,8 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
                                 chroma=str(info["delivery_chroma_requested"]))
         _, decoded = verify(candidate, final_profile)
         if return_rgb:
-            info["_decoded_rgb"] = decoded
+            from ._deps import np
+            info["_decoded_rgb"] = np.ascontiguousarray(decoded)
         del decoded
         info["file_size_bytes"] = candidate.stat().st_size
         os.replace(candidate, out_path)

@@ -103,6 +103,30 @@ _MAD_TO_SIGMA = 1.0 / 0.6745
 
 
 def _atrous_smooth(plane: np.ndarray, level: int) -> np.ndarray:
+    """Dispatch the production 2-D planes; retain the general NumPy reference."""
+    from . import _fast
+    limit = int(np.iinfo(np.intp).max)
+    if (type(plane) is np.ndarray and plane.ndim == 2 and plane.size > 0
+            and plane.dtype == np.float32 and plane.flags.aligned
+            and plane.size * plane.itemsize <= limit
+            and all(stride % plane.itemsize == 0 and stride != -limit - 1
+                    for stride in plane.strides)
+            and plane.itemsize + sum((dim - 1) * abs(stride)
+                    for dim, stride in zip(plane.shape, plane.strides)) <= limit
+            and isinstance(level, int) and 0 <= level < 32
+            and _fast._fast_mode() != "off"
+            and "atrous_smooth_f32" not in _fast._skipped_kernels()):
+        ext = _fast._load_extension()
+        if ext is not None:
+            try:
+                return ext.atrous_smooth_f32(plane, level)
+            except Exception as exc:
+                if _fast.strict_requested():
+                    raise _fast.NativeKernelError("native B3 smoothing failed") from exc
+    return _atrous_smooth_reference(plane, level)
+
+
+def _atrous_smooth_reference(plane: np.ndarray, level: int) -> np.ndarray:
     """One à-trous B3 smoothing pass with hole spacing 2**level, separable,
     reflect-padded. plane is [h, w, c] float32."""
     step = 1 << level

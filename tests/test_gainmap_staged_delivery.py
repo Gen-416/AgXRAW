@@ -56,15 +56,12 @@ class SearchSdrMetricsTests(unittest.TestCase):
             **auto_encode.coding_metrics(decoded, intended),
         }
         with patch.object(gainmap, "read_primary_rgb_u8", return_value=decoded) as read, \
-             patch.object(gainmap, "_base_roundtrip_error_arrays",
-                          wraps=gainmap._base_roundtrip_error_arrays) as absolute, \
-             patch.object(auto_encode, "coding_metrics", wraps=auto_encode.coding_metrics) as coding:
+             patch.object(gainmap, "_base_and_coding_metrics_arrays",
+                          wraps=gainmap._base_and_coding_metrics_arrays) as combined:
             result = gainmap._search_sdr_metrics(Path("candidate.heic"), intended)
-        read.assert_called_once_with(Path("candidate.heic"))
-        self.assertIs(absolute.call_args.args[0], decoded)
-        self.assertIs(coding.call_args.args[0], decoded)
-        self.assertIs(absolute.call_args.args[1], intended)
-        self.assertIs(coding.call_args.args[1], intended)
+        read.assert_called_once_with(Path("candidate.heic"), _borrow_rgb=True)
+        self.assertIs(combined.call_args.args[0], decoded)
+        self.assertIs(combined.call_args.args[1], intended)
         self.assertEqual(result, expected)
 
     def test_cache_hit_skips_pixels_and_both_reductions_but_miss_measures(self):
@@ -79,17 +76,15 @@ class SearchSdrMetricsTests(unittest.TestCase):
             auxiliary_variant.write_text(json.dumps({"primary": "same", "aux": 90}))
             different_primary.write_text(json.dumps({"primary": "different", "aux": 90}))
             with patch.object(gainmap, "read_primary_rgb_u8", return_value=base) as read, \
-                 patch.object(gainmap, "_base_roundtrip_error_arrays",
-                              wraps=gainmap._base_roundtrip_error_arrays) as absolute, \
-                 patch.object(auto_encode, "coding_metrics", wraps=auto_encode.coding_metrics) as coding:
+                 patch.object(gainmap, "_base_and_coding_metrics_arrays",
+                              wraps=gainmap._base_and_coding_metrics_arrays) as combined:
                 original = gainmap._search_sdr_metrics(first, base, session)
                 cached = gainmap._search_sdr_metrics(auxiliary_variant, base, session)
                 measured = gainmap._search_sdr_metrics(different_primary, base, session)
             self.assertEqual(original, cached)
             self.assertEqual(cached, measured)
             self.assertEqual(read.call_count, 2)
-            self.assertEqual(absolute.call_count, 2)
-            self.assertEqual(coding.call_count, 2)
+            self.assertEqual(combined.call_count, 2)
             self.assertEqual(session.lookups, ["same", "same", "different"])
             self.assertEqual(session.remembered, ["same", "different"])
 
@@ -156,8 +151,8 @@ class GainmapStagedWriterTests(unittest.TestCase):
 
         with ExitStack() as stack:
             stack.enter_context(patch.dict(sys.modules, {"Quartz": quartz, "Foundation": foundation}))
-            stack.enter_context(patch.object(gainmap, "_apple_gainmap_api_status", return_value=(True, "fixture")))
-            stack.enter_context(patch.object(gainmap, "_ciimage_from_rgba", return_value=(image, b"owner")))
+            api_status = stack.enter_context(patch.object(gainmap, "_apple_gainmap_api_status", return_value=(True, "fixture")))
+            image_builder = stack.enter_context(patch.object(gainmap, "_ciimage_from_rgba", return_value=(image, b"owner")))
             stack.enter_context(patch.object(gainmap, "_nsnumber_bool", side_effect=bool))
             stack.enter_context(patch("dngscan.heif_encoder.encode", side_effect=encode))
             stack.enter_context(patch("dngscan.heif_gainmap.replace_primary", side_effect=replace_primary))
@@ -170,7 +165,8 @@ class GainmapStagedWriterTests(unittest.TestCase):
             yield SimpleNamespace(
                 base=base, hdr=hdr, profile=profile, template=template, inspector=inspector,
                 read=read, hdr_read=hdr_read, overrides=inspection_overrides,
-                absolute_gate=absolute_gate,
+                absolute_gate=absolute_gate, context=context, quartz=quartz,
+                image_builder=image_builder, api_status=api_status,
             )
 
     def write(self, fixture, out, *, session=None, precheck=None):

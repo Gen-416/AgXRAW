@@ -15,6 +15,8 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
+from .source_metadata import cached_source_metadata
+
 TAG_MAKE = 271
 TAG_MODEL = 272
 TAG_EXIF_IFD = 34665
@@ -248,6 +250,7 @@ def _parse_raf_shot_info(fh, info: DngShotInfo) -> None:
             info.model = model
 
 
+@cached_source_metadata(cacheable=lambda value: any(v is not None for v in vars(value).values()))
 def read_dng_shot_info(path: Path) -> DngShotInfo:
     info = DngShotInfo()
     try:
@@ -317,6 +320,7 @@ def _matrix_from_values(vals: list) -> tuple[tuple[float, float, float], ...] | 
     return rows
 
 
+@cached_source_metadata(cacheable=bool)
 def is_dng_container(path: Path) -> bool:
     """True when the file is a TIFF container carrying a DNGVersion tag in IFD0.
 
@@ -342,6 +346,7 @@ def is_dng_container(path: Path) -> bool:
     return False
 
 
+@cached_source_metadata(cacheable=lambda value: value is not None)
 def read_dng_color_calibration(path: Path) -> DngColorCalibration | None:
     """Best-effort DNG dual-illuminant colour calibration; None when unavailable."""
     try:
@@ -495,6 +500,7 @@ def _parse_gain_map_payload(data: bytes) -> DngGainMap | None:
     )
 
 
+@cached_source_metadata(cacheable=bool)
 def read_dng_gain_maps(path: Path) -> list[DngGainMap]:
     """All GainMap opcodes from OpcodeList2, searched across IFD0 and SubIFDs."""
     maps: list[DngGainMap] = []
@@ -552,6 +558,7 @@ class DngVignetteRadial:
     cy_hat: float
 
 
+@cached_source_metadata(cacheable=lambda value: bool(value["gain_maps"]) or value["vignette"] is not None)
 def read_dng_shading_ops(path: Path) -> dict:
     """Legacy shading-only inventory for callers inspecting metadata.
 
@@ -597,6 +604,7 @@ def read_dng_shading_ops(path: Path) -> dict:
     return {"gain_maps": gain_maps, "vignette": vignette}
 
 
+@cached_source_metadata(cacheable=bool)
 def read_dng_stage1_flags(path: Path) -> tuple[str, ...]:
     """Names of DNG stage-1 linearization tags present in IFD0 or the SubIFDs.
 

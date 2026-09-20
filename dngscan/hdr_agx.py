@@ -293,7 +293,7 @@ def scene_render_to_hdr_display_linear(
 
     clip_masks = None
     if getattr(bundle, "clip_masks", None) is not None:
-        clip_masks = retreat_engine.clip_masks_for_shape(bundle, (h, w)).reshape(-1, 3)
+        clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
 
     # The scene-authorized native curve endpoint. Display capacity is only the container's
     # outer ceiling; using it here would normalize every photograph to display peak.
@@ -503,6 +503,8 @@ def render_ultrahdr_agx_pair(
     output_gamut: str = "p3",
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
+    *,
+    _pack_hdr: bool = False,
 ) -> tuple[Any, Any]:
     """One intent walk producing SDR u8 and HDR display-linear.
 
@@ -544,6 +546,11 @@ def render_ultrahdr_agx_pair(
             if fast_backend.strict_requested():
                 raise fast_backend.NativeKernelError(str(exc)) from exc
 
+    native_rec2020_input = native_output_plan is not None and not (
+        color_plan is not None
+        and abs(float(color_plan.display_highlight_chroma_retreat)) > 1e-9
+    )
+
     hdr_tone_plan = _hdr_tone_plan(hdr_plan)
     inset_matrix, outset_matrix = agx_engine.formation_matrices(hdr_tone_plan)
     formation_y = formation_luma_weights(outset_matrix)
@@ -564,7 +571,12 @@ def render_ultrahdr_agx_pair(
     h, w = scene.shape[:2]
     flat_scene = scene.reshape(-1, scene.shape[-1])
     sdr_out = np.empty((flat_scene.shape[0], 3), dtype=np.uint8)
-    hdr_out = np.empty((flat_scene.shape[0], 3), dtype=np.float32)
+    if _pack_hdr:
+        hdr_out = np.empty((flat_scene.shape[0], 4), dtype=np.float16)
+        hdr_out[:, 3] = np.float16(1.0)
+        usage = _HeadroomTail(flat_scene.shape[0])
+    else:
+        hdr_out = np.empty((flat_scene.shape[0], 3), dtype=np.float32)
 
     quantize_chunk_size = STREAM_QUANTIZE_CHUNK
     render_chunk_size = (
@@ -581,7 +593,7 @@ def render_ultrahdr_agx_pair(
     clip_masks = None
     raw_guidance = None
     if color_plan is not None and getattr(bundle, "clip_masks", None) is not None:
-        clip_masks = retreat_engine.clip_masks_for_shape(bundle, (h, w)).reshape(-1, 3)
+        clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
         if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
@@ -626,18 +638,21 @@ def render_ultrahdr_agx_pair(
             if raw_guidance is not None
             else None,
         )
-        output_linear = rec2020_to_output(mapped_rec, output_gamut)
-        output_linear = np.nan_to_num(
-            output_linear, nan=0.0, posinf=1e6, neginf=-1e6
-        ).astype(np.float32, copy=False)
-        if native_output_plan is not None:
+        if native_rec2020_input:
+            sdr_final = np.ascontiguousarray(mapped_rec, dtype=np.float32)
+        else:
+            output_linear = rec2020_to_output(mapped_rec, output_gamut)
+            output_linear = np.nan_to_num(
+                output_linear, nan=0.0, posinf=1e6, neginf=-1e6
+            ).astype(np.float32, copy=False)
+        if native_output_plan is not None and not native_rec2020_input:
             sdr_final = np.ascontiguousarray(
                 _apply_output_color_ops(
                     output_linear, output_gamut, "none", 1.0, color_plan
                 ),
                 dtype=np.float32,
             )
-        else:
+        elif native_output_plan is None:
             finalized = finalize_output_linear(
                 output_linear, output_gamut, "none", 1.0, color_plan
             )
@@ -668,11 +683,14 @@ def render_ultrahdr_agx_pair(
     ]
     rng = np.random.default_rng(0)
 
-    def quantize_chunk(start: int, end: int, finalized: Any) -> None:
-        noise_a, noise_b = generate_dither_noise(rng, finalized.shape)
+    def quantize_chunk(start: int, end: int, finalized: Any, noise_pair: Any = None) -> None:
+        noise_a, noise_b = (generate_dither_noise(rng, finalized.shape)
+                            if noise_pair is None else noise_pair)
         if native_output_plan is not None:
             try:
-                sdr_out[start:end] = fast_backend.finalize_output_u8_f32(
+                finalize = (fast_backend.finalize_rec2020_u8_f32 if native_rec2020_input
+                            else fast_backend.finalize_output_u8_f32)
+                sdr_out[start:end] = finalize(
                     finalized, noise_a, noise_b, native_output_plan
                 )
                 return
@@ -681,6 +699,11 @@ def render_ultrahdr_agx_pair(
                     if isinstance(exc, fast_backend.NativeKernelError):
                         raise
                     raise fast_backend.NativeKernelError(str(exc)) from exc
+            if native_rec2020_input:
+                finalized = rec2020_to_output(finalized, output_gamut)
+                finalized = _apply_output_color_ops(
+                    finalized, output_gamut, "none", 1.0, color_plan
+                )
             finalized = fit_to_output_gamut(
                 finalized, output_gamut, alpha=gamut_alpha
             ).astype(np.float32, copy=False)
@@ -691,16 +714,28 @@ def render_ultrahdr_agx_pair(
         group_start = 0
         group_parts: list[Any] = []
         for start, end, sdr_final, hdr_final in results:
-            hdr_out[start:end] = hdr_final
+            if _pack_hdr:
+                usage.add(hdr_final)
+                hdr_out[start:end, :3] = np.clip(hdr_final, 0.0, float(hdr_plan.tone.peak_linear))
+            else:
+                hdr_out[start:end] = hdr_final
             group_parts.append(sdr_final)
             group_end = min(group_start + quantize_chunk_size, flat_scene.shape[0])
             if end == group_end:
-                merged = (
-                    group_parts[0]
-                    if len(group_parts) == 1
-                    else np.concatenate(group_parts, axis=0)
-                )
-                quantize_chunk(group_start, group_end, merged)
+                if native_output_plan is not None and len(group_parts) > 1:
+                    # Preserve one full group's A-then-B RNG stream while avoiding
+                    # a second float32 RGB master for the joined render chunks.
+                    noise_a, noise_b = generate_dither_noise(rng, (group_end - group_start, 3))
+                    offset = group_start
+                    for part in group_parts:
+                        next_offset = offset + len(part)
+                        lo, hi = offset - group_start, next_offset - group_start
+                        quantize_chunk(offset, next_offset, part, (noise_a[lo:hi], noise_b[lo:hi]))
+                        offset = next_offset
+                    del noise_a, noise_b, part
+                else:
+                    merged = group_parts[0] if len(group_parts) == 1 else np.concatenate(group_parts, axis=0)
+                    quantize_chunk(group_start, group_end, merged)
                 group_start = group_end
                 group_parts = []
 
@@ -741,7 +776,43 @@ def render_ultrahdr_agx_pair(
 
             consume_in_quantize_groups(ordered_results())
 
+    if _pack_hdr:
+        return sdr_out.reshape(h, w, 3), hdr_out.reshape(h, w, 4), usage.headroom()
     return sdr_out.reshape(h, w, 3), hdr_out.reshape(h, w, 3)
+
+
+def render_ultrahdr_agx_pair_packed(*args: Any, **kwargs: Any) -> tuple[Any, Any, float]:
+    """Internal delivery boundary: keep only per-chunk f32 HDR and final half RGBA."""
+    return render_ultrahdr_agx_pair(*args, **kwargs, _pack_hdr=True)
+
+
+class _HeadroomTail:
+    """Exact pre-packing RGB-max percentile, bounded to the ranks it can touch."""
+    def __init__(self, count: int, percentile: float = 99.99):
+        self.count, self.percentile = int(count), float(percentile)
+        self.keep = (self.count - int(np.floor((self.count - 1) * (self.percentile / 100.0)))
+                     if self.count else 0)
+        self.tail = np.empty(0, dtype=np.float32)
+        self.has_nan = False
+
+    def add(self, rgb: Any) -> None:
+        maxima = np.max(np.asarray(rgb, dtype=np.float32)[..., :3], axis=-1).reshape(-1)
+        self.has_nan = self.has_nan or bool(np.isnan(maxima).any())
+        if self.has_nan or not self.keep:
+            return
+        merged = np.concatenate((self.tail, maxima))
+        if merged.size > self.keep:
+            merged.partition(merged.size - self.keep)
+            self.tail = merged[-self.keep:].copy()
+        else:
+            self.tail = merged
+
+    def headroom(self) -> float:
+        if not self.count or self.has_nan:
+            return 0.0
+        from .gainmap import _exact_upper_percentile
+        top = _exact_upper_percentile(self.tail, self.count, self.percentile)
+        return float(np.log2(top)) if top > 1.0 else 0.0
 
 
 def to_gainmap_alternate(hdr_display_linear: Any, peak: float) -> Any:
@@ -750,6 +821,17 @@ def to_gainmap_alternate(hdr_display_linear: Any, peak: float) -> Any:
     The HDR renderer normally returns an in-volume image. Clipping remains here as a
     defensive encode-boundary guard for callers that provide their own rendition.
     """
+    source = np.asarray(hdr_display_linear)
+    if (source.ndim == 3 and source.shape[2] == 3
+            and source.dtype in (np.dtype(np.float16), np.dtype(np.float32))):
+        rgba = np.empty(source.shape[:2] + (4,), dtype=np.float16)
+        for row in range(0, source.shape[0], 128):
+            # Assignment performs the old float32 -> half conversion directly
+            # into the final owner, without a full-frame clipped/half RGB pair.
+            band = np.asarray(source[row:row + 128], dtype=np.float32)
+            rgba[row:row + 128, :, :3] = np.clip(band, 0.0, float(peak))
+        rgba[:, :, 3] = np.float16(1.0)
+        return rgba
     arr = np.clip(np.asarray(hdr_display_linear, dtype=np.float32), 0.0, float(peak))
     rgba = np.empty(arr.shape[:2] + (4,), dtype=np.float16)
     rgba[:, :, :3] = arr.astype(np.float16, copy=False)
@@ -772,6 +854,28 @@ def achieved_headroom(hdr_display_linear: Any, percentile: float = 99.99) -> flo
     arr = np.asarray(hdr_display_linear, dtype=np.float32)
     if arr.size == 0:
         return 0.0
+    if (arr.ndim == 3 and arr.shape[-1] in (3, 4)
+            and arr.shape[0] * arr.shape[1] >= 262144
+            and 99.0 <= float(percentile) <= 100.0):
+        from .gainmap import _exact_upper_percentile
+
+        count = arr.shape[0] * arr.shape[1]
+        keep = count - int(np.floor((count - 1) * (float(percentile) / 100.0)))
+        tail = np.empty(0, dtype=np.float32)
+        for row in range(0, arr.shape[0], 128):
+            maxima = np.max(arr[row:row + 128, :, :3], axis=-1).reshape(-1)
+            if not np.isfinite(maxima).all():
+                # Retain the public NumPy percentile's exceptional-value policy.
+                break
+            merged = np.concatenate((tail, maxima))
+            if merged.size > keep:
+                merged.partition(merged.size - keep)
+                tail = merged[-keep:].copy()
+            else:
+                tail = merged
+        else:
+            top = _exact_upper_percentile(tail, count, float(percentile))
+            return float(np.log2(top)) if top > 1.0 else 0.0
     if arr.ndim >= 2 and arr.shape[-1] in (3, 4):
         arr = np.max(arr[..., :3], axis=-1)
     top = float(np.percentile(arr, percentile))

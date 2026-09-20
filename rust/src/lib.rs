@@ -7,6 +7,7 @@
 //! tests/test_film_appearance_p10.py.
 mod agx;
 mod budget;
+mod coding;
 mod evidence;
 mod lens;
 mod loss;
@@ -15,6 +16,7 @@ mod film_core;
 mod hdr;
 mod metrics;
 mod numpy_sum;
+mod nr;
 mod output;
 mod pixel;
 mod sensor;
@@ -37,7 +39,9 @@ use std::sync::atomic::Ordering;
 /// v15 adds crop-footprint and in-place processing-loss maxima.
 /// v16 adds exact sensor RGB-group clipping counts.
 /// v17 adds exact per-channel sensor ceiling and clipping scans.
-pub const NATIVE_ABI_VERSION: i32 = 17;
+/// v18 adds exact borrowed B3 smoothing, shared gamut median, fused u8
+/// delivery metrics and export-local HDR metric workspaces.
+pub const NATIVE_ABI_VERSION: i32 = 18;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -68,6 +72,20 @@ fn read_vec3(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<[f32; 3]> {
         .map_err(|_| PyValueError::new_err("vector must have 3 elements"))
 }
 
+/// NumPy may return an unaligned same-dtype ndarray even when C contiguous.
+/// Forcecast adapters own a copy only for that exceptional storage; exact borrowed
+/// entry points keep their separate validation and never silently copy.
+fn align_adapted_array<'py, T: numpy::Element>(
+    array: Bound<'py, PyArrayDyn<T>>,
+) -> PyResult<Bound<'py, PyArrayDyn<T>>> {
+    let align = std::mem::align_of::<T>();
+    if (array.data() as usize) % align != 0
+        || array.strides().iter().any(|&stride| stride % align as isize != 0) {
+        return Ok(array.call_method0("copy")?.cast_into::<PyArrayDyn<T>>()?);
+    }
+    Ok(array)
+}
+
 /// pybind11's `array_t<float, c_style | forcecast>`: any array-like becomes a
 /// C-contiguous float32 array (a no-op view when it already is one).
 fn as_f32_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyArrayDyn<f32>>> {
@@ -77,7 +95,7 @@ fn as_f32_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
     let arr = np
         .getattr("ascontiguousarray")?
         .call((obj,), Some(&kwargs))?;
-    Ok(arr.cast_into::<PyArrayDyn<f32>>()?)
+    align_adapted_array(arr.cast_into::<PyArrayDyn<f32>>()?)
 }
 
 /// Preserve strides when the kernel supports borrowed ndarray views.
@@ -87,7 +105,7 @@ fn as_view_array<'py, T: numpy::Element>(
     let np = py.import("numpy")?;
     let kwargs = PyDict::new(py);
     kwargs.set_item("dtype", dtype)?;
-    Ok(np.getattr("asarray")?.call((obj,), Some(&kwargs))?.cast_into::<PyArrayDyn<T>>()?)
+    align_adapted_array(np.getattr("asarray")?.call((obj,), Some(&kwargs))?.cast_into::<PyArrayDyn<T>>()?)
 }
 
 fn require_rgb(arr: &Bound<'_, PyArrayDyn<f32>>, name: &str) -> PyResult<usize> {
@@ -613,6 +631,25 @@ fn sensor_view_shape<T: numpy::Element>(
 }
 
 #[pyfunction]
+fn atrous_smooth_f32<'py>(
+    py: Python<'py>, plane: Bound<'py, PyArrayDyn<f32>>, level: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    let len = sensor_view_shape(&plane, "plane")?;
+    if plane.ndim() != 2 {
+        return Err(PyValueError::new_err("plane must be two-dimensional"));
+    }
+    let step = 1usize.checked_shl(level.try_into().unwrap_or(u32::MAX))
+        .ok_or_else(|| PyValueError::new_err("level is too large"))?;
+    let shape = [plane.shape()[0], plane.shape()[1]];
+    if len == 0 { return Ok(PyArray1::from_vec(py, Vec::<f32>::new()).reshape(shape)?.into_any()); }
+    let borrowed = plane.readonly();
+    let view = borrowed.as_array().into_dimensionality::<numpy::ndarray::Ix2>()
+        .map_err(|_| PyValueError::new_err("plane must be two-dimensional"))?;
+    let values = py.detach(|| nr::atrous_smooth(view, step));
+    Ok(PyArray1::from_vec(py, values).reshape(shape)?.into_any())
+}
+
+#[pyfunction]
 fn sensor_rgb_clip_counts_u16(
     py: Python<'_>, raw: &Bound<'_, PyAny>, colors: &Bound<'_, PyAny>,
     thresholds: Vec<i32>, groups: Vec<u8>, period_h: usize, period_w: usize,
@@ -750,7 +787,7 @@ fn as_f16_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
     let kwargs = PyDict::new(py);
     kwargs.set_item("dtype", np.getattr("float16")?)?;
     let arr = np.getattr("asarray")?.call((obj,), Some(&kwargs))?;
-    Ok(arr.cast_into::<PyArrayDyn<half::f16>>()?)
+    align_adapted_array(arr.cast_into::<PyArrayDyn<half::f16>>()?)
 }
 
 fn loss_rgb_shape<T: numpy::Element>(array: &Bound<'_, PyArrayDyn<T>>, name: &str) -> PyResult<(usize, usize)> {
@@ -952,7 +989,7 @@ fn as_f64_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
     let kwargs = PyDict::new(py);
     kwargs.set_item("dtype", np.getattr("float64")?)?;
     let arr = np.getattr("ascontiguousarray")?.call((obj,), Some(&kwargs))?;
-    Ok(arr.cast_into::<PyArrayDyn<f64>>()?)
+    align_adapted_array(arr.cast_into::<PyArrayDyn<f64>>()?)
 }
 
 /// raw_io._feather_masks_f16: (h, w, c) float32 -> (h, w, c) float16.
@@ -1035,6 +1072,7 @@ fn apply_gain_map_mosaic<'py>(
 
 /// analysis.compute_gamut_metrics core: (counts per matrix, bright_total).
 #[pyfunction]
+#[pyo3(signature = (scene, y, inv_scale, rec2020_to_xyz, matrices, eps, gamut_eps, median=None))]
 #[allow(clippy::too_many_arguments)]
 fn gamut_counts<'py>(
     py: Python<'py>,
@@ -1045,6 +1083,7 @@ fn gamut_counts<'py>(
     matrices: Vec<Vec<f64>>,
     eps: f32,
     gamut_eps: f32,
+    median: Option<f32>,
 ) -> PyResult<(Vec<u64>, usize)> {
     let scene = as_f32_array(py, scene)?;
     let sshape = scene.shape().to_vec();
@@ -1068,7 +1107,7 @@ fn gamut_counts<'py>(
     let sdata = sro.as_slice()?;
     let ydata = yro.as_slice()?;
     let stride = sshape[1];
-    Ok(py.detach(|| metrics::gamut_counts(sdata, stride, ydata, inv_scale, &m, &mats, eps, gamut_eps)))
+    Ok(py.detach(|| metrics::gamut_counts(sdata, stride, ydata, inv_scale, &m, &mats, eps, gamut_eps, median)))
 }
 
 /// gainmap._roundtrip_error on the decoded (h, w, >=3) float16 rendition and
@@ -1082,6 +1121,8 @@ fn hdr_roundtrip_metrics<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let a = as_f16_array(py, expanded)?;
     let e = as_f16_array(py, intended)?;
+    let len = sensor_view_shape(&a, "expanded")?;
+    sensor_view_shape(&e, "intended")?;
     let (sa, se) = (a.shape().to_vec(), e.shape().to_vec());
     if sa.len() != 3 || se.len() != 3 || sa[2] < 3 || se[2] < 3 {
         return Err(PyValueError::new_err("renditions must be (H, W, >=3)"));
@@ -1089,6 +1130,7 @@ fn hdr_roundtrip_metrics<'py>(
     if sa[0] != se[0] || sa[1] != se[1] {
         return Err(PyValueError::new_err("rendition shapes differ"));
     }
+    if len == 0 { return hdr_metrics_dict(py, metrics::HdrRoundtrip::invalid()); }
     let aro = a.readonly();
     let ero = e.readonly();
     let ad = aro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
@@ -1096,6 +1138,10 @@ fn hdr_roundtrip_metrics<'py>(
     let r = py
         .detach(|| metrics::hdr_roundtrip(ad, ed, sa[0], sa[1], &luma_weights))
         .map_err(PyValueError::new_err)?;
+    hdr_metrics_dict(py, r)
+}
+
+fn hdr_metrics_dict<'py>(py: Python<'py>, r: metrics::HdrRoundtrip) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
     d.set_item("chroma_error", r.chroma_error)?;
     d.set_item("relative_error", r.relative_error)?;
@@ -1110,6 +1156,56 @@ fn hdr_roundtrip_metrics<'py>(
     d.set_item("block_p95_luma_error", r.block_p95_luma_error)?;
     d.set_item("highlight_max_luma_error", r.highlight_max_luma_error)?;
     Ok(d)
+}
+
+/// An export owns this object. Only bounded scratch capacity survives a call;
+/// input owners and complete metric results are never cached here.
+#[pyclass(frozen)]
+struct HdrMetricsWorkspace {
+    state: std::sync::Mutex<metrics::HdrWorkspace>,
+    max_bytes: usize,
+}
+
+#[pymethods]
+impl HdrMetricsWorkspace {
+    #[new]
+    #[pyo3(signature = (max_bytes=268435456))]
+    fn new(max_bytes: usize) -> PyResult<Self> {
+        if max_bytes > 536870912 {
+            return Err(PyValueError::new_err("workspace retention limit exceeds 512 MiB"));
+        }
+        Ok(Self { state: std::sync::Mutex::new(metrics::HdrWorkspace::default()), max_bytes })
+    }
+
+    fn retained_bytes(&self) -> PyResult<usize> {
+        Ok(self.state.lock().map_err(|_| PyRuntimeError::new_err("workspace poisoned"))?.retained_bytes())
+    }
+
+    fn measure<'py>(
+        &self, py: Python<'py>, expanded: Bound<'py, PyArrayDyn<half::f16>>,
+        intended: Bound<'py, PyArrayDyn<half::f16>>, luma_weights: [f32; 3],
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let len = sensor_view_shape(&expanded, "expanded")?;
+        sensor_view_shape(&intended, "intended")?;
+        let (sa, se) = (expanded.shape(), intended.shape());
+        if sa.len() != 3 || se.len() != 3 || sa[2] < 3 || se[2] < 3
+            || sa[..2] != se[..2] {
+            return Err(PyValueError::new_err("renditions must be matching (H, W, >=3) half arrays"));
+        }
+        if len == 0 {
+            self.state.lock().map_err(|_| PyRuntimeError::new_err("workspace poisoned"))?.reset(self.max_bytes);
+            return hdr_metrics_dict(py, metrics::HdrRoundtrip::invalid());
+        }
+        let aro = expanded.readonly();
+        let ero = intended.readonly();
+        let ad = aro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+        let ed = ero.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+        let result = py.detach(|| {
+            let mut state = self.state.lock().map_err(|_| "workspace poisoned".to_string())?;
+            metrics::hdr_roundtrip_workspace(ad, ed, sa[0], sa[1], &luma_weights, &mut state, self.max_bytes)
+        }).map_err(PyValueError::new_err)?;
+        hdr_metrics_dict(py, result)
+    }
 }
 
 /// gainmap._base_roundtrip_error on (h, w, 3) uint8 renditions.
@@ -1138,6 +1234,57 @@ fn base_roundtrip_metrics<'py>(
     d.set_item("base_max_code_error", r.max_code_error)?;
     d.set_item("base_channel_bias_code_error", r.channel_bias_code_error)?;
     d.set_item("base_block_p99_code_error", r.block_p99_code_error)?;
+    Ok(d)
+}
+
+#[pyfunction]
+#[pyo3(signature = (decoded, intended, sum_buffer_size=None))]
+fn base_and_coding_metrics_u8<'py>(
+    py: Python<'py>, decoded: Bound<'py, PyArrayDyn<u8>>, intended: Bound<'py, PyArrayDyn<u8>>,
+    sum_buffer_size: Option<usize>,
+) -> PyResult<Bound<'py, PyDict>> {
+    // Match the calling thread's NumPy reduction buffer, including the unusual
+    // spatial-Fortran oracle below. Never mutate NumPy's ambient configuration.
+    let ambient: usize = py.import("numpy")?.getattr("getbufsize")?.call0()?.extract()?;
+    let sum_buffer_size = sum_buffer_size.unwrap_or(ambient);
+    if sum_buffer_size == 0 || sum_buffer_size != ambient {
+        return Err(PyValueError::new_err("sum buffer must match numpy.getbufsize()"));
+    }
+    let len = sensor_view_shape(&decoded, "decoded")?;
+    sensor_view_shape(&intended, "intended")?;
+    let (sa, se) = (decoded.shape(), intended.shape());
+    if len == 0 || sa.len() != 3 || se.len() != 3 || sa[2] < 3 || se[2] < 3 || sa[..2] != se[..2] {
+        return Err(PyValueError::new_err("renditions must be nonempty matching (H, W, >=3) uint8 arrays"));
+    }
+    let aro = decoded.readonly();
+    let ero = intended.readonly();
+    let ad = aro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+    let ed = ero.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+    let result = py.detach(|| coding::base_and_coding(ad, ed, sum_buffer_size));
+    let d = PyDict::new(py);
+    d.set_item("base_mean_code_error", result.base.mean_code_error)?;
+    d.set_item("base_p99_code_error", result.base.p99_code_error)?;
+    d.set_item("base_max_code_error", result.base.max_code_error)?;
+    d.set_item("base_channel_bias_code_error", result.base.channel_bias_code_error)?;
+    d.set_item("base_block_p99_code_error", result.base.block_p99_code_error)?;
+    d.set_item("coding_luma_rmse", result.luma_rmse)?;
+    d.set_item("coding_chroma_rmse", result.chroma_rmse)?;
+    d.set_item("coding_local_luma_p99", result.local_luma_p99)?;
+    if decoded.strides()[0].unsigned_abs() < decoded.strides()[1].unsigned_abs()
+        || intended.strides()[0].unsigned_abs() < intended.strides()[1].unsigned_abs() {
+        // NumPy preserves spatial Fortran order in its intermediate dy. That
+        // changes its local mean summation order, despite identical pixels.
+        // Keep that uncommon public-input contract with the bounded oracle;
+        // ordinary RGB and strided RGB-of-RGBA use the shared native scan above.
+        let all = pyo3::types::PySlice::new(py, 0, isize::MAX, 1);
+        let rgb = pyo3::types::PySlice::new(py, 0, 3, 1);
+        let a = decoded.get_item((&all, &all, &rgb))?;
+        let e = intended.get_item((&all, &all, &rgb))?;
+        let old = py.import("dngscan.auto_encode")?.getattr("coding_metrics")?.call1((a, e))?;
+        for name in ["coding_luma_rmse", "coding_chroma_rmse", "coding_local_luma_p99"] {
+            d.set_item(name, old.get_item(name)?)?;
+        }
+    }
     Ok(d)
 }
 
@@ -1854,6 +2001,9 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sensor_rgb_clip_counts_u16, m)?)?;
     m.add_function(wrap_pyfunction!(sensor_ceiling_counts_u16, m)?)?;
     m.add_function(wrap_pyfunction!(sensor_channel_clip_counts_u16, m)?)?;
+    m.add_function(wrap_pyfunction!(atrous_smooth_f32, m)?)?;
+    m.add_class::<HdrMetricsWorkspace>()?;
+    m.add_function(wrap_pyfunction!(base_and_coding_metrics_u8, m)?)?;
     m.add_function(wrap_pyfunction!(feather_masks_f16, m)?)?;
     m.add_function(wrap_pyfunction!(crop_loss_footprint, m)?)?;
     m.add_function(wrap_pyfunction!(merge_processing_loss_f16_inplace, m)?)?;

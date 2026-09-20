@@ -457,6 +457,33 @@ def scene_rec2020_to_xyz_render(scene_rec2020: Any, scene_scale: float) -> Any:
     return xyz.astype(scene.dtype, copy=False)
 
 
+def _scene_rec2020_to_y_render(scene_rec2020: Any, scene_scale: float) -> Any:
+    """Keep precisely the stored XYZ Y channel, using bounded conversion scratch.
+
+    The existing matrix helper still owns accumulation and f32 rounding. Half
+    scenes round Y to half before analysis; legacy integer scenes retain their
+    normalization, clipping and truncation. No luminance approximation is used.
+    """
+    scene = np.asarray(scene_rec2020)
+    flat = scene.reshape(-1, 3)
+    dtype = np.uint16 if np.issubdtype(scene.dtype, np.integer) else scene.dtype
+    out = np.empty(flat.shape[0], dtype=dtype)
+    for start in range(0, flat.shape[0], 1_000_000):
+        end = min(start + 1_000_000, flat.shape[0])
+        out[start:end] = scene_rec2020_to_xyz_render(
+            flat[start:end].reshape(1, -1, 3), scene_scale
+        )[0, :, 1]
+    return out.reshape(scene.shape[:2])
+
+
+def _stored_scene_green_median(scene_rgb: Any, scale: float) -> float:
+    # Convert/divide each green value before selection, exactly as the old full
+    # RGB float conversion did. Dividing after the median changes rounding.
+    green = np.asarray(scene_rgb)[:, :, 1].astype(np.float32) / float(scale)
+    green = green[np.isfinite(green) & (green > 1e-4)]
+    return float(np.median(green)) if green.size else float("nan")
+
+
 def normalized_camera_wb(wb_values: list[float] | None) -> Any:
     """Return finite RGB camera gains with green fixed to one.
 
@@ -794,7 +821,9 @@ def wb_window_transport_matrix_rec2020(bundle: RawBundle) -> Any | None:
         return None
 
 
-def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
+def rebalance_raw_bundle(
+    bundle: RawBundle, wb_mode: str, *, _analysis_luminance_only: bool = False,
+) -> RawBundle:
     """Derive one user balance without re-reading or re-demosaicing the RAW.
 
     The input is expected to be the immutable camera/as-shot DecodeContext.  Missing
@@ -857,7 +886,8 @@ def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
         )
 
     scene = apply_hot_wb_rec2020(bundle.scene_rec2020_render, transform)
-    xyz = scene_rec2020_to_xyz_render(scene, bundle.scene_scale)
+    xyz = None if _analysis_luminance_only else scene_rec2020_to_xyz_render(scene, bundle.scene_scale)
+    analysis_y = _scene_rec2020_to_y_render(scene, bundle.scene_scale) if _analysis_luminance_only else None
     # R2 item 20: the stored full-resolution tone-plan sample is scene pixels
     # in the same storage domain, so the SAME hot-WB transform applies — a
     # replace() copy alone would compile balanced previews from the as-shot
@@ -876,6 +906,7 @@ def rebalance_raw_bundle(bundle: RawBundle, wb_mode: str) -> RawBundle:
         bundle,
         scene_rec2020_render=scene,
         xyz_render=xyz,
+        _analysis_y_render=analysis_y,
         render_scale=bundle.scene_scale,
         wb_mode=wb_mode,
         applied_wb=[float(value) for value in target_wb],
@@ -1477,7 +1508,7 @@ def release_analysis_buffers(bundle: RawBundle) -> RawBundle:
     """
     from dataclasses import replace
 
-    return replace(bundle, xyz_render=None)
+    return replace(bundle, xyz_render=None, _analysis_y_render=None)
 
 
 def refresh_clip_masks_from_fullwell(
@@ -1590,6 +1621,20 @@ def _unsupported_format_guidance(path: Path, shot: Any, exc: Exception) -> str:
     return "\n".join(lines)
 
 
+def _metadata_load_scope(loader):
+    from functools import wraps
+
+    @wraps(loader)
+    def scoped(path, *args, **kwargs):
+        from .source_metadata import source_metadata_session
+        with source_metadata_session(path) as session:
+            kwargs["_source_session"] = session
+            return loader(path, *args, **kwargs)
+    return scoped
+
+
+@_metadata_load_scope
+
 def load_raw(
     path: Path,
     scene_highlight_mode: str = "clip",
@@ -1601,6 +1646,9 @@ def load_raw(
     coreimage_scale: str = COREIMAGE_SCALE_DEFAULT_MODE,
     *,
     _defer_clip_masks: bool = False,
+    _analysis_luminance_only: bool = False,
+    _source_session: Any = None,
+    _fallback_evidence: Any = None,
 ) -> RawBundle:
     if not path.exists():
         raise FileNotFoundError(f"Input file does not exist: {path}")
@@ -1634,6 +1682,7 @@ def load_raw(
     scene_geometry_corr: float | None = None
     scene_rec2020_render: Any | None = None
     xyz_render: Any | None = None
+    analysis_y_render: Any | None = None
     scene_scale = 1.0
     render_scale = 1.0
     clip_masks: Any | None = None
@@ -1655,8 +1704,17 @@ def load_raw(
     # Evidence is acquired before scene decoding through a decoder-independent API.
     # This call is intentionally identical for LibRaw and Apple RAW: scene selection
     # cannot change the source, values, provenance, or failure domain of analysis data.
+    evidence_identity = None
     try:
-        evidence = acquire_raw_evidence(path)
+        before_identity = (_source_session.identity
+                           if _source_session.is_current(path) else None)
+        if (_fallback_evidence is not None and before_identity is not None
+                and _fallback_evidence[0] == before_identity):
+            evidence = _fallback_evidence[1]
+        else:
+            evidence = acquire_raw_evidence(path)
+        if before_identity is not None and _source_session.is_current(path):
+            evidence_identity = before_identity
         evidence_stage1_note = (
             "Linear DNG：颜色平面剪切可测；不声明 CFA 独立噪声或电子域校准"
             if evidence.sample_kind == "linear-camera-rgb" else None)
@@ -1758,7 +1816,10 @@ def load_raw(
             65535.0, effective_highlight_mode, applied_wb,
             baseline_exposure=shot.baseline_exposure,
         )
-        xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
+        if _analysis_luminance_only:
+            analysis_y_render = _scene_rec2020_to_y_render(scene_rec2020_render, scene_scale)
+        else:
+            xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
         render_scale = scene_scale
         # CLI/GUI immediately analyze (or replay a validated cached Analysis).
         # They can build the final mask once at that boundary, while public
@@ -1827,12 +1888,19 @@ def load_raw(
                 scene_half_size=scene_half_size, demosaic=demosaic,
                 wb_mode=requested_wb_mode, decoder="libraw",
                 _defer_clip_masks=_defer_clip_masks,
+                _analysis_luminance_only=_analysis_luminance_only,
+                _fallback_evidence=((evidence_identity, evidence)
+                                    if evidence_identity is not None and _source_session.is_current(path)
+                                    else None),
             )
             return replace(fallback, scene_decoder_fallback=f"Apple RAW auto → LibRaw: {exc}")
         failures = info.get("fallback_errors") or []
         scene_decoder_fallback = "; ".join(failures) if failures else None
         reliability_source = "decoded-image-estimate"
         scene_rec2020_render, scene_scale = coreimage_decode.scene_float_to_half(ci_float)
+        # The half handoff owns its pixels; release the decoder raster before
+        # the independent reference and analysis allocations begin.
+        del ci_float
         ci_authored_baseline = info.get("baseline_exposure_authored")
         if ci_authored_baseline is not None:
             try:
@@ -1902,12 +1970,8 @@ def load_raw(
                     65535.0, effective_highlight_mode, camera_wb,
                     baseline_exposure=effective_baseline_exposure,
                 )
-                reference_level = scene_green_median(
-                    np.asarray(reference_scene, dtype=np.float32) / reference_scale
-                )
-                coreimage_level = scene_green_median(
-                    np.asarray(scene_rec2020_render, dtype=np.float32) / float(scene_scale)
-                )
+                reference_level = _stored_scene_green_median(reference_scene, reference_scale)
+                coreimage_level = _stored_scene_green_median(scene_rec2020_render, scene_scale)
                 raw_factor = reference_level / coreimage_level
                 if not np.isfinite(raw_factor) or not (COREIMAGE_ALIGN_MIN <= raw_factor <= COREIMAGE_ALIGN_MAX):
                     raise ValueError(f"implausible decoded-green alignment factor {raw_factor!r}")
@@ -1938,7 +2002,10 @@ def load_raw(
             scene_reference_error = evidence_error
             if coreimage_uses_file_alignment(coreimage_scale):
                 scene_align_error = "LibRaw evidence unavailable; using Apple-native scale"
-        xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
+        if _analysis_luminance_only:
+            analysis_y_render = _scene_rec2020_to_y_render(scene_rec2020_render, scene_scale)
+        else:
+            xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
         render_scale = scene_scale
         scene_decoder = "coreimage"
         scene_decoder_version = str(info.get("version") or coreimage_version)
@@ -1957,7 +2024,7 @@ def load_raw(
         evidence_shape = None
         scene_geometry_crop = None
 
-    if scene_rec2020_render is None or xyz_render is None:
+    if scene_rec2020_render is None or (xyz_render is None and analysis_y_render is None):
         raise RuntimeError("scene decoder did not produce a render buffer")
 
     base_bundle = RawBundle(
@@ -1965,6 +2032,7 @@ def load_raw(
         raw_image=raw_image,
         raw_colors=raw_colors,
         xyz_render=xyz_render,
+        _analysis_y_render=analysis_y_render,
         render_scale=render_scale,
         scene_rec2020_render=scene_rec2020_render,
         scene_scale=scene_scale,
@@ -2031,7 +2099,9 @@ def load_raw(
     )
     if effective_wb_mode == "camera":
         return base_bundle
-    balanced = rebalance_raw_bundle(base_bundle, effective_wb_mode)
+    balanced = rebalance_raw_bundle(
+        base_bundle, effective_wb_mode, _analysis_luminance_only=_analysis_luminance_only
+    )
     if wb_degradation and not balanced.wb_degradation:
         balanced.wb_degradation = wb_degradation
     return balanced

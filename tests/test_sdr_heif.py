@@ -134,7 +134,7 @@ class SdrHeifFinalReadbackTests(unittest.TestCase):
             candidate.write_bytes(candidate.read_bytes() + b"|metadata")
             return True
 
-        def read(candidate, gamut):
+        def read(candidate, gamut, **kwargs):
             after_metadata = candidate.read_bytes().endswith(b"|metadata")
             reads.append(after_metadata)
             # Neither candidate validation nor final validation may commit early.

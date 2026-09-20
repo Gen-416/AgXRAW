@@ -289,8 +289,8 @@ def reliable_scene_ev_selection(
                 < np.float32(0.10)
             )
     elif getattr(bundle, "clip_masks", None) is not None:
-        masks = retreat_engine.clip_masks_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
-        reliable &= np.max(masks.reshape(-1, 3)[indices], axis=1) < np.float32(0.10)
+        masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
+        reliable &= np.max(masks[indices], axis=1) < np.float32(0.10)
 
     if getattr(bundle, "scene_decoder", "libraw") == "coreimage":
         # A percentage has no location: loss in the reference's dark border

@@ -185,6 +185,15 @@ def _bin_period_min(arr: Any, ph: int, pw: int) -> Any:
     h2 = max(1, h // ph)
     w2 = max(1, w // pw)
     cropped = arr[: h2 * ph, : w2 * pw]
+    if h >= ph and w >= pw:
+        # A whole-array reduction over two interleaved axes is expensive.
+        # Visit cells in the same row-major order with contiguous RGB vectors.
+        result = cropped[::ph, ::pw].copy()
+        for dy in range(ph):
+            for dx in range(pw):
+                if dy or dx:
+                    np.minimum(result, cropped[dy::ph, dx::pw], out=result)
+        return result
     return cropped.reshape(h2, ph, w2, pw, arr.shape[2]).min(axis=(1, 3))
 
 
@@ -210,10 +219,13 @@ def _cfa_bin_period(bundle: RawBundle) -> tuple[int, int]:
 
 def _align_cfa_rgb_map(bundle: RawBundle, values: Any, target_shape: tuple[int, int]) -> Any:
     """Reduce raw-CFA RGB evidence to scene geometry without changing its values."""
-    from . import raw_io
-
     ph, pw = _cfa_bin_period(bundle)
     binned = _bin_period_min(np.asarray(values, dtype=np.float32), ph, pw)
+    return _align_binned_cfa_rgb_map(bundle, binned, target_shape)
+
+
+def _align_binned_cfa_rgb_map(bundle: RawBundle, binned: Any, target_shape: tuple[int, int]) -> Any:
+    from . import raw_io
     from .dng_opcodes import align_loss
     # Capacity/confidence takes the minimum over the same camera-plane
     # footprint used to form the corrected scene. Work in complementary loss.
@@ -224,10 +236,77 @@ def _align_cfa_rgb_map(bundle: RawBundle, values: Any, target_shape: tuple[int, 
     return raw_io._resize_mask_to_shape(oriented, target_shape).astype(np.float32, copy=False)
 
 
+def _binned_raw_evidence(bundle: RawBundle, analysis: Analysis | None, *, snr: bool) -> Any | None:
+    """Build only CFA-binned evidence, with bounded transient sensor rows.
+
+    The scalar black-level path keeps each NumPy ufunc and its dtype unchanged.
+    Spatial black fields and unusual raw representations retain the oracle.
+    """
+    from . import raw_io
+    raw, colors = bundle.raw_image, bundle.raw_colors
+    ph, pw = _cfa_bin_period(bundle)
+    if (type(raw) is not np.ndarray or raw.ndim != 2 or raw.dtype != np.uint16
+            or type(colors) is not np.ndarray or colors.shape != raw.shape
+            or colors.dtype != np.uint8 or min(raw.shape) == 0
+            or raw.shape[0] < ph or raw.shape[1] < pw
+            or getattr(getattr(bundle, "evidence", None), "spatial_black", None) is not None):
+        return None
+    h, w = raw.shape
+    bh, bw = h // ph, w // pw
+    result = np.empty((bh, bw, 3), np.float32)
+    resolved = dict(getattr(analysis, "channel_fullwell", None) or {})
+    specs = []
+    for cid in np.unique(colors):
+        cid_i = int(cid)
+        label = raw_io.channel_label(bundle.color_desc, cid_i)
+        out_idx = 0 if label.startswith("R") else 1 if label.startswith("G") else 2 if label.startswith("B") else None
+        if out_idx is None:
+            continue
+        black = raw_io.channel_black_level(bundle.black_levels, cid_i)
+        if snr:
+            spec = np.float32(black)
+        else:
+            fullwell = float(resolved.get(cid_i) or raw_io.channel_fullwell(
+                bundle.white_level, bundle.camera_white_levels, cid_i))
+            spec = (np.float32(fullwell), np.maximum(fullwell - black, 1.0))
+        specs.append((cid_i, out_idx, spec))
+    if snr:
+        gain = np.float32(float(analysis.gain_e_per_dn))
+        read_noise = float(analysis.prior_read_noise_e)
+        rn2 = np.float32(read_noise * read_noise)
+    rows_per_band = max(1, 128 // ph)
+    for start in range(0, bh, rows_per_band):
+        end = min(start + rows_per_band, bh)
+        values = np.asarray(raw[start * ph:end * ph, :bw * pw], dtype=np.float32)
+        labels = colors[start * ph:end * ph, :bw * pw]
+        evidence = np.ones(values.shape + (3,), dtype=np.float32)
+        for cid, out_idx, spec in specs:
+            if snr:
+                electrons = np.maximum(values - spec, 0.0) * gain
+                signal_snr = electrons / np.sqrt(np.maximum(electrons + rn2, np.float32(EPS)))
+                channel = smoothstep(np.float32(1.0), np.float32(10.0), signal_snr)
+            else:
+                white, denominator = spec
+                channel = np.clip((white - values) / denominator, 0.0, 1.0)
+            plane = np.where(labels == cid, channel, np.float32(1.0))
+            evidence[..., out_idx] = np.minimum(evidence[..., out_idx], plane)
+        result[start:end] = _bin_period_min(evidence, ph, pw)
+    return result
+
+
 def _raw_headroom_rgb(
     bundle: RawBundle,
     target_shape: tuple[int, int],
     analysis: Analysis | None = None,
+) -> Any:
+    binned = _binned_raw_evidence(bundle, analysis, snr=False)
+    if binned is not None:
+        return _align_binned_cfa_rgb_map(bundle, binned, target_shape)
+    return _raw_headroom_rgb_reference(bundle, target_shape, analysis)
+
+
+def _raw_headroom_rgb_reference(
+    bundle: RawBundle, target_shape: tuple[int, int], analysis: Analysis | None = None,
 ) -> Any:
     """Actual pre-WB remaining well capacity for R/G/B CFA samples.
 
@@ -306,6 +385,16 @@ def _has_sensor_snr_prior(analysis: Analysis | None) -> bool:
 
 
 def _raw_snr_confidence(bundle: RawBundle, analysis: Analysis | None, target_shape: tuple[int, int]) -> Any | None:
+    if not _has_sensor_snr_prior(analysis):
+        return None
+    binned = _binned_raw_evidence(bundle, analysis, snr=True)
+    if binned is not None:
+        confidence = _align_binned_cfa_rgb_map(bundle, binned, target_shape)
+        return np.min(confidence, axis=2).astype(np.float32, copy=False)
+    return _raw_snr_confidence_reference(bundle, analysis, target_shape)
+
+
+def _raw_snr_confidence_reference(bundle: RawBundle, analysis: Analysis | None, target_shape: tuple[int, int]) -> Any | None:
     """Conservative per-cell colour SNR confidence from RAW DN plus sensor priors."""
     if not _has_sensor_snr_prior(analysis):
         # Keep the established scene-EV fallback for cameras without calibrated electron
