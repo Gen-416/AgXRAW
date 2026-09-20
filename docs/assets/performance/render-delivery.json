@@ -1,0 +1,1901 @@
+{
+  "base_commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+  "measurement_date": "2026-09-20",
+  "code_stages": {
+    "buffers": "Initial stage: bounded half packing/headroom/readback/HEIF planes implemented; before metrics fusion and production quantize slicing. Fixed-array buffer ablation, not complete render timing.",
+    "optional": "Final row-wise B3 implementation and bounded CFA guidance, ABI18; excludes the superseded slower initial B3 implementation. Before delivery metric workspace integration. Handles/gated/deep-fusion probes remain independent experiments.",
+    "metrics": "Final numerical metric kernels, ABI18 release: fused base+coding and multi-rank HDR workspace. Standalone direct calls measured before production dispatcher wiring and last alignment/ambient-buffer validation additions; ordinary aligned input and matching NumPy buffer used. Not an end-to-end codec time.",
+    "quantize": "Existing ABI18 output kernel measured before enabling production slice routing. Complete A then B noise and output identity pinned; neither process changes a production dispatcher.",
+    "final_validation": "Final production routes, alignment adapters, RGBA gate, explicit group-noise release, PreparedSceneSample and GUI/IO changes require the separate full-pipeline completion record. The timings here must not be called final complete-pipeline benchmarks.",
+    "prepared_master": "Added after these standalone measurements: one immutable base/HDR snapshot, banded finite/peak checks, CI owner/context reuse, separate auto scheduler/manual candidate with nonrecursive auxiliary retry. These microbenchmarks do not measure its extra HDR snapshot or final codec search; use the final complete-pipeline validation record."
+  },
+  "notes": [
+    "Three repetitions per comparison; see source records for cold calls and environment.",
+    "Full input/output identities retained. Verbose optional cProfile tables and quantize process sample traces omitted; original source SHA256 retained.",
+    "Buffer/metrics RSS is process high-water MiB; quantize external RSS is sampled bytes and may miss transient peaks.",
+    "HDR workspace retention is capacity between candidates, not an upper bound on active-call memory."
+  ],
+  "buffers": [
+    {
+      "source_file": "remaining-buffer-pack-optimized-0.json",
+      "source_sha256": "dcfc0dcd64072a8d9f65f6401e708c70e7a3687def2f554c47035d5d88262529",
+      "result": {
+        "operation": "pack",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "headroom_s": 0.26721670900587924,
+          "packing_s": 0.08094212500145659
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "27df3ae12c9248e700af5b94416d8663d8b11c54f7537a7911ae52d729ffe692"
+          },
+          "headroom": 3.3218789758061127
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 533.796875,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-pack-optimized-1.json",
+      "source_sha256": "9efdbcbc48984c75555da17aa8e5816aec53719f73bad78ecba01808cca5602d",
+      "result": {
+        "operation": "pack",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "headroom_s": 0.2692011249891948,
+          "packing_s": 0.07928499998524785
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "27df3ae12c9248e700af5b94416d8663d8b11c54f7537a7911ae52d729ffe692"
+          },
+          "headroom": 3.3218789758061127
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 533.484375,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-pack-optimized-2.json",
+      "source_sha256": "52a5c694ddd7558257de47a584f5ad5d64cdc526f44385d8047b1c7ef418be81",
+      "result": {
+        "operation": "pack",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "headroom_s": 0.2699195000168402,
+          "packing_s": 0.079928542021662
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "27df3ae12c9248e700af5b94416d8663d8b11c54f7537a7911ae52d729ffe692"
+          },
+          "headroom": 3.3218789758061127
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 533.796875,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-pack-reference-0.json",
+      "source_sha256": "117f77bc1a59b84b939f02729ef5a2f7dcd69f2950623e625e908369c16202bb",
+      "result": {
+        "operation": "pack",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "headroom_s": 0.31226449998212047,
+          "packing_s": 0.14269704101025127
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "27df3ae12c9248e700af5b94416d8663d8b11c54f7537a7911ae52d729ffe692"
+          },
+          "headroom": 3.3218789758061127
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 1108.65625
+      }
+    },
+    {
+      "source_file": "remaining-buffer-pack-reference-1.json",
+      "source_sha256": "4a847bac92b4983afe6aff54f3cb7964697791505f263309b1aad20a9a922910",
+      "result": {
+        "operation": "pack",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "headroom_s": 0.30645583401201293,
+          "packing_s": 0.12994887499371544
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "27df3ae12c9248e700af5b94416d8663d8b11c54f7537a7911ae52d729ffe692"
+          },
+          "headroom": 3.3218789758061127
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 1108.703125
+      }
+    },
+    {
+      "source_file": "remaining-buffer-pack-reference-2.json",
+      "source_sha256": "f857b22e8ef99747f8284f632eca25d132bedc44a8a97c42f06edf20f2119782",
+      "result": {
+        "operation": "pack",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "headroom_s": 0.30952795801567845,
+          "packing_s": 0.13261979198432527
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "27df3ae12c9248e700af5b94416d8663d8b11c54f7537a7911ae52d729ffe692"
+          },
+          "headroom": 3.3218789758061127
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 1108.828125
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane10-optimized-0.json",
+      "source_sha256": "1154269b183d025a356317127f48c41e6f6eadc7599835a9e9e5d15d9c5fbd46",
+      "result": {
+        "operation": "plane10",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "quantization_s": 0.06223841599421576
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint16",
+            "sha256": "55a0327bb38810d41c3da81e814dccefa89dbbc076dbddbe36d42696bb4a1371"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 269.75,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane10-optimized-1.json",
+      "source_sha256": "096871dc5ae31fcb655f51b8d2708aa437e64e02eca82fa5536523efe309e0f1",
+      "result": {
+        "operation": "plane10",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "quantization_s": 0.06366895901737735
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint16",
+            "sha256": "55a0327bb38810d41c3da81e814dccefa89dbbc076dbddbe36d42696bb4a1371"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 269.734375,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane10-optimized-2.json",
+      "source_sha256": "e1e642fe37ae2fecd78146af27a44ecb0a7d5925ba3db99b4f2f1c2efa906380",
+      "result": {
+        "operation": "plane10",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "quantization_s": 0.06239904201356694
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint16",
+            "sha256": "55a0327bb38810d41c3da81e814dccefa89dbbc076dbddbe36d42696bb4a1371"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 269.75,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane10-reference-0.json",
+      "source_sha256": "b583f904d92cc3ada81cf6274566e34141761abf452711766467ca32a5276441",
+      "result": {
+        "operation": "plane10",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "quantization_s": 0.07685779198072851
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint16",
+            "sha256": "55a0327bb38810d41c3da81e814dccefa89dbbc076dbddbe36d42696bb4a1371"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 291.734375
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane10-reference-1.json",
+      "source_sha256": "8da5a86b4c795412597f92e7ad576dcff589222904e46bc4baeba89d2264327b",
+      "result": {
+        "operation": "plane10",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "quantization_s": 0.07710308299283497
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint16",
+            "sha256": "55a0327bb38810d41c3da81e814dccefa89dbbc076dbddbe36d42696bb4a1371"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 291.734375
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane10-reference-2.json",
+      "source_sha256": "a1b9cdee024e6b1973ce91d829b754c85e92c5eaf0982261399c1233789533f5",
+      "result": {
+        "operation": "plane10",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "quantization_s": 0.07736970798578113
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint16",
+            "sha256": "55a0327bb38810d41c3da81e814dccefa89dbbc076dbddbe36d42696bb4a1371"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 291.703125
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane8-optimized-0.json",
+      "source_sha256": "fcb93abf3b437a9f93c4de7ca6f79908632f297ec7e2540d239f9db5802d6fe5",
+      "result": {
+        "operation": "plane8",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "quantization_s": 0.00491225000587292
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "2598a8f387e775b90ff1a305f3346c9a58655855f4261acd225708c75ad6fd95"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 189.9375,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane8-optimized-1.json",
+      "source_sha256": "79519abdc87d37eddd829d994c7b4ad86974b8ebd537c70d17795d6e8415dabb",
+      "result": {
+        "operation": "plane8",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "quantization_s": 0.0047235829988494515
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "2598a8f387e775b90ff1a305f3346c9a58655855f4261acd225708c75ad6fd95"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 189.78125,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane8-optimized-2.json",
+      "source_sha256": "49d8e171f348a927fa417e0439976a532e8324a6a7e384cdefccbdddc1a4b47a",
+      "result": {
+        "operation": "plane8",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "quantization_s": 0.004645249980967492
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "2598a8f387e775b90ff1a305f3346c9a58655855f4261acd225708c75ad6fd95"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 189.796875,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane8-reference-0.json",
+      "source_sha256": "374c0ae5f79f6c059c28cba15a4d6699a902f750d115f961adc7e6dacb309b51",
+      "result": {
+        "operation": "plane8",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "quantization_s": 0.07373033300973475
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "2598a8f387e775b90ff1a305f3346c9a58655855f4261acd225708c75ad6fd95"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 222.953125
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane8-reference-1.json",
+      "source_sha256": "e3dce551d2f895ecc97aad257728eae99c061afba5afe12c98cd64aa11a0d47a",
+      "result": {
+        "operation": "plane8",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "quantization_s": 0.07268104099784978
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "2598a8f387e775b90ff1a305f3346c9a58655855f4261acd225708c75ad6fd95"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 223.078125
+      }
+    },
+    {
+      "source_file": "remaining-buffer-plane8-reference-2.json",
+      "source_sha256": "e2e551e6d755be9276177122ac4b1a367f6f970eafa27ad1619d874782b0bdc5",
+      "result": {
+        "operation": "plane8",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "quantization_s": 0.07313791700289585
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "2598a8f387e775b90ff1a305f3346c9a58655855f4261acd225708c75ad6fd95"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 222.984375
+      }
+    },
+    {
+      "source_file": "remaining-buffer-readback-optimized-0.json",
+      "source_sha256": "57290ad33bfd1233b7eba906208a231efc0020773456a360d90d6c8fa7e3e0ee",
+      "result": {
+        "operation": "readback",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "ownership_s": 7.624999852851033e-06
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "a60f2f168d39bdba26e3c5442b7fa69e4b3ce073dbf96c2037a661e63d0a81c3"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 235.125,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-readback-optimized-1.json",
+      "source_sha256": "e1648845f0c3dda3893e03bda0e6c131c700a6311b3e5f75936ab0f767d5d1b8",
+      "result": {
+        "operation": "readback",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "ownership_s": 8.08399636298418e-06
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "a60f2f168d39bdba26e3c5442b7fa69e4b3ce073dbf96c2037a661e63d0a81c3"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 235.234375,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-readback-optimized-2.json",
+      "source_sha256": "5f14e1ada4f7b8a10910cb4bf0680da1721102e4bf5503d7b6eab0343b0a1a94",
+      "result": {
+        "operation": "readback",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": false,
+        "timings": {
+          "ownership_s": 8.666975190863013e-06
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "a60f2f168d39bdba26e3c5442b7fa69e4b3ce073dbf96c2037a661e63d0a81c3"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 235.203125,
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-buffer-readback-reference-0.json",
+      "source_sha256": "48783026eea92d6445046b09db013b803626dcbf5a98c6dea7c84807463d1a32",
+      "result": {
+        "operation": "readback",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "ownership_s": 0.012865209020674229
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "a60f2f168d39bdba26e3c5442b7fa69e4b3ce073dbf96c2037a661e63d0a81c3"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 418.296875
+      }
+    },
+    {
+      "source_file": "remaining-buffer-readback-reference-1.json",
+      "source_sha256": "ae31d20d83a2a3d71fd34843a27f3a20ae5a15d12e93f1daf62b0fbfaa5b9390",
+      "result": {
+        "operation": "readback",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "ownership_s": 0.012943583016749471
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "a60f2f168d39bdba26e3c5442b7fa69e4b3ce073dbf96c2037a661e63d0a81c3"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 418.328125
+      }
+    },
+    {
+      "source_file": "remaining-buffer-readback-reference-2.json",
+      "source_sha256": "97484e1630e218745ae92cdfa38681056e7dc111ac95d9a79690e95f97da72da",
+      "result": {
+        "operation": "readback",
+        "size": [
+          6000,
+          4000
+        ],
+        "reference": true,
+        "timings": {
+          "ownership_s": 0.012338874978013337
+        },
+        "identity": {
+          "array": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "a60f2f168d39bdba26e3c5442b7fa69e4b3ce073dbf96c2037a661e63d0a81c3"
+          }
+        },
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "peak_rss_mib": 418.28125
+      }
+    }
+  ],
+  "optional": [
+    {
+      "source_file": "remaining-optional-abi18-reference.json",
+      "source_sha256": "46d17a2cc9a573fbae741776b88570281efab6a108377c20dc0cd54cf171d172",
+      "result": {
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "native_abi": 18,
+        "pixels": 500000,
+        "nr_width": 1408,
+        "raw_width": 3000,
+        "repeats": 3,
+        "reference": true,
+        "seed": 41,
+        "measurements": {
+          "agx_1000_empty_calls": {
+            "wall_s": [
+              0.002788916986901313,
+              0.002782374998787418,
+              0.002715125010581687
+            ],
+            "median_s": 0.002782374998787418
+          },
+          "agx_one_chunk": {
+            "wall_s": [
+              0.09679245797451586,
+              0.09823250002227724,
+              0.09692729098605923
+            ],
+            "median_s": 0.09692729098605923
+          },
+          "hdr_1000_empty_calls": {
+            "wall_s": [
+              0.004760625015478581,
+              0.0045327499974519014,
+              0.004204041004413739
+            ],
+            "median_s": 0.0045327499974519014
+          },
+          "hdr_one_chunk": {
+            "wall_s": [
+              0.12566516699735075,
+              0.12513595802010968,
+              0.12553229197510518
+            ],
+            "median_s": 0.12553229197510518
+          },
+          "output_1000_empty_calls": {
+            "wall_s": [
+              0.001974042010260746,
+              0.0019669999892357737,
+              0.001960749999852851
+            ],
+            "median_s": 0.0019669999892357737
+          },
+          "output_one_chunk": {
+            "wall_s": [
+              0.1257945830002427,
+              0.12560383300296962,
+              0.12659929200890474
+            ],
+            "median_s": 0.1257945830002427
+          },
+          "intent_and_retreat_one_chunk": {
+            "wall_s": [
+              0.006734708993462846,
+              0.006008625001413748,
+              0.005815707991132513
+            ],
+            "median_s": 0.006008625001413748
+          },
+          "gated_reference": {
+            "wall_s": [
+              0.18708583401166834,
+              0.1847976249991916,
+              0.18563508399529383
+            ],
+            "median_s": 0.18563508399529383
+          },
+          "gated_experimental_native_branch": {
+            "wall_s": [
+              0.12151991701102816,
+              0.11914012502529658,
+              0.1202790420211386
+            ],
+            "median_s": 0.1202790420211386
+          },
+          "chroma_nr_factor_1.0000": {
+            "wall_s": [
+              0.14280395800597034,
+              0.14158316698740236,
+              0.14270616698195226
+            ],
+            "median_s": 0.14270616698195226,
+            "identity": {
+              "shape": [
+                938,
+                1408,
+                3
+              ],
+              "dtype": "float32",
+              "sha256": "d3bdcec8fae79efb70293f52365c7498c82d6360ba1c64fb63b48b972c4c2e90"
+            }
+          },
+          "chroma_nr_factor_4.2614": {
+            "wall_s": [
+              0.1489049159863498,
+              0.15063391599687748,
+              0.14818637500866316
+            ],
+            "median_s": 0.1489049159863498,
+            "identity": {
+              "shape": [
+                938,
+                1408,
+                3
+              ],
+              "dtype": "float32",
+              "sha256": "b1811aec9c10abab6bcd7409128f6b0bd7d45b2a8a1398fe956f6d97811c9f3d"
+            }
+          },
+          "raw_guidance_headroom": {
+            "wall_s": [
+              0.17404116701800376,
+              0.16360087500652298,
+              0.1613868749991525
+            ],
+            "median_s": 0.16360087500652298,
+            "identity": {
+              "shape": [
+                1000,
+                1500,
+                3
+              ],
+              "dtype": "float32",
+              "sha256": "e30dc79a0fd310797c83b6b6b01a4e9281daa7d895e5780b6e604a5736cc7de6"
+            }
+          },
+          "raw_guidance_snr": {
+            "wall_s": [
+              0.20615329101565294,
+              0.20246258299448527,
+              0.19980733300326392
+            ],
+            "median_s": 0.20246258299448527,
+            "identity": {
+              "shape": [
+                1000,
+                1500
+              ],
+              "dtype": "float32",
+              "sha256": "87d8b98905227d76fd493e26548592ac0189fb102e01a8b47684de9034b22db9"
+            }
+          }
+        },
+        "gated_parity": {
+          "changed_f32": 96166,
+          "max_abs_f32": 1.9073486328125e-06,
+          "changed_u8": 3,
+          "reference": {
+            "shape": [
+              500000,
+              3
+            ],
+            "dtype": "float32",
+            "sha256": "98156ae0377e3fd46d7ce982fa55be9a735adf5ff72d23f9307afbf2cbae297d"
+          },
+          "candidate": {
+            "shape": [
+              500000,
+              3
+            ],
+            "dtype": "float32",
+            "sha256": "84352af245a0c360dd5af6157994f0b95b0a37fd7e1ae4dc9e0c820536fc74ad"
+          }
+        }
+      }
+    },
+    {
+      "source_file": "remaining-optional-abi18-final.json",
+      "source_sha256": "32f2c4bc6fa05e94b11122d25c670a11da002fd7c4aa156f4c0e99984c3e7516",
+      "result": {
+        "python": "3.14.4",
+        "numpy": "2.5.2",
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "native_abi": 18,
+        "pixels": 500000,
+        "nr_width": 1408,
+        "raw_width": 3000,
+        "repeats": 3,
+        "reference": false,
+        "seed": 41,
+        "measurements": {
+          "agx_1000_empty_calls": {
+            "wall_s": [
+              0.0031604579999111593,
+              0.003008208004757762,
+              0.0029506249993573874
+            ],
+            "median_s": 0.003008208004757762
+          },
+          "agx_one_chunk": {
+            "wall_s": [
+              0.09710583300329745,
+              0.09487045797868632,
+              0.0946976670238655
+            ],
+            "median_s": 0.09487045797868632
+          },
+          "hdr_1000_empty_calls": {
+            "wall_s": [
+              0.004883957997662947,
+              0.004419000004418194,
+              0.004049707989906892
+            ],
+            "median_s": 0.004419000004418194
+          },
+          "hdr_one_chunk": {
+            "wall_s": [
+              0.12480770901311189,
+              0.1259457079868298,
+              0.12969866700586863
+            ],
+            "median_s": 0.1259457079868298
+          },
+          "output_1000_empty_calls": {
+            "wall_s": [
+              0.0021253750019241124,
+              0.002100332989357412,
+              0.002208749996498227
+            ],
+            "median_s": 0.0021253750019241124
+          },
+          "output_one_chunk": {
+            "wall_s": [
+              0.1262580420006998,
+              0.12574729201151058,
+              0.1256482919852715
+            ],
+            "median_s": 0.12574729201151058
+          },
+          "intent_and_retreat_one_chunk": {
+            "wall_s": [
+              0.006934250006452203,
+              0.005841165984747931,
+              0.005644334014505148
+            ],
+            "median_s": 0.005841165984747931
+          },
+          "gated_reference": {
+            "wall_s": [
+              0.181959542009281,
+              0.1795977920119185,
+              0.18117412499850616
+            ],
+            "median_s": 0.18117412499850616
+          },
+          "gated_experimental_native_branch": {
+            "wall_s": [
+              0.11702900001546368,
+              0.11718837500666268,
+              0.11609541601501405
+            ],
+            "median_s": 0.11702900001546368
+          },
+          "chroma_nr_factor_1.0000": {
+            "wall_s": [
+              0.12539649999234825,
+              0.12287399999331683,
+              0.12288566699135117
+            ],
+            "median_s": 0.12288566699135117,
+            "identity": {
+              "shape": [
+                938,
+                1408,
+                3
+              ],
+              "dtype": "float32",
+              "sha256": "d3bdcec8fae79efb70293f52365c7498c82d6360ba1c64fb63b48b972c4c2e90"
+            }
+          },
+          "chroma_nr_factor_4.2614": {
+            "wall_s": [
+              0.13419154100120068,
+              0.13487037501181476,
+              0.13446841700351797
+            ],
+            "median_s": 0.13446841700351797,
+            "identity": {
+              "shape": [
+                938,
+                1408,
+                3
+              ],
+              "dtype": "float32",
+              "sha256": "b1811aec9c10abab6bcd7409128f6b0bd7d45b2a8a1398fe956f6d97811c9f3d"
+            }
+          },
+          "raw_guidance_headroom": {
+            "wall_s": [
+              0.06757074999040924,
+              0.06909237499348819,
+              0.06971979199443012
+            ],
+            "median_s": 0.06909237499348819,
+            "identity": {
+              "shape": [
+                1000,
+                1500,
+                3
+              ],
+              "dtype": "float32",
+              "sha256": "e30dc79a0fd310797c83b6b6b01a4e9281daa7d895e5780b6e604a5736cc7de6"
+            }
+          },
+          "raw_guidance_snr": {
+            "wall_s": [
+              0.10102216701488942,
+              0.09953133299131878,
+              0.10181799999554642
+            ],
+            "median_s": 0.10102216701488942,
+            "identity": {
+              "shape": [
+                1000,
+                1500
+              ],
+              "dtype": "float32",
+              "sha256": "87d8b98905227d76fd493e26548592ac0189fb102e01a8b47684de9034b22db9"
+            }
+          }
+        },
+        "gated_parity": {
+          "changed_f32": 96166,
+          "max_abs_f32": 1.9073486328125e-06,
+          "changed_u8": 3,
+          "reference": {
+            "shape": [
+              500000,
+              3
+            ],
+            "dtype": "float32",
+            "sha256": "98156ae0377e3fd46d7ce982fa55be9a735adf5ff72d23f9307afbf2cbae297d"
+          },
+          "candidate": {
+            "shape": [
+              500000,
+              3
+            ],
+            "dtype": "float32",
+            "sha256": "84352af245a0c360dd5af6157994f0b95b0a37fd7e1ae4dc9e0c820536fc74ad"
+          }
+        },
+        "comparison": {
+          "exact": true
+        }
+      }
+    }
+  ],
+  "metrics": [
+    {
+      "source_file": "remaining-metrics-base-new.json",
+      "source_sha256": "9fa0ed8d259f1f0f679c06e54a8edf5b2d7c476ad7f0d8d459f3269c149eed53",
+      "result": {
+        "operation": "base",
+        "size": [
+          6000,
+          4000
+        ],
+        "workers": 8,
+        "reference": false,
+        "native_abi": 18,
+        "numpy": "2.5.2",
+        "python": "3.14.4",
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "cold_s": 0.09134400001494214,
+        "wall_s": [
+          0.09180008299881592,
+          0.09189949999563396,
+          0.09164912501000799
+        ],
+        "median_s": 0.09180008299881592,
+        "retained_bytes": 0,
+        "peak_rss_mib": 230.65625,
+        "identity": {
+          "actual": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "uint8",
+            "sha256": "64843484c3b74db12dd5e8f30d600bc57221702beeac5526073db1c86be89156"
+          },
+          "intended": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "aef43779f1f761281a6b50212980772ea6d6b9702d47aace314a9d9cff40415e"
+          },
+          "metrics": {
+            "base_mean_code_error": "0x1.111f3e89a88adp-2",
+            "base_p99_code_error": "0x1.c000000000000p+2",
+            "base_max_code_error": "0x1.c000000000000p+2",
+            "base_channel_bias_code_error": "0x1.16ebd4cfd08d5p-14",
+            "base_block_p99_code_error": "0x1.c000000000000p-2",
+            "coding_luma_rmse": "0x1.94f72456c8e2dp-1",
+            "coding_chroma_rmse": "0x1.33f99c29b46c5p+0",
+            "coding_local_luma_p99": "0x1.7cbc6a0000000p-2"
+          }
+        },
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-metrics-base-reference.json",
+      "source_sha256": "b948ba43e699c0214f0bd71d82f376233010730993536a42171ca75927575818",
+      "result": {
+        "operation": "base",
+        "size": [
+          6000,
+          4000
+        ],
+        "workers": 8,
+        "reference": true,
+        "native_abi": 18,
+        "numpy": "2.5.2",
+        "python": "3.14.4",
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "cold_s": 0.18830837498535402,
+        "wall_s": [
+          0.1835482089954894,
+          0.18390008399728686,
+          0.18446504100575112
+        ],
+        "median_s": 0.18390008399728686,
+        "retained_bytes": 0,
+        "peak_rss_mib": 318.703125,
+        "identity": {
+          "actual": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "uint8",
+            "sha256": "64843484c3b74db12dd5e8f30d600bc57221702beeac5526073db1c86be89156"
+          },
+          "intended": {
+            "shape": [
+              4000,
+              6000,
+              3
+            ],
+            "dtype": "uint8",
+            "sha256": "aef43779f1f761281a6b50212980772ea6d6b9702d47aace314a9d9cff40415e"
+          },
+          "metrics": {
+            "base_mean_code_error": "0x1.111f3e89a88adp-2",
+            "base_p99_code_error": "0x1.c000000000000p+2",
+            "base_max_code_error": "0x1.c000000000000p+2",
+            "base_channel_bias_code_error": "0x1.16ebd4cfd08d5p-14",
+            "base_block_p99_code_error": "0x1.c000000000000p-2",
+            "coding_luma_rmse": "0x1.94f72456c8e2dp-1",
+            "coding_chroma_rmse": "0x1.33f99c29b46c5p+0",
+            "coding_local_luma_p99": "0x1.7cbc6a0000000p-2"
+          }
+        },
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-metrics-hdr-new.json",
+      "source_sha256": "dd8b03c900213fc8be6da55989b0b2525a7fd44cae884f5a207c6815d719568f",
+      "result": {
+        "operation": "hdr",
+        "size": [
+          6000,
+          4000
+        ],
+        "workers": 8,
+        "reference": false,
+        "native_abi": 18,
+        "numpy": "2.5.2",
+        "python": "3.14.4",
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "cold_s": 0.23037245898740366,
+        "wall_s": [
+          0.22544183299760334,
+          0.2273177090100944,
+          0.22773637500358745
+        ],
+        "median_s": 0.2273177090100944,
+        "retained_bytes": 149053056,
+        "peak_rss_mib": 572.765625,
+        "identity": {
+          "actual": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "dcb8b5101a292c53330990f2bfa93e320d5312bcca361f33beb1c774fff07538"
+          },
+          "intended": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "99e9c130986c4d8cc37d0c978d50899fef1d83bbc4ea2cf3dce83c230062d9bf"
+          },
+          "metrics": {
+            "chroma_error": "0x1.1940000000000p-13",
+            "relative_error": "0x1.edfd6e0000000p-6",
+            "median_relative_error": "0x1.e811e20000000p-6",
+            "p95_relative_error": "0x1.ec9a8e0000000p-6",
+            "p99_relative_error": "0x1.edfd6e0000000p-6",
+            "p999_relative_error": "0x1.ef1ef20000000p-6",
+            "block_median_relative_error": "0x1.e804f40000000p-6",
+            "block_p95_relative_error": "0x1.e8b7ee0000000p-6",
+            "block_p99_relative_error": "0x1.e9017c0000000p-6",
+            "block_chroma_error": "0x1.4180000000000p-16",
+            "block_p95_luma_error": "0x1.e88aaa0000000p-6",
+            "highlight_max_luma_error": "0x1.e9710a0000000p-6"
+          }
+        },
+        "comparison": {
+          "exact": true
+        }
+      }
+    },
+    {
+      "source_file": "remaining-metrics-hdr-reference.json",
+      "source_sha256": "adc28bb6e7f4c56a73fa651e327a763e4de81524f381a91c8b17fce9e693042a",
+      "result": {
+        "operation": "hdr",
+        "size": [
+          6000,
+          4000
+        ],
+        "workers": 8,
+        "reference": true,
+        "native_abi": 18,
+        "numpy": "2.5.2",
+        "python": "3.14.4",
+        "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+        "cold_s": 0.2707433339965064,
+        "wall_s": [
+          0.2669203749974258,
+          0.26699029200244695,
+          0.26831412498722784
+        ],
+        "median_s": 0.26699029200244695,
+        "retained_bytes": 0,
+        "peak_rss_mib": 572.65625,
+        "identity": {
+          "actual": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "dcb8b5101a292c53330990f2bfa93e320d5312bcca361f33beb1c774fff07538"
+          },
+          "intended": {
+            "shape": [
+              4000,
+              6000,
+              4
+            ],
+            "dtype": "float16",
+            "sha256": "99e9c130986c4d8cc37d0c978d50899fef1d83bbc4ea2cf3dce83c230062d9bf"
+          },
+          "metrics": {
+            "chroma_error": "0x1.1940000000000p-13",
+            "relative_error": "0x1.edfd6e0000000p-6",
+            "median_relative_error": "0x1.e811e20000000p-6",
+            "p95_relative_error": "0x1.ec9a8e0000000p-6",
+            "p99_relative_error": "0x1.edfd6e0000000p-6",
+            "p999_relative_error": "0x1.ef1ef20000000p-6",
+            "block_median_relative_error": "0x1.e804f40000000p-6",
+            "block_p95_relative_error": "0x1.e8b7ee0000000p-6",
+            "block_p99_relative_error": "0x1.e9017c0000000p-6",
+            "block_chroma_error": "0x1.4180000000000p-16",
+            "block_p95_luma_error": "0x1.e88aaa0000000p-6",
+            "highlight_max_luma_error": "0x1.e9710a0000000p-6"
+          }
+        },
+        "comparison": {
+          "exact": true
+        }
+      }
+    }
+  ],
+  "quantize": {
+    "source_file": "remaining-quantize-groups.json",
+    "source_sha256": "c984fbfb9b77f19bf9fc1be591ca6811708e32ffa3f11c97e75b75facba26c7e",
+    "result": {
+      "exact": true,
+      "comparisons": {
+        "1": {
+          "concat_s": 0.22883925001951866,
+          "slices_s": 0.22795491700526327,
+          "change_pct": -0.3864428913221696,
+          "concat_sampled_rss_bytes": 103940096,
+          "slices_sampled_rss_bytes": 90406912
+        },
+        "5": {
+          "concat_s": 0.058687583019491285,
+          "slices_s": 0.05852645801496692,
+          "change_pct": -0.274547010175652,
+          "concat_sampled_rss_bytes": 103874560,
+          "slices_sampled_rss_bytes": 90505216
+        },
+        "8": {
+          "concat_s": 0.042457333009224385,
+          "slices_s": 0.04254475000197999,
+          "change_pct": 0.20589374451902565,
+          "concat_sampled_rss_bytes": 104087552,
+          "slices_sampled_rss_bytes": 90636288
+        }
+      },
+      "runs": [
+        {
+          "mode": "concat",
+          "budget": 1,
+          "repeats": 3,
+          "native_abi": 18,
+          "commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+          "python": "3.14.4",
+          "numpy": "2.5.2",
+          "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+          "cpu_count": 10,
+          "budget_total": 10,
+          "environment": {
+            "DNGSCAN_FAST": "1",
+            "DNGSCAN_FAST_SKIP": ""
+          },
+          "identity": {
+            "chunks_sha256": [
+              "9a307957af370137d9cd48e42d4797a309a883c0bd7bd2e213c224b423b1c7d2",
+              "0dae9d3dbdc01d63e7e293fd5ef5e2eb4b903111e9fffc47de69be054620d029"
+            ],
+            "noise_a_sha256": "34073d090b7eedab30f29b6f687f6ee2eb8befa989446052668305788cba9ce8",
+            "noise_b_sha256": "757f37200073cad6caa1efc03caaf278b0e77bc31eba314632a52ff910c83d52",
+            "pixels": 1000000,
+            "split": 500000,
+            "gamut": "p3",
+            "input_seed": 719,
+            "noise_seed": 0,
+            "output_sha256": "704056fcac9128cfabba74de42997ec5363625943c9455857d3bc08be7e06ec7"
+          },
+          "timings": [
+            {
+              "started_s": 182069.28103875,
+              "finished_s": 182069.509488708,
+              "wall_s": 0.22844995799823664
+            },
+            {
+              "started_s": 182069.51038375,
+              "finished_s": 182069.739223,
+              "wall_s": 0.22883925001951866
+            },
+            {
+              "started_s": 182069.740113833,
+              "finished_s": 182069.969609916,
+              "wall_s": 0.2294960830186028
+            }
+          ],
+          "median_s": 0.22883925001951866,
+          "allocation_bytes": {
+            "retained_inputs_noise_destination": 39000000,
+            "additional_concat": 12000000,
+            "largest_temporary_u8_result": 3000000
+          },
+          "process_highwater_rss_bytes": 104759296,
+          "sampler": {
+            "backend": "libproc:proc_listchildpids+PROC_PIDTASKINFO",
+            "requested_interval_ms": 20.0,
+            "timed_calls": {
+              "samples": 23,
+              "tree_rss_peak_bytes": 103940096,
+              "tree_threads_peak": 1,
+              "processes_peak": 1,
+              "interval_s": {
+                "count": 22,
+                "min": 0.028821874991990626,
+                "median": 0.029998833007994108,
+                "p95": 0.03000304099987261,
+                "max": 0.030007583991391584
+              },
+              "read_s": {
+                "count": 23,
+                "min": 1.0082992957904935e-05,
+                "median": 1.1999974958598614e-05,
+                "p95": 6.0165999457240105e-05,
+                "max": 6.929200026206672e-05
+              },
+              "missing_pid_observations": 0
+            }
+          }
+        },
+        {
+          "mode": "slices",
+          "budget": 1,
+          "repeats": 3,
+          "native_abi": 18,
+          "commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+          "python": "3.14.4",
+          "numpy": "2.5.2",
+          "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+          "cpu_count": 10,
+          "budget_total": 10,
+          "environment": {
+            "DNGSCAN_FAST": "1",
+            "DNGSCAN_FAST_SKIP": ""
+          },
+          "identity": {
+            "chunks_sha256": [
+              "9a307957af370137d9cd48e42d4797a309a883c0bd7bd2e213c224b423b1c7d2",
+              "0dae9d3dbdc01d63e7e293fd5ef5e2eb4b903111e9fffc47de69be054620d029"
+            ],
+            "noise_a_sha256": "34073d090b7eedab30f29b6f687f6ee2eb8befa989446052668305788cba9ce8",
+            "noise_b_sha256": "757f37200073cad6caa1efc03caaf278b0e77bc31eba314632a52ff910c83d52",
+            "pixels": 1000000,
+            "split": 500000,
+            "gamut": "p3",
+            "input_seed": 719,
+            "noise_seed": 0,
+            "output_sha256": "704056fcac9128cfabba74de42997ec5363625943c9455857d3bc08be7e06ec7"
+          },
+          "timings": [
+            {
+              "started_s": 182070.150912291,
+              "finished_s": 182070.378867208,
+              "wall_s": 0.22795491700526327
+            },
+            {
+              "started_s": 182070.379773666,
+              "finished_s": 182070.607903541,
+              "wall_s": 0.22812987500219606
+            },
+            {
+              "started_s": 182070.6088025,
+              "finished_s": 182070.83654625,
+              "wall_s": 0.22774375000153668
+            }
+          ],
+          "median_s": 0.22795491700526327,
+          "allocation_bytes": {
+            "retained_inputs_noise_destination": 39000000,
+            "additional_concat": 0,
+            "largest_temporary_u8_result": 1500000
+          },
+          "process_highwater_rss_bytes": 91226112,
+          "sampler": {
+            "backend": "libproc:proc_listchildpids+PROC_PIDTASKINFO",
+            "requested_interval_ms": 20.0,
+            "timed_calls": {
+              "samples": 23,
+              "tree_rss_peak_bytes": 90406912,
+              "tree_threads_peak": 1,
+              "processes_peak": 1,
+              "interval_s": {
+                "count": 22,
+                "min": 0.02438520797295496,
+                "median": 0.029998437501490116,
+                "p95": 0.02999950002413243,
+                "max": 0.030002000014064834
+              },
+              "read_s": {
+                "count": 23,
+                "min": 1.0457995813339949e-05,
+                "median": 1.420799526385963e-05,
+                "p95": 3.504101186990738e-05,
+                "max": 4.66250057797879e-05
+              },
+              "missing_pid_observations": 0
+            }
+          }
+        },
+        {
+          "mode": "slices",
+          "budget": 5,
+          "repeats": 3,
+          "native_abi": 18,
+          "commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+          "python": "3.14.4",
+          "numpy": "2.5.2",
+          "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+          "cpu_count": 10,
+          "budget_total": 10,
+          "environment": {
+            "DNGSCAN_FAST": "1",
+            "DNGSCAN_FAST_SKIP": ""
+          },
+          "identity": {
+            "chunks_sha256": [
+              "9a307957af370137d9cd48e42d4797a309a883c0bd7bd2e213c224b423b1c7d2",
+              "0dae9d3dbdc01d63e7e293fd5ef5e2eb4b903111e9fffc47de69be054620d029"
+            ],
+            "noise_a_sha256": "34073d090b7eedab30f29b6f687f6ee2eb8befa989446052668305788cba9ce8",
+            "noise_b_sha256": "757f37200073cad6caa1efc03caaf278b0e77bc31eba314632a52ff910c83d52",
+            "pixels": 1000000,
+            "split": 500000,
+            "gamut": "p3",
+            "input_seed": 719,
+            "noise_seed": 0,
+            "output_sha256": "704056fcac9128cfabba74de42997ec5363625943c9455857d3bc08be7e06ec7"
+          },
+          "timings": [
+            {
+              "started_s": 182071.009861958,
+              "finished_s": 182071.068071958,
+              "wall_s": 0.058209999988321215
+            },
+            {
+              "started_s": 182071.068996083,
+              "finished_s": 182071.127522541,
+              "wall_s": 0.05852645801496692
+            },
+            {
+              "started_s": 182071.128411208,
+              "finished_s": 182071.188285041,
+              "wall_s": 0.05987383300089277
+            }
+          ],
+          "median_s": 0.05852645801496692,
+          "allocation_bytes": {
+            "retained_inputs_noise_destination": 39000000,
+            "additional_concat": 0,
+            "largest_temporary_u8_result": 1500000
+          },
+          "process_highwater_rss_bytes": 91275264,
+          "sampler": {
+            "backend": "libproc:proc_listchildpids+PROC_PIDTASKINFO",
+            "requested_interval_ms": 20.0,
+            "timed_calls": {
+              "samples": 7,
+              "tree_rss_peak_bytes": 90505216,
+              "tree_threads_peak": 6,
+              "processes_peak": 1,
+              "interval_s": {
+                "count": 6,
+                "min": 0.027615125000011176,
+                "median": 0.02952402050141245,
+                "p95": 0.030003375024534762,
+                "max": 0.030003375024534762
+              },
+              "read_s": {
+                "count": 7,
+                "min": 1.2250005966052413e-05,
+                "median": 5.041598342359066e-05,
+                "p95": 6.858300184831023e-05,
+                "max": 6.858300184831023e-05
+              },
+              "missing_pid_observations": 0
+            }
+          }
+        },
+        {
+          "mode": "concat",
+          "budget": 5,
+          "repeats": 3,
+          "native_abi": 18,
+          "commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+          "python": "3.14.4",
+          "numpy": "2.5.2",
+          "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+          "cpu_count": 10,
+          "budget_total": 10,
+          "environment": {
+            "DNGSCAN_FAST": "1",
+            "DNGSCAN_FAST_SKIP": ""
+          },
+          "identity": {
+            "chunks_sha256": [
+              "9a307957af370137d9cd48e42d4797a309a883c0bd7bd2e213c224b423b1c7d2",
+              "0dae9d3dbdc01d63e7e293fd5ef5e2eb4b903111e9fffc47de69be054620d029"
+            ],
+            "noise_a_sha256": "34073d090b7eedab30f29b6f687f6ee2eb8befa989446052668305788cba9ce8",
+            "noise_b_sha256": "757f37200073cad6caa1efc03caaf278b0e77bc31eba314632a52ff910c83d52",
+            "pixels": 1000000,
+            "split": 500000,
+            "gamut": "p3",
+            "input_seed": 719,
+            "noise_seed": 0,
+            "output_sha256": "704056fcac9128cfabba74de42997ec5363625943c9455857d3bc08be7e06ec7"
+          },
+          "timings": [
+            {
+              "started_s": 182071.368373708,
+              "finished_s": 182071.427144916,
+              "wall_s": 0.05877120798686519
+            },
+            {
+              "started_s": 182071.428034625,
+              "finished_s": 182071.484127166,
+              "wall_s": 0.05609254102455452
+            },
+            {
+              "started_s": 182071.485015583,
+              "finished_s": 182071.543703166,
+              "wall_s": 0.058687583019491285
+            }
+          ],
+          "median_s": 0.058687583019491285,
+          "allocation_bytes": {
+            "retained_inputs_noise_destination": 39000000,
+            "additional_concat": 12000000,
+            "largest_temporary_u8_result": 3000000
+          },
+          "process_highwater_rss_bytes": 104628224,
+          "sampler": {
+            "backend": "libproc:proc_listchildpids+PROC_PIDTASKINFO",
+            "requested_interval_ms": 20.0,
+            "timed_calls": {
+              "samples": 7,
+              "tree_rss_peak_bytes": 103874560,
+              "tree_threads_peak": 6,
+              "processes_peak": 1,
+              "interval_s": {
+                "count": 6,
+                "min": 0.020584667014190927,
+                "median": 0.024691375001566485,
+                "p95": 0.02999870799249038,
+                "max": 0.02999870799249038
+              },
+              "read_s": {
+                "count": 7,
+                "min": 4.458299372345209e-05,
+                "median": 5.4540985729545355e-05,
+                "p95": 9.175000013783574e-05,
+                "max": 9.175000013783574e-05
+              },
+              "missing_pid_observations": 0
+            }
+          }
+        },
+        {
+          "mode": "concat",
+          "budget": 8,
+          "repeats": 3,
+          "native_abi": 18,
+          "commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+          "python": "3.14.4",
+          "numpy": "2.5.2",
+          "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+          "cpu_count": 10,
+          "budget_total": 10,
+          "environment": {
+            "DNGSCAN_FAST": "1",
+            "DNGSCAN_FAST_SKIP": ""
+          },
+          "identity": {
+            "chunks_sha256": [
+              "9a307957af370137d9cd48e42d4797a309a883c0bd7bd2e213c224b423b1c7d2",
+              "0dae9d3dbdc01d63e7e293fd5ef5e2eb4b903111e9fffc47de69be054620d029"
+            ],
+            "noise_a_sha256": "34073d090b7eedab30f29b6f687f6ee2eb8befa989446052668305788cba9ce8",
+            "noise_b_sha256": "757f37200073cad6caa1efc03caaf278b0e77bc31eba314632a52ff910c83d52",
+            "pixels": 1000000,
+            "split": 500000,
+            "gamut": "p3",
+            "input_seed": 719,
+            "noise_seed": 0,
+            "output_sha256": "704056fcac9128cfabba74de42997ec5363625943c9455857d3bc08be7e06ec7"
+          },
+          "timings": [
+            {
+              "started_s": 182071.697837458,
+              "finished_s": 182071.740294791,
+              "wall_s": 0.042457333009224385
+            },
+            {
+              "started_s": 182071.741188583,
+              "finished_s": 182071.782918916,
+              "wall_s": 0.04173033300321549
+            },
+            {
+              "started_s": 182071.783805416,
+              "finished_s": 182071.826435166,
+              "wall_s": 0.04262975000892766
+            }
+          ],
+          "median_s": 0.042457333009224385,
+          "allocation_bytes": {
+            "retained_inputs_noise_destination": 39000000,
+            "additional_concat": 12000000,
+            "largest_temporary_u8_result": 3000000
+          },
+          "process_highwater_rss_bytes": 104792064,
+          "sampler": {
+            "backend": "libproc:proc_listchildpids+PROC_PIDTASKINFO",
+            "requested_interval_ms": 20.0,
+            "timed_calls": {
+              "samples": 4,
+              "tree_rss_peak_bytes": 104087552,
+              "tree_threads_peak": 9,
+              "processes_peak": 1,
+              "interval_s": {
+                "count": 3,
+                "min": 0.0221032080007717,
+                "median": 0.028986082994379103,
+                "p95": 0.029984875000081956,
+                "max": 0.029984875000081956
+              },
+              "read_s": {
+                "count": 4,
+                "min": 6.208301056176424e-05,
+                "median": 6.702099926769733e-05,
+                "p95": 7.062501390464604e-05,
+                "max": 7.062501390464604e-05
+              },
+              "missing_pid_observations": 0
+            }
+          }
+        },
+        {
+          "mode": "slices",
+          "budget": 8,
+          "repeats": 3,
+          "native_abi": 18,
+          "commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+          "python": "3.14.4",
+          "numpy": "2.5.2",
+          "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+          "cpu_count": 10,
+          "budget_total": 10,
+          "environment": {
+            "DNGSCAN_FAST": "1",
+            "DNGSCAN_FAST_SKIP": ""
+          },
+          "identity": {
+            "chunks_sha256": [
+              "9a307957af370137d9cd48e42d4797a309a883c0bd7bd2e213c224b423b1c7d2",
+              "0dae9d3dbdc01d63e7e293fd5ef5e2eb4b903111e9fffc47de69be054620d029"
+            ],
+            "noise_a_sha256": "34073d090b7eedab30f29b6f687f6ee2eb8befa989446052668305788cba9ce8",
+            "noise_b_sha256": "757f37200073cad6caa1efc03caaf278b0e77bc31eba314632a52ff910c83d52",
+            "pixels": 1000000,
+            "split": 500000,
+            "gamut": "p3",
+            "input_seed": 719,
+            "noise_seed": 0,
+            "output_sha256": "704056fcac9128cfabba74de42997ec5363625943c9455857d3bc08be7e06ec7"
+          },
+          "timings": [
+            {
+              "started_s": 182071.981597583,
+              "finished_s": 182072.024069083,
+              "wall_s": 0.04247149999719113
+            },
+            {
+              "started_s": 182072.024956333,
+              "finished_s": 182072.06898025,
+              "wall_s": 0.04402391699841246
+            },
+            {
+              "started_s": 182072.069867208,
+              "finished_s": 182072.112411958,
+              "wall_s": 0.04254475000197999
+            }
+          ],
+          "median_s": 0.04254475000197999,
+          "allocation_bytes": {
+            "retained_inputs_noise_destination": 39000000,
+            "additional_concat": 0,
+            "largest_temporary_u8_result": 1500000
+          },
+          "process_highwater_rss_bytes": 91357184,
+          "sampler": {
+            "backend": "libproc:proc_listchildpids+PROC_PIDTASKINFO",
+            "requested_interval_ms": 20.0,
+            "timed_calls": {
+              "samples": 5,
+              "tree_rss_peak_bytes": 90636288,
+              "tree_threads_peak": 9,
+              "processes_peak": 1,
+              "interval_s": {
+                "count": 4,
+                "min": 0.0255211670009885,
+                "median": 0.02999291649030056,
+                "p95": 0.03001608300837688,
+                "max": 0.03001608300837688
+              },
+              "read_s": {
+                "count": 5,
+                "min": 2.8790993383154273e-05,
+                "median": 6.812499486841261e-05,
+                "p95": 9.762498666532338e-05,
+                "max": 9.762498666532338e-05
+              },
+              "missing_pid_observations": 0
+            }
+          }
+        }
+      ]
+    }
+  }
+}
