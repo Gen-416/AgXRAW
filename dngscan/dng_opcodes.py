@@ -336,6 +336,23 @@ def _fractional_crop_loss(values, crop, sensor_shape, output_shape):
     ys=np.linspace(t,b,oh+1);xs=np.linspace(l,r,ow+1)
     ylo=np.floor(ys[:-1]+1e-9).astype(np.intp);yhi=np.ceil(ys[1:]-1e-9).astype(np.intp)
     xlo=np.floor(xs[:-1]+1e-9).astype(np.intp);xhi=np.ceil(xs[1:]-1e-9).astype(np.intp)
+    # Keep the coordinate construction above identical to the reference. Borrow
+    # supported views directly: making a contiguous full-frame copy defeats the
+    # purpose of replacing the broadcast footprint temporaries.
+    if (isinstance(values, np.ndarray) and values.ndim == 3 and values.shape[2] == 3
+            and values.dtype in (np.dtype(np.float16), np.dtype(np.float32))
+            and values.flags.aligned and min(values.shape[:2]) > 0 and oh > 0 and ow > 0):
+        from . import _fast
+        native = _fast.kernel("crop_loss_footprint")
+        if native is not None:
+            try:
+                result = native(values, ylo, yhi, xlo, xhi)
+                # None declares an unsupported numeric case (for example an
+                # architecture-dependent NumPy NaN/tie rule), even in strict mode.
+                if result is not None:
+                    return result
+            except Exception as exc:
+                _fast.handle_kernel_error("crop_loss_footprint", exc)
     out=np.zeros((oh,ow,3),dtype=values.dtype)
     for start in range(0,oh,128):
         stop=min(start+128,oh)

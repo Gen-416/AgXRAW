@@ -36,7 +36,8 @@ from .models import ToneCompressionPlan
 # luminance-fidelity gates. Reject older extensions rather than omit those gates.
 # v13: in-place GainMap loss output and camera-plane DNG warp kernels.
 # v14: WarpRectilinear2 and radial spline warps for embedded lens profiles.
-NATIVE_ABI_VERSION = 14
+# v15: crop-footprint and in-place processing-loss maxima.
+NATIVE_ABI_VERSION = 15
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 
