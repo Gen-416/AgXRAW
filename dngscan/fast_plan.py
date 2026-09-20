@@ -37,7 +37,8 @@ from .models import ToneCompressionPlan
 # v13: in-place GainMap loss output and camera-plane DNG warp kernels.
 # v14: WarpRectilinear2 and radial spline warps for embedded lens profiles.
 # v15: crop-footprint and in-place processing-loss maxima.
-NATIVE_ABI_VERSION = 15
+# v16: exact unsigned-sensor RGB clip-group counts with strided inputs.
+NATIVE_ABI_VERSION = 16
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 
