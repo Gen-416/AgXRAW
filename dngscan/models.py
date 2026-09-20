@@ -129,6 +129,10 @@ class RawBundle:
     # Shape is (H, W, 3), aligned to scene_rec2020_render when scene_half_size=True.
     # Full-resolution renders resize this mask to the render buffer on demand.
     clip_masks: Any | None = None
+    # Internal load->analysis handoff. No sensor mask exists yet; analyze or
+    # the cached-Analysis export refresh must construct it before planning.
+    # Distinct from Apple's intentionally unavailable spatial sensor mask.
+    _clip_masks_pending: bool = field(default=False, kw_only=True, repr=False)
     # Per-channel endpoints used to build clip_masks. None means the initial metadata
     # white levels; analysis records observed full wells here when it rebuilds the mask.
     _clip_mask_fullwell: dict[int, int] | None = None

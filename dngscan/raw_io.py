@@ -1483,17 +1483,19 @@ def release_analysis_buffers(bundle: RawBundle) -> RawBundle:
 def refresh_clip_masks_from_fullwell(
     bundle: RawBundle, channel_fullwell: dict[int, int]
 ) -> bool:
-    """Rebuild LibRaw's soft headroom mask when analysis found a real saturation pile.
+    """Complete or refresh LibRaw's soft mask using the analysis endpoints.
 
-    load_raw needs an initial mask before analysis exists, so it starts from metadata
-    per-channel white levels. Once analysis has a trustworthy observed full well, the
-    render permission map must use that same per-channel endpoint; otherwise hard clip
+    Public load_raw starts from metadata per-channel white levels. Internal callers
+    that immediately analyze may defer this build until here. Once analysis has a
+    trustworthy observed full well, the render permission map must use that same
+    per-channel endpoint; otherwise hard clip
     statistics and near-clip color retreat can disagree on cameras whose metadata white
     is inaccurate. Returns whether a rebuild was needed.
     """
     if getattr(bundle, "scene_decoder", "libraw") != "libraw":
         return False
-    if getattr(bundle, "clip_masks", None) is None or not channel_fullwell:
+    pending = getattr(bundle, "_clip_masks_pending", False)
+    if not pending and (getattr(bundle, "clip_masks", None) is None or not channel_fullwell):
         return False
     channel_ids = [int(x) for x in sorted(np.unique(bundle.raw_colors).tolist())]
     metadata_levels = {
@@ -1509,17 +1511,26 @@ def refresh_clip_masks_from_fullwell(
         cid: int(channel_fullwell.get(cid, metadata_levels[cid])) for cid in channel_ids
     }
     current = getattr(bundle, "_clip_mask_fullwell", None) or metadata_levels
-    if resolved == current:
+    if not pending and resolved == current:
         return False
-    resolved_levels = [0.0] * (max(channel_ids) + 1 if channel_ids else 0)
-    for cid in channel_ids:
-        resolved_levels[cid] = float(channel_fullwell.get(cid, metadata_levels[cid]))
-    bundle.clip_masks = build_clip_masks(
+    metadata_seed = pending and resolved == metadata_levels
+    if metadata_seed:
+        # The old load built with FLOAT metadata; a matching integer fullwell
+        # then made refresh a no-op. Preserve those fractional endpoints, even
+        # when a positive fraction would truncate to zero in metadata_levels.
+        resolved_levels = [float(x) for x in bundle.camera_white_levels]
+        stamp = None
+    else:
+        resolved_levels = [0.0] * (max(channel_ids) + 1 if channel_ids else 0)
+        for cid in channel_ids:
+            resolved_levels[cid] = float(channel_fullwell.get(cid, metadata_levels[cid]))
+        stamp = resolved
+    masks = build_clip_masks(
         bundle.raw_image,
         bundle.raw_colors,
         bundle.color_desc,
         bundle.white_level,
-        bundle.black_levels,
+        [float(x) for x in bundle.black_levels] if metadata_seed else bundle.black_levels,
         resolved_levels,
         bundle.orientation_flip,
         bundle.scene_rec2020_render.shape[:2],
@@ -1528,10 +1539,14 @@ def refresh_clip_masks_from_fullwell(
         getattr(bundle, "scene_crop_sensor", None),
         getattr(getattr(bundle,"evidence",None),"spatial_black",None),
     )
-    _merge_processing_loss(bundle.clip_masks, getattr(bundle, "processing_clip_masks", None))
+    _merge_processing_loss(masks, getattr(bundle, "processing_clip_masks", None))
+    # Publish only a complete, merged mask. A failed deferred build remains
+    # pending so a retry cannot mistake an unfinished mask for a valid one.
+    bundle.clip_masks = masks
+    bundle._clip_masks_pending = False
     bundle._clip_masks_cache_shape = None
     bundle._clip_masks_resized = None
-    bundle._clip_mask_fullwell = resolved
+    bundle._clip_mask_fullwell = stamp
     bundle.raw_guidance = None
     bundle._raw_guidance_cache_shape = None
     bundle._raw_guidance_resized = None
@@ -1584,6 +1599,8 @@ def load_raw(
     decoder: str = "libraw",
     coreimage_version: str = "auto",
     coreimage_scale: str = COREIMAGE_SCALE_DEFAULT_MODE,
+    *,
+    _defer_clip_masks: bool = False,
 ) -> RawBundle:
     if not path.exists():
         raise FileNotFoundError(f"Input file does not exist: {path}")
@@ -1743,21 +1760,25 @@ def load_raw(
         )
         xyz_render = scene_rec2020_to_xyz_render(scene_rec2020_render, scene_scale)
         render_scale = scene_scale
-        clip_masks = build_clip_masks(
-            raw_image,
-            raw_colors,
-            color_desc,
-            white_level,
-            [float(x) for x in black_levels],
-            [float(x) for x in camera_white_levels],
-            orientation_flip,
-            scene_rec2020_render.shape[:2],
-            raw_pattern,
-            scene_geometry_ops,
-            scene_crop_sensor,
-            evidence.spatial_black,
-        )
-        _merge_processing_loss(clip_masks, processing_clip_masks)
+        # CLI/GUI immediately analyze (or replay a validated cached Analysis).
+        # They can build the final mask once at that boundary, while public
+        # load_raw keeps its historical metadata-seeded result by default.
+        if not _defer_clip_masks:
+            clip_masks = build_clip_masks(
+                raw_image,
+                raw_colors,
+                color_desc,
+                white_level,
+                [float(x) for x in black_levels],
+                [float(x) for x in camera_white_levels],
+                orientation_flip,
+                scene_rec2020_render.shape[:2],
+                raw_pattern,
+                scene_geometry_ops,
+                scene_crop_sensor,
+                evidence.spatial_black,
+            )
+            _merge_processing_loss(clip_masks, processing_clip_masks)
         if processing_clip_masks is not None:
             scene_processing_loss_pct = float(np.mean(np.max(processing_clip_masks, axis=2) > 0) * 100)
         evidence_shape = (
@@ -1805,6 +1826,7 @@ def load_raw(
                 path, scene_highlight_mode=effective_highlight_mode,
                 scene_half_size=scene_half_size, demosaic=demosaic,
                 wb_mode=requested_wb_mode, decoder="libraw",
+                _defer_clip_masks=_defer_clip_masks,
             )
             return replace(fallback, scene_decoder_fallback=f"Apple RAW auto → LibRaw: {exc}")
         failures = info.get("fallback_errors") or []
@@ -1980,6 +2002,7 @@ def load_raw(
         scene_reference_error=scene_reference_error,
         scene_decoder_fallback=scene_decoder_fallback,
         clip_masks=clip_masks,
+        _clip_masks_pending=bool(_defer_clip_masks and scene_decoder == "libraw"),
         scene_decoder=scene_decoder,
         scene_decoder_version=scene_decoder_version,
         scene_decoder_runtime=scene_decoder_runtime,

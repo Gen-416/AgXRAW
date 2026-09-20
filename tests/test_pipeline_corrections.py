@@ -162,31 +162,56 @@ class Stage1ProviderTests(unittest.TestCase):
 
 
 class ProcessingLossTests(unittest.TestCase):
-    def test_cached_export_replays_analysis_mask_state(self):
+    def _assert_cached_export_completes_deferred_mask(self, fullwell, raw_value):
         from dngscan.gui import service
         analysis=_analysis()
-        analysis.channel_fullwell={i:800 for i in range(4)}
+        analysis.channel_fullwell={i:fullwell for i in range(4)}
         fresh=_bundle()
-        fresh.raw_image[:]=790
         expected=_bundle()
-        expected.raw_image[:]=790
+        for bundle in (fresh,expected):
+            bundle.raw_image[:]=raw_value
+            bundle.camera_white_levels=[1000.75]*4
+            bundle.processing_clip_masks=np.zeros((4,4,3),dtype=np.float16)
+            bundle.processing_clip_masks[1,1,2]=1
+        # Reproduce the public eager load -> refresh result independently of
+        # the deferred handoff. Fractional metadata must survive a no-op refresh.
+        expected.clip_masks=raw_io.build_clip_masks(
+            expected.raw_image,expected.raw_colors,expected.color_desc,
+            expected.white_level,expected.black_levels,expected.camera_white_levels,
+            expected.orientation_flip,expected.scene_rec2020_render.shape[:2],
+            expected.raw_pattern,
+        )
+        raw_io._merge_processing_loss(expected.clip_masks,expected.processing_clip_masks)
         raw_io.refresh_clip_masks_from_fullwell(expected,analysis.channel_fullwell)
+        fresh.clip_masks=None
+        fresh._clip_masks_pending=True
         class ReachedPlan(Exception): pass
         def inspect_bundle(bundle,*args,**kwargs):
             np.testing.assert_array_equal(bundle.clip_masks,expected.clip_masks)
-            self.assertEqual(bundle._clip_mask_fullwell,analysis.channel_fullwell)
+            self.assertEqual(bundle._clip_mask_fullwell,expected._clip_mask_fullwell)
+            self.assertFalse(bundle._clip_masks_pending)
             raise ReachedPlan()
         with tempfile.TemporaryDirectory() as td:
             source=Path(td)/'test.dng';source.write_bytes(b'fixture')
             fresh.path=source
             with patch.object(service.dg,'require_dependencies'), \
-                 patch.object(service.dg,'load_raw',return_value=fresh), \
+                 patch.object(service.dg,'load_raw',return_value=fresh) as load, \
                  patch.object(service,'_cached_full_analysis',return_value=analysis), \
-                 patch.object(service.dg,'analyze',side_effect=AssertionError('cache should be reused')), \
+                 patch.object(service.dg,'analyze',side_effect=AssertionError('cache should be reused')) as analyze, \
+                 patch.object(raw_io,'build_clip_masks',wraps=raw_io.build_clip_masks) as build_masks, \
                  patch.object(service.dg,'build_render_plan',side_effect=inspect_bundle):
                 with self.assertRaises(ReachedPlan):
                     service.run_export({'input':str(source),'format':'sdr','wb':'camera','ev':0,
                                         'filmOpticsSeed':1,'outdir':td})
+            self.assertTrue(load.call_args.kwargs['_defer_clip_masks'])
+            analyze.assert_not_called()
+            self.assertEqual(build_masks.call_count,1)
+
+    def test_cached_export_replays_analysis_mask_state(self):
+        self._assert_cached_export_completes_deferred_mask(800,790)
+
+    def test_cached_export_builds_pending_mask_when_metadata_matches(self):
+        self._assert_cached_export_completes_deferred_mask(1000,960)
 
     def test_gainmap_logs_intermediate_clipping_without_touching_evidence(self):
         for native in ('0','1') if _fast.available() else ('0',):
@@ -245,6 +270,42 @@ class ProcessingLossTests(unittest.TestCase):
         self.assertEqual(restored.scene_correction_note,bundle.scene_correction_note)
         self.assertEqual(restored.scene_processing_loss_pct,12.5)
         self.assertEqual(restored.evidence_stage1_note,bundle.evidence_stage1_note)
+
+
+class DeferredCliMaskTests(unittest.TestCase):
+    def test_cli_completes_deferred_mask_at_analysis_boundary(self):
+        from dngscan import cli
+        from dngscan.analysis import analyze
+
+        fresh=_bundle()
+        fresh.clip_masks=None
+        fresh._clip_masks_pending=True
+
+        class AnalysisCompleted(BaseException):
+            """Stop the CLI before any rendering or external output is requested."""
+
+        def inspect_analysis(bundle,*args,**kwargs):
+            self.assertIs(bundle,fresh)
+            self.assertTrue(bundle._clip_masks_pending)
+            self.assertIsNone(bundle.clip_masks)
+            analyze(bundle,*args,**kwargs)
+            self.assertFalse(bundle._clip_masks_pending)
+            self.assertIsNotNone(bundle.clip_masks)
+            raise AnalysisCompleted()
+
+        with tempfile.TemporaryDirectory() as td:
+            source=Path(td)/'test.dng';source.write_bytes(b'fixture')
+            fresh.path=source
+            with patch.object(cli,'require_dependencies'), \
+                 patch.object(cli,'load_raw',return_value=fresh) as load, \
+                 patch.object(cli,'analyze',side_effect=inspect_analysis) as analysis_call, \
+                 patch.object(raw_io,'build_clip_masks',wraps=raw_io.build_clip_masks) as build_masks:
+                with self.assertRaises(AnalysisCompleted):
+                    cli.main([str(source),'--jpeg',str(Path(td)/'out.jpg'),
+                              '--decoder','libraw','--output-format','sdr'])
+            self.assertTrue(load.call_args.kwargs['_defer_clip_masks'])
+            self.assertEqual(analysis_call.call_count,1)
+            self.assertEqual(build_masks.call_count,1)
 
 
 if __name__=='__main__':

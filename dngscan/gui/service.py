@@ -2289,7 +2289,7 @@ def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, pr
             chosen_version = str(preview.scene_decoder_version)
     bundle = dg.load_raw(inp, highlight, demosaic=demosaic, wb_mode=wb,
                          decoder=chosen_decoder, coreimage_version=chosen_version,
-                         coreimage_scale=scale)
+                         coreimage_scale=scale, _defer_clip_masks=True)
     if pinned:
         fields = ("scene_decoder", "scene_decoder_version", "evidence_provider",
                   "scene_reliability_source", "scene_scale")

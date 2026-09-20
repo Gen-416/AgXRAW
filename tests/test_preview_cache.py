@@ -266,20 +266,60 @@ class PreviewCacheTest(unittest.TestCase):
         self.assertEqual(len(cache.entries), 1)
 
     def test_cold_proxy_uses_full_resolution_selected_demosaic(self) -> None:
+        from dngscan import raw_io
+        from dngscan.analysis import analyze
+
         cache = PreviewCache()
+        decoded = _bundle()
+        decoded.raw_image[:] = 960
+        decoded.camera_white_levels = [1000.75] * 4
+        expected_masks = raw_io.build_clip_masks(
+            decoded.raw_image, decoded.raw_colors, decoded.color_desc,
+            decoded.white_level, decoded.black_levels, decoded.camera_white_levels,
+            decoded.orientation_flip, decoded.scene_rec2020_render.shape[:2],
+            decoded.raw_pattern,
+        )
+        decoded.clip_masks = None
+        decoded._clip_masks_pending = True
+        stages = []
+
+        def analyze_pending(bundle, *args, **kwargs):
+            self.assertIs(bundle, decoded)
+            self.assertTrue(bundle._clip_masks_pending)
+            self.assertIsNone(bundle.clip_masks)
+            result = analyze(bundle, *args, **kwargs)
+            stages.append('analyzed')
+            return result
+
+        def inspect_completed_source(bundle, analysis, include_guidance):
+            self.assertEqual(stages, ['analyzed'])
+            self.assertFalse(bundle._clip_masks_pending)
+            np.testing.assert_array_equal(bundle.clip_masks, expected_masks)
+            stages.append('proxied')
+            return build_proxy_entry(bundle, analysis, include_guidance)
+
         with tempfile.NamedTemporaryFile(suffix=".dng") as source, patch(
             "dngscan.gui.preview_cache._read_disk_entry", return_value=None
         ), patch(
             "dngscan.gui.preview_cache._write_disk_entry"
         ), patch(
-            "dngscan.gui.preview_cache.dg.load_raw", return_value=_bundle()
+            "dngscan.gui.preview_cache.dg.load_raw", return_value=decoded
         ) as load, patch(
             "dngscan.gui.preview_cache.dg.analyze",
-            return_value=(_analysis(), None, None),
-        ):
-            cache.get(Path(source.name), "clip", "camera", demosaic="dht")
+            side_effect=analyze_pending,
+        ) as analysis_call, patch(
+            "dngscan.gui.preview_cache.build_proxy_entry",
+            side_effect=inspect_completed_source,
+        ), patch.object(raw_io, "build_clip_masks", wraps=raw_io.build_clip_masks) as build_masks:
+            entry = cache.get(Path(source.name), "clip", "camera", demosaic="dht")
         self.assertFalse(load.call_args.kwargs["scene_half_size"])
         self.assertEqual(load.call_args.kwargs["demosaic"], "dht")
+        self.assertTrue(load.call_args.kwargs["_defer_clip_masks"])
+        self.assertEqual(stages, ['analyzed', 'proxied'])
+        self.assertEqual(analysis_call.call_count, 1)
+        self.assertEqual(build_masks.call_count, 1)
+        self.assertFalse(entry.bundle._clip_masks_pending)
+        np.testing.assert_array_equal(entry.bundle.clip_masks, expected_masks)
 
     def test_memory_proxy_cache_is_a_bounded_lru(self) -> None:
         cache = PreviewCache()

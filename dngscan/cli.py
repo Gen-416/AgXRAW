@@ -1063,6 +1063,7 @@ def main(argv: list[str]) -> int:
             decoder=args.decoder,
             coreimage_version=args.coreimage_version,
             coreimage_scale=args.coreimage_scale,
+            _defer_clip_masks=True,
         )
         # Render intent, not capture data: the declared filter rides the bundle so the
         # tail, HDR budget and every formation see the scene through the glass.

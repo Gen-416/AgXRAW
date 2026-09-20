@@ -982,9 +982,8 @@ def analyze(
     near_counts, spike_ok = dict(summary.near_counts), dict(summary.spike_ok)
     fullwell, fullwell_ids = summary.fullwell, list(summary.fullwell_channel_ids)
     fullwell_note, channel_fullwell = summary.fullwell_note, dict(summary.channel_fullwell)
-    # load_raw can only seed the soft headroom mask from metadata. If this frame contains
-    # a trustworthy saturation pile, bring the render-time mask onto the same resolved
-    # per-channel full-well endpoints used by hard clip statistics.
+    # Complete an internal deferred mask, or refresh a public load's initial
+    # metadata mask, using the same full-well endpoints as hard clip statistics.
     from .raw_io import refresh_clip_masks_from_fullwell
 
     refresh_clip_masks_from_fullwell(bundle, channel_fullwell)

@@ -937,6 +937,7 @@ class PreviewCache:
                             decoder=decoder,
                             coreimage_version=coreimage_version,
                             coreimage_scale=coreimage_scale,
+                            _defer_clip_masks=True,
                         )
                         analysis, _, _ = dg.analyze(source, int(margin), diagnostics=False)
                         built = build_proxy_entry(source, analysis, require_guidance)

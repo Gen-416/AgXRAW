@@ -1,0 +1,1918 @@
+{
+  "baseline_commit": "081fd1af3d752362f7c6fd1cf3472a1e817c3905",
+  "optimized_revision": "Deferred sensor masks in the enclosing commit; ABI 15 unchanged",
+  "measurement": "Only the private deferred load handoff differs in paired runs. All native kernels and SensorSummary remain enabled. Old-commit baselines independently verify post-analysis output identity.",
+  "timing": "Seconds; no encoding, startup imports or hashing; lazy imports inside stages remain timed. Sequential fresh processes, three alternating pairs each for Sigma/Sony LibRaw, one pair each for Apple/Fuji controls.",
+  "identity": "Only masks_loaded is excluded from exact comparison; intentional load state is separately recorded, never substituted with analyzed masks.",
+  "memory": "Process high-water RSS includes decode and hashing; not live mask allocations or GPU memory. No consistent whole-pipeline memory reduction claimed.",
+  "pipeline": {
+    "sigma": {
+      "pairs": 3,
+      "post_analysis_identity_exact_against_baseline": true,
+      "post_analysis_identity_sha256": "3e055cc20a39de66998a2671aa70202f5df9821f2f53899113a4ca452e8d3225",
+      "baseline_loaded_mask": {
+        "shape": [
+          6000,
+          4000,
+          3
+        ],
+        "dtype": "float16",
+        "sha256": "fd9446da8f8e98f2a045a4eb0ebbc46d1b2c251a4a4a36041ff9aae0a18719cc"
+      },
+      "buffers": {
+        "masks_analyzed": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "3ff72999464a16251a899cfebd3d863f4b4f8108c3243b44a943a9e316e7676b"
+        },
+        "processing_loss": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "dc3c7ff596a1cee42ff255fde95c2a8dc0dfc31e344cbc9b54427eba53a62953"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "d09a47d21d37a4e9ff7883ddfc715836548aca3a247a9e0c0146fe86426975c1"
+        },
+        "hdr_base": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "d09a47d21d37a4e9ff7883ddfc715836548aca3a247a9e0c0146fe86426975c1"
+        },
+        "hdr_alternate": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "dd980c016b5cafea0977aacaa0ece687d5dd823dca8ac1ca04c8fb1010d0384d"
+        }
+      },
+      "decisions_sha256": "a20b2696cb1f3264f99f1bc6a5a299e91f0d258b90d773c63b436b9710f7e5aa",
+      "auto_ev": {
+        "ev": 0.0546875,
+        "ev_median_target": 1.044471263885498,
+        "ev_boost": 0.0546875,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0546875,
+        "anchored_median_ev": -0.989783763885498
+      },
+      "hdr_headroom_ev": 1.2957221319800878,
+      "hdr_rho": 0.45035798260742416,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            7.4821998750267085,
+            7.72010837396374,
+            7.785391458019149
+          ],
+          "median": 7.72010837396374,
+          "min": 7.4821998750267085,
+          "max": 7.785391458019149
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            8.372194791008951,
+            8.625486457982333,
+            8.68479141703574
+          ],
+          "median": 8.625486457982333,
+          "min": 8.372194791008951,
+          "max": 8.68479141703574
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2813.984375,
+            2808.265625,
+            2813.0
+          ],
+          "median": 2813.0,
+          "min": 2808.265625,
+          "max": 2813.984375
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              4.085111207998125,
+              4.260187291976763,
+              4.290594582998892
+            ],
+            "median": 4.260187291976763,
+            "min": 4.085111207998125,
+            "max": 4.290594582998892
+          },
+          "analyze": {
+            "runs": [
+              1.8015092500136234,
+              1.8655651659937575,
+              1.8729314590163995
+            ],
+            "median": 1.8655651659937575,
+            "min": 1.8015092500136234,
+            "max": 1.8729314590163995
+          },
+          "auto_ev": {
+            "runs": [
+              0.3999783750041388,
+              0.41086250002263114,
+              0.4103063330112491
+            ],
+            "median": 0.4103063330112491,
+            "min": 0.3999783750041388,
+            "max": 0.41086250002263114
+          },
+          "render_plan": {
+            "runs": [
+              0.10480533298687078,
+              0.10854704098892398,
+              0.1156964169931598
+            ],
+            "median": 0.10854704098892398,
+            "min": 0.10480533298687078,
+            "max": 0.1156964169931598
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00018729199655354023,
+              0.00020462498650886118,
+              0.00023525001597590744
+            ],
+            "median": 0.00020462498650886118,
+            "min": 0.00018729199655354023,
+            "max": 0.00023525001597590744
+          },
+          "render_sdr": {
+            "runs": [
+              1.0907957090239506,
+              1.0749463749816641,
+              1.095862665999448
+            ],
+            "median": 1.0907957090239506,
+            "min": 1.0749463749816641,
+            "max": 1.095862665999448
+          },
+          "render_hdr_pair": {
+            "runs": [
+              1.9806033330096398,
+              1.980119834013749,
+              1.9950273750000633
+            ],
+            "median": 1.9806033330096398,
+            "min": 1.980119834013749,
+            "max": 1.9950273750000633
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.5394796660111751,
+                0.5567336670064833,
+                0.5617014159797691
+              ],
+              "median": 0.5567336670064833,
+              "min": 0.5394796660111751,
+              "max": 0.5617014159797691
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.35483329198905267,
+                0.3636359999945853,
+                0.374649417004548
+              ],
+              "median": 0.3636359999945853,
+              "min": 0.35483329198905267,
+              "max": 0.374649417004548
+            }
+          }
+        },
+        "calls": {
+          "native.crop_loss_footprint": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.0317962919943966,
+                0.03170491597848013,
+                0.03218845801893622
+              ],
+              "median": 0.0317962919943966,
+              "min": 0.03170491597848013,
+              "max": 0.03218845801893622
+            }
+          },
+          "_fractional_crop_loss": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.03200283300247975,
+                0.031912875012494624,
+                0.03239437495358288
+              ],
+              "median": 0.03200283300247975,
+              "min": 0.031912875012494624,
+              "max": 0.03239437495358288
+            }
+          },
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.11451391701120883,
+                0.11410945901297964,
+                0.11606341600418091
+              ],
+              "median": 0.11451391701120883,
+              "min": 0.11410945901297964,
+              "max": 0.11606341600418091
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.11459304098389111,
+                0.11419670798932202,
+                0.11614462500438094
+              ],
+              "median": 0.11459304098389111,
+              "min": 0.11419670798932202,
+              "max": 0.11614462500438094
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            },
+            "completed": true,
+            "rebuilt": true,
+            "after": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ]
+      },
+      "deferred": {
+        "pipeline_sdr_s": {
+          "runs": [
+            7.268191832990851,
+            7.390226708026603,
+            7.479319165984634
+          ],
+          "median": 7.390226708026603,
+          "min": 7.268191832990851,
+          "max": 7.479319165984634
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            8.181669875018997,
+            8.308772209013114,
+            8.389748832967598
+          ],
+          "median": 8.308772209013114,
+          "min": 8.181669875018997,
+          "max": 8.389748832967598
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2899.828125,
+            2899.765625,
+            2905.359375
+          ],
+          "median": 2899.828125,
+          "min": 2899.765625,
+          "max": 2905.359375
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              3.8150852500111796,
+              3.8801095000235364,
+              3.9607095420069527
+            ],
+            "median": 3.8801095000235364,
+            "min": 3.8150852500111796,
+            "max": 3.9607095420069527
+          },
+          "analyze": {
+            "runs": [
+              1.8663998749980237,
+              1.8833296250086278,
+              1.9055957079981454
+            ],
+            "median": 1.8833296250086278,
+            "min": 1.8663998749980237,
+            "max": 1.9055957079981454
+          },
+          "auto_ev": {
+            "runs": [
+              0.40406508298474364,
+              0.4106071249989327,
+              0.4252314580080565
+            ],
+            "median": 0.4106071249989327,
+            "min": 0.40406508298474364,
+            "max": 0.4252314580080565
+          },
+          "render_plan": {
+            "runs": [
+              0.10609650000697002,
+              0.10567462499602698,
+              0.10923249999177642
+            ],
+            "median": 0.10609650000697002,
+            "min": 0.10567462499602698,
+            "max": 0.10923249999177642
+          },
+          "hdr_plan": {
+            "runs": [
+              0.0002038750099018216,
+              0.0001992920006159693,
+              0.0002032499760389328
+            ],
+            "median": 0.0002032499760389328,
+            "min": 0.0001992920006159693,
+            "max": 0.0002038750099018216
+          },
+          "render_sdr": {
+            "runs": [
+              1.0765451249899343,
+              1.110505832999479,
+              1.0785499579797033
+            ],
+            "median": 1.0785499579797033,
+            "min": 1.0765451249899343,
+            "max": 1.110505832999479
+          },
+          "render_hdr_pair": {
+            "runs": [
+              1.9898192920081783,
+              2.028852041985374,
+              1.988776374986628
+            ],
+            "median": 1.9898192920081783,
+            "min": 1.988776374986628,
+            "max": 2.028852041985374
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.288537999993423,
+                0.2866181670106016,
+                0.2848099580151029
+              ],
+              "median": 0.2866181670106016,
+              "min": 0.2848099580151029,
+              "max": 0.288537999993423
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.3888008749927394,
+                0.38501033300417475,
+                0.38459137501195073
+              ],
+              "median": 0.38501033300417475,
+              "min": 0.38459137501195073,
+              "max": 0.3888008749927394
+            }
+          }
+        },
+        "calls": {
+          "native.crop_loss_footprint": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.015935000003082678,
+                0.016406416980316862,
+                0.01882116700289771
+              ],
+              "median": 0.016406416980316862,
+              "min": 0.015935000003082678,
+              "max": 0.01882116700289771
+            }
+          },
+          "_fractional_crop_loss": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.016039583017118275,
+                0.016515249997610226,
+                0.01894487498793751
+              ],
+              "median": 0.016515249997610226,
+              "min": 0.016039583017118275,
+              "max": 0.01894487498793751
+            }
+          },
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.05810829100664705,
+                0.055752625019522384,
+                0.05669349999516271
+              ],
+              "median": 0.05669349999516271,
+              "min": 0.055752625019522384,
+              "max": 0.05810829100664705
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.058151832985458896,
+                0.05580020899651572,
+                0.05673483299324289
+              ],
+              "median": 0.05673483299324289,
+              "min": 0.05580020899651572,
+              "max": 0.058151832985458896
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "libraw",
+              "pending": true,
+              "mask_present": false
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "libraw",
+              "pending": true,
+              "mask_present": false
+            },
+            "completed": true,
+            "rebuilt": true,
+            "after": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ]
+      },
+      "source": {
+        "name": "_SDI0150.DNG",
+        "sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c"
+      }
+    },
+    "sony": {
+      "pairs": 3,
+      "post_analysis_identity_exact_against_baseline": true,
+      "post_analysis_identity_sha256": "06e2b7ab7fc0254c9d962eb53935e007c8262b20b965dd5ae34601d3d046b1c3",
+      "baseline_loaded_mask": {
+        "shape": [
+          4688,
+          7028,
+          3
+        ],
+        "dtype": "float16",
+        "sha256": "9d125cad629f303c4ff9511b47dd3c109264a551a76371c1726e837077f93ddd"
+      },
+      "buffers": {
+        "masks_analyzed": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "59709c59d951f548a2700a2c17583f01672fae5d7de6b9d631f0e0c2d440a05d"
+        },
+        "processing_loss": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "b57b32e4bf814d8977a8f31ea6f36eb488ae0a435b10b2100a5de91201a0b8c9"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "5331671504b6b7e378dd10c3d2dae41245b82a76bb3b183913a7f96e16219cfc"
+        },
+        "hdr_base": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "5331671504b6b7e378dd10c3d2dae41245b82a76bb3b183913a7f96e16219cfc"
+        },
+        "hdr_alternate": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "fc544d27613fbe7349c57ca44b3c7cef4243c9b6c064e5a4eeabca3d8652ca8e"
+        }
+      },
+      "decisions_sha256": "89f9a5b841f4a71bfc97d222231f46aef2f502ccc5f8387a294b4f3995023b15",
+      "auto_ev": {
+        "ev": 0.0390625,
+        "ev_median_target": 1.2259010076522827,
+        "ev_boost": 0.0390625,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0390625,
+        "anchored_median_ev": -1.1868385076522827
+      },
+      "hdr_headroom_ev": 0.2679380228644872,
+      "hdr_rho": 0.4995325863780373,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            11.501620208990062,
+            11.1484850429988,
+            11.232855708047282
+          ],
+          "median": 11.232855708047282,
+          "min": 11.1484850429988,
+          "max": 11.501620208990062
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            12.67176158397342,
+            12.366388375987299,
+            12.413876833044924
+          ],
+          "median": 12.413876833044924,
+          "min": 12.366388375987299,
+          "max": 12.67176158397342
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3576.6875,
+            3845.671875,
+            3723.625
+          ],
+          "median": 3723.625,
+          "min": 3576.6875,
+          "max": 3845.671875
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              6.183101374976104,
+              6.132686917000683,
+              6.137318542023422
+            ],
+            "median": 6.137318542023422,
+            "min": 6.132686917000683,
+            "max": 6.183101374976104
+          },
+          "analyze": {
+            "runs": [
+              2.872746625012951,
+              2.661689333006507,
+              2.6685802080028225
+            ],
+            "median": 2.6685802080028225,
+            "min": 2.661689333006507,
+            "max": 2.872746625012951
+          },
+          "auto_ev": {
+            "runs": [
+              0.6144771249964833,
+              0.5876700840017293,
+              0.6504693749884609
+            ],
+            "median": 0.6144771249964833,
+            "min": 0.5876700840017293,
+            "max": 0.6504693749884609
+          },
+          "render_plan": {
+            "runs": [
+              0.1304137920087669,
+              0.12760104198241606,
+              0.12840833302470855
+            ],
+            "median": 0.12840833302470855,
+            "min": 0.12760104198241606,
+            "max": 0.1304137920087669
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00025454198475927114,
+              0.00022504100343212485,
+              0.00020400001085363328
+            ],
+            "median": 0.00022504100343212485,
+            "min": 0.00020400001085363328,
+            "max": 0.00025454198475927114
+          },
+          "render_sdr": {
+            "runs": [
+              1.7008812919957563,
+              1.638837667007465,
+              1.6480792500078678
+            ],
+            "median": 1.6480792500078678,
+            "min": 1.638837667007465,
+            "max": 1.7008812919957563
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.870768124994356,
+              2.8565159589925315,
+              2.828896374994656
+            ],
+            "median": 2.8565159589925315,
+            "min": 2.828896374994656,
+            "max": 2.870768124994356
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.8965554999886081,
+                0.792295416991692,
+                0.7961882489908021
+              ],
+              "median": 0.7961882489908021,
+              "min": 0.792295416991692,
+              "max": 0.8965554999886081
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.47856070898706093,
+                0.44500416598748416,
+                0.44956387497950345
+              ],
+              "median": 0.44956387497950345,
+              "min": 0.44500416598748416,
+              "max": 0.47856070898706093
+            }
+          }
+        },
+        "calls": {
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.03118512497167103,
+                0.02843183299410157,
+                0.029201707016909495
+              ],
+              "median": 0.029201707016909495,
+              "min": 0.02843183299410157,
+              "max": 0.03118512497167103
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              2,
+              2,
+              2
+            ],
+            "seconds": {
+              "runs": [
+                0.031288917001802474,
+                0.028535126009956002,
+                0.02930075000040233
+              ],
+              "median": 0.02930075000040233,
+              "min": 0.028535126009956002,
+              "max": 0.031288917001802474
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            },
+            "completed": true,
+            "rebuilt": true,
+            "after": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ]
+      },
+      "deferred": {
+        "pipeline_sdr_s": {
+          "runs": [
+            10.79491458501434,
+            10.760434916970553,
+            10.902245458040852
+          ],
+          "median": 10.79491458501434,
+          "min": 10.760434916970553,
+          "max": 10.902245458040852
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            11.938574960018741,
+            11.954377124988241,
+            12.005526667024242
+          ],
+          "median": 11.954377124988241,
+          "min": 11.938574960018741,
+          "max": 12.005526667024242
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3819.5,
+            3753.984375,
+            3691.75
+          ],
+          "median": 3753.984375,
+          "min": 3691.75,
+          "max": 3819.5
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              5.709010208986001,
+              5.700710957986303,
+              5.712040459009586
+            ],
+            "median": 5.709010208986001,
+            "min": 5.700710957986303,
+            "max": 5.712040459009586
+          },
+          "analyze": {
+            "runs": [
+              2.713986084010685,
+              2.7190356249921024,
+              2.7206721669936087
+            ],
+            "median": 2.7190356249921024,
+            "min": 2.713986084010685,
+            "max": 2.7206721669936087
+          },
+          "auto_ev": {
+            "runs": [
+              0.5922385000158101,
+              0.5747477920085657,
+              0.6501212500152178
+            ],
+            "median": 0.5922385000158101,
+            "min": 0.5747477920085657,
+            "max": 0.6501212500152178
+          },
+          "render_plan": {
+            "runs": [
+              0.12800104200141504,
+              0.11960833400371484,
+              0.1305710410233587
+            ],
+            "median": 0.12800104200141504,
+            "min": 0.11960833400371484,
+            "max": 0.1305710410233587
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00020745900110341609,
+              0.00022170800366438925,
+              0.0002219580055680126
+            ],
+            "median": 0.00022170800366438925,
+            "min": 0.00020745900110341609,
+            "max": 0.0002219580055680126
+          },
+          "render_sdr": {
+            "runs": [
+              1.6516787500004284,
+              1.6463322079798672,
+              1.688840540999081
+            ],
+            "median": 1.6516787500004284,
+            "min": 1.6463322079798672,
+            "max": 1.688840540999081
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.7951316660037264,
+              2.840052707993891,
+              2.7918997919769026
+            ],
+            "median": 2.7951316660037264,
+            "min": 2.7918997919769026,
+            "max": 2.840052707993891
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.4218539580178913,
+                0.42489162500714883,
+                0.4218282499932684
+              ],
+              "median": 0.4218539580178913,
+              "min": 0.4218282499932684,
+              "max": 0.42489162500714883
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.49416854200535454,
+                0.4975719579961151,
+                0.4941371660097502
+              ],
+              "median": 0.49416854200535454,
+              "min": 0.4941371660097502,
+              "max": 0.4975719579961151
+            }
+          }
+        },
+        "calls": {
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.014233958994736895,
+                0.014718833001097664,
+                0.014259332994697616
+              ],
+              "median": 0.014259332994697616,
+              "min": 0.014233958994736895,
+              "max": 0.014718833001097664
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              1,
+              1,
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.014275333000114188,
+                0.014763916988158599,
+                0.014305291988421232
+              ],
+              "median": 0.014305291988421232,
+              "min": 0.014275333000114188,
+              "max": 0.014763916988158599
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "libraw",
+              "pending": true,
+              "mask_present": false
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "libraw",
+              "pending": true,
+              "mask_present": false
+            },
+            "completed": true,
+            "rebuilt": true,
+            "after": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ]
+      },
+      "source": {
+        "name": "DSC00225.ARW",
+        "sha256": "752749232a3d9baa84fec24b4663557ec743a495fbe5d65b8600ed72d7bfa6d2"
+      }
+    },
+    "sigma-apple": {
+      "pairs": 1,
+      "post_analysis_identity_exact_against_baseline": true,
+      "post_analysis_identity_sha256": "68846e4f5ad3b11e2256f64c3e250e218fcd342216ec29236b0640af5432b209",
+      "baseline_loaded_mask": null,
+      "buffers": {
+        "masks_analyzed": null,
+        "processing_loss": null,
+        "reference_samples": {
+          "shape": [
+            196302,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "4a5dff19ffe043112bc72aa2cd06183ce14c8827ab57e48823f7e62b164479fe"
+        },
+        "sdr": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "6d1a18588e11f2989df6ee89c264bb76f02ec67123b3ce2680df7f7a043e9f00"
+        },
+        "hdr_base": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "6d1a18588e11f2989df6ee89c264bb76f02ec67123b3ce2680df7f7a043e9f00"
+        },
+        "hdr_alternate": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "7453e90df717ba2a2d4d8752fc308cded1c7e74499632925e2a6ea3038e8ab29"
+        }
+      },
+      "decisions_sha256": "69c21b90308b4bb462a7f0b9e4b6ed899ff3fb14108efcc8d41ac88a14740887",
+      "auto_ev": {
+        "ev": 0.0546875,
+        "ev_median_target": 0.9799513816833496,
+        "ev_boost": 0.0546875,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0546875,
+        "anchored_median_ev": -0.9252638816833496
+      },
+      "hdr_headroom_ev": 1.2475293924933935,
+      "hdr_rho": 0.25,
+      "decoder": "coreimage",
+      "decoder_version": "9",
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            6.661791333986912
+          ],
+          "median": 6.661791333986912,
+          "min": 6.661791333986912,
+          "max": 6.661791333986912
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            7.476216457958799
+          ],
+          "median": 7.476216457958799,
+          "min": 7.476216457958799,
+          "max": 7.476216457958799
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2716.5
+          ],
+          "median": 2716.5,
+          "min": 2716.5,
+          "max": 2716.5
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              3.8317824999976438
+            ],
+            "median": 3.8317824999976438,
+            "min": 3.8317824999976438,
+            "max": 3.8317824999976438
+          },
+          "analyze": {
+            "runs": [
+              1.3353076660132501
+            ],
+            "median": 1.3353076660132501,
+            "min": 1.3353076660132501,
+            "max": 1.3353076660132501
+          },
+          "auto_ev": {
+            "runs": [
+              0.27172724998672493
+            ],
+            "median": 0.27172724998672493,
+            "min": 0.27172724998672493,
+            "max": 0.27172724998672493
+          },
+          "render_plan": {
+            "runs": [
+              0.06598570899222977
+            ],
+            "median": 0.06598570899222977,
+            "min": 0.06598570899222977,
+            "max": 0.06598570899222977
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00019641598919406533
+            ],
+            "median": 0.00019641598919406533,
+            "min": 0.00019641598919406533,
+            "max": 0.00019641598919406533
+          },
+          "render_sdr": {
+            "runs": [
+              1.1569882089970633
+            ],
+            "median": 1.1569882089970633,
+            "min": 1.1569882089970633,
+            "max": 1.1569882089970633
+          },
+          "render_hdr_pair": {
+            "runs": [
+              1.9712169169797562
+            ],
+            "median": 1.9712169169797562,
+            "min": 1.9712169169797562,
+            "max": 1.9712169169797562
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.16190662499866448
+              ],
+              "median": 0.16190662499866448,
+              "min": 0.16190662499866448,
+              "max": 0.16190662499866448
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                3.958004526793957e-06
+              ],
+              "median": 3.958004526793957e-06,
+              "min": 3.958004526793957e-06,
+              "max": 3.958004526793957e-06
+            }
+          }
+        },
+        "calls": {
+          "native.crop_loss_footprint": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.007535167009336874
+              ],
+              "median": 0.007535167009336874,
+              "min": 0.007535167009336874,
+              "max": 0.007535167009336874
+            }
+          },
+          "_fractional_crop_loss": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.007653834007214755
+              ],
+              "median": 0.007653834007214755,
+              "min": 0.007653834007214755,
+              "max": 0.007653834007214755
+            }
+          },
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.012421125022228807
+              ],
+              "median": 0.012421125022228807,
+              "min": 0.012421125022228807,
+              "max": 0.012421125022228807
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.012460458994610235
+              ],
+              "median": 0.012460458994610235,
+              "min": 0.012460458994610235,
+              "max": 0.012460458994610235
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "coreimage",
+              "pending": false,
+              "mask_present": false
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "coreimage",
+              "pending": false,
+              "mask_present": false
+            },
+            "completed": true,
+            "rebuilt": false,
+            "after": {
+              "decoder": "coreimage",
+              "pending": false,
+              "mask_present": false
+            }
+          }
+        ]
+      },
+      "deferred": {
+        "pipeline_sdr_s": {
+          "runs": [
+            6.631879499007482
+          ],
+          "median": 6.631879499007482,
+          "min": 6.631879499007482,
+          "max": 6.631879499007482
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            7.455388959002448
+          ],
+          "median": 7.455388959002448,
+          "min": 7.455388959002448,
+          "max": 7.455388959002448
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2598.828125
+          ],
+          "median": 2598.828125,
+          "min": 2598.828125,
+          "max": 2598.828125
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              3.8075798329955433
+            ],
+            "median": 3.8075798329955433,
+            "min": 3.8075798329955433,
+            "max": 3.8075798329955433
+          },
+          "analyze": {
+            "runs": [
+              1.3458269170077983
+            ],
+            "median": 1.3458269170077983,
+            "min": 1.3458269170077983,
+            "max": 1.3458269170077983
+          },
+          "auto_ev": {
+            "runs": [
+              0.2748300420062151
+            ],
+            "median": 0.2748300420062151,
+            "min": 0.2748300420062151,
+            "max": 0.2748300420062151
+          },
+          "render_plan": {
+            "runs": [
+              0.06585566600551829
+            ],
+            "median": 0.06585566600551829,
+            "min": 0.06585566600551829,
+            "max": 0.06585566600551829
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00020416697952896357
+            ],
+            "median": 0.00020416697952896357,
+            "min": 0.00020416697952896357,
+            "max": 0.00020416697952896357
+          },
+          "render_sdr": {
+            "runs": [
+              1.1377870409924071
+            ],
+            "median": 1.1377870409924071,
+            "min": 1.1377870409924071,
+            "max": 1.1377870409924071
+          },
+          "render_hdr_pair": {
+            "runs": [
+              1.9610923340078443
+            ],
+            "median": 1.9610923340078443,
+            "min": 1.9610923340078443,
+            "max": 1.9610923340078443
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.15620379100437276
+              ],
+              "median": 0.15620379100437276,
+              "min": 0.15620379100437276,
+              "max": 0.15620379100437276
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                3.541994374245405e-06
+              ],
+              "median": 3.541994374245405e-06,
+              "min": 3.541994374245405e-06,
+              "max": 3.541994374245405e-06
+            }
+          }
+        },
+        "calls": {
+          "native.crop_loss_footprint": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.007292207999853417
+              ],
+              "median": 0.007292207999853417,
+              "min": 0.007292207999853417,
+              "max": 0.007292207999853417
+            }
+          },
+          "_fractional_crop_loss": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.007413167011691257
+              ],
+              "median": 0.007413167011691257,
+              "min": 0.007413167011691257,
+              "max": 0.007413167011691257
+            }
+          },
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.012516374990809709
+              ],
+              "median": 0.012516374990809709,
+              "min": 0.012516374990809709,
+              "max": 0.012516374990809709
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.012555624998640269
+              ],
+              "median": 0.012555624998640269,
+              "min": 0.012555624998640269,
+              "max": 0.012555624998640269
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "coreimage",
+              "pending": false,
+              "mask_present": false
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "coreimage",
+              "pending": false,
+              "mask_present": false
+            },
+            "completed": true,
+            "rebuilt": false,
+            "after": {
+              "decoder": "coreimage",
+              "pending": false,
+              "mask_present": false
+            }
+          }
+        ]
+      },
+      "source": {
+        "name": "_SDI0150.DNG",
+        "sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c"
+      }
+    },
+    "fuji": {
+      "pairs": 1,
+      "post_analysis_identity_exact_against_baseline": true,
+      "post_analysis_identity_sha256": "bffc0b66b1e1f5d9388c843ebfc3c2edde596655a013f4ebe8b54bdd0038bf8a",
+      "baseline_loaded_mask": {
+        "shape": [
+          5178,
+          7752,
+          3
+        ],
+        "dtype": "float16",
+        "sha256": "17fbca4b09eb7ea15adf6929ca9f450e0b740a78967c29ee297cc65bf36f4d79"
+      },
+      "buffers": {
+        "masks_analyzed": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "17fbca4b09eb7ea15adf6929ca9f450e0b740a78967c29ee297cc65bf36f4d79"
+        },
+        "processing_loss": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "17fbca4b09eb7ea15adf6929ca9f450e0b740a78967c29ee297cc65bf36f4d79"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "cb959387aec082306e9318c5954c239bb943c0a1ebf3ffa759ff9c9320632ea1"
+        },
+        "hdr_base": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "cb959387aec082306e9318c5954c239bb943c0a1ebf3ffa759ff9c9320632ea1"
+        },
+        "hdr_alternate": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "a90eeab1170334cd2360e4fc9d904689b6f819a5f7f84b82ce6016319d22900b"
+        }
+      },
+      "decisions_sha256": "d96eea09de22e8e73361801d69906c5087130f0d02387e3a88785575ce4e6c5e",
+      "auto_ev": {
+        "ev": 1.5666446685791016,
+        "ev_median_target": 1.5666446685791016,
+        "ev_boost": 1.5666446685791016,
+        "highlight_limited": false,
+        "highlight_cap_ev": 1.828125,
+        "anchored_median_ev": 0.0
+      },
+      "hdr_headroom_ev": 0.0,
+      "hdr_rho": 0.5,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            23.66106820796267
+          ],
+          "median": 23.66106820796267,
+          "min": 23.66106820796267,
+          "max": 23.66106820796267
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            24.574867123970762
+          ],
+          "median": 24.574867123970762,
+          "min": 24.574867123970762,
+          "max": 24.574867123970762
+        },
+        "peak_rss_mib": {
+          "runs": [
+            4292.8125
+          ],
+          "median": 4292.8125,
+          "min": 4292.8125,
+          "max": 4292.8125
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              18.719967291981447
+            ],
+            "median": 18.719967291981447,
+            "min": 18.719967291981447,
+            "max": 18.719967291981447
+          },
+          "analyze": {
+            "runs": [
+              2.39796733300318
+            ],
+            "median": 2.39796733300318,
+            "min": 2.39796733300318,
+            "max": 2.39796733300318
+          },
+          "auto_ev": {
+            "runs": [
+              0.685154540988151
+            ],
+            "median": 0.685154540988151,
+            "min": 0.685154540988151,
+            "max": 0.685154540988151
+          },
+          "render_plan": {
+            "runs": [
+              0.1542507919948548
+            ],
+            "median": 0.1542507919948548,
+            "min": 0.1542507919948548,
+            "max": 0.1542507919948548
+          },
+          "hdr_plan": {
+            "runs": [
+              0.0002659579913597554
+            ],
+            "median": 0.0002659579913597554,
+            "min": 0.0002659579913597554,
+            "max": 0.0002659579913597554
+          },
+          "render_sdr": {
+            "runs": [
+              1.703728249995038
+            ],
+            "median": 1.703728249995038,
+            "min": 1.703728249995038,
+            "max": 1.703728249995038
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.6172612080117688
+            ],
+            "median": 2.6172612080117688,
+            "min": 2.6172612080117688,
+            "max": 2.6172612080117688
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                1.8778210839955136
+              ],
+              "median": 1.8778210839955136,
+              "min": 1.8778210839955136,
+              "max": 1.8778210839955136
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.0705326659954153
+              ],
+              "median": 0.0705326659954153,
+              "min": 0.0705326659954153,
+              "max": 0.0705326659954153
+            }
+          }
+        },
+        "calls": {
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.02906675002304837
+              ],
+              "median": 0.02906675002304837,
+              "min": 0.02906675002304837,
+              "max": 0.02906675002304837
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.029212624998763204
+              ],
+              "median": 0.029212624998763204,
+              "min": 0.029212624998763204,
+              "max": 0.029212624998763204
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            },
+            "completed": true,
+            "rebuilt": false,
+            "after": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ]
+      },
+      "deferred": {
+        "pipeline_sdr_s": {
+          "runs": [
+            23.512916082981974
+          ],
+          "median": 23.512916082981974,
+          "min": 23.512916082981974,
+          "max": 23.512916082981974
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            24.46923833299661
+          ],
+          "median": 24.46923833299661,
+          "min": 24.46923833299661,
+          "max": 24.46923833299661
+        },
+        "peak_rss_mib": {
+          "runs": [
+            4136.65625
+          ],
+          "median": 4136.65625,
+          "min": 4136.65625,
+          "max": 4136.65625
+        },
+        "stages_s": {
+          "load_raw": {
+            "runs": [
+              16.748294374992838
+            ],
+            "median": 16.748294374992838,
+            "min": 16.748294374992838,
+            "max": 16.748294374992838
+          },
+          "analyze": {
+            "runs": [
+              4.09362562498427
+            ],
+            "median": 4.09362562498427,
+            "min": 4.09362562498427,
+            "max": 4.09362562498427
+          },
+          "auto_ev": {
+            "runs": [
+              0.8417889580014162
+            ],
+            "median": 0.8417889580014162,
+            "min": 0.8417889580014162,
+            "max": 0.8417889580014162
+          },
+          "render_plan": {
+            "runs": [
+              0.14203308301512152
+            ],
+            "median": 0.14203308301512152,
+            "min": 0.14203308301512152,
+            "max": 0.14203308301512152
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00022700001136399806
+            ],
+            "median": 0.00022700001136399806,
+            "min": 0.00022700001136399806,
+            "max": 0.00022700001136399806
+          },
+          "render_sdr": {
+            "runs": [
+              1.687174041988328
+            ],
+            "median": 1.687174041988328,
+            "min": 1.687174041988328,
+            "max": 1.687174041988328
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.6432692919916008
+            ],
+            "median": 2.6432692919916008,
+            "min": 2.6432692919916008,
+            "max": 2.6432692919916008
+          }
+        },
+        "mask_calls": {
+          "build_clip_masks": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                1.7437660419964232
+              ],
+              "median": 1.7437660419964232,
+              "min": 1.7437660419964232,
+              "max": 1.7437660419964232
+            }
+          },
+          "refresh_clip_masks_from_fullwell": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                1.8314660000032745
+              ],
+              "median": 1.8314660000032745,
+              "min": 1.8314660000032745,
+              "max": 1.8314660000032745
+            }
+          }
+        },
+        "calls": {
+          "native.merge_processing_loss_f16_inplace": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.01692929200362414
+              ],
+              "median": 0.01692929200362414,
+              "min": 0.01692929200362414,
+              "max": 0.01692929200362414
+            }
+          },
+          "_merge_processing_loss": {
+            "counts": [
+              1
+            ],
+            "seconds": {
+              "runs": [
+                0.016981667024083436
+              ],
+              "median": 0.016981667024083436,
+              "min": 0.016981667024083436,
+              "max": 0.016981667024083436
+            }
+          }
+        },
+        "mask_load_states": [
+          {
+            "depth": 0,
+            "state": {
+              "decoder": "libraw",
+              "pending": true,
+              "mask_present": false
+            }
+          }
+        ],
+        "mask_refresh_states": [
+          {
+            "before": {
+              "decoder": "libraw",
+              "pending": true,
+              "mask_present": false
+            },
+            "completed": true,
+            "rebuilt": true,
+            "after": {
+              "decoder": "libraw",
+              "pending": false,
+              "mask_present": true
+            }
+          }
+        ]
+      },
+      "source": {
+        "name": "DSCF0214.RAF",
+        "sha256": "649f3899eb5e8504353e9e332440ab98e401937c309ddadacfda0a1a6b251af2"
+      }
+    }
+  },
+  "environment": {
+    "python": "3.14.4",
+    "numpy": "2.5.2",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "native_abi": 15,
+    "cpus": 10
+  },
+  "production_source_sha256": {
+    "dngscan/raw_io.py": "f149da3b421236fc18c07d8f7ed80f0db89af26197c55b26a0be64aa4023d11c",
+    "dngscan/models.py": "db7d80b5a504db6f12b4e9aa11f41ecdfc408bb5d9aba72fb382a9c795d8a8b6",
+    "dngscan/analysis.py": "12f66bc167b61ae8d727a8923b3527c517b15ac2c8b9ff14c9ee56b0723da31d",
+    "dngscan/cli.py": "55cc631aabb532d6d403094213130ef865f5b865019402f9ade05f4449ea05aa",
+    "dngscan/gui/service.py": "16955280e63563aef2816f3b096919bbbccdb8c320f14a5eba61b66130174737",
+    "dngscan/gui/preview_cache.py": "0d49566a6d6e366f37c9dcdf1de2d60af7e4fbf4e4ae669aad697494b1d7c43e",
+    "tools/benchmark_deferred_masks.py": "5fc0ad874144a820eeff71d1b7a157f18eabdced9596eabfe8e401b1c9b9ec0a",
+    "tools/benchmark_loss_pipeline.py": "1918c4324ed0e409af86233187417decc9e1d65ffdb8b7d4d4cc75b1f9d65200"
+  }
+}
