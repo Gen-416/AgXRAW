@@ -11,15 +11,14 @@ def reliable_reference_samples(evidence, scene, scale, processing_loss, recipe):
     Returns normalized RGB and retained sample percentage. Empty is a measured
     lack of reliable evidence; callers must distinguish it from unavailable (None).
     """
-    from .analysis import channel_saturation_levels, detect_ceilings, resolve_fullwell
+    from .sensor_summary import summarize_sensor
     from .dng_opcodes import Warp
     from .raw_io import build_clip_masks, _merge_processing_loss
     from .sampling import sample_indices
 
-    ids = [int(c) for c in np.unique(evidence.raw_colors)]
-    sat = channel_saturation_levels(ids, evidence.camera_white_levels, evidence.white_level)
-    ceilings, _, _, spike = detect_ceilings(evidence.raw_image, evidence.raw_colors, ids, sat)
-    _, _, _, fullwell = resolve_fullwell(ids, ceilings, spike, sat)
+    summary = summarize_sensor(evidence.raw_image, evidence.raw_colors, evidence.white_level,
+                               evidence.camera_white_levels, evidence=evidence)
+    ids, fullwell = list(summary.channel_ids), dict(summary.channel_fullwell)
     levels = [fullwell.get(c, evidence.white_level) for c in range(max(ids) + 1)]
     masks = build_clip_masks(
         evidence.raw_image, evidence.raw_colors, evidence.color_desc,

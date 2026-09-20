@@ -40,6 +40,17 @@ class RawEvidence:
     # File-authored LibRaw cmatrix candidate exposed by rawpy.color_matrix.
     # DNG may adopt it; non-DNG RGB cameras derive rgb_cam from xyz_to_cam.
     color_matrix: Any | None = None
+    # Search/render-lifetime memo only. Immutable scalar summaries and weak
+    # references cannot retain sensor rasters or survive dataclasses.replace().
+    _sensor_summary_cache: Any | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __getstate__(self):
+        # Memo weakrefs are process-local and are not pickleable. Preserve the
+        # historical evidence payload while dropping this optional optimization
+        # for pickle, copy and deepcopy; the field's class default remains None.
+        state = self.__dict__.copy()
+        state.pop("_sensor_summary_cache", None)
+        return state
 
 
 @dataclass

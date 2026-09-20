@@ -54,6 +54,7 @@ GUI 上的描述性文案只有最基础的一句;每个控件的来龙去脉、
 | [PERF_REVIEW_2026-08.zh-CN.md](PERF_REVIEW_2026-08.zh-CN.md) | 2026-08 性能审查记录 |
 | [performance-delivery.zh-CN.md](performance-delivery.zh-CN.md) | 第一批交付效率改进：HEIF 主图复用、分阶段验收与固定 master 对照 |
 | [performance-loss.zh-CN.md](performance-loss.zh-CN.md) | 第二批管线效率改进：ABI 15 loss 裁切／合并、逐位合同与测量方法 |
+| [performance-sensor-summary.zh-CN.md](performance-sensor-summary.zh-CN.md) | 第三批第一步：RAW 只读所有权、SensorSummary 复用与缓存失效、原版 master 对照 |
 | [archived/](archived) | 更早的审查发现与 HDR 对比记录 |
 
 数据文件:`film_v2_p0_decomposition*.json` 是 P0 基线的分解测量数据。

@@ -40,6 +40,18 @@ def _decode_color_desc(desc: Any) -> str:
     return text.replace("\x00", "").strip()
 
 
+def _immutable_sensor_copy(values: Any) -> Any:
+    """Own the acquired codes without a writable NumPy base or alias.
+
+    Setting WRITEABLE=False on an owning ndarray can be undone. A bytes-backed
+    view makes the existing acquisition copy permanently read-only through the
+    NumPy API, allowing capture-scoped sensor summaries to reuse these pixels.
+    The bytes copy replaces the old ndarray copy; it is not an extra RAW raster.
+    """
+    values = np.asarray(values)
+    return np.frombuffer(values.tobytes(order="C"), dtype=values.dtype).reshape(values.shape)
+
+
 def acquire_raw_evidence(path: Path) -> RawEvidence:
     """Acquire the one evidence source shared by every scene decoder.
 
@@ -55,12 +67,16 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
     path = Path(path)
     try:
         with rawpy.imread(str(path)) as raw:
-            raw_image = np.asarray(raw.raw_image_visible).copy()
+            raw_image = np.asarray(raw.raw_image_visible)
             if raw_image.ndim == 3 and raw_image.shape[2] in (3, 4):
-                raw_image = raw_image[..., :3].copy()
-                raw_colors = np.broadcast_to(np.arange(3, dtype=np.uint8), raw_image.shape)
+                raw_image = _immutable_sensor_copy(raw_image[..., :3])
+                # Broadcast the three immutable channel IDs without a full RGB
+                # colour-index raster or a writable base hidden behind the view.
+                channels = np.frombuffer(bytes((0, 1, 2)), dtype=np.uint8)
+                raw_colors = np.broadcast_to(channels, raw_image.shape)
             else:
-                raw_colors = np.asarray(raw.raw_colors_visible).copy()
+                raw_image = _immutable_sensor_copy(raw_image)
+                raw_colors = _immutable_sensor_copy(raw.raw_colors_visible)
             if raw_image.size == 0 or raw_colors.size == 0:
                 raise RuntimeError("decoded RAW has no visible sensor pixels")
             if raw_image.shape != raw_colors.shape:
