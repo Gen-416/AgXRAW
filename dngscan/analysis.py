@@ -119,10 +119,86 @@ def padded_channel_values(values: list[float], channel_ids: list[int]) -> dict[i
     return out
 
 
+def _native_sensor_channel_inputs(raw, colors, channel_ids):
+    """Borrow only ordinary unsigned sensor arrays; preserve generic indexing."""
+    if (type(raw) is not np.ndarray or type(colors) is not np.ndarray
+            or type(channel_ids) not in (list, tuple) or not channel_ids
+            or raw.ndim not in (2, 3) or raw.shape != colors.shape
+            or raw.dtype != np.dtype(np.uint16) or colors.dtype != np.dtype(np.uint8)
+            or not raw.flags.aligned or not colors.flags.aligned):
+        return False
+    if any(not (type(cid) is int or isinstance(cid, np.integer))
+           or not 0 <= int(cid) < 256 for cid in channel_ids):
+        return False
+    max_index = int(np.iinfo(np.intp).max)
+    for array in (raw, colors):
+        if (any(stride % array.itemsize or stride == -max_index - 1 for stride in array.strides)
+                or array.size * array.itemsize > max_index
+                or math.prod(max(dim, 1) for dim in array.shape) > max_index
+                or array.itemsize + sum(max(dim - 1, 0) * abs(stride)
+                                       for dim, stride in zip(array.shape, array.strides)) > max_index):
+            return False
+    return True
+
+
+def _sensor_channel_ints(values, channel_ids):
+    if type(values) is not dict:
+        return False
+    return all((type(value) is int or isinstance(value, np.integer))
+               and -(1 << 31) <= int(value) < (1 << 31)
+               for value in (values.get(cid, 0) for cid in channel_ids))
+
+
+def _native_detect_ceilings(raw, colors, channel_ids, sat):
+    if (not _native_sensor_channel_inputs(raw, colors, channel_ids)
+            or (sat is not None and not _sensor_channel_ints(sat, channel_ids))):
+        return None
+    # Precompute only ordinary metadata. Unusual values/errors fall back before
+    # dispatch so a missing channel retains the legacy exception precedence.
+    windows = [2] * 256
+    try:
+        for cid in channel_ids:
+            level = int((sat or {}).get(cid, 0)) or 65535
+            window = max(2, int(round(level / CEILING_NEAR_WINDOW_SCALE)))
+            windows[int(cid)] = min(window, 65535)
+    except (TypeError, ValueError, OverflowError, ZeroDivisionError):
+        return None
+    from . import _fast
+
+    native = _fast.kernel("sensor_ceiling_counts_u16")
+    if native is None:
+        return None
+    try:
+        ceilings, totals, exact, near = native(raw, colors, windows)
+        if (any(len(values) != 256 for values in (ceilings, totals, exact, near))
+                or sum(totals) != raw.size
+                or any(not 0 <= ceilings[cid] <= 65535
+                       or not 0 <= exact[cid] <= near[cid] <= totals[cid]
+                       for cid in range(256))):
+            raise RuntimeError("native ceiling counts disagree on the channel population")
+    except Exception as exc:
+        _fast.handle_kernel_error("sensor_ceiling_counts_u16", exc)
+        return None
+    result = ({}, {}, {}, {})
+    for cid in channel_ids:
+        count = totals[int(cid)]
+        if not count:
+            raise RuntimeError(f"no visible pixels for raw color channel {cid}")
+        min_pile = max(CEILING_MIN_PILE_PIXELS, int(math.ceil(count * CEILING_MIN_PILE_FRACTION)))
+        result[0][cid] = int(ceilings[int(cid)])
+        result[1][cid] = int(exact[int(cid)])
+        result[2][cid] = int(near[int(cid)])
+        result[3][cid] = bool(exact[int(cid)] >= min_pile or near[int(cid)] >= min_pile)
+    return result
+
+
 def detect_ceilings(
     raw_image: Any, raw_colors: Any, channel_ids: list[int],
     sat: dict[int, int] | None = None,
 ) -> tuple[dict[int, int], dict[int, int], dict[int, int], dict[int, bool]]:
+    native = _native_detect_ceilings(raw_image, raw_colors, channel_ids, sat)
+    if native is not None:
+        return native
     ceilings: dict[int, int] = {}
     exact_counts: dict[int, int] = {}
     near_counts: dict[int, int] = {}
@@ -169,9 +245,36 @@ def channel_fullwell_map(raw_colors: Any, fullwell_by_channel: dict[int, int]) -
     return channel_value_map(raw_colors, fullwell_by_channel, default, np.float32)
 
 
+def _native_clip_pct_by_thresholds(raw, colors, channel_ids, thresholds):
+    if (not _native_sensor_channel_inputs(raw, colors, channel_ids)
+            or not _sensor_channel_ints(thresholds, channel_ids)):
+        return None
+    from . import _fast
+
+    native = _fast.kernel("sensor_channel_clip_counts_u16")
+    if native is None:
+        return None
+    levels = [0] * 256
+    for cid in channel_ids:
+        levels[int(cid)] = int(thresholds.get(cid, 0))
+    try:
+        totals, clipped = native(raw, colors, levels)
+        if (len(totals) != 256 or len(clipped) != 256 or sum(totals) != raw.size
+                or any(not 0 <= clipped[cid] <= totals[cid] for cid in range(256))):
+            raise RuntimeError("native clip counts disagree on the channel population")
+        return {cid: (float(np.float64(clipped[int(cid)]) / np.float64(totals[int(cid)]) * 100.0)
+                      if totals[int(cid)] else 0.0) for cid in channel_ids}
+    except Exception as exc:
+        _fast.handle_kernel_error("sensor_channel_clip_counts_u16", exc)
+        return None
+
+
 def compute_clip_pct_by_thresholds(
     raw_image: Any, raw_colors: Any, channel_ids: list[int], thresholds: dict[int, int]
 ) -> dict[int, float]:
+    native = _native_clip_pct_by_thresholds(raw_image, raw_colors, channel_ids, thresholds)
+    if native is not None:
+        return native
     out: dict[int, float] = {}
     for cid in channel_ids:
         vals = raw_image[raw_colors == cid]

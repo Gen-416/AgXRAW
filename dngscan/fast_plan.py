@@ -38,7 +38,8 @@ from .models import ToneCompressionPlan
 # v14: WarpRectilinear2 and radial spline warps for embedded lens profiles.
 # v15: crop-footprint and in-place processing-loss maxima.
 # v16: exact unsigned-sensor RGB clip-group counts with strided inputs.
-NATIVE_ABI_VERSION = 16
+# v17: exact unsigned-sensor ceiling and per-channel clipping counts.
+NATIVE_ABI_VERSION = 17
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 
