@@ -1941,6 +1941,7 @@ async function requestPreview({includeMetrics=false,busy=false,evAuto=false,pref
   const body=payload();if(!body)return false;
   const generation=++PREVIEW_GENERATION;
   body.previewSession=PREVIEW_SESSION_ID;
+  body.previewClient=PREVIEW_CLIENT_ID;body.selectionEpoch=PREVIEW_SESSION_SERIAL;
   body.generation=generation;
   body.includeMetrics=!!includeMetrics;
   if(evAuto){$("#autoExposure").checked=true;body.evAuto=true;saveSettings();}
@@ -1971,12 +1972,14 @@ async function preparePreview(){
   const body=payload();if(!body)return;
   const session=beginPreviewSession();
   body.previewSession=session;
+  body.previewClient=PREVIEW_CLIENT_ID;body.selectionEpoch=PREVIEW_SESSION_SERIAL;
   setPreviewBadge("准备实时预览 · PREVIEW_LONG_EDGEpx","busy");
   try{if(!await ensureRaw9Support(body)){setPreviewBadge("实时预览未就绪 · PREVIEW_LONG_EDGEpx","err");return;}}catch(e){setStatus("RAW 9 探测失败："+e,"err");setPreviewBadge("实时预览错误 · PREVIEW_LONG_EDGEpx","err");return;}
+  if(session!==PREVIEW_SESSION_ID)return;
   const controller=new AbortController();prepareAbort=controller;
   try{
     const j=await postJob("/prepare",body,controller.signal);
-    if(controller.signal.aborted||session!==PREVIEW_SESSION_ID)return;
+    if(controller.signal.aborted||session!==PREVIEW_SESSION_ID||j.superseded)return;
     if(j&&j.ok){
       renderDetectedParams(j.detected);PREVIEW_READY=true;setPreviewBadge("实时 · PREVIEW_LONG_EDGEpx","");
       loadClipOverlay(body);

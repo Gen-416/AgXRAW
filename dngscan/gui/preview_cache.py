@@ -7,8 +7,13 @@ import json
 import os
 import tempfile
 import threading
+import time
+import logging
+import copy
+import weakref
 from collections import OrderedDict
-from dataclasses import asdict, dataclass, field
+from concurrent.futures import Future
+from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Hashable
 
@@ -18,6 +23,8 @@ from dngscan.models import Analysis, AutoEvResult, RawBundle, RawGuidanceMaps
 from dngscan.retreat import resize_clip_masks
 
 from .constants import PROXY_LONG_EDGE
+from .preview_scheduler import PreviewSuperseded
+from .scheduler import shared_flight_wait
 
 
 # v11: RAW guidance gained the compiled permission map. Older entries can still
@@ -36,15 +43,37 @@ from .constants import PROXY_LONG_EDGE
 # v16: oriented shading, ordered camera-plane DNG corrections, processing-loss
 # masks and corrected HDR evidence authority. Earlier scene/plan caches are stale.
 # v17: phase-separated noise and non-periodic full-resolution planning samples.
-PREVIEW_CACHE_VERSION = 19
+# v20: exact full-resolution source metadata binds the analysis envelope and
+# disk analysis to the decoder realization; pre-v20 partial checks are stale.
+PREVIEW_CACHE_VERSION = 20
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
 MAX_MEMORY_PROXY_ITEMS = 2
+MAX_MEMORY_PROXY_BYTES = 512 * 1024 * 1024
 MAX_PLAN_CACHE_ITEMS = 32
 MAX_PIXEL_CACHE_ITEMS = 2
 MAX_FRAME_CACHE_ITEMS = 24
 MAX_BALANCE_CACHE_ITEMS = 8
+
+
+@dataclass
+class DitherOwner:
+    key: tuple | None = None
+    planes: tuple[Any, Any] | None = None
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def get(self, shape: tuple) -> tuple[Any, Any]:
+        # Separate from the entry lock: generating noise never blocks frame
+        # cache access, and every same-geometry WB shares this single owner.
+        with self._lock:
+            key = ("seed0-tpdf-two-planes-v1", tuple(shape))
+            if self.key is not None and self.key != key:
+                raise ValueError("dither owner geometry changed")
+            if self.planes is None:
+                self.planes = dg.deterministic_dither_planes(shape)
+                self.key = key
+            return self.planes
 
 
 @dataclass
@@ -53,6 +82,8 @@ class PreviewEntry:
 
     bundle: RawBundle
     analysis: Analysis
+    source_metadata: dict[str, Any] | None = field(default=None, repr=False)
+    cache_digest: str | None = field(default=None, repr=False)
     # P3 seed lifecycle (review batch 15): one grain realization per loaded
     # RAW, reused by every preview, probe and export this entry serves.
     # Review batch 24: PreviewCache.get stamps the identity-derived value
@@ -77,22 +108,68 @@ class PreviewEntry:
         default_factory=OrderedDict, init=False, repr=False
     )
     _dither_noise: tuple[Any, Any] | None = field(default=None, init=False, repr=False)
+    _dither_owner: DitherOwner = field(default_factory=DitherOwner, init=False, repr=False)
+    _memory_notify: Any = field(default=None, init=False, repr=False)
     _runtime_cache_lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False
     )
+    _runtime_inflight: dict[tuple[str, Hashable], Future] = field(default_factory=dict, init=False, repr=False)
+
+    def get_or_compute(self, kind: str, key: Hashable, builder: Callable[[], Any]) -> Any:
+        """One computation per key; unrelated cache access never waits for it."""
+        cache, limit = {"plan": (self._plan_cache, MAX_PLAN_CACHE_ITEMS),
+                        "balance": (self._balance_cache, MAX_BALANCE_CACHE_ITEMS),
+                        "auto_ev": (self._auto_ev_cache, 8)}[kind]
+        token = (kind, key)
+        with self._runtime_cache_lock:
+            if key in cache:
+                cache.move_to_end(key)
+                return cache[key]
+            flight = self._runtime_inflight.get(token)
+            owner = flight is None
+            if owner:
+                flight = self._runtime_inflight[token] = Future()
+        if not owner:
+            with shared_flight_wait():
+                value = flight.result()
+            return value
+        try:
+            value = builder()
+            with self._runtime_cache_lock:
+                cache[key] = value
+                cache.move_to_end(key)
+                while len(cache) > limit:
+                    cache.popitem(last=False)
+            self._changed()
+            flight.set_result(value)
+            return value
+        except BaseException as exc:
+            flight.set_exception(exc)
+            raise
+        finally:
+            with self._runtime_cache_lock:
+                self._runtime_inflight.pop(token, None)
+
+    def get_or_build_auto_ev(self, key: Hashable, builder: Callable[[], AutoEvResult]) -> AutoEvResult:
+        return self.get_or_compute("auto_ev", key, builder)
+
+    def _changed(self) -> None:
+        callback = self._memory_notify() if self._memory_notify is not None else None
+        if callback is not None:
+            callback()
+
+    def evict_runtime(self) -> bool:
+        with self._runtime_cache_lock:
+            for cache in (self._balance_cache, self._pixel_cache, self._frame_cache,
+                          self._plan_cache, self._auto_ev_cache):
+                if cache:
+                    cache.popitem(last=False)
+                    return True
+        return False
 
     def get_or_build_plan(self, key: Hashable, builder: Callable[[], Any]) -> Any:
         """Return an immutable base plan, compiling it at most once per key."""
-        with self._runtime_cache_lock:
-            cached = self._plan_cache.get(key)
-            if cached is not None:
-                self._plan_cache.move_to_end(key)
-                return cached
-            plan = builder()
-            self._plan_cache[key] = plan
-            while len(self._plan_cache) > MAX_PLAN_CACHE_ITEMS:
-                self._plan_cache.popitem(last=False)
-            return plan
+        return self.get_or_compute("plan", key, builder)
 
     def get_or_build_balance(
         self,
@@ -102,17 +179,7 @@ class PreviewEntry:
         """Build each user WB once from the immutable proxy DecodeContext."""
         if wb == "camera":
             return self
-        with self._runtime_cache_lock:
-            cached = self._balance_cache.get(wb)
-            if cached is not None:
-                self._balance_cache.move_to_end(wb)
-                return cached
-            balanced = builder()
-            self._balance_cache[wb] = balanced
-            self._balance_cache.move_to_end(wb)
-            while len(self._balance_cache) > MAX_BALANCE_CACHE_ITEMS:
-                self._balance_cache.popitem(last=False)
-            return balanced
+        return self.get_or_compute("balance", wb, builder)
 
     def get_frame(self, key: Hashable) -> dict[str, Any] | None:
         """Return a shallow payload copy so request metadata can be added safely."""
@@ -134,16 +201,21 @@ class PreviewEntry:
                 self._pixel_cache.move_to_end(key)
             return pixels
 
-    def put_pixels(self, key: Hashable, pixels: Any) -> Any:
+    def put_pixels(self, key: Hashable, pixels: Any, *, _take_ownership: bool = False) -> Any:
         """Keep only the newest full preview frames; each is several MiB."""
         np = dg.np
-        stored = np.array(pixels, dtype=np.uint8, copy=True, order="C")
+        # Only internal producers transfer their fresh, exclusive render output.
+        # Public callers retain the defensive copy for unknown aliases.
+        stored = (pixels if _take_ownership and type(pixels) is np.ndarray
+                  and pixels.dtype == np.uint8 and pixels.flags.c_contiguous
+                  else np.array(pixels, dtype=np.uint8, copy=True, order="C"))
         stored.setflags(write=False)
         with self._runtime_cache_lock:
             self._pixel_cache[key] = stored
             self._pixel_cache.move_to_end(key)
             while len(self._pixel_cache) > MAX_PIXEL_CACHE_ITEMS:
                 self._pixel_cache.popitem(last=False)
+        self._changed()
         return stored
 
     def put_frame(self, key: Hashable, payload: dict[str, Any]) -> None:
@@ -156,15 +228,19 @@ class PreviewEntry:
             self._frame_cache.move_to_end(key)
             while len(self._frame_cache) > MAX_FRAME_CACHE_ITEMS:
                 self._frame_cache.popitem(last=False)
+        self._changed()
 
     def get_or_build_dither_noise(self) -> tuple[Any, Any]:
         """Reuse both fixed seed-0 TPDF planes without changing operation order."""
+        noise = self._dither_owner.get(self.bundle.scene_rec2020_render.shape[:2] + (3,))
         with self._runtime_cache_lock:
-            if self._dither_noise is None:
-                self._dither_noise = dg.deterministic_dither_planes(
-                    self.bundle.scene_rec2020_render.shape[:2] + (3,)
-                )
-            return self._dither_noise
+            changed = self._dither_noise is not noise
+            self._dither_noise = noise
+        # First attachment (including a WB child sharing an existing owner)
+        # changes the entry's retained state. Repeated hits do not add bytes.
+        if changed:
+            self._changed()
+        return noise
 
 
 INT_KEY_ANALYSIS_FIELDS = {
@@ -366,6 +442,8 @@ def _analysis_from_json(data: dict[str, Any]) -> Analysis:
 
 def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
     return {
+        "scene_shape": [int(v) for v in bundle.scene_rec2020_render.shape],
+        "scene_dtype": str(bundle.scene_rec2020_render.dtype),
         "render_scale": float(bundle.render_scale),
         "scene_scale": float(bundle.scene_scale),
         "white_level": int(bundle.white_level) if bundle.white_level is not None else None,
@@ -595,9 +673,9 @@ def build_proxy_entry(
     if source.clip_masks is not None:
         from dngscan import retreat as _retreat
 
-        _masks = _retreat.clip_masks_for_shape(
+        _masks = _retreat.clip_masks_for_render(
             source, source.scene_rec2020_render.shape[:2]
-        ).reshape(-1, 3)
+        )
         tone_sample_masks = np.ascontiguousarray(
             _masks[_indices].astype(np.float16, copy=False)
         )
@@ -616,9 +694,12 @@ def build_proxy_entry(
     if include_guidance:
         proxy_guidance = _copy_guidance(raw_guidance_for_shape(source, proxy_shape, analysis))
     meta = _bundle_metadata(source)
+    source_metadata = copy.deepcopy(meta)
     # After proxying, masks live at proxy geometry; clear the evidence crop so later
     # resizes treat them as already scene-aligned.
     meta["evidence_shape"] = [int(proxy_shape[0]), int(proxy_shape[1])]
+    meta["scene_shape"] = [int(v) for v in proxy_scene.shape]
+    meta["scene_dtype"] = str(proxy_scene.dtype)
     meta["scene_geometry_crop"] = None
     # sensor px per proxy px along the long edge (compounds if the source
     # was itself a proxy); the chroma-NR band is declared in sensor px
@@ -636,7 +717,7 @@ def build_proxy_entry(
         reliable_reference=(None if source.scene_reliable_reference_rec2020 is None
                             else np.asarray(source.scene_reliable_reference_rec2020).copy()),
     )
-    return PreviewEntry(bundle=bundle, analysis=analysis)
+    return PreviewEntry(bundle=bundle, analysis=analysis, source_metadata=source_metadata)
 
 
 def _read_disk_entry(
@@ -690,7 +771,8 @@ def _read_disk_entry(
                 reliable_reference=(np.asarray(payload["reliable_reference"]).copy()
                                     if "reliable_reference" in payload.files else None),
             )
-            return PreviewEntry(bundle=bundle, analysis=_analysis_from_json(metadata["analysis"]))
+            return PreviewEntry(bundle=bundle, analysis=_analysis_from_json(metadata["analysis"]),
+                                source_metadata=metadata.get("source_bundle"))
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         try:
             cache_path.unlink(missing_ok=True)
@@ -725,6 +807,7 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
             "version": PREVIEW_CACHE_VERSION,
             "bundle": _bundle_metadata(bundle),
             "analysis": _analysis_to_json(entry.analysis),
+            "source_bundle": entry.source_metadata,
             "has_masks": bundle.clip_masks is not None,
             "has_guidance": maps is not None,
             "guidance_has_snr": maps is not None and maps.snr_confidence is not None,
@@ -774,6 +857,129 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
         return
 
 
+class DiskWriter:
+    """One optional writer with a bounded, replaceable queue of proxy snapshots."""
+    def __init__(self, max_items: int = 2, max_bytes: int = 256 * 1024 * 1024):
+        self.max_items, self.max_bytes = max_items, max_bytes
+        self._pending = OrderedDict()
+        self._condition = threading.Condition()
+        self._thread = None
+        self._active = False
+        self._active_bytes = 0
+
+    def snapshot(self) -> dict[str, int]:
+        with self._condition:
+            return {"pending_items": len(self._pending),
+                    "pending_bytes": sum(item[1] for item in self._pending.values()),
+                    "active_bytes": self._active_bytes,
+                    "pending_limit_bytes": self.max_bytes}
+
+    def submit(self, path: Path, entry: PreviewEntry) -> None:
+        if not isinstance(entry, PreviewEntry):
+            return
+        # Keep only disk inputs; a queued snapshot must not retain future WB,
+        # render-plan, pixel or dither caches on the live entry.
+        snapshot = PreviewEntry(replace(entry.bundle),
+                                _analysis_from_json(_analysis_to_json(entry.analysis)),
+                                copy.deepcopy(entry.source_metadata))
+        size = _owned_bytes(snapshot)
+        if size > self.max_bytes:
+            return
+        with self._condition:
+            self._pending[path] = (snapshot, size, _write_disk_entry)
+            self._pending.move_to_end(path)
+            while (len(self._pending) > self.max_items
+                   or sum(item[1] for item in self._pending.values()) > self.max_bytes):
+                self._pending.popitem(last=False)
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name="dngscan-proxy-writer", daemon=True)
+                self._thread.start()
+            self._condition.notify_all()
+
+    def _run(self) -> None:
+        while True:
+            with self._condition:
+                while not self._pending:
+                    self._condition.wait()
+                path, (entry, size, writer) = self._pending.popitem(last=False)
+                self._active = True
+                self._active_bytes = size
+            try:
+                writer(path, entry)
+            except Exception:
+                logging.getLogger(__name__).warning("preview disk cache write failed", exc_info=True)
+            finally:
+                # Do not retain the most recently written proxy while idle.
+                del entry
+                with self._condition:
+                    self._active = False
+                    self._active_bytes = 0
+                    self._condition.notify_all()
+
+    def flush(self, timeout: float = 5.) -> bool:
+        deadline = time.monotonic() + timeout
+        with self._condition:
+            while self._pending or self._active:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._condition.wait(remaining)
+            return True
+
+
+def _owned_bytes(value: Any, seen: set[int] | None = None) -> int:
+    """Count ndarray backing owners once, including arrays hidden in plans."""
+    # Histogram payloads contain thousands of ordinary numbers. They have
+    # never contributed bytes to this buffer-only contract. Avoid walking
+    # identity/type machinery for them, while preserving subclasses that may
+    # be dataclasses containing arrays or text.
+    if value is None or type(value) in (bool, int, float, complex):
+        return 0
+    if seen is None:
+        seen = set()
+    if id(value) in seen:
+        return 0
+    seen.add(id(value))
+    if isinstance(value, PreviewEntry):
+        with value._runtime_cache_lock:
+            values = [value.bundle, value.analysis, value.source_metadata, value._dither_owner,
+                      *value._balance_cache.values(), *value._plan_cache.values(),
+                      *value._pixel_cache.values(), *value._frame_cache.values(),
+                      *value._auto_ev_cache.values()]
+        return sum(_owned_bytes(item, seen) for item in values)
+    if isinstance(value, dg.np.ndarray):
+        owner = value
+        while isinstance(owner.base, dg.np.ndarray):
+            owner = owner.base
+        if owner is not value:
+            if id(owner) in seen:
+                return 0
+            seen.add(id(owner))
+        backing = owner.base
+        if backing is not None:
+            if id(backing) in seen:
+                return 0
+            seen.add(id(backing))
+            try:
+                return memoryview(backing).nbytes
+            except TypeError:
+                pass
+        return int(owner.nbytes)
+    if isinstance(value, (bytes, bytearray, str)):
+        return len(value)
+    if isinstance(value, dict):
+        return sum(_owned_bytes(v, seen) for v in list(value.values()))
+    if isinstance(value, (tuple, list)):
+        return sum(_owned_bytes(v, seen) for v in value)
+    if is_dataclass(value):
+        return sum(_owned_bytes(getattr(value, f.name), seen) for f in fields(value)
+                   if "lock" not in f.name and "inflight" not in f.name)
+    return 0
+
+
+DISK_WRITER = DiskWriter()
+
+
 class PreviewCache:
     """A small in-memory proxy LRU plus a bounded, validated on-disk cache."""
 
@@ -791,6 +997,25 @@ class PreviewCache:
         self.lock = threading.Lock()
         self._inflight: dict[tuple, threading.Event] = {}
         self._build_slots = threading.BoundedSemaphore(self.MAX_CONCURRENT_BUILDS)
+        self.max_memory_bytes = MAX_MEMORY_PROXY_BYTES
+
+    def memory_snapshot(self) -> dict[str, int]:
+        with self.lock:
+            values = list(self.entries.values())
+        return {"entries": len(values), "bytes": _owned_bytes(values),
+                "limit_bytes": self.max_memory_bytes}
+
+    def _trim_memory(self) -> None:
+        with self.lock:
+            while len(self.entries) > MAX_MEMORY_PROXY_ITEMS:
+                self.entries.popitem(last=False)
+            while self.entries and _owned_bytes(list(self.entries.values())) > self.max_memory_bytes:
+                if len(self.entries) > 1:
+                    self.entries.popitem(last=False)
+                    continue
+                entry = next(iter(self.entries.values()))
+                if not entry.evict_runtime():
+                    self.entries.popitem(last=False)
 
     def clear_memory(self) -> None:
         with self.lock:
@@ -863,7 +1088,11 @@ class PreviewCache:
         demosaic: str = "auto",
         coreimage_scale: str = "aligned",
         margin: int = 4,
+        _is_current: Callable[[], bool] | None = None,
     ) -> PreviewEntry:
+        current = _is_current or (lambda: True)
+        if not current():
+            raise PreviewSuperseded()
         if decoder == "coreimage":
             highlight = "reconstruct"
             demosaic = "auto"
@@ -881,6 +1110,8 @@ class PreviewCache:
             else:
                 cached = None
         if cached is not None:
+            if not current():
+                raise PreviewSuperseded()
             return cached.get_or_build_balance(
                 wb,
                 lambda: self._build_balance(cached, wb),
@@ -903,20 +1134,28 @@ class PreviewCache:
                 waiter = self._inflight.get(key)
                 if waiter is None:
                     waiter = threading.Event()
+                    waiter.interests = []
                     self._inflight[key] = waiter
                     builder = True
                 else:
                     builder = False
+                waiter.interests.append(current)
             if not builder:
-                waiter.wait()
+                with shared_flight_wait():
+                    waiter.wait()
                 err = getattr(waiter, "error", None)
                 if err is not None:
                     # the error rides THIS flight's event object, so a later
                     # flight on the same key can never serve a stale failure
                     raise err
+                completed = getattr(waiter, "result", None)
+                if completed is not None and (not require_guidance or completed.bundle.raw_guidance is not None):
+                    winner = completed
+                    break
                 continue  # re-check the memory entry the builder installed
             try:
                 with self._build_slots:
+                    self._check_flight_interest(key, waiter)
                     cache_path = _cache_dir() / f"{digest}.npz"
                     built = _read_disk_entry(
                         cache_path,
@@ -928,6 +1167,7 @@ class PreviewCache:
                         # The cold entry is always the one fixed as-shot
                         # DecodeContext. WB no longer participates in the
                         # disk/memory identity or decoder call.
+                        self._check_flight_interest(key, waiter)
                         source = dg.load_raw(
                             path,
                             highlight,
@@ -938,34 +1178,72 @@ class PreviewCache:
                             coreimage_version=coreimage_version,
                             coreimage_scale=coreimage_scale,
                             _defer_clip_masks=True,
+                            _analysis_luminance_only=True,
                         )
-                        analysis, _, _ = dg.analyze(source, int(margin), diagnostics=False)
+                        self._check_flight_interest(key, waiter)
+                        analysis, _, _ = dg.analyze(source, int(margin), diagnostics=False,
+                                                  _return_planes=False)
+                        source = dg.release_analysis_buffers(source)
                         built = build_proxy_entry(source, analysis, require_guidance)
-                        _write_disk_entry(cache_path, built)
+                        del source
+                        cold = True
+                    else:
+                        cold = False
                     # identity-derived, whichever way the entry was built
                     built.realization_id = _realization_id_for(digest)
+                    built.cache_digest = digest
                 with self.lock:
+                    built._memory_notify = weakref.WeakMethod(self._trim_memory)
                     self.entries[key] = built
                     self.entries.move_to_end(key)
                     while len(self.entries) > MAX_MEMORY_PROXY_ITEMS:
                         self.entries.popitem(last=False)
+                self._trim_memory()
                 winner = built
+                waiter.result = built
+                # Wake subscribers before optional disk I/O; the analysis
+                # envelope bridges an immediate export while writing is pending.
+                waiter.set()
+                if cold:
+                    try:
+                        DISK_WRITER.submit(cache_path, built)
+                    except Exception:
+                        logging.getLogger(__name__).warning("preview disk cache enqueue failed", exc_info=True)
                 break
             except BaseException as exc:
                 waiter.error = exc
                 raise
             finally:
                 with self.lock:
-                    self._inflight.pop(key, None)
+                    if self._inflight.get(key) is waiter:
+                        self._inflight.pop(key, None)
                 waiter.set()
+        if not current():
+            raise PreviewSuperseded()
         return winner.get_or_build_balance(
             wb,
             lambda: self._build_balance(winner, wb),
         )
 
+    def _check_flight_interest(self, key: tuple, waiter: threading.Event) -> None:
+        """A stale owner may stop only when every subscriber is obsolete."""
+        while True:
+            with self.lock:
+                interests = tuple(waiter.interests)
+            if any(check() for check in interests):
+                return
+            with self.lock:
+                if len(waiter.interests) != len(interests):
+                    continue
+                # Detach this flight before failing it; a new subscriber starts
+                # a fresh flight instead of inheriting somebody else's cancel.
+                if self._inflight.get(key) is waiter:
+                    self._inflight.pop(key, None)
+                raise PreviewSuperseded()
+
     @staticmethod
     def _build_balance(base: PreviewEntry, wb: str) -> PreviewEntry:
-        bundle = dg.rebalance_raw_bundle(base.bundle, wb)
+        bundle = dg.rebalance_raw_bundle(base.bundle, wb, _analysis_luminance_only=True)
         if bundle.wb_mode == "camera":
             # The requested balance degraded to camera AsShot (missing multipliers or
             # calibration).  The scene pixels are exactly the base proxy's, so the
@@ -980,10 +1258,15 @@ class PreviewCache:
             # BASE entry — a freshly minted id here silently changed the
             # exported grain under any non-AsShot white balance
             child.realization_id = base.realization_id
+            child._dither_owner = base._dither_owner
+            child._memory_notify = base._memory_notify
             return child
         analysis = dg.reanalyze_balanced_scene(base.analysis, bundle)
+        bundle = dg.release_analysis_buffers(bundle)
         child = PreviewEntry(bundle=bundle, analysis=analysis)
         child.realization_id = base.realization_id
+        child._dither_owner = base._dither_owner
+        child._memory_notify = base._memory_notify
         return child
 
 

@@ -61,6 +61,7 @@ class SingleFlightTests(unittest.TestCase):
                 mock.patch.object(pc, "_cache_identity",
                                   lambda path, *a, **k: ((str(path),), "d" + str(path))), \
                 mock.patch.object(pc.dg, "load_raw", fake_load_raw), \
+                mock.patch.object(pc.dg, "release_analysis_buffers", lambda source: source), \
                 mock.patch.object(pc.dg, "analyze", fake_analyze):
             threads = [
                 threading.Thread(target=worker, args=(keys[i % len(keys)],))
@@ -213,8 +214,13 @@ class SingleFlightTests(unittest.TestCase):
                 active["now"] -= 1
             return mock.Mock(name="bundle")
 
+        errors = []
+
         def worker(p):
-            cache.get(p, "clip", "camera")
+            try:
+                cache.get(p, "clip", "camera")
+            except Exception as exc:
+                errors.append(exc)
 
         with mock.patch.object(pc, "_read_disk_entry", lambda *a, **k: None), \
                 mock.patch.object(pc, "_write_disk_entry", lambda *a: None), \
@@ -227,6 +233,7 @@ class SingleFlightTests(unittest.TestCase):
                 mock.patch.object(pc, "_cache_identity",
                                   lambda path, *a, **k: ((str(path),), "q" + str(path))), \
                 mock.patch.object(pc.dg, "load_raw", fake_load_raw), \
+                mock.patch.object(pc.dg, "release_analysis_buffers", lambda source: source), \
                 mock.patch.object(pc.dg, "analyze",
                                   lambda *a, **k: (mock.Mock(), None, None)):
             threads = [
@@ -238,6 +245,7 @@ class SingleFlightTests(unittest.TestCase):
                 t.start()
             for t in threads:
                 t.join()
+        self.assertEqual(errors, [])
         self.assertLessEqual(
             active["peak"], pc.PreviewCache.MAX_CONCURRENT_BUILDS,
             "cold builds must respect the memory quota",
