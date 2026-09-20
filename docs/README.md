@@ -58,6 +58,11 @@ GUI 上的描述性文案只有最基础的一句;每个控件的来龙去脉、
 | [performance-deferred-masks.zh-CN.md](performance-deferred-masks.zh-CN.md) | 第三批第二步：分析后一次构建最终 mask、浮点白点兼容与公开加载合同 |
 | [performance-sensor-rgb.zh-CN.md](performance-sensor-rgb.zh-CN.md) | 第三批第三步：ABI 16 精确 RGB 过曝分组计数、步长借用与完整管线对照 |
 | [performance-sensor-channels.zh-CN.md](performance-sensor-channels.zh-CN.md) | 第三批第四步：ABI 17 精确 ceiling／逐通道剪切扫描、完整感光点计数与旧版对照 |
+| [performance-pipeline-completion.zh-CN.md](performance-pipeline-completion.zh-CN.md) | 非胶片效率方案收尾：分析与 AutoEV、全路径文件等价、测量范围与实施状态 |
+| [performance-phase-statistics.zh-CN.md](performance-phase-statistics.zh-CN.md) | noise/SNR/health 的有界相位统计，精确原算法与 24/60MP 内存对照 |
+| [performance-render-delivery.zh-CN.md](performance-render-delivery.zh-CN.md) | ABI 18、分块 HDR、B3、精确交付指标与有界工作区 |
+| [performance-gui-cache.zh-CN.md](performance-gui-cache.zh-CN.md) | GUI single-flight、异步落盘、可信分析桥接与按所有权计费的缓存 |
+| [performance-concurrency.zh-CN.md](performance-concurrency.zh-CN.md) | 预览、冷解码和导出并发的延迟、任务树内存与线程实测 |
 | [archived/](archived) | 更早的审查发现与 HDR 对比记录 |
 
 数据文件:`film_v2_p0_decomposition*.json` 是 P0 基线的分解测量数据。

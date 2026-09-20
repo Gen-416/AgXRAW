@@ -76,3 +76,14 @@
 | `hdr_ab.py` | SDR/HDR 对比图生成 |
 | `benchmark_fast_backend.py` | 原生 kernel 基准 |
 | `benchmark_realtime_preview.py` | 实时预览基准 |
+| `benchmark_pipeline_completion.py` | 新进程 RAW 分析、AutoEV、SDR / float HDR / packed HDR 的精确身份与阶段时间对照 |
+| `benchmark_phase_statistics.py` | 新进程 24/60MP uint16 CFA 噪声、SNR、health 的独立旧入口与共享有界 workspace；完整身份、阶段时间及 RSS |
+| `benchmark_cli_delivery.py` | 从真实 RAW 运行完整 CLI；比较自动选参、最终 JPEG/HEIF 压缩内容、metadata 后文件与回读像素 |
+| `benchmark_gainmap_search.py` | 固定 SDR/HDR 母版，记录 HEIF 候选、编码/回读次数，校验选参与压缩内容 |
+| `benchmark_delivery_metrics.py` | 24MP base/coding 合并扫描及 HDR 多秩/workspace 的完整数值、时间与容量对照 |
+| `benchmark_quantize_groups.py` | 固定完整 A/B 噪声下的 1M concat 与两个 500k slice，独立进程/外部 RSS 采样 |
+| `benchmark_delivery_buffers.py` | HDR packing/readback 与 HEIF 输入平面的逐位及内存对照 |
+| `benchmark_optional_render.py` | gated、非零 ChromaNR、RAW guidance 与 native 调用成本的独立测量 |
+| `benchmark_pipeline_concurrency.py` | 真实 prepare/preview/isolated-export 并发，外部进程树采样、排队/执行时间及输出身份 |
+
+GUI 白平衡工作集另见 `tests/benchmark_gui_cache_workset.py`，需显式运行，不随 unittest discovery 触发大图测量。非胶片效率优化的合同与实测口径见 [管线记录](../docs/performance-pipeline-completion.zh-CN.md)、[形成与交付](../docs/performance-render-delivery.zh-CN.md) 和 [GUI 缓存](../docs/performance-gui-cache.zh-CN.md)。

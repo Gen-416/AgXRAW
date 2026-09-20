@@ -1,0 +1,622 @@
+{
+  "schema": 1,
+  "measurement_date": "2026-09-20",
+  "baseline_commit": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+  "baseline_native_abi": 17,
+  "baseline_cache_schema": 19,
+  "optimized_revision": "Uncommitted GUI and pipeline working tree on the same HEAD; ABI 18 and cache schema 20. Measured before PreparedSceneSample was bound into production. The enclosing commit may also include later independent improvements.",
+  "optimized_head": "9c8a44770b9a4b4c813c2f2ff5f1e33d2452e30d",
+  "optimized_native_abi": 18,
+  "optimized_cache_schema": 20,
+  "environment": {
+    "python": "3.14.4",
+    "numpy": "2.5.2",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "logical_cpus": 10,
+    "native_mode": "DNGSCAN_FAST=1; DNGSCAN_FAST_SKIP empty",
+    "provenance": "Same interpreter and host used for all six GUI runs; Python/NumPy/OS/CPU additionally agree with the adjacent completion/sigma-sdr-{before,final}.json environment records. Original GUI reports record ABI/cache schema but do not embed the other environment fields."
+  },
+  "source": {
+    "name": "_SDI0150.DNG",
+    "bytes": 32350753,
+    "sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c",
+    "decoder": "libraw"
+  },
+  "scope": {
+    "pairs": 3,
+    "order": [
+      "before-0",
+      "after-0",
+      "before-1",
+      "after-1",
+      "before-2",
+      "after-2"
+    ],
+    "process": "Fresh process and independent temporary disk cache per run. Seven WB values in each of two rounds; manual EV 0 and AutoEV first/repeat; memory clear then disk restore. AgX/P3/SDR, no film.",
+    "timing": "GUI service API wall seconds; imports, report writing and hashing excluded. No HTTP transport/browser paint. Stage sum excludes disk-writer flush between stages.",
+    "rss": "Process high-water RSS, not tracked buffer bytes or GPU allocation; includes decode and verification. Combined-pipeline difference, not an isolated GUI attribution.",
+    "cache": "Shared ndarray owners counted once. Active requests and Python object overhead are not a hard RSS limit. Only one RAW with seven WB variants was tested; two complete RAW/WB working sets are not promised to remain resident.",
+    "cold_prepare_conclusion": "Overlapping run ranges; no stable cold-first-frame speedup claimed."
+  },
+  "verified": {
+    "corresponding_preview_pairs": 54,
+    "all_corresponding_preview_hashes_exact": true,
+    "memory_camera_equals_disk_camera": true,
+    "auto_first_equals_repeat": true,
+    "second_wb_round_compute_calls": 0,
+    "disk_reload_raw_loads": 0,
+    "disk_reload_analyses": 0,
+    "preview_hashes": [
+      {
+        "stage": "camera_first",
+        "preview_base64_sha256": "214819009ba17dfcccae15f2163924022b0ab93b868fab9352034bb0fe3ac840"
+      },
+      {
+        "stage": "camera_auto_first",
+        "preview_base64_sha256": "36648ee4a7824bf078bc718422fec895a7526055464ba547e1d3f4a537f825c5"
+      },
+      {
+        "stage": "camera_auto_repeat",
+        "preview_base64_sha256": "36648ee4a7824bf078bc718422fec895a7526055464ba547e1d3f4a537f825c5"
+      },
+      {
+        "stage": "wb1:camera",
+        "preview_base64_sha256": "214819009ba17dfcccae15f2163924022b0ab93b868fab9352034bb0fe3ac840"
+      },
+      {
+        "stage": "wb1:daylight",
+        "preview_base64_sha256": "a1852edef2313be4cd42af61bdf79c78708a500ea114c09baff2310b95eacc4c"
+      },
+      {
+        "stage": "wb1:6500k",
+        "preview_base64_sha256": "11bd4c369405cc3653a33b5d3abecd38a6df1ff1a1015f19c13abd86708f5633"
+      },
+      {
+        "stage": "wb1:5500k",
+        "preview_base64_sha256": "72b2146b669d61dac57c9dc12196dd80cc9f62a7ba3ab136f0fc76885016284b"
+      },
+      {
+        "stage": "wb1:3400k",
+        "preview_base64_sha256": "7f905427a875678f061c1628bc9aa218d94ded8a5ccc4d7103caf4d818bfc5e5"
+      },
+      {
+        "stage": "wb1:3200k",
+        "preview_base64_sha256": "f6c511bdbdd5cddda4f6577512eff573a13c7f239efe9c5802fdbe98b96870a0"
+      },
+      {
+        "stage": "wb1:9300k",
+        "preview_base64_sha256": "ec9e3d76fc922aa1e6261354072992752abea349144e5bace560310ed194b5d1"
+      },
+      {
+        "stage": "wb2:camera",
+        "preview_base64_sha256": "214819009ba17dfcccae15f2163924022b0ab93b868fab9352034bb0fe3ac840"
+      },
+      {
+        "stage": "wb2:daylight",
+        "preview_base64_sha256": "a1852edef2313be4cd42af61bdf79c78708a500ea114c09baff2310b95eacc4c"
+      },
+      {
+        "stage": "wb2:6500k",
+        "preview_base64_sha256": "11bd4c369405cc3653a33b5d3abecd38a6df1ff1a1015f19c13abd86708f5633"
+      },
+      {
+        "stage": "wb2:5500k",
+        "preview_base64_sha256": "72b2146b669d61dac57c9dc12196dd80cc9f62a7ba3ab136f0fc76885016284b"
+      },
+      {
+        "stage": "wb2:3400k",
+        "preview_base64_sha256": "7f905427a875678f061c1628bc9aa218d94ded8a5ccc4d7103caf4d818bfc5e5"
+      },
+      {
+        "stage": "wb2:3200k",
+        "preview_base64_sha256": "f6c511bdbdd5cddda4f6577512eff573a13c7f239efe9c5802fdbe98b96870a0"
+      },
+      {
+        "stage": "wb2:9300k",
+        "preview_base64_sha256": "ec9e3d76fc922aa1e6261354072992752abea349144e5bace560310ed194b5d1"
+      },
+      {
+        "stage": "disk_camera",
+        "preview_base64_sha256": "214819009ba17dfcccae15f2163924022b0ab93b868fab9352034bb0fe3ac840"
+      }
+    ]
+  },
+  "workset_calls": {
+    "before": {
+      "load": 1,
+      "analyze": 1,
+      "plan": 7,
+      "balance": 6,
+      "dither": 7,
+      "auto_ev": 1
+    },
+    "after": {
+      "load": 1,
+      "analyze": 1,
+      "plan": 7,
+      "balance": 6,
+      "dither": 1,
+      "auto_ev": 1
+    },
+    "same_in_all_three_runs": true
+  },
+  "cache_after": {
+    "peak_bytes": 442994164,
+    "limit_bytes": 536870912,
+    "balance_children": 6,
+    "second_round_recomputed": false
+  },
+  "runs": [
+    {
+      "pair": 0,
+      "variant": "before",
+      "total_stage_wall_s": 8.452201752050314,
+      "peak_rss_mib": 3525.375
+    },
+    {
+      "pair": 0,
+      "variant": "after",
+      "total_stage_wall_s": 8.145524207968265,
+      "peak_rss_mib": 2392.28125
+    },
+    {
+      "pair": 1,
+      "variant": "before",
+      "total_stage_wall_s": 8.306016083981376,
+      "peak_rss_mib": 3518.9375
+    },
+    {
+      "pair": 1,
+      "variant": "after",
+      "total_stage_wall_s": 8.181508958019549,
+      "peak_rss_mib": 2391.703125
+    },
+    {
+      "pair": 2,
+      "variant": "before",
+      "total_stage_wall_s": 8.440271290106466,
+      "peak_rss_mib": 3517.734375
+    },
+    {
+      "pair": 2,
+      "variant": "after",
+      "total_stage_wall_s": 8.232607875019312,
+      "peak_rss_mib": 2393.6875
+    }
+  ],
+  "summary": {
+    "total_stage_wall_s": {
+      "before": {
+        "values": [
+          8.452201752050314,
+          8.306016083981376,
+          8.440271290106466
+        ],
+        "median": 8.440271290106466
+      },
+      "after": {
+        "values": [
+          8.145524207968265,
+          8.181508958019549,
+          8.232607875019312
+        ],
+        "median": 8.181508958019549
+      }
+    },
+    "peak_rss_mib": {
+      "before": {
+        "median": 3518.9375,
+        "runs": [
+          3525.375,
+          3518.9375,
+          3517.734375
+        ]
+      },
+      "after": {
+        "median": 2392.28125,
+        "runs": [
+          2392.28125,
+          2391.703125,
+          2393.6875
+        ]
+      }
+    },
+    "selected_stage_wall_s": {
+      "cold_prepare": {
+        "before": {
+          "median": 5.796895958017558,
+          "min": 5.679630625003483,
+          "max": 5.8089752919913735,
+          "runs": [
+            5.8089752919913735,
+            5.679630625003483,
+            5.796895958017558
+          ]
+        },
+        "after": {
+          "median": 5.698839291988406,
+          "min": 5.684233374980977,
+          "max": 5.758517042006133,
+          "runs": [
+            5.684233374980977,
+            5.698839291988406,
+            5.758517042006133
+          ]
+        }
+      },
+      "camera_first": {
+        "before": {
+          "median": 0.18134937499416992,
+          "min": 0.17534724998404272,
+          "max": 0.18783650000113994,
+          "runs": [
+            0.18783650000113994,
+            0.17534724998404272,
+            0.18134937499416992
+          ]
+        },
+        "after": {
+          "median": 0.18036345799919218,
+          "min": 0.17935608298284933,
+          "max": 0.18686220899689943,
+          "runs": [
+            0.18036345799919218,
+            0.18686220899689943,
+            0.17935608298284933
+          ]
+        }
+      },
+      "camera_auto_first": {
+        "before": {
+          "median": 0.38106225000228733,
+          "min": 0.37951945801614784,
+          "max": 0.384859250014415,
+          "runs": [
+            0.38106225000228733,
+            0.384859250014415,
+            0.37951945801614784
+          ]
+        },
+        "after": {
+          "median": 0.3637206249986775,
+          "min": 0.35909154202090576,
+          "max": 0.36412891699001193,
+          "runs": [
+            0.36412891699001193,
+            0.3637206249986775,
+            0.35909154202090576
+          ]
+        }
+      },
+      "camera_auto_repeat": {
+        "before": {
+          "median": 0.00022645900025963783,
+          "min": 0.00022483299835585058,
+          "max": 0.00023733300622552633,
+          "runs": [
+            0.00022645900025963783,
+            0.00022483299835585058,
+            0.00023733300622552633
+          ]
+        },
+        "after": {
+          "median": 0.0002824589901138097,
+          "min": 0.0002532500075176358,
+          "max": 0.00029399999766610563,
+          "runs": [
+            0.0002824589901138097,
+            0.00029399999766610563,
+            0.0002532500075176358
+          ]
+        }
+      },
+      "disk_prepare": {
+        "before": {
+          "median": 0.07076450000749901,
+          "min": 0.06847670799470507,
+          "max": 0.0713709999981802,
+          "runs": [
+            0.0713709999981802,
+            0.06847670799470507,
+            0.07076450000749901
+          ]
+        },
+        "after": {
+          "median": 0.07098766701528803,
+          "min": 0.07087375002447516,
+          "max": 0.07104291699943133,
+          "runs": [
+            0.07087375002447516,
+            0.07098766701528803,
+            0.07104291699943133
+          ]
+        }
+      },
+      "disk_camera": {
+        "before": {
+          "median": 0.16647683398332447,
+          "min": 0.16507179199834354,
+          "max": 0.1710044170031324,
+          "runs": [
+            0.16507179199834354,
+            0.16647683398332447,
+            0.1710044170031324
+          ]
+        },
+        "after": {
+          "median": 0.1705954580102116,
+          "min": 0.16572079199249856,
+          "max": 0.1754288749943953,
+          "runs": [
+            0.16572079199249856,
+            0.1705954580102116,
+            0.1754288749943953
+          ]
+        }
+      },
+      "wb1:daylight": {
+        "before": {
+          "median": 0.3165422090096399,
+          "min": 0.31509037502110004,
+          "max": 0.31702920800307766,
+          "runs": [
+            0.31702920800307766,
+            0.3165422090096399,
+            0.31509037502110004
+          ]
+        },
+        "after": {
+          "median": 0.2872221249854192,
+          "min": 0.28601358298328705,
+          "max": 0.28948154201498255,
+          "runs": [
+            0.28601358298328705,
+            0.2872221249854192,
+            0.28948154201498255
+          ]
+        }
+      },
+      "wb1:6500k": {
+        "before": {
+          "median": 0.32271824998315424,
+          "min": 0.32123404199955985,
+          "max": 0.3246335420117248,
+          "runs": [
+            0.32123404199955985,
+            0.3246335420117248,
+            0.32271824998315424
+          ]
+        },
+        "after": {
+          "median": 0.29554275001282804,
+          "min": 0.294142250000732,
+          "max": 0.29591850002179854,
+          "runs": [
+            0.29554275001282804,
+            0.29591850002179854,
+            0.294142250000732
+          ]
+        }
+      },
+      "wb1:9300k": {
+        "before": {
+          "median": 0.3434391670161858,
+          "min": 0.3428945830091834,
+          "max": 0.35059091600123793,
+          "runs": [
+            0.3434391670161858,
+            0.3428945830091834,
+            0.35059091600123793
+          ]
+        },
+        "after": {
+          "median": 0.324798165995162,
+          "min": 0.3231528750038706,
+          "max": 0.3285944999952335,
+          "runs": [
+            0.324798165995162,
+            0.3231528750038706,
+            0.3285944999952335
+          ]
+        }
+      }
+    }
+  },
+  "raw_reports": [
+    "completion/gui-workset-before-0.json",
+    "completion/gui-workset-after-0.json",
+    "completion/gui-workset-before-1.json",
+    "completion/gui-workset-after-1.json",
+    "completion/gui-workset-before-2.json",
+    "completion/gui-workset-after-2.json"
+  ],
+  "frame_accounting_profile": {
+    "scope": "Isolated camera-WB warm preview after the ABI18 metrics/quantization build; active/off/off/active, 36 unique EV frames per round. Before/after differ only by cache-accounting fast paths. No concurrent cold prepare/export. Notification suppression is a diagnostic ablation, never a production policy.",
+    "frames_per_round": 36,
+    "all_288_preview_hashes_exact_across_modes_and_revisions": true,
+    "sequence_sha256": "8ab0b7175d27f817916c1680e99d146d82c941b1eb3b4a85617319fca92dc189",
+    "base_bundle_mask_cache_present": false,
+    "runs": {
+      "before": {
+        "native_abi": 18,
+        "cache_schema": 20,
+        "raw_report": "gui-frame-accounting-before.json",
+        "raw_report_sha256": "082ee0ceb0d6621a570276598f138e0eb471647744f236365d6393f4881cb871",
+        "rounds": [
+          {
+            "mode": "active",
+            "frame_wall_seconds": {
+              "median": 0.13924777149804868,
+              "min": 0.1224736669973936,
+              "max": 0.14633295801468194,
+              "sum": 4.913572501012823
+            },
+            "trim_seconds": {
+              "median": 0.015425125006004237,
+              "min": 0.0008910420292522758,
+              "max": 0.02107129103387706,
+              "sum": 0.4932592901168391
+            },
+            "last_12_trim_median_seconds": 0.020755874502356164,
+            "trim_calls_per_frame": [
+              3
+            ],
+            "peak_cached_frames": 24
+          },
+          {
+            "mode": "notify-off",
+            "frame_wall_seconds": {
+              "median": 0.12390579149359837,
+              "min": 0.117561040999135,
+              "max": 0.13011504197493196,
+              "sum": 4.465172960946802
+            },
+            "trim_seconds": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0,
+              "sum": 0
+            },
+            "last_12_trim_median_seconds": 0.0,
+            "trim_calls_per_frame": [
+              0
+            ],
+            "peak_cached_frames": 24
+          },
+          {
+            "mode": "notify-off",
+            "frame_wall_seconds": {
+              "median": 0.12438789549923968,
+              "min": 0.11779995801043697,
+              "max": 0.14949687500484288,
+              "sum": 4.539149582880782
+            },
+            "trim_seconds": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0,
+              "sum": 0
+            },
+            "last_12_trim_median_seconds": 0.0,
+            "trim_calls_per_frame": [
+              0
+            ],
+            "peak_cached_frames": 24
+          },
+          {
+            "mode": "active",
+            "frame_wall_seconds": {
+              "median": 0.14091283301240765,
+              "min": 0.1267629579815548,
+              "max": 0.14729141700081527,
+              "sum": 4.999301206931705
+            },
+            "trim_seconds": {
+              "median": 0.015409479005029425,
+              "min": 0.0009680829534772784,
+              "max": 0.02152137501980178,
+              "sum": 0.506221333052963
+            },
+            "last_12_trim_median_seconds": 0.021264499504468404,
+            "trim_calls_per_frame": [
+              3
+            ],
+            "peak_cached_frames": 24
+          }
+        ],
+        "active_round_median_wall_seconds": 0.14008030225522816,
+        "active_round_median_trim_seconds": 0.01541730200551683
+      },
+      "after": {
+        "native_abi": 18,
+        "cache_schema": 20,
+        "raw_report": "gui-frame-accounting-after.json",
+        "raw_report_sha256": "c600e677233d51b71819574b9467f5fae88559a6f6bc4e224d707ab883d29ac5",
+        "rounds": [
+          {
+            "mode": "active",
+            "frame_wall_seconds": {
+              "median": 0.12750393750320654,
+              "min": 0.12256804198841564,
+              "max": 0.13685154198901728,
+              "sum": 4.612540335016092
+            },
+            "trim_seconds": {
+              "median": 0.002301186992553994,
+              "min": 0.00034274900099262595,
+              "max": 0.003108208009507507,
+              "sum": 0.07519554204191081
+            },
+            "last_12_trim_median_seconds": 0.0030060834833420813,
+            "trim_calls_per_frame": [
+              2
+            ],
+            "peak_cached_frames": 24
+          },
+          {
+            "mode": "notify-off",
+            "frame_wall_seconds": {
+              "median": 0.12496229150565341,
+              "min": 0.12156591602251865,
+              "max": 0.13899229100206867,
+              "sum": 4.544451662135543
+            },
+            "trim_seconds": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0,
+              "sum": 0
+            },
+            "last_12_trim_median_seconds": 0.0,
+            "trim_calls_per_frame": [
+              0
+            ],
+            "peak_cached_frames": 24
+          },
+          {
+            "mode": "notify-off",
+            "frame_wall_seconds": {
+              "median": 0.12484768700960558,
+              "min": 0.11873791698599234,
+              "max": 0.13188391699804924,
+              "sum": 4.518200372112915
+            },
+            "trim_seconds": {
+              "median": 0.0,
+              "min": 0,
+              "max": 0,
+              "sum": 0
+            },
+            "last_12_trim_median_seconds": 0.0,
+            "trim_calls_per_frame": [
+              0
+            ],
+            "peak_cached_frames": 24
+          },
+          {
+            "mode": "active",
+            "frame_wall_seconds": {
+              "median": 0.12850527052069083,
+              "min": 0.1239339169987943,
+              "max": 0.1335322079830803,
+              "sum": 4.6310604151804
+            },
+            "trim_seconds": {
+              "median": 0.002445708480081521,
+              "min": 0.00033204100327566266,
+              "max": 0.0032017920166254044,
+              "sum": 0.07864945597248152
+            },
+            "last_12_trim_median_seconds": 0.0031592704908689484,
+            "trim_calls_per_frame": [
+              2
+            ],
+            "peak_cached_frames": 24
+          }
+        ],
+        "active_round_median_wall_seconds": 0.12800460401194869,
+        "active_round_median_trim_seconds": 0.0023734477363177575
+      }
+    }
+  }
+}
