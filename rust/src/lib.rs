@@ -9,6 +9,7 @@ mod agx;
 mod budget;
 mod evidence;
 mod lens;
+mod loss;
 mod film_appearance;
 mod film_core;
 mod hdr;
@@ -20,7 +21,7 @@ mod spatial;
 mod stats;
 
 use numpy::{PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArray2, PyReadwriteArray2, PyUntypedArrayMethods};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
 use std::sync::atomic::Ordering;
@@ -32,7 +33,8 @@ use std::sync::atomic::Ordering;
 /// luminance row and local luminance metrics to the HDR delivery scanner.
 /// v13 tracks in-place GainMap clipping and adds camera-plane DNG warps.
 /// v14 adds WarpRectilinear2 and embedded lens radial splines.
-pub const NATIVE_ABI_VERSION: i32 = 14;
+/// v15 adds crop-footprint and in-place processing-loss maxima.
+pub const NATIVE_ABI_VERSION: i32 = 15;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -578,6 +580,141 @@ fn as_f16_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound
     kwargs.set_item("dtype", np.getattr("float16")?)?;
     let arr = np.getattr("asarray")?.call((obj,), Some(&kwargs))?;
     Ok(arr.cast_into::<PyArrayDyn<half::f16>>()?)
+}
+
+fn loss_rgb_shape<T: numpy::Element>(array: &Bound<'_, PyArrayDyn<T>>, name: &str) -> PyResult<(usize, usize)> {
+    let shape = array.shape();
+    if shape.len() != 3 || shape[0] == 0 || shape[1] == 0 || shape[2] != 3
+        || shape.iter().try_fold(std::mem::size_of::<T>(), |n, &dim| n.checked_mul(dim))
+            .is_none_or(|n| n > isize::MAX as usize) {
+        return Err(PyValueError::new_err(format!("{name} must be nonempty H,W,3")));
+    }
+    let align = std::mem::align_of::<T>();
+    if (array.data() as usize) % align != 0
+        || array.strides().iter().any(|&stride| stride % align as isize != 0) {
+        return Err(PyValueError::new_err(format!("{name} must be aligned")));
+    }
+    Ok((shape[0], shape[1]))
+}
+
+fn loss_indices(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<Vec<usize>> {
+    let array = obj.cast::<PyArray1<isize>>()
+        .map_err(|_| PyValueError::new_err(format!("{name} must be a 1-D intp array")))?;
+    if array.is_empty() || (array.data() as usize) % std::mem::align_of::<isize>() != 0
+        || array.strides()[0] % std::mem::align_of::<isize>() as isize != 0 {
+        return Err(PyValueError::new_err(format!("{name} must be nonempty and aligned")));
+    }
+    let read = array.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    read.as_array().iter().map(|&value| usize::try_from(value)
+        .map_err(|_| PyValueError::new_err(format!("{name} must be nonnegative")))).collect()
+}
+
+/// Compare actual byte-address envelopes, not just NumPy base-object identity.
+/// This also catches aliases manufactured through independent buffer wrappers.
+fn loss_byte_range<T: numpy::Element>(array: &Bound<'_, PyArrayDyn<T>>) -> (i128, i128) {
+    let mut lo = array.data() as usize as i128;
+    let mut hi = lo + std::mem::size_of::<T>() as i128;
+    for (&dim, &stride) in array.shape().iter().zip(array.strides()) {
+        let offset = (dim - 1) as i128 * stride as i128;
+        lo += offset.min(0);
+        hi += offset.max(0);
+    }
+    (lo, hi)
+}
+
+fn crop_loss_typed<'py, T: numpy::Element + loss::LossValue>(
+    py: Python<'py>, values: &Bound<'py, PyArrayDyn<T>>,
+    ylo: &[usize], yhi: &[usize], xlo: &[usize], xhi: &[usize],
+) -> PyResult<Bound<'py, PyAny>> {
+    let (height, width) = loss_rgb_shape(values, "values")?;
+    if ylo.len() != yhi.len() || xlo.len() != xhi.len()
+        || ylo.iter().zip(yhi).any(|(&lo, &hi)| lo > hi || hi > height)
+        || xlo.iter().zip(xhi).any(|(&lo, &hi)| lo > hi || hi > width)
+        || ylo.len().checked_mul(xlo.len()).and_then(|n| n.checked_mul(3 * std::mem::size_of::<T>()))
+            .is_none_or(|n| n > isize::MAX as usize) {
+        return Err(PyValueError::new_err("invalid crop footprint bounds"));
+    }
+    let read = values.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let view = read.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
+        .map_err(|_| PyValueError::new_err("values must be H,W,3"))?;
+    let result = py.detach(|| loss::crop(view, ylo, yhi, xlo, xhi))
+        .map_err(|e| PyRuntimeError::new_err(format!("loss workers: {e}")))?;
+    match result {
+        Some(out) => Ok(PyArray1::from_vec(py, out).reshape([ylo.len(), xlo.len(), 3])?.into_any()),
+        None => Ok(py.None().into_bound(py)),
+    }
+}
+
+#[pyfunction]
+fn crop_loss_footprint<'py>(
+    py: Python<'py>, values: &Bound<'py, PyAny>, ylo: &Bound<'py, PyAny>,
+    yhi: &Bound<'py, PyAny>, xlo: &Bound<'py, PyAny>, xhi: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let ylo = loss_indices(ylo, "ylo")?;
+    let yhi = loss_indices(yhi, "yhi")?;
+    let xlo = loss_indices(xlo, "xlo")?;
+    let xhi = loss_indices(xhi, "xhi")?;
+    if let Ok(array) = values.cast::<PyArrayDyn<half::f16>>() {
+        crop_loss_typed(py, array, &ylo, &yhi, &xlo, &xhi)
+    } else if let Ok(array) = values.cast::<PyArrayDyn<f32>>() {
+        crop_loss_typed(py, array, &ylo, &yhi, &xlo, &xhi)
+    } else {
+        Err(PyValueError::new_err("values must be a float16 or float32 array"))
+    }
+}
+
+fn merge_loss_typed<'py, T: numpy::Element + loss::LossValue>(
+    py: Python<'py>, masks: &Bound<'py, PyArrayDyn<half::f16>>,
+    processing: &Bound<'py, PyArrayDyn<T>>, maps: Option<(&[usize], &[usize])>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let (height, width) = loss_rgb_shape(masks, "masks")?;
+    let (source_h, source_w) = loss_rgb_shape(processing, "processing")?;
+    if !masks.is_c_contiguous() {
+        return Err(PyValueError::new_err("masks must be C contiguous"));
+    }
+    match maps {
+        None if (height, width) != (source_h, source_w) =>
+            return Err(PyValueError::new_err("processing must match masks shape without maps")),
+        Some((ys, xs)) if ys.len() != height || xs.len() != width
+            || ys.iter().any(|&y| y >= source_h) || xs.iter().any(|&x| x >= source_w) =>
+            return Err(PyValueError::new_err("invalid nearest-neighbour index maps")),
+        _ => (),
+    }
+    let (mlo, mhi) = loss_byte_range(masks);
+    let (plo, phi) = loss_byte_range(processing);
+    if mlo < phi && plo < mhi {
+        return Err(PyValueError::new_err("masks and processing must not overlap"));
+    }
+    let read = processing.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let view = read.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
+        .map_err(|_| PyValueError::new_err("processing must be H,W,3"))?;
+    let mut write = masks.try_readwrite().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let target = write.as_slice_mut()?;
+    let supported = py.detach(|| loss::merge(target, height, width, view, maps))
+        .map_err(|e| PyRuntimeError::new_err(format!("loss workers: {e}")))?;
+    Ok(if supported { masks.clone().into_any() } else { py.None().into_bound(py) })
+}
+
+#[pyfunction(signature = (masks, processing, y_indices=None, x_indices=None))]
+fn merge_processing_loss_f16_inplace<'py>(
+    py: Python<'py>, masks: &Bound<'py, PyAny>, processing: &Bound<'py, PyAny>,
+    y_indices: Option<&Bound<'py, PyAny>>, x_indices: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let masks = masks.cast::<PyArrayDyn<half::f16>>()
+        .map_err(|_| PyValueError::new_err("masks must be a float16 array"))?;
+    let indices = match (y_indices, x_indices) {
+        (Some(ys), Some(xs)) => Some((loss_indices(ys, "y_indices")?, loss_indices(xs, "x_indices")?)),
+        (None, None) => None,
+        _ => return Err(PyValueError::new_err("provide both nearest-neighbour index maps")),
+    };
+    let maps = indices.as_ref().map(|(ys, xs)| (ys.as_slice(), xs.as_slice()));
+    if let Ok(array) = processing.cast::<PyArrayDyn<half::f16>>() {
+        merge_loss_typed(py, masks, array, maps)
+    } else if let Ok(array) = processing.cast::<PyArrayDyn<f32>>() {
+        merge_loss_typed(py, masks, array, maps)
+    } else {
+        Err(PyValueError::new_err("processing must be a float16 or float32 array"))
+    }
 }
 
 #[pyfunction]
@@ -1544,6 +1681,8 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(finalize_output_u8_noise_f32, m)?)?;
     m.add_function(wrap_pyfunction!(self_test, m)?)?;
     m.add_function(wrap_pyfunction!(feather_masks_f16, m)?)?;
+    m.add_function(wrap_pyfunction!(crop_loss_footprint, m)?)?;
+    m.add_function(wrap_pyfunction!(merge_processing_loss_f16_inplace, m)?)?;
     m.add_function(wrap_pyfunction!(apply_gain_map_mosaic, m)?)?;
     m.add_function(wrap_pyfunction!(warp_dng, m)?)?;
     m.add_function(wrap_pyfunction!(gamut_counts, m)?)?;

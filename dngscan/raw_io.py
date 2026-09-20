@@ -1158,6 +1158,52 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
 
 def _merge_processing_loss(masks: Any, processing: Any | None) -> Any:
     if processing is not None:
+        # Only the final feathered half mask is mutable here. Preserve the old
+        # path for aliases, unsupported layouts and dtypes without an implicit
+        # full-frame copy to make them eligible for the native kernel.
+        if (isinstance(masks, np.ndarray) and isinstance(processing, np.ndarray)
+                and masks.ndim == 3 and masks.shape[2] == 3
+                and processing.ndim == 3 and processing.shape[2] == 3
+                and masks.dtype == np.float16
+                and processing.dtype in (np.dtype(np.float16), np.dtype(np.float32))
+                # NumPy's mixed f32/half SIMD maximum is faster when no resize
+                # is needed; only the half/half or fused-resize cases dispatch.
+                and (processing.dtype == np.float16 or masks.shape[:2] != processing.shape[:2])
+                and masks.flags.c_contiguous and masks.flags.writeable
+                and masks.flags.aligned and processing.flags.aligned
+                and min(*masks.shape[:2], *processing.shape[:2]) > 0
+                and max(*processing.shape[:2]) <= np.iinfo(np.int32).max
+                and not np.may_share_memory(masks, processing)):
+            from . import _fast
+            native = _fast.kernel("merge_processing_loss_f16_inplace")
+            if native is not None:
+                try:
+                    if masks.shape[:2] == processing.shape[:2]:
+                        # Same-size half/half maximum keeps the original bits.
+                        result = native(masks, processing)
+                    else:
+                        # Pillow chooses the nearest source coordinate. Mode-I
+                        # one-dimensional strips reproduce those exact choices
+                        # using O(H+W) scratch, rather than resizing three planes.
+                        # The kernel rounds sampled processing to half BEFORE
+                        # max, matching _resize_loss_to_shape's half output.
+                        from PIL import Image
+                        sh, sw = processing.shape[:2]
+                        h, w = masks.shape[:2]
+                        yi = Image.fromarray(np.arange(sh, dtype=np.int32)[:, None])
+                        xi = Image.fromarray(np.arange(sw, dtype=np.int32)[None, :])
+                        y_indices = np.asarray(yi.resize((1, h), Image.Resampling.NEAREST),
+                                               dtype=np.intp).reshape(-1)
+                        x_indices = np.asarray(xi.resize((w, 1), Image.Resampling.NEAREST),
+                                               dtype=np.intp).reshape(-1)
+                        result = native(masks, processing, y_indices, x_indices)
+                    # The native preflight may decline special numeric cases
+                    # without writing anything. That is a supported fallback in
+                    # strict mode too; it is distinct from a kernel exception.
+                    if result is not None:
+                        return masks
+                except Exception as exc:
+                    _fast.handle_kernel_error("merge_processing_loss_f16_inplace", exc)
         # One float16 raster at most; never manufacture a full float32 RGB copy.
         np.maximum(masks, _resize_loss_to_shape(processing, masks.shape[:2]), out=masks)
     return masks

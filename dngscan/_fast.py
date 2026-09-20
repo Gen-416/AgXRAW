@@ -303,6 +303,20 @@ def _skipped_kernels() -> frozenset[str]:
     return frozenset(s.strip() for s in raw.split(",") if s.strip())
 
 
+def handle_kernel_error(name: str, error: Exception) -> None:
+    """Keep optional-kernel failures on the shared auto/strict policy.
+
+    Callers retain their NumPy body after this returns. In-place kernels must
+    finish validation before modifying their destination; a fallback must not
+    depend on copying a whole frame just to undo a failed native call.
+    """
+    if strict_requested():
+        if isinstance(error, NativeKernelError):
+            raise error
+        raise NativeKernelError(f"native kernel {name} failed: {error}") from error
+    _LOG.warning("native kernel %s failed; using NumPy reference: %s", name, error)
+
+
 def set_thread_budget(budget: int) -> None:
     """Publish the native kernels' per-worker thread budget (scheduler S3).
 
