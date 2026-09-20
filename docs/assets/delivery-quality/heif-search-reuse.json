@@ -1,0 +1,1094 @@
+{
+  "scope": "One 6000x4000 Sigma _SDI0150 fixed SDR/HDR master, HDR HEIF/x265 auto search; excludes RAW processing, imports, capability warmup and metadata carry.",
+  "baseline_commit": "b110cc2a71c21ac09d2d57999cb5cb5279bfb775",
+  "environment": {
+    "python": "3.14.4 (main, Apr  7 2026, 13:13:20) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "numpy": "2.5.2",
+    "cpus": 10,
+    "native_mode": "1",
+    "native_abi": 14
+  },
+  "input_masters": {
+    "base": {
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "dtype": "uint8",
+      "file_sha256": "ab81b926dd4ba687a1bd1c676b9bc4ec60d50ffe156bcd20c2d4f1da301badb0",
+      "bytes": 72000128
+    },
+    "hdr": {
+      "shape": [
+        6000,
+        4000,
+        4
+      ],
+      "dtype": "float16",
+      "file_sha256": "3e2f37aa8d2486528d605a6a6ccac102f2336c57692eda2f21332cc81c6418c4",
+      "bytes": 192000128
+    }
+  },
+  "historical_baseline": {
+    "wall_s": 247.18222704099026,
+    "stages": {
+      "primary_encode": {
+        "count": 14,
+        "self_s": 162.8678163330187,
+        "wall_s": 162.8678163330187
+      },
+      "replace_auxiliary": {
+        "count": 18,
+        "self_s": 0.698738331979257,
+        "wall_s": 0.698738331979257
+      },
+      "replace_primary": {
+        "count": 14,
+        "self_s": 0.0001264160528080538,
+        "wall_s": 0.5389317480294267
+      },
+      "inspect_container": {
+        "count": 14,
+        "self_s": 0.06732129296869971,
+        "wall_s": 0.06732129296869971
+      },
+      "sdr_readback": {
+        "count": 28,
+        "self_s": 8.079710874968441,
+        "wall_s": 8.079710874968441
+      },
+      "sdr_metrics_rust": {
+        "count": 14,
+        "self_s": 0.27666162498644553,
+        "wall_s": 0.27666162498644553
+      },
+      "hdr_readback": {
+        "count": 14,
+        "self_s": 7.0942688359937165,
+        "wall_s": 7.0942688359937165
+      },
+      "hdr_metrics_rust": {
+        "count": 14,
+        "self_s": 4.028106959056458,
+        "wall_s": 4.028106959056458
+      },
+      "coding_metrics_numpy": {
+        "count": 14,
+        "self_s": 1.7809379969839938,
+        "wall_s": 1.7809379969839938
+      },
+      "find_auxiliary": {
+        "count": 4,
+        "self_s": 0.10470958400401287,
+        "wall_s": 0.10470958400401287
+      },
+      "auxiliary_readback": {
+        "count": 1,
+        "self_s": 0.5968152499990538,
+        "wall_s": 0.5968152499990538
+      },
+      "auxiliary_encode": {
+        "count": 4,
+        "self_s": 55.43586804099323,
+        "wall_s": 55.43586804099323
+      }
+    },
+    "delivery": {
+      "has_iso_gainmap": true,
+      "headroom": 2.396484375,
+      "profile": "Display P3",
+      "width": 4000,
+      "height": 6000,
+      "bit_depth": 10,
+      "chroma_subsampling": "4:4:4",
+      "gainmap_width": 4000,
+      "gainmap_height": 6000,
+      "gainmap_pixel_format": "444f",
+      "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+      "preset": "slow",
+      "tune": "ssim",
+      "delivery_quality": 90,
+      "delivery_chroma_requested": "444",
+      "delivery_container": "heic",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.260919533662905,
+      "base_mean_code_error": 0.4018466111111111,
+      "base_p99_code_error": 2.0,
+      "base_max_code_error": 11.0,
+      "base_channel_bias_code_error": 0.024011916666666668,
+      "base_block_p99_code_error": 0.34375,
+      "chroma_error": 0.013050575740635395,
+      "relative_error": 0.04908279702067375,
+      "median_relative_error": 0.01220703125,
+      "p95_relative_error": 0.035273369401693344,
+      "p99_relative_error": 0.04908279702067375,
+      "p999_relative_error": 0.0677490234375,
+      "block_median_relative_error": 0.0023126602172851562,
+      "block_p95_relative_error": 0.006053573451936245,
+      "block_p99_relative_error": 0.008020407520234585,
+      "block_chroma_error": 0.001995980739593506,
+      "block_p95_luma_error": 0.006703301798552275,
+      "highlight_max_luma_error": 0.04728007689118385,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "gainmap_encoding_quality": 80,
+      "coding_luma_rmse": 0.2832954973563876,
+      "coding_chroma_rmse": 0.710866943716244,
+      "coding_local_luma_p99": 0.3271562457084656,
+      "gainmap_encoder": "x265",
+      "gainmap_chroma_requested": "444",
+      "file_size_bytes": 46437841,
+      "auto_reference_quality": 95,
+      "auto_reference_chroma": "444",
+      "auto_reference_bytes": 56537043,
+      "auto_saved_pct": 17.862982328240975,
+      "auto_search": "bounded-quality-chroma-gainmap",
+      "auto_attempts": [
+        {
+          "quality": 95,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 56537043,
+          "metrics": {
+            "chroma_error": 0.010776489973068237,
+            "block_p95_luma_error": 0.005588013678789139,
+            "highlight_max_luma_error": 0.04906972870230675,
+            "coding_luma_rmse": 0.2606250152334801,
+            "coding_chroma_rmse": 0.6455116629535902,
+            "coding_local_luma_p99": 0.267640620470047
+          }
+        },
+        {
+          "quality": 92,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 56157963,
+          "metrics": {
+            "chroma_error": 0.011181986890733242,
+            "block_p95_luma_error": 0.005756141152232885,
+            "highlight_max_luma_error": 0.05880254507064819,
+            "coding_luma_rmse": 0.2676884439013452,
+            "coding_chroma_rmse": 0.6656831375006105,
+            "coding_local_luma_p99": 0.29764077067375183
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 55262876,
+          "metrics": {
+            "chroma_error": 0.012156903743743896,
+            "block_p95_luma_error": 0.006195561960339546,
+            "highlight_max_luma_error": 0.0563729852437973,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 85,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 52178120,
+          "metrics": {
+            "chroma_error": 0.015258073806762695,
+            "block_p95_luma_error": 0.0074927788227796555,
+            "highlight_max_luma_error": 0.06640851497650146,
+            "coding_luma_rmse": 0.3373397269681678,
+            "coding_chroma_rmse": 0.8714286969474015,
+            "coding_local_luma_p99": 0.3920939266681671
+          }
+        },
+        {
+          "quality": 80,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 47433124,
+          "metrics": {
+            "chroma_error": 0.021094858646392822,
+            "block_p95_luma_error": 0.01028201263397932,
+            "highlight_max_luma_error": 0.054003842175006866,
+            "coding_luma_rmse": 0.44149262688838803,
+            "coding_chroma_rmse": 1.1847483504160565,
+            "coding_local_luma_p99": 0.5179066061973572
+          }
+        },
+        {
+          "quality": 70,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 40800962,
+          "metrics": {
+            "chroma_error": 0.03328365087509155,
+            "block_p95_luma_error": 0.017711760476231575,
+            "highlight_max_luma_error": 0.063443124294281,
+            "coding_luma_rmse": 0.7055015217902035,
+            "coding_chroma_rmse": 1.89748953674488,
+            "coding_local_luma_p99": 0.8432657718658447
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "422",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 53334631,
+          "metrics": {
+            "chroma_error": 0.046777088195085526,
+            "block_p95_luma_error": 0.009376941248774529,
+            "highlight_max_luma_error": 0.10046993941068649,
+            "coding_luma_rmse": 0.38525845836039485,
+            "coding_chroma_rmse": 2.5498902570753486,
+            "coding_local_luma_p99": 0.4572034478187561
+          }
+        },
+        {
+          "quality": 95,
+          "chroma": "422",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 53797169,
+          "metrics": {
+            "chroma_error": 0.04675358906388283,
+            "block_p95_luma_error": 0.009281149134039879,
+            "highlight_max_luma_error": 0.06943545490503311,
+            "coding_luma_rmse": 0.37950241327808576,
+            "coding_chroma_rmse": 2.548250719608398,
+            "coding_local_luma_p99": 0.44781267642974854
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "420",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 47599325,
+          "metrics": {
+            "chroma_error": 0.046440839767456055,
+            "block_p95_luma_error": 0.010226358659565449,
+            "highlight_max_luma_error": 0.09291542321443558,
+            "coding_luma_rmse": 0.4018216408159791,
+            "coding_chroma_rmse": 2.7776621312040435,
+            "coding_local_luma_p99": 0.47240641713142395
+          }
+        },
+        {
+          "quality": 95,
+          "chroma": "420",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 47933138,
+          "metrics": {
+            "chroma_error": 0.04642940312623978,
+            "block_p95_luma_error": 0.010144224390387535,
+            "highlight_max_luma_error": 0.08541399985551834,
+            "coding_luma_rmse": 0.39634571678605507,
+            "coding_chroma_rmse": 2.7764455756116844,
+            "coding_local_luma_p99": 0.46578139066696167
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 95,
+          "accepted": true,
+          "bytes": 54354980,
+          "metrics": {
+            "chroma_error": 0.01245543360710144,
+            "block_p95_luma_error": 0.006241902243345976,
+            "highlight_max_luma_error": 0.0563729852437973,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 90,
+          "accepted": true,
+          "bytes": 53052295,
+          "metrics": {
+            "chroma_error": 0.012518882751464844,
+            "block_p95_luma_error": 0.006279708351939917,
+            "highlight_max_luma_error": 0.06350233405828476,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 85,
+          "accepted": true,
+          "bytes": 51203294,
+          "metrics": {
+            "chroma_error": 0.01263466477394104,
+            "block_p95_luma_error": 0.0063776359893381596,
+            "highlight_max_luma_error": 0.04678091034293175,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 80,
+          "accepted": true,
+          "bytes": 46437841,
+          "metrics": {
+            "chroma_error": 0.013050575740635395,
+            "block_p95_luma_error": 0.006703301798552275,
+            "highlight_max_luma_error": 0.04728007689118385,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        }
+      ]
+    }
+  },
+  "optimized": {
+    "wall_s": 220.79985754100198,
+    "stages": {
+      "primary_encode": {
+        "count": 10,
+        "wall_s": 131.8946403729642,
+        "self_s": 131.8946403729642
+      },
+      "replace_image_item": {
+        "count": 18,
+        "wall_s": 1.2967475839832332,
+        "self_s": 1.2967475839832332
+      },
+      "replace_primary": {
+        "count": 14,
+        "wall_s": 1.0085319170175353,
+        "self_s": 0.00030633300775662065
+      },
+      "inspect_container": {
+        "count": 14,
+        "wall_s": 0.13169662600557785,
+        "self_s": 0.13169662600557785
+      },
+      "sdr_readback": {
+        "count": 10,
+        "wall_s": 3.421085583991953,
+        "self_s": 3.421085583991953
+      },
+      "sdr_metrics": {
+        "count": 10,
+        "wall_s": 0.2739244989643339,
+        "self_s": 0.2739244989643339
+      },
+      "coding_metrics": {
+        "count": 10,
+        "wall_s": 1.5487705420091515,
+        "self_s": 1.5487705420091515
+      },
+      "hdr_readback": {
+        "count": 7,
+        "wall_s": 4.8620524979778565,
+        "self_s": 4.8620524979778565
+      },
+      "hdr_metrics": {
+        "count": 7,
+        "wall_s": 2.5130447939882288,
+        "self_s": 2.5130447939882288
+      },
+      "find_auxiliary": {
+        "count": 4,
+        "wall_s": 0.07301316699886229,
+        "self_s": 0.07301316699886229
+      },
+      "auxiliary_readback": {
+        "count": 1,
+        "wall_s": 0.6702109999896493,
+        "self_s": 0.6702109999896493
+      },
+      "auxiliary_encode": {
+        "count": 4,
+        "wall_s": 65.54125403999933,
+        "self_s": 65.54125403999933
+      }
+    },
+    "delivery": {
+      "has_iso_gainmap": true,
+      "headroom": 2.396484375,
+      "profile": "Display P3",
+      "width": 4000,
+      "height": 6000,
+      "bit_depth": 10,
+      "chroma_subsampling": "4:4:4",
+      "gainmap_width": 4000,
+      "gainmap_height": 6000,
+      "gainmap_pixel_format": "444f",
+      "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+      "preset": "slow",
+      "tune": "ssim",
+      "delivery_quality": 90,
+      "delivery_chroma_requested": "444",
+      "delivery_container": "heic",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.260919533662905,
+      "base_mean_code_error": 0.4018466111111111,
+      "base_p99_code_error": 2.0,
+      "base_max_code_error": 11.0,
+      "base_channel_bias_code_error": 0.024011916666666668,
+      "base_block_p99_code_error": 0.34375,
+      "coding_luma_rmse": 0.2832954973563876,
+      "coding_chroma_rmse": 0.710866943716244,
+      "coding_local_luma_p99": 0.3271562457084656,
+      "chroma_error": 0.013050575740635395,
+      "relative_error": 0.04908279702067375,
+      "median_relative_error": 0.01220703125,
+      "p95_relative_error": 0.035273369401693344,
+      "p99_relative_error": 0.04908279702067375,
+      "p999_relative_error": 0.0677490234375,
+      "block_median_relative_error": 0.0023126602172851562,
+      "block_p95_relative_error": 0.006053573451936245,
+      "block_p99_relative_error": 0.008020407520234585,
+      "block_chroma_error": 0.001995980739593506,
+      "block_p95_luma_error": 0.006703301798552275,
+      "highlight_max_luma_error": 0.04728007689118385,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "gainmap_encoding_quality": 80,
+      "gainmap_encoder": "x265",
+      "gainmap_chroma_requested": "444",
+      "file_size_bytes": 46437841,
+      "auto_reference_quality": 95,
+      "auto_reference_chroma": "444",
+      "auto_reference_bytes": 56537043,
+      "auto_saved_pct": 17.862982328240975,
+      "auto_search": "bounded-quality-chroma-gainmap",
+      "auto_attempts": [
+        {
+          "quality": 95,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 56537043,
+          "metrics": {
+            "base_mean_code_error": 0.35432315277777776,
+            "base_p99_code_error": 2.0,
+            "base_max_code_error": 7.0,
+            "base_channel_bias_code_error": 0.024568416666666665,
+            "base_block_p99_code_error": 0.3125,
+            "coding_luma_rmse": 0.2606250152334801,
+            "coding_chroma_rmse": 0.6455116629535902,
+            "coding_local_luma_p99": 0.267640620470047,
+            "chroma_error": 0.010776489973068237,
+            "block_p95_luma_error": 0.005588013678789139,
+            "highlight_max_luma_error": 0.04906972870230675
+          }
+        },
+        {
+          "quality": 92,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 56157963,
+          "metrics": {
+            "base_mean_code_error": 0.36864404166666664,
+            "base_p99_code_error": 2.0,
+            "base_max_code_error": 10.0,
+            "base_channel_bias_code_error": 0.024754375,
+            "base_block_p99_code_error": 0.3125,
+            "coding_luma_rmse": 0.2676884439013452,
+            "coding_chroma_rmse": 0.6656831375006105,
+            "coding_local_luma_p99": 0.29764077067375183,
+            "chroma_error": 0.011181986890733242,
+            "block_p95_luma_error": 0.005756141152232885,
+            "highlight_max_luma_error": 0.05880254507064819
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 55262876,
+          "metrics": {
+            "base_mean_code_error": 0.4018466111111111,
+            "base_p99_code_error": 2.0,
+            "base_max_code_error": 11.0,
+            "base_channel_bias_code_error": 0.024011916666666668,
+            "base_block_p99_code_error": 0.34375,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656,
+            "chroma_error": 0.012156903743743896,
+            "block_p95_luma_error": 0.006195561960339546,
+            "highlight_max_luma_error": 0.0563729852437973
+          }
+        },
+        {
+          "quality": 85,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "reason": "SDR 编码附加误差超出参考预算",
+          "metrics": {
+            "base_mean_code_error": 0.5238543888888889,
+            "base_p99_code_error": 3.0,
+            "base_max_code_error": 10.0,
+            "base_channel_bias_code_error": 0.023496375,
+            "base_block_p99_code_error": 0.40625,
+            "coding_luma_rmse": 0.3373397269681678,
+            "coding_chroma_rmse": 0.8714286969474015,
+            "coding_local_luma_p99": 0.3920939266681671
+          },
+          "rejected_at": "sdr_additional",
+          "bytes": 52178120
+        },
+        {
+          "quality": 80,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "reason": "SDR 编码附加误差超出参考预算",
+          "metrics": {
+            "base_mean_code_error": 0.7573312361111111,
+            "base_p99_code_error": 4.0,
+            "base_max_code_error": 15.0,
+            "base_channel_bias_code_error": 0.025785958333333334,
+            "base_block_p99_code_error": 0.5625,
+            "coding_luma_rmse": 0.44149262688838803,
+            "coding_chroma_rmse": 1.1847483504160565,
+            "coding_local_luma_p99": 0.5179066061973572
+          },
+          "rejected_at": "sdr_additional",
+          "bytes": 47433124
+        },
+        {
+          "quality": 70,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "reason": "SDR 编码附加误差超出参考预算",
+          "metrics": {
+            "base_mean_code_error": 1.2488790138888888,
+            "base_p99_code_error": 7.0,
+            "base_max_code_error": 26.0,
+            "base_channel_bias_code_error": 0.039893791666666664,
+            "base_block_p99_code_error": 0.984375,
+            "coding_luma_rmse": 0.7055015217902035,
+            "coding_chroma_rmse": 1.89748953674488,
+            "coding_local_luma_p99": 0.8432657718658447
+          },
+          "rejected_at": "sdr_additional",
+          "bytes": 40800962
+        },
+        {
+          "quality": 90,
+          "chroma": "422",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "reason": "SDR 编码附加误差超出参考预算",
+          "metrics": {
+            "base_mean_code_error": 1.2185859444444445,
+            "base_p99_code_error": 13.0,
+            "base_max_code_error": 78.0,
+            "base_channel_bias_code_error": 0.036733166666666664,
+            "base_block_p99_code_error": 1.96875,
+            "coding_luma_rmse": 0.38525845836039485,
+            "coding_chroma_rmse": 2.5498902570753486,
+            "coding_local_luma_p99": 0.4572034478187561
+          },
+          "rejected_at": "sdr_additional",
+          "bytes": 53334631
+        },
+        {
+          "quality": 95,
+          "chroma": "422",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "reason": "SDR 编码附加误差超出参考预算",
+          "metrics": {
+            "base_mean_code_error": 1.2144887222222223,
+            "base_p99_code_error": 13.0,
+            "base_max_code_error": 77.0,
+            "base_channel_bias_code_error": 0.03585875,
+            "base_block_p99_code_error": 1.984375,
+            "coding_luma_rmse": 0.37950241327808576,
+            "coding_chroma_rmse": 2.548250719608398,
+            "coding_local_luma_p99": 0.44781267642974854
+          },
+          "rejected_at": "sdr_additional",
+          "bytes": 53797169
+        },
+        {
+          "quality": 90,
+          "chroma": "420",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "reason": "SDR 编码附加误差超出参考预算",
+          "metrics": {
+            "base_mean_code_error": 1.4337222083333334,
+            "base_p99_code_error": 13.0,
+            "base_max_code_error": 58.0,
+            "base_channel_bias_code_error": 0.036966208333333334,
+            "base_block_p99_code_error": 0.953125,
+            "coding_luma_rmse": 0.4018216408159791,
+            "coding_chroma_rmse": 2.7776621312040435,
+            "coding_local_luma_p99": 0.47240641713142395
+          },
+          "rejected_at": "sdr_additional",
+          "bytes": 47599325
+        },
+        {
+          "quality": 95,
+          "chroma": "420",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "reason": "SDR 编码附加误差超出参考预算",
+          "metrics": {
+            "base_mean_code_error": 1.4307589444444444,
+            "base_p99_code_error": 13.0,
+            "base_max_code_error": 59.0,
+            "base_channel_bias_code_error": 0.0364075,
+            "base_block_p99_code_error": 0.9375,
+            "coding_luma_rmse": 0.39634571678605507,
+            "coding_chroma_rmse": 2.7764455756116844,
+            "coding_local_luma_p99": 0.46578139066696167
+          },
+          "rejected_at": "sdr_additional",
+          "bytes": 47933138
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 95,
+          "accepted": true,
+          "bytes": 54354980,
+          "metrics": {
+            "base_mean_code_error": 0.4018466111111111,
+            "base_p99_code_error": 2.0,
+            "base_max_code_error": 11.0,
+            "base_channel_bias_code_error": 0.024011916666666668,
+            "base_block_p99_code_error": 0.34375,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656,
+            "chroma_error": 0.01245543360710144,
+            "block_p95_luma_error": 0.006241902243345976,
+            "highlight_max_luma_error": 0.0563729852437973
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 90,
+          "accepted": true,
+          "bytes": 53052295,
+          "metrics": {
+            "base_mean_code_error": 0.4018466111111111,
+            "base_p99_code_error": 2.0,
+            "base_max_code_error": 11.0,
+            "base_channel_bias_code_error": 0.024011916666666668,
+            "base_block_p99_code_error": 0.34375,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656,
+            "chroma_error": 0.012518882751464844,
+            "block_p95_luma_error": 0.006279708351939917,
+            "highlight_max_luma_error": 0.06350233405828476
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 85,
+          "accepted": true,
+          "bytes": 51203294,
+          "metrics": {
+            "base_mean_code_error": 0.4018466111111111,
+            "base_p99_code_error": 2.0,
+            "base_max_code_error": 11.0,
+            "base_channel_bias_code_error": 0.024011916666666668,
+            "base_block_p99_code_error": 0.34375,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656,
+            "chroma_error": 0.01263466477394104,
+            "block_p95_luma_error": 0.0063776359893381596,
+            "highlight_max_luma_error": 0.04678091034293175
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 80,
+          "accepted": true,
+          "bytes": 46437841,
+          "metrics": {
+            "base_mean_code_error": 0.4018466111111111,
+            "base_p99_code_error": 2.0,
+            "base_max_code_error": 11.0,
+            "base_channel_bias_code_error": 0.024011916666666668,
+            "base_block_p99_code_error": 0.34375,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656,
+            "chroma_error": 0.013050575740635395,
+            "block_p95_luma_error": 0.006703301798552275,
+            "highlight_max_luma_error": 0.04728007689118385
+          }
+        }
+      ]
+    }
+  },
+  "output": {
+    "bytes": 46437841,
+    "file_sha256": "83bc66cb96e6eb80f4dabf14c46f189b153ea96faaedd124966d66d462196c33",
+    "payload_signature_sha256": "1d4ccca1fea173cdec0ea8f2a258bcabf7deb81e77813e3e4947e9a2d24f40de"
+  },
+  "comparison": {
+    "metrics_and_decisions_match": true,
+    "payload_matches": true,
+    "file_sha_matches": true,
+    "bytes_match": true
+  },
+  "timing_note": "One optimized run followed by one same-environment baseline rerun, same ABI 14 binary and full-resolution masters. Historical baseline retained separately. Not a three-pair median or a cross-camera throughput claim.",
+  "current_baseline": {
+    "wall_s": 291.50535412500903,
+    "stages": {
+      "primary_encode": {
+        "count": 14,
+        "wall_s": 190.53577662497992,
+        "self_s": 190.53577662497992
+      },
+      "replace_image_item": {
+        "count": 18,
+        "wall_s": 1.5009919210133376,
+        "self_s": 1.5009919210133376
+      },
+      "replace_primary": {
+        "count": 14,
+        "wall_s": 1.0968105810170528,
+        "self_s": 0.0005374110041884705
+      },
+      "inspect_container": {
+        "count": 14,
+        "wall_s": 0.17315000300004613,
+        "self_s": 0.17315000300004613
+      },
+      "sdr_readback": {
+        "count": 28,
+        "wall_s": 9.529580750022433,
+        "self_s": 9.529580750022433
+      },
+      "sdr_metrics": {
+        "count": 14,
+        "wall_s": 0.4922523749846732,
+        "self_s": 0.4922523749846732
+      },
+      "hdr_readback": {
+        "count": 14,
+        "wall_s": 9.173693418953917,
+        "self_s": 9.173693418953917
+      },
+      "hdr_metrics": {
+        "count": 14,
+        "wall_s": 4.9681811690097675,
+        "self_s": 4.9681811690097675
+      },
+      "coding_metrics": {
+        "count": 14,
+        "wall_s": 2.4651073329878272,
+        "self_s": 2.4651073329878272
+      },
+      "find_auxiliary": {
+        "count": 4,
+        "wall_s": 0.14823633400374092,
+        "self_s": 0.14823633400374092
+      },
+      "auxiliary_readback": {
+        "count": 1,
+        "wall_s": 0.6540665420034202,
+        "self_s": 0.6540665420034202
+      },
+      "auxiliary_encode": {
+        "count": 4,
+        "wall_s": 65.15137875099026,
+        "self_s": 65.15137875099026
+      }
+    },
+    "delivery": {
+      "has_iso_gainmap": true,
+      "headroom": 2.396484375,
+      "profile": "Display P3",
+      "width": 4000,
+      "height": 6000,
+      "bit_depth": 10,
+      "chroma_subsampling": "4:4:4",
+      "gainmap_width": 4000,
+      "gainmap_height": 6000,
+      "gainmap_pixel_format": "444f",
+      "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+      "preset": "slow",
+      "tune": "ssim",
+      "delivery_quality": 90,
+      "delivery_chroma_requested": "444",
+      "delivery_container": "heic",
+      "headroom_error_ev": 0.0,
+      "file_headroom_ev": 1.260919533662905,
+      "base_mean_code_error": 0.4018466111111111,
+      "base_p99_code_error": 2.0,
+      "base_max_code_error": 11.0,
+      "base_channel_bias_code_error": 0.024011916666666668,
+      "base_block_p99_code_error": 0.34375,
+      "chroma_error": 0.013050575740635395,
+      "relative_error": 0.04908279702067375,
+      "median_relative_error": 0.01220703125,
+      "p95_relative_error": 0.035273369401693344,
+      "p99_relative_error": 0.04908279702067375,
+      "p999_relative_error": 0.0677490234375,
+      "block_median_relative_error": 0.0023126602172851562,
+      "block_p95_relative_error": 0.006053573451936245,
+      "block_p99_relative_error": 0.008020407520234585,
+      "block_chroma_error": 0.001995980739593506,
+      "block_p95_luma_error": 0.006703301798552275,
+      "highlight_max_luma_error": 0.04728007689118385,
+      "gainmap_as_rgb": true,
+      "delivery_profile": "auto",
+      "gainmap_encoding_quality": 80,
+      "coding_luma_rmse": 0.2832954973563876,
+      "coding_chroma_rmse": 0.710866943716244,
+      "coding_local_luma_p99": 0.3271562457084656,
+      "gainmap_encoder": "x265",
+      "gainmap_chroma_requested": "444",
+      "file_size_bytes": 46437841,
+      "auto_reference_quality": 95,
+      "auto_reference_chroma": "444",
+      "auto_reference_bytes": 56537043,
+      "auto_saved_pct": 17.862982328240975,
+      "auto_search": "bounded-quality-chroma-gainmap",
+      "auto_attempts": [
+        {
+          "quality": 95,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 56537043,
+          "metrics": {
+            "chroma_error": 0.010776489973068237,
+            "block_p95_luma_error": 0.005588013678789139,
+            "highlight_max_luma_error": 0.04906972870230675,
+            "coding_luma_rmse": 0.2606250152334801,
+            "coding_chroma_rmse": 0.6455116629535902,
+            "coding_local_luma_p99": 0.267640620470047
+          }
+        },
+        {
+          "quality": 92,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 56157963,
+          "metrics": {
+            "chroma_error": 0.011181986890733242,
+            "block_p95_luma_error": 0.005756141152232885,
+            "highlight_max_luma_error": 0.05880254507064819,
+            "coding_luma_rmse": 0.2676884439013452,
+            "coding_chroma_rmse": 0.6656831375006105,
+            "coding_local_luma_p99": 0.29764077067375183
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": true,
+          "bytes": 55262876,
+          "metrics": {
+            "chroma_error": 0.012156903743743896,
+            "block_p95_luma_error": 0.006195561960339546,
+            "highlight_max_luma_error": 0.0563729852437973,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 85,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 52178120,
+          "metrics": {
+            "chroma_error": 0.015258073806762695,
+            "block_p95_luma_error": 0.0074927788227796555,
+            "highlight_max_luma_error": 0.06640851497650146,
+            "coding_luma_rmse": 0.3373397269681678,
+            "coding_chroma_rmse": 0.8714286969474015,
+            "coding_local_luma_p99": 0.3920939266681671
+          }
+        },
+        {
+          "quality": 80,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 47433124,
+          "metrics": {
+            "chroma_error": 0.021094858646392822,
+            "block_p95_luma_error": 0.01028201263397932,
+            "highlight_max_luma_error": 0.054003842175006866,
+            "coding_luma_rmse": 0.44149262688838803,
+            "coding_chroma_rmse": 1.1847483504160565,
+            "coding_local_luma_p99": 0.5179066061973572
+          }
+        },
+        {
+          "quality": 70,
+          "chroma": "444",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 40800962,
+          "metrics": {
+            "chroma_error": 0.03328365087509155,
+            "block_p95_luma_error": 0.017711760476231575,
+            "highlight_max_luma_error": 0.063443124294281,
+            "coding_luma_rmse": 0.7055015217902035,
+            "coding_chroma_rmse": 1.89748953674488,
+            "coding_local_luma_p99": 0.8432657718658447
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "422",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 53334631,
+          "metrics": {
+            "chroma_error": 0.046777088195085526,
+            "block_p95_luma_error": 0.009376941248774529,
+            "highlight_max_luma_error": 0.10046993941068649,
+            "coding_luma_rmse": 0.38525845836039485,
+            "coding_chroma_rmse": 2.5498902570753486,
+            "coding_local_luma_p99": 0.4572034478187561
+          }
+        },
+        {
+          "quality": 95,
+          "chroma": "422",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 53797169,
+          "metrics": {
+            "chroma_error": 0.04675358906388283,
+            "block_p95_luma_error": 0.009281149134039879,
+            "highlight_max_luma_error": 0.06943545490503311,
+            "coding_luma_rmse": 0.37950241327808576,
+            "coding_chroma_rmse": 2.548250719608398,
+            "coding_local_luma_p99": 0.44781267642974854
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "420",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 47599325,
+          "metrics": {
+            "chroma_error": 0.046440839767456055,
+            "block_p95_luma_error": 0.010226358659565449,
+            "highlight_max_luma_error": 0.09291542321443558,
+            "coding_luma_rmse": 0.4018216408159791,
+            "coding_chroma_rmse": 2.7776621312040435,
+            "coding_local_luma_p99": 0.47240641713142395
+          }
+        },
+        {
+          "quality": 95,
+          "chroma": "420",
+          "gainmap_quality": 100,
+          "accepted": false,
+          "bytes": 47933138,
+          "metrics": {
+            "chroma_error": 0.04642940312623978,
+            "block_p95_luma_error": 0.010144224390387535,
+            "highlight_max_luma_error": 0.08541399985551834,
+            "coding_luma_rmse": 0.39634571678605507,
+            "coding_chroma_rmse": 2.7764455756116844,
+            "coding_local_luma_p99": 0.46578139066696167
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 95,
+          "accepted": true,
+          "bytes": 54354980,
+          "metrics": {
+            "chroma_error": 0.01245543360710144,
+            "block_p95_luma_error": 0.006241902243345976,
+            "highlight_max_luma_error": 0.0563729852437973,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 90,
+          "accepted": true,
+          "bytes": 53052295,
+          "metrics": {
+            "chroma_error": 0.012518882751464844,
+            "block_p95_luma_error": 0.006279708351939917,
+            "highlight_max_luma_error": 0.06350233405828476,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 85,
+          "accepted": true,
+          "bytes": 51203294,
+          "metrics": {
+            "chroma_error": 0.01263466477394104,
+            "block_p95_luma_error": 0.0063776359893381596,
+            "highlight_max_luma_error": 0.04678091034293175,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        },
+        {
+          "quality": 90,
+          "chroma": "444",
+          "gainmap_quality": 80,
+          "accepted": true,
+          "bytes": 46437841,
+          "metrics": {
+            "chroma_error": 0.013050575740635395,
+            "block_p95_luma_error": 0.006703301798552275,
+            "highlight_max_luma_error": 0.04728007689118385,
+            "coding_luma_rmse": 0.2832954973563876,
+            "coding_chroma_rmse": 0.710866943716244,
+            "coding_local_luma_p99": 0.3271562457084656
+          }
+        }
+      ]
+    }
+  },
+  "wall_time_reduction_pct": 24.255299459675015
+}

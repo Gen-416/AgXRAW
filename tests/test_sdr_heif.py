@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """SDR HEIF routing and bounded codec search, including failure atomicity."""
 from dataclasses import replace
+from contextlib import ExitStack, contextmanager
+import gc
+import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import weakref
 
 import numpy as np
 
@@ -107,6 +111,117 @@ class HeifSearchTests(unittest.TestCase):
             self.assertEqual(result["gainmap_encoding_quality"], 100)
 
 
+class SdrHeifFinalReadbackTests(unittest.TestCase):
+    @contextmanager
+    def codec_fixture(self, out, *, final_value=101):
+        """Stub only container I/O; use the real pixel metrics and delivery gates."""
+        rgb = np.full((8, 8, 3), 100, np.uint8)
+        icc = b"test-icc"
+        reads, buffers = [], []
+
+        def encode(source, candidate, quality, chroma, **kwargs):
+            candidate.write_bytes(f"{quality}:{chroma}".encode())
+            return {"delivery_quality": quality, "delivery_chroma_requested": chroma,
+                    "delivery_container": "heic"}
+
+        def inspect(candidate):
+            chroma = candidate.read_bytes().split(b"|")[0].split(b":")[1].decode()
+            return {"width": 8, "height": 8, "bit_depth": 10, "headroom": 1.,
+                    "has_iso_gainmap": False, "chroma_subsampling": ":".join(chroma)}
+
+        def carry(source, candidate, container):
+            self.assertEqual(container, "heic")
+            candidate.write_bytes(candidate.read_bytes() + b"|metadata")
+            return True
+
+        def read(candidate, gamut):
+            after_metadata = candidate.read_bytes().endswith(b"|metadata")
+            reads.append(after_metadata)
+            # Neither candidate validation nor final validation may commit early.
+            self.assertEqual(out.read_bytes(), b"previous")
+            decoded = np.full_like(rgb, final_value if after_metadata else 100)
+            buffers.append(weakref.ref(decoded))
+            return decoded
+
+        with ExitStack() as stack:
+            stack.enter_context(patch("dngscan.heif_encoder.encode", side_effect=encode))
+            stack.enter_context(patch("dngscan.gainmap.inspect_gainmap_file", side_effect=inspect))
+            stack.enter_context(patch("dngscan.gainmap.read_primary_rgb_u8", side_effect=read))
+            stack.enter_context(patch("dngscan.color.output_icc_profile_bytes", return_value=icc))
+            stack.enter_context(patch("dngscan.heif_gainmap._parse", return_value=(
+                None, None, 1, None, None, [(b"colr", b"prof" + icc)],
+                {1: [(True, 1)]}, None)))
+            stack.enter_context(patch("dngscan.export.carry_capture_metadata", side_effect=carry))
+            yield rgb, reads, buffers
+
+    def test_manual_reuses_pixels_from_complete_final_metadata_verification(self):
+        from dngscan.heif_delivery import save_sdr_heif
+        profile = replace(resolve_delivery_profile("share", container="heic"),
+                          heif_encoder="x265")
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "photo.heic"
+            out.write_bytes(b"previous")
+            with self.codec_fixture(out) as (rgb, reads, buffers):
+                info = save_sdr_heif(rgb, out, profile, source_raw=Path(td) / "source.dng",
+                                     return_rgb=True)
+            self.assertEqual(reads, [False, True])
+            self.assertIs(info["_decoded_rgb"], buffers[-1]())
+            np.testing.assert_array_equal(info["_decoded_rgb"], np.full_like(rgb, 101))
+            self.assertTrue(info["exif_carried"])
+            self.assertTrue(out.read_bytes().endswith(b"|metadata"))
+            self.assertEqual(info["file_size_bytes"], out.stat().st_size)
+            # Keep the existing reported candidate metrics, independent of pixel reuse.
+            self.assertEqual(info["base_mean_code_error"], 0.)
+
+    def test_auto_keeps_one_read_per_candidate_and_one_final_read(self):
+        from dngscan.heif_delivery import save_sdr_heif
+        profile = replace(resolve_delivery_profile("auto", container="heic"),
+                          heif_encoder="x265")
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "photo.heic"
+            out.write_bytes(b"previous")
+            with self.codec_fixture(out) as (rgb, reads, buffers):
+                info = save_sdr_heif(rgb, out, profile, source_raw=Path(td) / "source.dng",
+                                     return_rgb=True)
+            self.assertGreater(len(info["auto_attempts"]), 1)
+            self.assertEqual(reads, [False] * len(info["auto_attempts"]) + [True])
+            self.assertIs(info["_decoded_rgb"], buffers[-1]())
+            np.testing.assert_array_equal(info["_decoded_rgb"], np.full_like(rgb, 101))
+            self.assertTrue(all(ref() is None for ref in buffers[:-1]))
+            json.dumps(info["auto_attempts"])
+
+    def test_final_pixel_validation_failure_keeps_previous_output(self):
+        from dngscan.heif_delivery import save_sdr_heif
+        profile = replace(resolve_delivery_profile("share", container="heic"),
+                          heif_encoder="x265")
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "photo.heic"
+            out.write_bytes(b"previous")
+            with self.codec_fixture(out, final_value=255) as (rgb, reads, _):
+                with self.assertRaisesRegex(RuntimeError, "回读误差"):
+                    save_sdr_heif(rgb, out, profile, source_raw=Path(td) / "source.dng",
+                                  return_rgb=True)
+            self.assertEqual(reads, [False, True])
+            self.assertEqual(out.read_bytes(), b"previous")
+            self.assertEqual(list(Path(td).iterdir()), [out])
+
+    def test_cli_result_contains_no_decoded_pixels_and_releases_buffers(self):
+        from dngscan.heif_delivery import save_sdr_heif
+        profile = replace(resolve_delivery_profile("share", container="heic"),
+                          heif_encoder="x265")
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "photo.heic"
+            out.write_bytes(b"previous")
+            with self.codec_fixture(out) as (rgb, reads, buffers):
+                info = save_sdr_heif(rgb, out, profile, source_raw=Path(td) / "source.dng",
+                                     return_rgb=False)
+            self.assertEqual(reads, [False, True])
+            self.assertNotIn("_decoded_rgb", info)
+            json.dumps(info)
+            gc.collect()
+            self.assertTrue(all(ref() is None for ref in buffers))
+
+
 class SdrHeifLiveTests(unittest.TestCase):
     def test_depth_sampling_gamut_and_metadata_survive_readback(self):
         from dngscan.heif_encoder import available
@@ -124,8 +239,11 @@ class SdrHeifLiveTests(unittest.TestCase):
             for gamut, depth, chroma in (("srgb", 8, "420"), ("p3", 10, "422"), ("srgb", 10, "444")):
                 profile = replace(resolve_delivery_profile("share", quality=95, chroma=chroma, container="heic"),
                                   heif_encoder="x265", heif_bit_depth=depth)
-                result = save_sdr_heif(rgb, Path(td) / f"{gamut}-{depth}-{chroma}.heic", profile,
-                                       gamut, return_rgb=True)
+                from dngscan.gainmap import read_primary_rgb_u8
+                with patch("dngscan.gainmap.read_primary_rgb_u8", wraps=read_primary_rgb_u8) as read:
+                    result = save_sdr_heif(rgb, Path(td) / f"{gamut}-{depth}-{chroma}.heic", profile,
+                                           gamut, return_rgb=True)
+                self.assertEqual(read.call_count, 2)
                 self.assertEqual(result["bit_depth"], depth)
                 self.assertEqual(result["chroma_subsampling"], ":".join(chroma))
                 self.assertFalse(result["has_iso_gainmap"])

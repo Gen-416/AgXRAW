@@ -736,6 +736,21 @@ def write_apple_gainmap_heic(
     )
 
 
+def _search_sdr_metrics(path: Path, base: Any, session: Any = None) -> dict[str, float]:
+    """Measure an actual packaged primary once for both absolute and search gates."""
+    from .auto_encode import coding_metrics
+
+    cached = session.metrics(path) if session is not None else None
+    if cached is not None:
+        return cached
+    decoded = read_primary_rgb_u8(path)
+    metrics = {**_base_roundtrip_error_arrays(decoded, base),
+               **coding_metrics(decoded, base)}
+    if session is not None:
+        session.remember_metrics(path, metrics)
+    return metrics
+
+
 def write_apple_gainmap_file(
     base_rgb_u8: Any,
     hdr_rgba_half: Any,
@@ -746,6 +761,9 @@ def write_apple_gainmap_file(
     _verify_roundtrip_capability: bool = True,
     _template_path: Path | None = None,
     _gainmap_quality: int | None = None,
+    _primary_session: Any = None,
+    _collect_coding_metrics: bool = False,
+    _sdr_precheck: Any = None,
 ) -> dict[str, Any]:
     """Write JPEG or HEIC ISO gain-map packaging from finished formation masters."""
     from dataclasses import replace
@@ -756,13 +774,19 @@ def write_apple_gainmap_file(
     if delivery.heif_encoder not in ("auto", "apple", "x265"):
         raise ValueError("未知 HEIF 编码器")
     if delivery.name == "auto" and use_heif:
-        from .auto_encode import coding_metrics, select_heif_encoding
+        from .auto_encode import select_heif_encoding
+        from .gainmap_session import PrimarySearchSession
 
+        # Own the fixed SDR master for this search. A writable caller view must
+        # not change the meaning of cached primary encodes or their metrics.
+        base_rgb_u8 = np.array(base_rgb_u8, copy=True, order="C")
+        base_rgb_u8.flags.writeable = False
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".agxraw-gainmap-search-", dir=out_path.parent) as td:
             reference_template = Path(td) / "gainmap-reference.heic"
             auxiliary_rgb = None
-            def encode_heif(quality, chroma, auxiliary, path):
+            primary_session = PrimarySearchSession(Path(td))
+            def encode_heif(quality, chroma, auxiliary, path, *, sdr_precheck=None):
                 nonlocal auxiliary_rgb
                 # ImageIO couples lower auxiliary quality to sampling changes.
                 # Re-encode numerical RGB from ONE high-precision template with
@@ -789,8 +813,10 @@ def write_apple_gainmap_file(
                     delivery=candidate, _template_path=template,
                     _verify_roundtrip_capability=_verify_roundtrip_capability,
                     _gainmap_quality=100,
+                    _primary_session=primary_session,
+                    _collect_coding_metrics=True,
+                    _sdr_precheck=sdr_precheck,
                 )
-                info.update(coding_metrics(read_primary_rgb_u8(path), base_rgb_u8))
                 info["gainmap_encoding_quality"] = auxiliary
                 info["gainmap_encoder"] = "Apple ImageIO" if auxiliary == 100 else "x265"
                 info["gainmap_chroma_requested"] = "444"
@@ -798,9 +824,12 @@ def write_apple_gainmap_file(
                     raise RuntimeError("独立 HEIF gain map 未保持 4:4:4 数值图")
                 return info
 
-            return select_heif_encoding(out_path, encode_heif, gainmap=True)
+            return select_heif_encoding(
+                out_path, encode_heif, gainmap=True, staged_sdr=True,
+                on_selected=primary_session.select,
+            )
     if delivery.name == "auto":
-        from .auto_encode import coding_metrics, select_encoding
+        from .auto_encode import select_encoding
         # The auxiliary image is calculated only once. HEVC quality numbers
         # are its own scale (95 is already at the x265 QP floor on many frames).
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -818,6 +847,7 @@ def write_apple_gainmap_file(
                         delivery=candidate, _template_path=template if use_heif or delivery.container=="jpeg" else None,
                         _verify_roundtrip_capability=_verify_roundtrip_capability,
                         _gainmap_quality=gainmap_quality,
+                        _collect_coding_metrics=True,
                     )
                 try:
                     info = write_candidate()
@@ -831,7 +861,6 @@ def write_apple_gainmap_file(
                     gainmap_quality = 100
                     template.unlink(missing_ok=True)
                     info = write_candidate()
-                info.update(coding_metrics(read_primary_rgb_u8(path), base_rgb_u8))
                 return info
             return select_encoding(out_path, encode, qualities=qualities)
     profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
@@ -967,14 +996,18 @@ def write_apple_gainmap_file(
             replace_primary(temp_path, base, quality, profile.chroma)
         encoder_info = {"encoder":"Apple ImageIO"} if container == "heic" else {}
         if use_heif:
-            donor = temp_path.with_name(temp_path.name + ".base.heic")
-            try:
-                encoder_info = heif_encoder.encode(base, donor, quality, profile.chroma,
-                    bit_depth=profile.heif_bit_depth, preset=profile.heif_preset, tune=profile.heif_tune)
-                from .heif_gainmap import replace_primary
+            from .heif_gainmap import replace_primary
+            if _primary_session is not None:
+                donor, encoder_info = _primary_session.primary(base, profile)
                 replace_primary(temp_path, donor)
-            finally:
-                donor.unlink(missing_ok=True)
+            else:
+                donor = temp_path.with_name(temp_path.name + ".base.heic")
+                try:
+                    encoder_info = heif_encoder.encode(base, donor, quality, profile.chroma,
+                        bit_depth=profile.heif_bit_depth, preset=profile.heif_preset, tune=profile.heif_tune)
+                    replace_primary(temp_path, donor)
+                finally:
+                    donor.unlink(missing_ok=True)
         info = inspect_gainmap_file(temp_path)
         if use_heif and info["bit_depth"] != profile.heif_bit_depth:
             raise RuntimeError("HEIF 回读位深与请求不符")
@@ -1017,10 +1050,13 @@ def write_apple_gainmap_file(
                 f"HDR {label} 声明余量与 alternate 峰值不一致："
                 f"误差={headroom_error_ev:.4f} EV；已丢弃该文件"
             )
-        base_roundtrip = _base_roundtrip_error(temp_path, base)
+        if _collect_coding_metrics:
+            base_roundtrip = _search_sdr_metrics(temp_path, base, _primary_session)
+        else:
+            base_roundtrip = _base_roundtrip_error(temp_path, base)
         info.update(base_roundtrip)
         if not _base_roundtrip_is_acceptable(base_roundtrip, tolerances):
-            raise RuntimeError(
+            reason = (
                 "写出的 SDR 底图无法保持输入 rendition："
                 f"平均码值误差={base_roundtrip['base_mean_code_error']:.3f}，"
                 f"p99={base_roundtrip['base_p99_code_error']:.1f}，"
@@ -1028,6 +1064,15 @@ def write_apple_gainmap_file(
                 f"通道偏差={base_roundtrip['base_channel_bias_code_error']:.3f}，"
                 f"8x8块p99={base_roundtrip['base_block_p99_code_error']:.3f}；已丢弃该文件"
             )
+            if _primary_session is not None:
+                from .auto_encode import EncodingStageRejected
+                raise EncodingStageRejected(
+                    reason, metrics=base_roundtrip, rejected_at="sdr_base",
+                    file_size_bytes=temp_path.stat().st_size,
+                )
+            raise RuntimeError(reason)
+        if _sdr_precheck is not None:
+            _sdr_precheck(base_roundtrip, encoded_bytes=temp_path.stat().st_size)
         roundtrip = _roundtrip_error(temp_path, hdr)
         info.update(roundtrip)
         if not _hdr_roundtrip_is_acceptable(roundtrip, tolerances):

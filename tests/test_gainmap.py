@@ -60,18 +60,25 @@ class AppleGainMapWriterTests(unittest.TestCase):
 
         write_auto = gainmap.write_apple_gainmap_file
         base = np.zeros((8, 8, 3), np.uint8)
+        caller_base = base
         calls = []
         def encode(base, hdr, path, headroom, *, delivery, _template_path,
                    _gainmap_quality, **kwargs):
             calls.append((delivery.quality, _gainmap_quality))
+            self.assertFalse(base.flags.writeable)
+            self.assertFalse(np.shares_memory(base, caller_base))
             self.assertEqual(_gainmap_quality, 100)
             expected = f"precision-{_gainmap_quality}".encode()
             if not _template_path.exists():
                 _template_path.write_bytes(expected)
             self.assertEqual(_template_path.read_bytes(), expected)
             path.write_bytes(b"x" * delivery.quality)
+            metrics = {"coding_luma_rmse": 0., "coding_chroma_rmse": 0., "coding_local_luma_p99": 0.}
+            if kwargs.get("_sdr_precheck") is not None:
+                kwargs["_sdr_precheck"](metrics, encoded_bytes=path.stat().st_size)
             return {"delivery_quality": delivery.quality, "delivery_chroma_requested": "444",
-                    "gainmap_encoding_quality": _gainmap_quality, "gainmap_pixel_format": "444f"}
+                    "gainmap_encoding_quality": _gainmap_quality, "gainmap_pixel_format": "444f",
+                    **metrics}
         with tempfile.TemporaryDirectory() as td, \
              mock.patch("dngscan.heif_encoder.available", return_value=True), \
              mock.patch("dngscan.heif_encoder.read_rgb_item", return_value=base) as read_aux, \
@@ -82,6 +89,7 @@ class AppleGainMapWriterTests(unittest.TestCase):
              mock.patch("dngscan.gainmap.read_primary_rgb_u8", return_value=base):
             info = write_auto(base, np.ones((8,8,4), np.float16), Path(td)/"out.heic", 3.,
                               delivery=resolve_delivery_profile("auto", container="heic"))
+        self.assertTrue(caller_base.flags.writeable)
         self.assertEqual(calls[0], (95,100))
         self.assertEqual({aux for _, aux in calls}, {100})
         read_aux.assert_called_once()

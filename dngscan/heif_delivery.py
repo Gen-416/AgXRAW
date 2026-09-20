@@ -52,7 +52,7 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
             raise RuntimeError("SDR HEIF 回读误差超出交付门限")
         info.update(metrics)
         info.update(coding_metrics(decoded, rgb))
-        return info
+        return info, decoded
 
     def encode(q, chroma, auxiliary, candidate):
         profile = replace(delivery, name="share" if delivery.name == "auto" else delivery.name,
@@ -61,7 +61,7 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
         encoder_info = encoder(rgb, candidate, q, chroma, bit_depth=profile.heif_bit_depth,
                                preset=profile.heif_preset, tune=profile.heif_tune,
                                output_gamut=output_gamut)
-        info = verify(candidate, profile)
+        info, _ = verify(candidate, profile)
         return {**info, **encoder_info, "delivery_profile": profile.name,
                 "icc_embedded": True}
 
@@ -77,9 +77,10 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
         # Metadata rewriting must preserve the coded image AND the requested geometry/profile.
         final_profile = replace(delivery, quality=int(info["delivery_quality"]),
                                 chroma=str(info["delivery_chroma_requested"]))
-        verify(candidate, final_profile)
+        _, decoded = verify(candidate, final_profile)
         if return_rgb:
-            info["_decoded_rgb"] = read_primary_rgb_u8(candidate, output_gamut)
+            info["_decoded_rgb"] = decoded
+        del decoded
         info["file_size_bytes"] = candidate.stat().st_size
         os.replace(candidate, out_path)
     info["output_path"] = str(out_path)
