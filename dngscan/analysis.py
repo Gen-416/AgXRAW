@@ -971,16 +971,17 @@ def analyze(
     raw_colors = bundle.raw_colors
     if raw_image is None or raw_colors is None:
         return _analyze_decoded_scene(bundle, gamut_names)
-    channel_ids = [int(x) for x in sorted(np.unique(raw_colors).tolist())]
-    labels = channel_labels(bundle.color_desc, channel_ids)
+    from .sensor_summary import summarize_sensor
 
-    sat = channel_saturation_levels(channel_ids, bundle.camera_white_levels, bundle.white_level)
-    ceilings, exact_counts, near_counts, spike_ok = detect_ceilings(
-        raw_image, raw_colors, channel_ids, sat
-    )
-    fullwell, fullwell_ids, fullwell_note, channel_fullwell = resolve_fullwell(
-        channel_ids, ceilings, spike_ok, sat
-    )
+    summary = summarize_sensor(raw_image, raw_colors, bundle.white_level,
+                               bundle.camera_white_levels, evidence=getattr(bundle, "evidence", None))
+    channel_ids = list(summary.channel_ids)
+    labels = channel_labels(bundle.color_desc, channel_ids)
+    sat = dict(summary.saturation_levels)
+    ceilings, exact_counts = dict(summary.ceilings), dict(summary.exact_counts)
+    near_counts, spike_ok = dict(summary.near_counts), dict(summary.spike_ok)
+    fullwell, fullwell_ids = summary.fullwell, list(summary.fullwell_channel_ids)
+    fullwell_note, channel_fullwell = summary.fullwell_note, dict(summary.channel_fullwell)
     # load_raw can only seed the soft headroom mask from metadata. If this frame contains
     # a trustworthy saturation pile, bring the render-time mask onto the same resolved
     # per-channel full-well endpoints used by hard clip statistics.
