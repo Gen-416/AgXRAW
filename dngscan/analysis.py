@@ -209,6 +209,75 @@ def compute_cell_metrics(
     return union_pct, ge2_of_clipped, k_clipped, k_all
 
 
+def _native_color_clip_metrics(raw, colors, thresholds, groups, raw_pattern):
+    """Count RGB groups without allocating per-sensel threshold/bool planes.
+
+    Only the exact unsigned sensor contract enters Rust. Unusual metadata,
+    dtypes, empty populations and NumPy broadcasting retain the original body.
+    """
+    if (raw.ndim not in (2, 3) or raw.shape != colors.shape or not raw.size
+            or raw.dtype != np.dtype(np.uint16) or colors.dtype != np.dtype(np.uint8)
+            or not raw.flags.aligned or not colors.flags.aligned):
+        return None
+    # NumPy ALIGNED ignores strides on singleton axes. rust-numpy must still
+    # convert every byte stride to an element stride, so retain NumPy for those
+    # unusual layouts (and for views outside ndarray's signed-span limits).
+    max_index = int(np.iinfo(np.intp).max)
+    for array in (raw, colors):
+        if (any(stride % array.itemsize or stride == -max_index - 1 for stride in array.strides)
+                or array.size * array.itemsize > max_index
+                or array.itemsize + sum((dim - 1) * abs(stride)
+                                       for dim, stride in zip(array.shape, array.strides)) > max_index):
+            return None
+    if raw.ndim == 3:
+        ph, pw = 1, 1
+        total = raw.shape[0] * raw.shape[1]
+    else:
+        pattern = np.asarray(raw_pattern)
+        if pattern.ndim != 2 or not pattern.size:
+            return None
+        ph, pw = pattern.shape
+        total = (raw.shape[0] // ph) * (raw.shape[1] // pw)
+    if not total:
+        return None
+    if type(thresholds) is not dict or type(groups) is not dict:
+        return None
+    integer = lambda value: type(value) is int or isinstance(value, np.integer)
+    if (any(not integer(cid) for cid in groups)
+            or any(not integer(cid) or not integer(value)
+                   or not -(1 << 31) <= int(value) < (1 << 31)
+                   for cid, value in thresholds.items())):
+        return None
+    from . import _fast
+
+    native = _fast.kernel("sensor_rgb_clip_counts_u16")
+    if native is None:
+        return None
+    # Match channel_threshold_map, including the minimum of thresholds for
+    # channels absent from this frame. Per-channel clip percentages instead
+    # default to zero; that different statistic is intentionally not fused.
+    default = int(min(thresholds.values())) if thresholds else 0
+    levels = [default] * 256
+    bits = [0] * 256
+    for cid, value in thresholds.items():
+        if 0 <= int(cid) < 256:
+            levels[int(cid)] = int(value)
+    for cid, group in groups.items():
+        if 0 <= int(cid) < 256:
+            bits[int(cid)] = {"R": 1, "G": 2, "B": 4}[group]
+    try:
+        counts = native(raw, colors, levels, bits, ph, pw)
+        if len(counts) != 4 or any(count < 0 for count in counts) or sum(counts) != total:
+            raise RuntimeError("native RGB clip counts disagree on the cell population")
+        # np.mean(bool) sums exact integers in float64, then divides before
+        # multiplying by 100. Preserve that arithmetic and Python float output.
+        return {k: float(np.float64(counts[k]) / np.float64(total) * 100.0)
+                for k in (1, 2, 3)}
+    except Exception as exc:
+        _fast.handle_kernel_error("sensor_rgb_clip_counts_u16", exc)
+        return None
+
+
 def compute_color_clip_metrics(
     raw_image: Any, raw_colors: Any, thresholds: dict[int, int],
     labels: dict[int, str], raw_pattern: list[list[int]],
@@ -225,6 +294,9 @@ def compute_color_clip_metrics(
         return {}
     raw = np.asarray(raw_image)
     colors = np.asarray(raw_colors)
+    native = _native_color_clip_metrics(raw, colors, thresholds, groups, raw_pattern)
+    if native is not None:
+        return native
     if raw.ndim == 3:
         if colors.shape != raw.shape:
             return {}

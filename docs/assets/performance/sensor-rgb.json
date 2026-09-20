@@ -1,0 +1,2159 @@
+{
+  "baseline_commit": "eaa42a048a84dd9c8f67d5b202eedfe6d92fbb46",
+  "optimized_revision": "Exact sensor RGB clip-group kernel in the enclosing commit, ABI 16; production source fingerprints below.",
+  "measurement_date": "2026-09-20",
+  "measurement": "Both sides enable all prior native kernels, SensorSummary and deferred masks. Reference skips only sensor_rgb_clip_counts_u16. All real runs also compare against independent unmodified eaa42a0 outputs.",
+  "timing": "Seconds; no encoding, startup imports or hashing; lazy imports inside stages remain timed. Sequential fresh processes with reference/native order alternated by pair. SDR/HDR share preparation and must not be added.",
+  "identity": "Complete identity, including masks_loaded, masks_analyzed, processing loss, independent reference, decisions and SDR/HDR masters. No excluded fields. Input SHA-256 must match baseline.",
+  "memory": "Process high-water RSS includes decode, input setup and hashing; not kernel scratch, live allocations or GPU memory. No whole-pipeline RSS reduction claimed.",
+  "pipeline": {
+    "sigma": {
+      "pairs": 3,
+      "sample": "_SDI0150.DNG",
+      "source_sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "cf4d886beafda25709d6f0969a6849548c4a2c4507a5cf27114d380fde8382ef",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "3ff72999464a16251a899cfebd3d863f4b4f8108c3243b44a943a9e316e7676b"
+        },
+        "processing_loss": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "dc3c7ff596a1cee42ff255fde95c2a8dc0dfc31e344cbc9b54427eba53a62953"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "d09a47d21d37a4e9ff7883ddfc715836548aca3a247a9e0c0146fe86426975c1"
+        },
+        "hdr_base": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "d09a47d21d37a4e9ff7883ddfc715836548aca3a247a9e0c0146fe86426975c1"
+        },
+        "hdr_alternate": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "dd980c016b5cafea0977aacaa0ece687d5dd823dca8ac1ca04c8fb1010d0384d"
+        }
+      },
+      "decisions_sha256": "a20b2696cb1f3264f99f1bc6a5a299e91f0d258b90d773c63b436b9710f7e5aa",
+      "auto_ev": {
+        "ev": 0.0546875,
+        "ev_median_target": 1.044471263885498,
+        "ev_boost": 0.0546875,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0546875,
+        "anchored_median_ev": -0.989783763885498
+      },
+      "rgb_clip_k_of_all_pct": {
+        "1": 0.28118345760021096,
+        "2": 0.9873243868144378,
+        "3": 0.005515961037079008
+      },
+      "hdr_headroom_ev": 1.2957221319800878,
+      "hdr_rho": 0.45035798260742416,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            7.637407291971613,
+            7.790837333974196,
+            7.898319041938521
+          ],
+          "median": 7.790837333974196,
+          "min": 7.637407291971613,
+          "max": 7.898319041938521
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            8.70794874994317,
+            8.734971958969254,
+            8.86217208195012
+          ],
+          "median": 8.734971958969254,
+          "min": 8.70794874994317,
+          "max": 8.86217208195012
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2678.140625,
+            2755.390625,
+            2704.734375
+          ],
+          "median": 2704.734375,
+          "min": 2678.140625,
+          "max": 2755.390625
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              3.9508721249876544,
+              4.031873999978416,
+              4.130177040991839
+            ],
+            "median": 4.031873999978416,
+            "min": 3.9508721249876544,
+            "max": 4.130177040991839
+          },
+          "analyze": {
+            "runs": [
+              1.9134538329963107,
+              1.9450712919933721,
+              1.971650249994127
+            ],
+            "median": 1.9450712919933721,
+            "min": 1.9134538329963107,
+            "max": 1.971650249994127
+          },
+          "auto_ev": {
+            "runs": [
+              0.48118920798879117,
+              0.5045327919942793,
+              0.48330312498728745
+            ],
+            "median": 0.48330312498728745,
+            "min": 0.48118920798879117,
+            "max": 0.5045327919942793
+          },
+          "render_plan": {
+            "runs": [
+              0.11042629199801013,
+              0.1321472910058219,
+              0.1323204169748351
+            ],
+            "median": 0.1321472910058219,
+            "min": 0.11042629199801013,
+            "max": 0.1323204169748351
+          },
+          "hdr_plan": {
+            "runs": [
+              0.0002624999906402081,
+              0.00021754199406132102,
+              0.0002145830076187849
+            ],
+            "median": 0.00021754199406132102,
+            "min": 0.0002145830076187849,
+            "max": 0.0002624999906402081
+          },
+          "render_sdr": {
+            "runs": [
+              1.1814658340008464,
+              1.1772119590023067,
+              1.1808682089904323
+            ],
+            "median": 1.1808682089904323,
+            "min": 1.1772119590023067,
+            "max": 1.1814658340008464
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.251744791981764,
+              2.1211290420033038,
+              2.144506665994413
+            ],
+            "median": 2.144506665994413,
+            "min": 2.1211290420033038,
+            "max": 2.251744791981764
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.3499371250218246
+            }
+          },
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.35804016698966734
+            }
+          },
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.3599675839941483
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.3499371250218246,
+            0.35804016698966734,
+            0.3599675839941483
+          ],
+          "median": 0.35804016698966734,
+          "min": 0.3499371250218246,
+          "max": 0.3599675839941483
+        },
+        "rgb_metrics_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "native_call_counts": [
+          0,
+          0,
+          0
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_rgb_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            7.213430458999937,
+            7.399071666965028,
+            7.5918533320655115
+          ],
+          "median": 7.399071666965028,
+          "min": 7.213430458999937,
+          "max": 7.5918533320655115
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            8.145763542997884,
+            8.324787999968976,
+            8.543125541007612
+          ],
+          "median": 8.324787999968976,
+          "min": 8.145763542997884,
+          "max": 8.543125541007612
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2847.09375,
+            2662.59375,
+            2658.65625
+          ],
+          "median": 2662.59375,
+          "min": 2658.65625,
+          "max": 2847.09375
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              3.908420167019358,
+              3.993993499985663,
+              4.1329104170145
+            ],
+            "median": 3.993993499985663,
+            "min": 3.908420167019358,
+            "max": 4.1329104170145
+          },
+          "analyze": {
+            "runs": [
+              1.541786999994656,
+              1.584479500015732,
+              1.6170298749930225
+            ],
+            "median": 1.584479500015732,
+            "min": 1.541786999994656,
+            "max": 1.6170298749930225
+          },
+          "auto_ev": {
+            "runs": [
+              0.4699376249918714,
+              0.4849946249742061,
+              0.5207255410205107
+            ],
+            "median": 0.4849946249742061,
+            "min": 0.4699376249918714,
+            "max": 0.5207255410205107
+          },
+          "render_plan": {
+            "runs": [
+              0.12298154199379496,
+              0.13114133299677633,
+              0.1330195410118904
+            ],
+            "median": 0.13114133299677633,
+            "min": 0.12298154199379496,
+            "max": 0.1330195410118904
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00022412498947232962,
+              0.00020612499793060124,
+              0.00023724997299723327
+            ],
+            "median": 0.00022412498947232962,
+            "min": 0.00020612499793060124,
+            "max": 0.00023724997299723327
+          },
+          "render_sdr": {
+            "runs": [
+              1.170304125000257,
+              1.2044627089926507,
+              1.1881679580255877
+            ],
+            "median": 1.1881679580255877,
+            "min": 1.170304125000257,
+            "max": 1.2044627089926507
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.102413084008731,
+              2.1299729169986676,
+              2.139202916994691
+            ],
+            "median": 2.1299729169986676,
+            "min": 2.102413084008731,
+            "max": 2.139202916994691
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.004095125012099743
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.004196124995360151
+            }
+          },
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.003639250004198402
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.0037443750188685954
+            }
+          },
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.004041292006149888
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.00414008300867863
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.004196124995360151,
+            0.0037443750188685954,
+            0.00414008300867863
+          ],
+          "median": 0.00414008300867863,
+          "min": 0.0037443750188685954,
+          "max": 0.004196124995360151
+        },
+        "rgb_metrics_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "native_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 5.028543790803585,
+        "pipeline_hdr_s": 4.695881806227121,
+        "rgb_metrics_wall_s": 98.8436819691244
+      }
+    },
+    "sony": {
+      "pairs": 3,
+      "sample": "DSC00225.ARW",
+      "source_sha256": "752749232a3d9baa84fec24b4663557ec743a495fbe5d65b8600ed72d7bfa6d2",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "4baa047a0d97944f458015a0e729dc732b7355aa0f3de4882b36210a035e8641",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "59709c59d951f548a2700a2c17583f01672fae5d7de6b9d631f0e0c2d440a05d"
+        },
+        "processing_loss": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "b57b32e4bf814d8977a8f31ea6f36eb488ae0a435b10b2100a5de91201a0b8c9"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "5331671504b6b7e378dd10c3d2dae41245b82a76bb3b183913a7f96e16219cfc"
+        },
+        "hdr_base": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "5331671504b6b7e378dd10c3d2dae41245b82a76bb3b183913a7f96e16219cfc"
+        },
+        "hdr_alternate": {
+          "shape": [
+            4688,
+            7028,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "fc544d27613fbe7349c57ca44b3c7cef4243c9b6c064e5a4eeabca3d8652ca8e"
+        }
+      },
+      "decisions_sha256": "89f9a5b841f4a71bfc97d222231f46aef2f502ccc5f8387a294b4f3995023b15",
+      "auto_ev": {
+        "ev": 0.0390625,
+        "ev_median_target": 1.2259010076522827,
+        "ev_boost": 0.0390625,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0390625,
+        "anchored_median_ev": -1.1868385076522827
+      },
+      "rgb_clip_k_of_all_pct": {
+        "1": 0.040076165353214156,
+        "2": 0.009311850598580812,
+        "3": 3.642184067241517e-05
+      },
+      "hdr_headroom_ev": 0.2679380228644872,
+      "hdr_rho": 0.4995325863780373,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            11.761078749987064,
+            11.400329916999908,
+            11.16433749900898
+          ],
+          "median": 11.400329916999908,
+          "min": 11.16433749900898,
+          "max": 11.761078749987064
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            12.892085291969124,
+            12.577150583005277,
+            12.33428774899221
+          ],
+          "median": 12.577150583005277,
+          "min": 12.33428774899221,
+          "max": 12.892085291969124
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3067.90625,
+            3457.296875,
+            3555.0625
+          ],
+          "median": 3457.296875,
+          "min": 3067.90625,
+          "max": 3555.0625
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              5.852159708010731,
+              5.853764250001404,
+              5.792466916027479
+            ],
+            "median": 5.852159708010731,
+            "min": 5.792466916027479,
+            "max": 5.853764250001404
+          },
+          "analyze": {
+            "runs": [
+              3.14684870900237,
+              2.860777624999173,
+              2.8380152910249308
+            ],
+            "median": 2.860777624999173,
+            "min": 2.8380152910249308,
+            "max": 3.14684870900237
+          },
+          "auto_ev": {
+            "runs": [
+              0.6818302499887068,
+              0.7303316670004278,
+              0.6210832499782555
+            ],
+            "median": 0.6818302499887068,
+            "min": 0.6210832499782555,
+            "max": 0.7303316670004278
+          },
+          "render_plan": {
+            "runs": [
+              0.1493690829956904,
+              0.14342683300492354,
+              0.1294702919840347
+            ],
+            "median": 0.14342683300492354,
+            "min": 0.1294702919840347,
+            "max": 0.1493690829956904
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00028724997537210584,
+              0.00036820798413828015,
+              0.00023212499218061566
+            ],
+            "median": 0.00028724997537210584,
+            "min": 0.00023212499218061566,
+            "max": 0.00036820798413828015
+          },
+          "render_sdr": {
+            "runs": [
+              1.9308709999895655,
+              1.8120295419939794,
+              1.7833017499942798
+            ],
+            "median": 1.8120295419939794,
+            "min": 1.7833017499942798,
+            "max": 1.9308709999895655
+          },
+          "render_hdr_pair": {
+            "runs": [
+              3.0615902919962537,
+              2.9884820000152104,
+              2.95301987498533
+            ],
+            "median": 2.9884820000152104,
+            "min": 2.95301987498533,
+            "max": 3.0615902919962537
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.4976186249987222
+            }
+          },
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.48205008398508653
+            }
+          },
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.4821206670021638
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.4976186249987222,
+            0.48205008398508653,
+            0.4821206670021638
+          ],
+          "median": 0.4821206670021638,
+          "min": 0.48205008398508653,
+          "max": 0.4976186249987222
+        },
+        "rgb_metrics_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "native_call_counts": [
+          0,
+          0,
+          0
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_rgb_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            10.798948207026115,
+            10.820947374944808,
+            10.751825333980378
+          ],
+          "median": 10.798948207026115,
+          "min": 10.751825333980378,
+          "max": 10.820947374944808
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            12.134525291010505,
+            12.016351249971194,
+            11.909301624982618
+          ],
+          "median": 12.016351249971194,
+          "min": 11.909301624982618,
+          "max": 12.134525291010505
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3424.296875,
+            3546.75,
+            3475.328125
+          ],
+          "median": 3475.328125,
+          "min": 3424.296875,
+          "max": 3546.75
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              5.835467958007939,
+              5.784910624992335,
+              5.826695916999597
+            ],
+            "median": 5.826695916999597,
+            "min": 5.784910624992335,
+            "max": 5.835467958007939
+          },
+          "analyze": {
+            "runs": [
+              2.3884541660081595,
+              2.3262601669994183,
+              2.3727108750026673
+            ],
+            "median": 2.3727108750026673,
+            "min": 2.3262601669994183,
+            "max": 2.3884541660081595
+          },
+          "auto_ev": {
+            "runs": [
+              0.6328015420003794,
+              0.7212137499882374,
+              0.5887456249911338
+            ],
+            "median": 0.6328015420003794,
+            "min": 0.5887456249911338,
+            "max": 0.7212137499882374
+          },
+          "render_plan": {
+            "runs": [
+              0.13119258300866932,
+              0.16363124997587875,
+              0.13206704199546948
+            ],
+            "median": 0.13206704199546948,
+            "min": 0.13119258300866932,
+            "max": 0.16363124997587875
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00025716700474731624,
+              0.00022241700207814574,
+              0.00021829098113812506
+            ],
+            "median": 0.00022241700207814574,
+            "min": 0.00021829098113812506,
+            "max": 0.00025716700474731624
+          },
+          "render_sdr": {
+            "runs": [
+              1.8110319580009673,
+              1.8249315829889383,
+              1.83160587499151
+            ],
+            "median": 1.8249315829889383,
+            "min": 1.8110319580009673,
+            "max": 1.83160587499151
+          },
+          "render_hdr_pair": {
+            "runs": [
+              3.14635187498061,
+              3.0201130410132464,
+              2.988863875012612
+            ],
+            "median": 3.0201130410132464,
+            "min": 2.988863875012612,
+            "max": 3.14635187498061
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.005050292005762458
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.005152416997589171
+            }
+          },
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.005216042016400024
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.005324124998878688
+            }
+          },
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.005360417009796947
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.005458667001221329
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.005152416997589171,
+            0.005324124998878688,
+            0.005458667001221329
+          ],
+          "median": 0.005324124998878688,
+          "min": 0.005152416997589171,
+          "max": 0.005458667001221329
+        },
+        "rgb_metrics_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "native_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 5.275125495070343,
+        "pipeline_hdr_s": 4.458874284226644,
+        "rgb_metrics_wall_s": 98.8956862123368
+      }
+    },
+    "fuji": {
+      "pairs": 3,
+      "sample": "DSCF0214.RAF",
+      "source_sha256": "649f3899eb5e8504353e9e332440ab98e401937c309ddadacfda0a1a6b251af2",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "6220d259d755161a6b978174b74db73cdfdb295f0c5c0ccbd074fa5668647e45",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "17fbca4b09eb7ea15adf6929ca9f450e0b740a78967c29ee297cc65bf36f4d79"
+        },
+        "processing_loss": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float16",
+          "sha256": "17fbca4b09eb7ea15adf6929ca9f450e0b740a78967c29ee297cc65bf36f4d79"
+        },
+        "reference_samples": null,
+        "sdr": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "cb959387aec082306e9318c5954c239bb943c0a1ebf3ffa759ff9c9320632ea1"
+        },
+        "hdr_base": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "cb959387aec082306e9318c5954c239bb943c0a1ebf3ffa759ff9c9320632ea1"
+        },
+        "hdr_alternate": {
+          "shape": [
+            5178,
+            7752,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "a90eeab1170334cd2360e4fc9d904689b6f819a5f7f84b82ce6016319d22900b"
+        }
+      },
+      "decisions_sha256": "d96eea09de22e8e73361801d69906c5087130f0d02387e3a88785575ce4e6c5e",
+      "auto_ev": {
+        "ev": 1.5666446685791016,
+        "ev_median_target": 1.5666446685791016,
+        "ev_boost": 1.5666446685791016,
+        "highlight_limited": false,
+        "highlight_cap_ev": 1.828125,
+        "anchored_median_ev": 0.0
+      },
+      "rgb_clip_k_of_all_pct": {
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0
+      },
+      "hdr_headroom_ev": 0.0,
+      "hdr_rho": 0.5,
+      "decoder": "libraw",
+      "decoder_version": null,
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            24.217613918037387,
+            24.39938508303021,
+            24.28195308300201
+          ],
+          "median": 24.28195308300201,
+          "min": 24.217613918037387,
+          "max": 24.39938508303021
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            25.212035085074604,
+            25.33628983303788,
+            25.197193000029074
+          ],
+          "median": 25.212035085074604,
+          "min": 25.197193000029074,
+          "max": 25.33628983303788
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3258.671875,
+            3986.34375,
+            3793.5
+          ],
+          "median": 3793.5,
+          "min": 3258.671875,
+          "max": 3986.34375
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              17.09380066700396,
+              17.202046500024153,
+              17.248228416981874
+            ],
+            "median": 17.202046500024153,
+            "min": 17.09380066700396,
+            "max": 17.248228416981874
+          },
+          "analyze": {
+            "runs": [
+              4.648413250019075,
+              4.715720583015354,
+              4.41469700000016
+            ],
+            "median": 4.648413250019075,
+            "min": 4.41469700000016,
+            "max": 4.715720583015354
+          },
+          "auto_ev": {
+            "runs": [
+              0.5822075840260368,
+              0.5606645829975605,
+              0.6213694580073934
+            ],
+            "median": 0.5822075840260368,
+            "min": 0.5606645829975605,
+            "max": 0.6213694580073934
+          },
+          "render_plan": {
+            "runs": [
+              0.11714616700191982,
+              0.11846137497923337,
+              0.13432712500798516
+            ],
+            "median": 0.11846137497923337,
+            "min": 0.11714616700191982,
+            "max": 0.13432712500798516
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00022529202396981418,
+              0.00026454200269654393,
+              0.00026233302196487784
+            ],
+            "median": 0.00026233302196487784,
+            "min": 0.00022529202396981418,
+            "max": 0.00026454200269654393
+          },
+          "render_sdr": {
+            "runs": [
+              1.7760462499863934,
+              1.8024920420139097,
+              1.8633310830045957
+            ],
+            "median": 1.8024920420139097,
+            "min": 1.7760462499863934,
+            "max": 1.8633310830045957
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.7702421249996405,
+              2.7391322500188835,
+              2.7783086670096964
+            ],
+            "median": 2.7702421249996405,
+            "min": 2.7391322500188835,
+            "max": 2.7783086670096964
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.4404844579985365
+            }
+          },
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.4758280000241939
+            }
+          },
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.4933604999969248
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.4404844579985365,
+            0.4758280000241939,
+            0.4933604999969248
+          ],
+          "median": 0.4758280000241939,
+          "min": 0.4404844579985365,
+          "max": 0.4933604999969248
+        },
+        "rgb_metrics_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "native_call_counts": [
+          0,
+          0,
+          0
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_rgb_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            24.023049667011946,
+            24.029827915976057,
+            23.718892042030348
+          ],
+          "median": 24.023049667011946,
+          "min": 23.718892042030348,
+          "max": 24.029827915976057
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            25.152442334016087,
+            25.014651665987913,
+            24.682772375032073
+          ],
+          "median": 25.014651665987913,
+          "min": 24.682772375032073,
+          "max": 25.152442334016087
+        },
+        "peak_rss_mib": {
+          "runs": [
+            3785.09375,
+            3625.21875,
+            3922.125
+          ],
+          "median": 3785.09375,
+          "min": 3625.21875,
+          "max": 3922.125
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              17.136777999985497,
+              17.146965082996758,
+              17.14272958302172
+            ],
+            "median": 17.14272958302172,
+            "min": 17.136777999985497,
+            "max": 17.146965082996758
+          },
+          "analyze": {
+            "runs": [
+              4.176326749991858,
+              4.077558457996929,
+              3.9426297080062795
+            ],
+            "median": 4.077558457996929,
+            "min": 3.9426297080062795,
+            "max": 4.176326749991858
+          },
+          "auto_ev": {
+            "runs": [
+              0.7738678750174586,
+              0.800968625000678,
+              0.6540073750074953
+            ],
+            "median": 0.7738678750174586,
+            "min": 0.6540073750074953,
+            "max": 0.800968625000678
+          },
+          "render_plan": {
+            "runs": [
+              0.15860341701772995,
+              0.15877966699190438,
+              0.17438754200702533
+            ],
+            "median": 0.15877966699190438,
+            "min": 0.15860341701772995,
+            "max": 0.17438754200702533
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00039362499956041574,
+              0.0003223750100005418,
+              0.0003998749889433384
+            ],
+            "median": 0.00039362499956041574,
+            "min": 0.0003223750100005418,
+            "max": 0.0003998749889433384
+          },
+          "render_sdr": {
+            "runs": [
+              1.777473624999402,
+              1.8455560829897877,
+              1.8051378339878283
+            ],
+            "median": 1.8051378339878283,
+            "min": 1.777473624999402,
+            "max": 1.8455560829897877
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.9064726670039818,
+              2.830057457991643,
+              2.7686182920006104
+            ],
+            "median": 2.830057457991643,
+            "min": 2.7686182920006104,
+            "max": 2.9064726670039818
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.0041121660033240914
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.0042692499991972
+            }
+          },
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.0037870829983148724
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.003896584006724879
+            }
+          },
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.003928166988771409
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.00409037500503473
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.0042692499991972,
+            0.003896584006724879,
+            0.00409037500503473
+          ],
+          "median": 0.00409037500503473,
+          "min": 0.003896584006724879,
+          "max": 0.0042692499991972
+        },
+        "rgb_metrics_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "native_call_counts": [
+          1,
+          1,
+          1
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 1.0662380209082167,
+        "pipeline_hdr_s": 0.7828936395679609,
+        "rgb_metrics_wall_s": 99.14036689626782
+      }
+    },
+    "sigma-apple": {
+      "pairs": 1,
+      "sample": "_SDI0150.DNG",
+      "source_sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c",
+      "complete_identity_exact_against_baseline": true,
+      "complete_identity_sha256": "1b63a2647a127629831973c7749d4ed1ff33d2debb60be986c85dc98c38f43bb",
+      "buffers": {
+        "masks_loaded": null,
+        "masks_analyzed": null,
+        "processing_loss": null,
+        "reference_samples": {
+          "shape": [
+            196302,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "4a5dff19ffe043112bc72aa2cd06183ce14c8827ab57e48823f7e62b164479fe"
+        },
+        "sdr": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "6d1a18588e11f2989df6ee89c264bb76f02ec67123b3ce2680df7f7a043e9f00"
+        },
+        "hdr_base": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "uint8",
+          "sha256": "6d1a18588e11f2989df6ee89c264bb76f02ec67123b3ce2680df7f7a043e9f00"
+        },
+        "hdr_alternate": {
+          "shape": [
+            6000,
+            4000,
+            3
+          ],
+          "dtype": "float32",
+          "sha256": "7453e90df717ba2a2d4d8752fc308cded1c7e74499632925e2a6ea3038e8ab29"
+        }
+      },
+      "decisions_sha256": "69c21b90308b4bb462a7f0b9e4b6ed899ff3fb14108efcc8d41ac88a14740887",
+      "auto_ev": {
+        "ev": 0.0546875,
+        "ev_median_target": 0.9799513816833496,
+        "ev_boost": 0.0546875,
+        "highlight_limited": true,
+        "highlight_cap_ev": 0.0546875,
+        "anchored_median_ev": -0.9252638816833496
+      },
+      "rgb_clip_k_of_all_pct": {
+        "1": 0.28118345760021096,
+        "2": 0.9873243868144378,
+        "3": 0.005515961037079008
+      },
+      "hdr_headroom_ev": 1.2475293924933935,
+      "hdr_rho": 0.25,
+      "decoder": "coreimage",
+      "decoder_version": "9",
+      "reference": {
+        "pipeline_sdr_s": {
+          "runs": [
+            7.721202748944052
+          ],
+          "median": 7.721202748944052,
+          "min": 7.721202748944052,
+          "max": 7.721202748944052
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            8.600804749963572
+          ],
+          "median": 8.600804749963572,
+          "min": 8.600804749963572,
+          "max": 8.600804749963572
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2526.765625
+          ],
+          "median": 2526.765625,
+          "min": 2526.765625,
+          "max": 2526.765625
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              4.3123307499918155
+            ],
+            "median": 4.3123307499918155,
+            "min": 4.3123307499918155,
+            "max": 4.3123307499918155
+          },
+          "analyze": {
+            "runs": [
+              1.8695092919806484
+            ],
+            "median": 1.8695092919806484,
+            "min": 1.8695092919806484,
+            "max": 1.8695092919806484
+          },
+          "auto_ev": {
+            "runs": [
+              0.29022591598914005
+            ],
+            "median": 0.29022591598914005,
+            "min": 0.29022591598914005,
+            "max": 0.29022591598914005
+          },
+          "render_plan": {
+            "runs": [
+              0.07797499999287538
+            ],
+            "median": 0.07797499999287538,
+            "min": 0.07797499999287538,
+            "max": 0.07797499999287538
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00022158300271257758
+            ],
+            "median": 0.00022158300271257758,
+            "min": 0.00022158300271257758,
+            "max": 0.00022158300271257758
+          },
+          "render_sdr": {
+            "runs": [
+              1.1711617909895722
+            ],
+            "median": 1.1711617909895722,
+            "min": 1.1711617909895722,
+            "max": 1.1711617909895722
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.0505422090063803
+            ],
+            "median": 2.0505422090063803,
+            "min": 2.0505422090063803,
+            "max": 2.0505422090063803
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.7315702920022886
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.7315702920022886
+          ],
+          "median": 0.7315702920022886,
+          "min": 0.7315702920022886,
+          "max": 0.7315702920022886
+        },
+        "rgb_metrics_call_counts": [
+          1
+        ],
+        "native_call_counts": [
+          0
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": "sensor_rgb_clip_counts_u16"
+        }
+      },
+      "native": {
+        "pipeline_sdr_s": {
+          "runs": [
+            6.555129665997811
+          ],
+          "median": 6.555129665997811,
+          "min": 6.555129665997811,
+          "max": 6.555129665997811
+        },
+        "pipeline_hdr_s": {
+          "runs": [
+            7.424083666992374
+          ],
+          "median": 7.424083666992374,
+          "min": 7.424083666992374,
+          "max": 7.424083666992374
+        },
+        "peak_rss_mib": {
+          "runs": [
+            2304.359375
+          ],
+          "median": 2304.359375,
+          "min": 2304.359375,
+          "max": 2304.359375
+        },
+        "stages": {
+          "load_raw": {
+            "runs": [
+              4.001797291013645
+            ],
+            "median": 4.001797291013645,
+            "min": 4.001797291013645,
+            "max": 4.001797291013645
+          },
+          "analyze": {
+            "runs": [
+              1.0331265419954434
+            ],
+            "median": 1.0331265419954434,
+            "min": 1.0331265419954434,
+            "max": 1.0331265419954434
+          },
+          "auto_ev": {
+            "runs": [
+              0.27494241698877886
+            ],
+            "median": 0.27494241698877886,
+            "min": 0.27494241698877886,
+            "max": 0.27494241698877886
+          },
+          "render_plan": {
+            "runs": [
+              0.06691654099267907
+            ],
+            "median": 0.06691654099267907,
+            "min": 0.06691654099267907,
+            "max": 0.06691654099267907
+          },
+          "hdr_plan": {
+            "runs": [
+              0.00022020901087671518
+            ],
+            "median": 0.00022020901087671518,
+            "min": 0.00022020901087671518,
+            "max": 0.00022020901087671518
+          },
+          "render_sdr": {
+            "runs": [
+              1.1783468750072643
+            ],
+            "median": 1.1783468750072643,
+            "min": 1.1783468750072643,
+            "max": 1.1783468750072643
+          },
+          "render_hdr_pair": {
+            "runs": [
+              2.0470806669909507
+            ],
+            "median": 2.0470806669909507,
+            "min": 2.0470806669909507,
+            "max": 2.0470806669909507
+          }
+        },
+        "sensor_rgb_calls": [
+          {
+            "native.sensor_rgb_clip_counts_u16": {
+              "count": 1,
+              "wall_s": 0.0036873749922960997
+            },
+            "compute_color_clip_metrics": {
+              "count": 1,
+              "wall_s": 0.0037846670020371675
+            }
+          }
+        ],
+        "rgb_metrics_wall_s": {
+          "runs": [
+            0.0037846670020371675
+          ],
+          "median": 0.0037846670020371675,
+          "min": 0.0037846670020371675,
+          "max": 0.0037846670020371675
+        },
+        "rgb_metrics_call_counts": [
+          1
+        ],
+        "native_call_counts": [
+          1
+        ],
+        "environment": {
+          "DNGSCAN_FAST": "1",
+          "DNGSCAN_FAST_SKIP": ""
+        }
+      },
+      "median_reduction_pct": {
+        "pipeline_sdr_s": 15.102220740230043,
+        "pipeline_hdr_s": 13.681523033948451,
+        "rgb_metrics_wall_s": 99.48266529636153
+      }
+    }
+  },
+  "synthetic": {
+    "24mp": {
+      "size": [
+        6000,
+        4000
+      ],
+      "repeats_per_case": 3,
+      "method": "One fresh process per mode; reference first. Input generation/hashing outside timing; three repetitions per case, not independent pipeline measurements.",
+      "complete_identity_exact": true,
+      "identity": {
+        "bayer": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint16",
+              "sha256": "39cec64e8aedc6e1a07046f20d1d961c4e322399b0f8fd7245f396baa0f37c75"
+            },
+            "colors": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint8",
+              "sha256": "c9df701a4e6baf8a991058406d9b80834d6fc3d6b18c1f1a47649988c29e657f"
+            },
+            "color_strides": [
+              6000,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ],
+            "thresholds": {
+              "0": 16256,
+              "1": 16270,
+              "2": 16240,
+              "3": 16280
+            },
+            "labels": {
+              "0": "R",
+              "1": "G1",
+              "2": "B",
+              "3": "G2"
+            },
+            "seed": 371
+          },
+          "rgb_clip_pct": {
+            "1": 2.9444666666666666,
+            "2": 0.028316666666666664,
+            "3": 9.999999999999999e-05
+          }
+        },
+        "xtrans": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint16",
+              "sha256": "39cec64e8aedc6e1a07046f20d1d961c4e322399b0f8fd7245f396baa0f37c75"
+            },
+            "colors": {
+              "shape": [
+                4000,
+                6000
+              ],
+              "dtype": "uint8",
+              "sha256": "b2c1c8b5711f042d05a10c4bc14c934382ff8781b5c33c3a10e15e80bf0749f7"
+            },
+            "color_strides": [
+              6000,
+              1
+            ],
+            "pattern": [
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                2,
+                1,
+                2,
+                0,
+                1,
+                0
+              ],
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ],
+              [
+                0,
+                1,
+                0,
+                2,
+                1,
+                2
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ]
+            ],
+            "thresholds": {
+              "0": 16256,
+              "1": 16270,
+              "2": 16240
+            },
+            "labels": {
+              "0": "R",
+              "1": "G1",
+              "2": "B"
+            },
+            "seed": 371
+          },
+          "rgb_clip_pct": {
+            "1": 22.032732732732732,
+            "2": 1.963813813813814,
+            "3": 0.05555555555555555
+          }
+        },
+        "linear_rgb": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                4000,
+                6000,
+                3
+              ],
+              "dtype": "uint16",
+              "sha256": "3a0fe11fdd58246cc01f7d945a46620eb6a8d510913ee713b3fd793ceb8f94dc"
+            },
+            "colors": {
+              "shape": [
+                4000,
+                6000,
+                3
+              ],
+              "dtype": "uint8",
+              "sha256": "0542f3544d6d58690308211d54e4bbdb08428bfbc1543475babcad313d91ae57"
+            },
+            "color_strides": [
+              0,
+              0,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1,
+                2
+              ]
+            ],
+            "thresholds": {
+              "0": 16256,
+              "1": 16270,
+              "2": 16240
+            },
+            "labels": {
+              "0": "R",
+              "1": "G1",
+              "2": "B"
+            },
+            "seed": 371
+          },
+          "rgb_clip_pct": {
+            "1": 2.3178666666666667,
+            "2": 0.018270833333333333,
+            "3": 4.1666666666666665e-05
+          }
+        }
+      },
+      "sensor_rgb_calls": {
+        "reference": {
+          "compute_color_clip_metrics": {
+            "count": 9,
+            "wall_s": 6.003968999983044
+          }
+        },
+        "native": {
+          "native.sensor_rgb_clip_counts_u16": {
+            "count": 9,
+            "wall_s": 0.04736387400771491
+          },
+          "compute_color_clip_metrics": {
+            "count": 9,
+            "wall_s": 0.047816751000937074
+          }
+        }
+      },
+      "cases": {
+        "bayer": {
+          "reference": {
+            "wall_s": [
+              0.4103508339903783,
+              0.35605783300707117,
+              0.3454020409844816
+            ],
+            "median_s": 0.35605783300707117
+          },
+          "native": {
+            "wall_s": [
+              0.003988832992035896,
+              0.004766291007399559,
+              0.0038825839874334633
+            ],
+            "median_s": 0.003988832992035896
+          },
+          "median_speedup": 89.2636602530054
+        },
+        "xtrans": {
+          "reference": {
+            "wall_s": [
+              0.26299454100080766,
+              0.2584836249880027,
+              0.26001933400402777
+            ],
+            "median_s": 0.26001933400402777
+          },
+          "native": {
+            "wall_s": [
+              0.002988584019476548,
+              0.0025072499993257225,
+              0.0024618750030640513
+            ],
+            "median_s": 0.0025072499993257225
+          },
+          "median_speedup": 103.70698337778644
+        },
+        "linear_rgb": {
+          "reference": {
+            "wall_s": [
+              1.4447598330152687,
+              1.3341828749980778,
+              1.3317457920056768
+            ],
+            "median_s": 1.3341828749980778
+          },
+          "native": {
+            "wall_s": [
+              0.009526792011456564,
+              0.008721499994862825,
+              0.008982542000012472
+            ],
+            "median_s": 0.008982542000012472
+          },
+          "median_speedup": 148.5306581362186
+        }
+      },
+      "process_peak_rss_mib": {
+        "reference": 1079.6875,
+        "native": 284.09375
+      }
+    },
+    "60mp": {
+      "size": [
+        10000,
+        6000
+      ],
+      "repeats_per_case": 3,
+      "method": "One fresh process per mode; reference first. Input generation/hashing outside timing; three repetitions per case, not independent pipeline measurements.",
+      "complete_identity_exact": true,
+      "identity": {
+        "bayer": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint16",
+              "sha256": "360b13ad966265bca3b82484261cc7c1b574d62c6a25bb3faba5dbb9b4612fdb"
+            },
+            "colors": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint8",
+              "sha256": "cc13cd6527e35d6c5441c422545755f8d0cff76689fd4c2bcc0be0ee4073c080"
+            },
+            "color_strides": [
+              10000,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1
+              ],
+              [
+                3,
+                2
+              ]
+            ],
+            "thresholds": {
+              "0": 16256,
+              "1": 16270,
+              "2": 16240,
+              "3": 16280
+            },
+            "labels": {
+              "0": "R",
+              "1": "G1",
+              "2": "B",
+              "3": "G2"
+            },
+            "seed": 371
+          },
+          "rgb_clip_pct": {
+            "1": 2.9335400000000003,
+            "2": 0.029193333333333335,
+            "3": 8.666666666666667e-05
+          }
+        },
+        "xtrans": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint16",
+              "sha256": "360b13ad966265bca3b82484261cc7c1b574d62c6a25bb3faba5dbb9b4612fdb"
+            },
+            "colors": {
+              "shape": [
+                6000,
+                10000
+              ],
+              "dtype": "uint8",
+              "sha256": "d3f744abf0b08e1c9c5f391c11564b953fb326da7031ded20a89445e9103f3da"
+            },
+            "color_strides": [
+              10002,
+              1
+            ],
+            "pattern": [
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                2,
+                1,
+                2,
+                0,
+                1,
+                0
+              ],
+              [
+                1,
+                0,
+                1,
+                1,
+                2,
+                1
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ],
+              [
+                0,
+                1,
+                0,
+                2,
+                1,
+                2
+              ],
+              [
+                1,
+                2,
+                1,
+                1,
+                0,
+                1
+              ]
+            ],
+            "thresholds": {
+              "0": 16256,
+              "1": 16270,
+              "2": 16240
+            },
+            "labels": {
+              "0": "R",
+              "1": "G1",
+              "2": "B"
+            },
+            "seed": 371
+          },
+          "rgb_clip_pct": {
+            "1": 21.948979591836736,
+            "2": 1.929591836734694,
+            "3": 0.05324129651860744
+          }
+        },
+        "linear_rgb": {
+          "inputs": {
+            "raw": {
+              "shape": [
+                6000,
+                10000,
+                3
+              ],
+              "dtype": "uint16",
+              "sha256": "dbf73fb403674292da6f6b8a6098b540020c77d5fda48e9a0698fec764c5d660"
+            },
+            "colors": {
+              "shape": [
+                6000,
+                10000,
+                3
+              ],
+              "dtype": "uint8",
+              "sha256": "835bbd0793d3b191b4f810cce9a9d57419810a11e19c334f1d217e3b20161806"
+            },
+            "color_strides": [
+              0,
+              0,
+              1
+            ],
+            "pattern": [
+              [
+                0,
+                1,
+                2
+              ]
+            ],
+            "thresholds": {
+              "0": 16256,
+              "1": 16270,
+              "2": 16240
+            },
+            "labels": {
+              "0": "R",
+              "1": "G1",
+              "2": "B"
+            },
+            "seed": 371
+          },
+          "rgb_clip_pct": {
+            "1": 2.315315,
+            "2": 0.0184,
+            "3": 4.1666666666666665e-05
+          }
+        }
+      },
+      "sensor_rgb_calls": {
+        "reference": {
+          "compute_color_clip_metrics": {
+            "count": 9,
+            "wall_s": 15.398652544012293
+          }
+        },
+        "native": {
+          "native.sensor_rgb_clip_counts_u16": {
+            "count": 9,
+            "wall_s": 0.11334741601604037
+          },
+          "compute_color_clip_metrics": {
+            "count": 9,
+            "wall_s": 0.11390733098960482
+          }
+        }
+      },
+      "cases": {
+        "bayer": {
+          "reference": {
+            "wall_s": [
+              0.9725644580030348,
+              0.8649312499910593,
+              0.8696666669857223
+            ],
+            "median_s": 0.8696666669857223
+          },
+          "native": {
+            "wall_s": [
+              0.010551874991506338,
+              0.009620500000892207,
+              0.009843582985922694
+            ],
+            "median_s": 0.009843582985922694
+          },
+          "median_speedup": 88.34858894667038
+        },
+        "xtrans": {
+          "reference": {
+            "wall_s": [
+              0.6819802499958314,
+              0.7232463749824092,
+              0.6820691250031814
+            ],
+            "median_s": 0.6820691250031814
+          },
+          "native": {
+            "wall_s": [
+              0.006334458012133837,
+              0.005988124990835786,
+              0.006121916987467557
+            ],
+            "median_s": 0.006121916987467557
+          },
+          "median_speedup": 111.41430476752214
+        },
+        "linear_rgb": {
+          "reference": {
+            "wall_s": [
+              3.7693248329742346,
+              3.450586499995552,
+              3.3843080419756006
+            ],
+            "median_s": 3.450586499995552
+          },
+          "native": {
+            "wall_s": [
+              0.021711083012633026,
+              0.021474167006090283,
+              0.022273292008321732
+            ],
+            "median_s": 0.021711083012633026
+          },
+          "median_speedup": 158.93203015196246
+        }
+      },
+      "process_peak_rss_mib": {
+        "reference": 2526.34375,
+        "native": 574.765625
+      }
+    }
+  },
+  "source_sha256": {
+    "dngscan/analysis.py": "85413aed2395c03adb7b5f8d1f64cbd3f95e95a1506629e968ada15e0be26911",
+    "dngscan/fast_plan.py": "734a14c67aef6649ea4d2056980902808288f9ec5dafd10cc027a86119bd25c7",
+    "rust/src/lib.rs": "63abd0c267a46cba07b9febe005b71ab2c9afc8c52f83de2467950b531895113",
+    "rust/src/sensor.rs": "ed4974ecae09a2567b37f1c4507d430d6920554888e4362d835a7e87f48b9c3e",
+    "tools/benchmark_sensor_rgb.py": "3a622a70f81884d8b09ee3ed58dd69ba57e3621b57d10fc4a1542e3a744dc65c"
+  },
+  "environment": {
+    "python": "3.14.4",
+    "numpy": "2.5.2",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "native_abi": 16,
+    "cpus": 10
+  },
+  "verification": {
+    "cargo_lib": {
+      "run": 7,
+      "passed": 7,
+      "skipped": 0
+    },
+    "strict-full": {
+      "run": 1729,
+      "skipped": [
+        [
+          "test_coreimage_decode.SubjectiveControlTests.test_highlight_recovery_stays_on_and_keeps_clipped_highlights_neutral",
+          "frame carries too few clipped highlights to judge"
+        ],
+        [
+          "test_display_filter.DisplayFilterTests.test_kodak_filter_no_channel_crush_on_green",
+          "Kodak cube missing"
+        ],
+        [
+          "test_display_filter.DisplayFilterTests.test_kodak_filter_preserves_color",
+          "Kodak cube missing"
+        ],
+        [
+          "test_display_filter.DisplayFilterTests.test_red_filter_preserves_color",
+          "RED IPP2 cube missing"
+        ],
+        [
+          "test_ideal_image_validation.IdealImageValidationTests.test_declared_truth_recovered",
+          "DNGSCAN_IDEAL_IMAGE_DIR not set"
+        ],
+        [
+          "test_self_review_2026_08.CliSentinelTests.test_explicit_flags_override_the_film_combo",
+          "no film combo table exposed"
+        ]
+      ],
+      "failures": [],
+      "errors": []
+    },
+    "numpy-targeted": {
+      "run": 236,
+      "skipped": [
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_basis_colors_match_reference",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_extended_target_white_matches_reference",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_fast_does_not_mutate_input",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_nan_inf_contract_matches_python",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_parallel_kernel_matches_reference",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_punch_matches_python",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_punch_zero_is_identity",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_synthetic_scene_matches_reference",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeAgxParityTests.test_view_brightness_both_sides_match_reference",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeOutputParityTests.test_abi_and_algorithm_constants_are_fixed",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeOutputParityTests.test_combined_noise_finalizer_matches_reference",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeOutputParityTests.test_float_gamut_fit_matches_reference",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeOutputParityTests.test_fused_u8_matches_reference_with_same_noise",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeOutputParityTests.test_in_gamut_values_are_not_changed_before_clipping",
+          "native extension not built"
+        ],
+        [
+          "tests.test_fast_backend.NativeOutputParityTests.test_parallel_finalizer_is_deterministic",
+          "native extension not built"
+        ],
+        [
+          "tests.test_coreimage_decode.SubjectiveControlTests.test_highlight_recovery_stays_on_and_keeps_clipped_highlights_neutral",
+          "frame carries too few clipped highlights to judge"
+        ]
+      ],
+      "failures": [],
+      "errors": []
+    }
+  }
+}

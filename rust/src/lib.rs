@@ -17,10 +17,11 @@ mod metrics;
 mod numpy_sum;
 mod output;
 mod pixel;
+mod sensor;
 mod spatial;
 mod stats;
 
-use numpy::{PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArray2, PyReadwriteArray2, PyUntypedArrayMethods};
+use numpy::{PyArray1, PyArrayDescrMethods, PyArrayDyn, PyArrayMethods, PyReadonlyArray2, PyReadwriteArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
@@ -34,7 +35,8 @@ use std::sync::atomic::Ordering;
 /// v13 tracks in-place GainMap clipping and adds camera-plane DNG warps.
 /// v14 adds WarpRectilinear2 and embedded lens radial splines.
 /// v15 adds crop-footprint and in-place processing-loss maxima.
-pub const NATIVE_ABI_VERSION: i32 = 15;
+/// v16 adds exact sensor RGB-group clipping counts.
+pub const NATIVE_ABI_VERSION: i32 = 16;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -573,6 +575,97 @@ fn self_test() -> bool {
 // Stage 1 (2026-09-15): decode-side evidence and analysis/delivery metrics.
 // NumPy stays the reference implementation (dngscan/raw_io.py, analysis.py,
 // gainmap.py); tests/test_rust_stage1.py pins bit-identity.
+
+/// ndarray's borrowed view requires native endian/aligned typed pointers and
+/// dimensions/byte-address spans representable by isize, including strided views.
+fn sensor_view_shape<T: numpy::Element>(
+    array: &Bound<'_, PyArrayDyn<T>>, name: &str,
+) -> PyResult<usize> {
+    let shape = array.shape();
+    if !(shape.len() == 2 || shape.len() == 3)
+        || shape.iter().any(|&dim| dim > isize::MAX as usize) {
+        return Err(PyValueError::new_err(format!("{name} must be a 2-D or 3-D array")));
+    }
+    if array.dtype().is_native_byteorder() == Some(false) {
+        return Err(PyValueError::new_err(format!("{name} must have native byte order")));
+    }
+    let align = std::mem::align_of::<T>();
+    if (array.data() as usize) % align != 0
+        || array.strides().iter().any(|&stride| stride % align as isize != 0) {
+        return Err(PyValueError::new_err(format!("{name} must be aligned")));
+    }
+    let len = shape.iter().try_fold(1usize, |n, &dim| n.checked_mul(dim));
+    let nonzero_len = shape.iter().try_fold(1usize, |n, &dim| n.checked_mul(dim.max(1)));
+    let span = shape.iter().zip(array.strides()).try_fold(
+        std::mem::size_of::<T>(), |span, (&dim, &stride)| {
+            span.checked_add(dim.saturating_sub(1).checked_mul(stride.unsigned_abs())?)
+        },
+    );
+    if len.and_then(|n| n.checked_mul(std::mem::size_of::<T>()))
+        .is_none_or(|bytes| bytes > isize::MAX as usize)
+        || nonzero_len.is_none_or(|n| n > isize::MAX as usize)
+        || array.strides().contains(&isize::MIN)
+        || span.is_none_or(|bytes| bytes > isize::MAX as usize) {
+        return Err(PyValueError::new_err(format!("{name} dimensions or strides are too large")));
+    }
+    Ok(len.expect("validated sensor array length"))
+}
+
+#[pyfunction]
+fn sensor_rgb_clip_counts_u16(
+    py: Python<'_>, raw: &Bound<'_, PyAny>, colors: &Bound<'_, PyAny>,
+    thresholds: Vec<i32>, groups: Vec<u8>, period_h: usize, period_w: usize,
+) -> PyResult<Vec<u64>> {
+    let raw = raw.cast::<PyArrayDyn<u16>>()
+        .map_err(|_| PyValueError::new_err("raw must be a uint16 array"))?;
+    let colors = colors.cast::<PyArrayDyn<u8>>()
+        .map_err(|_| PyValueError::new_err("colors must be a uint8 array"))?;
+    let sample_count = sensor_view_shape(raw, "raw")?;
+    sensor_view_shape(colors, "colors")?;
+    if raw.shape() != colors.shape() {
+        return Err(PyValueError::new_err("colors must match raw shape"));
+    }
+    if period_h == 0 || period_w == 0
+        || period_h.checked_mul(period_w).is_none_or(|n| n > isize::MAX as usize)
+        || (raw.ndim() == 3 && (period_h != 1 || period_w != 1)) {
+        return Err(PyValueError::new_err("invalid sensor cell period"));
+    }
+    let thresholds: [i32; 256] = thresholds.try_into()
+        .map_err(|_| PyValueError::new_err("thresholds must have 256 entries"))?;
+    let groups: [u8; 256] = groups.try_into()
+        .map_err(|_| PyValueError::new_err("groups must have 256 entries"))?;
+    if groups.iter().any(|&group| !matches!(group, 0 | 1 | 2 | 4)) {
+        return Err(PyValueError::new_err("groups entries must be 0, 1, 2 or 4"));
+    }
+    if sample_count == 0 {
+        // A zero-channel linear pixel has zero clipped groups. Avoid creating
+        // empty ndarray views: rust-numpy normalizes negative strides through
+        // pointer arithmetic even when the associated axis has length zero.
+        let cells = if raw.ndim() == 3 { raw.shape()[0] * raw.shape()[1] } else { 0 };
+        return Ok(vec![cells as u64, 0, 0, 0]);
+    }
+    let raw_read = raw.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let colors_read = colors.try_readonly().map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let samples = if raw.ndim() == 2 {
+        sensor::Samples::Mosaic(
+            raw_read.as_array().into_dimensionality::<numpy::ndarray::Ix2>()
+                .map_err(|_| PyValueError::new_err("raw must be 2-D"))?,
+            colors_read.as_array().into_dimensionality::<numpy::ndarray::Ix2>()
+                .map_err(|_| PyValueError::new_err("colors must be 2-D"))?,
+            period_h, period_w,
+        )
+    } else {
+        sensor::Samples::Linear(
+            raw_read.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
+                .map_err(|_| PyValueError::new_err("raw must be 3-D"))?,
+            colors_read.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
+                .map_err(|_| PyValueError::new_err("colors must be 3-D"))?,
+        )
+    };
+    py.detach(|| sensor::rgb_clip_counts(samples, &thresholds, &groups, sample_count))
+        .map(|counts| counts.to_vec())
+        .map_err(|e| PyRuntimeError::new_err(format!("sensor workers: {e}")))
+}
 
 fn as_f16_array<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyArrayDyn<half::f16>>> {
     let np = py.import("numpy")?;
@@ -1680,6 +1773,7 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(finalize_rec2020_u8_noise_f32, m)?)?;
     m.add_function(wrap_pyfunction!(finalize_output_u8_noise_f32, m)?)?;
     m.add_function(wrap_pyfunction!(self_test, m)?)?;
+    m.add_function(wrap_pyfunction!(sensor_rgb_clip_counts_u16, m)?)?;
     m.add_function(wrap_pyfunction!(feather_masks_f16, m)?)?;
     m.add_function(wrap_pyfunction!(crop_loss_footprint, m)?)?;
     m.add_function(wrap_pyfunction!(merge_processing_loss_f16_inplace, m)?)?;
