@@ -1232,7 +1232,7 @@ for(const id of ["heifEncoder","heifBitDepth","heifPreset","heifTune"])$("#"+id)
 $("#grade").addEventListener("change",()=>{updateGradeUi();saveSettings();scheduleLivePreview();});
 $("#deliveryProfile").addEventListener("change",()=>{applyDeliveryDefaults();saveSettings();});
 $("#decoder").addEventListener("change",()=>{updateDecoderUi();saveSettings();preparePreview();});
-$("#coreimageVersion").addEventListener("change",()=>{RAW9_APPROVALS.delete($("#input").value.trim());saveSettings();preparePreview();});
+$("#coreimageVersion").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#coreimageScale").addEventListener("change",()=>{saveSettings();preparePreview();});
 $("#clipMargin").addEventListener("change",()=>{
   const el=$("#clipMargin");let v=Math.round(Number(el.value));
@@ -1684,7 +1684,7 @@ $("#filePicker").addEventListener("change",async()=>{
     const result=await response.json();
     if(!result.ok){picker.value="";setStatus("文件选择失败："+result.error,"err");return;}
     $("#input").value=result.path;
-    RAW9_PROBES.clear();RAW9_PROBE_REQUESTS.clear();RAW9_APPROVALS.clear();
+    RAW9_PROBES.clear();RAW9_PROBE_REQUESTS.clear();
     if(!$("#outdir").value.trim())$("#outdir").value=INIT_DIR;
     saveSettings();
     setStatus("已选择："+file.name,"ok");
