@@ -109,5 +109,84 @@ class PageSelectionRuntimeTests(unittest.TestCase):
         self._run_listener("#coreimageVersion")
 
 
+@unittest.skipUnless(NODE, "Node.js is required for GUI callback execution")
+class PageDeliveryRuntimeTests(unittest.TestCase):
+    def test_share_hq_controls_payload_heif_switch_and_visible_size_notice(self) -> None:
+        def section(start: str, end: str) -> str:
+            return PAGE[PAGE.index(start):PAGE.index(end, PAGE.index(start))]
+
+        source = "\n".join((
+            section("function applyDeliveryConstraints()", "function updateToneCoreExportUi()"),
+            section("function payload()", "async function postJob("),
+            section('$("#exportConfirm").onclick=', '$("#revealBtn").onclick='),
+            section("function fmtMB(", "// Realtime histograms:"),
+        ))
+        harness = r"""
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const source = require('node:fs').readFileSync(0, 'utf8');
+const elements = new Map();
+const $ = id => {
+  if(!elements.has(id))elements.set(id, {value:'', checked:false, disabled:false, style:{}, options:[]});
+  return elements.get(id);
+};
+$('#input').value='/sample.dng';
+$('#format').value='sdr';
+$('#decoder').value='libraw';
+$('#deliveryProfile').options=['auto','share-hq','share','archive'].map(value=>({value}));
+$('#deliveryProfile').value='share-hq';
+$('#quality').value='100'; $('#chroma').value='444';
+const statuses=[];
+let result;
+const context=vm.createContext({
+  $, lastSavedPath:'', ensureRaw9Support:async()=>true,
+  closeOutputDialog:()=>{}, beginBusy:()=>{}, endBusy:()=>{},
+  updateToneCoreExportUi:()=>{}, applyJobEv:()=>{}, setPreviewImage:()=>{},
+  setStatus:(text,kind)=>statuses.push({text,kind}),
+  formatText:x=>x, fmtEv:()=>'+0.00', highlightText:()=>'', gamutText:()=>'',
+  decoderText:()=>'', toneCoreText:()=>'', sceneTransformText:()=>'',
+  fullFrameReferenceText:()=>'', metricText:()=>'',
+  postJob:async(path,body)=>{assert.equal(path,'/export'); assert.equal(body.quality,97);
+    assert.equal(body.chroma,'420'); return result;},
+});
+vm.runInContext(source,context);
+context.applyDeliveryDefaults();
+assert.equal($('#quality').value,'97'); assert.equal($('#chroma').value,'420');
+assert.ok($('#quality').disabled && $('#chroma').disabled);
+assert.equal($('#shareSizeHint').style.display,'block');
+const body=context.payload();
+assert.equal(body.deliveryProfile,'share-hq'); assert.equal(body.quality,97); assert.equal(body.chroma,'420');
+// Format switches and restored incompatible settings use the same constraints.
+for(const format of ['sdr-heic','ultrahdr-heic']){
+  $('#format').value=format; $('#deliveryProfile').value='share-hq';
+  context.applyDeliveryConstraints();
+  assert.equal($('#deliveryProfile').value,'auto');
+  assert.ok($('#deliveryProfile').options.find(o=>o.value==='share-hq').disabled);
+  assert.ok(!('quality' in context.payload()) && !('chroma' in context.payload()));
+}
+$('#format').value='ultrahdr'; $('#deliveryProfile').value='share-hq';
+context.applyDeliveryConstraints();
+assert.ok(!$('#deliveryProfile').options.find(o=>o.value==='share-hq').disabled);
+assert.equal(context.payload().quality,97);
+assert.equal(context.fmtMB(20000000),'20.00 MB');
+result={ok:true,saved:['/out.jpg'],ev:0,gain:1,format:'SDR JPEG',preview:'',
+  delivery:{delivery_profile:'share-hq',delivery_container:'jpeg',delivery_quality:97,
+    chroma_subsampling:'4:2:0',file_size_bytes:21000000,share_size_limit_bytes:20000000,
+    share_size_exceeded:true,size_warning:'文件 21.00 MB，超过 20 MB 分享参考线；已保留质量 97 / 4:2:0 和原尺寸。'}};
+(async()=>{
+  await $('#exportConfirm').onclick();
+  assert.equal(statuses.at(-1).kind,'warn');
+  assert.match(statuses.at(-1).text,/已保存.*\/out.jpg/);
+  assert.ok(statuses.at(-1).text.includes(result.delivery.size_warning));
+  assert.ok($('#deliveryReportBody').innerHTML.includes(result.delivery.size_warning));
+  assert.equal(context.lastSavedPath,'/out.jpg');
+  assert.equal($('#go').disabled,false);
+})().catch(e=>{console.error(e);process.exitCode=1;});
+"""
+        result = subprocess.run([NODE, "-e", harness], input=source, text=True,
+                                capture_output=True, timeout=10, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

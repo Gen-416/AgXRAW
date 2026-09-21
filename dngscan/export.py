@@ -15,6 +15,7 @@ from .constants import (
 from .delivery import (
     DeliveryProfile,
     FinishedPair,
+    delivery_size_report,
     container_for_output_format,
     is_hdr_output_format,
     hdr_profile_from_encode_settings,
@@ -420,7 +421,7 @@ def export_ultrahdr_jpeg(
             if return_rgb:
                 from .gainmap import read_primary_rgb_u8
                 info["_decoded_rgb"] = read_primary_rgb_u8(transaction.path, output_gamut)
-            info["file_size_bytes"] = transaction.path.stat().st_size
+            info.update(delivery_size_report(profile, transaction.path.stat().st_size))
             transaction.commit()
         info["output_path"] = str(out_path)
         info["hdr_plan"] = (
@@ -487,6 +488,9 @@ def export_srgb_jpeg(
     delivery: DeliveryProfile | None = None,
 ) -> Any:
     try:
+        if delivery is not None and delivery.name == "share-hq":
+            quality = delivery.quality
+            subsampling = chroma_to_subsampling(delivery.chroma)
         rgb = render_output_u8(
             bundle, analysis, output_gamut, tone_plan,
             look, look_strength, display_filter, filter_strength,
@@ -534,7 +538,7 @@ def export_srgb_jpeg(
         with tempfile.TemporaryDirectory(prefix=".agxraw-jpeg-",dir=out_path.parent) as td:
             candidate=Path(td)/"verified.jpg"
             embedded = save_jpeg_array(rgb, candidate, quality, output_gamut, subsampling)
-            carry_capture_metadata(path, candidate)
+            exif_carried = carry_capture_metadata(path, candidate)
             with Image.open(candidate) as im:
                 im.load()
                 if (not embedded or im.size != (rgb.shape[1], rgb.shape[0])
@@ -542,7 +546,23 @@ def export_srgb_jpeg(
                         or JpegImagePlugin.get_sampling(im) != subsampling):
                     raise RuntimeError("JPEG 回读尺寸、ICC 或采样与请求不符")
                 decoded = np.asarray(im.convert("RGB")) if return_rgb else None
+            if delivery is not None and delivery.name == "share-hq":
+                info = {
+                    "delivery_profile": delivery.name,
+                    "delivery_container": "jpeg",
+                    "delivery_quality": quality,
+                    "delivery_chroma_requested": delivery.chroma,
+                    "chroma_subsampling": "4:2:0",
+                    "icc_embedded": embedded,
+                    "exif_carried": exif_carried,
+                    "output_path": str(out_path),
+                    **delivery_size_report(delivery, candidate.stat().st_size),
+                }
+                if return_rgb:
+                    info["_decoded_rgb"] = decoded
             os.replace(candidate,out_path)
+        if delivery is not None and delivery.name == "share-hq":
+            return info
         return (embedded, decoded) if return_rgb else embedded
     except Exception as exc:
         container = "HEIF" if delivery is not None and delivery.container == "heic" else "JPEG"
