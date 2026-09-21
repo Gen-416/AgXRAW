@@ -604,32 +604,33 @@ The last two are comparison/diagnostic tools, not finishing tools.
 ## 10. Output: formats and delivery profiles
 
 **Formats**:
-- **SDR JPEG** — an ordinary photo, viewable everywhere;
+- **SDR JPEG** — an ordinary photo for broad sharing;
+- **SDR HEIC** — a normal-dynamic-range photo using HEIF/HEVC compression; the recipient needs HEIC support;
 - **HDR gain-map · JPEG** — the recommended HDR format. The file carries both a normal
   rendition and the highlight-boost information; on capable screens (iPhone, Mac,
   Android 15+) highlights genuinely light up, everywhere else it gracefully shows the
   normal version — nothing breaks;
-- **HDR gain-map · HEIC** — the same content in a HEIC container. **Measured on this
-  machine it is neither smaller nor better** — choose it only when a downstream
-  requires HEIC.
+- **HDR gain-map · HEIC** — the same two renditions in a HEIC container. Size and
+  compression quality depend on the image and encoder settings; see the measurements below.
 
 **Delivery profiles**:
-- **Archive · fidelity** — maximum quality (~60 MB per frame), for high-quality
-  keeping;
-- **Share · streaming** — for publishing (~11–27 MB per frame): visually
-  near-identical, HDR information fully preserved, and **even the largest frames stay
-  inside WeChat's 25 MB original-image limit**.
 
-**WeChat notes**: in chats you must tick **原图 (original image)** for HDR to survive
-to the recipient (iPhone WeChat shows full HDR when viewing the original); **Moments
-always recompresses to an ordinary photo** — that is WeChat's behavior and no tool can
-bypass it. For deliveries that matter, sending as a "file" is the safest path.
+- **Automatic (default)** — JPEG searches q95–q99. SDR prefers 4:2:2 and uses 4:2:0 only when its chroma error stays within budget and it saves at least another 5%; HDR JPEG defaults to 4:2:2. With x265 available, HEIF defaults to 10-bit / 4:4:4 and searches its own q80–q95 scale. The image dimensions, exposure and AgX rendering are unchanged.
+- **High-quality sharing · 97 / 4:2:0** (`--delivery-profile share-hq`) — fixed JPEG quality and sampling at the original dimensions, for SDR JPEG and HDR gain-map JPEG. The final file, including metadata and any gain map, is checked against **20,000,000 bytes (20 MB)**. An oversized result is kept with a warning; the app does not silently lower quality or resize it. This profile is unavailable for HEIF; switching to HEIC in the GUI returns it to Automatic.
+- **Manual** (`--delivery-profile share`) — initially q95 / 4:2:0, with independent quality and sampling controls.
+- **Archive** (`--delivery-profile archive`) — explicit q100 / 4:4:4, with larger files.
+
+Automatic mode takes additional encoding and readback time. The report shows the selected quality, sampling, actual size and savings against the reference candidate. See the [full-resolution JPEG / HEIF study](DELIVERY_QUALITY_STUDY.zh-CN.md) for the measured corpus and its limits.
+
+Tunable HEIF needs `brew install libheif` with an x265 encoder. The GUI exposes bit depth, speed and texture strategy for HEIC; the CLI equivalents include `--heif-encoder x265 --heif-bit-depth 10 --heif-preset slow --heif-tune ssim`. `--jpeg-quality` also supplies HEIF quality, but its numeric scale belongs to HEVC. Without libheif, the automatic backend uses the Apple system path; unsupported sampling combinations are reported explicitly. The product exposes 8/10-bit output, as some 12-bit combinations failed local readback.
+
+**Sharing**: texture, noise, resolution and the HDR gain map affect file size. The 20 MB check is a local reminder, not a promise that every photo stays below it or that Discord, WeChat or QQ will accept the file as an image, avoid recompression or retain HDR. Check the actual size in the export report and the result received at the destination.
 
 **After exporting, read the Delivery Report** — the collapsible panel above the
 preview. It states what actually happened: file size, how many stops of HDR were really
-used, how small the compression error measured. Every exported file passed an automatic
-verification; files that fail it are never kept. It lists only the measured facts of the
-HDR container; it is not the analysis report, which the CLI prints with `--report`
+used, how small the compression error measured. Automatic encoding and HDR delivery
+perform readback checks; failed candidates are not published as the final file. The report
+describes the current delivery, not the RAW analysis, which the CLI prints with `--report`
 (end of section 2).
 
 **附带分析图 — "attach the dashboard"** (checkbox in the output dialog): also
@@ -702,6 +703,4 @@ Open the exported file in macOS Preview/Finder, iPhone Photos, an Android 15+ ga
 or Chrome. On ordinary monitors or older systems it is simply a normal JPEG.
 
 **Why are quality and chroma subsampling sometimes locked?**
-The archive profile pins maximum quality by definition; in HDR formats the chroma
-subsampling is decided by the system encoder from the quality setting — the tool shows
-the truth rather than pretending it is adjustable.
+Automatic chooses encoding parameters; Archive pins q100 / 4:4:4; High-quality sharing pins q97 / 4:2:0. Select Manual to change them yourself. Both SDR and HDR JPEG support independent sampling controls. HEIF controls also depend on the selected encoder, and unsupported system-encoder combinations fail explicitly.

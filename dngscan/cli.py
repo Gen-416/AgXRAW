@@ -104,7 +104,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--jpeg-quality",
         type=int,
         default=None,
-        help="JPEG 质量 1-100；默认跟随 --delivery-profile（auto=95–99 自动选择，archive=100，share=95）",
+        help="JPEG 质量 1-100；默认跟随 --delivery-profile（auto=95–99 自动选择，archive=100，share=95，share-hq=97）",
     )
     parser.add_argument(
         "--chroma",
@@ -122,6 +122,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "交付编码档: archive=q100/4:4:4 严格 round-trip；"
             "auto=JPEG q95–99 / HEIF 独立刻度，按回读误差选择；share=手动，默认q95/4:2:0。"
+            "share-hq=仅 JPEG，固定q97/4:2:0、原尺寸，超过20 MB仅提示。"
             "缺省时：未显式给 --jpeg-quality/--chroma 则为 auto；"
             "给了则按参数值推断门禁档（恰好 q100 且 444 走 archive——严格档合同"
             "只在其标定过的编码点成立，其余组合走 share）。"
@@ -1266,6 +1267,10 @@ def main(argv: list[str]) -> int:
                     print(f"自动编码: q{args.jpeg_quality}/{export_result['chroma_subsampling']}，"
                           f"{export_result['file_size_bytes']/1048576:.2f} MiB，"
                           f"较 q{export_result['auto_reference_quality']} 参考节省 {export_result['auto_saved_pct']:.1f}%")
+                elif export_result.get("delivery_profile") == "share-hq":
+                    print(f"高质量分享: q97/4:2:0，{export_result['file_size_bytes']/1_000_000:.2f} MB")
+                if export_result.get("size_warning"):
+                    print(f"warning: {export_result['size_warning']}", file=sys.stderr)
 
         if args.csv is not None:
             # Only built on demand: without --scan/--csv the analysis deliberately

@@ -690,9 +690,11 @@ GRADE_OPTIONS
         <label>导出档位</label>
         <select id="deliveryProfile" title="JPEG 从 95–99 选择；HEIF 使用独立质量刻度。两者均按实际回读损失选择较小文件。">
           <option value="auto">自动 · 质量与体积平衡</option>
+          <option value="share-hq">高质量分享 · JPEG 97 / 4:2:0</option>
           <option value="share">手动 · 默认 95 / 4:2:0</option>
           <option value="archive">存档 · 100 / 4:4:4</option>
         </select>
+        <div class="ctlFact" id="shareSizeHint" style="display:none">保留原尺寸；超过 20 MB 时提示，不自动降质或缩图。</div>
       </div>
       <div style="flex:1;min-width:140px">
         <label>色域</label>
@@ -874,16 +876,22 @@ function updateToneCoreUi(){
   $("#controlHint").textContent=CONTROL_HINTS[core]||"";
 }
 function applyDeliveryConstraints(){
+  const heif=["sdr-heic","ultrahdr-heic"].includes($("#format").value);
+  const profile=$("#deliveryProfile");
+  for(const option of profile.options)if(option.value==="share-hq")option.disabled=heif;
+  if(heif&&profile.value==="share-hq")profile.value="auto";
   const archive=$("#deliveryProfile").value==="archive";
   const auto=$("#deliveryProfile").value==="auto";
-  const heif=["sdr-heic","ultrahdr-heic"].includes($("#format").value);
+  const shareHq=profile.value==="share-hq";
+  $("#shareSizeHint").style.display=shareHq?"block":"none";
   $("#heifControls").style.display=heif?"block":"none";
   for(const id of ["heifPreset","heifTune"])$("#"+id).disabled=$("#heifEncoder").value==="apple";
   $("#heifBitDepth").disabled=$("#heifEncoder").value==="apple"&&$("#format").value!=="sdr-heic";
   if(archive){$("#quality").value="100";$("#chroma").value="444";}
   else if(auto){$("#quality").value=heif?"95":"99";$("#chroma").value=heif?"444":"422";}
-  $("#quality").disabled=archive||auto;
-  $("#chroma").disabled=archive||auto;
+  else if(shareHq){$("#quality").value="97";$("#chroma").value="420";}
+  $("#quality").disabled=archive||auto||shareHq;
+  $("#chroma").disabled=archive||auto||shareHq;
 }
 function applyDeliveryDefaults(){
   // Only on an explicit profile switch: seed share's calibrated defaults.
@@ -2042,7 +2050,7 @@ function setPreviewImage(b64, ondone){
   img.src="data:image/jpeg;base64,"+b64;
 }
 
-function fmtMB(bytes){return bytes>=1048576?(bytes/1048576).toFixed(2)+" MB":Math.round(bytes/1024)+" KB";}
+function fmtMB(bytes){return bytes>=1000000?(bytes/1000000).toFixed(2)+" MB":Math.round(bytes/1000)+" KB";}
 function renderDeliveryReport(j){
   const box=$("#deliveryReport");const body=$("#deliveryReportBody");
   const c=j.delivery||j.hdr_container;
@@ -2052,6 +2060,7 @@ function renderDeliveryReport(j){
   add("交付",(c.delivery_profile||"")+" · "+(c.delivery_container==="heic"?"HEIC":"JPEG")+" · q"+c.delivery_quality);
   if(c.auto_saved_pct!==undefined)add("自动编码", "相对 q"+c.auto_reference_quality+" / "+c.auto_reference_chroma+" · 节省 "+(+c.auto_saved_pct).toFixed(1)+"%");
   if(c.file_size_bytes!==undefined)add("文件大小",fmtMB(c.file_size_bytes));
+  if(c.share_size_limit_bytes!==undefined)add("分享体积",c.size_warning||"未超过 20 MB 参考线",!!c.share_size_exceeded);
   if(c.encoder)add("HEIF 编码",c.encoder+" · "+c.bit_depth+" bit"+(c.preset?" · "+c.preset+" / "+c.tune:""));
   add("主图采样",c.chroma_subsampling,c.chroma_subsampling!=="4:4:4"&&c.delivery_profile==="archive");
   if(c.rendered_headroom_ev!==undefined){
@@ -2208,6 +2217,7 @@ $("#exportConfirm").onclick=async()=>{
     if(!j.ok){endBusy();setStatus("错误："+j.error,"err");}
     else{applyJobEv(j);setStatus("已保存："+j.saved.join(" · ")+"（"+formatText(j.format)+"，EV "+fmtEv(j.ev)+"，曝光增益 "+j.gain.toFixed(3)+"，高光 "+highlightText(j.highlight)+"，色域 "+gamutText(j.gamut)+decoderText(j)+toneCoreText(j)+sceneTransformText(j)+fullFrameReferenceText(j)+metricText(j)+"）","ok");
       renderDeliveryReport(j);
+      if(j.delivery&&j.delivery.size_warning)setStatus("已保存："+j.saved.join(" · ")+"\\n"+j.delivery.size_warning,"warn");
       lastSavedPath=j.saved[0]||"";$("#revealBtn").style.display=lastSavedPath?"inline-block":"none";setPreviewImage(j.preview);}
   }catch(e){endBusy();setStatus("请求失败："+e,"err");}
   $("#go").disabled=false;$("#exportConfirm").disabled=false;updateToneCoreExportUi();

@@ -113,6 +113,17 @@ JPEG 的主图改由 libjpeg 编码，保留原 ISO gain map 并重定位 MPF �
 
 固定此前的 4000×6000 SDR/HDR masters，正式自动路径在最多 14 个主图／辅助图组合中选择 **主图 q90/444/10-bit + gain map q80/444/8-bit**：总大小从 **56,443,247 降到 46,302,617 bytes，减少 17.97%**。全部既有 SDR/HDR 绝对门禁与相对高质量参考的误差预算保持不变；422/420 在该图上被色度保真预算拒绝。这是一个完整尺寸样本的工程结果，不是所有相机或场景的视觉最优结论。此次搜索用时 281.7 秒，不含 RAW 解码和成片渲染；需要快速交付时可选手动编码。结果与所有候选指标见 [heif-independent-gainmap.json](assets/delivery-quality/heif-independent-gainmap.json)。
 
+## 2026-09-20：固定 q97 / 4:2:0 分享档
+
+`share-hq` 保留原尺寸，固定 JPEG q97 / 4:2:0。两张 24 MP DNG 经 LibRaw、默认 AgX 与自动曝光完成端到端 CLI 导出；下表是已携带元数据的最终大小，ICC、EXIF 与实际 4:2:0 均核对，HDR 文件另确认增益图存在并通过正式回读。
+
+| 样张 | SDR JPEG（bytes） | HDR JPEG（bytes） | 与 20 MB 参考线的关系 |
+| --- | ---: | ---: | --- |
+| `_SDI0150.DNG` | 9,248,983 | 15,799,546 | 两者均低于参考线 |
+| `_SDI0199.DNG` | 17,099,479 | 29,008,575 | HDR 超过参考线，CLI 已验证显示提醒并保留成片 |
+
+两张均保持 4000×6000 / 6000×4000 的原尺寸。这里的 **20 MB = 20,000,000 bytes** 是提醒线；这组结果也直接说明固定质量不能保证文件上限。档位不自动缩图或降低质量，不改变默认 `auto` 与 HEIF 策略，也不据此承诺分享平台的接收或重压缩行为。
+
 ## 复现与原始结果
 
 完整数据见 [measurements.json](assets/delivery-quality/measurements.json)，旧路径自动选择见 [automatic-results.json](assets/delivery-quality/automatic-results.json)，新路径全尺寸 HDR 自动选择见 [tunable-hdr-results.json](assets/delivery-quality/tunable-hdr-results.json)。用 `tools/benchmark_delivery.py --mode sdr --out /tmp/codec-test RAW...` 或 `--mode hdr` 复测旧系统路径；增加 `--encoders tunable` 比较独立质量/采样，增加 `--encoders auto` 运行正式 HDR 自动选择。只读 RAW，输出写入指定测试目录，测试文件可能包含尚未通过 HDR 门禁的候选；请以 `hdr_gates_pass` 判断。此脚本用于测量，不绕过正式导出的逐文件检查。

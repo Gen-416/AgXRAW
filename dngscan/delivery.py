@@ -4,8 +4,10 @@
 Formation produces finished SDR/HDR masters at full precision. This module only
 describes how those masters are packaged. Archive keeps the historical Ultrahdr
 contract (quality 100, 4:4:4, tight round-trip gates). Auto searches q95–q99;
-share defaults to q95 / 4:2:0 with independent overrides. Both retain the engineering gates
-previously calibrated for q90 / 4:2:0 delivery.
+share defaults to q95 / 4:2:0 with independent overrides; share-hq fixes JPEG at
+q97 / 4:2:0 and reports deliveries above 20 MB without changing pixels or quality.
+Non-archive profiles retain the engineering gates previously calibrated for
+q90 / 4:2:0 delivery.
 """
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 
-DELIVERY_PROFILE_CHOICES = ("auto", "archive", "share")
+DELIVERY_PROFILE_CHOICES = ("auto", "archive", "share", "share-hq")
 DEFAULT_DELIVERY_PROFILE = "auto"
 DELIVERY_CONTAINER_CHOICES = ("jpeg", "heic")
 
@@ -23,6 +25,8 @@ SHARE_JPEG_QUALITY = 95
 SHARE_CHROMA = "420"
 ARCHIVE_JPEG_QUALITY = 100
 ARCHIVE_CHROMA = "444"
+SHARE_HQ_JPEG_QUALITY = 97
+SHARE_SIZE_NOTICE_BYTES = 20_000_000  # Decimal MB, including metadata and gain map.
 
 
 @dataclass(frozen=True)
@@ -147,6 +151,11 @@ class DeliveryProfile:
     heif_tune: str = "ssim"
 
     def __post_init__(self) -> None:
+        if self.name == "share-hq":
+            if self.container != "jpeg":
+                raise ValueError("share-hq 仅支持 JPEG；HEIF 请使用 auto 或 share 档")
+            if self.quality != SHARE_HQ_JPEG_QUALITY or self.chroma != SHARE_CHROMA:
+                raise ValueError("share-hq 固定 JPEG quality 97 / 4:2:0；自定义参数请使用 share 档")
         if self.heif_encoder not in ("auto","apple","x265"):
             raise ValueError("HEIF encoder 必须为 auto/apple/x265")
         if self.heif_bit_depth not in (8,10):
@@ -174,8 +183,8 @@ def resolve_delivery_profile(
 ) -> DeliveryProfile:
     """Build a delivery profile from a named preset plus optional overrides.
 
-    Explicit quality/chroma win over preset defaults for *share*. Archive keeps the
-    historical Ultrahdr contract and refuses softer encode knobs -- use share instead.
+    Explicit quality/chroma win over preset defaults for *share*. Archive and
+    share-hq fix their encoding points; use share for custom parameters.
     """
     key = str(name or DEFAULT_DELIVERY_PROFILE).strip().lower()
     if key not in DELIVERY_PROFILE_CHOICES:
@@ -200,7 +209,8 @@ def resolve_delivery_profile(
         q = ARCHIVE_JPEG_QUALITY
         c = ARCHIVE_CHROMA
     else:
-        q = SHARE_JPEG_QUALITY if quality is None else int(quality)
+        default_quality = SHARE_HQ_JPEG_QUALITY if key == "share-hq" else SHARE_JPEG_QUALITY
+        q = default_quality if quality is None else int(quality)
         c = SHARE_CHROMA if chroma is None else str(chroma)
     if not 1 <= int(q) <= 100:
         raise ValueError("JPEG quality 必须在 1-100 之间")
@@ -219,6 +229,21 @@ def resolve_delivery_profile(
         chroma=str(c),
         container=cont,
     )
+
+
+def delivery_size_report(profile: DeliveryProfile, file_size_bytes: int) -> dict[str, Any]:
+    """Describe a completed file; the sharing target is advisory, never a retry policy."""
+    report: dict[str, Any] = {"file_size_bytes": int(file_size_bytes)}
+    if profile.name == "share-hq":
+        exceeds = file_size_bytes > SHARE_SIZE_NOTICE_BYTES
+        report.update(share_size_limit_bytes=SHARE_SIZE_NOTICE_BYTES,
+                      share_size_exceeded=exceeds)
+        if exceeds:
+            report["size_warning"] = (
+                f"文件 {file_size_bytes / 1_000_000:.2f} MB，超过 20 MB 分享参考线；"
+                "已保留质量 97 / 4:2:0 和原尺寸。"
+            )
+    return report
 
 
 def reprofile_for_container(
