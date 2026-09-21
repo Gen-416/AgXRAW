@@ -6,13 +6,13 @@
 
 ## ceiling 的两遍扫描与合并合同
 
-[`sensor_ceiling_counts_u16`](../rust/src/lib.rs) 接受原生字节序的 uint16 RAW、同形状 uint8 颜色索引，以及 256 项窗口 LUT，返回各 256 项的 ceiling、总数、精确峰值数量和邻近峰值数量。代码按实际 CID 统计，G1／G2 保持独立；二维与三维数组中的所有感光点都参与，包括不完整 CFA 周期的末端行列。本核不沿用 RGB 分组统计中裁去不足一个完整周期边缘的规则。
+[`sensor_ceiling_counts_u16`](../../../rust/src/lib.rs) 接受原生字节序的 uint16 RAW、同形状 uint8 颜色索引，以及 256 项窗口 LUT，返回各 256 项的 ceiling、总数、精确峰值数量和邻近峰值数量。代码按实际 CID 统计，G1／G2 保持独立；二维与三维数组中的所有感光点都参与，包括不完整 CFA 周期的末端行列。本核不沿用 RGB 分组统计中裁去不足一个完整周期边缘的规则。
 
-[`sensor.rs`](../rust/src/sensor.rs) 第一遍同时计算每个通道的 maximum、total 和 exact。遇到更大的代码值时，局部 maximum 更新为该值，exact 重置为 1；遇到相同 maximum 时增加 exact。合并 worker 结果时，总数始终相加，较大的 maximum 替换当前 maximum 和 exact，相同 maximum 才合并 exact。因此低峰值区域的局部 exact 不会被算入最终全局峰值的堆积数量。
+[`sensor.rs`](../../../rust/src/sensor.rs) 第一遍同时计算每个通道的 maximum、total 和 exact。遇到更大的代码值时，局部 maximum 更新为该值，exact 重置为 1；遇到相同 maximum 时增加 exact。合并 worker 结果时，总数始终相加，较大的 maximum 替换当前 maximum 和 exact，相同 maximum 才合并 exact。因此低峰值区域的局部 exact 不会被算入最终全局峰值的堆积数量。
 
 第二遍在所有 worker 的结果合并后执行，使用每个通道最终的 **全局 maximum** 计算 `max(ceiling - window, 0)`，统计所有达到该下界的感光点。Rust 使用无符号饱和减法实现相同下界。near 不由各 worker 相对于自身 maximum 的局部窗口累加，否则一个局部较暗区域可能被错误地当成全局饱和堆积。两遍都只维护固定的逐通道标量数组，没有按代码值建立直方图，也不保留逐像素中间结果。
 
-窗口及可信度政策仍由 [`analysis.py`](../dngscan/analysis.py) 的 Python 代码决定。原流程的整数元数据转换、0／缺失白点回退至 uint16 上限 65535、Python `round`、窗口最小值 2 均保持原样。传入 Rust 前将窗口上限收至 65535；对 uint16 输入，更大的窗口同样只会使下界变为 0，所以不会改变 near 计数。底层 API 接受 0–65535，Python 的生产入口仍使用至少 2 的原窗口政策。
+窗口及可信度政策仍由 [`analysis.py`](../../../dngscan/analysis.py) 的 Python 代码决定。原流程的整数元数据转换、0／缺失白点回退至 uint16 上限 65535、Python `round`、窗口最小值 2 均保持原样。传入 Rust 前将窗口上限收至 65535；对 uint16 输入，更大的窗口同样只会使下界变为 0，所以不会改变 near 计数。底层 API 接受 0–65535，Python 的生产入口仍使用至少 2 的原窗口政策。
 
 `min_pile = max(CEILING_MIN_PILE_PIXELS, ceil(count * CEILING_MIN_PILE_FRACTION))` 继续在 Python 中按原顺序计算，可信堆积仍由 exact 或 near 达到门槛决定。后续 `resolve_fullwell` 仍执行原来的接近元数据白点、排除弱堆积及元数据回退规则。此处移入 Rust 的 maximum 不会直接取代可信 full-well，也不把普通场景亮部平台提升为饱和证据。
 
@@ -36,7 +36,7 @@ Python 按原 `channel_ids` 顺序输出字典，保留稀疏 CID 和重复 CID 
 
 ## 可复现的测量方法
 
-[`benchmark_sensor_channels.py`](../tools/benchmark_sensor_channels.py) 在两侧固定 `DNGSCAN_FAST=1`。`--reference` 仅通过 `DNGSCAN_FAST_SKIP` 跳过 `sensor_ceiling_counts_u16` 与 `sensor_channel_clip_counts_u16`，普通模式清空 skip。RGB 分组核、其他原生核、SensorSummary 复用和 deferred mask 始终启用；两侧必须有与各自 checkout 匹配的扩展。
+[`benchmark_sensor_channels.py`](../../../tools/benchmark_sensor_channels.py) 在两侧固定 `DNGSCAN_FAST=1`。`--reference` 仅通过 `DNGSCAN_FAST_SKIP` 跳过 `sensor_ceiling_counts_u16` 与 `sensor_channel_clip_counts_u16`，普通模式清空 skip。RGB 分组核、其他原生核、SensorSummary 复用和 deferred mask 始终启用；两侧必须有与各自 checkout 匹配的扩展。
 
 真实 RAW 每次在独立进程中全分辨率解码、分析、自动曝光，再形成默认 AgX／P3 SDR 和目标 800 nit 的 HDR pair，**不执行编码**。测量覆盖 Sigma `_SDI0150.DNG` 的 LibRaw／Apple 两条路径、Sony `DSC00225.ARW`／LibRaw 和 Fuji `DSCF0214.RAF`／LibRaw 四条路径。新代码内的 reference/native 对照隔离两个扫描核的影响；改动前 `3847943`／ABI 16 则单独提供完整输出基线。
 
@@ -83,7 +83,7 @@ python tools/benchmark_sensor_channels.py \
 
 2026-09-20，macOS 27.2 arm64、10 个逻辑 CPU、Python 3.14.4、NumPy 2.5.2，release 扩展 ABI 17。先在未修改的 `3847943`／ABI 16 上生成四条路径的基线，再以新代码交替启用／跳过两个扫描核。**20 次新进程测量的完整 identity 与旧版一致**，包含 ceiling、exact／near、可信堆积、full-well、逐通道阈值和百分比、自动曝光、HDR 决策、mask 与 SDR／HDR master；源文件 SHA-256 也一致。
 
-分轮计时、调用次数、输入／输出身份、关键传感器决策及代码指纹见 [`sensor-channels.json`](assets/performance/sensor-channels.json)。管线总和包含解码、分析、自动曝光和形成，**不含编码**。
+分轮计时、调用次数、输入／输出身份、关键传感器决策及代码指纹见 [`sensor-channels.json`](../../assets/performance/sensor-channels.json)。管线总和包含解码、分析、自动曝光和形成，**不含编码**。
 
 | 路径 | 交替对照轮数 | 两项统计合计中位耗时：NumPy → Rust | SDR 中位秒数 | HDR 中位秒数 |
 |---|---:|---:|---:|---:|
@@ -117,6 +117,6 @@ release 构建、ABI 17 自检和 macOS 签名验证通过。Rust library 单元
 
 NumPy 回退专项运行 **255 项，254 通过、1 跳过**，无失败或错误；唯一跳过项仍是实拍高光不足。新增 38 项在严格全套和 NumPy 专项中均通过。直接绑定合同测试在专项内会局部启用 native 以检查低层 API，不把它们描述为全程 NumPy 运算；其余回退及集成测试按 `DNGSCAN_FAST=0` 执行。
 
-新增 [`test_sensor_channel_native.py`](../tests/test_sensor_channel_native.py) 的 28 项测试包含独立冻结的 NumPy oracle、原始整数计数和逐位百分比、Bayer／X-Trans／LinearRGB、全部感光点边缘、稀疏／重复 CID、0 白点、round ties、window 饱和、min-pile 规则、缺失通道／异常元数据顺序、前缀布尔索引、各种步长／dtype／子类回退、输入不变和 native 参数／结果预检。
+新增 [`test_sensor_channel_native.py`](../../../tests/test_sensor_channel_native.py) 的 28 项测试包含独立冻结的 NumPy oracle、原始整数计数和逐位百分比、Bayer／X-Trans／LinearRGB、全部感光点边缘、稀疏／重复 CID、0 白点、round ties、window 饱和、min-pile 规则、缺失通道／异常元数据顺序、前缀布尔索引、各种步长／dtype／子类回退、输入不变和 native 参数／结果预检。
 
-新增 [`test_sensor_channel_benchmark.py`](../tests/test_sensor_channel_benchmark.py) 的 10 项测试验证两核消融且保留 RGB 核、两侧 deferred load、完整身份与输入 SHA、两入口／两核计时及异常计数、旧 ABI 16 reference、1×1 等不足周期的合成通道、小型确定输入、阈值准备不进入计时，以及已有／竞争输出不被覆盖。
+新增 [`test_sensor_channel_benchmark.py`](../../../tests/test_sensor_channel_benchmark.py) 的 10 项测试验证两核消融且保留 RGB 核、两侧 deferred load、完整身份与输入 SHA、两入口／两核计时及异常计数、旧 ABI 16 reference、1×1 等不足周期的合成通道、小型确定输入、阈值准备不进入计时，以及已有／竞争输出不被覆盖。

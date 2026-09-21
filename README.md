@@ -149,6 +149,9 @@ external service.
 # Default AgX render
 python -m dngscan photo.dng --jpeg photo.jpg
 
+# High-quality sharing: JPEG q97 / 4:2:0, original dimensions
+python -m dngscan photo.dng --jpeg photo_share.jpg --delivery-profile share-hq
+
 # Also print the full analysis report
 python -m dngscan photo.dng --jpeg photo.jpg --report
 
@@ -171,13 +174,19 @@ python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
   --film-mode full --film-exposure 1 --film-print-timing retimed
 ```
 
+For fixed q97 / 4:2:0 at the original dimensions, use `--delivery-profile share-hq`
+or choose **High-quality sharing** in the GUI output profile. SDR and HDR JPEG are
+supported; files over 20 MB are kept with a size warning. See the [user guide](docs/USER_GUIDE.md)
+for the size check and format boundaries.
+
 See `python -m dngscan --help` for every option.
 
 ### Optional native acceleration (Rust)
 
 Everything works without a native extension; the NumPy implementation is the reference. The
 optional Rust kernels (`rust/`) accelerate the heavy parts of rendering, HDR, film and verification,
-and every kernel's output is checked bit for bit against the NumPy reference. A 24 MP photo exports
+and each kernel is checked against its NumPy reference under its declared exactness or
+tolerance contract. A 24 MP photo exports
 in about 7 s as a normal JPEG, about 10 s as HDR, and about 15 s in full development mode with grain
 and halation.
 
@@ -253,9 +262,10 @@ reconstructed image that no longer knows which pixels clipped. AgXRAW keeps the 
 sensor data, so the tone curve knows which highlights are trustworthy and colour handling is more
 conservative in clipped and reconstructed areas.
 
-**Measurement is the program's job; taste is yours.** Black and white levels, clipping, noise and
-usable range are analysed; exposure, white balance, film and look are chosen by you. Automatic
-analysis describes what is in the photograph and does not decide what it should look like.
+**Analysis supplies defaults; manual choices remain available.** Black and white levels, clipping,
+noise and scene distribution inform automatic exposure and tone planning. White balance defaults
+to the capture record, and film and look are off by default. Manual controls can override the
+analysis-driven suggestion.
 
 **HDR is not a brighter normal photo.** Both versions start from the same data and are rendered
 independently, and the written file is reopened and checked.
@@ -268,11 +278,27 @@ photograph.
 AgXRAW does not manage a library and does not do local adjustments. It works as a tool for making
 pictures, and as an open imaging workbench where every step can state its evidence.
 
+## Repository map
+
+| Path | Purpose |
+| --- | --- |
+| [dngscan/](dngscan) | Python pipeline, CLI and local GUI |
+| [rust/](rust) | Optional native computation kernels |
+| [dngscan/data/](dngscan/data) / [dngscan_assets/](dngscan_assets) | Packaged calibration assets / source data and references |
+| [tests/](tests) / [tools/](tools/README.md) | Regression checks / explicit calibration and benchmark tools |
+| [docs/](docs/README.md) | User guides, architecture and design contracts |
+| [docs/reports/](docs/reports/README.md) | Versioned measurements, frozen baselines and historical records |
+
+For a code-reading route, development setup and validation commands, see the
+[developer guide](docs/DEVELOPMENT.zh-CN.md). Historical reports preserve their original
+measurements; they do not replace the current user guide or architecture.
+
 ## Technical documentation for developers
 
 [Product architecture and domain model](docs/PRODUCT_ARCHITECTURE.md) ·
 [Architecture and technical details](docs/ARCHITECTURE.md) (the whole pipeline and the reasoning behind each stage) ·
-[Engineering notes](docs/ENGINEERING_NOTES.zh-CN.md) (Chinese) ·
+[Developer guide and repository map](docs/DEVELOPMENT.zh-CN.md) (Chinese) ·
+[Measurement and decision records](docs/reports/README.md) ·
 [Film style mode design](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (Chinese) ·
 [Film full-development design and record](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md) (Chinese) ·
 [HDR implementation plan](docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) (Chinese)

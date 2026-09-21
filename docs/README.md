@@ -1,68 +1,51 @@
-# 文档索引 / Documentation Index
+# 文档索引 / Documentation
 
-按用途分类的全部项目文档。计划书均标注落地状态;基线与记录类文档是历史依据,
-不随代码更新。
+第一次使用从 [使用说明](USER_GUIDE.zh-CN.md) / [User guide](USER_GUIDE.md) 开始；阅读代码从 [开发指南与仓库地图](DEVELOPMENT.zh-CN.md) 开始。中文教程包含更完整的操作解释和实拍对照。
 
-## 入门与使用 / Getting Started
+本文区分**当前行为、设计合同、历史测量**。计划中的提案不等于已经实现；报告里的时间、ABI、默认值和问题状态只对应其注明的版本。当前使用方法以使用说明和 CLI `--help` 为准，当前代码结构以架构说明为准。
 
-GUI 上的描述性文案只有最基础的一句;每个控件的来龙去脉、可核对的数字与
-判断方法都放在下面的教程和使用说明里。
+## 使用与出片 / Use the app
 
-| 文档 | 内容 |
-|---|---|
-| [EDITING_TUTORIAL.zh-CN.md](EDITING_TUTORIAL.zh-CN.md) | 修图教程:从导入到导出的完整流程,逐个控件讲用法,含 RAW 过曝标记层的读法 |
-| [FILM_TUTORIAL.zh-CN.md](FILM_TUTORIAL.zh-CN.md) | 胶片教程:每个胶片滑条与选择的作用,配实测样张 |
-| [HDR_TUTORIAL.zh-CN.md](HDR_TUTORIAL.zh-CN.md) | HDR 教程:HDR 照片是什么、能亮多少、怎么导出和核对,附可直接观看的真 HDR 样张 |
-| [USER_GUIDE.md](USER_GUIDE.md) / [USER_GUIDE.zh-CN.md](USER_GUIDE.zh-CN.md) | 使用说明:支持的相机、界面字段、RAW 过曝标记显示与选项置灰规则、导出选择、latitude 旋钮 |
-| [SENSOR_SUPPORT.zh-CN.md](SENSOR_SUPPORT.zh-CN.md) | 机型支持:传感器数据、降级策略与 LibRaw 升级路线 |
+| 文档 | 从这里了解什么 |
+| --- | --- |
+| [使用说明](USER_GUIDE.zh-CN.md) / [User guide](USER_GUIDE.md) | 支持的相机、界面读数、选项置灰、SDR/HDR 和导出档位 |
+| [修图教程](EDITING_TUTORIAL.zh-CN.md) | 从导入到导出，曝光、曲线和 RAW 过曝标记的实拍示例 |
+| [HDR 教程](HDR_TUTORIAL.zh-CN.md) | 参考白、可信高光、HDR 导出与可直接观看的样张 |
+| [胶片教程](FILM_TUTORIAL.zh-CN.md) | 风格模式、完整冲印和各个胶片控件 |
+| [机型支持](SENSOR_SUPPORT.zh-CN.md) | 传感器数据来源、能力降级和 LibRaw 支持边界 |
+| [JPEG / HEIF 质量与体积实测](DELIVERY_QUALITY_STUDY.zh-CN.md) | 编码参数的选择依据；表中数字属于指定样张和版本 |
 
-## 架构 / Architecture
-
-| 文档 | 内容 |
-|---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) / [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md) | 技术架构:解码、证据层、tone 管线、双解码器边界 |
-| [PRODUCT_ARCHITECTURE.md](PRODUCT_ARCHITECTURE.md) / [PRODUCT_ARCHITECTURE.zh-CN.md](PRODUCT_ARCHITECTURE.zh-CN.md) | 产品架构:模块职责与扩展边界 |
-| [ENGINEERING_NOTES.zh-CN.md](ENGINEERING_NOTES.zh-CN.md) | 工程笔记:跨模块的实现约定与教训 |
-
-## 计划书(合同 + 实施记录)/ Plans
-
-均为"先立合同,批准后分批实施"的原始合同文本,文首标注落地状态,
-实施记录以引用块追加在对应章节。
-
-| 文档 | 状态 |
-|---|---|
-| [FILM_PRINT_RENDERING_PLAN.zh-CN.md](FILM_PRINT_RENDERING_PLAN.zh-CN.md) | 已落地(film v2 P0–P7) |
-| [FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md) | 已落地(外观层;配方覆盖仍窄) |
-| [FILM_OPTICS_V2_PLAN.zh-CN.md](FILM_OPTICS_V2_PLAN.zh-CN.md) | 已落地(光学 V2 P0–P5 + R1 整改;§11.1 已闭账) |
-| [FILM_OBSERVATION_PLAN.zh-CN.md](FILM_OBSERVATION_PLAN.zh-CN.md) | 已落地(observe 模式) |
-| [INTERIMAGE_LITERATURE.zh-CN.md](INTERIMAGE_LITERATURE.zh-CN.md) | 层间效应文献锚:专利定量转录、与 β 表对照分析、等效 IIE% 复现路线 |
-| [HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) | 已落地(HDR tone/color v2) |
-| [RENDER_SCHEDULER_PLAN.zh-CN.md](RENDER_SCHEDULER_PLAN.zh-CN.md) | 已落地(S1–S4) |
-| [HOT_WHITE_BALANCE_MIGRATION.zh-CN.md](HOT_WHITE_BALANCE_MIGRATION.zh-CN.md) | 已落地(固定 Kelvin 热 WB) |
-| [REALTIME_PREVIEW_PLAN.zh-CN.md](REALTIME_PREVIEW_PLAN.zh-CN.md) | 已落地(实时预览;profile 数字为历史记录) |
-| [PIPELINE_PERFORMANCE_EQUIVALENCE_PLAN.zh-CN.md](PIPELINE_PERFORMANCE_EQUIVALENCE_PLAN.zh-CN.md) | 部分落地(两处数值缺口已修;reference 执行模式程序待排期) |
-
-## 基线与记录 / Baselines & Records
-
-历史测量依据,展示当时缺陷与修复前状态,不随代码更新。
+## 当前实现与开发 / Current implementation
 
 | 文档 | 内容 |
-|---|---|
-| [FILM_V2_P0_BASELINE.zh-CN.md](FILM_V2_P0_BASELINE.zh-CN.md) | film v2 起点基线 |
-| [FILM_APPEARANCE_P0_BASELINE.zh-CN.md](FILM_APPEARANCE_P0_BASELINE.zh-CN.md) | 外观层起点基线 |
-| [FILM_OPTICS_V2_P0_BASELINE.zh-CN.md](FILM_OPTICS_V2_P0_BASELINE.zh-CN.md) | 光学 V2 起点基线 |
-| [PERF_REVIEW_2026-08.zh-CN.md](PERF_REVIEW_2026-08.zh-CN.md) | 2026-08 性能审查记录 |
-| [performance-delivery.zh-CN.md](performance-delivery.zh-CN.md) | 第一批交付效率改进：HEIF 主图复用、分阶段验收与固定 master 对照 |
-| [performance-loss.zh-CN.md](performance-loss.zh-CN.md) | 第二批管线效率改进：ABI 15 loss 裁切／合并、逐位合同与测量方法 |
-| [performance-sensor-summary.zh-CN.md](performance-sensor-summary.zh-CN.md) | 第三批第一步：RAW 只读所有权、SensorSummary 复用与缓存失效、原版 master 对照 |
-| [performance-deferred-masks.zh-CN.md](performance-deferred-masks.zh-CN.md) | 第三批第二步：分析后一次构建最终 mask、浮点白点兼容与公开加载合同 |
-| [performance-sensor-rgb.zh-CN.md](performance-sensor-rgb.zh-CN.md) | 第三批第三步：ABI 16 精确 RGB 过曝分组计数、步长借用与完整管线对照 |
-| [performance-sensor-channels.zh-CN.md](performance-sensor-channels.zh-CN.md) | 第三批第四步：ABI 17 精确 ceiling／逐通道剪切扫描、完整感光点计数与旧版对照 |
-| [performance-pipeline-completion.zh-CN.md](performance-pipeline-completion.zh-CN.md) | 非胶片效率方案收尾：分析与 AutoEV、全路径文件等价、测量范围与实施状态 |
-| [performance-phase-statistics.zh-CN.md](performance-phase-statistics.zh-CN.md) | noise/SNR/health 的有界相位统计，精确原算法与 24/60MP 内存对照 |
-| [performance-render-delivery.zh-CN.md](performance-render-delivery.zh-CN.md) | ABI 18、分块 HDR、B3、精确交付指标与有界工作区 |
-| [performance-gui-cache.zh-CN.md](performance-gui-cache.zh-CN.md) | GUI single-flight、异步落盘、可信分析桥接与按所有权计费的缓存 |
-| [performance-concurrency.zh-CN.md](performance-concurrency.zh-CN.md) | 预览、冷解码和导出并发的延迟、任务树内存与线程实测 |
-| [archived/](archived) | 更早的审查发现与 HDR 对比记录 |
+| --- | --- |
+| [开发指南与仓库地图](DEVELOPMENT.zh-CN.md) | 目录职责、按管线阅读代码、依赖与测试入口 |
+| [技术架构](ARCHITECTURE.zh-CN.md) / [Architecture](ARCHITECTURE.md) | 解码、证据、分析、成像、交付及双解码器边界 |
+| [产品架构](PRODUCT_ARCHITECTURE.zh-CN.md) / [Product architecture](PRODUCT_ARCHITECTURE.md) | 模块职责、领域模型与扩展边界 |
+| [HDR 编码回读验证](HDR_DELIVERY_VALIDATION.zh-CN.md) | 有损压缩后的检查、容差与不能保证的部分 |
+| [色度降噪](CHROMA_NR.zh-CN.md) | 色度 NR 的层位、尺度与约束 |
+| [开发与测量工具](../tools/README.md) | 校准、基线生成、编码对照和性能测试的具体命令 |
 
-数据文件:`film_v2_p0_decomposition*.json` 是 P0 基线的分解测量数据。
+## 设计合同与实施记录 / Design contracts
+
+这些文件保留原路径，既记录实施过程，也包含当前代码依赖的数学定义与验收合同。阅读时先看文首状态；历史任务清单不作为当前待办清单。
+
+| 文档 | 阅读口径 |
+| --- | --- |
+| [HDR AgX v2](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) | 已落地；HDR tone/color 数学及生产合同，任务拆分为历史记录 |
+| [胶片完整冲印](FILM_PRINT_RENDERING_PLAN.zh-CN.md) | 已落地 film v2 P0–P7 |
+| [胶片外观层](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md) | 已落地；配方覆盖范围仍有限 |
+| [胶片光学 V2](FILM_OPTICS_V2_PLAN.zh-CN.md) | 已落地 P0–P5 与 R1；冻结基线的变更合同 |
+| [胶片风格模式](FILM_OBSERVATION_PLAN.zh-CN.md) | 已落地 observe 模式 |
+| [胶片 Stage A 色度场](FILM_STAGE_A_CHROMA_FIELD.zh-CN.md) | 实际 shipped 算子与交叉验证；保留被撤回光源分档的测量依据 |
+| [层间效应文献](INTERIMAGE_LITERATURE.zh-CN.md) | 专利定量转录、β 表对照与等效 IIE% 复现路线 |
+| [渲染调度器](RENDER_SCHEDULER_PLAN.zh-CN.md) | 已落地 S1–S4；后续缓存变化另见性能报告 |
+| [热白平衡迁移](HOT_WHITE_BALANCE_MIGRATION.zh-CN.md) | 已落地固定 Kelvin 热 WB |
+| [实时预览](REALTIME_PREVIEW_PLAN.zh-CN.md) | 已落地；文中的 profile 数字为历史测量 |
+| [管线性能等价方案](PIPELINE_PERFORMANCE_EQUIVALENCE_PLAN.zh-CN.md) | 同时含已实施项和长期提案；本轮非胶片实施边界见下方完成记录 |
+
+## 测量、审查与历史 / Evidence and history
+
+[报告索引](reports/README.md) 汇集性能批次、冻结基线、工程决策和旧审查。近期非胶片效率工作从 [管线完成记录](reports/performance/performance-pipeline-completion.zh-CN.md) 读起，它逐项区分已实施、未采用和后续候选；不要把单核提速相加当作整条管线的收益。
+
+文档图片和机器可读测量保留在 [assets/](assets)。P0 分解数据 `film_v2_p0_decomposition*.json`、色度场 `chroma_field_cv.json` 和光源分档 `illuminant_tier_cv.json` 保留原路径，便于现有工具和引用复现。原始 RAW 和个人导出不属于公共文档资产。

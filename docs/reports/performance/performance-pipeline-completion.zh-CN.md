@@ -77,7 +77,7 @@ Warp/base 核的预算 1 分支直接串行。可选 scene-transform/gated pool 
 | Sigma / Apple RAW | SDR | 6.495→6.388 s | 2748.3→2100.3 MiB |
 | Sigma / Apple RAW | packed HDR | 7.753→7.362 s | 2726.5→2101.3 MiB |
 
-这些是 RAW→分析→AutoEV→形成，不含编码。墙钟中位数减少约 1.6%–10.9%，但多组取值范围交叠，不能承诺每次都按该幅度加速；CPU 总时间也没有一致下降。Fujifilm SDR 的 RSS 范围交叠，不宣称该项有稳定峰值收益。逐次数据、范围、阶段时间和精确身份见 [pipeline-completion.json](assets/performance/pipeline-completion.json)。Fujifilm 此样例没有获准扩展 HDR，因此它检验 pair 路径等价，不代表正 headroom HDR 交付。
+这些是 RAW→分析→AutoEV→形成，不含编码。墙钟中位数减少约 1.6%–10.9%，但多组取值范围交叠，不能承诺每次都按该幅度加速；CPU 总时间也没有一致下降。Fujifilm SDR 的 RSS 范围交叠，不宣称该项有稳定峰值收益。逐次数据、范围、阶段时间和精确身份见 [pipeline-completion.json](../../assets/performance/pipeline-completion.json)。Fujifilm 此样例没有获准扩展 HDR，因此它检验 pair 路径等价，不代表正 headroom HDR 交付。
 
 独立统计段见 [有界 CFA 相位统计](performance-phase-statistics.zh-CN.md)：24MP 三对中位数 383.8→262.9 ms，进程峰值 434.5→146.3 MiB，全部公开统计精确一致。其 synthetic 60MP 单对用于检查内存规模，不能替代真实 61MP 全任务资源验收。形成/交付核、GUI 工作集和并发测量分别见上表链接，阶段收益不可直接相加。
 
@@ -104,6 +104,6 @@ Warp/base 核的预算 1 分支直接串行。可选 scene-transform/gated pool 
 
 纯 Python wheel 从隔离源码副本构建，确认不含 `.so/.dylib`，安装到独立目录后核对实际 import 路径、两级传感器 priors、镜头库及 film optics 资源。此本地检查使用已有 review venv 的依赖；CI 的 wheel job 另从全新 venv 验证依赖安装，不能把两种环境混为同一个结果。源文件与日志指纹保存在上述 JSON 的 `validation` 中。
 
-最后冻结的 GUI/形成/分析组合完成三对并发复测：冷 prepare、72 帧连续预览和真实独立导出子进程同时运行。216 对预览与三次导出、完整 service 决策身份均相同。三对中位数 prepare **14.962→14.047 s**，导出 **15.190→14.454 s**，预览 p50 **172.69→169.78 ms**，p95 **256.00→256.81 ms**；p95 的逐对方向不同，不能宣称尾延迟改善，也没有持续回退证据。任务树采样 RSS **5.331→5.358 GiB**、范围交叠，不宣称全树内存降低。完整数据和资源边界见 [最终并发记录](performance-concurrency.zh-CN.md) 与 [concurrency.json](assets/performance/concurrency.json)，早期 `concurrency-phase.json` 仅作历史对照。
+最后冻结的 GUI/形成/分析组合完成三对并发复测：冷 prepare、72 帧连续预览和真实独立导出子进程同时运行。216 对预览与三次导出、完整 service 决策身份均相同。三对中位数 prepare **14.962→14.047 s**，导出 **15.190→14.454 s**，预览 p50 **172.69→169.78 ms**，p95 **256.00→256.81 ms**；p95 的逐对方向不同，不能宣称尾延迟改善，也没有持续回退证据。任务树采样 RSS **5.331→5.358 GiB**、范围交叠，不宣称全树内存降低。完整数据和资源边界见 [最终并发记录](performance-concurrency.zh-CN.md) 与 [concurrency.json](../../assets/performance/concurrency.json)，早期 `concurrency-phase.json` 仅作历史对照。
 
 发布时沿用仓库 CI 的 macOS 14 / Python 3.11、3.12 两条完整 NumPy→native→precision 路径，以及独立的纯 Python wheel 安装任务。本文的本机通过记录与 GitHub 对提交运行的结果分别保留，不用本机 Python 3.14 结果代替其他版本 CI。

@@ -3,7 +3,7 @@
 > **状态：混合文档**。"桌面与移动端 UI 契约"一节是**活合同**（发布门禁仍按其
 > 四档视口执行）；各 profile 表与冷热路径方案记录的是 2026-08-02 前后的改造前
 > 基线与已落地工作（P0 冷路径拆分、共享 RenderPlan sample 已完成，台账见
-> [PERF_REVIEW_2026-08.zh-CN.md](PERF_REVIEW_2026-08.zh-CN.md)）。文末
+> [PERF_REVIEW_2026-08.zh-CN.md](reports/performance/PERF_REVIEW_2026-08.zh-CN.md)）。文末
 > Metal/CUDA 一节写于跨平台设想期；项目现已声明 **macOS-only**，CUDA 部分
 > 无实现计划，仅当未来放开平台时按同一门禁重启。
 

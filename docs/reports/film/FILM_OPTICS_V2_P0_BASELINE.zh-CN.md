@@ -4,7 +4,7 @@
 > 所有数字由 `tools/film_optics_report.py` 生成，钉在
 > `tests/optics_freeze/BASELINE.json`，由 `tests/test_film_optics_p0.py` 复算。
 >
-> 计划正文见 [`FILM_OPTICS_V2_PLAN.zh-CN.md`](FILM_OPTICS_V2_PLAN.zh-CN.md)。
+> 计划正文见 [`FILM_OPTICS_V2_PLAN.zh-CN.md`](../../FILM_OPTICS_V2_PLAN.zh-CN.md)。
 
 ## 0. P0 交付了什么
 

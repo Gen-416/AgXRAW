@@ -16,7 +16,7 @@ RSS 是采样时各进程 resident pages 的总和，共享页可能重复计数
 
 ## 最终结果
 
-2026-09-20 的三对中位数如下。每个 run 先对自己的 72 帧计算 p50/p95，再取三次 run 的统计量中位数，没有把六次运行的帧混成一个总体。p95 使用 nearest-rank，72 帧对应排序后第 69 个值，即第 4 慢帧。完整逐帧时延、采样汇总、各对变化、source/产物 SHA256、源码清单及原始报告 SHA256 见 [concurrency.json](assets/performance/concurrency.json)。
+2026-09-20 的三对中位数如下。每个 run 先对自己的 72 帧计算 p50/p95，再取三次 run 的统计量中位数，没有把六次运行的帧混成一个总体。p95 使用 nearest-rank，72 帧对应排序后第 69 个值，即第 4 慢帧。完整逐帧时延、采样汇总、各对变化、source/产物 SHA256、源码清单及原始报告 SHA256 见 [concurrency.json](../../assets/performance/concurrency.json)。
 
 | 指标 | before | after | 变化 |
 |---|---:|---:|---:|
@@ -45,6 +45,6 @@ RSS 范围为 before 4.991–5.390 GiB、after 5.219–5.419 GiB，方向不一�
 
 ## 历史阶段
 
-[concurrency-phase.json](assets/performance/concurrency-phase.json) 保留补齐有界相位统计和 prepared delivery master 之前的三对阶段数据。该阶段 p95 中位数为 +3.93%，促使最终版本重新完整验收；原始报告名为 `concurrency-final-*`，仅是当时预定的批次名，不代表最终生产版本。最终报告使用 `concurrency-complete-*`，本页表格仅采用这一批。
+[concurrency-phase.json](../../assets/performance/concurrency-phase.json) 保留补齐有界相位统计和 prepared delivery master 之前的三对阶段数据。该阶段 p95 中位数为 +3.93%，促使最终版本重新完整验收；原始报告名为 `concurrency-final-*`，仅是当时预定的批次名，不代表最终生产版本。最终报告使用 `concurrency-complete-*`，本页表格仅采用这一批。
 
 更早的 12 帧三对和 72 帧单对报告也保留在外部性能记录目录中，说明回退的发现过程。12 帧只覆盖前约两秒，不能代表完整形成/编码阶段的持续竞争。这些历史数据和无效 pilot 均不计入最终中位数。
