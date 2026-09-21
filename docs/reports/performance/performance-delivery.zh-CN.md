@@ -49,7 +49,7 @@ Sigma `_SDI0150`，6000×4000；macOS 27.2 arm64、Python 3.14.4、NumPy 2.5.2�
 83bc66cb96e6eb80f4dabf14c46f189b153ea96faaedd124966d66d462196c33
 ```
 
-压缩 rendition 身份也完全一致；本样例不只是视觉接近，而是文件逐字节相同。七个提前拒绝候选只省略了原版最终同样会拒绝的 HDR 测量，没有补造指标。结构化记录见 [heif-search-reuse.json](assets/delivery-quality/heif-search-reuse.json)。
+压缩 rendition 身份也完全一致；本样例不只是视觉接近，而是文件逐字节相同。七个提前拒绝候选只省略了原版最终同样会拒绝的 HDR 测量，没有补造指标。结构化记录见 [heif-search-reuse.json](../../assets/delivery-quality/heif-search-reuse.json)。
 
 验证记录：完整严格 Rust suite 运行 1,576 项，1,570 通过、6 跳过；最后补齐的缓存身份与集成测试另纳入最终专项。最终 NumPy / 严格 Rust 交付专项各 125 项，均通过、无跳过，含真实的小图 Core Image/HEIF 编码及回读。
 

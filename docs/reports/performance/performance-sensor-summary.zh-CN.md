@@ -6,11 +6,11 @@
 
 ## 证据所有权与统计范围
 
-[`acquire_raw_evidence`](../dngscan/evidence.py) 原来将 rawpy 的可见传感器数组复制到 NumPy 拥有的可写内存。现在以一次 `tobytes(order="C")` 复制取得独立存储，再通过 `frombuffer` 构造只读数组；这份 bytes 存储替代原来的 ndarray 复制，不额外保留一帧 RAW。即使沿着 ndarray 的 `.base` 链访问，每一级也不能通过 `setflags(write=True)` 恢复写入。解码句柄关闭或工作解码器修改自己的 RAW 缓冲区，都不会改变已采集的证据。
+[`acquire_raw_evidence`](../../../dngscan/evidence.py) 原来将 rawpy 的可见传感器数组复制到 NumPy 拥有的可写内存。现在以一次 `tobytes(order="C")` 复制取得独立存储，再通过 `frombuffer` 构造只读数组；这份 bytes 存储替代原来的 ndarray 复制，不额外保留一帧 RAW。即使沿着 ndarray 的 `.base` 链访问，每一级也不能通过 `setflags(write=True)` 恢复写入。解码句柄关闭或工作解码器修改自己的 RAW 缓冲区，都不会改变已采集的证据。
 
 CFA 的代码值与颜色索引分别复制，保留输入 dtype、字节序和逻辑形状，得到连续存储。LinearRGB 在复制前只选择前三个通道；颜色索引由不可变的三个字节 `0, 1, 2` 广播生成，不分配完整的 RGB 索引栅格，也不隐藏一个可写的 NumPy seed。白平衡、黑电平和通道白点等元数据继续保留原来的独立 list 接口。
 
-[`SensorSummary`](../dngscan/sensor_summary.py) 只保存标量和不可变 tuple：通道 ID、元数据饱和值、观测 ceiling、精确与邻近堆积计数、堆积可信标记、全局及逐通道 fullwell，以及原有说明文字。实际计算仍依次调用 `channel_saturation_levels`、`detect_ceilings`、`resolve_fullwell`：
+[`SensorSummary`](../../../dngscan/sensor_summary.py) 只保存标量和不可变 tuple：通道 ID、元数据饱和值、观测 ceiling、精确与邻近堆积计数、堆积可信标记、全局及逐通道 fullwell，以及原有说明文字。实际计算仍依次调用 `channel_saturation_levels`、`detect_ceilings`、`resolve_fullwell`：
 
 - 元数据先按原规则转为 `int`；通道白点缺失、为零或转换后非正时仍回退到全局白点。没有修改取整或 fallback 规则。
 - ceiling 邻域、最小堆积数量和可信满阱的接近白点条件保持原值。普通亮部平台仍不能被直接当作传感器满阱。
@@ -32,7 +32,7 @@ CFA 的代码值与颜色索引分别复制，保留输入 dtype、字节序和�
 
 ## 一致性验证
 
-本步新增 40 项小型测试：[`test_sensor_summary.py`](../tests/test_sensor_summary.py) 的 22 项、[`test_evidence_ownership.py`](../tests/test_evidence_ownership.py) 的 8 项，以及 [`test_sensor_benchmark_tool.py`](../tests/test_sensor_benchmark_tool.py) 的 10 项。它们覆盖旧统计 oracle、G1／G2 和稀疏通道、可信堆积边界、reference 后 analysis 的复用与 refresh、可写／伪只读输入、布局与白点失效、计算失败、复制与释放，以及基准工具的比较和输出保护。
+本步新增 40 项小型测试：[`test_sensor_summary.py`](../../../tests/test_sensor_summary.py) 的 22 项、[`test_evidence_ownership.py`](../../../tests/test_evidence_ownership.py) 的 8 项，以及 [`test_sensor_benchmark_tool.py`](../../../tests/test_sensor_benchmark_tool.py) 的 10 项。它们覆盖旧统计 oracle、G1／G2 和稀疏通道、可信堆积边界、reference 后 analysis 的复用与 refresh、可写／伪只读输入、布局与白点失效、计算失败、复制与释放，以及基准工具的比较和输出保护。
 
 真实样片以改动前 `8cedc86` 的 master 为基线，Sigma `_SDI0150.DNG` 的 LibRaw／Apple 两条路径、Sony `DSC00225.ARW`／LibRaw，以及 Fuji `DSCF0214.RAF`／LibRaw 四条路径共 20 次测量均通过精确比较。检查范围包括加载后和分析后的 mask、processing loss、独立参考样本、完整分析与形成决策，以及 SDR、HDR base、HDR alternate 的 shape、dtype 和内容 SHA-256。比较止于未编码 master；本步不执行 JPEG／HEIF 编码，也不能由此推断压缩文件逐字节相同。
 
@@ -40,7 +40,7 @@ CFA 的代码值与颜色索引分别复制，保留输入 dtype、字节序和�
 
 ## 实测结果
 
-2026-09-20，本机 macOS 27.2 arm64、10 个逻辑 CPU、Python 3.14.4、NumPy 2.5.2。原始分轮计时、调用数、输入及输出身份、源文件 SHA-256 汇总见 [`sensor-summary.json`](assets/performance/sensor-summary.json)。所有完整 RAW 测量串行运行；两侧均启用所有现有 Rust 核。
+2026-09-20，本机 macOS 27.2 arm64、10 个逻辑 CPU、Python 3.14.4、NumPy 2.5.2。原始分轮计时、调用数、输入及输出身份、源文件 SHA-256 汇总见 [`sensor-summary.json`](../../assets/performance/sensor-summary.json)。所有完整 RAW 测量串行运行；两侧均启用所有现有 Rust 核。
 
 下表比较当前实现的“禁用摘要复用”与“启用摘要复用”，两侧都采用新的不可写采集存储。它隔离缓存收益；修前 `8cedc86` 则单独作为图像与决策一致性的基线。
 
@@ -59,7 +59,7 @@ LibRaw 三条路径均只有一次必要首算，因此没有缓存命中带来�
 
 ## 可复现的测量方法
 
-[`benchmark_sensor_summary.py`](../tools/benchmark_sensor_summary.py) 复用 [`benchmark_loss_pipeline.py`](../tools/benchmark_loss_pipeline.py) 的真实 RAW 管线，每次以新进程执行全分辨率解码、分析、自动曝光及默认 AgX，形成 P3 SDR 与 800 nit 目标的 HDR pair。真实 RAW 只作为读取输入；结果写入新的 JSON 路径。
+[`benchmark_sensor_summary.py`](../../../tools/benchmark_sensor_summary.py) 复用 [`benchmark_loss_pipeline.py`](../../../tools/benchmark_loss_pipeline.py) 的真实 RAW 管线，每次以新进程执行全分辨率解码、分析、自动曝光及默认 AgX，形成 P3 SDR 与 800 nit 目标的 HDR pair。真实 RAW 只作为读取输入；结果写入新的 JSON 路径。
 
 两侧均固定 `DNGSCAN_FAST=1`、`DNGSCAN_FAST_SKIP=""`，要求存在匹配的原生扩展。当前构建为 ABI 15。`--reference` 只令 SensorSummary 的缓存资格函数返回 `None`，不关闭任何 Rust 核，也不改变统计公式。这个对照隔离 memo 的收益；它仍使用当前采集存储实现，所以还需要另与改动前 checkout 比较，才能覆盖本步完整改动。
 

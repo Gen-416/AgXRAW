@@ -33,7 +33,7 @@ float16 的直接 maximum 保留原始 half 位模式。对于 float32 NaN、部
 
 ## 一致性验证
 
-[test_loss_native.py](../tests/test_loss_native.py) 保留了独立的旧 NumPy 裁切和 Pillow resize 基准，覆盖：
+[test_loss_native.py](../../../tests/test_loss_native.py) 保留了独立的旧 NumPy 裁切和 Pillow resize 基准，覆盖：
 
 - 奇数裁切、epsilon 边界、单行／单列、窄图、空输出的原有结果或异常，以及 LibRaw 方向 0–7。
 - float16／float32 逐位结果、NaN payload、正负零、无穷和 half 舍入顺序；subnormal、偶数舍入、溢出边界及原生明确回退后的公共入口结果。
@@ -49,7 +49,7 @@ float16 的直接 maximum 保留原始 half 位模式。对于 float32 NaN、部
 
 ## 可复现的测量方法
 
-[benchmark_loss_pipeline.py](../tools/benchmark_loss_pipeline.py) 每次调用使用一个新进程。两侧都要求匹配的原生扩展；`--reference` 仅关闭本批两核，保留其他 Rust 核，从而将收益归因限制在本批改动。工具会设置对应的 `DNGSCAN_FAST` 和 `DNGSCAN_FAST_SKIP`，不能用外部环境变量将参考侧替换为全 NumPy 管线。
+[benchmark_loss_pipeline.py](../../../tools/benchmark_loss_pipeline.py) 每次调用使用一个新进程。两侧都要求匹配的原生扩展；`--reference` 仅关闭本批两核，保留其他 Rust 核，从而将收益归因限制在本批改动。工具会设置对应的 `DNGSCAN_FAST` 和 `DNGSCAN_FAST_SKIP`，不能用外部环境变量将参考侧替换为全 NumPy 管线。
 
 在仓库根目录使用同一个 Python 环境运行。例如，对一张 RAW 做 LibRaw 全分辨率对照：
 
@@ -89,7 +89,7 @@ python tools/benchmark_loss_pipeline.py \
 
 ## 最终测量结果
 
-环境为 macOS 27.2 arm64、10 个逻辑 CPU、Python 3.14.4、NumPy 2.5.2。参考侧与优化侧使用同一份 ABI 15 release 扩展，只切换本批两个核；另与 `fe13ba5`／ABI 14 原实现的完整输出身份比较。所有测量串行进行。原始输入 SHA-256、每次计时、范围、调用数及输出身份见 [loss-kernels.json](assets/performance/loss-kernels.json)。
+环境为 macOS 27.2 arm64、10 个逻辑 CPU、Python 3.14.4、NumPy 2.5.2。参考侧与优化侧使用同一份 ABI 15 release 扩展，只切换本批两个核；另与 `fe13ba5`／ABI 14 原实现的完整输出身份比较。所有测量串行进行。原始输入 SHA-256、每次计时、范围、调用数及输出身份见 [loss-kernels.json](../../assets/performance/loss-kernels.json)。
 
 | 样张／解码器 | 次数 | SDR 原版 → 本批 | HDR pair 原版 → 本批 |
 |---|---|---:|---:|

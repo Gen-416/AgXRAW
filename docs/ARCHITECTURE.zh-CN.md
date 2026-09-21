@@ -250,7 +250,7 @@ flowchart TB
 
     ENCODE --> FORMAT{"输出格式"}
     FORMAT -->|SDR| SDRJPEG["SDR JPEG<br/>ICC + quality + 4:4:4 / 4:2:2 / 4:2:0"]
-    FORMAT -->|HDR| BASE["HDR 模式的 SDR 底图<br/>Display P3；auto q95–99，share q95/4:2:0，archive q100/4:4:4<br/>禁用 look / filter / highlight fade"]
+    FORMAT -->|HDR| BASE["HDR 模式的 SDR 底图<br/>Display P3；auto q95–99；share-hq q97/420<br/>share q95/420 起；archive q100/444<br/>禁用 look / filter / highlight fade"]
     BASE --> PACKAGE["Core Image ISO 21496-1 写入<br/>RGB 辅助 gain map + content headroom<br/>JPEG 或 HEIC 容器"]
     ALT --> PACKAGE
     PACKAGE --> VERIFY["回读验证<br/>P3 profile、RGB gain map、声明余量、archive 要求 4:4:4<br/>SDR 码值误差 + HDR 块级与像素级色品门禁<br/>按档位与容器分别标定"]
@@ -969,7 +969,7 @@ full≈Kelly）的完整论证见[设计合同](FILM_OBSERVATION_PLAN.zh-CN.md)�
 > -0.04）。另一半 "淡" 的判断则指向了一个当时没看到的问题：**Portra 400 与
 > Ektar 100 在 full 与 observe 下的 dE00 中位分别只有 0.46/0.61**，两卷 C-41 负片
 > 彼此无法区分，`FILM_STYLE_PAIRINGS` 的两个自由度也没能分开它们。完整数据见
-> [胶片外观层 P0 基线](FILM_APPEARANCE_P0_BASELINE.zh-CN.md)。
+> [胶片外观层 P0 基线](reports/film/FILM_APPEARANCE_P0_BASELINE.zh-CN.md)。
 
 两个杠杆的量感先说结论：**这是精修级不是风格再造级**——全幅缩略图上不可辨认
 是量级的事实，不是展示的失败。因此文档采用两级仪器：全幅图看构图语境，
@@ -1053,15 +1053,14 @@ Ultra HDR 交付**——"Portra 的身体 + 真实测量的高光余量"。曲�
 
 ## 四层：Delivery — SDR 与 HDR 交付
 
-SDR 输出是带确定性 TPDF 抖动的 8-bit JPEG，默认 quality 100、4:4:4。抖动发生在量化前，
+SDR JPEG 由带确定性 TPDF 抖动的 8-bit 母版编码，默认由 `auto` 在 q95–99 中选择质量与受约束的采样；也支持 SDR HEIC。抖动发生在量化前，
 用来减轻平滑渐变的断层；它不改变 tone plan。也可以选择 4:2:2 或 4:2:0 来减小文件，
 代价是色度分辨率。Display P3 会嵌入 ICC profile，找不到 profile 就停止导出，不写未标记
 的宽色域数据。
 
 HDR 输出是可选的 Apple ISO 21496-1 gain-map 封装（JPEG 或 HEIC），目前只在
 macOS/Core Image 后端可用，并且只接 AgX tone core。HEIC 与 JPEG 共用同一套 formation
-masters，只换最后一跳编码——但本管线实测 HEIC 文件更大、回读误差也更大（见导出档位
-说明与使用指南），推荐默认仍是 JPEG 容器。它不是把 SDR 成片直接放大：同一份 scene-linear
+masters；实际大小与回读误差由主图和辅助图的编码参数共同决定，测量范围见 [交付质量实测](DELIVERY_QUALITY_STUDY.zh-CN.md)。它不是把 SDR 成片直接放大：同一份 scene-linear
 Rec.2020 在 display formation 前分成 SDR AgX 与 HDR AgX 两条独立 DRT。两者共享拍摄曝光
 意图和 RAW 分析，但 HDR 自己持有 tone curve、色彩几何和扩展 P3 投影，不要求任何像素区域
 与 SDR 成片一致。
@@ -1107,7 +1106,7 @@ JPEG）；任一门禁不过就不会保留输出文件。现在 HDR 不支持 d
 
 默认 `auto`，只渲染一次。JPEG 实际试编码 q99、98、97、96、95，自动质量不低于 95；SDR 优先 4:2:2，并在误差预算允许时尝试 4:2:0。HDR JPEG 同样支持独立 420/422/444：ImageIO 计算 gain map，libjpeg 编码主图，重封装时重定位 MPF 地址并保留辅助图字节。HEIF 有 libheif/x265 时默认 10-bit / 4:4:4 / slow / ssim，候选为 95、92、90、87、85、82、80；这是 HEVC 自己的质量刻度。HEIF 主图替换会重建 item extent 与属性关联，辅助图及 ISO tmap 元数据不重新计算。缺少 x265 时自动使用 Apple 路径，采样以逐文件验收结果为准。
 
-`share` 是手动档，初始为 q95/420，质量与采样可独立修改；`archive` 固定 q100/444。HEIF 可调位深为 8/10-bit，编码速度 fast/medium/slow/slower，纹理策略 ssim/psnr/grain。12-bit 在本机部分采样组合回读异常，未作为交付选项。
+除默认 `auto` 外，`share-hq` 固定 JPEG q97/420、保留原尺寸，用于 SDR / HDR JPEG；`share` 是手动档，初始为 q95/420，质量与采样可独立修改；`archive` 固定 q100/444。`share-hq` 在完成元数据搬运后按最终文件的 20,000,000 bytes 参考线生成体积提示；超限仍保留已验证的成片，不自动降质或缩图。HEIF 不接受 `share-hq`，GUI 切至 HEIC 时改回 `auto`。HEIF 可调位深为 8/10-bit，编码速度 fast/medium/slow/slower，纹理策略 ssim/psnr/grain。12-bit 在本机部分采样组合回读异常，未作为交付选项。
 
 候选至少节省 5% 字节，且亮度、色度与局部误差满足 `auto_encode.additional_error_acceptable`。默认 SDR 亮度 RMSE 预算为 1.0 码值，局部绝对误差 p99 为 1.5 码值；参考本身超过时使用相对预算。色度保持接近参考，避免质量值掩盖采样损失。HDR 继续经过既有绝对门禁并限制相对参考的 HDR 误差。容差是工程政策，不能等同于主观无损或全局最优。
 
@@ -1115,9 +1114,11 @@ SDR 检查尺寸、ICC 字节和实际采样，用最终回读像素生成统计
 
 下节仅保留旧 Core Image 单一编码路径的历史回归对照；关于中间质量和采样不能选择的结论，已被上面的主图独立编码方案替代。
 
-### 导出档位的实测定位
+### 历史对照：旧系统编码器的两个操作点
 
-两个导出档位是两个被测量过的操作点，不是一根质量滑杆。在全分辨率回归样张（24.5 MP
+> 以下原始样张和描述对应旧 Core Image 单一编码路径；其中 q90 share、平台大小假设与 HEIC 结论不是当前参数或通用兼容性承诺。现行四个档位见上节，独立编码后的测试见 [交付质量实测](DELIVERY_QUALITY_STUDY.zh-CN.md)。
+
+当时的两个导出档位是两个被测量过的操作点，不是一根质量滑杆。在全分辨率回归样张（24.5 MP
 Sigma fp）上：archive q100/4:4:4 约 60 MB——验证级母版，约为源 DNG 的两倍，因为去拜耳
 后的三通道 q100 JPEG 加 gain map 本来就比无损压缩的 14-bit 拜耳马赛克大。share
 q90/4:2:0 为 11–27 MB，gain map 与 content headroom 完整保留；最坏情况（高 ISO 舞台帧）

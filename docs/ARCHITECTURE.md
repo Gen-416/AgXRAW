@@ -276,7 +276,7 @@ flowchart TB
 
     ENCODE --> FORMAT{"Output format"}
     FORMAT -->|SDR| SDRJPEG["SDR JPEG<br/>ICC + quality + 4:4:4 / 4:2:2 / 4:2:0"]
-    FORMAT -->|HDR| BASE["HDR mode SDR base<br/>Display P3; archive q100/4:4:4, share q90/4:2:0<br/>look/filter/highlight-fade disabled"]
+    FORMAT -->|HDR| BASE["HDR mode SDR base<br/>Display P3; auto q95–99; share-hq q97/420<br/>share starts q95/420; archive q100/444<br/>look/filter/highlight-fade disabled"]
     BASE --> PACKAGE["Core Image ISO 21496-1 writer<br/>RGB auxiliary gain map + content headroom<br/>JPEG or HEIC container"]
     ALT --> PACKAGE
     PACKAGE --> VERIFY["Read-back verification<br/>P3 profile, RGB gain map, declared headroom, archive 4:4:4<br/>SDR code error + HDR block and pixel-chroma gates<br/>calibrated per profile and container"]
@@ -1125,17 +1125,17 @@ are recorded in the [engineering notes](ENGINEERING_NOTES.zh-CN.md).
 
 ## Layer 4 — Delivery: SDR and HDR output
 
-SDR output is an 8-bit JPEG with deterministic TPDF dither, quality 100 and 4:4:4 by
-default. Dither is applied before quantization to reduce banding in smooth gradients; it
+SDR JPEG encodes an 8-bit master with deterministic TPDF dither. The default `auto`
+profile selects q95–q99 with constrained sampling; SDR HEIC is also supported. Dither is applied before quantization to reduce banding in smooth gradients; it
 does not alter the tone plan. 4:2:2 and 4:2:0 are available when smaller files matter at
 the cost of chroma resolution. Display P3 embeds an ICC profile and export stops if that
 profile is unavailable rather than writing untagged wide-gamut values.
 
 HDR output is an optional Apple ISO 21496-1 gain-map package (JPEG or HEIC), currently
 available only through the macOS/Core Image backend and only with the AgX tone core. HEIC
-uses the same formation masters; only the last encode hop changes — and measured on this
-pipeline the HEIC files come out LARGER with higher round-trip error than the JPEG
-container (see the delivery notes and USER_GUIDE), so JPEG stays the recommended default.
+uses the same formation masters. Size and readback error depend on both the main-image
+and auxiliary-image encoder settings; see the [delivery study](DELIVERY_QUALITY_STUDY.zh-CN.md)
+for measured results and their scope.
 It does not amplify the
 finished SDR image. The same scene-linear Rec.2020 buffer splits before display formation
 into independent SDR and HDR AgX DRTs. They share capture exposure intent and RAW analysis,
@@ -1190,9 +1190,19 @@ because those SDR operators do not yet have an independent HDR definition. The e
 gates are documented in
 [`docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md`](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md).
 
-### Delivery profiles in practice
+### Current delivery profiles
 
-The two profiles are two measured operating points, not a quality slider. On the
+The default `auto` renders one master and tests JPEG q99, 98, 97, 96 and 95. SDR prefers 4:2:2 and considers 4:2:0 within its error budget; HDR JPEG supports independent 420/422/444 sampling. ImageIO supplies the gain map and libjpeg encodes the main image; repackaging relocates MPF addresses while retaining the auxiliary data. Tunable HEIF uses libheif/x265, defaults to 10-bit / 4:4:4 / slow / ssim, and searches q95, 92, 90, 87, 85, 82 and 80 on the HEVC scale. HEIF item extents and property associations are rebuilt when replacing the main image. If x265 is unavailable, the automatic backend uses the Apple path and validates the actual sampling.
+
+`share-hq` fixes JPEG q97/420 at the original dimensions, for SDR and HDR JPEG. After metadata transfer, the final file is compared with a 20,000,000-byte size reference; oversized validated files are kept with a warning, without automatic resizing or quality reduction. HEIF rejects this profile, and changing to HEIC in the GUI returns it to `auto`. `share` is the manual profile, initially q95/420, while `archive` fixes q100/444. Tunable HEIF exposes 8/10-bit output, fast/medium/slow/slower presets and ssim/psnr/grain tuning; some local 12-bit readback combinations failed and are not exposed.
+
+Automatic candidates must save at least 5% and meet `auto_encode.additional_error_acceptable`, in addition to the absolute HDR gates where applicable. These are measured engineering budgets, not claims of subjective losslessness. Candidates are written and checked privately before the final output is atomically replaced. The [quality study](DELIVERY_QUALITY_STUDY.zh-CN.md) records the full-resolution corpus and policy evidence; the [user guide](USER_GUIDE.md) explains the controls.
+
+### Historical baseline: two system-encoder operating points
+
+> The following original examples describe the retired Core Image-only encoding path. Their q90 share setting, platform-size assumptions and HEIC comparison do not define current parameters or general compatibility. Use the four profiles above and the independent-encoder [delivery study](DELIVERY_QUALITY_STUDY.zh-CN.md) for current behavior.
+
+At that time, the two profiles were two measured operating points, not a quality slider. On the
 full-resolution regression corpus (24.5 MP Sigma fp): archive q100/4:4:4 lands at
 ~60 MB per frame — a verification-grade master, roughly twice the source DNG, because a
 demosaiced three-channel q100 JPEG plus a gain map is simply a bigger object than a

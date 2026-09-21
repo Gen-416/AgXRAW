@@ -27,7 +27,7 @@
 
 四对的输入和全部公开输出精确一致，包括 noise floor、各颜色 SNR 曲线的 stops/SNR/count 数组、SNR=1 动态范围及位置、health lag-1 相关性与空直方图比例。数组比较使用 shape、dtype 和完整字节 SHA256，浮点标量另存 float64 位模式，NaN 也没有从身份检查中删除。本输入的部分 SNR=1 结果为 NaN，两侧位模式一致。
 
-完整输入声明、输出身份、逐对计时、阶段计时、RSS、环境和原始报告 SHA256 见 [phase-statistics.json](assets/performance/phase-statistics.json)。这组结果证明该合成工作集上的计算和内存收益；真实 RAW 的分析、AutoEV 和最终图像身份由完整管线验收另行覆盖，不把本表的百分比当作整个导出流程的提速。
+完整输入声明、输出身份、逐对计时、阶段计时、RSS、环境和原始报告 SHA256 见 [phase-statistics.json](../../assets/performance/phase-statistics.json)。这组结果证明该合成工作集上的计算和内存收益；真实 RAW 的分析、AutoEV 和最终图像身份由完整管线验收另行覆盖，不把本表的百分比当作整个导出流程的提速。
 
 复现单对的命令如下，输出文件必须尚不存在：
 

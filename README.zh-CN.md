@@ -99,6 +99,9 @@ python -m dngscan.gui
 # 默认 AgX 出片
 python -m dngscan photo.dng --jpeg photo.jpg
 
+# 高质量分享：JPEG 97 / 4:2:0，保留原尺寸
+python -m dngscan photo.dng --jpeg photo_share.jpg --delivery-profile share-hq
+
 # 同时打印完整的分析报告
 python -m dngscan photo.dng --jpeg photo.jpg --report
 
@@ -120,6 +123,8 @@ python -m dngscan photo.dng --jpeg photo_portra.jpg --film portra400
 python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
   --film-mode full --film-exposure 1 --film-print-timing retimed
 ```
+
+GUI 的“导出档位”选 **高质量分享**，等同于 `--delivery-profile share-hq`：SDR / HDR JPEG 固定 97 / 4:2:0、保留原尺寸，超过 20 MB 时提示并保留成片。体积检查与格式边界见 [使用说明](docs/USER_GUIDE.zh-CN.md)。
 
 完整参数见 `python -m dngscan --help`。
 
@@ -193,11 +198,25 @@ flowchart TB
 
 AgXRAW 目前不管理图库，也不做局部调整。它既可以直接用来出片，也可以当作一个开放的、每一步都说得清依据的成像实验台。
 
+## 仓库导航
+
+| 路径 | 内容 |
+| --- | --- |
+| [dngscan/](dngscan) | Python 管线、CLI 与本地 GUI |
+| [rust/](rust) | 可选原生计算核 |
+| [dngscan/data/](dngscan/data) / [dngscan_assets/](dngscan_assets) | 随包校准资产 / 数据来源与参考 |
+| [tests/](tests) / [tools/](tools/README.md) | 回归验证 / 显式校准和测量工具 |
+| [docs/](docs/README.md) | 使用说明、当前架构与设计合同 |
+| [docs/reports/](docs/reports/README.md) | 按版本保存的测量、冻结基线与历史记录 |
+
+按管线阅读代码、准备开发环境和运行验证，见 [开发指南](docs/DEVELOPMENT.zh-CN.md)。历史报告保留原始测量，不替代当前使用说明和架构。
+
 ## 面向开发者的技术文档
 
 [产品架构与领域模型](docs/PRODUCT_ARCHITECTURE.zh-CN.md) ·
 [架构与技术细节](docs/ARCHITECTURE.zh-CN.md)（完整流程和每个环节的设计理由）·
-[工程决策记录](docs/ENGINEERING_NOTES.zh-CN.md) ·
+[开发指南与仓库地图](docs/DEVELOPMENT.zh-CN.md) ·
+[测量与决策记录](docs/reports/README.md) ·
 [胶片风格模式的设计](docs/FILM_OBSERVATION_PLAN.zh-CN.md) ·
 [胶片冲印模式的设计与实施记录](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md) ·
 [HDR 实施计划](docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md)

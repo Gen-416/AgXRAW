@@ -1,5 +1,7 @@
 # AgXRAW 代码审查交接文档
 
+> 历史审查快照：下列“已修复 / 仍开放”均指 2026-09-02、`408abc8` 的状态，不是当前 main 的待办清单。保留正文便于追溯；当前实现见 [架构](../ARCHITECTURE.zh-CN.md)，后续性能实施见 [完成记录](../reports/performance/performance-pipeline-completion.zh-CN.md)。
+
 **生成日期**：2026-09-02  
 **审查对象**：`main` @ `408abc8`（`origin/main` 同步）  
 **审查方法**：multi-agent 并行 + 集成接缝交叉验证；**代码直读优先**，不以测试绿灯作正确性证明。  

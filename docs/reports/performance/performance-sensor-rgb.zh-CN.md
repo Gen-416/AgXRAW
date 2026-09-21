@@ -6,13 +6,13 @@
 
 ## 数值合同与借用边界
 
-[`sensor_rgb_clip_counts_u16`](../rust/src/lib.rs) 接受原生字节序的 `uint16` RAW 和同形状的 `uint8` 颜色索引数组，直接借用 ndarray 视图。连续、转置、负步长与零步长广播视图均可进入原生核，不要求调用方复制成连续数组。阈值和分组分别使用 256 项的小型 LUT；计算期间不构造完整阈值图、剪切图或颜色成员图。
+[`sensor_rgb_clip_counts_u16`](../../../rust/src/lib.rs) 接受原生字节序的 `uint16` RAW 和同形状的 `uint8` 颜色索引数组，直接借用 ndarray 视图。连续、转置、负步长与零步长广播视图均可进入原生核，不要求调用方复制成连续数组。阈值和分组分别使用 256 项的小型 LUT；计算期间不构造完整阈值图、剪切图或颜色成员图。
 
-[`sensor.rs`](../rust/src/sensor.rs) 对二维 CFA 按完整的 `period_h × period_w` 单元遍历，末端不足一个周期的行列不计入总体。周期只确定分组边界，实际通道始终读取 `raw_colors`，不假设颜色索引必然等于重复铺开的 pattern。三维 LinearRGB 则以一个 H×W 像素为单位，沿其所有通道归约，周期固定为 1×1；不会假定数组只能有三个通道。
+[`sensor.rs`](../../../rust/src/sensor.rs) 对二维 CFA 按完整的 `period_h × period_w` 单元遍历，末端不足一个周期的行列不计入总体。周期只确定分组边界，实际通道始终读取 `raw_colors`，不假设颜色索引必然等于重复铺开的 pattern。三维 LinearRGB 则以一个 H×W 像素为单位，沿其所有通道归约，周期固定为 1×1；不会假定数组只能有三个通道。
 
 每个感光点先按有符号整数阈值判断 `raw >= threshold`，满足时将对应的 R／G／B 位加入当前单元。G1 和 G2 共用绿色位，两个绿色感光点同时过曝仍只算一个颜色组。未被标签映射到 RGB 的实际通道对应位 0，不增加颜色组。核返回四个 `u64`，分别记录恰有 0、1、2、3 个颜色组过曝的单元数量；未过曝单元仍计入百分比的分母。
 
-阈值策略保持 [`channel_threshold_map`](../dngscan/analysis.py) 的规则：缺失通道使用整个阈值字典的最小值，包括当前图像中未出现的通道；空字典的默认值为 0。它不同于逐通道剪切百分比的默认值，所以本步没有将两种统计强行合并。负阈值、零阈值、超过 uint16 上限但仍在 int32 范围内的阈值均保留精确比较。Python 将整数计数转换为 float64，先除以总单元数、再乘 100，保持原 `np.mean(bool) * 100.0` 的百分比算术及 Python float 输出。
+阈值策略保持 [`channel_threshold_map`](../../../dngscan/analysis.py) 的规则：缺失通道使用整个阈值字典的最小值，包括当前图像中未出现的通道；空字典的默认值为 0。它不同于逐通道剪切百分比的默认值，所以本步没有将两种统计强行合并。负阈值、零阈值、超过 uint16 上限但仍在 int32 范围内的阈值均保留精确比较。Python 将整数计数转换为 float64，先除以总单元数、再乘 100，保持原 `np.mean(bool) * 100.0` 的百分比算术及 Python float 输出。
 
 Python 仅将满足精确输入合同的数组和整数元数据送入 Rust；其他 dtype、非原生字节序、未对齐输入、形状广播、空总体及特殊元数据继续执行原 NumPy 实现，保留其输出与异常语义。所有颜色标签未恰好覆盖 R／G／B 时，仍按原规则返回空字典。`DNGSCAN_FAST=0` 或显式跳过本核也使用原实现；原生调用异常继续遵守既有 auto 回退／strict 报错政策。
 
@@ -22,7 +22,7 @@ Python 仅将满足精确输入合同的数组和整数元数据送入 Rust；�
 
 ## 可复现的测量方法
 
-[`benchmark_sensor_rgb.py`](../tools/benchmark_sensor_rgb.py) 提供真实 RAW 管线和合成统计两种模式。两侧都固定 `DNGSCAN_FAST=1`；`--reference` 只通过 `DNGSCAN_FAST_SKIP=sensor_rgb_clip_counts_u16` 关闭本核，普通模式清空 skip。其他 Rust 核始终启用，并要求 checkout 与其原生扩展的 ABI 匹配。当前实现要求 ABI 16；旧版基线使用自己的匹配扩展。
+[`benchmark_sensor_rgb.py`](../../../tools/benchmark_sensor_rgb.py) 提供真实 RAW 管线和合成统计两种模式。两侧都固定 `DNGSCAN_FAST=1`；`--reference` 只通过 `DNGSCAN_FAST_SKIP=sensor_rgb_clip_counts_u16` 关闭本核，普通模式清空 skip。其他 Rust 核始终启用，并要求 checkout 与其原生扩展的 ABI 匹配。当前实现要求 ABI 16；旧版基线使用自己的匹配扩展。
 
 真实 RAW 模式复用现有 loss pipeline，每次以新进程执行全分辨率解码、分析、自动曝光、默认 AgX／P3 SDR，以及目标 800 nit 的 HDR pair。两侧都使用延迟 mask 构建，保留 SensorSummary 复用。真实 RAW 只读，输出为新的 JSON 报告；不执行 JPEG／HEIF 编码。
 
@@ -71,7 +71,7 @@ python tools/benchmark_sensor_rgb.py \
 
 2026-09-20，macOS 27.2 arm64、10 个逻辑 CPU、Python 3.14.4、NumPy 2.5.2，release 扩展 ABI 16。先用未修改的 `eaa42a0` 和匹配的 ABI 15 扩展生成四条路径的基线，再以当前代码只开／关新增计数核。**20 次新进程测量的完整 identity 均与旧版一致**，没有排除任何中间状态或决策字段；原始样张 SHA-256 也一致。
 
-全部分轮计时、调用次数、输入／输出身份、决策哈希与代码指纹见 [`sensor-rgb.json`](assets/performance/sensor-rgb.json)。以下管线总和包含解码、分析、自动曝光和形成，**不含编码**。
+全部分轮计时、调用次数、输入／输出身份、决策哈希与代码指纹见 [`sensor-rgb.json`](../../assets/performance/sensor-rgb.json)。以下管线总和包含解码、分析、自动曝光和形成，**不含编码**。
 
 | 路径 | 交替对照轮数 | RGB 统计中位耗时：NumPy → Rust | SDR 中位秒数 | HDR 中位秒数 |
 |---|---:|---:|---:|---:|
@@ -103,4 +103,4 @@ release 扩展构建、ABI 16 自检与 macOS 签名验证通过；Rust library 
 
 NumPy 回退专项运行 **236 项，220 通过、16 跳过**，无失败或错误。其中 15 项是既有 AgX／输出核测试的装饰器因 `DNGSCAN_FAST=0` 主动禁用 native 而跳过，日志中的通用原因虽写作“native extension not built”，本机扩展实际已经构建；这些项已在严格全套中通过。另 1 项仍是实拍高光不足。新增 38 项在两种模式下均通过；其中直接绑定合同测试会局部启用 native，以验证低层 API，不把它们描述为全程 NumPy 计算。
 
-新增 [`test_sensor_rgb_native.py`](../tests/test_sensor_rgb_native.py) 的 28 项测试，以冻结的 NumPy oracle 检查逐位百分比、RGB 数学、dispatch／fallback、稀疏及未知 CID、缺失阈值、整数边界、借用布局、输入不变、空总体、绑定预检与错误政策。新增 [`test_sensor_rgb_benchmark.py`](../tests/test_sensor_rgb_benchmark.py) 的 10 项测试覆盖单核消融、两侧延迟 load、完整身份与源文件哈希比较、旧版 reference、调用计时、合成输入和禁止覆盖输出。
+新增 [`test_sensor_rgb_native.py`](../../../tests/test_sensor_rgb_native.py) 的 28 项测试，以冻结的 NumPy oracle 检查逐位百分比、RGB 数学、dispatch／fallback、稀疏及未知 CID、缺失阈值、整数边界、借用布局、输入不变、空总体、绑定预检与错误政策。新增 [`test_sensor_rgb_benchmark.py`](../../../tests/test_sensor_rgb_benchmark.py) 的 10 项测试覆盖单核消融、两侧延迟 load、完整身份与源文件哈希比较、旧版 reference、调用计时、合成输入和禁止覆盖输出。

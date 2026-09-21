@@ -5,7 +5,7 @@
 > `tools/film_palette_probe.py` 生成，钉在
 > `tests/appearance_freeze/BASELINE.json`，由
 > `tests/test_film_appearance_p0.py` 复算。计划正文见
-> [`FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md`](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md)。
+> [`FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md`](../../FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md)。
 >
 > **2026-09-17 补记**：本文的 `observe` 侧数字是材质窗口重拟合之前量的。重拟合后胶片分离前馈
 > 的残差矩阵只偏离单位阵几个百分点（旧矩阵的强效果主要来自 profile 误差，见

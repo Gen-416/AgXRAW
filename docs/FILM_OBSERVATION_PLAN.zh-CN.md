@@ -431,7 +431,7 @@ full 走烘焙 LUT。
 **风格配对（observe 的声明 look 层，2026-07-30）**：当时的观感评估结论为
 "observe 稳而淡、full 浓而坏"（2026-08-10 实测已推翻其中 "full 浓" 的部分：默认
 bounded full 下 C-41 负片的 Oklab saturation `C/L` 只有 observe 的 0.53-0.58 倍，见
-[外观层 P0 基线](FILM_APPEARANCE_P0_BASELINE.zh-CN.md)），
+[外观层 P0 基线](reports/film/FILM_APPEARANCE_P0_BASELINE.zh-CN.md)），
 补味走已验证机制而非重新掺入无锚重建——
 `FILM_STYLE_PAIRINGS`（film_curve.py）按卷口碑给每个预设配一组
 （前馈分离超驱动强度, AgX primaries 几何），如 Velvia→(×1.6, punchy)、

@@ -23,7 +23,7 @@
 > 计入 DC、重复衰减 MTF、并把颗粒标定在错误的坐标里**。本次修订改了 §3 的曝光
 > 拓扑合同、§4.3–§4.4 的颗粒坐标与 MTF 预算、§5.2–§5.3 的 halation 触发与回注
 > 形式、§6.1 的 bloom 尺度空间与保高光，并在 §10.1 增加对应门禁。P0 的实测基线见
-> [`FILM_OPTICS_V2_P0_BASELINE.zh-CN.md`](FILM_OPTICS_V2_P0_BASELINE.zh-CN.md)。
+> [`FILM_OPTICS_V2_P0_BASELINE.zh-CN.md`](reports/film/FILM_OPTICS_V2_P0_BASELINE.zh-CN.md)。
 
 ## 0. 结论
 
@@ -169,7 +169,7 @@ Filmbox 的公开资料确认了两点：
 增加更多任意 slider，而是让每个自由度对应一个明确的信号或物理量。
 
 P0 已经把上表逐条转成带单位的数值并冻结，见
-[`FILM_OPTICS_V2_P0_BASELINE.zh-CN.md`](FILM_OPTICS_V2_P0_BASELINE.zh-CN.md)。
+[`FILM_OPTICS_V2_P0_BASELINE.zh-CN.md`](reports/film/FILM_OPTICS_V2_P0_BASELINE.zh-CN.md)。
 
 ## 3. 统一符号与不可破坏的合同
 

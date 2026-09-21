@@ -20,7 +20,7 @@
 
 2026-09-20，macOS 27.2 arm64、10 个逻辑 CPU、Python 3.14.4、NumPy 2.5.2、ABI 15。先在未修改的 `081fd1a` 上生成四条路径的基线；再以当前代码交替运行 eager／deferred 模式。共 **16 次新进程测量的分析后 mask、分析／决策与 SDR／HDR master 全部逐位一致**。公开 eager load 刚返回时的 mask 也与旧版相同；内部 deferred load 此时尚无 mask，这是唯一有意不同的中间状态。
 
-完整分轮计时、调用数、状态、图像与决策身份及源文件哈希见 [`deferred-masks.json`](assets/performance/deferred-masks.json)。计时不含编码。
+完整分轮计时、调用数、状态、图像与决策身份及源文件哈希见 [`deferred-masks.json`](../../assets/performance/deferred-masks.json)。计时不含编码。
 
 | 路径 | 交替对照轮数 | mask 构建次数 | SDR 中位秒数：eager → deferred | HDR 中位秒数：eager → deferred |
 |---|---:|---:|---:|---:|
@@ -37,11 +37,11 @@ Apple 正常路径仍只有独立参考的那一次 mask 构建，未受这次 d
 
 本步新增 23 项测试，并强化既有缓存导出与冷预览测试。严格 native 完整 suite 运行 **1,691 项，1,685 通过、6 跳过**；NumPy 回退专项运行 **179 项，178 通过、1 跳过**，两者均无失败或错误。NumPy 唯一跳过项是实拍样片裁切高光不足，无法判断 Core Image 高光恢复；新增 23 项在两种模式下均通过。本步未修改 Rust 源码，沿用上一批已验证的 ABI 15 扩展。
 
-[`test_deferred_clip_masks.py`](../tests/test_deferred_clip_masks.py) 覆盖旧 eager endpoint oracle 与延迟构建的逐位一致性，包括 Bayer、X-Trans、Linear RGB、稀疏通道、小数白点、空间黑电平、warp／crop／旋转、processing loss、失败重试、派生缓存失效、WB／replace、公开 loader 和 Apple fallback。
+[`test_deferred_clip_masks.py`](../../../tests/test_deferred_clip_masks.py) 覆盖旧 eager endpoint oracle 与延迟构建的逐位一致性，包括 Bayer、X-Trans、Linear RGB、稀疏通道、小数白点、空间黑电平、warp／crop／旋转、processing loss、失败重试、派生缓存失效、WB／replace、公开 loader 和 Apple fallback。
 
-[`test_pipeline_corrections.py`](../tests/test_pipeline_corrections.py) 与 [`test_preview_cache.py`](../tests/test_preview_cache.py) 通过真正的 CLI／GUI 调用边界验证接入：冷预览与 CLI 在构建 proxy／渲染前完成分析；缓存导出禁止重新 `analyze`，直接用已有 full-well 完成 pending mask。metadata 相同和实际 full-well 改变两种情况均覆盖。
+[`test_pipeline_corrections.py`](../../../tests/test_pipeline_corrections.py) 与 [`test_preview_cache.py`](../../../tests/test_preview_cache.py) 通过真正的 CLI／GUI 调用边界验证接入：冷预览与 CLI 在构建 proxy／渲染前完成分析；缓存导出禁止重新 `analyze`，直接用已有 full-well 完成 pending mask。metadata 相同和实际 full-well 改变两种情况均覆盖。
 
-[`benchmark_deferred_masks.py`](../tools/benchmark_deferred_masks.py) 复用现有 loss pipeline 工具，每次新进程执行全分辨率解码、分析、自动曝光、默认 AgX／P3 SDR 与 800 nit HDR pair，不执行编码。两侧固定 `DNGSCAN_FAST=1`、`DNGSCAN_FAST_SKIP=""`；`--reference` 使用公开 eager load，普通模式只启用私有延迟标志，所有现有 Rust 核与 SensorSummary 均保持启用。
+[`benchmark_deferred_masks.py`](../../../tools/benchmark_deferred_masks.py) 复用现有 loss pipeline 工具，每次新进程执行全分辨率解码、分析、自动曝光、默认 AgX／P3 SDR 与 800 nit HDR pair，不执行编码。两侧固定 `DNGSCAN_FAST=1`、`DNGSCAN_FAST_SKIP=""`；`--reference` 使用公开 eager load，普通模式只启用私有延迟标志，所有现有 Rust 核与 SensorSummary 均保持启用。
 
 ```sh
 python tools/benchmark_deferred_masks.py \

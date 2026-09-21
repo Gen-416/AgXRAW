@@ -165,7 +165,7 @@ HDR packing 表采用固定完整 float32 输入；生产 pair 的逐 chunk pack
 一次 cold 调用后重复三次。base 参考包含实际 RGBA 读回所需的 RGB repack，再运行旧
 native base 与 NumPy coding；新路线直接借用 RGBA。HDR 参考是原 native 独立调用，
 新路线为同一 export workspace 的重复调用。所有源数组 SHA 和指标的 `float.hex()`
-逐字段一致。精简原始记录及代码阶段见 [渲染与交付测量](assets/performance/render-delivery.json)。
+逐字段一致。精简原始记录及代码阶段见 [渲染与交付测量](../../assets/performance/render-delivery.json)。
 本表是生产 dispatcher 接入前的最终数值核独立测量；后续增加了对齐/ambient buffer
 边界检查，普通对齐输入的计算体不变。不能把独立 kernel 数据称为最终完整编码时长。
 
@@ -179,7 +179,7 @@ partition，不宣称降低峰值 RSS。旧/新 cold 分别为 270.74/230.37ms�
 
 量化分组单独测 1M 像素、两个 500k 输入块，每档预算使用两个独立进程，各三次重复。
 完整 A/B 噪声预先生成，所有输入、噪声和输出 SHA 相同；两侧写入同大小预分配 u8
-master。原始外部采样及身份见 [渲染与交付测量中的 quantize 项](assets/performance/render-delivery.json)。
+master。原始外部采样及身份见 [渲染与交付测量中的 quantize 项](../../assets/performance/render-delivery.json)。
 
 | native 预算 | concatenate | 两个 slice | 外部采样 RSS 原→新 |
 |---|---:|---:|---:|
@@ -247,7 +247,7 @@ half/stride/owner 生命周期、全部 u8 LUT、交易失败保留原文件、J
 
 ## 测量后保留原路线的候选
 
-以下取[测量记录](assets/performance/render-delivery.json)中
+以下取[测量记录](../../assets/performance/render-delivery.json)中
 `optional / remaining-optional-abi18-final.json` 的同轮结果。每次空 native 调用的上界
 包含 plan 解析、Python/FFI、输入校验与空输出分配。AgX/HDR/output 分别约
 3.008/4.419/2.125 μs；对应 500k 像素块约 94.87/125.95/125.75 ms。
