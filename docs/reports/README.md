@@ -22,6 +22,7 @@
 | [GUI 缓存](performance/performance-gui-cache.zh-CN.md) | 单 key 请求合并、异步落盘、可信分析与所有权计费 |
 | [并发](performance/performance-concurrency.zh-CN.md) | 预览、冷解码与导出的延迟、任务树内存及线程 |
 | [本轮完成记录](performance/performance-pipeline-completion.zh-CN.md) | 分析和 AutoEV、全路径文件等价、最终门禁与明确保留的候选 |
+| [导出重试复用（2026-10-05）](performance/performance-export-reuse.zh-CN.md) | 手动 HDR 主图复用、Core Image 回读释放、每轮验收与固定母版对照 |
 
 ## 胶片冻结基线
 

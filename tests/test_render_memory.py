@@ -1,6 +1,7 @@
 """Exact bounded intermediates in the non-film render/delivery boundary."""
 import gc
 import dataclasses
+from contextlib import nullcontext
 import struct
 import sys
 import unittest
@@ -245,7 +246,8 @@ class HdrReadbackOwnerTests(unittest.TestCase):
             CIContext=SimpleNamespace(contextWithOptions_=lambda _: context),
         )
         foundation = SimpleNamespace(NSURL=SimpleNamespace(fileURLWithPath_=lambda x: x))
-        with mock.patch.dict(sys.modules, Quartz=quartz, Foundation=foundation), \
+        with mock.patch.dict(sys.modules, Quartz=quartz, Foundation=foundation,
+                             objc=SimpleNamespace(autorelease_pool=nullcontext)), \
              mock.patch.object(gainmap, "_nsnumber_bool", side_effect=bool):
             first = gainmap._read_expanded_hdr_rgba_half(Path("one"))
             second = gainmap._read_expanded_hdr_rgba_half(Path("two"))

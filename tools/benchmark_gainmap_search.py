@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Measure HDR HEIF auto search against immutable .npy formation masters.
+"""Measure HDR HEIF search or manual retries against immutable .npy masters.
 
 Run each checkout in a fresh process with the same --base/--hdr/--headroom.
 --reference-report accepts this tool's JSON or the earlier heif-profile.json;
@@ -23,6 +23,7 @@ import math
 import os
 from pathlib import Path
 import platform
+import resource
 import subprocess
 import sys
 import threading
@@ -213,6 +214,10 @@ def parser():
     result.add_argument("--hdr", type=Path, required=True, help="HxWx4 float16 HDR .npy")
     result.add_argument("--out", type=Path, required=True, help="new .heic/.heif candidate output")
     result.add_argument("--headroom", type=float, required=True, help="display capacity in EV, not linear gain")
+    result.add_argument("--delivery-profile", choices=("auto", "share", "archive"), default="auto")
+    result.add_argument("--quality", type=int, help="manual HEIF quality; auto retains its search policy")
+    result.add_argument("--chroma", choices=("444", "422", "420"), help="manual primary sampling")
+    result.add_argument("--heif-preset", choices=("fast", "medium", "slow", "slower"), default="slow")
     result.add_argument("--report", type=Path, help="defaults to OUT.benchmark.json")
     result.add_argument("--label", default="")
     result.add_argument("--native-mode", choices=("0", "1", "auto"), default="1")
@@ -227,6 +232,14 @@ def parser():
 def validate(args):
     if not math.isfinite(args.headroom) or args.headroom <= 0:
         raise ValueError("--headroom must be positive finite EV")
+    if args.delivery_profile == "auto" and (args.quality is not None or args.chroma is not None):
+        raise ValueError("auto selects quality/chroma; use --delivery-profile share for manual controls")
+    if args.quality is not None and not 1 <= args.quality <= 100:
+        raise ValueError("--quality must be between 1 and 100")
+    if args.delivery_profile == "archive" and (
+        args.quality not in (None, 100) or args.chroma not in (None, "444")
+    ):
+        raise ValueError("archive fixes quality 100 / 444")
     args.repo = args.repo.resolve()
     if not (args.repo / "dngscan" / "gainmap.py").is_file():
         raise ValueError("--repo must contain dngscan/gainmap.py")
@@ -290,19 +303,26 @@ def main(argv=None):
     from dngscan import _fast, auto_encode, gainmap, heif_encoder, heif_gainmap
     from dngscan.delivery import resolve_delivery_profile
     from dngscan.delivery_integrity import encoded_content_signature
+    from dataclasses import replace
+    profile = replace(resolve_delivery_profile(
+        args.delivery_profile, quality=args.quality, chroma=args.chroma, container="heic"
+    ), heif_preset=args.heif_preset)
     if Path(gainmap.__file__).resolve().parent.parent != args.repo:
         raise RuntimeError("a different dngscan checkout is already imported; use a fresh process")
     record = {
         "schema_version": 1, "label": args.label, "created_utc": datetime.now(timezone.utc).isoformat(),
         "inputs": inputs, "headroom_ev": args.headroom,
+        "requested_encoding": {"profile": profile.name, "quality": profile.quality,
+                               "chroma": profile.chroma, "preset": profile.heif_preset},
         "environment": {"repo": str(args.repo), **git_info(args.repo), "python": sys.version,
                         "executable": sys.executable, "platform": platform.platform(),
                         "numpy": np.__version__, "cpus": os.cpu_count(),
                         "native_mode": args.native_mode, "native_available": _fast.available(),
                         "env": {key: os.environ.get(key) for key in (
                             "DNGSCAN_FAST_SKIP", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS")}},
-        "timing_scope": "Only auto search; excludes imports, master hashes, capability warmup, artifact comparison. "
+        "timing_scope": "Only search or manual retries; excludes imports, master hashes, capability warmup, artifact comparison. "
                         "Self times subtract nested same-thread hooks; concurrent self totals are not wall-time shares.",
+        "rss_scope": "Process high-water mark after delivery, including master loading/hashing and capability warmup; before artifact comparison.",
     }
     ext = _fast._load_extension()
     record["environment"]["native_abi"] = ext.native_abi_version() if ext else None
@@ -326,9 +346,11 @@ def main(argv=None):
             try:
                 record["delivery"] = gainmap.write_apple_gainmap_file(
                     base, hdr, args.out, args.headroom,
-                    delivery=resolve_delivery_profile("auto", container="heic"))
+                    delivery=profile)
             finally:
                 record.update(total_s=time.perf_counter() - start, cpu_s=time.process_time() - cpu)
+                record["peak_rss_mib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (
+                    2**20 if sys.platform == "darwin" else 1024)
         record["selected"] = selected(record["delivery"])
         record["attempts"] = record["delivery"].get("auto_attempts", [])
         record["artifact"] = artifact_record(args.out, encoded_content_signature)
@@ -358,8 +380,13 @@ def main(argv=None):
         record["unattributed_s"] = record.get("total_s", 0.0) - sum(v["self_s"] for v in record["stages"].values())
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(json_safe(record), ensure_ascii=False, indent=2) + "\n")
-    print(json.dumps(json_safe({key: record.get(key) for key in (
-        "selected", "total_s", "cpu_s", "stages", "comparison", "error")}), ensure_ascii=False))
+    summary = {key: record.get(key) for key in (
+        "selected", "total_s", "cpu_s", "peak_rss_mib", "stages", "error")}
+    summary["comparison"] = {
+        name: {key: value for key, value in result.items() if key != "reference"}
+        for name, result in record.get("comparison", {}).items()
+    }
+    print(json.dumps(json_safe(summary), ensure_ascii=False))
     print(f"report: {args.report}")
     return code
 
