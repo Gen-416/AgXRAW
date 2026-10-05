@@ -90,6 +90,16 @@ def _apple_gainmap_api_status() -> tuple[bool, str]:
 
 def _read_expanded_hdr_rgba_half(path: Path) -> Any:
     """Decode the composite HDR rendition, not merely the auxiliary container."""
+    import objc  # type: ignore
+
+    # Repeated verification runs without a Cocoa run loop. Drain each read's
+    # temporary Core Image objects after the helper's native locals are gone;
+    # the returned array retains its own Python bitmap rather than those objects.
+    with objc.autorelease_pool():
+        return _read_expanded_hdr_bitmap(path)
+
+
+def _read_expanded_hdr_bitmap(path: Path) -> Any:
     import Quartz  # type: ignore
     from Foundation import NSURL  # type: ignore
 
@@ -476,6 +486,13 @@ def read_primary_rgb_u8(path: Path, output_gamut: str = "p3", *, _borrow_rgb: bo
         except Exception:
             pass
 
+    import objc  # type: ignore
+
+    with objc.autorelease_pool():
+        return _read_primary_coreimage_rgb_u8(path, output_gamut, _borrow_rgb=_borrow_rgb)
+
+
+def _read_primary_coreimage_rgb_u8(path: Path, output_gamut: str, *, _borrow_rgb: bool) -> Any:
     import Quartz  # type: ignore
     from Foundation import NSURL  # type: ignore
 
@@ -1038,12 +1055,29 @@ def _write_gainmap_prepared(prepared, out_path, *, delivery, use_heif,
                     info = write_candidate()
                 return info
             return select_encoding(out_path, encode, qualities=qualities)
-    return _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev,
-        delivery=delivery, _prepared_master=prepared, _use_heif=use_heif,
-        _template_path=_template_path, _gainmap_quality=_gainmap_quality,
-        _primary_session=_primary_session, _collect_coding_metrics=_collect_coding_metrics,
-        _sdr_precheck=_sdr_precheck, _jpeg_primary_session=_jpeg_primary_session,
-        _hdr_metrics_workspace=_hdr_metrics_workspace)
+    if delivery.container == "jpeg" and _jpeg_primary_session is None:
+        from .jpeg_gainmap import PrimaryCodestreamSession
+
+        _jpeg_primary_session = PrimaryCodestreamSession(base_rgb_u8)
+
+    def write_manual(primary_session):
+        return _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev,
+            delivery=delivery, _prepared_master=prepared, _use_heif=use_heif,
+            _template_path=_template_path, _gainmap_quality=_gainmap_quality,
+            _primary_session=primary_session, _collect_coding_metrics=_collect_coding_metrics,
+            _sdr_precheck=_sdr_precheck, _jpeg_primary_session=_jpeg_primary_session,
+            _hdr_metrics_workspace=_hdr_metrics_workspace)
+
+    if use_heif and _primary_session is None:
+        from .gainmap_session import PrimarySearchSession
+
+        # Auxiliary retries keep the same primary settings and immutable base.
+        # Own one donor for the entire ladder, including every failure path;
+        # only its codestream is reused, while each new package is verified.
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".agxraw-manual-primary-", dir=out_path.parent) as td:
+            return write_manual(PrimarySearchSession(Path(td)))
+    return write_manual(_primary_session)
 
 
 def _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *,
@@ -1054,12 +1088,12 @@ def _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_
     """One candidate plus the established manual auxiliary precision ladder."""
     args = (base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev)
     common = dict(delivery=delivery, _prepared_master=_prepared_master, _use_heif=_use_heif,
-                  _hdr_metrics_workspace=_hdr_metrics_workspace)
+                  _hdr_metrics_workspace=_hdr_metrics_workspace,
+                  _primary_session=_primary_session, _jpeg_primary_session=_jpeg_primary_session,
+                  _collect_coding_metrics=_collect_coding_metrics, _sdr_precheck=_sdr_precheck)
     try:
         return _write_gainmap_once(*args, **common, _template_path=_template_path,
-            _gainmap_quality=_gainmap_quality, _primary_session=_primary_session,
-            _collect_coding_metrics=_collect_coding_metrics, _sdr_precheck=_sdr_precheck,
-            _jpeg_primary_session=_jpeg_primary_session)
+            _gainmap_quality=_gainmap_quality)
     except HdrRoundtripError:
         profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
         if _gainmap_quality is not None or profile.is_archive or not (_use_heif or profile.container == "jpeg"):

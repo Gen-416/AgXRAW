@@ -2893,13 +2893,7 @@ def run_export(params: dict) -> dict:
                     chroma_nr=chroma_nr,
                 )
             )
-            preview = (
-                preview_b64_from_u8(
-                    rendered_u8, icc_profile=icc_profile, width=PROXY_LONG_EDGE
-                )
-                if rendered_u8 is not None
-                else make_preview_b64(out_path, icc_profile=icc_profile)
-            )
+            preview_rgb = rendered_u8
             if auto_ev_result is not None and want_png:
                 np = dg.np
                 if rendered_u8 is None:
@@ -2907,12 +2901,16 @@ def run_export(params: dict) -> dict:
 
                     with Image.open(out_path) as im:
                         rendered_u8 = np.asarray(im.convert("RGB"), dtype=np.uint8)
-                annotated = annotate_preview_rgb_u8(
+                preview_rgb = annotate_preview_rgb_u8(
                     rendered_u8, dg.auto_ev_overlay_lines(auto_ev_result)
                 )
-                preview = preview_b64_from_u8(
-                    annotated, icc_profile=icc_profile, width=PROXY_LONG_EDGE
+            preview = (
+                preview_b64_from_u8(
+                    preview_rgb, icc_profile=icc_profile, width=PROXY_LONG_EDGE
                 )
+                if preview_rgb is not None
+                else make_preview_b64(out_path, icc_profile=icc_profile)
+            )
             saved = [str(out_path)]
             if png_temp is not None:
                 # the main output is written: the dashboard may take its name

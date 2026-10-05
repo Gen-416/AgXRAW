@@ -48,4 +48,6 @@
 
 [报告索引](reports/README.md) 汇集性能批次、冻结基线、工程决策和旧审查。近期非胶片效率工作从 [管线完成记录](reports/performance/performance-pipeline-completion.zh-CN.md) 读起，它逐项区分已实施、未采用和后续候选；不要把单核提速相加当作整条管线的收益。
 
+2026-10 的 [导出专项记录](reports/performance/performance-export-reuse.zh-CN.md) 接续说明手动 HDR 重试的主图复用、Core Image 回读释放、每轮验收和 GUI 最终预览；测量按固定母版、手动重试与自动搜索分别登记。
+
 文档图片和机器可读测量保留在 [assets/](assets)。P0 分解数据 `film_v2_p0_decomposition*.json`、色度场 `chroma_field_cv.json` 和光源分档 `illuminant_tier_cv.json` 保留原路径，便于现有工具和引用复现。原始 RAW 和个人导出不属于公共文档资产。

@@ -17,7 +17,6 @@ import os
 from pathlib import Path
 import platform
 import resource
-import subprocess
 import sys
 import time
 from unittest.mock import patch
@@ -72,7 +71,7 @@ def main():
     from dngscan import cli, _fast
     from dngscan.delivery_integrity import encoded_content_signature
     from dngscan.gainmap import read_primary_rgb_u8
-    from tools.benchmark_gainmap_search import json_safe
+    from tools.benchmark_gainmap_search import git_info, json_safe
     ext = _fast._load_extension()
     if ext is None:
         raise RuntimeError('strict native extension required')
@@ -113,8 +112,7 @@ def main():
         raise RuntimeError('source changed during benchmark')
     report = {'identity': identity, 'wall_s': wall, 'cpu_s': cpu,
               'file_sha256': sha256(a.out), 'bytes': a.out.stat().st_size,
-              'repo': str(a.repo), 'commit': subprocess.check_output(
-                  ['git', '-C', str(a.repo), 'rev-parse', 'HEAD'], text=True).strip(),
+              'repo': str(a.repo), 'commit': git_info(a.repo)['commit'],
               'environment': {'python': platform.python_version(), 'numpy': np.__version__,
                               'platform': platform.platform(), 'native_abi': ext.native_abi_version()},
               'peak_rss_mib': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss /

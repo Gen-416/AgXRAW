@@ -100,15 +100,25 @@ python tools/benchmark_delivery.py --mode sdr --encoders tunable \
 python tools/benchmark_cli_delivery.py --repo "$PWD" --source /path/to/photo.DNG \
   --decoder libraw --format sdr-heic --out "$AGXRAW_RUN_DIR/export.heic" \
   --report "$AGXRAW_RUN_DIR/export.json"
+
+# 同一 SDR/HDR 母版：测手动 HEIF 的辅助图重试与主图复用
+python tools/benchmark_gainmap_search.py --base /path/to/base.npy \
+  --hdr /path/to/hdr.npy --headroom 3 --delivery-profile share \
+  --quality 90 --chroma 444 --heif-preset slow \
+  --out "$AGXRAW_RUN_DIR/manual.heic"
 ```
 
 | 工具 | 测量范围 |
 |---|---|
 | [benchmark_delivery.py](benchmark_delivery.py) | `tunable` 为可调编码矩阵；`auto` 为生产 HDR 自动搜索；`system` 保留早期系统编码对照 |
 | [benchmark_cli_delivery.py](benchmark_cli_delivery.py) | 自动选参、压缩内容、元数据后文件、回读像素；`--compare` 比较报告，`--require-file-match` 额外要求完整文件相同 |
-| [benchmark_gainmap_search.py](benchmark_gainmap_search.py) | 固定 SDR/HDR `.npy` 母版上的 HEIF 自动搜索；记录候选、编码与回读次数，支持 `--dry-run` |
+| [benchmark_gainmap_search.py](benchmark_gainmap_search.py) | 固定 SDR/HDR `.npy` 母版的 HEIF 自动搜索或手动重试；记录候选、编码/回读次数和进程 RSS；支持 `--dry-run`、参考报告/文件比较 |
 | [benchmark_delivery_metrics.py](benchmark_delivery_metrics.py) | base/coding 扫描及 HDR 多秩统计工作区 |
 | [benchmark_delivery_buffers.py](benchmark_delivery_buffers.py) | HDR packing/readback、HEIF 8/10-bit 输入平面的逐位与内存对照 |
+
+`benchmark_gainmap_search.py` 默认为 `auto`，由生产策略选择质量和色度；显式 `--quality/--chroma` 要选 `--delivery-profile share`。`archive` 保留 q100/444，`--heif-preset` 只指定本次编码速度。可用 `--repo` 指向参考源码，以 `--reference-report/--reference-file --require-match` 检查同一母版的决策、指标和压缩内容；报告还单独记录完整文件 SHA-256 是否一致。计时不含导入、输入哈希、能力探测和结果比较，RSS 是包含输入准备的进程高水位。
+
+两种导出基准也接受没有 `.git` 的源码快照，报告中的 commit 此时为 null；用对应源码和扩展的指纹记录版本，不能将 null 当作已验证提交。
 
 ### GUI 性能
 

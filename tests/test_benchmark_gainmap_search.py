@@ -145,6 +145,32 @@ class BenchmarkGainmapSearchTests(unittest.TestCase):
                 bench.validate(args)
             self.assertEqual(reference.read_bytes(), b"reference")
 
+    def test_preflight_keeps_auto_and_archive_encoding_policies(self):
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td)
+            base, hdr = folder/"base.npy", folder/"hdr.npy"
+            base.touch(); hdr.touch()
+            common = ["--repo", str(ROOT), "--base", str(base), "--hdr", str(hdr),
+                      "--out", str(folder/"new.heic"), "--headroom", "3"]
+            for extra, error in (
+                (["--quality", "90"], "auto selects"),
+                (["--chroma", "420"], "auto selects"),
+                (["--delivery-profile", "share", "--quality", "101"], "between 1 and 100"),
+                (["--delivery-profile", "archive", "--quality", "99"], "archive fixes"),
+                (["--delivery-profile", "archive", "--chroma", "422"], "archive fixes"),
+            ):
+                with self.subTest(extra=extra), self.assertRaisesRegex(ValueError, error):
+                    bench.validate(bench.parser().parse_args(common + extra))
+            for extra in (
+                ["--delivery-profile", "share", "--quality", "90", "--chroma", "422", "--heif-preset", "medium"],
+                ["--delivery-profile", "share", "--quality", "1"],
+                ["--delivery-profile", "share", "--quality", "100"],
+                ["--delivery-profile", "archive", "--quality", "100", "--chroma", "444"],
+                ["--heif-preset", "medium"],
+            ):
+                with self.subTest(extra=extra):
+                    bench.validate(bench.parser().parse_args(common + extra))
+
     def test_mocked_search_records_real_entry_counts_and_restores_hooks(self):
         from dngscan import gainmap, heif_encoder, delivery_integrity
 
@@ -154,15 +180,21 @@ class BenchmarkGainmapSearchTests(unittest.TestCase):
             np.save(base, np.zeros((2, 3, 3), np.uint8))
             np.save(hdr, np.ones((2, 3, 4), np.float16))
             out = folder/"new.heic"
+            manual_out = folder/"manual.heic"
+            profiles = []
 
             def write(b, h, path, headroom, **kwargs):
                 self.assertFalse(b.flags.writeable)
                 self.assertFalse(h.flags.writeable)
+                profiles.append(kwargs["delivery"])
                 heif_encoder.encode(b, path, 90, "444")
                 gainmap.read_primary_rgb_u8(path)
                 gainmap._read_expanded_hdr_rgba_half(path)
                 Path(path).write_bytes(b"mock-heif")
-                return report()["delivery"]
+                info = report()["delivery"]
+                if kwargs["delivery"].name != "auto":
+                    info.pop("auto_attempts")
+                return info
 
             original_path = sys.path[:]
             try:
@@ -179,6 +211,13 @@ class BenchmarkGainmapSearchTests(unittest.TestCase):
                         "--out", str(out), "--headroom", "3", "--native-mode", "auto",
                     ]), 0)
                     self.assertIs(heif_encoder.encode, encoder)
+                    self.assertEqual(bench.main([
+                        "--repo", str(ROOT), "--base", str(base), "--hdr", str(hdr),
+                        "--out", str(manual_out), "--headroom", "3", "--native-mode", "auto",
+                        "--delivery-profile", "share", "--quality", "90", "--chroma", "422",
+                        "--heif-preset", "medium",
+                    ]), 0)
+                    self.assertIs(heif_encoder.encode, encoder)
             finally:
                 sys.path[:] = original_path
             result = json.loads(out.with_suffix(".benchmark.json").read_text())
@@ -187,7 +226,15 @@ class BenchmarkGainmapSearchTests(unittest.TestCase):
                 self.assertEqual(result["stages"][key]["count"], 1)
             self.assertEqual(result["artifact"]["bytes"], 9)
             self.assertEqual(result["inputs"]["base"]["file_sha256"], bench.file_sha256(base))
+            self.assertGreater(result["peak_rss_mib"], 0)
             self.assertNotIn("error", result)
+            self.assertEqual(profiles[0].name, "auto")
+            self.assertEqual((profiles[1].name, profiles[1].quality, profiles[1].chroma,
+                              profiles[1].heif_preset), ("share", 90, "422", "medium"))
+            manual = json.loads(manual_out.with_suffix(".benchmark.json").read_text())
+            self.assertEqual(manual["attempts"], [])
+            self.assertEqual(manual["requested_encoding"],
+                             {"profile": "share", "quality": 90, "chroma": "422", "preset": "medium"})
 
 
 if __name__ == "__main__":
