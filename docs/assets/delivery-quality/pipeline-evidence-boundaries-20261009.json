@@ -1,0 +1,453 @@
+{
+  "schema": "agxraw-pipeline-evidence-boundaries-1",
+  "date": "2026-10-09",
+  "baseline_commit": "049bfd65ff66edc2e6668440dc4032d05992b7df",
+  "runtime": {
+    "system": "27.2",
+    "machine": "arm64",
+    "python": "3.14.4",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw": [
+      0,
+      22,
+      0
+    ],
+    "native_abi": 20,
+    "rawpy_locked_commit": "cc7b4748"
+  },
+  "tests": {
+    "strict_native_full_suite": {
+      "discovered": 1576,
+      "passed": 1541,
+      "skipped": 35,
+      "seconds": 179.658
+    },
+    "additional_geometry_cases": {
+      "count": 2,
+      "numpy_passed": 2,
+      "native_passed": 2
+    },
+    "skips_are_not_passes": true,
+    "numpy_full_suite": {
+      "discovered": 1576,
+      "passed": 1510,
+      "skipped": 66,
+      "seconds": 404.955
+    },
+    "unique_coverage_per_path": {
+      "count": 1578,
+      "numpy_passed": 1512,
+      "numpy_skipped": 66,
+      "native_passed": 1543,
+      "native_skipped": 35
+    },
+    "post_compatibility_change_target_native": {
+      "count": 28,
+      "passed": 28,
+      "skipped": 0
+    },
+    "post_compatibility_change_target_numpy": {
+      "count": 28,
+      "passed": 28,
+      "skipped": 0
+    }
+  },
+  "formation_and_delivery": [
+    {
+      "sample": "_SDI0150",
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "raw_evidence_unchanged": true,
+      "old": {
+        "raw_sha256": "1568a99785aa49447b5013e643da2ced0ca0eb149b3f0c4e6d90c36fe69be5ab",
+        "scene_sha256": "5b2b57705291ca7b6a855b658f3e5475a0701ca3a62adb2fa1770eb787dabbdd",
+        "scene_scale": 32767.5,
+        "baseline_exposure": 1.0,
+        "auto_ev": 0.046875,
+        "black_ev": -5.850574836730957,
+        "white_ev": 3.895693826675415,
+        "noise_floor": [
+          -9.59293383940488,
+          "model"
+        ],
+        "noise_ev_offset": 0.0,
+        "snr_coords": {
+          "snr1": -8.699354950907455,
+          "snr10": -2.5408685946446496,
+          "snr20": -0.5470171892778972
+        },
+        "raw_hard_clip_pct": {
+          "0": 0.9928893060855738,
+          "1": 1.2465092779117422,
+          "2": 0.005548599859783618,
+          "3": 1.2452853220603193
+        },
+        "processing_loss_pct": 1.5841708333333333,
+        "reliable_sample_pct": 98.27175,
+        "evidence_ok": true,
+        "hdr_headroom_ev": 1.1217626383430028,
+        "hdr_rho": 0.45035798260742416,
+        "sdr_pair_exact": true,
+        "demosaic_algorithm": "DHT (baseline auto selection)"
+      },
+      "new": {
+        "raw_sha256": "1568a99785aa49447b5013e643da2ced0ca0eb149b3f0c4e6d90c36fe69be5ab",
+        "scene_sha256": "9b6a10b0f73dccd0a103a0ec1b4f6f2159e4bdc89a72980f2a6c845ad947bba5",
+        "scene_scale": 32767.5,
+        "baseline_exposure": 1.0,
+        "auto_ev": 0.078125,
+        "black_ev": -5.826888628005982,
+        "white_ev": 3.7171249866485594,
+        "noise_floor": [
+          -8.59293383940488,
+          "model"
+        ],
+        "noise_ev_offset": 1.0,
+        "snr_coords": {
+          "snr1": -7.6993549509074555,
+          "snr10": -1.5408685946446496,
+          "snr20": 0.4529828107221028
+        },
+        "raw_hard_clip_pct": {
+          "0": 0.9928893060855738,
+          "1": 1.2465092779117422,
+          "2": 0.005548599859783618,
+          "3": 1.2452853220603193
+        },
+        "processing_loss_pct": 1.9790208333333332,
+        "reliable_sample_pct": 98.0305,
+        "evidence_ok": true,
+        "hdr_headroom_ev": 0.9431937983161474,
+        "hdr_rho": 0.45035798260742416,
+        "sdr_pair_exact": true,
+        "demosaic_algorithm": "AHD",
+        "loss_support": "bayer-AHD: conservative radius-5 source support; maximum DefaultScale support"
+      },
+      "scene_difference": {
+        "mean_abs": 0.0016143831890076399,
+        "p99_abs": 0.010421883314847946,
+        "max_abs": 0.3177967071533203,
+        "changed_pixel_pct": 99.2214,
+        "sampling": "every fourth row/column",
+        "units": "scene normalization before fixed midgray/userEV"
+      },
+      "sdr_difference": {
+        "mean_abs": 2.2539613246917725,
+        "p99_abs": 14.0,
+        "max_abs": 148.0,
+        "changed_pixel_pct": 96.12520416666666,
+        "sampling": "all pixels",
+        "units": "8-bit output code"
+      },
+      "delivery": [
+        {
+          "format": "sdr",
+          "file_bytes": 8954774,
+          "production_roundtrip_gate": "accepted",
+          "delivery_profile": "share-hq",
+          "delivery_quality": 97,
+          "chroma_subsampling": "4:2:0",
+          "base_mean_code_error": 2.09400275,
+          "base_p99_code_error": 15.0,
+          "base_local_detail_loss": 0.4058982729911804
+        },
+        {
+          "format": "ultrahdr-heic",
+          "file_bytes": 48045859,
+          "production_roundtrip_gate": "accepted",
+          "delivery_profile": "share",
+          "delivery_quality": 95,
+          "chroma_subsampling": "4:2:0",
+          "bit_depth": 10,
+          "base_mean_code_error": 1.6297511388888888,
+          "base_p99_code_error": 15.0,
+          "base_local_detail_loss": 0.39899271726608276,
+          "local_detail_loss": 0.8647853136062622,
+          "headroom_error_ev": 0.0,
+          "file_headroom_ev": 0.9432473959015537,
+          "rendered_headroom_ev": 0.9431937983161474,
+          "actual_headroom_ev": 0.9431938194722875
+        }
+      ]
+    },
+    {
+      "sample": "_SDI0199",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "raw_evidence_unchanged": true,
+      "old": {
+        "raw_sha256": "5250bb65a198afd92746a5270f7f09eb543ecba9104d5056e7fc39618108d049",
+        "scene_sha256": "626f0ab47ab1a2f88db7945e7e18d2deafef8f245c75a5df2ae10c8f8420b595",
+        "scene_scale": 32767.5,
+        "baseline_exposure": 1.0,
+        "auto_ev": 0.0078125,
+        "black_ev": -6.6247814178466795,
+        "white_ev": 3.78625373840332,
+        "noise_floor": [
+          -5.9029364945700475,
+          "model"
+        ],
+        "noise_ev_offset": 0.0,
+        "snr_coords": null,
+        "raw_hard_clip_pct": {
+          "0": 0.08355538612380035,
+          "1": 0.2752758306906767,
+          "2": 0.0,
+          "3": 0.27791957532975003
+        },
+        "processing_loss_pct": 3.5853458333333332,
+        "reliable_sample_pct": 96.259625,
+        "evidence_ok": true,
+        "hdr_headroom_ev": 1.012322550070908,
+        "hdr_rho": 0.49542120814064644,
+        "sdr_pair_exact": true,
+        "demosaic_algorithm": "DHT (baseline auto selection)"
+      },
+      "new": {
+        "raw_sha256": "5250bb65a198afd92746a5270f7f09eb543ecba9104d5056e7fc39618108d049",
+        "scene_sha256": "4b09fc1e17aa3ab1b7e29bac56c33536e64228fd4566a36532847e6739a82310",
+        "scene_scale": 32767.5,
+        "baseline_exposure": 1.0,
+        "auto_ev": 0.0234375,
+        "black_ev": -6.4029364945700475,
+        "white_ev": 3.6823049068450926,
+        "noise_floor": [
+          -4.9029364945700475,
+          "model"
+        ],
+        "noise_ev_offset": 1.0,
+        "snr_coords": null,
+        "raw_hard_clip_pct": {
+          "0": 0.08355538612380035,
+          "1": 0.2752758306906767,
+          "2": 0.0,
+          "3": 0.27791957532975003
+        },
+        "processing_loss_pct": 4.50225,
+        "reliable_sample_pct": 95.52875,
+        "evidence_ok": true,
+        "hdr_headroom_ev": 0.9083737185126806,
+        "hdr_rho": 0.49537348359370753,
+        "sdr_pair_exact": true,
+        "demosaic_algorithm": "AHD",
+        "loss_support": "bayer-AHD: conservative radius-5 source support; maximum DefaultScale support"
+      },
+      "scene_difference": {
+        "mean_abs": 0.006733254995197058,
+        "p99_abs": 0.05031187832355499,
+        "max_abs": 1.4978413581848145,
+        "changed_pixel_pct": 99.81613333333334,
+        "sampling": "every fourth row/column",
+        "units": "scene normalization before fixed midgray/userEV"
+      },
+      "sdr_difference": {
+        "mean_abs": 5.331850528717041,
+        "p99_abs": 29.0,
+        "max_abs": 238.0,
+        "changed_pixel_pct": 98.5647125,
+        "sampling": "all pixels",
+        "units": "8-bit output code"
+      },
+      "delivery": [
+        {
+          "format": "sdr",
+          "file_bytes": 16512252,
+          "production_roundtrip_gate": "accepted",
+          "delivery_profile": "share-hq",
+          "delivery_quality": 97,
+          "chroma_subsampling": "4:2:0",
+          "base_mean_code_error": 3.804382652777778,
+          "base_p99_code_error": 22.0,
+          "base_local_detail_loss": 0.5268510580062866
+        },
+        {
+          "format": "ultrahdr-heic",
+          "file_bytes": 67754809,
+          "production_roundtrip_gate": "accepted",
+          "delivery_profile": "share",
+          "delivery_quality": 95,
+          "chroma_subsampling": "4:2:0",
+          "bit_depth": 10,
+          "base_mean_code_error": 3.568193,
+          "base_p99_code_error": 23.0,
+          "base_local_detail_loss": 0.5422294735908508,
+          "local_detail_loss": 0.8688955307006836,
+          "headroom_error_ev": 0.0,
+          "file_headroom_ev": 0.9083926207737504,
+          "rendered_headroom_ev": 0.9083737185126806,
+          "actual_headroom_ev": 0.9083737451516735
+        }
+      ]
+    },
+    {
+      "sample": "_SDI0133",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "raw_evidence_unchanged": true,
+      "old": {
+        "raw_sha256": "e29cea2f290946f011437ab30697a0ba270e9956bf46dcd4ed76cd7f115d0574",
+        "scene_sha256": "dba1d295130cdaa723d21b71fa3a7cef479ddb8f672085a39daabcfb1684a2f3",
+        "scene_scale": 32767.5,
+        "baseline_exposure": 1.0,
+        "auto_ev": 0.0,
+        "black_ev": -5.154096107482911,
+        "white_ev": 4.077493000030517,
+        "noise_floor": [
+          -9.593027767920873,
+          "model"
+        ],
+        "noise_ev_offset": 0.0,
+        "snr_coords": {
+          "snr1": -8.699448879423448,
+          "snr10": -2.540962523160643,
+          "snr20": -0.5471111177938903
+        },
+        "raw_hard_clip_pct": {
+          "0": 0.029358621022796263,
+          "1": 0.07038562116249042,
+          "2": 9.791646811382855e-05,
+          "3": 0.07053249586466116
+        },
+        "processing_loss_pct": 0.11560416666666667,
+        "reliable_sample_pct": 99.846875,
+        "evidence_ok": true,
+        "hdr_headroom_ev": 1.3035618116981054,
+        "hdr_rho": 0.4985328550785632,
+        "sdr_pair_exact": true,
+        "demosaic_algorithm": "DHT (baseline auto selection)"
+      },
+      "new": {
+        "raw_sha256": "e29cea2f290946f011437ab30697a0ba270e9956bf46dcd4ed76cd7f115d0574",
+        "scene_sha256": "58d4af81e5ffac756acc9161e9d54034946b7482d55a4544383661ab50aba3eb",
+        "scene_scale": 32767.5,
+        "baseline_exposure": 1.0,
+        "auto_ev": 0.0,
+        "black_ev": -5.140269584655762,
+        "white_ev": 4.061969327926636,
+        "noise_floor": [
+          -8.592980804427294,
+          "model"
+        ],
+        "noise_ev_offset": 1.0,
+        "snr_coords": {
+          "snr1": -7.699401915929869,
+          "snr10": -1.5409155596670638,
+          "snr20": 0.45293584569968903
+        },
+        "raw_hard_clip_pct": {
+          "0": 0.029358621022796263,
+          "1": 0.07038562116249042,
+          "2": 9.791646811382855e-05,
+          "3": 0.07053249586466116
+        },
+        "processing_loss_pct": 0.22478333333333333,
+        "reliable_sample_pct": 99.774125,
+        "evidence_ok": true,
+        "hdr_headroom_ev": 1.2880381395942235,
+        "hdr_rho": 0.4984944263764988,
+        "sdr_pair_exact": true,
+        "demosaic_algorithm": "AHD",
+        "loss_support": "bayer-AHD: conservative radius-5 source support; maximum DefaultScale support"
+      },
+      "scene_difference": {
+        "mean_abs": 0.0022502809297293425,
+        "p99_abs": 0.016976406797766685,
+        "max_abs": 0.5275601148605347,
+        "changed_pixel_pct": 99.94966666666667,
+        "sampling": "every fourth row/column",
+        "units": "scene normalization before fixed midgray/userEV"
+      },
+      "sdr_difference": {
+        "mean_abs": 1.9291608333587646,
+        "p99_abs": 14.0,
+        "max_abs": 208.0,
+        "changed_pixel_pct": 93.10034999999999,
+        "sampling": "all pixels",
+        "units": "8-bit output code"
+      },
+      "delivery": [
+        {
+          "format": "sdr",
+          "file_bytes": 8995744,
+          "production_roundtrip_gate": "accepted",
+          "delivery_profile": "share-hq",
+          "delivery_quality": 97,
+          "chroma_subsampling": "4:2:0",
+          "base_mean_code_error": 2.4476338472222223,
+          "base_p99_code_error": 19.0,
+          "base_local_detail_loss": 0.4547058939933777
+        },
+        {
+          "format": "ultrahdr-heic",
+          "file_bytes": 34221980,
+          "production_roundtrip_gate": "accepted",
+          "delivery_profile": "share",
+          "delivery_quality": 95,
+          "chroma_subsampling": "4:2:0",
+          "bit_depth": 10,
+          "base_mean_code_error": 2.0707536944444445,
+          "base_p99_code_error": 19.0,
+          "base_local_detail_loss": 0.45186424255371094,
+          "local_detail_loss": 0.8644248247146606,
+          "headroom_error_ev": 0.0,
+          "file_headroom_ev": 1.2865577616079573,
+          "rendered_headroom_ev": 1.2880381395942235,
+          "actual_headroom_ev": 1.2865156016964183
+        }
+      ]
+    }
+  ],
+  "non_dng_decode_smoke": [
+    {
+      "sample": "DSC00225.ARW",
+      "shape": [
+        2344,
+        3514,
+        3
+      ],
+      "half_size": true,
+      "coding_white_levels": [
+        32800.0,
+        32800.0,
+        32800.0,
+        32800.0
+      ],
+      "noise_model_status": "valid",
+      "finite": true
+    },
+    {
+      "sample": "DSCF0214.RAF",
+      "shape": [
+        2589,
+        3876,
+        3
+      ],
+      "half_size": true,
+      "coding_white_levels": [
+        16383.0
+      ],
+      "noise_model_status": "valid",
+      "finite": true
+    }
+  ],
+  "limits": [
+    "Numeric old/new differences combine automatic AHD selection with changed reliable-tail and fixed noise-EV planning; they do not measure preference or image-quality improvement.",
+    "All full-resolution sources and outputs used strict native formation. Scene difference samples every fourth row/column; SDR difference measures every output pixel.",
+    "Timing overlaps other verification workloads and is not a performance benchmark.",
+    "JPEG uses fixed share-hq q97/420; HDR HEIF uses fixed share q95/420. No automatic encoder search or 20 MB HEIF guarantee was tested.",
+    "HDR HEIF accepted current production base/HDR/headroom/local-detail gates without threshold overrides; passing is not proof of all weak luma/chroma texture preservation.",
+    "SDR input remains 8-bit even in 10-bit HEIF; float SDR input and exact bulk camera matching remain deferred.",
+    "Explicit DHT or unaudited algorithms with source loss retain conservative full-frame permission; spatial highlight recovery support remains conservative.",
+    "No fp PTC/dark-frame calibration was available; noise propagation remains approximate."
+  ]
+}

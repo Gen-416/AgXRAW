@@ -55,6 +55,7 @@ class _RawContext:
 def _acquire(source):
     with (patch("dngscan.evidence.rawpy.imread", return_value=source),
           patch("dngscan.spatial_black.read", return_value=None),
+          patch("dngscan.spatial_black.sensor_tags", return_value={}),
           patch("dngscan.embedded_lens.read", return_value=None)):
         return acquire_raw_evidence(Path("ownership-test.dng"))
 

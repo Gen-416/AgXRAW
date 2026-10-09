@@ -181,3 +181,15 @@ Collect 明确无法分辨的读噪 ISO 及跨越失败点的插值区间，现�
 现在先独立验证标定的 DN 尺度并读取适用频谱，读噪未分辨或普通缺测只影响方差系数。DNG 替代后保留原标定来源、原因及横纵频谱；实测异常继续令 HDR 噪声因子为 0、色度核跳过。相机/快门、ISO 域与 DN 尺度不匹配的频谱不会借用；文件声明已降噪或非法仍优先拒绝。预览与分析缓存升级到 23，淘汰旧回退结果。
 
 [真实 DNG 组合回归](../../tests/test_spectral_fallback_pipeline.py)同时覆盖有效读噪、普通插值、无 DNG 替代及频谱域外对照。域外对照仍实际启用色度核，避免把所有回退都禁用来掩盖问题；模型单元测试另覆盖低/零/高/正常频谱、双轴保留、DN 不匹配及缓存往返。10-bit SDR 母版与 bulk 机型匹配继续后置。
+
+## 12. 编码范围、截断支撑与噪声坐标（基准 049bfd6）
+
+本轮修复阶段之间的三类证据错位：独立保存 DNG 编码白点及最大黑位，让标定 DN 适用性、a/b 与解码方差传递共用来源；`LinearResponseLimit` 继续描述线性区间，不改变编码尺度。记录 WB／前级校正的实际截断，再覆盖解拜耳及 DefaultScale 的来源支撑。固定文件 BE 进入噪声底、SNR 和黑端点的 scene-EV 转换，RAW 模型及用户 EV 的既有含义不变。
+
+DHT 的原地坏点处理及全帧极值步骤尚无已审计的局部支撑。显式选择 DHT 时保留成像算法，存在前级损失则使用整帧保守权限。`auto + clip` 全尺寸 Bayer 此时选择支持的 AHD，并报告原因；AHD 用经固定 LibRaw 源码核对的半径 5，半尺寸 Bayer 用来源 2×2 最大值。DefaultScale 使用真实累加坐标及两个来源 tap；尺寸舍入后不变也执行。空间高光重建和其他未经核对的算法仍保守退让，不宣称完整局部支撑或精确噪声协方差。
+
+预览缓存升至 24，窗口尺寸以 JSON 稳定列表保存，完整 Analysis 在 envelope 和磁盘往返后均能实际命中；编码范围、几何或固定噪声坐标不兼容仍失效。
+
+三张 fp 实拍的 RAW 证据哈希保持不变，均触发自动 AHD。相对基准，最终 SDR 的逐通道平均绝对差约为 1.93–5.33 个 8-bit 码值，局部最大差更大；这是解拜耳、可靠尾部及黑端规划共同变化的结果，不是编码误差，也不代表量化出的画质提升。对应 HDR 使用量余量分别从 1.122／1.012／1.304 EV 变为 0.943／0.908／1.288 EV，保留正余量。六次全尺寸 SDR JPEG / HDR HEIF 导出通过实际回读及现有门限，独立 SDR 与 HDR base 母版逐字节一致。HEIF 测试使用固定 share q95，JPEG 使用 share-hq q97／4:2:0，未执行自动编码搜索，也没有保证 HEIF 小于 20 MB。
+
+详见[机器可读验收记录](../assets/delivery-quality/pipeline-evidence-boundaries-20261009.json)和新增真实 DNG 回归：[编码范围](../../tests/test_noise_coding_range.py)、[黑位与线性化](../../tests/test_noise_coding_endpoints.py)、[解拜耳支撑](../../tests/test_demosaic_loss_support.py)、[同尺寸 DefaultScale 与 Linear DNG](../../tests/test_decoder_loss_edge_variants.py)、[BE 坐标](../../tests/test_noise_scene_ev.py)、[缓存往返](../../tests/test_analysis_cache_geometry_roundtrip.py)。实拍通过现有交付门限仍不等于全部弱纹理完整；10-bit SDR 母版和 bulk 机型匹配继续后置。

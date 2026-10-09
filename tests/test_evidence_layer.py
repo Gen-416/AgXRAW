@@ -29,7 +29,7 @@ class _ContextRaw:
         self.raw_pattern = np.asarray([[0, 1], [3, 2]], dtype=np.uint8)
         self.rgb_xyz_matrix = np.eye(4, 3, dtype=np.float32)
         self.color_matrix = np.eye(3, 4, dtype=np.float32)
-        self.sizes = SimpleNamespace(flip=5)
+        self.sizes = SimpleNamespace(flip=5, pixel_aspect=1.)
 
     def __enter__(self):
         return self
@@ -43,12 +43,15 @@ class EvidenceContractTests(unittest.TestCase):
         source = _ContextRaw()
         with (patch("dngscan.evidence.rawpy.imread", return_value=source),
               patch("dngscan.spatial_black.read",return_value=None),
+              patch("dngscan.spatial_black.sensor_tags",return_value={}),
               patch("dngscan.embedded_lens.read",return_value=None)):
             evidence = acquire_raw_evidence(Path("camera.arw"))
 
         self.assertEqual(evidence.provider, "libraw")
         self.assertIn("LibRaw", evidence.provider_version or "")
         self.assertEqual(evidence.white_level, 4095)
+        self.assertEqual(evidence.coding_white_levels, [4095.] * 4)
+        self.assertEqual(evidence.coding_black_levels, [512.] * 4)
         self.assertEqual(evidence.orientation_flip, 5)
         self.assertEqual(evidence.color_desc, "RGBG")
         self.assertEqual(evidence.raw_pattern, [[0, 1], [3, 2]])

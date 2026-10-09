@@ -32,10 +32,15 @@ def saturated_green_scene():
 
 
 def camera_decode(path, mode, half):
-    """Actual LibRaw camera planes before project-owned late lens corrections."""
+    """Fixed DHT camera planes before project-owned late lens corrections.
+
+    Auto may choose AHD after a pre-demosaic clipping event.  These tests hold
+    the algorithm fixed so they isolate the late lens range/geometry contract;
+    test_demosaic_loss_support separately exercises automatic selection.
+    """
     with rawpy.imread(str(path)) as raw:
         camera = raw_io.render_to_scene_rec2020(raw, mode, half,
-            raw_io.resolve_demosaic_algorithm(raw, 'auto'),
+            raw_io.resolve_demosaic_algorithm(raw, 'dht'),
             raw_io._fixed_asshot_wb_kwargs(raw.camera_whitebalance), camera_rgb=True)
         matrix = ops.libraw_camera_matrix(raw.color_matrix, raw.rgb_xyz_matrix, is_dng=True)
     return camera, matrix
@@ -55,7 +60,7 @@ class ReconstructedLensFileTests(unittest.TestCase):
                     for mode in ('clip', 'blend', 'reconstruct'):
                         with self.subTest(fast=fast, half=half, mode=mode), patch.dict(os.environ, DNGSCAN_FAST=fast):
                             write_sensor_dng(path, signal=pixels, neutral=NEUTRAL)
-                            reference = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode)
+                            reference = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode, demosaic='dht')
                             if mode != 'clip':
                                 # This fixture really exercises a reconstructed plane
                                 # above its nominal WB-scaled sensor-white boundary.
@@ -65,7 +70,7 @@ class ReconstructedLensFileTests(unittest.TestCase):
                                 self.assertTrue(np.any(camera > nominal))
                             for opcode in ((1, IDENTITY_WARP), (3, UNITY_VIGNETTE)):
                                 write_sensor_dng(path, signal=pixels, neutral=NEUTRAL, opcodes={51022: [opcode]})
-                                result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode)
+                                result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode, demosaic='dht')
                                 np.testing.assert_array_equal(result.scene_rec2020_render, reference.scene_rec2020_render)
                                 np.testing.assert_array_equal(result.raw_image, pixels)
                                 np.testing.assert_array_equal(result.clip_masks, reference.clip_masks)
@@ -93,7 +98,7 @@ class ReconstructedLensFileTests(unittest.TestCase):
                             expected_camera = np.clip(gained, 0, 65535).astype(np.uint16) if mode == 'clip' else gained
                             expected = ops.camera_to_rec2020(expected_camera, matrix)
                             write_sensor_dng(path, signal=pixels, neutral=NEUTRAL, opcodes={51022: [(3, vignette)]})
-                            result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode)
+                            result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode, demosaic='dht')
                             np.testing.assert_array_equal(result.scene_rec2020_render, expected)
                             np.testing.assert_array_equal(result.raw_image, pixels)
                             if mode != 'clip':
@@ -118,7 +123,7 @@ class ReconstructedLensFileTests(unittest.TestCase):
                                 expected_camera = ops.warp_image(camera if mode == 'clip' else camera.astype(np.float32), warp)
                             expected = ops.camera_to_rec2020(expected_camera, matrix)
                             write_sensor_dng(path, signal=pixels, neutral=NEUTRAL, opcodes={51022: [(1, warp_payload)]})
-                            result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode)
+                            result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode, demosaic='dht')
                             np.testing.assert_allclose(result.scene_rec2020_render, expected, rtol=2e-7, atol=.02 if mode != 'clip' else 2.)
                             np.testing.assert_array_equal(result.raw_image, pixels)
                             if mode != 'clip':
@@ -142,7 +147,7 @@ class ReconstructedLensFileTests(unittest.TestCase):
                             with patch.dict(os.environ, DNGSCAN_FAST='0'):
                                 expected = ops.camera_to_rec2020(ops.warp_image(gained, warp), matrix)
                             with patch.object(embedded_lens, 'read', return_value=profile):
-                                result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode)
+                                result = raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode, demosaic='dht')
                             np.testing.assert_allclose(result.scene_rec2020_render, expected, rtol=2e-7, atol=.02 if mode != 'clip' else 2.)
                             np.testing.assert_array_equal(result.raw_image, pixels)
                             if mode != 'clip':
@@ -155,15 +160,15 @@ class ReconstructedLensFileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / 'point.dng'
             write_sensor_dng(path, signal=saturated_green_scene(), neutral=NEUTRAL)
-            reference_loss = raw_io.load_raw(path, scene_highlight_mode='clip').scene_processing_loss_pct
+            reference_loss = raw_io.load_raw(path, scene_highlight_mode='clip', demosaic='dht').scene_processing_loss_pct
             for opcode in ((8, polynomial), (7, table), (12, scale_rows)):
                 write_sensor_dng(path, signal=saturated_green_scene(), neutral=NEUTRAL, opcodes={51022: [opcode]})
                 for mode in ('blend', 'reconstruct'):
                     for half in (False, True):
                         with self.subTest(kind=opcode[0], mode=mode, half=half):
                             with self.assertRaisesRegex(RuntimeError, 'stage-3 point transforms.*choose clip mode or Apple RAW'):
-                                raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode)
-                accepted = raw_io.load_raw(path, scene_highlight_mode='clip')
+                                raw_io.load_raw(path, scene_half_size=half, scene_highlight_mode=mode, demosaic='dht')
+                accepted = raw_io.load_raw(path, scene_highlight_mode='clip', demosaic='dht')
                 self.assertEqual(accepted.scene_highlight_mode, 'clip')
                 self.assertEqual(accepted.scene_processing_loss_pct, reference_loss)
 

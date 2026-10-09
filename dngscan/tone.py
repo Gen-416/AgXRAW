@@ -443,14 +443,15 @@ def build_color_geometry_plan(
         # declared noise floor less GATED_BELOW_NOISE_FLOOR_EV (self-review
         # 2026-08-27, P2: "-DR - 1.0" was an analysis-domain number used as a
         # scene EV, 4 EV too deep).
-        from .analysis import noise_floor_ev_estimate
+        from .analysis import noise_floor_ev_estimate, raw_stop_scene_ev
 
         floor_scene_ev, _src = noise_floor_ev_estimate(analysis)
         noise_floor = -12.0
         if math.isfinite(floor_scene_ev):
             noise_floor = floor_scene_ev - GATED_BELOW_NOISE_FLOOR_EV
         elif math.isfinite(analysis.usable_dr_eff_ev):
-            noise_floor = MIDGRAY_HEADROOM_STOPS - float(analysis.usable_dr_eff_ev) - GATED_BELOW_NOISE_FLOOR_EV
+            noise_floor = (raw_stop_scene_ev(analysis, -float(analysis.usable_dr_eff_ev))
+                           - GATED_BELOW_NOISE_FLOOR_EV)
         return ColorGeometryPlan(
             target_gamut=output_gamut,
             raw_clip_retreat_strength=0.0,
@@ -529,13 +530,13 @@ def build_tone_compression_plan(
     # scene domain and sat 4.5 EV below the floor the design declares
     # (MIDGRAY_HEADROOM_STOPS - DR). The black endpoint may sit
     # BLACK_BELOW_NOISE_FLOOR_EV below that floor, no further.
-    from .analysis import noise_floor_ev_estimate
+    from .analysis import noise_floor_ev_estimate, raw_stop_scene_ev
 
     floor_scene_ev, _floor_source = noise_floor_ev_estimate(analysis)
     if math.isfinite(floor_scene_ev):
         noise_limited_black = floor_scene_ev - BLACK_BELOW_NOISE_FLOOR_EV
     elif math.isfinite(plan_dr):
-        noise_limited_black = MIDGRAY_HEADROOM_STOPS - plan_dr - BLACK_BELOW_NOISE_FLOOR_EV
+        noise_limited_black = raw_stop_scene_ev(analysis, -plan_dr) - BLACK_BELOW_NOISE_FLOOR_EV
     else:
         noise_limited_black = -12.0
     black_ev = max(ev_p1 - 0.25, noise_limited_black)

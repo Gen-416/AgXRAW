@@ -85,9 +85,15 @@ python tools/import_jptc.py /path/to/ptc-iso100.csv --brand SIGMA --model fp --i
 
 选中的先验能构成有效 shot/read 模型时，用其计算归一化 RAW 噪声方差和 SNR。否则尝试文件 Raw IFD 内合法的 DNG `NoiseProfile`；没有可用来源就明确报告不可用，不再用照片纹理的块内方差冒充物理噪声。文件模型是厂商声明，合法解析不等于已由自己的 PTC 验证。
 
+标定尺度使用独立保存的 DN 编码端点：DNG 为线性化后的 `WhiteLevel` 减该分量的最大黑位，
+空间黑图案和行列变化的最大值计入其中。该范围同时用于增益适用性、归一化 a/b 和解码方差传递；
+`LinearResponseLimit` 只是线性有效区间，改变它不能改变编码尺度或绕过独立频谱限制。
+真实编码范围不匹配仍按现有容差拒绝。LibRaw 解码器自身的缩放使用编码最大值减共同最小黑位，
+此解码斜率与噪声模型的归一化分母不是同一个量。
+
 读噪未分辨不会丢弃整份匹配标定并静默退回包内先验：独立有效的增益继续保留，匹配诊断显示 `gain-only`，分别报告增益与读噪状态。没有独立替代来源时，噪声模型为 `unresolved`，分析状态为 `model-unresolved`，不生成物理 SNR 或读噪底，HDR 尾部 SNR 门控为 0，色度核跳过。普通缺测仍为 `unavailable`；没有独立异常频谱等负面证据时，该 HDR 因子保持中性值 1，这不绕过剪切、色域及解码器限制。合法的独立 `NoiseProfile` 可以提供替代模型，此时来源明确为 DNG，原标定来源和未分辨原因也随报告、界面和缓存保留。
 
-方差系数来源与独立适用性约束分别处理。读噪未分辨或普通缺测时，同一适用标定已经测得的横纵频谱仍然保留；DNG 替代系数不会将其重置为 `unknown`。例如 ISO 200 读噪未分辨、实测 `h = 0.1` 且 DNG 系数合法时，模型可以为 `valid` / `DNG NoiseProfile`，同时保持 `measured-spectral-imbalance`、HDR 噪声因子为 0、色度核跳过。系数来源及原标定来源、原因、频谱一起进入报告和缓存。频谱仍须满足相机、快门、ISO 域及 DN 尺度检查；不能借用其他 ISO 或不兼容读出条件的测量。普通缺测且无可用 DNG 系数时，独立异常频谱也不会被清空。预览与分析缓存版本 23 淘汰旧的回退结果。
+方差系数来源与独立适用性约束分别处理。读噪未分辨或普通缺测时，同一适用标定已经测得的横纵频谱仍然保留；DNG 替代系数不会将其重置为 `unknown`。例如 ISO 200 读噪未分辨、实测 `h = 0.1` 且 DNG 系数合法时，模型可以为 `valid` / `DNG NoiseProfile`，同时保持 `measured-spectral-imbalance`、HDR 噪声因子为 0、色度核跳过。系数来源及原标定来源、原因、频谱一起进入报告和缓存。频谱仍须满足相机、快门、ISO 域及 DN 尺度检查；不能借用其他 ISO 或不兼容读出条件的测量。普通缺测且无可用 DNG 系数时，独立异常频谱也不会被清空。预览与分析缓存版本 24 淘汰旧的回退、编码范围、损失支撑和噪声坐标结果。
 
 当前检查与限制如下：
 
@@ -99,6 +105,11 @@ python tools/import_jptc.py /path/to/ptc-iso100.csv --brand SIGMA --model fp --i
 - 当前 JPTC 输入使用 G1 或绿色汇总形成 scalar-green 模型。后续把同一增益和读噪用于不同颜色平面是明确的近似，不是实测得到了完整 RGB 协方差。频谱摘要可触发保守限制，尚未自动变成分频降噪、条纹修复或固定图样校正；旧行列方差字段的语义也不升级为已验证条纹比例。
 
 模型状态、来源与单帧相关性线索分开记录。真实纹理导致 G1/G2 残差相关时，不会单凭它撤销匹配标定。HDR 使用模型 SNR；有效、普通缺测、未分辨和明确拒绝分别记录，剪切、色域和解码器约束仍独立存在。证据约束黑端点的读噪底来自独立模型，可靠 RAW 尾部单独约束白端点；缺模型时不把局部变化量改称实测读噪底，RAW 剪切分析也不会因此消失。
+
+噪声底和 SNR 坐标转成 scene EV 时，计入有效文件 `BaselineExposure`；BE +1 EV 使这些坐标及
+受噪声限制的 SDR/HDR 黑端点同步增加 1 EV，RAW a/b、RAW SNR 和传感器 DR 不变。
+用户 EV 不重新塑造固定计划。BE 已由 Apple 烘焙在像素中或保存在 `scene_scale` 分母中，
+都只转换一次证据坐标，不再次乘图像；这一转换不升级 Apple 的绝对辐射标定可信度。
 
 频谱的横纵高频/中频功率比另作适用性检查：任一比值小于 0.5 或大于 2，标为 `measured-spectral-imbalance`；有效 gain/read 模型仍保留，但 HDR 尾部 SNR 门控为 0、当前粗网格色度核跳过。此阈值是保守启发式限制，不是相关噪声的完整统计检验。其他已测比值仅记为 `measured-spectrum-summary`，接近 1 不能证明白噪声，也不能排除窄带峰或整行/列偏置；没有摘要时为 `unknown`。界面显示该状态与横纵比值，原始测量仍需保留以便后续复核。
 
@@ -119,3 +130,7 @@ Apple RAW 的降噪、解拜耳和其他内部变换没有可用的协方差标�
 导入、校验及用户存储在 [calibration.py](../dngscan/calibration.py)，模型选择在 [noise_model.py](../dngscan/noise_model.py)，处理域传播在 [noise_propagation.py](../dngscan/noise_propagation.py)。GUI 及 CLI 使用同一公共导入接口，标定变动会改变预览、磁盘分析和导出配方指纹；导出分析期间变动则在写图前要求重试。
 
 接口与缓存回归见 [test_user_calibration.py](../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../tests/test_calibration_gui_cli.py)；模型和滤波见 [test_noise_model.py](../tests/test_noise_model.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py)。[test_rational_metadata_state.py](../tests/test_rational_metadata_state.py) 通过大小端真实 TIFF 标签检查未知、非法及有效声明；Collect 合成 CSV 和导入后的分析测试覆盖失败点不被重新插值、增益保留及 HDR/色度核行为。[test_spectral_fallback_pipeline.py](../tests/test_spectral_fallback_pipeline.py) 用带真实 ISO / NoiseProfile 标签的合成 DNG，实际执行导入、LibRaw 解码、分析和色度核入口，验证方差回退保留独立异常频谱，并用频谱域外输入验证正常启用的对照路径。合成测试和其他相机数据不能替代自己的 fp PTC、黑场及实拍纹理验收。
+
+编码范围与频谱约束组合见 [test_noise_coding_range.py](../tests/test_noise_coding_range.py)，
+黑位／线性化端点见 [test_noise_coding_endpoints.py](../tests/test_noise_coding_endpoints.py)，
+实际 BE 解码至 SDR/HDR 计划的坐标一致性见 [test_noise_scene_ev.py](../tests/test_noise_scene_ev.py)。

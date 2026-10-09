@@ -58,9 +58,9 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
     Deliberately no scene-decoder argument: selecting Apple RAW, LibRaw, or a future
     renderer cannot affect evidence acquisition or its provenance.
 
-    LibRaw applies LinearizationTable while unpacking, and its exposed white
-    level accounts for LinearResponseLimit. Applying either again would corrupt
-    this contract. BlackLevelDeltaH/V are reduced to means by the pinned LibRaw
+    LibRaw applies LinearizationTable while unpacking; its per-channel white
+    accounts for LinearResponseLimit. Keep that linear-validity threshold
+    separate from the file's coding endpoints. BlackLevelDeltaH/V are reduced to means by the pinned LibRaw
     TIFF reader; the separate spatial_black calibration restores the position-dependent
     model for working pixels and analysis, while these acquired codes stay immutable.
     """
@@ -113,6 +113,9 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
 
             from .spatial_black import read as read_spatial_black
             spatial_black = read_spatial_black(path, raw)
+            from .raw_units import coding_endpoints
+            coding_white, coding_black = coding_endpoints(
+                path, white_level, white_pc_attr, black_attr if black_attr is not None else (), spatial_black)
             from .embedded_lens import read as read_embedded_lens
             lens = read_embedded_lens(path)
             return RawEvidence(
@@ -149,6 +152,8 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
                 sample_kind="linear-camera-rgb" if raw_image.ndim == 3 else "cfa",
                 provider_version=libraw_runtime_id(),
                 color_matrix=color_matrix,
+                coding_white_levels=coding_white,
+                coding_black_levels=coding_black,
             )
     except FileNotFoundError:
         raise

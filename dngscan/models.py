@@ -40,6 +40,10 @@ class RawEvidence:
     # File-authored LibRaw cmatrix candidate exposed by rawpy.color_matrix.
     # DNG may adopt it; non-DNG RGB cameras derive rgb_cam from xyz_to_cam.
     color_matrix: Any | None = None
+    # File coding endpoints for normalized RAW noise units. These are separate
+    # from LibRaw's LinearResponseLimit-adjusted linear-validity thresholds.
+    coding_white_levels: list[float] = field(default_factory=list)
+    coding_black_levels: list[float] = field(default_factory=list)
     # Search/render-lifetime memo only. Immutable scalar summaries and weak
     # references cannot retain sensor rasters or survive dataclasses.replace().
     _sensor_summary_cache: Any | None = field(default=None, init=False, repr=False, compare=False)
@@ -221,6 +225,9 @@ class RawBundle:
     chroma_nr_status: str = "disabled"
     chroma_nr_reason: str | None = None
     noise_model: Any | None = None
+    # Append to retain the existing positional construction order.
+    coding_white_levels: list[float] = field(default_factory=list)
+    coding_black_levels: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -295,6 +302,10 @@ class Analysis:
     noise_model: Any | None = None
     noise_observation_status: str = "unavailable"
     noise_correlation_status: str = "unknown"
+    # Fixed file-decoding exposure translates normalized sensor coordinates
+    # into the scene used for planning. Independent of mutable user EV and
+    # of whether BaselineExposure is baked into pixels or stored in a divisor.
+    sensor_to_scene_ev_offset: float = 0.0
 
 
 # frozen (review batch 21): compiled plans are cached and shared across

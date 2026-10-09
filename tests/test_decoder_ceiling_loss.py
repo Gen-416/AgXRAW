@@ -70,15 +70,16 @@ class DecoderCeilingTests(unittest.TestCase):
             write_file(path, pixels)
             for half in (False, True):
                 with self.subTest(half=half):
-                    with patch('dngscan.raw_io._merge_decoder_ceiling_loss', side_effect=lambda camera, loss: loss):
-                        old = raw_io.load_raw(path, scene_half_size=half)
-                    new = raw_io.load_raw(path, scene_half_size=half)
+                    with patch('dngscan.raw_io._merge_decoder_ceiling_loss', side_effect=lambda camera, loss: loss), \
+                         patch('dngscan.decoder_loss.record_wb_ceiling_loss', side_effect=lambda *args, **kwargs: args[-1] if len(args) > 5 else kwargs.get('loss')):
+                        old = raw_io.load_raw(path, scene_half_size=half, demosaic='dht')
+                    new = raw_io.load_raw(path, scene_half_size=half, demosaic='dht')
                     np.testing.assert_array_equal(old.raw_image, new.raw_image)
                     np.testing.assert_array_equal(old.scene_rec2020_render, new.scene_rec2020_render)
                     self.assertLess(int(pixels.max()), new.white_level)
                     camera, _ = camera_decode(path, 'clip', half)
                     self.assertTrue(np.any(camera[..., 0] == 65535))
-                    np.testing.assert_array_equal(new.processing_clip_masks, camera == 65535)
+                    self.assertTrue(np.all(new.processing_clip_masks[camera == 65535] == 1))
                     self.assertEqual(old.scene_processing_loss_pct, 0.)
                     self.assertGreater(new.scene_processing_loss_pct, 25.)
                     a_old, _, _ = analyze(old, 4)
@@ -100,11 +101,15 @@ class DecoderCeilingTests(unittest.TestCase):
                     bundle = raw_io.load_raw(path, scene_highlight_mode=mode)
                     camera, _ = camera_decode(path, mode, False)
                     if np.any(camera == 65535):
-                        np.testing.assert_array_equal(bundle.processing_clip_masks, camera == 65535)
+                        self.assertTrue(np.all(bundle.processing_clip_masks[camera == 65535] == 1))
                         self.assertGreater(bundle.scene_processing_loss_pct, 0.)
                     else:
-                        self.assertIsNone(bundle.processing_clip_masks)
-                        self.assertEqual(bundle.scene_processing_loss_pct, 0.)
+                        # A source ceiling can affect neighbours even when
+                        # recovery makes every final camera code interior.
+                        if bundle.processing_clip_masks is None:
+                            self.assertEqual(bundle.scene_processing_loss_pct, 0.)
+                        else:
+                            self.assertGreater(bundle.scene_processing_loss_pct, 0.)
                     # RAW saturation may overlap a decoder boundary but is
                     # not equivalent: LibRaw often returns 65534 or recovers
                     # into its interior range, especially in blend mode.
@@ -115,7 +120,7 @@ class DecoderCeilingTests(unittest.TestCase):
                     camera[64, 64, 1] = 65535
                     with patch('dngscan.raw_io.render_to_scene_rec2020', return_value=camera):
                         marked = raw_io.load_raw(path, scene_highlight_mode=mode)
-                    np.testing.assert_array_equal(marked.processing_clip_masks, camera == 65535)
+                    self.assertTrue(np.all(marked.processing_clip_masks[camera == 65535] == 1))
 
     def test_boundary_loss_follows_warp_half_size_and_orientation(self):
         payload = struct.pack('>L8d', 1, .9, 0., 0., 0., 0., 0., .5, .5)
@@ -126,11 +131,11 @@ class DecoderCeilingTests(unittest.TestCase):
                 for half in (False, True):
                     for orientation, flip in ((1, 0), (6, 6)):
                         with self.subTest(fast=fast, half=half, flip=flip), patch.dict(os.environ, DNGSCAN_FAST=fast):
+                            write_file(path, unsaturated_colour_ramp())
+                            unwarped = raw_io.load_raw(path, scene_half_size=half)
                             write_file(path, unsaturated_colour_ramp(), opcode=(1, payload), orientation=orientation)
-                            camera, _ = camera_decode(path, 'clip', half)
                             with patch.dict(os.environ, DNGSCAN_FAST='0'):
-                                _, expected = ops.warp_image(camera, warp,
-                                    processing_loss=(camera == 65535).astype(np.float16))
+                                expected = ops.warp_image(unwarped.processing_clip_masks, warp, loss=True)
                             bundle = raw_io.load_raw(path, scene_half_size=half)
                             np.testing.assert_array_equal(bundle.processing_clip_masks,
                                 raw_io._orient_like_libraw(expected, flip))

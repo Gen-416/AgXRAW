@@ -646,14 +646,26 @@ def estimate_raw_noise_floor(
     return float(np.median(estimates)) if estimates else float("nan")
 
 
+def raw_stop_scene_ev(analysis: Analysis, stop: float) -> float:
+    """Translate log2(normalized RAW signal) into fixed-plan scene EV.
+
+    Sensor noise/SNR remain in RAW units. Only their scene coordinates include
+    the file-decoding exposure recorded by analyze(); user exposure is excluded.
+    The default zero offset preserves legacy caller-created Analysis objects.
+    """
+    return (MIDGRAY_HEADROOM_STOPS + float(stop)
+            + float(getattr(analysis, "sensor_to_scene_ev_offset", 0.0)))
+
+
 def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
-    """Scene EV of the sensor noise floor under the fixed mid-gray exposure anchor.
+    """Scene EV of the sensor noise floor under the fixed file-decoding exposure.
 
     Tone planning renders with the constant anchor (mid gray = clip / 2**headroom at
-    EV 0), which puts the RAW full well at exactly +MIDGRAY_HEADROOM_STOPS scene EV.
+    EV 0), which puts nominal RAW full well at +MIDGRAY_HEADROOM_STOPS scene EV.
     A noise floor expressed as a fraction ``f`` of the full well therefore sits at
-    ``MIDGRAY_HEADROOM_STOPS + log2(f)`` scene EV — the same convention every scene
-    tone metric already uses.
+    ``MIDGRAY_HEADROOM_STOPS + log2(f) + sensor_to_scene_ev_offset``. The offset
+    accounts for fixed file BaselineExposure already present in the scene;
+    user EV does not reshape the fixed plan.
 
     Production prefers the matched normalized-RAW model (``model``). Legacy
     callers without a model retain their prior/frame fallback contract:
@@ -672,7 +684,7 @@ def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
         from .noise_model import model_read_floor
         floor = model_read_floor(model)
         if math.isfinite(floor) and 0 < floor < 1:
-            return MIDGRAY_HEADROOM_STOPS + math.log2(floor), "model"
+            return raw_stop_scene_ev(analysis, math.log2(floor)), "model"
         return float("nan"), "none"
     noise_e = analysis.noise_floor_e
     read_e = analysis.prior_read_noise_e
@@ -688,9 +700,9 @@ def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
         if math.isfinite(fullwell_e) and fullwell_e > 0.0:
             floor_fraction = float(read_e) / fullwell_e
             if 0.0 < floor_fraction < 1.0:
-                return MIDGRAY_HEADROOM_STOPS + math.log2(floor_fraction), "prior"
+                return raw_stop_scene_ev(analysis, math.log2(floor_fraction)), "prior"
     if math.isfinite(analysis.usable_dr_ev):
-        return MIDGRAY_HEADROOM_STOPS - float(analysis.usable_dr_ev), "frame"
+        return raw_stop_scene_ev(analysis, -float(analysis.usable_dr_ev)), "frame"
     return float("nan"), "none"
 
 
@@ -721,7 +733,7 @@ def snr_ev_coordinates(analysis: Analysis) -> dict[str, float] | None:
                 signal = (snr * snr * a + math.sqrt((snr * snr * a) ** 2 + 4 * snr * snr * b)) / 2
                 if not math.isfinite(signal) or not 0 < signal < 1:
                     return None
-                levels.append(MIDGRAY_HEADROOM_STOPS + math.log2(signal))
+                levels.append(raw_stop_scene_ev(analysis, math.log2(signal)))
             result[f"snr{snr}"] = max(levels)
         return result
     noise_e = analysis.noise_floor_e
@@ -747,7 +759,7 @@ def snr_ev_coordinates(analysis: Analysis) -> dict[str, float] | None:
             # A tier at or above the full well has no scene coordinate; a
             # partial answer would invite mixing tiers from different sensors.
             return None
-        out[f"snr{int(s)}"] = MIDGRAY_HEADROOM_STOPS + math.log2(frac)
+        out[f"snr{int(s)}"] = raw_stop_scene_ev(analysis, math.log2(frac))
     return out
 
 
@@ -1179,6 +1191,7 @@ def _analyze_decoded_scene(
         median_y = float(np.median(y))
         gamut, bright = compute_gamut_metrics(bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names, _median_y=median_y)
     nan = float("nan")
+    from .scene_scale import sensor_to_scene_ev_offset
     analysis = Analysis(
         channel_ids=[], labels={}, ceilings={}, ceil_spike_counts={},
         ceil_near_counts={}, ceil_spike_ok={}, fullwell_channel_ids=[],
@@ -1193,6 +1206,7 @@ def _analyze_decoded_scene(
         snr_curves={}, snr1_dr={}, snr1_stop={}, gamut_out_pct=gamut,
         bright_pixel_pct=bright, survivor_channel="unavailable", container_bits_est=None,
         usable_dr_eff_ev=nan, noise_evidence_status="unavailable",
+        sensor_to_scene_ev_offset=sensor_to_scene_ev_offset(bundle),
     )
     return (analysis, y, ev) if _return_planes else (analysis, None, None)
 
@@ -1311,6 +1325,7 @@ def analyze(
         usable_dr_eff = usable_dr
 
     survivor_id = min(channel_ids, key=lambda cid: clip_pct.get(cid, float("inf")))
+    from .scene_scale import sensor_to_scene_ev_offset
     analysis = Analysis(
         channel_ids=channel_ids,
         labels=labels,
@@ -1365,6 +1380,7 @@ def analyze(
         noise_model=noise_model,
         noise_observation_status="not-used-for-noise-calibration",
         noise_correlation_status=correlation_status,
+        sensor_to_scene_ev_offset=sensor_to_scene_ev_offset(bundle),
     )
     bundle.noise_model = noise_model
     return (analysis, y, ev) if _return_planes else (analysis, None, None)

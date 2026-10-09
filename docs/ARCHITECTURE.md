@@ -317,7 +317,12 @@ Several invariants are intended to survive future changes:
 - DNG [`BaselineExposure`](https://developer.apple.com/documentation/coreimage/cirawfilter/baselineexposure)
   is file-authored baseline rendering compensation. It is not
   shutter/aperture/ISO, an absolute sensor calibration, or content-adaptive auto
-  exposure. The explicit `--ev` adjustment comes after it.
+  exposure. The explicit `--ev` adjustment comes after it. Sensor noise and SNR
+  stay in normalized RAW units; their planning coordinates include the effective
+  file baseline through `Analysis.sensor_to_scene_ev_offset`. Thus a +1 EV baseline
+  moves the noise floor, SNR tiers and noise-limited black endpoints by +1 EV.
+  User EV does not reshape this fixed plan. A baseline already baked into Apple
+  pixels receives the same coordinate translation, without another pixel gain.
 - Scene luminance compiles tone endpoints and toe/shoulder behavior. RAW clipping and
   output-gamut pressure compile color permissions. A color metric must not move the
   black/white endpoints, and a tone percentile must not pretend to restore lost CFA
@@ -345,6 +350,15 @@ can retreat before interpolation reaches a hard discontinuity. If green reaches 
 well before red, both the hard statistics and the soft permission map preserve that
 channel distinction.
 
+Noise calibration uses a separate encoding range: the file's DNG `WhiteLevel`
+minus the maximum black level of that component, after linearization. Explicit
+`coding_white_levels` / `coding_black_levels` supply both prior DN-scale checks
+and decoder variance transfer. `LinearResponseLimit` describes linear validity;
+it does not rescale stored DN or waive an otherwise applicable spectral constraint.
+Non-DNG files retain LibRaw's per-channel endpoint convention. The decoder's
+own scaling denominator is different: pinned LibRaw subtracts the common minimum
+channel pedestal from its encoding maximum. Existing prior-scale tolerances remain.
+
 Highlight reconstruction can create continuous luminance and plausible color, but it
 cannot recover signal the sensor never recorded. Clipping evidence is saved before
 reconstruction, so a repaired pixel can never feed back and define the global white
@@ -353,7 +367,10 @@ endpoint.
 ### Demosaic
 
 Full-resolution `auto` export tries DHT, DCB, then AHD according to what the local
-rawpy/LibRaw build actually supports. Non-Bayer data such as X-Trans stays on the
+rawpy/LibRaw build actually supports. If a full Bayer `clip` decode records an
+actual pre-demosaic loss, `auto` selects supported AHD so a verified local loss
+bound can be used, and records the selected algorithm and reason. Explicit
+algorithm requests remain explicit. Non-Bayer data such as X-Trans stays on the
 corresponding LibRaw path. The GUI decodes at full resolution and downsamples the
 display preview; CLI half-size probes remain available. A display proxy is useful for
 exposure, color, and highlight decisions but does not show all final-resolution texture.
@@ -516,6 +533,15 @@ unreliable decoder-range boundaries before lens operations. This conservative
 flag does not establish how far a sample was clipped and may overlap sensor
 saturation; it does not change the original RAW clipping statistics. Late
 floating lens values above 65535 are valid extended values, not this boundary.
+WB overflow and stage-2 losses are also recorded before interpolation. Bayer
+half-size transport takes per-plane maxima over the source 2x2 footprint;
+full-size AHD uses a conservative radius of five native pixels. DefaultScale
+transports maximum evidence over LibRaw's two source taps before existing
+warp/crop/orientation transport. Full-size DHT's in-place and frame-wide steps
+have no audited local bound here: an explicit DHT decode with pre-demosaic loss
+uses whole-frame conservative permission. Other unaudited algorithms and spatial
+highlight reconstruction use that policy when a source loss exists. These are
+support bounds, not exact demosaic covariance or loss-amplitude measurements.
 The ABI 20 warp transports image and processing loss in one pass; identity
 operations preserve pixels and do not flag existing saturation as new loss.
 RAW masks and guidance follow the same per-camera-channel geometry. This does
@@ -527,9 +553,12 @@ reference and zero HDR headroom. Known sensor clipping of at least 95% also
 vetoes the decoded-image estimate; unavailable sensor statistics stay unknown.
 
 Cached Analysis reuse replays the measured-full-well mask refresh on the fresh
-bundle, preserving processing loss. Preview cache version 23 invalidates the
-previous correction, calibration validity and sensor-sampling policies, plus
-DNG variance fallbacks that discarded independent spectral constraints.
+bundle, preserving processing loss. Preview cache version 24 invalidates old
+encoding-range, loss-support and noise scene-EV results as well as previous
+correction, sampling and spectral-fallback policies. The retained native window
+is serialized as a JSON-stable list, so envelope/disk metadata comparisons match
+a fresh decode; runtime reconstruction may use a tuple. Fixed noise-coordinate
+context survives the same Analysis round trip.
 LibRaw already handles DNG linearization tables and LinearResponseLimit.
 Spatial BlackLevelRepeatDim and BlackLevelDeltaH/V are evaluated per position
 on a separate working buffer; explicit LibRaw black overrides prevent a second
