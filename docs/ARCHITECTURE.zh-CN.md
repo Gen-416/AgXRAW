@@ -319,6 +319,14 @@ ceiling，没有才回退到逐通道 metadata white level。它不会拿一个�
 非 DNG 保留 LibRaw 的逐通道端点约定，现有先验尺度匹配容差不放宽。
 LibRaw 自己的解码缩放分母则是编码最大值减各通道的共同最小黑位，与上述归一化范围分别保存。
 
+采集模式约束独立于镜头校正读取：主 RAW IFD 提供存储位深、RAW/ActiveArea/DefaultCrop
+几何及压缩过程，LibRaw 提供完整 mosaic 尺寸。Compression=7 要检查 JPEG 过程和 point
+transform，不能仅凭标签宣称无损。存储位深不证明 ADC 位深，裁剪不证明像素合并。标定
+`readout_contract` 的已声明字段须与文件证据匹配，缺证据与明确冲突分别报告；噪声模型和
+电子域报告共用结果。失败的用户约束不会静默借用未经核验的包内替代参数，独立有效的
+DNG NoiseProfile 仍可提供方差。未声明更细模式的相机级先验保留其近似用途。预览与完整
+分析缓存升到 26，保留采集描述符；格式和支持边界见[标定说明](NOISE_CALIBRATION.zh-CN.md)。
+
 2×2 cell 的旧指标保留“裁切感光点数量”语义；HDR 通道分离另用 `color_clip_k_of_all_pct`
 统计丢失的 R/G/B 颜色组数量。Bayer 的 G1、G2 同时裁切仍只算一种颜色，不能与 R+B 裁切
 混为一谈。X-Trans 按一个完整 CFA 周期聚合，Linear RGB 按像素聚合；未知颜色布局不给
@@ -854,8 +862,11 @@ float32 母版；编码器按行分块，加入确定性 TPDF 抖动后仅量化
 路径。Core Image 关闭 HDR 展开，以非线性目标色域 RGBAf 回读 10-bit SDR；自动候选比较和
 元数据搬运后的最终验收直接使用浮点像素，误差单位仍为等效 8-bit 码值，门限不变。GUI 的
 uint8 缩略图只在验收后生成。ICC 必须存在，NCLX 若存在，其原色、传递函数和范围必须匹配。
-独立 HDR gain-map 封装仍采用 uint8 SDR base 与独立 float16 HDR alternate，本次 SDR 修复
-不改变该合同。
+HDR HEIF 的 10-bit 主图同样保留完成传递函数的 float32 底图，与独立 float16 HDR alternate
+共用一次场景处理。Core Image 使用浮点输入及专用 HEIF10 写入接口生成模板，主图 donor
+从同一浮点底图做确定性 10-bit TPDF 量化；自动候选及最终主图检查采用浮点回读。不能用
+通用 HEIF 写入接口加浮点格式替代 HEIF10：本机实测前者仍输出 8-bit 模板。JPEG 与显式
+8-bit HEIF 继续使用 uint8 底图。元数据搬运须证明图像载荷、颜色属性与 rendition 关系未变。
 
 HDR 输出是可选的 Apple ISO 21496-1 gain-map 封装（JPEG 或 HEIC），目前只在
 macOS/Core Image 后端可用，并且只接 AgX tone core。HEIC 与 JPEG 共用同一套 formation

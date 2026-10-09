@@ -150,7 +150,7 @@ DNG 规范把它定义为归一化线性信号 x 的 `variance = Sx + O`；一�
 
 以下记录本轮运行代码的实施范围，不改写前文基准反例。具体 GUI 入口、可执行命令、接受格式与适用条件见[实测标定接口](../NOISE_CALIBRATION.zh-CN.md)。
 
-- 新增本机用户标定存储及公共管理接口，GUI / CLI 可导入 Collect CSV 目录、`dngscan-jptc-collect-1` 和 `dngscan-jptc-prior-1` JSON，启停或删除记录。适用用户数据优先于包内 curated；相机精确匹配、快门声明、测量 ISO 域、增益跳变、拟合质量及 DN 尺度仍须通过检查。`compression` / `geometry` 目前只保留测量声明并核对 Collect 内一致性，尚未逐文件验证。
+- 新增本机用户标定存储及公共管理接口，GUI / CLI 可导入 Collect CSV 目录、`dngscan-jptc-collect-1` 和 `dngscan-jptc-prior-1` JSON，启停或删除记录。适用用户数据优先于包内 curated；相机精确匹配、快门声明、测量 ISO 域、增益跳变、拟合质量及 DN 尺度仍须通过检查。该阶段 `compression` / `geometry` 只保留测量声明并核对 Collect 内一致性；后续逐文件合同见第 14 节。
 - 生产噪声模型明确来源、有效性、原因及处理域。匹配 shot/read 模型优先，随后可用合法 Raw IFD DNG `NoiseProfile`；没有独立模型时明确不可用。照片局部变化不再定义物理噪声量，空间错位的 G1/G2 相关性只作线索，不单独撤销标定。模型 SNR、模型读噪底与 RAW 剪切/分布分开报告；缺噪声模型不抹去有效 RAW 证据。文件明确声明已降噪或声明非法时，兼容性约束覆盖外部标定的优先级，拒绝独立白噪声模型。
 - HDR 尾部 SNR 门控区分明确拒绝与普通缺测；其他剪切、色域和解码器约束独立保留。独立测量频谱的高频/中频比小于 0.5 或大于 2 时另标不均衡，保留有效 gain/read 模型，但将尾部门控设为 0 并跳过当前粗网格 NR。阈值为保守启发式检查；摘要正常不证明白噪声，也不排除窄带峰或行列偏置。
 - 色度核保持默认关闭，独立 `a×signal+b` 模型经低频 CFA 近似传播到处理域，以局部结构减少 BayesShrink 式收缩。计入已记录白平衡、颜色矩阵、曝光及受支持的 GainMap / 单个平滑 rectilinear warp；剪切/重建等无效支撑不处理。Apple RAW、未知变换或不适用模型跳过并诊断。scene-linear 亮度投影保留，但真实色度仍可能有损；细节与近似见[色度降噪与纹理保护](../CHROMA_NR.zh-CN.md)。
@@ -249,7 +249,63 @@ Apple RAW 日光的 10-bit SDR HEIF、HDR archive 与 HDR auto 均通过实际�
 [高精度读取](../../tests/test_sdr_float_readback.py)、[浮点指标](../../tests/test_sdr_float_metrics.py)、
 [HEIF 出口与实际渐变](../../tests/test_sdr_heif_precision.py)、
 [精确机型](../../tests/test_prior_exact_matching.py)与[总方差合同](../../tests/test_calibration_stored_variance.py)。
-HDR gain-map 的 SDR base 仍为 uint8，独立 HDR alternate 保留 float16；Apple SDR 编码
-后备仍限手动 8-bit/420。完整相关噪声传播、FPN/PRNU/坏点与条纹修复、单帧稳健估计，
-以及 Collect 自由文本 compression/geometry 与每份 RAW 的子读出匹配仍未完成。
+该阶段 HDR gain-map 的 SDR base 仍为 uint8，独立 HDR alternate 保留 float16；
+HDR HEIF 底图与子读出匹配的后续改动见第 14 节。Apple 独立 SDR 编码后备仍限手动
+8-bit/420。完整相关噪声传播、FPN/PRNU/坏点与条纹修复、单帧稳健估计仍未完成。
 自己的 fp PTC/重复黑场尚未提供，因此没有个人机身校正的实拍验收。
+
+## 14. HDR HEIF 的浮点底图与逐文件采集约束（基准 e55835c）
+
+HDR HEIF 10-bit 的配对形成现在直接输出完成 P3 传递函数的 float32 SDR 底图，
+与原 float16 HDR alternate 共用一次场景处理；JPEG 与显式 8-bit HEIF 保留旧量化合同。
+`FinishedPair` 明确只允许一个 SDR 母版，编码、搜索、模板和回读均消费同一份底图。
+浮点私有 RGB 视图与不可变 RGBAf 输入共享存储，比另存 RGB 快照减少 12 bytes/pixel，
+24 MP 对应 288 MB；这是缓冲大小核算，不是端到端峰值内存测量。
+
+实际 API 探针发现，通用 HEIF 写入方法即使使用 RGBAf/h，也只输出 8-bit/256 级主图。
+专用 `writeHEIF10RepresentationOfImage_toURL_colorSpace_options_error_` 才保留 10-bit
+模板，探针回读 1024 级。生产路径检查新建及复用模板的真实位深，再从同一浮点底图
+编码带确定性 TPDF 的 x265 主图。自动候选与 SDR 绝对门禁使用浮点回读，HDR 展开仍与
+原 HDR 母版比较；误差预算、局部纹理门限和 headroom 检查不放宽。元数据搬运通过图像
+载荷、颜色属性及 rendition 图关系的身份校验，不能用最终 GUI 的 uint8 缩略图代替验收。
+[Apple 的双 rendition 说明](https://developer.apple.com/videos/play/wwdc2024/10177/)
+解释了用 SDR 与 HDR 两张完成的图像计算 gain map 的合同，实际系统精度另由探针验证。
+
+逐文件采集描述独立于镜头解析和成像裁剪，记录主 RAW IFD 的存储位深、几何、ActiveArea、
+DefaultCrop、压缩过程，以及 LibRaw 完整 mosaic 几何。存储位深不冒充 ADC 精度，
+DefaultCrop 不冒充像素合并。Compression=7 进一步读取 JPEG 过程及 point transform，
+不能把预览 JPEG 或有损过程称为无损 RAW。fp 的电子快门按精确机型的厂商能力登记，
+明确标注来源，不由此推导静态/视频、ADC 或 binning 的全部模式。
+
+复核同时修正了增强 IFD 混入主 RAW 的问题：校准标签、镜头指令与采集描述共用默认
+LibRaw 首个主 RAW 的选择顺序，排除增强图像、预览和 mask；BE 优先读实际 RAW IFD，
+缺失才采用 IFD0。额外增强图像的位深、白点或曝光不能再改变主 RAW 的解释。
+
+标定通过带版本的 `readout_contract` 约束可核对字段；声明冲突与文件证据不足分别报告。
+无损压缩与无压缩可按样本保存等价处理；旧自由文本没有足够语义时不猜测相近模式。
+新 Collect 的 RawSize 对应 LibRaw 完整 mosaic，ImageWidth/Height 为操作者声明的 JPEG
+输出尺寸，后者保留作信息，不与传感器尺寸混比。噪声模型和电子域先验共用匹配结果，
+失败的用户约束不会静默换成未经核验的包内相机参数。具体格式及范围见
+[标定文档](../NOISE_CALIBRATION.zh-CN.md)。
+
+没有声明更细模式的相机级先验仍保留原近似用途，并明确报告 `sub-readout-not-declared`；
+没有可读标签的 ADC、binning、静态/视频或厂商 readout ID 仍为未知。这里完成的是可证
+字段的传递、匹配和拒用机制，不能称为所有相机的完整采集模式识别。个人机身实测校正
+按用户要求暂缓。
+
+三张 fp 的全尺寸 HDR HEIF archive，以及日光的 LibRaw/Apple RAW HDR auto、JPEG
+97/420 和独立 SDR HEIF 95/420，共七次实际导出通过原生产门限。所有 HDR HEIF 均报告
+10-bit 主图、float32 SDR 母版与浮点回读；没有为通过样张而覆盖预算。日光 LibRaw auto
+选 q90/444，相对本轮参考减小约 16%；文件大小和并发测试期间的耗时只作验收记录，
+不能推广为所有场景的压缩率或性能保证。与基准 e55835c 使用完全相同 CLI 的 JPEG
+97/420 对照，像素、编码载荷和整个文件 SHA256 都相同。
+机器可读数据见[本轮验收记录](../assets/delivery-quality/hdr10-readout-20261009.json)，
+实际系统渐变回归见[HDR HEIF 精度测试](../../tests/test_hdr_heif_precision_live.py)。
+[逐文件合同测试](../../tests/test_readout_contract.py)覆盖真实 DNG/CSV 至分析与缓存，
+[真实 SOF3 测试](../../tests/test_readout_lossless_jpeg_pipeline.py)通过 LibRaw 解码确认
+Pt0 保码值、Pt1 丢低位；声明的 tile/strip 字节边界之外不能借用另一个 JPEG 头。
+
+最终冻结树以 `DNGSCAN_FAST=1` 运行 1662 项完整测试：1659 通过、3 跳过、0 失败，
+耗时 260.184 秒，包含本机实际 Core Image/ImageIO 与 Rust 核。读出相关 NumPy 回归
+255 项中 252 通过、3 项 native-only 跳过；对应 native 255 项全部通过。各组有重叠，
+不能相加成独立测试总数。系统渐变验收覆盖 Apple-only 与 x265 的手动、自动 HDR HEIF。

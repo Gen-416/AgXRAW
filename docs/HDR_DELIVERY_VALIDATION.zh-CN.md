@@ -1,11 +1,11 @@
 # HDR 编码回读验证：检查什么，不能保证什么
 
-2026-09-17，适用于非胶片 AgX 与共用的 JPEG/HEIC gain-map 写入器。
+始于 2026-09-17，更新至 2026-10-09。适用于非胶片 AgX 与共用的 JPEG/HEIC gain-map 写入器；下文有注明阶段与环境的历史测量，不能代替当前出口验收。
 
 ## 从数学成像到有损文件
 
 场景线性 Rec.2020 经过共享的曝光、场景修正，分别形成 SDR 与 HDR rendition。
-SDR 经 Display P3 输出变换、传递函数和抖动量化得到 uint8 底图；HDR 经自身的曲线和色彩体积约束，打包为线性 Display P3 float16 RGBA。
+SDR 经 Display P3 输出变换和传递函数后，10-bit HDR HEIF 保留 float32 底图到编码边界；JPEG 与显式 8-bit HEIF 才形成 uint8 底图。HDR 经自身的曲线和色彩体积约束，打包为线性 Display P3 float16 RGBA。
 Core Image 根据这两个完成的图像编码 ISO gain map。回读时再将文件里的底图与 gain map 合成为线性 P3，和编码前 HDR 比较。
 
 因此有两个不同的正确性问题：曲线、矩阵、曝光和量化是否计算正确，以及有损容器是否足够保真地保存了计算结果。
@@ -30,8 +30,8 @@ Rust 与 NumPy 一致只能验证前一个问题的一部分；两个实现完�
 的目标是非线性 sRGB 或 Display P3；不能用线性 RGB 直接代替编码器输入。自动候选比较及
 元数据搬运后的最终验收均使用浮点回读。误差乘 255 后仍沿用等效 8-bit 码值预算，因此
 小于一个 8-bit 码值的差异不会提前消失，也没有放宽原门限。合法解码过冲保留用于度量，
-不在检查前裁掉。JPEG、显式 8-bit HEIF 和 HDR gain-map 的 uint8 SDR base 合同保持独立；
-HDR alternate 仍由场景浮点分支形成。局部亮度门禁的活动下限仍为八个等效 8-bit 码值，
+不在检查前裁掉。HDR HEIF 的 10-bit 底图也使用同一浮点回读和误差单位；JPEG 与显式
+8-bit HEIF 保留 uint8 合同。HDR alternate 仍由场景浮点分支形成。局部亮度门禁的活动下限仍为八个等效 8-bit 码值，
 浮点验收不代表新增了对全部微弱或纯色度纹理的保证。
 
 ## 增加的两个指标
@@ -79,8 +79,7 @@ share 的局部最坏误差显著高于全图指标，说明均值良好不能�
 
 ## 采样参数与文件发布
 
-HDR 的主图色度采样由 Core Image 的 quality 工作点决定。CLI、GUI 后端、Python 写入器共用约束：quality 100 对应 444，低于 100 对应 420；显式冲突直接拒绝，未指定时从 quality 推导。
-`share + quality 100` 可以使用 444，但不能宣称输出 420。SDR 的 Pillow 编码仍允许独立设置 quality 和 chroma。
+HDR 主图已从 Core Image 模板中独立编码，JPEG 与 libheif/x265 HEIF 可以独立指定 quality 和 420/422/444；主图替换保留 ISO 辅助图及 rendition 关系。Apple-only 路径仍受系统实际输出采样约束，不能仅依据请求参数宣称成功。
 
 编码后必须从实际 JPEG/HEIC 检查采样格式，不能只相信参数推导；运行时行为与预期不符则报错。所有门禁在临时文件上执行，失败不替换已有目标文件，并清理临时文件。新增统计需要 Rust ABI 12，旧扩展不会被当作提供了这些统计而继续使用。
 
@@ -129,4 +128,4 @@ JPEG 手动导出现在也执行像素回读与这项门禁。SDR HEIF、HDR 主
 
 冻结源码的本轮全量回归各发现 1535 项：NumPy 1469 通过 / 66 跳过，严格 Rust 1500 通过 / 35 跳过，跳过不计为通过；Rust 单元测试另有 17 项通过。75 个原生边界探针全部通过，与 NumPy 的局部指标最大差为 `5.96e-8`。24 MP、每组 3 次独立进程扫描的中位耗时，SDR NumPy / Rust 为 0.562 / 0.103 秒，HDR half 为 0.662 / 0.161 秒；这些数值只描述新增检查，不代表端到端导出速度。
 
-三张 fp 样张以自动曝光、AgX、Display P3、800-nit HDR 容量且无胶片处理，分别验收 `clip` / `reconstruct` 下 JPEG 95/420、97/420、100/444、SDR HEIF 95/420、HDR JPEG 95/420 和 HDR HEIF 95/420，共 36 个全尺寸输出，全部通过；日光样张的四条自动 SDR/HDR JPEG/HEIF 路径也通过。p99.99 使用量与文件声明的真实峰值分开记录，不能把使用量当成正式导出的硬上限。三张 `clip` 的完整 scene 缓冲和尺度与基准一致，但新增解码边界置信度可能影响最终 SDR/HDR 成像。高精度辅助 gain map 可显著增大 HDR 文件，不能承诺这些容器都在 20 MB 内。现有 SDR 10-bit HEIF 的 8-bit 母版限制仍按计划后置，没有在本轮伪装成已修复。
+三张 fp 样张以自动曝光、AgX、Display P3、800-nit HDR 容量且无胶片处理，分别验收 `clip` / `reconstruct` 下 JPEG 95/420、97/420、100/444、SDR HEIF 95/420、HDR JPEG 95/420 和 HDR HEIF 95/420，共 36 个全尺寸输出，全部通过；日光样张的四条自动 SDR/HDR JPEG/HEIF 路径也通过。p99.99 使用量与文件声明的真实峰值分开记录，不能把使用量当成正式导出的硬上限。三张 `clip` 的完整 scene 缓冲和尺度与基准一致，但新增解码边界置信度可能影响最终 SDR/HDR 成像。高精度辅助 gain map 可显著增大 HDR 文件，不能承诺这些容器都在 20 MB 内。这份历史验收时仍使用 8-bit SDR 母版；后续真正的 10-bit SDR 与 HDR HEIF 底图改动见[管线复核记录第 13、14 节](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md)。

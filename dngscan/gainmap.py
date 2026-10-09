@@ -962,7 +962,7 @@ def write_apple_gainmap_heic(
     chroma: str | None = None,
     _verify_roundtrip_capability: bool = True,
 ) -> dict[str, Any]:
-    """Write and validate a Display P3 HEIC carrying an ISO 21496-1 gain map."""
+    """Write a P3 gain-map HEIC; 10-bit accepts a nonlinear float32 SDR master."""
     profile = delivery or hdr_profile_from_encode_settings(
         int(quality), chroma, container="heic"
     )
@@ -1098,8 +1098,12 @@ def _search_sdr_metrics(path: Path, base: Any, session: Any = None) -> dict[str,
     cached = session.metrics(path) if session is not None else None
     if cached is not None:
         return cached
-    decoded = read_primary_rgb_u8(path, _borrow_rgb=True)
-    metrics = _base_and_coding_metrics_arrays(decoded, base)
+    if base.dtype == np.float32:
+        decoded = read_primary_rgb_float(path, _borrow_rgb=True)
+        metrics = _base_and_coding_metrics_float(decoded, base)
+    else:
+        decoded = read_primary_rgb_u8(path, _borrow_rgb=True)
+        metrics = _base_and_coding_metrics_arrays(decoded, base)
     if session is not None:
         session.remember_metrics(path, metrics)
     return metrics
@@ -1118,13 +1122,32 @@ class _PreparedGainmapMaster:
         self._closed = False
         try:
             base, hdr = np.asarray(base_rgb_u8), np.asarray(hdr_rgba_half)
-            if base.dtype != np.uint8 or base.ndim != 3 or base.shape[2] != 3:
-                raise ValueError("HDR gain-map 底图必须是 HxWx3 uint8")
+            if (base.dtype not in (np.dtype(np.uint8), np.dtype(np.float32))
+                    or not base.dtype.isnative or base.ndim != 3 or base.shape[2] != 3
+                    or not base.size):
+                raise ValueError("HDR gain-map 底图必须是 HxWx3 uint8 或归一化 float32")
+            float_base = base.dtype == np.float32
+            if float_base:
+                for row in range(0, base.shape[0], _ROUNDTRIP_BAND_ROWS):
+                    band = base[row:row + _ROUNDTRIP_BAND_ROWS]
+                    if not (np.isfinite(band).all() and (band >= 0.).all() and (band <= 1.).all()):
+                        raise ValueError("HDR gain-map 浮点 SDR 底图必须是有限的非线性 [0,1] RGB")
             if hdr.dtype != np.float16 or hdr.shape != base.shape[:2] + (4,):
                 raise ValueError("HDR alternate 必须是与底图同尺寸的 HxWx4 float16")
             # Immutable bytes are the single private snapshot: caller aliases cannot
             # change later candidates, and flags.writeable cannot be re-enabled.
-            self.base = np.frombuffer(base.tobytes(order="C"), np.uint8).reshape(base.shape)
+            if float_base:
+                # CI needs RGBAf while the codec/metrics need RGB. Share one
+                # immutable private owner; another full float RGB snapshot
+                # would cost 288 MB for a 24 MP frame. Strided RGB views are
+                # supported by both the banded encoder and float metrics.
+                packed = np.empty(base.shape[:2] + (4,), dtype=np.float32)
+                packed[..., :3], packed[..., 3] = base, 1.
+                self.base_rgba = np.frombuffer(packed.tobytes(order="C"), np.float32).reshape(packed.shape)
+                self.base = self.base_rgba[..., :3]
+                del packed
+            else:
+                self.base = np.frombuffer(base.tobytes(order="C"), np.uint8).reshape(base.shape)
             self.hdr = np.frombuffer(hdr.tobytes(order="C"), np.float16).reshape(hdr.shape)
             self.headroom_ev = float(hdr_headroom_ev)
             self._master_identity = (self._identity(self.base), self._identity(self.hdr),
@@ -1142,15 +1165,22 @@ class _PreparedGainmapMaster:
             if not ok:
                 raise RuntimeError(reason)
             import Quartz  # type: ignore
+            if float_base and not (hasattr(Quartz, "kCIFormatRGBAf")
+                    and hasattr(Quartz, "kCIContextWorkingFormat")
+                    and hasattr(Quartz.CIContext,
+                                "writeHEIF10RepresentationOfImage_toURL_colorSpace_options_error_")):
+                raise RuntimeError("当前 Core Image 不支持浮点 SDR 底图的 10-bit HEIF gain-map 编码")
             self.p3 = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceDisplayP3)
             self.linear_p3 = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceExtendedLinearDisplayP3)
             if self.p3 is None or self.linear_p3 is None:
                 raise RuntimeError("系统未提供 Display P3 / Extended Linear Display P3 色彩空间")
 
-            packed = np.empty(self.base.shape[:2] + (4,), dtype=np.uint8)
-            packed[..., :3], packed[..., 3] = self.base, np.uint8(255)
-            self.base_rgba = np.frombuffer(memoryview(packed).toreadonly(), np.uint8).reshape(packed.shape)
-            self.base_image, self.base_data = _ciimage_from_rgba(self.base_rgba, Quartz.kCIFormatRGBA8, self.p3)
+            if not float_base:
+                packed = np.empty(self.base.shape[:2] + (4,), dtype=np.uint8)
+                packed[..., :3], packed[..., 3] = self.base, np.uint8(255)
+                self.base_rgba = np.frombuffer(memoryview(packed).toreadonly(), np.uint8).reshape(packed.shape)
+            base_format = Quartz.kCIFormatRGBAf if float_base else Quartz.kCIFormatRGBA8
+            self.base_image, self.base_data = _ciimage_from_rgba(self.base_rgba, base_format, self.p3)
             self.hdr_image, self.hdr_data = _ciimage_from_rgba(self.hdr, Quartz.kCIFormatRGBAh, self.linear_p3)
             self.base_image = self.base_image.imageBySettingContentHeadroom_(1.0)
             self.actual_headroom = float(np.max(np.asarray(peaks, dtype=np.float16)))
@@ -1161,8 +1191,10 @@ class _PreparedGainmapMaster:
             if self.actual_headroom <= 1.0 + 1e-3:
                 raise RuntimeError("该场景没有高于 reference white 的有效 HDR 内容")
             self.hdr_image = self.hdr_image.imageBySettingContentHeadroom_(self.actual_headroom)
-            self.context = Quartz.CIContext.contextWithOptions_(
-                {Quartz.kCIContextCacheIntermediates: _nsnumber_bool(False)})
+            context_options = {Quartz.kCIContextCacheIntermediates: _nsnumber_bool(False)}
+            if float_base:
+                context_options[Quartz.kCIContextWorkingFormat] = Quartz.kCIFormatRGBAf
+            self.context = Quartz.CIContext.contextWithOptions_(context_options)
             if self.context is None:
                 raise RuntimeError("Core Image 无法创建 HDR 编码 CIContext")
             self.workspace = metrics_workspace if metrics_workspace is not None else _new_hdr_metrics_workspace()
@@ -1199,13 +1231,21 @@ def write_apple_gainmap_file(
     _jpeg_primary_session: Any = None,
     _hdr_metrics_workspace: Any = None,
 ) -> dict[str, Any]:
-    """Prepare one immutable pair, then encode/verify its delivery candidates."""
+    """Prepare one immutable pair, then encode/verify its delivery candidates.
+
+    The historical base argument also accepts normalized nonlinear float32 for
+    10-bit HEIF. Both its Apple gain-map template and primary donor consume that
+    same high-precision master; JPEG and 8-bit retain their uint8 contract.
+    """
     from . import heif_encoder
     use_heif = delivery.container == "heic" and (
         delivery.heif_encoder == "x265" or
         (delivery.heif_encoder == "auto" and heif_encoder.available()))
     if delivery.heif_encoder not in ("auto", "apple", "x265"):
         raise ValueError("未知 HEIF 编码器")
+    if (np.asarray(base_rgb_u8).dtype == np.float32
+            and (delivery.container != "heic" or delivery.heif_bit_depth != 10)):
+        raise ValueError("浮点 HDR SDR 底图仅适用于 10-bit HEIF；JPEG/8-bit 必须使用 uint8 底图")
     if delivery.name != "auto":
         profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
         if str(profile.container) not in ("jpeg", "heic"):
@@ -1397,6 +1437,9 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
     prepared = _prepared_master
     prepared.validate(base_rgb_u8, hdr_rgba_half, hdr_headroom_ev)
     base, hdr = prepared.base, prepared.hdr
+    float_base = base.dtype == np.float32
+    if float_base and (container != "heic" or profile.heif_bit_depth != 10):
+        raise ValueError("浮点 HDR SDR 底图仅适用于 10-bit HEIF")
     actual_headroom = prepared.actual_headroom
     base_image, hdr_image, context, p3 = (
         prepared.base_image, prepared.hdr_image, prepared.context, prepared.p3)
@@ -1423,8 +1466,9 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
         )
     pixel_request = getattr(Quartz, "kCGImageDestinationEncodeBasePixelFormatRequest", None)
     if pixel_request is not None and container == "heic":
+        pixel_format = ("xf" + profile.chroma[1:]) if float_base else profile.chroma + "f"
         encode_request_options[pixel_request] = NSNumber.numberWithUnsignedInt_(
-            int.from_bytes((profile.chroma + "f").encode("ascii"), "big"))
+            int.from_bytes(pixel_format.encode("ascii"), "big"))
     gainmap_quality = (100 if profile.is_archive else 95) if _gainmap_quality is None else _gainmap_quality
     if not isinstance(gainmap_quality, int) or not 1 <= gainmap_quality <= 100:
         raise ValueError("gain-map 编码精度必须为 1–100 的整数")
@@ -1445,18 +1489,27 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
     try:
         if _template_path is not None and _template_path.exists():
             import shutil
+            if float_base and inspect_gainmap_file(_template_path)["bit_depth"] != 10:
+                raise RuntimeError("浮点 SDR gain-map 母版不能复用 8-bit HEIF 编码模板")
             shutil.copyfile(_template_path, temp_path)
         else:
             url = NSURL.fileURLWithPath_(str(temp_path))
             if container == "heic":
-                result = context.writeHEIFRepresentationOfImage_toURL_format_colorSpace_options_error_(
-                    base_image,
-                    url,
-                    Quartz.kCIFormatRGBA8,
-                    p3,
-                    options,
-                    None,
-                )
+                if float_base:
+                    # The generic HEIF writer produces an 8-bit primary even
+                    # from RGBAf/h. The dedicated writer preserves the same
+                    # floating SDR master used to calculate the RGB gain map.
+                    result = context.writeHEIF10RepresentationOfImage_toURL_colorSpace_options_error_(
+                        base_image, url, p3, options, None)
+                else:
+                    result = context.writeHEIFRepresentationOfImage_toURL_format_colorSpace_options_error_(
+                        base_image,
+                        url,
+                        Quartz.kCIFormatRGBA8,
+                        p3,
+                        options,
+                        None,
+                    )
             else:
                 result = context.writeJPEGRepresentationOfImage_toURL_colorSpace_options_error_(
                     base_image,
@@ -1468,6 +1521,8 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
             success, error = result if isinstance(result, tuple) else (bool(result), None)
             if not success:
                 raise RuntimeError(f"Core Image 写入 ISO gain-map {label} 失败：{error}")
+            if float_base and inspect_gainmap_file(temp_path)["bit_depth"] != 10:
+                raise RuntimeError("Core Image 未保留浮点 SDR 母版的 10-bit gain-map 模板；已丢弃该文件")
 
             if _template_path is not None:
                 import shutil
@@ -1489,12 +1544,13 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
                 donor = temp_path.with_name(temp_path.name + ".base.heic")
                 try:
                     encoder_info = heif_encoder.encode(base, donor, quality, profile.chroma,
-                        bit_depth=profile.heif_bit_depth, preset=profile.heif_preset, tune=profile.heif_tune)
+                        bit_depth=profile.heif_bit_depth, preset=profile.heif_preset, tune=profile.heif_tune,
+                        dither_quantization=float_base)
                     replace_primary(temp_path, donor)
                 finally:
                     donor.unlink(missing_ok=True)
         info = inspect_gainmap_file(temp_path)
-        if use_heif and info["bit_depth"] != profile.heif_bit_depth:
+        if container == "heic" and info["bit_depth"] != profile.heif_bit_depth:
             raise RuntimeError("HEIF 回读位深与请求不符")
         info.update(encoder_info)
         if (info["width"],info["height"]) != (base.shape[1],base.shape[0]):
@@ -1535,7 +1591,7 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
                 f"HDR {label} 声明余量与 alternate 峰值不一致："
                 f"误差={headroom_error_ev:.4f} EV；已丢弃该文件"
             )
-        if _collect_coding_metrics:
+        if _collect_coding_metrics or float_base:
             base_roundtrip = _search_sdr_metrics(temp_path, base, _primary_session)
         else:
             base_roundtrip = _base_roundtrip_error(temp_path, base)
@@ -1583,6 +1639,8 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
         info["delivery_chroma_requested"] = profile.chroma
         info["delivery_container"] = container
         info["gainmap_encoding_quality"] = gainmap_quality if use_heif or container == "jpeg" else quality
+        info["sdr_master_precision"] = "float32" if float_base else "uint8"
+        info["readback_precision"] = "float32" if float_base else "uint8"
         return info
     finally:
         try:
@@ -1598,7 +1656,7 @@ def encode_finished_pair(
 ) -> dict[str, Any]:
     """Encode formation masters with a delivery profile. No re-formation."""
     return write_apple_gainmap_file(
-        pair.sdr_rgb_u8,
+        pair.sdr_rgb,
         pair.hdr_rgba_f16,
         out_path,
         pair.display_headroom_ev,

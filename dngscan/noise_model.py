@@ -95,6 +95,7 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
 
     if prior is None:
         return NoiseModel()
+    prior = priors.with_readout(prior, getattr(bundle, "capture_readout", None))
     usable, reason = priors.prior_usability(prior)
     source = str(prior.get("source") or prior.get("id") or "sensor-prior")
     if not usable:
@@ -138,6 +139,7 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
         if measured_gain is None or not math.isfinite(measured_gain) or measured_gain <= 0:
             return replace(model, status="unresolved", reason="stored-dark-variance-gain-unavailable")
     approximation = "shared-gain-read-noise-across-colour-planes"
+    approximation += "; " + str(prior.get("readout_match_reason") or "sub-readout-not-declared")
     if prior.get("source_format") == "dngscan-jptc-collect-1":
         approximation += "; " + variance_source
     try:
@@ -230,7 +232,8 @@ def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> Noise
         from .priors import find_priors
         prior = find_priors(bundle.shot_make, bundle.shot_model,
                             shutter=getattr(bundle, "shot_shutter", None),
-                            iso=getattr(bundle, "shot_iso", None))
+                            iso=getattr(bundle, "shot_iso", None),
+                            readout=getattr(bundle, "capture_readout", None))
     model = model_from_prior(bundle, fullwell, prior)
     file_model = _file_model(bundle)
     # A profile's variance values are an alternative source. The RAW's
@@ -260,6 +263,8 @@ def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> Noise
         return replace(file_model, fallback_source=model.source, fallback_reason=model.reason)
     if model.status == "rejected" and file_model.status == "unavailable":
         return replace(model, noise_reduction_status=file_model.noise_reduction_status)
+    if model.status == "rejected" and file_model.status == "valid":
+        return replace(file_model, fallback_source=model.source, fallback_reason=model.reason)
     return (file_model if file_model.source != "none" else
             replace(model, noise_reduction_status=file_model.noise_reduction_status))
 

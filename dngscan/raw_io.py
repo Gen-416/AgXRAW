@@ -1906,6 +1906,12 @@ def load_raw(
     camera_white_levels = getattr(evidence, "camera_white_levels", [])
     orientation_flip = getattr(evidence, "orientation_flip", 0)
     color_desc = getattr(evidence, "color_desc", "")
+    capture_readout = getattr(evidence, "capture_readout", None)
+    if capture_readout is None:
+        # File-backed mode declarations remain available even when LibRaw
+        # cannot supply the sensor raster and Apple provides the scene.
+        from .readout import read as read_capture_readout
+        capture_readout = read_capture_readout(path)
 
     # Fixed-Kelvin WB is a scene recipe derived from evidence calibration. It is not
     # evidence itself, and therefore remains free to degrade per scene decoder.
@@ -2284,7 +2290,8 @@ def load_raw(
         shot_make=shot.make,
         shot_model=shot.model,
         shot_iso=shot.iso,
-        shot_shutter=getattr(evidence, "shot_shutter", None),
+        shot_shutter=capture_readout.get("shutter"),
+        capture_readout=capture_readout,
         baseline_exposure=effective_baseline_exposure,
         baseline_exposure_baked_in=baseline_exposure_baked_in,
         applied_wb=[float(x) for x in camera_wb],

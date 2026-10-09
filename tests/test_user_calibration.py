@@ -333,7 +333,7 @@ class TestUserCalibration(unittest.TestCase):
         summary = calibration.import_calibration(self.write_profile(item))
         self.assertIn("sub-readout-mode-not-verified", summary["warnings"])
         diagnostic = calibration.calibration_diagnostics("SIGMA", "FP", "electronic",100)[0]
-        self.assertEqual(diagnostic["mode_scope"], "shutter-and-dn-scale")
+        self.assertEqual(diagnostic["mode_scope"], "camera-shutter-iso-dn-and-declared-readout")
         self.assertIn("compression", diagnostic["unverified_readout_fields"])
         dark_only = {"format": "dngscan-jptc-collect-1", "id": "dark only",
                      "make": "SIGMA", "model_candidates": ["fp"], "shutter": "electronic",

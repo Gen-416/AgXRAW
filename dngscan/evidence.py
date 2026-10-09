@@ -116,8 +116,12 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
             from .raw_units import coding_endpoints
             coding_white, coding_black = coding_endpoints(
                 path, white_level, white_pc_attr, black_attr if black_attr is not None else (), spatial_black)
-            from .embedded_lens import read as read_embedded_lens
-            lens = read_embedded_lens(path)
+            from .readout import read as read_capture_readout
+            capture_readout = read_capture_readout(path)
+            sizes = getattr(raw, "sizes", None)
+            full_size = [getattr(sizes, "raw_width", 0), getattr(sizes, "raw_height", 0)]
+            if all(isinstance(value, int) and value > 0 for value in full_size):
+                capture_readout["libraw_raw_geometry"] = full_size
             return RawEvidence(
                 path=path,
                 raw_image=raw_image,
@@ -147,7 +151,8 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
                 ),
                 orientation_flip=orientation_flip,
                 xyz_to_cam=xyz_to_cam,
-                shot_shutter=lens.shutter if lens is not None else None,
+                shot_shutter=capture_readout.get("shutter"),
+                capture_readout=capture_readout,
                 spatial_black=spatial_black,
                 sample_kind="linear-camera-rgb" if raw_image.ndim == 3 else "cfa",
                 provider_version=libraw_runtime_id(),

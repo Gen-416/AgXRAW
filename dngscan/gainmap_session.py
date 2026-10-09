@@ -204,6 +204,7 @@ class PrimarySearchSession:
     def primary(self, base, profile) -> tuple[Path, dict]:
         """Encode or reuse the current immutable master's requested HEVC primary."""
         from . import heif_encoder
+        from ._deps import np
 
         if base.flags.writeable:
             raise ValueError("primary search requires a read-only master")
@@ -211,6 +212,9 @@ class PrimarySearchSession:
             raise ValueError("primary search cannot change its master")
         if profile.container != "heic" or profile.heif_encoder == "apple":
             raise ValueError("primary search requires a libheif/x265 HEIC profile")
+        float_base = base.dtype == np.float32
+        if base.dtype != np.uint8 and (not float_base or profile.heif_bit_depth != 10):
+            raise ValueError("floating primary search requires a float32 10-bit HEIF master")
         self._base = base
         key = self._key(profile)
         self._current = key
@@ -228,6 +232,7 @@ class PrimarySearchSession:
                 base, path, profile.quality, profile.chroma,
                 bit_depth=profile.heif_bit_depth, preset=profile.heif_preset,
                 tune=profile.heif_tune, output_gamut="p3",
+                dither_quantization=float_base,
             )
             self._entries[key] = _Entry(path, dict(info))
         except BaseException:

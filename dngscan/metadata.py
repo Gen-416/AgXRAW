@@ -158,6 +158,58 @@ def _entry_values(fh, typ: int, num: int, raw: bytes, endian: str) -> list:
     return []
 
 
+def _main_dng_raw_ifd_entries(fh, ifd0_off: int, endian: str) -> list:
+    """Select the first main RAW frame used by our default LibRaw decoder.
+
+    The pinned LibRaw's default DNG options select the first NewSubfileType=0 CFA
+    or LinearRAW IFD in TIFF parse order. Enhanced (16), preview and mask
+    frames, and largest-frame preference, require options we do not enable.
+    Traverse SubIFDs depth first, then the top-level next-IFD chain, matching
+    that parser order; a SubIFD's next pointer is not a separate root chain.
+    """
+    root = _read_ifd_entries(fh, ifd0_off, endian)
+    if not any(tag == TAG_DNG_VERSION for tag, *_ in root):
+        return []
+    visited = set()
+
+    def visit(offset, entries=None):
+        if offset in visited or len(visited) >= 64:
+            return
+        visited.add(offset)
+        entries = entries if entries is not None else _read_ifd_entries(fh, offset, endian)
+        identity = {}
+        for tag, typ, num, raw in entries:
+            if tag in {254, 256, 257, 262, TAG_SUB_IFDS}:
+                if num * _TYPE_SIZES.get(typ, 1) > 16_000_000:
+                    raise ValueError("DNG IFD metadata exceeds supported size")
+                identity[tag] = _entry_values(fh, typ, num, raw, endian)
+        yield entries, identity
+        for sub in identity.get(TAG_SUB_IFDS, [])[:64]:
+            yield from visit(int(sub))
+
+    offset = ifd0_off
+    while offset and offset not in visited and len(visited) < 64:
+        entries = root if offset == ifd0_off else _read_ifd_entries(fh, offset, endian)
+        for candidate, identity in visit(offset, entries):
+            photo = (identity.get(262) or [0])[0]
+            kind = (identity.get(254) or [0])[0]
+            width, height = (identity.get(256) or [0])[0], (identity.get(257) or [0])[0]
+            if kind == 0 and photo in (32803, 34892) and 0 < width < 65536 and 0 < height < 65536:
+                return candidate
+        # Only the top-level IFD chain is followed by parse_tiff().
+        fh.seek(offset)
+        count_raw = fh.read(2)
+        if len(count_raw) != 2:
+            break
+        count, = struct.unpack(endian + "H", count_raw)
+        if count > 4096:
+            break
+        fh.seek(offset + 2 + 12 * count)
+        next_raw = fh.read(4)
+        offset = struct.unpack(endian + "L", next_raw)[0] if len(next_raw) == 4 else 0
+    return []
+
+
 def _parse_tiff_shot_info(fh, info: DngShotInfo) -> None:
     """Fill `info` from a TIFF stream. `fh` must be seekable and positioned so that
     offset 0 is the TIFF header ('II'/'MM')."""
@@ -170,15 +222,11 @@ def _parse_tiff_shot_info(fh, info: DngShotInfo) -> None:
         return
     (ifd0_off,) = struct.unpack(endian + "L", head[4:8])
     exif_off = None
-    sub_ifd_offsets: list[int] = []
     for tag, typ, num, raw in _read_ifd_entries(fh, ifd0_off, endian):
         if tag == TAG_BASELINE_EXPOSURE:
             vals = _entry_values(fh, typ, num, raw, endian)
             if vals:
                 info.baseline_exposure = float(vals[0])
-        elif tag == TAG_SUB_IFDS:
-            vals = _entry_values(fh, typ, num, raw, endian)
-            sub_ifd_offsets = [int(v) for v in vals]
         if tag == TAG_MAKE:
             vals = _entry_values(fh, typ, num, raw, endian)
             info.make = vals[0] if vals else None
@@ -201,17 +249,14 @@ def _parse_tiff_shot_info(fh, info: DngShotInfo) -> None:
                 vals = _entry_values(fh, typ, num, raw, endian)
                 info.iso = int(vals[0]) if vals else None
                 break
-    # Writers may put BaselineExposure on the raw SubIFD rather than IFD0.
-    if info.baseline_exposure is None:
-        for sub_off in sub_ifd_offsets[:4]:
-            for tag, typ, num, raw in _read_ifd_entries(fh, sub_off, endian):
-                if tag == TAG_BASELINE_EXPOSURE:
-                    vals = _entry_values(fh, typ, num, raw, endian)
-                    if vals:
-                        info.baseline_exposure = float(vals[0])
-                    break
-            if info.baseline_exposure is not None:
-                break
+    # LibRaw's IFDLEVELINDEX uses the decoded RAW frame first, then IFD0.
+    # Enhanced images and previews must not change the selected frame's BE.
+    for tag, typ, num, raw in _main_dng_raw_ifd_entries(fh, ifd0_off, endian):
+        if tag == TAG_BASELINE_EXPOSURE:
+            vals = _entry_values(fh, typ, num, raw, endian)
+            if vals:
+                info.baseline_exposure = float(vals[0])
+            break
 
 
 _RAF_MAGIC = b"FUJIFILMCCD-RAW "

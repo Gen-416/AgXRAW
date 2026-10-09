@@ -523,6 +523,32 @@ def _find(set_dir: Path, *patterns: str) -> Path | None:
             return hits[0]
     return None
 
+def _collect_raw_geometry_coverage(set_dir: Path, dark_path: Path) -> dict:
+    """Keep every supplied measurement's RawSize, including explicit gaps.
+
+    A dark-frame size cannot fill a missing PTC/gain/spectrum declaration.
+    This lives in build(), so packaged and interactive imports share the
+    acquisition contract rather than validating only the GUI entry point.
+    """
+    from .readout import collect_fields
+    files = sorted({dark_path, *set_dir.glob("*gain-levels*.csv"),
+                    *set_dir.glob("*spectrum-*.csv"),
+                    *(p for p in set_dir.glob("*ptc-iso*.csv") if "unusable" not in p.name)})
+    coverage, declared = {}, None
+    for path in files:
+        header, _ = _parse_rows(path)
+        contract = collect_fields(header).get("readout_contract") or {}
+        size = contract.get("libraw_raw_geometry")
+        coverage[path.name] = size
+        if size is not None:
+            if declared is not None and declared != size:
+                raise ValueError(f"{path.name}: RawSize disagrees with other measurements")
+            declared = size
+    result = {"raw_geometry_measurements": coverage}
+    if declared is not None:
+        result["raw_geometry_complete"] = all(size is not None for size in coverage.values())
+    return result
+
 def build(set_dir: Path, meta: dict | None) -> dict:
     dark_path = _find(set_dir, "dark-scalars.csv", "*dark*scalars.csv")
     if dark_path is None:
@@ -568,6 +594,11 @@ def build(set_dir: Path, meta: dict | None) -> dict:
         "stored_dark_variance_measurement": "paired-frame-pre-sheppard",
         "stored_dark_variance_domain": "linearized-raw-dn",
     }
+    from .readout import collect_fields
+    readout_fields = collect_fields(header)
+    entry["acquisition_contract"].update(readout_fields.pop("acquisition_contract_fields"))
+    entry["acquisition_contract"].update(_collect_raw_geometry_coverage(set_dir, dark_path))
+    entry.update(readout_fields)
     # The formed RAW contains quantisation as well as physical read noise.
     # Preserve the measured temporal variance before the optional Sheppard
     # subtraction; never reconstruct this measurement from an assumed ADC step
@@ -910,10 +941,12 @@ def _validated_prior(item: dict) -> dict:
              "acquisition_contract": contract,
              "source_shutter": item.get("shutter"), "user_applicability": applicability,
              "gain_jump_isos": [], "source_format": item["format"],
-             "mode_scope": "shutter-and-dn-scale",
+             "mode_scope": "camera-shutter-iso-dn-and-declared-readout",
              "unverified_readout_fields": {k: item[k] for k in ("compression", "geometry")
                                            if item.get(k) not in (None, [], [None, None], ["", ""])}}
     entry.update(stored_dark_variance_fields(item))
+    from .readout import measurement_fields
+    entry.update(measurement_fields(item))
     if single:
         iso = _number(item.get("iso"), "iso")
         gain = _number(item.get("gain_e_per_dn"), "gain_e_per_dn")
@@ -1252,6 +1285,7 @@ def import_calibration(path: str | Path, *, active: bool = True,
         if dark is None:
             raise ValueError("Collect directory requires dark-scalars.csv")
         main_header, _ = _parse_rows(dark)
+        declared_raw_size = None
         for file, formats in [(dark, {"JPTC-DARK/1"}),
                               *[(p, {"JPTC/2"}) for p in source.glob("*ptc-iso*.csv") if "unusable" not in p.name],
                               *[(p, {"JPTC-ISOGAIN/1"}) for p in source.glob("*gain-levels*.csv")],
@@ -1261,6 +1295,12 @@ def import_calibration(path: str | Path, *, active: bool = True,
             header, _ = _parse_rows(file)
             if header.get("Format") not in formats:
                 raise ValueError(f"{file.name}: unsupported measurement format")
+            if header.get("RawSize"):
+                from .readout import collect_fields
+                raw_size = collect_fields(header)["readout_contract"]["libraw_raw_geometry"]
+                if declared_raw_size is not None and raw_size != declared_raw_size:
+                    raise ValueError(f"{file.name}: RawSize disagrees with other measurements")
+                declared_raw_size = raw_size
             for field in ("Camera", "ShutterType", "Compression", "ImageWidth", "ImageHeight"):
                 if header.get(field) and main_header.get(field) and _normalise(header[field]) != _normalise(main_header[field]):
                     raise ValueError(f"{file.name}: {field} disagrees with dark measurements")
@@ -1344,7 +1384,7 @@ def calibration_fingerprint() -> str:
 
 
 def _match_reason(prior: dict, make: str, model: str, shutter: str | None,
-                  iso: float | None) -> str:
+                  iso: float | None, readout: dict | None = None, *, _check_readout: bool = True) -> str:
     if normalise_make(make) != prior["make_equals"] or normalise_model(make, model) not in prior["model_equals"]:
         return "camera-mismatch"
     mode = prior.get("shutter")
@@ -1366,23 +1406,33 @@ def _match_reason(prior: dict, make: str, model: str, shutter: str | None,
         return "reference-dn-range-unavailable"
     if iso is not None and curve_value(prior, "gain_log2iso_log2epd", iso) is None:
         return "iso-out-of-domain-or-gain-jump"
+    if _check_readout:
+        from .readout import match
+        status, reason = match(prior, readout)
+        if status in ("unverified", "mismatch"):
+            return reason
     return "usable"
 
 
 def calibration_diagnostics(make: str | None, model: str | None, shutter: str | None = None,
-                            iso: float | None = None) -> list[dict]:
+                            iso: float | None = None, readout: dict | None = None) -> list[dict]:
     out = []
     for path, record, prior, error in _records():
         if error is not None:
             out.append({"id": path.stem, "status": "invalid", "reason": error})
             continue
-        reason = _match_reason(prior, make or "", model or "", shutter, iso)
+        reason = _match_reason(prior, make or "", model or "", shutter, iso, readout)
         if reason == "camera-mismatch":
             continue
         if not record.get("active"):
             reason = "inactive"
         noise_status = read_noise_status(prior, iso)
         stored_variance, stored_status = stored_dark_variance(prior, iso)
+        from .readout import match
+        readout_status, readout_reason = match(prior, readout)
+        warnings = _summary(record, path, prior)["warnings"]
+        if readout_status == "matched":
+            warnings = [warning for warning in warnings if warning != "sub-readout-mode-not-verified"]
         out.append({"id": record["id"], "label": prior["id"],
                     "status": ("gain-only" if reason == "usable" and noise_status.startswith("read-noise-unresolved")
                                else "usable" if reason == "usable" else "not-applied"),
@@ -1391,25 +1441,33 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                     "read_noise_status": noise_status,
                     "stored_dark_variance_status": stored_status,
                     "stored_dark_variance_dn2": stored_variance,
+                    "readout_match_status": readout_status, "readout_match_reason": readout_reason,
+                    "readout_contract": prior.get("readout_contract"),
+                    "capture_readout": readout,
                     "has_read_noise_at_iso": iso is not None and curve_value(prior, "read_noise_log2iso_log2e", iso) is not None,
                     "mode_scope": prior["mode_scope"],
-                    "unverified_readout_fields": prior.get("unverified_readout_fields", {}),
-                    "warnings": _summary(record, path, prior)["warnings"]})
+                    "unverified_readout_fields": ({} if readout_status == "matched" else prior.get("unverified_readout_fields", {})),
+                    "warnings": warnings})
     return out
 
 
 def matching_prior(make: str, model: str, *, shutter: str | None = None,
-                   iso: float | None = None) -> dict | None:
+                   iso: float | None = None, readout: dict | None = None) -> dict | None:
     candidates = []
     for path, record, prior, error in _records():
         if record is None or not record.get("active"):
             continue
-        if _match_reason(prior, make, model, shutter, iso) != "usable":
+        if _match_reason(prior, make, model, shutter, iso, _check_readout=False) != "usable":
             continue
         entry = dict(prior)
         entry["calibration_id"] = record["id"]
         entry["source"] = f"User JPTC calibration ({record['id']})"
         entry["mode_match"] = "user-explicit-any-mode" if prior.get("shutter") == "any" else "user-exact-shutter"
         entry["model_equals"] = set(entry["model_equals"])
-        candidates.append((record.get("imported_at", ""), record["id"], entry))
-    return max(candidates, key=lambda c: (c[0], c[1]))[2] if candidates else None
+        # Preserve the selected user calibration on a readout failure. Skipping
+        # it would silently borrow an equally unverified curated/bulk model.
+        from .priors import with_readout
+        entry = with_readout(entry, readout)
+        priority = {"matched": 2, "not-declared": 1}.get(entry["readout_match_status"], 0)
+        candidates.append((priority, record.get("imported_at", ""), record["id"], entry))
+    return max(candidates, key=lambda c: c[:3])[3] if candidates else None
