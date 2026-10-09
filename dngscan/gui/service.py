@@ -1222,6 +1222,9 @@ def detected_scene_params(
         "approximation": getattr(noise_model, "approximation", None),
         "correlation": getattr(noise_model, "correlation", "unknown"),
         "spectral_ratios": getattr(noise_model, "spectral_ratios", {}),
+        "noise_reduction_status": getattr(noise_model, "noise_reduction_status", "absent"),
+        "fallback_source": getattr(noise_model, "fallback_source", None),
+        "fallback_reason": getattr(noise_model, "fallback_reason", None),
         "evidence_status": getattr(analysis, "noise_evidence_status", None),
     }
     calibration_status = calibration_diagnostics(

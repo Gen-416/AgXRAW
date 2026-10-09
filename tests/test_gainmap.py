@@ -80,7 +80,8 @@ class AppleGainMapWriterTests(unittest.TestCase):
                 _template_path.write_bytes(expected)
             self.assertEqual(_template_path.read_bytes(), expected)
             path.write_bytes(b"x" * delivery.quality)
-            metrics = {"coding_luma_rmse": 0., "coding_chroma_rmse": 0., "coding_local_luma_p99": 0.}
+            metrics = {"coding_luma_rmse": 0., "coding_chroma_rmse": 0., "coding_local_luma_p99": 0.,
+                       "coding_local_detail_loss": 0.}
             if kwargs.get("_sdr_precheck") is not None:
                 kwargs["_sdr_precheck"](metrics, encoded_bytes=path.stat().st_size)
             return {"delivery_quality": delivery.quality, "delivery_chroma_requested": "444",

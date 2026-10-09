@@ -245,7 +245,10 @@ def _apply_vignette_render(render: Any, vignette: Any, orientation_flip: int = 0
         band = out[y0:y1].astype(np.float32) * g[:, :, None].astype(np.float32)
         if limit is not None:
             if loss is not None:
-                np.maximum(loss[y0:y1], band >= limit, out=loss[y0:y1])
+                # A pre-existing saturated value is sensor/decoder evidence,
+                # not information newly lost by this correction.
+                np.maximum(loss[y0:y1], ((out[y0:y1] < limit) & (band >= limit))
+                           | ((out[y0:y1] >= 0) & (band < 0)), out=loss[y0:y1])
             band = np.clip(band, 0.0, limit)
         out[y0:y1] = band.astype(render.dtype)
     return render
@@ -1108,9 +1111,36 @@ def _resize_loss_to_shape(mask: Any, shape: tuple[int, int]) -> Any:
     return out
 
 
+def _merge_decoder_ceiling_loss(camera_rgb: Any, processing: Any | None) -> Any | None:
+    """Record a uint16 decoder boundary, separately from RAW saturation.
+
+    A maximum code cannot distinguish exact white from clipping introduced by
+    WB/demosaic/recovery. Conservatively withdraw HDR permission at that output
+    boundary. It can overlap sensor clipping; it never changes RAW clip counts.
+    Late floating lens values above 65535 are not this storage boundary.
+    """
+    if camera_rgb.dtype != np.uint16:
+        return processing
+    for y in range(0, camera_rgb.shape[0], 128):
+        boundary = camera_rgb[y:y+128] == 65535
+        if not np.any(boundary):
+            continue
+        if processing is None:
+            processing = np.zeros(camera_rgb.shape, dtype=np.float16)
+        np.maximum(processing[y:y+128], boundary, out=processing[y:y+128])
+    return processing
+
+
 def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str,
                              half_size: bool, demosaic: Any, *, track_loss: bool = True):
-    """One production recipe, also used by the Core Image scale reference."""
+    """One production recipe, also used by the Core Image scale reference.
+
+    Lens corrections run on LibRaw's reconstructed camera-linear output. For
+    blend/reconstruct this is an extended, signed floating range, not a new
+    clipping boundary at nominal sensor white. This late correction contract
+    does not move DNG stage 3 before highlight recovery or claim the operations
+    commute with LibRaw's nonlinear/spatial highlight recovery.
+    """
     from . import dng_opcodes as ops
     recipe = ops.read_plan(path)
     from . import embedded_lens
@@ -1120,6 +1150,13 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         recipe.names.extend((lens.source+" shading",lens.source+" distortion/TCA"))
     loss = np.zeros(evidence.raw_image.shape, dtype=np.uint8) if track_loss and (recipe.stage1 or recipe.stage2 or evidence.spatial_black is not None) else None
     from . import dng_point_ops
+    extended_linear = highlight != "clip"
+    if extended_linear and any(isinstance(op, dng_point_ops.PointOp) for op in recipe.post):
+        # MapTable/Polynomial have no established extension beyond their DNG
+        # normalized domain. Affine row/column transforms are also withheld
+        # until a separately tested late-domain contract is defined.
+        raise ValueError("stage-3 point transforms with blend/reconstruct are unsupported after "
+                         "LibRaw highlight recovery; choose clip mode or Apple RAW")
     # Area/pitch/table coordinates are sensor pixels. Reduced demosaic would
     # discard them before a stage-3 point transform, so process that uncommon
     # recipe at full resolution and reduce only the finished scene.
@@ -1183,8 +1220,8 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
                                    working_white, loss)
     processing = _mosaic_loss_rgb(loss, evidence.raw_colors, evidence.color_desc) if loss is not None else None
     del loss
-    # Colour mixing must follow camera-plane opcodes. The as-shot WB is diagonal,
-    # so it commutes with the per-plane warp; keep LibRaw's demosaic/reconstruction.
+    # Colour mixing follows camera-plane corrections. LibRaw already owns the
+    # fixed as-shot preconditioning, demosaic and highlight reconstruction.
     camera_rgb = True
     scene = render_to_scene_rec2020(raw, highlight, half_size and not reduce_after_ops, demosaic,
                                    _fixed_asshot_wb_kwargs(evidence.camera_wb), camera_rgb=camera_rgb,
@@ -1195,6 +1232,11 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         # DefaultScale and half-size affect the *input* geometry of every
         # subsequent warp, so transport the raster before resampling it.
         processing = _resize_loss_to_shape(processing, scene.shape[:2])
+    if track_loss:
+        # Capture the decoder's uint16 boundary before extended float lens
+        # operations or camera-colour mixing erase its provenance. Existing
+        # masks and this evidence then share every warp/crop/orientation.
+        processing = _merge_decoder_ceiling_loss(scene, processing)
     # LibRaw has already applied DefaultScale (pixel_aspect) before returning
     # this buffer. The remaining pixel aspect is one; applying the DNG aspect
     # a second time distorts both the image and its evidence footprints.
@@ -1204,16 +1246,19 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     inverse = {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 6, 6: 5, 7: 7}
     if not camera_rgb:
         scene = _orient_like_libraw(scene, inverse[flip])
-    # DNG stage-3 clips normalized camera planes at one. LibRaw's fixed WB
-    # commutes with a per-plane spatial operator, but its clipping bounds
-    # must be scaled too (scale_colors uses min(WB) for clip, max otherwise).
+    # The clip path keeps its former camera-code range. In non-clipping modes,
+    # LibRaw may reconstruct a plane above its pre-reconstruction WB-scaled
+    # sensor white. That nominal white must never clip the reconstructed scene.
     wb = np.asarray(evidence.camera_wb[:4], dtype=np.float64)
     positive_wb = wb[np.isfinite(wb) & (wb > 0)]
     if camera_rgb and (wb.size < 3 or not np.all(np.isfinite(wb[:3]) & (wb[:3] > 0))):
         raise ValueError("DNG camera-plane corrections require explicit positive as-shot WB")
-    limits = (np.minimum(65535., 65535. * wb[:3] /
-                        (positive_wb.min() if highlight == "clip" else positive_wb.max()))
-              if camera_rgb else None)
+    limits = (np.minimum(65535., 65535. * wb[:3] / positive_wb.min())
+              if camera_rgb and not extended_linear else None)
+    if extended_linear and any(not isinstance(op, ops.TrimBounds) for op in recipe.post):
+        # One promotion, only when a late correction needs it. Shading then
+        # works in-place; warps retain negative ringing and over-range gains.
+        scene = scene.astype(np.float32)
     shading = []
     if recipe.gain_maps:
         shading.append("gainmap")
@@ -1231,18 +1276,12 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
             if processing is None and track_loss:processing=np.zeros(scene.shape,dtype=np.float16)
             dng_point_ops.apply(scene,op,black=0.,white=limits,loss=processing)
         elif isinstance(op, ops.Warp):
-            scene = ops.warp_image(scene, op)
             if track_loss:
-                # A zero raster still records out-of-frame extrapolation as loss.
                 if processing is None:
                     processing = np.zeros((*scene.shape[:2], 3), dtype=np.float16)
-                processing = ops.warp_image(processing, op, loss=True)
-                processing = _resize_loss_to_shape(processing, scene.shape[:2])
-            for y in range(0, scene.shape[0], 128):
-                band = scene[y:y+128]
-                if processing is not None:
-                    np.maximum(processing[y:y+128], band >= limits, out=processing[y:y+128])
-                band[:] = np.minimum(band, limits).astype(np.uint16)
+                scene, processing = ops.warp_image(scene, op, processing_loss=processing)
+            else:
+                scene = ops.warp_image(scene, op)
         else:
             if track_loss:
                 processing = (np.zeros(scene.shape, dtype=np.float16) if processing is None
@@ -1271,6 +1310,7 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         "effective_sensor_crop": [y0 * sh / ph, x0 * sw / pw,
                                   (y1 - y0) * sh / ph, (x1 - x0) * sw / pw],
         "odd_reduction": bool(reduce_after_ops and ((y1-y0) % 2 or (x1-x0) % 2)),
+        "post_decode_reduction": 2 if reduce_after_ops else 1,
     }
     scene = ops.crop_image(scene, recipe.crop, evidence.raw_image.shape)
     # Match rawpy's contiguous handoff. A cropped/transposed view would make
@@ -1289,12 +1329,18 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         scene=reduced
         if processing is not None:
             processing=_bin_2x2_max(processing)
-        if terminal_trims and recipe.crop is not None:
-            # Box reduction drops an unmatched final row/column. Record the
-            # actual retained sensor window so independently rebuilt masks and
-            # Apple reference samples cannot stretch it over the discarded edge.
-            cy,cx,_,_=recipe.crop
-            recipe.crop=(float(round(cy)),float(round(cx)),float(2*hh),float(2*ww))
+        # The box operates after orientation: its discarded last row/column
+        # may be the *first* native sensor edge, and transpose swaps its axes.
+        # Map the retained rectangle back to the un-oriented decoded crop,
+        # then to sensor coordinates. Masks, the Apple reference and the
+        # sampling ruler must all describe this same retained window.
+        kept_h, kept_w = (2*ww, 2*hh) if flip & 4 else (2*hh, 2*ww)
+        kept_y = y0 + ((y1-y0)-kept_h if flip & 2 else 0)
+        kept_x = x0 + ((x1-x0)-kept_w if flip & 1 else 0)
+        retained = [kept_y*sh/ph, kept_x*sw/pw, kept_h*sh/ph, kept_w*sw/pw]
+        recipe.crop = tuple(retained)
+        recipe.noise_geometry.update(decoded_crop=[kept_y, kept_x, kept_h, kept_w],
+                                     effective_sensor_crop=retained)
     return scene, processing, recipe, "+".join(shading) or None
 
 
@@ -1802,6 +1848,7 @@ def load_raw(
     processing_clip_masks = None
     scene_geometry_ops = ()
     scene_crop_sensor = None
+    scene_sensor_window_shape = None
     scene_correction_note = None
     scene_processing_loss_pct = 0.0 if decoder == "libraw" else None
     effective_baseline_exposure = shot.baseline_exposure
@@ -1916,6 +1963,9 @@ def load_raw(
                 from .dng_opcodes import Warp
                 scene_geometry_ops = tuple(op for op in recipe.post if isinstance(op, Warp))
                 scene_crop_sensor = recipe.crop
+                from .sampling_geometry import sensor_window_from_recipe
+                scene_sensor_window_shape = sensor_window_from_recipe(
+                    recipe, scene_rec2020_render.shape[:2], orientation_flip)
                 scene_opcode_names = tuple(recipe.names)
                 if recipe.skipped:
                     scene_correction_note = "跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped)
@@ -2180,6 +2230,7 @@ def load_raw(
         processing_clip_masks=processing_clip_masks,
         scene_geometry_ops=scene_geometry_ops,
         scene_crop_sensor=scene_crop_sensor,
+        scene_sensor_window_shape=scene_sensor_window_shape,
         scene_correction_note=scene_correction_note,
         scene_processing_loss_pct=scene_processing_loss_pct,
         scene_reliable_reference_rec2020=reliable_reference,

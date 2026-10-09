@@ -122,6 +122,7 @@ def _profile(knots,rgb,vknots,vig,source,shutter):
 
 
 def apply_vignette(image,op,loss=None,limits=None):
+    """Late camera-linear shading; floating HDR input has no nominal-white clamp."""
     h,w=image.shape[:2];cx,cy=w/2,h/2;radius=np.hypot(cx,cy)
     x=(np.arange(w)-cx)/radius
     for y in range(0,h,128):
@@ -129,6 +130,8 @@ def apply_vignette(image,op,loss=None,limits=None):
         gain=1/np.interp(rr,op.knots,op.attenuation)
         band=image[y:y+128].astype(np.float32)*gain[...,None]
         if limits is not None:
-            if loss is not None:np.maximum(loss[y:y+128],band>=limits,out=loss[y:y+128])
+            if loss is not None:
+                np.maximum(loss[y:y+128],((image[y:y+128]<limits)&(band>=limits))
+                           | ((image[y:y+128]>=0)&(band<0)),out=loss[y:y+128])
             np.clip(band,0,limits,out=band)
         image[y:y+128]=band.astype(image.dtype)

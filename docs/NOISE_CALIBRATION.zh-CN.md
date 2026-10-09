@@ -68,6 +68,8 @@ fp-measurements/
 
 只有黑场统计、没有绝对增益锚点时仍可保存供检查，但不能构成完整的 shot/read 成像噪声模型。增益和读噪的有效 ISO 范围都要覆盖当前照片；未解析的读噪不是零读噪。
 
+Collect 的 `read_noise_unresolved_isos` 保存「测过但未能分辨」的 ISO。该列表随导入记录和包内 Collect 数据进入运行时；不能把它当成普通未采样间隔。DN 与电子读噪曲线都不在失败点求值，也不跨失败点插值或外推。失败列表包含非法 ISO，或与同一 ISO 的有效读噪点冲突时，导入会拒绝。单点 PTC 的零读噪同样表示未分辨，不是可用的零噪声模型。
+
 现有离线工具也可生成上述两类 JSON，再由 GUI 或 CLI 安装。单个 `JPTC/2` CSV 不直接作为 GUI 标定文件输入：
 
 ```bash
@@ -83,20 +85,24 @@ python tools/import_jptc.py /path/to/ptc-iso100.csv --brand SIGMA --model fp --i
 
 选中的先验能构成有效 shot/read 模型时，用其计算归一化 RAW 噪声方差和 SNR。否则尝试文件 Raw IFD 内合法的 DNG `NoiseProfile`；没有可用来源就明确报告不可用，不再用照片纹理的块内方差冒充物理噪声。文件模型是厂商声明，合法解析不等于已由自己的 PTC 验证。
 
+读噪未分辨不会丢弃整份匹配标定并静默退回包内先验：独立有效的增益继续保留，匹配诊断显示 `gain-only`，分别报告增益与读噪状态。没有独立替代来源时，噪声模型为 `unresolved`，分析状态为 `model-unresolved`，不生成物理 SNR 或读噪底，HDR 尾部 SNR 门控为 0，色度核跳过。普通缺测仍为 `unavailable`，该 HDR 因子保持中性值 1；这不绕过剪切、色域及解码器限制。合法的独立 `NoiseProfile` 可以提供替代模型，此时来源明确为 DNG，原标定来源和未分辨原因也随报告、界面和缓存保留。
+
 当前检查与限制如下：
 
 - 用户标定按规范化的完整制造商、型号匹配；不会用型号包含关系猜测另一代相机。包内 bulk 的旧模糊匹配另有待办，本轮没有替换。
 - 快门模式必须匹配或由用户明确声明 `any`。缺少照片快门信息时，不默认为机械或电子快门。
-- 仅在测量 ISO 域内插值，不外推，不跨已声明的增益跳变插值。单点只适用于该点；增益覆盖不代表读噪也已覆盖。
+- 用户标定仅在测量 ISO 域内插值，不外推，不跨已声明的增益跳变或读噪失败点插值。单点只适用于该点；增益覆盖不代表读噪也已覆盖。失败点只阻断读噪证据，不自动撤销独立增益。
 - 必须有可核对的 DN 范围，照片的编码范围须匹配标定或满足现有存储位移换算检查。拟合残差过高、未收敛或增益估计分歧过大等记录不会作为有效物理先验使用。
 - `compression`、`geometry` 会保存为测量声明，Collect 内互相矛盾会拒绝；当前尚未逐文件验证它们是否匹配照片。因此这里只验证相机、快门、ISO 和 DN 尺度，不能称为覆盖全部子读出模式。
 - 当前 JPTC 输入使用 G1 或绿色汇总形成 scalar-green 模型。后续把同一增益和读噪用于不同颜色平面是明确的近似，不是实测得到了完整 RGB 协方差。频谱摘要可触发保守限制，尚未自动变成分频降噪、条纹修复或固定图样校正；旧行列方差字段的语义也不升级为已验证条纹比例。
 
-模型状态、来源与单帧相关性线索分开记录。真实纹理导致 G1/G2 残差相关时，不会单凭它撤销匹配标定。HDR 使用模型 SNR；明确拒绝的模型与普通缺测采用不同的门控状态，剪切、色域和解码器约束仍独立存在。证据约束黑端点的读噪底来自独立模型，可靠 RAW 尾部单独约束白端点；缺模型时不把局部变化量改称实测读噪底，RAW 剪切分析也不会因此消失。
+模型状态、来源与单帧相关性线索分开记录。真实纹理导致 G1/G2 残差相关时，不会单凭它撤销匹配标定。HDR 使用模型 SNR；有效、普通缺测、未分辨和明确拒绝分别记录，剪切、色域和解码器约束仍独立存在。证据约束黑端点的读噪底来自独立模型，可靠 RAW 尾部单独约束白端点；缺模型时不把局部变化量改称实测读噪底，RAW 剪切分析也不会因此消失。
 
 频谱的横纵高频/中频功率比另作适用性检查：任一比值小于 0.5 或大于 2，标为 `measured-spectral-imbalance`；有效 gain/read 模型仍保留，但 HDR 尾部 SNR 门控为 0、当前粗网格色度核跳过。此阈值是保守启发式限制，不是相关噪声的完整统计检验。其他已测比值仅记为 `measured-spectrum-summary`，接近 1 不能证明白噪声，也不能排除窄带峰或整行/列偏置；没有摘要时为 `unknown`。界面显示该状态与横纵比值，原始测量仍需保留以便后续复核。
 
 文件明确声明 `NoiseReductionApplied > 0`，或该声明非法时，独立白噪声假设不适用：即使外部标定匹配也拒绝该成像噪声模型，HDR 尾部 SNR 门控为 0、色度核跳过。`NoiseProfile` 的数值仍按前述来源优先级选择；处理声明属于对全部来源的兼容性限制。tag 缺失不证明 RAW 完全未经处理。
+
+有理数声明保留原始状态：`0/1` 是明确未降噪（`none`），`0/0` 是未知（`unknown`），非零分子除以零是非法（`invalid`）。未知不等于未降噪，也不会单凭它拒绝匹配噪声模型；非法声明则拒绝。公共 TIFF 解析不再把零分母统一写成 0，模型与报告分别保留缺失、未知、明确无降噪、已降噪、非法和不可读状态。
 
 ## 色度降噪的适用边界
 
@@ -110,4 +116,4 @@ Apple RAW 的降噪、解拜耳和其他内部变换没有可用的协方差标�
 
 导入、校验及用户存储在 [calibration.py](../dngscan/calibration.py)，模型选择在 [noise_model.py](../dngscan/noise_model.py)，处理域传播在 [noise_propagation.py](../dngscan/noise_propagation.py)。GUI 及 CLI 使用同一公共导入接口，标定变动会改变预览、磁盘分析和导出配方指纹；导出分析期间变动则在写图前要求重试。
 
-接口与缓存回归见 [test_user_calibration.py](../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../tests/test_calibration_gui_cli.py)；模型和滤波见 [test_noise_model.py](../tests/test_noise_model.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py)。合成测试和其他相机数据不能替代自己的 fp PTC、黑场及实拍纹理验收。
+接口与缓存回归见 [test_user_calibration.py](../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../tests/test_calibration_gui_cli.py)；模型和滤波见 [test_noise_model.py](../tests/test_noise_model.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py)。[test_rational_metadata_state.py](../tests/test_rational_metadata_state.py) 通过大小端真实 TIFF 标签检查未知、非法及有效声明；Collect 合成 CSV 和导入后的分析测试覆盖失败点不被重新插值、增益保留及 HDR/色度核行为。合成测试和其他相机数据不能替代自己的 fp PTC、黑场及实拍纹理验收。

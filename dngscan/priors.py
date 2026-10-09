@@ -152,6 +152,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "fwc_e": float(item["fwc_e"]),
             "fwc_model_spread_e": float(item.get("fwc_model_spread_e", 0.0)),
             "read_noise_log2iso_log2e": rn_curve,
+            "read_noise_unresolved_isos": [iso] if rn <= 0 else [],
             "pdr_log2iso_ev": [],
             "measured_iso": int(iso),
             "shutter": shutter,
@@ -183,6 +184,8 @@ def _jptc_entries() -> list[dict[str, Any]]:
                                      item.get("gain_log2iso_log2epd", [])],
             "read_noise_log2iso_log2e": [(float(x), float(y)) for x, y in
                                          item.get("read_noise_log2iso_log2e", [])],
+            "read_noise_dn_log2iso": [(float(x), float(y)) for x, y in
+                                      item.get("read_noise_dn_log2iso", [])],
             "pdr_log2iso_ev": [],
             "gain_jump_isos": item.get("gain_jump_isos", []),
             "shutter": shutter_map.get(str(item.get("shutter")), item.get("shutter")),
@@ -194,6 +197,10 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "within_var_raw_log2iso": item.get("within_var_raw_log2iso"),
             "source": f"JPTC collect set ({path.name})",
         }
+        from .calibration import _read_noise_unresolved_isos
+        entry["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
+            item.get("read_noise_unresolved_isos"), entry["read_noise_log2iso_log2e"],
+            entry["read_noise_dn_log2iso"])
         for k in ("unity_gain_ev", "fwc_e"):
             if k in item:
                 entry[k] = item[k]
@@ -348,6 +355,9 @@ def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
 
 def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:
     if not iso or iso <= 0:
+        return None
+    from .calibration import read_noise_issue
+    if read_noise_issue(priors, iso):
         return None
     if priors.get("user_calibration"):
         from .calibration import curve_value

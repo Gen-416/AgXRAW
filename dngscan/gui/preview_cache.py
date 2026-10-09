@@ -45,7 +45,9 @@ from .scheduler import shared_flight_wait
 # v17: phase-separated noise and non-periodic full-resolution planning samples.
 # v20: exact full-resolution source metadata binds the analysis envelope and
 # disk analysis to the decoder realization; pre-v20 partial checks are stale.
-PREVIEW_CACHE_VERSION = 21
+# v22: extended highlight lens domain, calibration validity and native sensor
+# window sampling. Both decoded proxy pixels and analysis qualification changed.
+PREVIEW_CACHE_VERSION = 22
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -516,6 +518,7 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "scene_scale_mode": getattr(bundle, "scene_scale_mode", None),
         "scene_align_factor": float(getattr(bundle, "scene_align_factor", 1.0)),
         "proxy_scale": float(getattr(bundle, "proxy_scale", 1.0)),
+        "scene_sensor_window_shape": getattr(bundle, "scene_sensor_window_shape", None),
         "scene_align_error": getattr(bundle, "scene_align_error", None),
         "scene_opcode_names": list(getattr(bundle, "scene_opcode_names", ()) or ()),
         "evidence_shape": (
@@ -616,6 +619,8 @@ def _bundle_from_cache(
         scene_scale_mode=metadata.get("scene_scale_mode"),
         scene_align_factor=float(metadata.get("scene_align_factor", 1.0)),
         proxy_scale=float(metadata.get("proxy_scale", 1.0)),
+        scene_sensor_window_shape=(tuple(metadata["scene_sensor_window_shape"])
+                                   if metadata.get("scene_sensor_window_shape") is not None else None),
         scene_align_error=metadata.get("scene_align_error"),
         scene_opcode_names=tuple(metadata.get("scene_opcode_names", ()) or ()),
         evidence_shape=(

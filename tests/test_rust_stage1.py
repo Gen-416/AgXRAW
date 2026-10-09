@@ -138,7 +138,7 @@ class GamutCounts(unittest.TestCase):
 
 @unittest.skipUnless(_native_available(), "native extension not built")
 class RoundTripMetrics(unittest.TestCase):
-    def test_hdr_bit_identical(self) -> None:
+    def test_hdr_original_fields_bit_identical_and_detail_f32_parity(self) -> None:
         from dngscan import gainmap
 
         rng = np.random.default_rng(5)
@@ -152,7 +152,12 @@ class RoundTripMetrics(unittest.TestCase):
             got = gainmap._roundtrip_error_arrays(expanded, intended)
             self.assertEqual(set(got), set(ref))
             for k in ref:
-                self.assertEqual(got[k], ref[k], (k, h, w))
+                if k == "local_detail_loss":
+                    # Top-k f32 means may differ by one reduction rounding;
+                    # the original rank statistics remain bit-identical.
+                    self.assertAlmostEqual(got[k], ref[k], delta=2e-7, msg=(k, h, w))
+                else:
+                    self.assertEqual(got[k], ref[k], (k, h, w))
 
     def test_base_exact_except_declared_sums(self) -> None:
         from dngscan import gainmap

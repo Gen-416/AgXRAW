@@ -1037,6 +1037,8 @@ function setCalibrationStatus(text,isError=false){
   const el=$("#calibrationStatus");el.textContent=text||"";el.classList.toggle("warn",isError);
 }
 function calibrationReason(reason){
+  const noiseStates={"gain-only":"仅增益标定可用","read-noise-unresolved":"增益可用；该 ISO 的读噪测量未能分辨","read-noise-unresolved-interval":"增益可用；读噪插值区间包含未分辨测量","read-noise-unresolved-measurements":"含未能分辨的读噪测量；相关区间不插值"};
+  if(noiseStates[reason])return noiseStates[reason];
   return ({usable:"匹配可用",inactive:"已停用","readout-mode-unavailable":"测量未声明读出模式","file-readout-mode-unavailable":"RAW 未记录读出模式","readout-mode-mismatch":"读出模式不匹配","iso-out-of-domain-or-gain-jump":"ISO 超出测量范围或跨越增益跳变","no-absolute-gain":"缺少绝对增益标定","no-electron-read-noise":"缺少可用电子读噪标定","quality-high-residual":"测量拟合残差过高","quality-unconverged":"测量拟合未收敛","estimator-spread":"增益估计分歧过大","invalid-record":"标定记录损坏","sub-readout-mode-not-verified":"压缩与分辨率等子读出模式未验证"})[reason]||reason||"";
 }
 function renderCalibrations(profiles){
@@ -1248,13 +1250,13 @@ function renderDetectedParams(d){
   setFact("#decoderFact",decoderBits.filter(Boolean).join(" · "),!!(d.decoder_fallback||d.evidence_error||d.data_support));
   setFact("#wbFact",d.wb_degradation?"⚠ 白平衡："+d.wb_degradation:"",true);
   const noise=d.noise_model||{};
-  const noiseStatus=noise.status==="valid"?"可用":noise.status==="rejected"?"不适用":"不可用";
+  const noiseStatus=noise.status==="valid"?"可用":noise.status==="unresolved"?"读噪未分辨":noise.status==="rejected"?"不适用":"不可用";
   const noiseSource=(noise.source||"").startsWith("DNG ")?"DNG 文件声明":(noise.source||"").startsWith("User JPTC")?"用户实测":noise.source&&noise.source!=="none"?"内置先验":"缺少模型来源";
-  const noiseReason=({"matched-shot-read-model":"噪声模型匹配","file-declared-model":"采用文件噪声声明","no-matched-calibration":"无匹配标定","iso-unavailable":"缺少 ISO","suspect-iso":"ISO 超出可信范围","read-noise-unavailable":"缺少读噪标定","unmatched-dn-scale":"RAW 码值范围不匹配","raw-channels-unavailable":"缺少 RAW 通道","sensor-evidence-unavailable":"缺少传感器证据","not-independent-cfa-samples":"非独立 CFA 感光点","file-noise-metadata-unreadable":"无法读取文件噪声声明","profile-is-not-cfa-raw":"噪声声明不适用于 CFA RAW","unsupported-colour-plane":"噪声声明颜色平面不支持","raw-noise-reduction-declared":"文件声明已降噪，独立噪声模型不适用","invalid-noise-reduction-declaration":"文件降噪声明无效"})[noise.reason]||calibrationReason(noise.reason);
+  const noiseReason=({"matched-shot-read-model":"噪声模型匹配","file-declared-model":"采用文件噪声声明","file-declared-model-after-unresolved-prior":"实测读噪未分辨，改用独立文件噪声声明","no-matched-calibration":"无匹配标定","iso-unavailable":"缺少 ISO","suspect-iso":"ISO 超出可信范围","read-noise-unavailable":"缺少读噪标定","unmatched-dn-scale":"RAW 码值范围不匹配","raw-channels-unavailable":"缺少 RAW 通道","sensor-evidence-unavailable":"缺少传感器证据","not-independent-cfa-samples":"非独立 CFA 感光点","file-noise-metadata-unreadable":"无法读取文件噪声声明","profile-is-not-cfa-raw":"噪声声明不适用于 CFA RAW","unsupported-colour-plane":"噪声声明颜色平面不支持","raw-noise-reduction-declared":"文件声明已降噪，独立噪声模型不适用","invalid-noise-reduction-declaration":"文件降噪声明无效"})[noise.reason]||calibrationReason(noise.reason);
   const correlation=noise.correlation==="measured-spectral-imbalance"?"实测频谱不均衡：限制 HDR 尾部，跳过色度降噪":noise.correlation==="measured-spectrum-summary"?"有实测频谱摘要（不等于已验证白噪声）":"相关噪声未验证";
   const spectral=Object.entries(noise.spectral_ratios||{}).filter(([,value])=>Number.isFinite(value)).map(([axis,value])=>axis+" 高频/中频 "+value.toFixed(3)).join("，");
   setFact("#noiseModelFact",["噪声模型："+noiseStatus,noiseSource,noiseReason,noise.approximation?"模型含近似":"",correlation,spectral].filter(Boolean).join(" · "),noise.status!=="valid"||noise.correlation==="measured-spectral-imbalance");
-  $("#noiseModelFact").title=[noise.source,noise.reason,noise.domain,noise.approximation,noise.correlation].filter(Boolean).join(" · ");
+  $("#noiseModelFact").title=[noise.source,noise.reason,noise.domain,noise.approximation,noise.correlation,noise.noise_reduction_status==="unknown"?"文件降噪状态未知":"",noise.fallback_source,calibrationReason(noise.fallback_reason)].filter(Boolean).join(" · ");
   const calibrationRows=(d.calibrations||[]).map(profile=>(profile.label||profile.id||"用户实测")+"："+calibrationReason(profile.reason||profile.status));
   setFact("#calibrationMatchFact",calibrationRows.join("\\n"),(d.calibrations||[]).some(profile=>profile.status!=="usable"));
   setFact("#clipFact",d.raw_clip_union_pct!==null?"实测 RAW 过曝 "+(+d.raw_clip_union_pct).toFixed(2)+"%（≥1 通道）":"");

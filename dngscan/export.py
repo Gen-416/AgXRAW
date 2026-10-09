@@ -483,7 +483,8 @@ def export_srgb_jpeg(
                                  source_raw=path, return_rgb=return_rgb)
         if delivery is not None and delivery.name == "auto":
             from PIL import Image, JpegImagePlugin
-            from .auto_encode import coding_metrics, select_encoding
+            from .auto_encode import select_encoding
+            from .gainmap import _base_and_coding_metrics_arrays, _base_roundtrip_is_acceptable
 
             def encode(q, candidate, subsampling=1):
                 embedded = save_jpeg_array(rgb, candidate, q, output_gamut, subsampling)
@@ -495,7 +496,9 @@ def export_srgb_jpeg(
                     if JpegImagePlugin.get_sampling(im) != subsampling:
                         raise RuntimeError("JPEG 主图采样与编码请求不符")
                     decoded = np.asarray(im.convert("RGB"))
-                    metrics = coding_metrics(decoded, rgb)
+                    metrics = _base_and_coding_metrics_arrays(decoded, rgb)
+                    if not _base_roundtrip_is_acceptable(metrics, delivery.tolerances):
+                        raise RuntimeError("JPEG 回读误差或局部细节损失超出交付门限")
                 return {**metrics, "icc_embedded": embedded,
                         "delivery_quality": q, "delivery_container": "jpeg",
                         "delivery_chroma_requested": "422" if subsampling == 1 else "420",
@@ -512,6 +515,7 @@ def export_srgb_jpeg(
             info["output_path"] = str(out_path)
             return info
         from PIL import Image, JpegImagePlugin
+        from .gainmap import _base_roundtrip_error_arrays, _base_roundtrip_is_acceptable
         import tempfile
         out_path.parent.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".agxraw-jpeg-",dir=out_path.parent) as td:
@@ -524,7 +528,14 @@ def export_srgb_jpeg(
                         or im.info.get("icc_profile") != output_icc_profile_bytes(output_gamut)
                         or JpegImagePlugin.get_sampling(im) != subsampling):
                     raise RuntimeError("JPEG 回读尺寸、ICC 或采样与请求不符")
-                decoded = np.asarray(im.convert("RGB")) if return_rgb else None
+                decoded = np.asarray(im.convert("RGB"))
+                metrics = _base_roundtrip_error_arrays(decoded, rgb)
+                tolerances = (delivery.tolerances if delivery is not None
+                              else resolve_delivery_profile("share").tolerances)
+                if not _base_roundtrip_is_acceptable(metrics, tolerances):
+                    raise RuntimeError("JPEG 回读误差或局部细节损失超出交付门限")
+                if not return_rgb:
+                    decoded = None
             if delivery is not None and delivery.name == "share-hq":
                 info = {
                     "delivery_profile": delivery.name,
@@ -536,6 +547,7 @@ def export_srgb_jpeg(
                     "exif_carried": exif_carried,
                     "output_path": str(out_path),
                     **delivery_size_report(delivery, candidate.stat().st_size),
+                    **metrics,
                 }
                 if return_rgb:
                     info["_decoded_rgb"] = decoded

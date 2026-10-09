@@ -83,6 +83,27 @@ _LIGHT_SOURCE_CCT = {
 _TYPE_SIZES = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8}
 
 
+@dataclass(frozen=True)
+class UndefinedRational:
+    """A TIFF rational with a zero denominator, retaining its declaration.
+
+    Ordinary finite rationals remain floats for existing numeric consumers.
+    A tag may define 0/0 as unknown (NoiseReductionApplied does); a nonzero
+    numerator over zero is invalid. Neither is silently converted to zero,
+    nor encoded as a NaN whose provenance would be lost.
+    """
+
+    numerator: int
+    denominator: int = 0
+
+    @property
+    def state(self) -> str:
+        return "unknown" if self.numerator == 0 else "invalid"
+
+    def __float__(self) -> float:
+        raise ValueError(f"{self.state} TIFF rational {self.numerator}/{self.denominator}")
+
+
 @dataclass
 class DngShotInfo:
     make: str | None = None
@@ -132,7 +153,8 @@ def _entry_values(fh, typ: int, num: int, raw: bytes, endian: str) -> list:
     if typ in (5, 10):  # RATIONAL / SRATIONAL
         sub = "l" if typ == 10 else "L"
         parts = struct.unpack(endian + sub * (2 * num), buf)
-        return [parts[2 * i] / parts[2 * i + 1] if parts[2 * i + 1] else 0.0 for i in range(num)]
+        return [parts[2 * i] / parts[2 * i + 1] if parts[2 * i + 1]
+                else UndefinedRational(parts[2 * i]) for i in range(num)]
     return []
 
 
@@ -261,7 +283,7 @@ def read_dng_shot_info(path: Path) -> DngShotInfo:
                 _parse_raf_shot_info(fh, info)
             else:
                 _parse_tiff_shot_info(fh, info)
-    except (OSError, struct.error):
+    except (OSError, struct.error, ValueError, TypeError, OverflowError):
         pass
     return info
 
@@ -341,7 +363,7 @@ def is_dng_container(path: Path) -> bool:
             for tag, _typ, _num, _raw in _read_ifd_entries(fh, ifd0_off, endian):
                 if tag == TAG_DNG_VERSION:
                     return True
-    except (OSError, struct.error):
+    except (OSError, struct.error, ValueError, TypeError, OverflowError):
         return False
     return False
 
@@ -415,7 +437,7 @@ def read_dng_color_calibration(path: Path) -> DngColorCalibration | None:
                 if ab is not None:
                     m = [[ab[r] * m[r][c] for c in range(3)] for r in range(3)]
                 matrices[idx] = tuple(tuple(float(v) for v in row) for row in m)
-    except (OSError, struct.error):
+    except (OSError, struct.error, ValueError, TypeError, OverflowError):
         return None
     if 1 in matrices and 1 in illuminants:
         return DngColorCalibration(
@@ -541,7 +563,7 @@ def read_dng_gain_maps(path: Path) -> list[DngGainMap]:
                         parsed = _parse_gain_map_payload(payload)
                         if parsed is not None:
                             maps.append(parsed)
-    except (OSError, struct.error):
+    except (OSError, struct.error, ValueError, TypeError, OverflowError):
         return []
     return maps
 
@@ -599,7 +621,7 @@ def read_dng_shading_ops(path: Path) -> dict:
                                 vignette = DngVignetteRadial(
                                     k=tuple(vals7[:5]), cx_hat=vals7[5], cy_hat=vals7[6]
                                 )
-    except (OSError, struct.error):
+    except (OSError, struct.error, ValueError, TypeError, OverflowError):
         pass
     return {"gain_maps": gain_maps, "vignette": vignette}
 
@@ -648,6 +670,6 @@ def read_dng_stage1_flags(path: Path) -> tuple[str, ...]:
                         if vals and abs(float(vals[0]) - 1.0) < 1e-9:
                             continue
                     flags.add(name)
-    except (OSError, struct.error):
+    except (OSError, struct.error, ValueError, TypeError, OverflowError):
         return ()
     return tuple(sorted(flags))

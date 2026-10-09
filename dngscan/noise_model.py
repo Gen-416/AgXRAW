@@ -6,7 +6,7 @@ describes conditional variance, not which individual pixels are noise.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 import struct
 from typing import Any
@@ -24,6 +24,9 @@ class NoiseModel:
     approximation: str | None = None
     correlation: str = "unknown"
     spectral_ratios: dict[str, float] = field(default_factory=dict)
+    noise_reduction_status: str = "absent"
+    fallback_source: str | None = None
+    fallback_reason: str | None = None
 
     def coefficients(self, label: str) -> tuple[float, float] | None:
         if self.status != "valid" or self.domain != "normalized-raw":
@@ -53,6 +56,10 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
         return NoiseModel(source=source, reason="iso-unavailable")
     if prior.get("suspect_iso_min") and iso >= prior["suspect_iso_min"]:
         return NoiseModel(status="rejected", source=source, reason="suspect-iso")
+    from .calibration import read_noise_issue
+    issue = read_noise_issue(prior, iso)
+    if issue:
+        return NoiseModel(status="unresolved", source=source, reason=issue)
     read = priors.read_noise_e(prior, iso)
     if read is None or not math.isfinite(read) or read < 0:
         return NoiseModel(source=source, reason="read-noise-unavailable")
@@ -102,30 +109,39 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
 def _file_model(bundle) -> NoiseModel:
     """Read only a CFA Raw IFD profile; never borrow an enhanced RGB profile."""
     from .spatial_black import sensor_tags
+    from .metadata import UndefinedRational
 
     try:
         tags = sensor_tags(bundle.path, {51041, 50935, 50710})
     except (OSError, ValueError, OverflowError, TypeError, IndexError, struct.error):
-        return NoiseModel(reason="file-noise-metadata-unreadable")
+        return NoiseModel(reason="file-noise-metadata-unreadable", noise_reduction_status="unreadable")
     reduction = tags.get(50935)
+    declaration = "absent"
     if reduction is not None:
         try:
             if len(reduction) != 1:
                 raise ValueError
-            value = float(reduction[0])
-            if not math.isfinite(value) or not 0 <= value <= 1:
-                raise ValueError
+            rational = reduction[0]
+            if isinstance(rational, UndefinedRational) and rational.state == "unknown":
+                declaration, value = "unknown", None
+            else:
+                value = float(rational)
+                if not math.isfinite(value) or not 0 <= value <= 1:
+                    raise ValueError
+                declaration = "none" if value == 0 else "applied"
         except (ValueError, TypeError, IndexError, OverflowError):
             return NoiseModel(status="rejected", source="DNG NoiseReductionApplied",
-                              reason="invalid-noise-reduction-declaration")
-        if value > 0:
+                              reason="invalid-noise-reduction-declaration", noise_reduction_status="invalid")
+        if value is not None and value > 0:
             return NoiseModel(status="rejected", source="DNG NoiseReductionApplied",
-                              reason="raw-noise-reduction-declared")
+                              reason="raw-noise-reduction-declared", noise_reduction_status=declaration)
+    def result(**kwargs):
+        return NoiseModel(noise_reduction_status=declaration, **kwargs)
     if 51041 not in tags:
-        return NoiseModel()
+        return result()
     try:
         if tags.get(262, [None])[0] != 32803:
-            return NoiseModel(source="DNG NoiseProfile", reason="profile-is-not-cfa-raw")
+            return result(source="DNG NoiseProfile", reason="profile-is-not-cfa-raw")
         values = [float(x) for x in tags[51041]]
         ids = sorted(int(x) for x in np.unique(bundle.raw_colors))
         labels = _labels(bundle, ids)
@@ -141,19 +157,19 @@ def _file_model(bundle) -> NoiseModel:
         if any(a <= 0 or b < 0 for a, b in pairs):
             raise ValueError("invalid-profile-variance")
     except (ValueError, TypeError, IndexError, OverflowError) as exc:
-        return NoiseModel(status="rejected", source="DNG NoiseProfile",
-                          reason=str(exc) or "malformed-file-noise-profile")
+        return result(status="rejected", source="DNG NoiseProfile",
+                      reason=str(exc) or "malformed-file-noise-profile")
     coefficients = {}
     for cid in ids:
         label = labels[cid]
         code = {"R": 0, "G": 1, "B": 2}.get(label[:1])
         if code is None or code not in planes:
-            return NoiseModel(status="rejected", source="DNG NoiseProfile",
-                              reason="unsupported-colour-plane")
+            return result(status="rejected", source="DNG NoiseProfile",
+                          reason="unsupported-colour-plane")
         coefficients[label] = pairs[0] if len(pairs) == 1 else pairs[planes.index(code)]
-    return NoiseModel(status="valid", source="DNG NoiseProfile", reason="file-declared-model",
-                      channel_variance=coefficients,
-                      approximation="manufacturer-declared-white-noise-model")
+    return result(status="valid", source="DNG NoiseProfile", reason="file-declared-model",
+                  channel_variance=coefficients,
+                  approximation="manufacturer-declared-white-noise-model")
 
 
 def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> NoiseModel:
@@ -175,10 +191,18 @@ def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> Noise
     if file_model.reason in ("raw-noise-reduction-declared", "invalid-noise-reduction-declaration"):
         return file_model
     if model.status == "valid":
-        return model
+        return replace(model, noise_reduction_status=file_model.noise_reduction_status)
+    if model.status == "unresolved":
+        if file_model.status == "valid":
+            return replace(file_model, reason="file-declared-model-after-unresolved-prior",
+                           fallback_source=model.source, fallback_reason=model.reason)
+        if file_model.status == "unavailable":
+            return replace(model, noise_reduction_status=file_model.noise_reduction_status)
+        return replace(file_model, fallback_source=model.source, fallback_reason=model.reason)
     if model.status == "rejected" and file_model.status == "unavailable":
-        return model
-    return file_model if file_model.source != "none" else model
+        return replace(model, noise_reduction_status=file_model.noise_reduction_status)
+    return (file_model if file_model.source != "none" else
+            replace(model, noise_reduction_status=file_model.noise_reduction_status))
 
 
 def model_snr_curves(model: NoiseModel, channel_ids, labels):

@@ -34,6 +34,16 @@ def collect_profile():
               for i,r in [(100,3),(200,2),(400,1.5),(800,1)]], "gain_jump_isos": [800]}
 
 
+def unresolved_collect_profile():
+    profile = collect_profile()
+    profile["read_noise_log2iso_log2e"] = [[math.log2(i), math.log2(r)]
+                                            for i, r in [(100, 3), (400, 1.5), (800, 1)]]
+    profile["read_noise_dn_log2iso"] = [[math.log2(i), r]
+                                       for i, r in [(100, .75), (400, 1.5), (800, 4)]]
+    profile["read_noise_unresolved_isos"] = [200]
+    return profile
+
+
 class TestUserCalibration(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -106,6 +116,86 @@ class TestUserCalibration(unittest.TestCase):
         self.assertIsNone(priors.read_noise_e(e, 600))
         self.assertEqual(priors.gain_e_per_dn(e, 800), .25)
         self.assertIsNone(calibration.matching_prior("SIGMA", "FP", shutter="electronic", iso=900))
+
+    def test_unresolved_noise_blocks_noise_interpolation_but_preserves_gain(self):
+        item = unresolved_collect_profile()
+        summary = calibration.import_calibration(self.write_profile(item))
+        self.assertEqual(summary["read_noise_unresolved_isos"], [200])
+        for iso in (150, 200, 300):
+            with self.subTest(iso=iso):
+                entry = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=iso)
+                self.assertEqual(entry["calibration_id"], summary["id"])
+                self.assertAlmostEqual(priors.gain_e_per_dn(entry, iso), 400/iso)
+                self.assertIsNone(priors.read_noise_e(entry, iso))
+                self.assertIsNone(calibration.curve_value(entry, "read_noise_dn_log2iso", iso))
+                diagnostic = calibration.calibration_diagnostics("SIGMA", "fp", "electronic", iso)[0]
+                self.assertEqual(diagnostic["status"], "gain-only")
+                self.assertEqual(diagnostic["gain_status"], "usable")
+                self.assertFalse(diagnostic["has_read_noise_at_iso"])
+                self.assertEqual(diagnostic["read_noise_status"], "read-noise-unresolved" if iso == 200
+                                 else "read-noise-unresolved-interval")
+        for iso, noise in ((100, 3), (400, 1.5), (800, 1)):
+            self.assertEqual(priors.read_noise_e(entry, iso), noise)
+        record = json.loads(Path(summary["path"]).read_text())
+        self.assertEqual(record["payload"]["read_noise_unresolved_isos"], [200])
+
+    def test_unsampled_noise_interval_remains_interpolatable(self):
+        item = unresolved_collect_profile()
+        del item["read_noise_unresolved_isos"]
+        calibration.import_calibration(self.write_profile(item))
+        entry = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=200)
+        self.assertAlmostEqual(priors.read_noise_e(entry, 200), math.sqrt(3*1.5))
+        self.assertEqual(calibration.read_noise_status(entry, 200), "interpolated")
+
+    def test_unresolved_point_validation_rejects_invalid_isos_and_conflicts(self):
+        for failed in ([0], [-1], [float("nan")], [float("inf")], [True], [.5], [2**25], "200"):
+            with self.subTest(failed=failed):
+                item = unresolved_collect_profile()
+                item["read_noise_unresolved_isos"] = failed
+                with self.assertRaises(ValueError):
+                    calibration.import_calibration(self.write_profile(item))
+        for curve in ("read_noise_log2iso_log2e", "read_noise_dn_log2iso"):
+            item = unresolved_collect_profile()
+            item[curve].insert(1, [math.log2(200), 1.])
+            with self.subTest(curve=curve), self.assertRaisesRegex(ValueError, "both resolved and unresolved"):
+                calibration.import_calibration(self.write_profile(item))
+        item = single_profile()
+        item["read_noise_unresolved_isos"] = [100]
+        with self.assertRaisesRegex(ValueError, "both resolved and unresolved"):
+            calibration.import_calibration(self.write_profile(item))
+
+    def test_single_unresolved_noise_is_explicit_not_zero_noise(self):
+        item = single_profile()
+        item["read_noise_e"] = 0
+        calibration.import_calibration(self.write_profile(item))
+        entry = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100)
+        self.assertEqual(priors.gain_e_per_dn(entry, 100), 4)
+        self.assertIsNone(priors.read_noise_e(entry, 100))
+        self.assertEqual(calibration.read_noise_status(entry, 100), "read-noise-unresolved")
+
+    def test_packaged_collect_runtime_also_retains_failure_barriers(self):
+        path = self.write_profile(unresolved_collect_profile())
+        def collect_only(directory, pattern):
+            return iter([path]) if directory.name == "jptc_collect" else iter(())
+        with patch.object(priors, "_JPTC_CACHE", None), patch.object(Path, "glob", collect_only):
+            entry, = priors._jptc_entries()
+            self.assertEqual(entry["read_noise_unresolved_isos"], [200])
+            self.assertEqual(priors.read_noise_e(entry, 100), 3)
+            self.assertEqual(priors.read_noise_e(entry, 400), 1.5)
+            self.assertEqual(calibration.curve_value(entry, "read_noise_dn_log2iso", 100), .75)
+            for iso in (150, 200, 300):
+                self.assertIsNone(priors.read_noise_e(entry, iso))
+                self.assertIsNotNone(priors.gain_e_per_dn(entry, iso))
+                self.assertIsNone(calibration.curve_value(entry, "read_noise_dn_log2iso", iso))
+
+    def test_failed_sample_also_blocks_extrapolation_past_it(self):
+        entry = {"read_noise_log2iso_log2e": [[math.log2(100), math.log2(3)]],
+                 "read_noise_unresolved_isos": [50, 200]}
+        for iso in (25, 50, 200, 400):
+            with self.subTest(iso=iso):
+                self.assertIsNone(priors.read_noise_e(entry, iso))
+                self.assertTrue(calibration.read_noise_issue(entry, iso))
+        self.assertEqual(priors.read_noise_e(entry, 100), 3)
 
     def test_activation_removal_and_content_cache_identity(self):
         baseline = calibration.calibration_fingerprint()
@@ -198,6 +288,34 @@ class TestUserCalibration(unittest.TestCase):
         self.assertAlmostEqual(priors.read_noise_e(e,100), rn, delta=.02)
         self.assertAlmostEqual(priors.gain_e_per_dn(e,200), 2, delta=.02)
         self.assertNotIn("url_base", json.loads(Path(s["path"]).read_text())["payload"]["source"])
+
+    def test_collect_dark_failure_survives_csv_conversion_and_runtime_import(self):
+        directory = self.root / "collect-unresolved"
+        directory.mkdir()
+        black, white, gain = 1024, 16383, 4
+        (directory / "dark-scalars.csv").write_text(
+            "#Format: JPTC-DARK/1\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
+            "#AdcStep: 0\n#ClipVarianceFactor: 1\n"
+            "ISO,ColorIndex,BlackA,BlackB,StdDiffClipped\n" +
+            "".join(f"{iso},{ch},{black},{black},{math.sqrt(2)*rn_dn}\n"
+                    for iso, rn_dn in ((100, .75), (200, 0), (400, 1.5)) for ch in (1, 3)))
+        rows = []
+        for signal in np.geomspace(2, (white-black)*1.15, 80):
+            mean = min(black+signal, white)
+            std = math.sqrt(signal/gain + .75**2) if mean < white else 0
+            rows.append(f"{mean},{std}")
+        (directory / "ptc-iso100.csv").write_text(
+            "#Format: JPTC/2\n#BlackLevel: 1024,1024,1024,1024\nG1_Mean,G1_Std\n" + "\n".join(rows))
+        (directory / "gain-levels.csv").write_text(
+            "#Format: JPTC-ISOGAIN/1\nISO,ColorIndex,ClipFrac,Mean,ShutterSec\n"
+            "100,1,0,2024,1\n200,1,0,3024,1\n400,1,0,5024,1\n")
+        summary = calibration.import_calibration(directory)
+        prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=200)
+        self.assertEqual(prior["calibration_id"], summary["id"])
+        self.assertEqual(prior["read_noise_unresolved_isos"], [200])
+        self.assertAlmostEqual(priors.gain_e_per_dn(prior, 200), 2, delta=.02)
+        self.assertIsNone(priors.read_noise_e(prior, 200))
+        self.assertEqual(calibration.read_noise_status(prior, 200), "read-noise-unresolved")
 
     def test_collect_boundary_validation_and_partial_profile_diagnostics(self):
         for jumps in ([100], [900], [float("inf")], [-1]):

@@ -19,6 +19,7 @@ from typing import Any
 from ._deps import np
 from .color import srgb_decode
 from .hdr_color import output_luma_weights
+from .local_detail import local_detail_loss, detail_is_acceptable
 from .delivery import (
     ARCHIVE_TOLERANCES,
     DeliveryProfile,
@@ -308,6 +309,13 @@ def _invalid_hdr_roundtrip() -> dict[str, float]:
 
 def _roundtrip_error_arrays(expanded: Any, intended: Any, *, _workspace: Any = None) -> dict[str, float]:
     """Array-level body of _roundtrip_error (both float16 (H, W, 3))."""
+    metrics = _roundtrip_error_arrays_core(expanded, intended, _workspace=_workspace)
+    metrics["local_detail_loss"] = local_detail_loss(expanded, intended, linear_hdr=True)
+    return metrics
+
+
+def _roundtrip_error_arrays_core(expanded: Any, intended: Any, *, _workspace: Any = None) -> dict[str, float]:
+    """Existing native/workspace/NumPy statistics, before the shared detail scan."""
     from . import _fast
 
     native = _fast.kernel("hdr_roundtrip_metrics")
@@ -467,6 +475,7 @@ def _hdr_roundtrip_is_acceptable(
         and metrics["chroma_error"] <= tolerances.hdr_pixel_chroma_error
         and metrics.get("block_p95_luma_error", float("inf")) <= tolerances.hdr_block_p95_luma_error
         and metrics.get("highlight_max_luma_error", float("inf")) <= tolerances.hdr_highlight_max_luma_error
+        and detail_is_acceptable(metrics, "local_detail_loss", tolerances.local_detail_loss)
     )
 
 
@@ -547,6 +556,13 @@ def _base_roundtrip_error(path: Path, intended_rgb_u8: Any) -> dict[str, float]:
 
 def _base_roundtrip_error_arrays(decoded: Any, intended: Any) -> dict[str, float]:
     """Array-level body of _base_roundtrip_error (both uint8 (H, W, 3))."""
+    metrics = _base_roundtrip_error_arrays_core(decoded, intended)
+    metrics["base_local_detail_loss"] = local_detail_loss(decoded, intended)
+    return metrics
+
+
+def _base_roundtrip_error_arrays_core(decoded: Any, intended: Any) -> dict[str, float]:
+    """Existing native/NumPy statistics, before the shared detail scan."""
     from . import _fast
 
     native = _fast.kernel("base_roundtrip_metrics")
@@ -630,6 +646,7 @@ def _base_roundtrip_is_acceptable(
         and metrics["base_channel_bias_code_error"]
         <= tolerances.base_channel_bias_code_error
         and metrics["base_block_p99_code_error"] <= tolerances.base_block_p99_code_error
+        and detail_is_acceptable(metrics, "base_local_detail_loss", tolerances.local_detail_loss)
     )
 
 
@@ -680,8 +697,127 @@ def _ciimage_from_rgba(array: Any, pixel_format: int, color_space: Any) -> tuple
     return image, data
 
 
+_ISO_HEADROOM_NAMESPACE = "http://ns.apple.com/HDRToneMap/1.0/"
+
+
+def _headroom_value(value: Any, label: str, *, stops: bool = False) -> float:
+    """Validate a declaration, never substitute measured pixels or SDR defaults."""
+    try:
+        if isinstance(value, bool):
+            raise ValueError("boolean")
+        number = float(value)
+        if not math.isfinite(number) or number < (0.0 if stops else 1.0):
+            raise ValueError("nonfinite or below reference white")
+        result = 2.0 ** number if stops else number
+        if not math.isfinite(result):
+            raise ValueError("nonfinite linear headroom")
+        return result
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(f"HDR headroom 声明无效：{label}") from exc
+
+
+def _headroom_agrees(a: float, b: float) -> bool:
+    # ImageIO's ISO metadata string representation rounds log2 values to six
+    # decimals. Allow that representation error, not delivery/encoding error.
+    return math.isclose(a, b, rel_tol=1e-5, abs_tol=1e-6)
+
+
+def _declared_gainmap_headroom(primary: Any, first: Any, iso_fields: Any,
+                              *, has_iso_gainmap: bool) -> dict[str, Any]:
+    """Reconcile explicit ISO declarations with older primary-image properties.
+
+    Auxiliary HDRToneMap values are in stops; ImageIO DerivationDetails and
+    legacy primary Headroom are linear ratios. For this writer the base must
+    be SDR and the alternate HDR. Malformed/partial or conflicting declarations
+    are errors even when another source supplies a usable number.
+    """
+    declarations: list[tuple[str, float | None, float]] = []
+
+    def pair(fields: Any, base_key: str, alternate_key: str,
+             source: str, *, stops: bool = False) -> None:
+        has_base, has_alternate = base_key in fields, alternate_key in fields
+        if not has_base and not has_alternate:
+            return
+        if not has_base or not has_alternate:
+            raise RuntimeError(f"HDR headroom 声明不完整：{source}")
+        base = _headroom_value(fields[base_key], f"{source}.{base_key}", stops=stops)
+        alternate = _headroom_value(fields[alternate_key], f"{source}.{alternate_key}", stops=stops)
+        if not _headroom_agrees(base, 1.0) or alternate <= base:
+            raise RuntimeError(f"HDR headroom 声明不符合 SDR base / HDR alternate：{source}")
+        declarations.append((source, base, alternate))
+
+    if iso_fields:
+        if "Version" in iso_fields and str(iso_fields["Version"]) != "1":
+            raise RuntimeError("不支持的 ISO gain-map headroom 元数据版本")
+        pair(iso_fields, "BaseHeadroom", "AlternateHeadroom", "iso-auxiliary", stops=True)
+    details = first.get("DerivationDetails", ()) or ()
+    if not isinstance(details, (list, tuple)) and not hasattr(details, "objectAtIndex_"):
+        raise RuntimeError("HDR headroom DerivationDetails 结构无效")
+    for detail in details:
+        if not hasattr(detail, "get"):
+            raise RuntimeError("HDR headroom DerivationDetails 项无效")
+        pair(detail, "TonemapBaseHDRHeadroom", "TonemapAlternateHDRHeadroom", "iso-derivation")
+    if "Headroom" in primary:
+        legacy = _headroom_value(primary["Headroom"], "primary.Headroom")
+        if has_iso_gainmap and legacy <= 1.0:
+            raise RuntimeError("HDR primary Headroom 未声明扩展动态范围")
+        declarations.append(("legacy-primary", None, legacy))
+
+    if not declarations:
+        if has_iso_gainmap:
+            raise RuntimeError("ISO gain map 缺少明确的 HDR headroom 声明")
+        # Ordinary SDR files have no gain map or headroom declaration. Keep
+        # their identity explicit; this is not a fallback for an invalid map.
+        return {"headroom": 1.0, "base_headroom": None,
+                "headroom_source": "sdr-no-gainmap", "headroom_status": "not-declared"}
+    source, base, alternate = declarations[0]
+    for other_source, other_base, other_alternate in declarations[1:]:
+        if (not _headroom_agrees(alternate, other_alternate)
+                or (base is not None and other_base is not None
+                    and not _headroom_agrees(base, other_base))):
+            raise RuntimeError(f"HDR headroom 声明冲突：{source} / {other_source}")
+    return {"headroom": alternate, "base_headroom": base,
+            "headroom_source": source, "headroom_status": "declared"}
+
+
+def _iso_auxiliary_headroom(Quartz: Any, source: Any, iso_type: Any) -> tuple[bool, dict, dict]:
+    """Fallback for systems without scalar ISO DerivationDetails properties.
+
+    CopyAuxiliaryDataInfoAtIndex can materialize the entire gain-map bitmap.
+    Extract only Python-owned scalars and release native temporaries within
+    this call so repeated encoding candidates cannot retain decoded maps.
+    """
+    if iso_type is None:
+        return False, {}, {}
+    import objc  # type: ignore
+
+    with objc.autorelease_pool():
+        aux_info = Quartz.CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, iso_type)
+        if aux_info is None:
+            return False, {}, {}
+        fields: dict[str, Any] = {}
+        metadata = aux_info.get(Quartz.kCGImageAuxiliaryDataInfoMetadata)
+        if metadata is not None:
+            # Match the namespace rather than a particular XMP prefix. These
+            # are file declarations, not CIImage.contentHeadroom() of the SDR
+            # base or a peak measured from decoded HDR pixels.
+            for tag in Quartz.CGImageMetadataCopyTags(metadata) or ():
+                if str(Quartz.CGImageMetadataTagCopyNamespace(tag)) == _ISO_HEADROOM_NAMESPACE:
+                    name = str(Quartz.CGImageMetadataTagCopyName(tag))
+                    if name in {"Version", "BaseHeadroom", "AlternateHeadroom"}:
+                        if name in fields:
+                            raise RuntimeError(f"ISO gain-map headroom 元数据重复：{name}")
+                        value = Quartz.CGImageMetadataTagCopyValue(tag)
+                        # ISO values are strings in this API. Preserve scalar
+                        # type validation when a malformed value is returned.
+                        fields[name] = (str(value) if isinstance(value, str) else value)
+        description = aux_info.get(Quartz.kCGImageAuxiliaryDataInfoDataDescription, {}) or {}
+        geometry = {key: int(description.get(key, 0)) for key in ("Width", "Height", "PixelFormat")}
+        return True, fields, geometry
+
+
 def inspect_gainmap_file(path: Path) -> dict[str, Any]:
-    """Read the properties needed to prove an Apple-written ISO gain-map file."""
+    """Read explicit ISO gain-map declarations and prove their consistency."""
     import Quartz  # type: ignore
     from Foundation import NSURL  # type: ignore
 
@@ -694,18 +830,30 @@ def inspect_gainmap_file(path: Path) -> dict[str, Any]:
     images = contents.get("Images", ()) if contents else ()
     first = images[0] if images else {}
     auxiliary = first.get(Quartz.kCGImagePropertyAuxiliaryData, ()) if first else ()
-    iso_type = str(getattr(Quartz, "kCGImageAuxiliaryDataTypeISOGainMap", ""))
+    iso_type = getattr(Quartz, "kCGImageAuxiliaryDataTypeISOGainMap", None)
     gainmap = next(
-        (item for item in auxiliary if str(item.get("AuxiliaryDataType", "")) == iso_type),
+        (item for item in auxiliary if str(item.get("AuxiliaryDataType", "")) == str(iso_type)),
         None,
     )
+    # ImageIO already decoded these explicit scalar declarations while reading
+    # file properties. Do not request the full auxiliary gain-map bitmap for
+    # each encoding candidate merely to retrieve the same two numbers.
+    headroom = _declared_gainmap_headroom(primary, first, {}, has_iso_gainmap=False)
+    has_iso_gainmap = gainmap is not None
+    if not (has_iso_gainmap and headroom["headroom_source"] == "iso-derivation"):
+        aux_present, iso_fields, description = _iso_auxiliary_headroom(Quartz, source, iso_type)
+        has_iso_gainmap = has_iso_gainmap or aux_present
+        if gainmap is None and aux_present:
+            gainmap = description
+        headroom = _declared_gainmap_headroom(primary, first, iso_fields,
+                                            has_iso_gainmap=has_iso_gainmap)
     pixel_format = int(gainmap.get("PixelFormat", 0)) if gainmap is not None else 0
     pixel_format_name = (
         pixel_format.to_bytes(4, "big").decode("ascii", errors="replace") if pixel_format else ""
     )
     return {
-        "has_iso_gainmap": gainmap is not None,
-        "headroom": float(primary.get("Headroom", 1.0)),
+        "has_iso_gainmap": has_iso_gainmap,
+        **headroom,
         "profile": str(primary.get(Quartz.kCGImagePropertyProfileName, "")),
         "width": int(primary.get(Quartz.kCGImagePropertyPixelWidth, 0)),
         "height": int(primary.get(Quartz.kCGImagePropertyPixelHeight, 0)),
@@ -806,6 +954,14 @@ def _new_hdr_metrics_workspace() -> Any:
 
 def _base_and_coding_metrics_arrays(decoded: Any, intended: Any) -> dict[str, float]:
     """Share one uint8 scan; keep both established reference functions intact."""
+    metrics = _base_and_coding_metrics_arrays_core(decoded, intended)
+    detail = local_detail_loss(decoded, intended)
+    metrics.update(base_local_detail_loss=detail, coding_local_detail_loss=detail)
+    return metrics
+
+
+def _base_and_coding_metrics_arrays_core(decoded: Any, intended: Any) -> dict[str, float]:
+    """Original fused statistics; detail is appended once after every dispatch path."""
     from . import _fast
     from .auto_encode import coding_metrics
 
@@ -819,8 +975,8 @@ def _base_and_coding_metrics_arrays(decoded: Any, intended: Any) -> dict[str, fl
                 return {k: float(v) for k, v in native(decoded, intended, np.getbufsize()).items()}
             except Exception as exc:
                 _fast.handle_kernel_error("base_and_coding_metrics_u8", exc)
-    return {**_base_roundtrip_error_arrays(decoded, intended),
-            **coding_metrics(decoded, intended)}
+    return {**_base_roundtrip_error_arrays_core(decoded, intended),
+            **coding_metrics(decoded, intended, _include_detail=False)}
 
 
 def _search_sdr_metrics(path: Path, base: Any, session: Any = None) -> dict[str, float]:
@@ -1277,7 +1433,8 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
                 f"p99={base_roundtrip['base_p99_code_error']:.1f}，"
                 f"max={base_roundtrip['base_max_code_error']:.1f}，"
                 f"通道偏差={base_roundtrip['base_channel_bias_code_error']:.3f}，"
-                f"8x8块p99={base_roundtrip['base_block_p99_code_error']:.3f}；已丢弃该文件"
+                f"8x8块p99={base_roundtrip['base_block_p99_code_error']:.3f}，"
+                f"局部细节损失={base_roundtrip['base_local_detail_loss']:.3f}；已丢弃该文件"
             )
             if _primary_session is not None:
                 from .auto_encode import EncodingStageRejected
@@ -1302,7 +1459,8 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
                 f"{roundtrip['block_p99_relative_error']:.4f}，"
                 f"8x8色品p99={roundtrip['block_chroma_error']:.4f}；已丢弃该文件"
                 f"（块内亮度绝对误差p95={roundtrip['block_p95_luma_error']:.4f}，"
-                f"局部HDR亮度误差max={roundtrip['highlight_max_luma_error']:.4f}）"
+                f"局部HDR亮度误差max={roundtrip['highlight_max_luma_error']:.4f}，"
+                f"局部细节损失={roundtrip['local_detail_loss']:.3f}）"
             )
         os.replace(temp_path, out_path)
         info["gainmap_as_rgb"] = True

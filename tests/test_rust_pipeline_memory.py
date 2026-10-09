@@ -46,7 +46,7 @@ class HdrValidation(unittest.TestCase):
                         self.assertFalse(gainmap._hdr_roundtrip_is_acceptable(ref))
                         if NATIVE:
                             native = _fast._load_extension().hdr_roundtrip_metrics(*images, gainmap._HDR_LUMA_WEIGHTS.tolist())
-                            self.assertEqual(native, ref)
+                            self.assertEqual(native, {k: v for k, v in ref.items() if k != "local_detail_loss"})
 
     def test_empty_rendition_is_rejected(self):
         from dngscan import gainmap
@@ -57,7 +57,8 @@ class HdrValidation(unittest.TestCase):
                 ref = gainmap._roundtrip_error_arrays(a, a)
             self.assertFalse(gainmap._hdr_roundtrip_is_acceptable(ref))
             if NATIVE:
-                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(a, a, gainmap._HDR_LUMA_WEIGHTS.tolist()), ref)
+                self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(a, a, gainmap._HDR_LUMA_WEIGHTS.tolist()),
+                                 {k: v for k, v in ref.items() if k != "local_detail_loss"})
 
 
 @unittest.skipUnless(NATIVE, "native extension not built")
@@ -117,8 +118,8 @@ class NativePipeline(unittest.TestCase):
         for select in (lambda a: a, lambda a: a[::-1, ::-2], lambda a: a.transpose(1, 0, 2)):
             a, e = select(rgba)[..., :3], select(rgb)
             with mock.patch.object(_fast, "kernel", return_value=None):
-                ref_hdr = gainmap._roundtrip_error_arrays(a, e)
-                ref_base = gainmap._base_roundtrip_error_arrays(decoded, intended)
+                ref_hdr = gainmap._roundtrip_error_arrays_core(a, e)
+                ref_base = gainmap._base_roundtrip_error_arrays_core(decoded, intended)
             for workers in (1, 3):
                 _fast.set_thread_budget(workers)
                 self.assertEqual(_fast._load_extension().hdr_roundtrip_metrics(a, e, gainmap._HDR_LUMA_WEIGHTS.tolist()), ref_hdr)
@@ -134,7 +135,7 @@ class NativePipeline(unittest.TestCase):
             decoded[0, -2] = 17
             intended = np.zeros_like(decoded)
             with mock.patch.object(_fast, "kernel", return_value=None):
-                ref = gainmap._base_roundtrip_error_arrays(decoded, intended)
+                ref = gainmap._base_roundtrip_error_arrays_core(decoded, intended)
             self.assertEqual(_fast._load_extension().base_roundtrip_metrics(decoded, intended), ref)
 
 

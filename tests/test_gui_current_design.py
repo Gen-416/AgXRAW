@@ -237,7 +237,7 @@ class CliReportOnDemandTests(unittest.TestCase):
             out = Path(tmp) / "plain.jpg"
             env = dict(os.environ, DNGSCAN_FAST="0")
             res = subprocess.run(
-                [sys.executable, "-m", "dngscan", str(raws[0]), "--jpeg", str(out), "--jpeg-quality", "70"],
+                [sys.executable, "-m", "dngscan", str(raws[0]), "--jpeg", str(out), "--jpeg-quality", "97"],
                 capture_output=True, text=True, env=env, cwd=ROOT, timeout=600,
             )
             self.assertEqual(res.returncode, 0, res.stderr[-800:])
@@ -245,7 +245,7 @@ class CliReportOnDemandTests(unittest.TestCase):
             self.assertTrue(any(ln.startswith("JPEG 图像:") for ln in lines), res.stdout)
             self.assertNotIn("色彩矩阵:", res.stdout)
             res2 = subprocess.run(
-                [sys.executable, "-m", "dngscan", str(raws[0]), "--jpeg", str(out), "--jpeg-quality", "70", "--report"],
+                [sys.executable, "-m", "dngscan", str(raws[0]), "--jpeg", str(out), "--jpeg-quality", "97", "--report"],
                 capture_output=True, text=True, env=env, cwd=ROOT, timeout=600,
             )
             self.assertEqual(res2.returncode, 0, res2.stderr[-800:])

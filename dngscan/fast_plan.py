@@ -42,7 +42,9 @@ from .models import ToneCompressionPlan
 # v18: borrowed exact B3 smoothing, optional shared gamut median, fused u8
 # delivery metrics and export-local HDR metric workspaces.
 # v19 removes film-only kernels from the AgXRAW extension.
-NATIVE_ABI_VERSION = 19
+# v20 preserves floating HDR camera planes, fuses warp processing-loss transport,
+# and adds the bounded local luminance-detail delivery check.
+NATIVE_ABI_VERSION = 20
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

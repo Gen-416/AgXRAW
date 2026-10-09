@@ -248,24 +248,39 @@ def _coordinates(op: Warp, h: int, w: int, y0: int, y1: int, channel: int):
     return sy, sx
 
 
-def warp_image(image: Any, op: Warp, *, loss: bool = False) -> Any:
-    """Cubic camera RGB resampling, or conservative footprint-maximum loss.
+def warp_image(image: Any, op: Warp, *, loss: bool = False,
+               processing_loss: Any | None = None) -> Any:
+    """Resample camera RGB, optionally transporting processing loss in one pass.
 
-    Integer image output keeps the existing LibRaw storage contract. The Rust
-    implementation processes destination rows directly without coordinate maps.
+    uint16 input retains its [0, 65535] storage contract. Floating input returns
+    float32 without a range clamp: reconstructed highlights and signed cubic
+    ringing remain scene-linear values. With ``processing_loss``, return the
+    image and the conservative footprint maximum, adding extrapolation and
+    newly introduced integer clipping. An already saturated source footprint
+    is not a new processing loss. No input array is modified.
     """
     from . import _fast
     image = np.asarray(image)
     if image.ndim != 3 or image.shape[2] != 3 or min(image.shape[:2]) < 1:
         raise ValueError("DNG warp requires a nonempty 3-channel image")
+    if processing_loss is not None:
+        processing_loss = np.asarray(processing_loss, dtype=np.float16)
+        if loss or processing_loss.shape != image.shape:
+            raise ValueError("processing_loss requires an equally shaped camera RGB image")
+    floating = not loss and np.issubdtype(image.dtype, np.floating)
+    if floating:
+        image = image.astype(np.float32, copy=False)
+    elif not loss and image.dtype != np.uint16:
+        raise ValueError("DNG camera warp requires uint16 or floating RGB")
     if not op.knots and not op.fisheye and all(tuple(k) == (1., 0., 0., 0., 0., 0.) for k in op.coefficients):
-        return image
+        return image if processing_loss is None else (image, processing_loss)
     native = _fast.kernel("warp_dng")
     if native is not None:
         return native(image, op.coefficients, op.cx, op.cy, op.aspect, op.fisheye, loss,
-                      op.knots, op.scales, op.scale)
+                      op.knots, op.scales, op.scale, processing_loss)
     h, w = image.shape[:2]
-    out = np.empty_like(image, dtype=np.float16 if loss else np.uint16)
+    out = np.empty_like(image, dtype=np.float16 if loss else np.float32 if floating else np.uint16)
+    transported = np.empty_like(processing_loss) if processing_loss is not None else None
     for y0 in range(0, h, 64):
         y1 = min(y0 + 64, h)
         for c in range(3):
@@ -279,15 +294,30 @@ def warp_image(image: Any, op: Warp, *, loss: bool = False) -> Any:
                         .5*t + 2*t*t - 1.5*t*t*t, -.5*t*t + .5*t*t*t)
             wy, wx = weights(fy), weights(fx)
             acc = np.zeros(sy.shape, dtype=np.float64)
+            if transported is not None:
+                prior = np.zeros(sy.shape, dtype=np.float64)
+                if not floating:
+                    source_max = np.zeros(sy.shape, dtype=np.float64)
             for j in range(4):
                 for i in range(4):
-                    src = image[np.clip(iy + j - 1, 0, h - 1), np.clip(ix + i - 1, 0, w - 1), c]
+                    row = np.clip(iy + j - 1, 0, h - 1)
+                    col = np.clip(ix + i - 1, 0, w - 1)
+                    src = image[row, col, c]
                     if loss:
                         np.maximum(acc, src, out=acc)
                     else:
                         acc += src * wy[j] * wx[i]
-            out[y0:y1, :, c] = np.maximum(acc, outside) if loss else np.clip(acc, 0, 65535)
-    return out
+                    if transported is not None:
+                        np.maximum(prior, processing_loss[row, col, c], out=prior)
+                        if not floating:
+                            np.maximum(source_max, src, out=source_max)
+            if transported is not None:
+                np.maximum(prior, outside, out=prior)
+                if not floating:
+                    np.maximum(prior, (acc < 0) | ((acc >= 65535) & (source_max < 65535)), out=prior)
+                transported[y0:y1, :, c] = prior
+            out[y0:y1, :, c] = np.maximum(acc, outside) if loss else acc if floating else np.clip(acc, 0, 65535)
+    return out if transported is None else (out, transported)
 
 
 def crop_image(image: Any, crop: tuple | None, sensor_shape: tuple[int, int]) -> Any:

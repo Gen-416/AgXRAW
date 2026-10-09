@@ -28,7 +28,7 @@ class FusedBaseCodingTests(unittest.TestCase):
                     decoded = rng.integers(0, 256, (h, w, 3), dtype=np.uint8)
                     intended = rng.integers(0, 256, decoded.shape, dtype=np.uint8)
                     expected = {**EXT.base_roundtrip_metrics(decoded, intended),
-                                **coding_metrics(decoded, intended)}
+                                **coding_metrics(decoded, intended, _include_detail=False)}
                     self.assertEqual(EXT.base_and_coding_metrics_u8(decoded, intended, buffer),
                                      expected, (h, w, buffer))
         finally:
@@ -45,7 +45,7 @@ class FusedBaseCodingTests(unittest.TestCase):
             intended.flags.writeable = False
             before = (decoded.tobytes(), intended.tobytes())
             ar, br = decoded[..., :3], intended[..., :3]
-            expected = {**EXT.base_roundtrip_metrics(ar, br), **coding_metrics(ar, br)}
+            expected = {**EXT.base_roundtrip_metrics(ar, br), **coding_metrics(ar, br, _include_detail=False)}
             self.assertEqual(EXT.base_and_coding_metrics_u8(decoded, intended), expected)
             self.assertEqual((decoded.tobytes(), intended.tobytes()), before)
 
@@ -147,11 +147,19 @@ class MetricsDispatchTests(unittest.TestCase):
         a = rng.random((17, 31, 4)).astype(np.float16)
         b = (a * np.float16(.99)).copy()
         a[..., 3], b[..., 3] = np.nan, np.inf
+        before = (a.tobytes(), b.tobytes())
         expected = EXT.hdr_roundtrip_metrics(a, b, gainmap._HDR_LUMA_WEIGHTS.tolist())
+        from dngscan.local_detail import local_detail_loss
+        expected_detail = local_detail_loss(a[..., :3], b[..., :3], linear_hdr=True)
         with mock.patch.dict(os.environ, DNGSCAN_FAST='1', DNGSCAN_FAST_SKIP=''):
-            self.assertEqual(gainmap._roundtrip_error_arrays(a, b), expected)
-            self.assertEqual(gainmap._roundtrip_error_arrays(a, b,
-                _workspace=gainmap._new_hdr_metrics_workspace()), expected)
+            for workspace in (None, gainmap._new_hdr_metrics_workspace()):
+                actual = gainmap._roundtrip_error_arrays(a, b, _workspace=workspace)
+                # The public detail field may use a different f32 reduction
+                # backend from the surrounding test environment. All original
+                # metrics retain their exact native result contract.
+                self.assertAlmostEqual(actual.pop('local_detail_loss'), expected_detail, delta=2e-7)
+                self.assertEqual(actual, expected)
+        self.assertEqual(before, (a.tobytes(), b.tobytes()))
 
     def test_forcecast_adapters_copy_unaligned_storage_only(self):
         def unaligned(values):

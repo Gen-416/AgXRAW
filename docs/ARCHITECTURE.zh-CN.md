@@ -320,14 +320,20 @@ ceiling，没有才回退到逐通道 metadata white level。它不会拿一个�
 ### 解拜耳
 
 全分辨率导出的 `auto` 顺序是 DHT → DCB → AHD，具体取当前 rawpy/LibRaw 构建实际支持的
-最高优先级算法；X-Trans 等非 Bayer 数据继续走 LibRaw 对应路径。预览使用 half-size
-2×2 超像素合并，所以预览适合看曝光、颜色和高光路径，不适合评价最终纹理。
+最高优先级算法；X-Trans 等非 Bayer 数据继续走 LibRaw 对应路径。GUI 使用全尺寸解码后
+缩小显示；CLI 仍可执行 half-size 探测。显示代理适合看曝光、颜色和高光路径，但不能展示
+全部原尺寸纹理。
 
 dngscan 的可选色度降噪 `--chroma-nr` 默认 0。启用时由独立 `a×signal+b` 噪声模型经低频 CFA 近似传播到场景层，再以 BayesShrink 思路收缩；局部结构只降低阈值，不再用每级 MAD 推断噪声。场景层亮度投影保持 Y，但不保证真实颜色纹理无损。缺模型、Apple RAW、实测频谱不适用或未知传递时跳过并诊断。适用时 SDR、AgX HDR formation 与 HDR pair 两腿共用校正场景。见[色度核合同](CHROMA_NR.zh-CN.md)与[实测标定接口](NOISE_CALIBRATION.zh-CN.md)。DHT 适合低 ISO 的干净信号；重噪声
 夜景里，DCB、AAHD、VNG 或 PPG 有时比更激进的细节插值自然。标准 rawpy wheel 不一定包含
 AMaZE、LMMSE、VCD、AFD 等 GPL demosaic pack 算法，实际可选项取决于本机 LibRaw 构建。
 GUI/CLI 可手动指定 `dht / dcb / ahd / aahd / vng / ppg`；如果本机 LibRaw 还带有其他
 算法，把它加入 `DEMOSAIC_CHOICES` 即可交给现有的可用性检测与回退逻辑。
+
+色度波段按实际保留的原生传感器窗口 `scene_sensor_window_shape`、方向和当前图像尺寸计算
+行列采样比例 `sy/sx`，计入 DefaultScale、裁剪、half-size 解码及代理/粗网格缩放。目标仍是
+约 8–128 传感器像素的倍频层，两个轴都须符合范围；不再只用 `proxy_scale` 推断半尺寸标尺。
+这统一了采样尺度，不代表已经精确重建解拜耳与几何重采样的全部噪声协方差。
 
 ### 白平衡
 
@@ -429,17 +435,19 @@ LibRaw 的 DNG 校正由 `dng_opcodes.read_plan` 读取主 RAW IFD，保留指�
 1. OpcodeList1 在原始码值域执行坏点修复、MapTable、MapPolynomial 和行列偏移/增益。存在单调可逆的 LinearizationTable 时，先恢复存储码值，再执行指令并重新线性化；无法逆转的表明确拒绝，不能猜测已丢失的原始码值。
 2. BlackLevel、BlackLevelRepeatDim 和可选的 BlackLevelDeltaH/V 组成逐位置黑电平；没有 Delta 标签的非均匀重复图案也必须执行。按 DNG SDK 的最大黑电平将工作缓冲一次归一化为零黑、白值 65535，并用显式 `user_black` / `user_cblack` 清除 LibRaw 后续重复图案扣黑。stage-2 指令接收同一归一化工作域。均匀整数黑电平保留 LibRaw 原生路径，避免无意义的重新量化；证据的传感器 DN 始终不改写，噪声估计和 headroom 读取同一空间黑电平模型。
 3. OpcodeList2 按顺序执行 GainMap、查表、多项式与行列变换。GainMap 在工作马赛克上原地运行，AreaSpec 的空矩形表示整幅图像，带负边界的矩形与图像相交后保留 pitch 相位。Linear DNG 按真实图像平面执行，图像平面 `p` 读取增益平面 `min(p, map_planes−1)`，与指令的起始平面分别解释。Linear DNG 可测颜色平面剪切，但不声明独立感光点噪声或电子域 SNR。
-4. LibRaw 固定 AsShot 重建后，OpcodeList3 的 WarpRectilinear、WarpFisheye、WarpRectilinear2、FixVignetteRadial 及点变换作用于相机 RGB，然后才混色到浮点 Rec.2020。可选 WarpRectilinear2 生效后跳过紧跟的旧版兼容 warp，避免双重畸变。方形像素图像支持列表尾部一个或连续多个 TrimBounds，逐次验证矩形包含关系，保留原图坐标并与 DefaultCrop 求交；它后面只能有颜色转换与最终裁剪。带像素坐标的 stage-3 点变换和 TrimBounds 在全尺寸执行后才缩预览。
+4. LibRaw 固定 AsShot 重建后，OpcodeList3 的 WarpRectilinear、WarpFisheye、WarpRectilinear2、FixVignetteRadial 及支持的点变换作用于相机 RGB，然后才混色到浮点 Rec.2020。`blend` / `reconstruct` 的镜头重采样与暗角操作使用 float32，不再套用重建前的传感器白电平或无符号存储上限，并保留三次插值产生的负值；默认 `clip` 仍使用 uint16 量程。这修复了晚期镜头操作重新裁掉重建高光的问题，但没有将 stage 3 移到 LibRaw 高光重建之前，也不宣称两者可交换。stage-3 点变换与 `blend` / `reconstruct` 的扩展域合同尚未建立，该组合明确报错。可选 WarpRectilinear2 生效后跳过紧跟的旧版兼容 warp，避免双重畸变。方形像素图像支持列表尾部一个或连续多个 TrimBounds，逐次验证矩形包含关系，保留原图坐标并与 DefaultCrop 求交；它后面只能有颜色转换与最终裁剪。带像素坐标的 stage-3 点变换和 TrimBounds 在全尺寸执行后才缩预览。
 5. 相机矩阵按 LibRaw 的实际选择规则解析：rawpy `color_matrix` 暴露的是文件候选 `cmatrix`，符合条件的 DNG 才采用；非 DNG RGB 相机从 `rgb_xyz_matrix` 按 LibRaw 的 D65 行归一化求逆。转换结果保留负值与超过 65535 的值，`scene_scale` 仍以原相机码值尺度定义。
-6. DefaultScale 的像素比例由 LibRaw 执行一次。校正后的图像、传感器剪切、headroom 和处理损失采用同一几何顺序，再执行 DefaultCrop 与方向。裁剪边界不落在半尺寸证据网格上时，以实际场景像素覆盖的来源范围取最大损失，避免将奇数坐标先四舍五入后造成错位。半尺寸 TrimBounds 预览若舍弃末尾单行/列，返回的几何范围也记录实际保留区域；Apple 的独立 LibRaw 参考使用同一份已执行配方。
+6. DefaultScale 的像素比例由 LibRaw 执行一次。校正后的图像、传感器剪切、headroom 和处理损失采用同一几何顺序，再执行 DefaultCrop 与方向。裁剪边界不落在半尺寸证据网格上时，以实际场景像素覆盖的来源范围取最大损失，避免将奇数坐标先四舍五入后造成错位。半尺寸 TrimBounds 预览若舍弃末尾单行/列，将最终保留矩形逆向映射过转置、镜像与裁剪，再记录原传感器坐标；不能只修改尺寸而保留错误原点。Apple 的独立 LibRaw 参考使用同一份已执行配方。
 
 畸变公式依据 [Adobe DNG SDK](https://android.googlesource.com/platform/external/dng_sdk/+/refs/heads/android14-prebuilt-test/source/dng_lens_correction.cpp) 与 [DNG 1.7.1 规范](https://helpx.adobe.com/content/dam/help/en/camera-raw/digital-negative/jcr_content/root/content/flex/items/position/position-par/download_section_733958301/download-1/DNG_Spec_1_7_1_0.pdf)。Rust 三次插值核直接遍历输出行，不分配整幅浮点坐标图，支持多项式、扩展多项式和厂商径向样条；NumPy 行带版本作为数值参考。
 
 Fujifilm RAF 和 Sony ARW 可读取文件自带的暗角、畸变与横向色差曲线。标签布局与数学约定对照 [darktable 的 EXIF 解析](https://github.com/darktable-org/darktable/blob/master/src/common/exif.cc) 和 [镜头模块](https://github.com/darktable-org/darktable/blob/master/src/iop/lens.cc)。没有文件参数时不套用猜测的镜头配置；DNG 由 opcode 负责，避免重复应用私有曲线。这仍不是通用镜头数据库。
 
-校正新增的剪切、坏点替代和边界外采样进入独立 `processing_clip_masks`；后续降低增益不能恢复这些已丢失的信息。传感器硬剪切百分比仍只描述原始证据。可靠性经过插值支撑范围时取保守值，因此 HDR 不会把校正后出现的像素当成新的传感器余量。
+校正新增的剪切、坏点替代和边界外采样进入独立 `processing_clip_masks`；后续降低增益不能恢复这些已丢失的信息。LibRaw 的 uint16 相机 RGB 交接还在镜头操作前记录达到 65535 的通道，避免 RAW 尚未饱和、白平衡却已触及解码上限时仍被当成可靠信息。这是保守的量程边界标记，不能据此算出截断幅度，可能与传感器饱和重叠；传感器硬剪切百分比仍只描述原始证据。晚期浮点镜头处理产生的合法超 65535 值不属于这个整数交接边界。可靠性经过插值支撑范围时取保守值，因此 HDR 不会把校正后出现的像素当成新的传感器余量。ABI 20 的畸变核在一次坐标与插值遍历中同时传输图像和损失掩膜，恒等操作不改变像素，也不将已有饱和重复计为镜头新增损失。预览缓存版本 22 同时淘汰旧高光范围、标定有效性和采样尺度结果。
 
-尚未支持的具体组合包括：stage-1/2 TrimBounds、TrimBounds 后仍有其他 stage-3 指令、不可逆线性化表上的 stage-1 操作，以及非方形像素与 stage-3 点变换或 TrimBounds 的组合。前级裁剪需要正确改变后续图像原点、CFA 相位和标定坐标，不能挪到导出末尾代替执行。当前对这些必需组合明确报错；按可选标志跳过的未支持指令写入诊断。
+`clip` 的图像量程没有扩大，但损失记录现在包含三次插值产生的负值被无符号量程截断这一事件。因此损失百分比可能提高，并不表示新版本额外改变了这些图像像素；`blend` / `reconstruct` 保留同样的负值，不将它当作已截断的信息。
+
+尚未支持的具体组合包括：stage-1/2 TrimBounds、TrimBounds 后仍有其他 stage-3 指令、不可逆线性化表上的 stage-1 操作、非方形像素与 stage-3 点变换或 TrimBounds，以及 stage-3 点变换与 blend/reconstruct。前级裁剪需要正确改变后续图像原点、CFA 相位和标定坐标，不能挪到导出末尾代替执行。当前对这些必需组合明确报错；按可选标志跳过的未支持指令写入诊断。
 
 校准回归使用完整合成 DNG 文件经过实际 LibRaw 解码，覆盖非均匀黑图案及零 Delta 标签、归一化后 stage-2 运算、GainMap 空区域/绝对平面、奇数坐标 TrimBounds，以及主场景和独立参考样本的裁剪与畸变一致性。Rust/NumPy 对照只验证计算路径一致，不能替代这些文件语义测试。
 
@@ -623,6 +631,17 @@ RAW 9 随系统分发，一次 macOS 更新就可能换掉模型，而 `decoderV
 GUI 与 CLI 默认执行自动曝光（`--ev auto`）：尝试把可靠场景中位对到 18% 灰，但只允许高光预算以内的正向提亮；高调场景不会被自动压暗。白平衡默认遵从拍摄记录。自动曝光与曲线编译共用全分辨率统计样本，手动 EV 可以覆盖建议。全图中位并非主体识别，因而保留显式手动控制。
 
 生产 SNR 与读噪底使用独立噪声模型：适用用户标定优先于包内先验，随后可回退到合法的 Raw IFD DNG `NoiseProfile`。条件方差在扣黑归一化 RAW 域表示为 `a×signal+b`，来源与近似明确记录；缺模型时不可用，不以单帧局部变化量补造物理 SNR。CFA 相位统计和健康诊断仍保留，不能据其块内变化或绿色差分推断噪声全貌。模型来源、标定选择顺序及限制见[实测标定说明](NOISE_CALIBRATION.zh-CN.md)。
+
+普通未采样、有效读噪、明确未分辨和拒绝适用分别记录。用户及包内 Collect 的
+`read_noise_unresolved_isos` 贯穿运行时，DN/e− 读噪曲线不能在失败点取值或跨点插值、外推，
+独立有效的 gain 保留，标定诊断为 `gain-only`。没有独立替代来源时，模型为 `unresolved`，
+分析为 `model-unresolved`，HDR 尾部 SNR 门控为 0、色度核跳过；普通缺测仍保持该因子的
+中性值 1，其他 HDR 限制继续生效。若合法 DNG `NoiseProfile` 提供替代，报告与缓存保留
+原标定来源和失败原因，不能将失败点静默改成有效测量或退回包内先验掩盖它。
+
+公共 TIFF 有理数解析保留零分母状态。`NoiseReductionApplied` 的 `0/1` 是明确未降噪，
+`0/0` 是未知，非零分子除以零是非法；未知本身不拒绝匹配模型，非法或正数声明则拒绝。
+模型与报告区分缺失、未知、明确无降噪、已降噪、非法和不可读，不能把它们都解析成 0。
 
 ### 场景统计不是简单 min/max
 

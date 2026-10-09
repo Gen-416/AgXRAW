@@ -1,21 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! DNG camera-plane warp. No full-frame coordinate or floating RGB buffers.
+//! Camera-plane warp with bounded row workers and optional fused loss transport.
+use half::f16;
 use numpy::ndarray::ArrayView3;
 
 pub fn warp<T: Copy + Sync, O: Copy + Default + Send>(
     src: ArrayView3<'_, T>, coefficients: &[[f64; 6]], extended: &[Vec<f64>], cx: f64, cy: f64,
-    aspect: f64, fisheye: bool, loss: bool, knots: &[f64], scales: &[Vec<f64>], scale: f64,
+    aspect: f64, fisheye: bool, loss: bool, clamp_codes: bool,
+    processing: Option<ArrayView3<'_, f16>>, knots: &[f64], scales: &[Vec<f64>], scale: f64,
     read: impl Fn(T) -> f64 + Sync, write: impl Fn(f64) -> O + Sync,
-) -> Vec<O> {
+) -> (Vec<O>, Option<Vec<f16>>) {
     let (h, w, _) = src.dim();
     let (cx, cy) = (cx * w as f64, cy * h as f64);
     let radius = cx.max(w as f64 - cx).hypot(cy.max(h as f64 - cy) / aspect);
     let weights = |t: f64| [-0.5*t + t*t - 0.5*t*t*t, 1.0 - 2.5*t*t + 1.5*t*t*t,
                            0.5*t + 2.0*t*t - 1.5*t*t*t, -0.5*t*t + 0.5*t*t*t];
     let mut out = vec![O::default(); h*w*3];
+    let mut transported = processing.as_ref().map(|_| vec![f16::ZERO; h*w*3]);
     let workers = crate::budget::workers_for(h*w);
     let rows = crate::budget::block_pixels(h, workers);
-    let process = |block: usize, dst: &mut [O]| {
+    let process = |block: usize, dst: &mut [O], mut mask: Option<&mut [f16]>| {
         for (n, value) in dst.iter_mut().enumerate() {
             let c = n % 3;
             let xx = (n / 3) % w;
@@ -55,6 +58,8 @@ pub fn warp<T: Copy + Sync, O: Copy + Default + Send>(
             let ix = sx.floor() as isize; let iy = sy.floor() as isize;
             let wx = weights(sx-ix as f64); let wy = weights(sy-iy as f64);
             let mut acc: f64 = 0.0;
+            let mut prior_loss: f64 = 0.0;
+            let mut source_max: f64 = 0.0;
             for j in 0..4 {
                 for i in 0..4 {
                     let row = (iy+j as isize-1).clamp(0,h as isize-1) as usize;
@@ -62,25 +67,43 @@ pub fn warp<T: Copy + Sync, O: Copy + Default + Send>(
                     let sample = read(src[[row,col,c]]);
                     if loss { acc = acc.max(sample); }
                     else { acc += sample*wy[j]*wx[i]; }
+                    if let Some(source_loss) = processing.as_ref() {
+                        prior_loss = prior_loss.max(source_loss[[row,col,c]].to_f64());
+                        if clamp_codes { source_max = source_max.max(sample); }
+                    }
                 }
             }
             *value = write(if loss { acc.max(if outside {1.0} else {0.0}) }
-                           else { acc.clamp(0.0,65535.0) });
+                           else if clamp_codes { acc.clamp(0.0,65535.0) }
+                           else { acc });
+            if let Some(output_loss) = mask.as_deref_mut() {
+                // Prior saturated samples retain their existing sensor evidence;
+                // only cubic overshoot from an unsaturated footprint is new loss.
+                let clipped = clamp_codes && (acc < 0.0 || (acc >= 65535.0 && source_max < 65535.0));
+                output_loss[n] = f16::from_f64(prior_loss.max(if outside || clipped {1.0} else {0.0}));
+            }
         }
     };
     if workers == 1 {
-        process(0, &mut out);
+        process(0, &mut out, transported.as_deref_mut());
     } else {
         std::thread::scope(|scope| {
             let mut handles = Vec::new();
-            for (block, dst) in out.chunks_mut(rows*w*3).enumerate() {
-                let process = &process;
-                handles.push(scope.spawn(move || process(block, dst)));
+            if let Some(mask) = transported.as_mut() {
+                for ((block, dst), mask) in out.chunks_mut(rows*w*3).enumerate().zip(mask.chunks_mut(rows*w*3)) {
+                    let process = &process;
+                    handles.push(scope.spawn(move || process(block, dst, Some(mask))));
+                }
+            } else {
+                for (block, dst) in out.chunks_mut(rows*w*3).enumerate() {
+                    let process = &process;
+                    handles.push(scope.spawn(move || process(block, dst, None)));
+                }
             }
             crate::budget::join_workers(handles);
         });
     }
-    out
+    (out, transported)
 }
 
 #[cfg(test)]
@@ -93,13 +116,13 @@ mod tests {
         let caller = std::thread::current().id();
         let result = super::warp(
             source.view(), &[[1.0, 0.0, 0.0, 0.0, 0.0, 0.0]], &[vec![]],
-            0.5, 0.5, 1.0, false, false, &[], &[], 1.0,
+            0.5, 0.5, 1.0, false, false, true, None, &[], &[], 1.0,
             |value| {
                 assert_eq!(std::thread::current().id(), caller);
                 value as f64
             },
             |value| value as u16,
         );
-        assert_eq!(result.len(), source.len());
+        assert_eq!(result.0.len(), source.len());
     }
 }

@@ -166,6 +166,8 @@ def matrix_health_line_cn(bundle: RawBundle) -> str:
 
 def health_line_cn(analysis: Analysis) -> str:
     status=getattr(analysis,"noise_evidence_status","independent")
+    if status == "model-unresolved":
+        return "RAW 健康度: 读噪测量未能分辨；保留独立增益，不声明电子域 SNR"
     if status not in ("independent", "model-valid", "model-rejected", "unavailable"):
         return f"RAW 健康度: {status}；不声明独立感光点噪声/电子域 SNR"
     if not math.isfinite(analysis.health_lag1_corr):
@@ -181,7 +183,13 @@ def noise_model_line_cn(analysis: Analysis) -> str:
     model = getattr(analysis, "noise_model", None)
     if model is None:
         return "噪声模型: 未提供独立标定"
-    return f"噪声模型: {model.status}；{model.source}；{model.reason}；相关性={model.correlation}"
+    declaration = getattr(model, "noise_reduction_status", "absent")
+    declaration_text = {"absent": "文件未声明降噪", "unknown": "文件降噪状态未知",
+                        "none": "文件声明未降噪", "applied": "文件声明已降噪",
+                        "invalid": "文件降噪声明非法", "unreadable": "文件降噪声明不可读"}.get(declaration, declaration)
+    fallback = (f"；原标定={model.fallback_source}（{model.fallback_reason}）"
+                if getattr(model, "fallback_reason", None) else "")
+    return f"噪声模型: {model.status}；{model.source}；{model.reason}；相关性={model.correlation}；{declaration_text}{fallback}"
 
 
 def describe_wb_mode(wb_mode: str) -> str:
@@ -578,6 +586,9 @@ def csv_row(
         "raw_noise_floor_normalized": analysis.noise_floor,
         "noise_model_source": getattr(analysis.noise_model, "source", ""),
         "noise_model_reason": getattr(analysis.noise_model, "reason", ""),
+        "noise_reduction_declaration": getattr(analysis.noise_model, "noise_reduction_status", ""),
+        "noise_model_fallback_source": getattr(analysis.noise_model, "fallback_source", "") or "",
+        "noise_model_fallback_reason": getattr(analysis.noise_model, "fallback_reason", "") or "",
         "noise_observation_status": analysis.noise_observation_status,
         "noise_correlation_status": analysis.noise_correlation_status,
         "usable_dr_noise_limited_upper_bound_stops": analysis.usable_dr_ev,

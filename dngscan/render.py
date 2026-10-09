@@ -303,15 +303,10 @@ def apply_tone_core(
 
 
 def sensor_px_per_render_px(bundle: RawBundle, h: int, w: int) -> float:
-    """Full-resolution SENSOR pixels per pixel of this render grid.
-
-    1.0 for a full decode; the proxy ratio for a GUI preview bundle (the
-    cache records it as ``proxy_scale`` when it downsamples the scene).
-    Review batch 23: the chroma-NR band is declared in sensor pixels, and
-    measuring it against the render grid put a 1600-px preview's band at
-    ~6x the export's on a 61 MP frame."""
-    scale = float(getattr(bundle, "proxy_scale", 1.0) or 1.0)
-    return max(scale, 1.0)
+    """Area-equivalent sensor-pixel scale; band selection also checks both axes."""
+    from .sampling_geometry import sensor_px_per_render_axes
+    sy, sx = sensor_px_per_render_axes(bundle, h, w)
+    return float((sy * sx) ** 0.5)
 
 
 def _prepare_chroma_nr_map(
@@ -398,6 +393,9 @@ def _prepare_chroma_nr_map(
     factor = (
         max(h, w) * sensor_px_per_render_px(bundle, h, w) / max(max(dh, dw), 1)
     )
+    from .sampling_geometry import sensor_px_per_render_axes
+    sy, sx = sensor_px_per_render_axes(bundle, h, w)
+    axis_factors = (sy * h / dh, sx * w / dw)
     dec32 = acc.astype(np.float32)
     del acc
     propagated = calibrated_chroma_variance(bundle, model, dec32, return_validity=True)
@@ -409,7 +407,8 @@ def _prepare_chroma_nr_map(
     bundle.chroma_nr_status = "active-approximate"
     bundle.chroma_nr_reason = reason
     return chroma_correction_map(
-        dec32, amount, decimation_factor=factor, chroma_variance=variance,
+        dec32, amount, decimation_factor=factor, decimation_axis_factors=axis_factors,
+        chroma_variance=variance,
         valid_mask=(invalid_acc[..., 0] == 0) & propagated[2],
     )
 
