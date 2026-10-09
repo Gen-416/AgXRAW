@@ -163,60 +163,6 @@ class ExportNamingTests(unittest.TestCase):
             )
 
 
-class FilmPlanContractTests(unittest.TestCase):
-    def _scene(self):
-        from tests.golden_support import build_daylight_wide_dr
-
-        return build_daylight_wide_dr()
-
-    def test_audit_medium_is_the_stock_default(self) -> None:
-        from dngscan.tone import build_render_plan, _default_medium_for
-
-        scene = self._scene()
-        plan = build_render_plan(
-            scene.bundle, scene.analysis, "agx", "srgb",
-            film_curve="portra400", film_mode="full", film_crossover="datasheet",
-        )
-        print_plan = plan.film[2]
-        expected = _default_medium_for("portra400")
-        self.assertNotEqual(expected, "print_paper",
-                            "portra400's baked default must differ or this "
-                            "test pins nothing")
-        self.assertEqual(print_plan.medium_id, expected)
-
-    def test_full_mode_without_a_preset_refuses(self) -> None:
-        from dngscan.tone import build_render_plan
-
-        scene = self._scene()
-        with self.assertRaisesRegex(ValueError, "预设"):
-            build_render_plan(
-                scene.bundle, scene.analysis, "agx", "srgb",
-                film_curve="none", film_mode="full",
-            )
-
-    def test_unbaked_print_medium_refuses_at_compile(self) -> None:
-        from dngscan.tone import build_render_plan
-
-        scene = self._scene()
-        with self.assertRaisesRegex(ValueError, "未烘焙印相材料"):
-            build_render_plan(
-                scene.bundle, scene.analysis, "agx", "srgb",
-                film_curve="portra400", film_mode="full",
-                film_crossover="datasheet",
-                film_print_medium="no_such_paper",
-            )
-
-    def test_auto_ev_lets_the_compiler_resolve_crossover(self) -> None:
-        from dngscan import auto_ev
-
-        for name, fn in inspect.getmembers(auto_ev, inspect.isfunction):
-            params = inspect.signature(fn).parameters
-            if "film_crossover" in params:
-                self.assertIsNone(
-                    params["film_crossover"].default,
-                    f"{name} must pass None through so reference-appearance "
-                    "plans keep their declared neutralization",
-                )
 
 
 class PlanImmutabilityTests(unittest.TestCase):
@@ -227,41 +173,26 @@ class PlanImmutabilityTests(unittest.TestCase):
             plan.contrast = 2.0  # type: ignore[misc]
 
 
-class HdrFilmGuardTests(unittest.TestCase):
-    def test_hdr_formation_refuses_takeover_plans(self) -> None:
-        from dngscan.hdr_agx import scene_render_to_hdr_display_linear
-
-        plan = SimpleNamespace(
-            tone_core="agx", film_mode="full", curve_preset="portra400"
-        )
-        with self.assertRaisesRegex(RuntimeError, "胶片接管"):
-            scene_render_to_hdr_display_linear(None, plan, None)
 
 
 class PreviewCacheKeyTests(unittest.TestCase):
-    def test_pixel_key_carries_the_optics_budget_tier(self) -> None:
+    def test_pixel_key_carries_the_spatial_budget_tier(self) -> None:
         import os
         from unittest import mock
-
         from dngscan.gui import service
 
         bundle = SimpleNamespace(scene_scale=1.0, scene_decoder_runtime="")
-
-        def key() -> tuple:
+        def key(amount):
             return service._preview_pixel_key(
                 bundle, "srgb", 0.0, "none", 1.0, "none", 1.0, "none", 1.0,
-                1.0, "agx", "y", "base", "none", "none", None,
+                1.0, "agx", "y", "base", "none", None, chroma_nr=amount,
             )
-
-        with mock.patch.dict(os.environ, {"DNGSCAN_OPTICS_BUDGET_MIB": "512"}):
-            low = key()
-        with mock.patch.dict(os.environ, {"DNGSCAN_OPTICS_BUDGET_MIB": "1024"}):
-            high = key()
-        self.assertNotEqual(
-            low, high,
-            "a preview cached under one spread-grid tier must not serve "
-            "the other",
-        )
+        with mock.patch.dict(os.environ, {"DNGSCAN_SPATIAL_BUDGET_MIB": "512"}):
+            low, clean_low = key(0.5), key(0.0)
+        with mock.patch.dict(os.environ, {"DNGSCAN_SPATIAL_BUDGET_MIB": "1024"}):
+            high, clean_high = key(0.5), key(0.0)
+        self.assertNotEqual(low, high)
+        self.assertEqual(clean_low, clean_high)
 
 
 if __name__ == "__main__":

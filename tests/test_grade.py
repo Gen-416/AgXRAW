@@ -21,17 +21,17 @@ class GradeTests(unittest.TestCase):
 
     def test_mutually_exclusive_legacy_params(self) -> None:
         with self.assertRaises(ValueError):
-            resolve_grade_params({"look": "optic_warm_cyan", "filter": "kodak_2383_d65"})
+            resolve_grade_params({"look": "optic_warm_cyan", "filter": "red_ipp2_rec709_medium"})
 
     def test_filter_grade(self) -> None:
-        look, ls, filt, fs = resolve_grade(grade_id_for_filter("kodak_2383_d65"), 0.8)
+        look, ls, filt, fs = resolve_grade(grade_id_for_filter("red_ipp2_rec709_medium"), 0.8)
         self.assertEqual(look, "none")
-        self.assertEqual(filt, "kodak_2383_d65")
+        self.assertEqual(filt, "red_ipp2_rec709_medium")
         self.assertAlmostEqual(fs, 0.8)
 
     def test_filter_grade_bare_name(self) -> None:
-        look, ls, filt, fs = resolve_grade("kodak_2383_d65", 0.8)
-        self.assertEqual(filt, "kodak_2383_d65")
+        look, ls, filt, fs = resolve_grade("red_ipp2_rec709_medium", 0.8)
+        self.assertEqual(filt, "red_ipp2_rec709_medium")
 
     def test_look_grade(self) -> None:
         look, ls, filt, fs = resolve_grade(grade_id_for_look("optic_warm_cyan"), 1.0)
@@ -45,16 +45,16 @@ class GradeTests(unittest.TestCase):
     def test_colliding_bare_id_raises(self) -> None:
         from dngscan import look
 
-        orig = look.LOOK_FIELDS.get("kodak_2383_d65")
+        orig = look.LOOK_FIELDS.get("red_ipp2_rec709_medium")
         try:
-            look.LOOK_FIELDS["kodak_2383_d65"] = look.LOOK_FIELDS["optic_warm_cyan"]
+            look.LOOK_FIELDS["red_ipp2_rec709_medium"] = look.LOOK_FIELDS["optic_warm_cyan"]
             with self.assertRaises(ValueError):
-                parse_grade_id("kodak_2383_d65")
+                parse_grade_id("red_ipp2_rec709_medium")
         finally:
             if orig is None:
-                look.LOOK_FIELDS.pop("kodak_2383_d65", None)
+                look.LOOK_FIELDS.pop("red_ipp2_rec709_medium", None)
             else:
-                look.LOOK_FIELDS["kodak_2383_d65"] = orig
+                look.LOOK_FIELDS["red_ipp2_rec709_medium"] = orig
 
 
 if __name__ == "__main__":

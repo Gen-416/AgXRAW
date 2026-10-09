@@ -284,3 +284,30 @@ pub fn apply_punch_rec2020_pixel(rgb_in: Rgb, strength: f32, m: &PunchMatrices) 
         nan_to_num(out.b, 0.0, 1e6, -1e6),
     )
 }
+
+
+/// Run a per-pixel (n,3) -> (n,3) map over thread-budgeted pixel chunks.
+/// Every kernel here is a pure elementwise map, so the split is exact.
+pub fn par_map3<I, O, F>(inp: &[I], out: &mut [O], f: F)
+where
+    I: Sync,
+    O: Send,
+    F: Fn(&[I], &mut [O]) + Sync,
+{
+    let n = out.len() / 3;
+    debug_assert_eq!(inp.len(), out.len());
+    let workers = crate::budget::workers_for(n).max(1) as usize;
+    if workers <= 1 || n < 2 * workers {
+        f(inp, out);
+        return;
+    }
+    let chunk = (n + workers - 1) / workers * 3;
+    std::thread::scope(|s| {
+        let mut handles = Vec::new();
+        for (i, o) in inp.chunks(chunk).zip(out.chunks_mut(chunk)) {
+            let fref = &f;
+            handles.push(s.spawn(move || fref(i, o)));
+        }
+        crate::budget::join_workers(handles);
+    });
+}

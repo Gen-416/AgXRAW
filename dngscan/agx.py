@@ -358,7 +358,7 @@ def _build_curve_params(
     # Math audit R5: when toe_dy pins at EPS (a lifted black meeting a deep
     # bisection probe of pivot_y), the exponent explodes and tx**power
     # UNDERFLOWS to exactly 0.0 — a ZeroDivisionError for any pivot-shifted
-    # plan with a film black floor. Flooring the denominator at the smallest
+    # plan with a lifted black floor. Flooring the denominator at the smallest
     # normal float changes nothing wherever the old expression was finite,
     # and renders the degenerate limit as the step it mathematically is
     # (flat at the black target below the transition).
@@ -781,82 +781,6 @@ def apply_formation_curve(inset: Any, plan: Any) -> Any:
     return linear.astype(np.float32, copy=False)
 
 
-REC2020_LUMA_WEIGHTS = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
-
-# Bradford LMS sandwich for the joint colour-head field (derived from the
-# calibration-base matrices: _BRADFORD @ inv(XYZ_TO_REC2020_white_exact); the
-# field's diagonal gains are only meaningful in this basis).
-REC2020_TO_LMS = np.asarray(
-    [
-        [0.6401768878, 0.3055303801, -0.0042787330],
-        [-0.0277113829, 1.0542746845, 0.0138541654],
-        [0.0067832589, -0.0119134710, 1.0946628631],
-    ],
-    dtype=np.float32,
-)
-LMS_TO_REC2020 = np.asarray(
-    [
-        [1.5425987843, -0.4469153832, 0.0116857969],
-        [0.0406666745, 0.9366019925, -0.0116947761],
-        [-0.0091163827, 0.0129626425, 0.9133235816],
-    ],
-    dtype=np.float32,
-)
-
-
-def apply_film_color_rec2020(mapped_rec: Any, scene_rec2020: Any, plan: Any) -> Any:
-    """Observe-mode film colour, applied where it was calibrated (stage C).
-
-    The colour-head field (schema 4 npz, content-pinned; the joint Y x M
-    solve) is diagonal in
-    Bradford LMS along the neutral exposure axis; it applies to post-outset
-    Rec.2020 pixels through the fixed LMS sandwich — a diagonal gain does not
-    commute with the outset or any output matrix, which is exactly how the v1
-    sRGB-basis numbers went wrong. The lookup exposure is the SINGLE
-    luminance axis EV_Y = log2(Y_scene/0.18) taken from the scene-linear input
-    BEFORE tone mapping: a display value has been through the shoulder and no
-    longer corresponds to the calibration exposure, and the field was only ever
-    measured along the neutral axis — one exposure, one gain triple, honestly a
-    neutral-axis generalization rather than three imagined emulsion exposures.
-
-    The gains are diagonal in Bradford LMS (stage 3's joint field — stable at
-    extreme filtration where Rec.2020 components may cross zero), so the pixel
-    makes a round trip through the fixed LMS sandwich. Renders with both dials
-    at zero keep the byte-exact fast path.
-    """
-    if str(getattr(plan, "film_mode", "observe")) == "full":
-        # Full mode never routes the head through this observe-mode operator:
-        # timing=custom consumes it inside the takeover chain (per-layer
-        # delta-tau in film_develop), every other timing refuses it at plan
-        # compile; this guard keeps hand-built plans honest.
-        return mapped_rec
-    y_cc = float(getattr(plan, "color_head_y", 0.0))
-    m_cc = float(getattr(plan, "color_head_m", 0.0))
-    if y_cc <= 0.0 and m_cc <= 0.0:
-        return mapped_rec
-    from .film_curve import color_head_gain_lms
-
-    curves = color_head_gain_lms(
-        str(getattr(plan, "curve_preset", "") or ""), y_cc, m_cc
-    )
-    if curves is None:
-        return mapped_rec
-    ev_grid, gains = curves
-    scene = np.maximum(np.asarray(scene_rec2020, dtype=np.float32), 0.0)
-    ev_y = np.log2(np.maximum((scene @ REC2020_LUMA_WEIGHTS) / np.float32(0.18), EPS))
-    gain = np.stack(
-        [np.interp(ev_y, ev_grid, gains[:, c]).astype(np.float32) for c in range(3)],
-        axis=-1,
-    )
-    # Bradford LMS is a mathematical basis, not a physical gamut: saturated
-    # Rec.2020 primaries legally map to negative LMS components, and clamping
-    # them here was an UNDECLARED nonlinear projection (measured 0.026 max
-    # channel error at unit gains, where the operator must be exact identity).
-    # Output-boundary duty stays with the downstream gamut fit.
-    lms = mapped_rec @ REC2020_TO_LMS.T
-    return ((lms * gain) @ LMS_TO_REC2020.T).astype(np.float32, copy=False)
-
-
 def finish_formation(
     linear: Any,
     pre_hue: Any | None,
@@ -865,9 +789,6 @@ def finish_formation(
 ) -> Any:
     """Apply darktable hue restore and the outset.
 
-    Film colour — the enlarger colour head for negatives — applies AFTER the
-    outset (apply_film_color_rec2020); the retired channel-ratio gain no
-    longer exists anywhere in the formation.
     """
     hue_restore = _plan_hue_restore(plan)
     if pre_hue is not None:
@@ -880,8 +801,6 @@ def apply_core(rgb_rec2020: Any, plan: Any, inset_matrix: Any, outset_matrix: An
 
     guard rail -> inset (rotation+attenuation) -> log2 window -> sigmoid ->
     linearize -> hue restore (darktable semantics) -> outset in LINEAR light
-    (negative presets with colour-head dials then apply the LMS gain field
-    post-outset via apply_film_color_rec2020).
 
     Deviations from the reference, all deliberate: the endpoint-normalized log2 window
     and C1 sigmoid parameters come from the scene plan while EV=0 remains the calibrated
@@ -892,7 +811,7 @@ def apply_core(rgb_rec2020: Any, plan: Any, inset_matrix: Any, outset_matrix: An
     inset, pre_hue = prepare_formation(rgb_rec2020, plan, inset_matrix)
     linear = apply_formation_curve(inset, plan)
     mapped = finish_formation(linear, pre_hue, plan, outset_matrix)
-    return apply_film_color_rec2020(mapped, rgb_rec2020, plan)
+    return mapped
 
 
 def apply_core_parallel(
@@ -928,4 +847,4 @@ def apply_core_parallel(
         else (pre_hue_serial[:, 0] if pre_hue_serial is not None else None)
     )
     mapped = finish_formation(linear, pre_hue, plan, outset_matrix)
-    return apply_film_color_rec2020(mapped, rgb_rec2020, plan)
+    return mapped

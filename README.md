@@ -6,15 +6,13 @@ step. Open source, runs locally, and your RAW files never leave your computer.
 AgXRAW began with one practical question: how can I develop a RAW with AgX without opening a full
 editor? Once that worked, the more interesting questions surfaced. How much highlight signal did
 the sensor actually keep? How far can reconstructed highlights be trusted? How should one capture
-become both a normal photo and an HDR photo? Can a film's colour temperature, colour response and
-tone curve be adjusted layer by layer instead of being baked into one filter? AgXRAW puts those
-questions into one measurable, reproducible pipeline.
+become both a normal photo and an HDR photo? AgXRAW puts these questions into one measurable,
+reproducible pipeline.
 
 [简体中文](README.zh-CN.md) · [License](LICENSE) · [Third-party notices](NOTICE.md)
 
 **Tutorials and documentation**:
 [Editing tutorial](docs/EDITING_TUTORIAL.zh-CN.md) (what every slider does, with real comparisons; Chinese) ·
-[Film tutorial](docs/FILM_TUTORIAL.zh-CN.md) (what every film option means, with real comparisons; Chinese) ·
 [HDR tutorial](docs/HDR_TUTORIAL.zh-CN.md) (what an HDR photo is, how bright it can go, how to export; Chinese) ·
 [User guide](docs/USER_GUIDE.md) (supported cameras, every number in the interface, export choices) ·
 [Sensor support](docs/SENSOR_SUPPORT.zh-CN.md) (Chinese) ·
@@ -30,6 +28,10 @@ candidate must pass SDR and HDR reconstruction checks. Use `--ev 0` for the fixe
 exposure anchor, `--delivery-profile share` for manual controls (initially
 q95/4:2:0), or `--delivery-profile archive` for explicit q100/4:4:4.
 [Full-resolution quality/size measurements](docs/DELIVERY_QUALITY_STUDY.zh-CN.md).
+
+Film simulation has moved to the separate **AgXFilm** research repository and is paused.
+This application now focuses on RAW analysis, AgX, SDR/HDR and delivery.
+[Split and recovery record](docs/FILM_SPLIT.zh-CN.md).
 
 ## What it does
 
@@ -78,29 +80,6 @@ The HDR version is not a brightened copy of the normal photo; it is rendered sep
 same data. How bright it may go depends only on how bright a highlight the sensor genuinely
 measured — if there is none, the export fails clearly instead of inventing headroom. Every file is
 reopened and checked after writing. Details are in the [HDR tutorial](docs/HDR_TUTORIAL.zh-CN.md).
-
-### Film simulation: twenty stocks, two ways to run them
-
-This is not a one-click filter. Choosing a stock sets several independent layers at once: its
-calibrated colour temperature, how the stock separates colours, a tone curve fixed for the whole
-roll, and how rich the colours are. Every layer is visible and editable.
-
-| No film | Portra 400 | Velvia 100 |
-|---|---|---|
-| ![No film](docs/assets/film-tutorial/park_none.jpg) | ![Portra 400](docs/assets/film-tutorial/park_portra400.jpg) | ![Velvia 100](docs/assets/film-tutorial/park_velvia100.jpg) |
-
-There are two ways to simulate a stock. **Style mode** (the default; `--film-mode observe`) borrows
-the film's colour and tone and still lets AgX form the image — stable and restrained. **Full
-development mode** (`--film-mode full`) computes the whole process from the stock's and the paper's
-data — exposure, development, printing — and opens up many more controls: the enlarger colour head,
-print exposure, development, inter-image effect, grain and halation. The plate below compares one
-RAW across three stocks; the rightmost column pushes two taste dials of full development to their
-limits. Columns, left to right: no film, style mode, full development, full development pushed.
-
-![One RAW: no film, style mode, full development, full development pushed](docs/assets/film-observe-vs-full.jpg)
-
-What each option means and how the choices differ is in the
-[film tutorial](docs/FILM_TUTORIAL.zh-CN.md).
 
 ### Two RAW decoders
 
@@ -166,12 +145,6 @@ python -m dngscan photo.dng --jpeg photo_hdr.jpg \
 # Diagnostic dashboard and data table
 python -m dngscan photo.dng --jpeg photo.jpg --scan --csv photo.csv
 
-# Choose a film stock (style mode by default)
-python -m dngscan photo.dng --jpeg photo_portra.jpg --film portra400
-
-# Full development: overexposed one stop at capture, print exposure compensating
-python -m dngscan photo.dng --jpeg photo_portra_full.jpg --film portra400 \
-  --film-mode full --film-exposure 1 --film-print-timing retimed
 ```
 
 For fixed q97 / 4:2:0 at the original dimensions, use `--delivery-profile share-hq`
@@ -184,11 +157,11 @@ See `python -m dngscan --help` for every option.
 ### Optional native acceleration (Rust)
 
 Everything works without a native extension; the NumPy implementation is the reference. The
-optional Rust kernels (`rust/`) accelerate the heavy parts of rendering, HDR, film and verification,
+optional Rust kernels (`rust/`) accelerate the heavy parts of rendering, HDR and verification,
 and each kernel is checked against its NumPy reference under its declared exactness or
 tolerance contract. A 24 MP photo exports
-in about 7 s as a normal JPEG, about 10 s as HDR, and about 15 s in full development mode with grain
-and halation.
+in about 7 s as a normal JPEG and about 10 s as HDR in the historical 24 MP benchmark. Actual time
+depends on the decoder, encoding settings and hardware.
 
 ```bash
 # Rust toolchain: https://rustup.rs
@@ -209,7 +182,7 @@ flowchart TB
     RAW["RAW / DNG"]
     E["1. Read the sensor data<br/>measured before the image is reconstructed:<br/>clipping, noise, usable range"]
     D["2. Reconstruct the image<br/>LibRaw or Apple RAW"]
-    I["Your choices<br/>exposure · white balance · film · look<br/>output format"]
+    I["Your choices<br/>exposure · white balance · look<br/>output format"]
     P["3. Combine, and decide how to render<br/>subject · trusted highlights · clipped areas<br/>tone curve · colour handling · HDR headroom"]
     S["4. Render the normal photo<br/>AgX by default<br/>sRGB or Display P3"]
     H["5. Render the HDR version separately<br/>from the same data<br/>brightness limited to measured highlights"]
@@ -246,7 +219,7 @@ flowchart TB
    decoder only decides how the RAW becomes pixels; how brightness is compressed and how colour is
    handled is decided later.
 3. **Combine measurements and choices.** The analysis separates the subject, trusted highlights and
-   clipped areas, then joins them with your exposure, white balance, film, look and output format
+   clipped areas, then joins them with your exposure, white balance, look and output format
    to decide how this photograph is rendered.
 4. **Render the normal photo.** AgX by default; other tone-mapping options exist for comparison.
 5. **Render the HDR version separately.** It is rendered again from the same data, not stretched
@@ -264,14 +237,14 @@ conservative in clipped and reconstructed areas.
 
 **Analysis supplies defaults; manual choices remain available.** Black and white levels, clipping,
 noise and scene distribution inform automatic exposure and tone planning. White balance defaults
-to the capture record, and film and look are off by default. Manual controls can override the
+to the capture record, and optional looks are off by default. Manual controls can override the
 analysis-driven suggestion.
 
 **HDR is not a brighter normal photo.** Both versions start from the same data and are rendered
 independently, and the written file is reopened and checked.
 
 **Each stage can be replaced on its own.** A new decoder does not require rewriting analysis or
-rendering; a new tone-mapping method or film model reuses the same analysis; a new output format
+rendering; a new tone-mapping method reuses the same analysis; a new output format
 only receives finished images. New methods can therefore be compared with old ones on the same
 photograph.
 
@@ -299,8 +272,6 @@ measurements; they do not replace the current user guide or architecture.
 [Architecture and technical details](docs/ARCHITECTURE.md) (the whole pipeline and the reasoning behind each stage) ·
 [Developer guide and repository map](docs/DEVELOPMENT.zh-CN.md) (Chinese) ·
 [Measurement and decision records](docs/reports/README.md) ·
-[Film style mode design](docs/FILM_OBSERVATION_PLAN.zh-CN.md) (Chinese) ·
-[Film full-development design and record](docs/FILM_PRINT_RENDERING_PLAN.zh-CN.md) (Chinese) ·
 [HDR implementation plan](docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) (Chinese)
 
 ## License

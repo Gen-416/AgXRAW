@@ -66,7 +66,7 @@ def main() -> int:
             "--material-label", str(preset.get("label", key)),
             "--target-name", target.group(1) if target else key,
             "--material-look-gain", gain.group(1).rstrip(".") if gain else "1",
-            "--report-json", str(args.report_dir / f"film_calibration_{stem}.json"),
+            "--report-json", str(args.report_dir / f"calibration_{stem}.json"),
             "--out", str(args.out),
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)

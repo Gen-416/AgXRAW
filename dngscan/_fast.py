@@ -74,20 +74,6 @@ def supports_agx(plan: ToneCompressionPlan) -> bool:
         return False
     if not bool(getattr(plan, "use_c1_endpoints", False)):
         return False
-    if str(getattr(plan, "film_mode", "observe")) == "full" and str(
-        getattr(plan, "curve_preset", "none")
-    ) != "none":
-        # Film takeover renders through film_develop, not the AgX kernel. In the
-        # default "observe" mode a film preset is just curve parameters — the
-        # native kernel handles it at full speed.
-        return False
-    if float(getattr(plan, "color_head_y", 0.0)) > 0.0 or float(
-        getattr(plan, "color_head_m", 0.0)
-    ) > 0.0:
-        # Enlarger colour head: an EV-dependent LMS gain field the kernel
-        # does not model. Zero dials keep the native path — and the byte-exact
-        # status quo.
-        return False
     if _fast_mode() == "off":
         return False
     if _load_extension() is None:
@@ -131,26 +117,10 @@ def apply_agx_core_f32(rgb: np.ndarray, plan: Any) -> np.ndarray:
 
 
 def supports_hdr_formation(formation_plan: Any) -> bool:
-    """Whether the native HDR formation kernel may be dispatched for this plan.
-
-    The kernel covers the full _form_hdr_chunk chain; film_mode="full" with an
-    active curve preset swaps in the takeover film chain — a per-pixel transfer the
-    kernel does not model — so those plans keep the NumPy path (same exclusion
-    precedent as supports_agx).
-    """
+    """Whether the native HDR formation kernel may be dispatched."""
     if _fast_mode() == "off":
         return False
     if _load_extension() is None:
-        return False
-    if str(getattr(formation_plan, "film_mode", "observe")) == "full" and str(
-        getattr(formation_plan, "curve_preset", "none")
-    ) != "none":
-        return False
-    if float(getattr(formation_plan, "color_head_y", 0.0)) > 0.0 or float(
-        getattr(formation_plan, "color_head_m", 0.0)
-    ) > 0.0:
-        # The colour-head gain field is per-pixel work the HDR kernel does not
-        # model either; those plans keep the NumPy path.
         return False
     return True
 
@@ -277,7 +247,7 @@ def finalize_output_u8_noise_f32(
 def kernel(name: str) -> Any | None:
     """The native entry `name`, or None when the fast path is off/unavailable.
 
-    Stage 1/2 (2026-09-15): the evidence, metric and film-spatial kernels
+    Stage 1/2 (2026-09-15): the evidence, metric and spatial kernels
     dispatch through this under the same policy as the render kernels —
     auto: use when importable; strict: required; off: NumPy reference.
     """

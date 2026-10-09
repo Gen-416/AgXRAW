@@ -45,7 +45,7 @@ from .scheduler import shared_flight_wait
 # v17: phase-separated noise and non-periodic full-resolution planning samples.
 # v20: exact full-resolution source metadata binds the analysis envelope and
 # disk analysis to the decoder realization; pre-v20 partial checks are stale.
-PREVIEW_CACHE_VERSION = 20
+PREVIEW_CACHE_VERSION = 21
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -84,16 +84,6 @@ class PreviewEntry:
     analysis: Analysis
     source_metadata: dict[str, Any] | None = field(default=None, repr=False)
     cache_digest: str | None = field(default=None, repr=False)
-    # P3 seed lifecycle (review batch 15): one grain realization per loaded
-    # RAW, reused by every preview, probe and export this entry serves.
-    # Review batch 24: PreviewCache.get stamps the identity-derived value
-    # (_realization_id_for) on every entry it installs, so the random
-    # default below only survives on entries constructed outside the store
-    # (tests, tools); balance children copy the base's. Explicit seed wins.
-    realization_id: int = field(
-        default_factory=lambda: __import__("secrets").randbits(32) | 1,
-        init=False, repr=False,
-    )
     _auto_ev_cache: OrderedDict[str, AutoEvResult] = field(default_factory=OrderedDict, init=False, repr=False)
     _plan_cache: OrderedDict[Hashable, Any] = field(
         default_factory=OrderedDict, init=False, repr=False
@@ -360,24 +350,6 @@ def _scene_decoder_runtime_id(decoder: str) -> str:
     return str(decoder_runtime_id())
 
 
-def _realization_id_for(digest: str) -> int:
-    """The grain realization an identity ALWAYS gets (review batch 24, R-P2-7).
-
-    The auto seed used to be minted per PreviewEntry (secrets), so it lived
-    only as long as the entry: a memory-LRU eviction (two proxies resident),
-    a disk-cache reload or a restart re-minted it, and an export that peeked
-    for the entry after eviction minted yet another — preview grain and
-    export grain could disagree. Deriving it from the cache identity digest
-    (file evidence + decode recipe) makes the same RAW under the same recipe
-    carry the same realization everywhere, forever; an explicit seed still
-    overrides it."""
-    import hashlib
-
-    # hash rather than parse: the digest is opaque text (tests substitute
-    # non-hex identities), and the realization only needs to be a stable
-    # odd 32-bit function of it
-    h = hashlib.sha256(str(digest).encode("utf-8")).hexdigest()
-    return (int(h[:8], 16) & 0xFFFFFFFF) | 1
 
 
 def _cache_identity(
@@ -1064,31 +1036,6 @@ class PreviewCache:
         with self.lock:
             self.entries.clear()
 
-    def realization_id_for(
-        self,
-        path: Path,
-        highlight: str,
-        wb: str,
-        require_guidance: bool = False,
-        decoder: str = "libraw",
-        coreimage_version: str = "auto",
-        demosaic: str = "auto",
-        coreimage_scale: str = "aligned",
-        margin: int = 4,
-    ) -> int:
-        """The auto grain realization for this identity WITHOUT loading it —
-        the same value get() stamps on the entry, so an export whose entry
-        was evicted (or never previewed) still carries the preview's grain."""
-        if decoder == "coreimage":
-            highlight = "reconstruct"
-            demosaic = "auto"
-        else:
-            coreimage_scale = "aligned"
-        _, digest = _cache_identity(
-            path, highlight, wb, decoder, coreimage_version, demosaic,
-            coreimage_scale, int(margin),
-        )
-        return _realization_id_for(digest)
 
     def peek(
         self,
@@ -1102,12 +1049,7 @@ class PreviewCache:
         coreimage_scale: str = "aligned",
         margin: int = 4,
     ) -> PreviewEntry | None:
-        """The loaded entry for this identity WITHOUT building one — the
-        export path uses it to reuse the preview's grain realization (batch
-        15 seed lifecycle); a cold export mints its own instead. Same
-        identity as get() including the decode dials (R7 item 2: a peek
-        without them missed every non-default entry, so the export minted a
-        fresh seed and the grain no longer matched the preview)."""
+        """Return the loaded entry using the same decode identity as get()."""
         if decoder == "coreimage":
             highlight = "reconstruct"
             demosaic = "auto"
@@ -1232,8 +1174,6 @@ class PreviewCache:
                         cold = True
                     else:
                         cold = False
-                    # identity-derived, whichever way the entry was built
-                    built.realization_id = _realization_id_for(digest)
                     built.cache_digest = digest
                 with self.lock:
                     built._memory_notify = weakref.WeakMethod(self._trim_memory)
@@ -1296,18 +1236,12 @@ class PreviewCache:
             # bundle (it carries the wb_degradation note the UI must surface) and
             # reuse the base analysis instead of recomputing it.
             child = PreviewEntry(bundle=bundle, analysis=base.analysis)
-            # inherit the grain realization (review batch 16): the preview
-            # renders through this balanced entry while export peeks the
-            # BASE entry — a freshly minted id here silently changed the
-            # exported grain under any non-AsShot white balance
-            child.realization_id = base.realization_id
             child._dither_owner = base._dither_owner
             child._memory_notify = base._memory_notify
             return child
         analysis = dg.reanalyze_balanced_scene(base.analysis, bundle)
         bundle = dg.release_analysis_buffers(bundle)
         child = PreviewEntry(bundle=bundle, analysis=analysis)
-        child.realization_id = base.realization_id
         child._dither_owner = base._dither_owner
         child._memory_notify = base._memory_notify
         return child

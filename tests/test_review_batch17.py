@@ -79,58 +79,6 @@ class ExportDeadlineTests(unittest.TestCase):
             self.assertIn(needle, src)
 
 
-class FusedFilmPairTests(unittest.TestCase):
-    def test_pair_runs_the_film_chain_once(self) -> None:
-        from unittest import mock
-
-        from tests.golden_support import build_daylight_wide_dr
-        from tests.test_film_v2_assets import _stock_files
-        from dngscan import film_develop
-        from dngscan.export import DEFAULT_HDR_HEADROOM_EV
-        from dngscan.hdr_agx import render_ultrahdr_film_pair
-        from dngscan.hdr_agx_plan import compile_hdr_agx_plan
-        from dngscan.models import HdrDisplayTarget
-        from dngscan.render import render_output_u8
-        from dngscan.tone import build_render_plan
-
-        stock = next(
-            s for s in _stock_files()
-            if s.startswith(("portra", "pro400h", "c200", "gold"))
-        )
-        scene = build_daylight_wide_dr()
-        plan = build_render_plan(
-            scene.bundle, scene.analysis, "agx", "p3",
-            film_curve=stock, film_mode="full",
-            film_crossover="datasheet", film_exposure_ev=1.5,
-        )
-        target = HdrDisplayTarget(
-            peak_nits=100.0 * float(2.0 ** float(DEFAULT_HDR_HEADROOM_EV))
-        )
-        hdr_plan = compile_hdr_agx_plan(
-            plan, target, analysis=scene.analysis,
-            scene_decoder=str(scene.bundle.scene_decoder),
-        )
-        pixel_counts = []
-        real = film_develop._apply_film_core_v2
-
-        def spy(rgb, p, preset, spatial=None):
-            pixel_counts.append(int(np.asarray(rgb).shape[0]))
-            return real(rgb, p, preset, spatial)
-
-        with mock.patch.object(film_develop, "_apply_film_core_v2", spy):
-            base_u8, hdr_linear = render_ultrahdr_film_pair(
-                scene.bundle, scene.analysis, plan, hdr_plan, "p3"
-            )
-        h, w = scene.bundle.scene_rec2020_render.shape[:2]
-        total_px = sum(c for c in pixel_counts if c > 200)  # ignore tiny probes
-        self.assertLessEqual(
-            total_px, h * w + 1000,
-            f"film chain processed {total_px} px for a {h*w}-px frame — "
-            "the pair must walk the chain ONCE (review batch 17)",
-        )
-        # and the base still equals the standalone SDR export byte for byte
-        standalone = render_output_u8(scene.bundle, scene.analysis, "p3", plan)
-        np.testing.assert_array_equal(base_u8, standalone)
 
 
 class NoiseFloorLocalityTests(unittest.TestCase):

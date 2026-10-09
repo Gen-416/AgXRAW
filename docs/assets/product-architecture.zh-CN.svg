@@ -92,11 +92,11 @@
     <g class="context development-context">
       <rect class="context-shell" x="400" y="558" width="320" height="602" rx="12"/><path class="context-divider" d="M420 646 L700 646"/>
       <text class="context-title" x="420" y="588">显影上下文</text><text class="context-subtitle" x="420" y="610">Development</text><text class="context-rule" x="420" y="634">意图由用户声明，计划由系统裁决。</text>
-      <g class="object"><rect class="object-shell" x="420" y="658" width="280" height="112" rx="9"/><text class="object-title" x="436" y="684">显影意图 · Development Intent</text><text class="behavior" x="436" y="708">• 声明白平衡、EV、胶片与显示目标</text><text class="behavior" x="436" y="730">• 分离自动结果与用户偏置</text><text class="invariant" x="436" y="756">用户偏置不能改写采集事实</text></g>
+      <g class="object"><rect class="object-shell" x="420" y="658" width="280" height="112" rx="9"/><text class="object-title" x="436" y="684">显影意图 · Development Intent</text><text class="behavior" x="436" y="708">• 声明白平衡、EV 与显示目标</text><text class="behavior" x="436" y="730">• 分离自动结果与用户偏置</text><text class="invariant" x="436" y="756">用户偏置不能改写采集事实</text></g>
       <path class="object-flow" d="M560 770 L560 792" marker-end="url(#arrow)"/>
       <g class="object aggregate"><rect class="object-shell" x="420" y="804" width="280" height="188" rx="9"/><text class="object-title" x="436" y="830">显影计划 · Development Plan</text><rect class="kind-pill" x="434" y="837" width="126" height="20" rx="10"/><text class="kind" x="497" y="851" text-anchor="middle">聚合根 / 编译后只读</text><g class="plan-part tone-part"><rect x="436" y="870" width="122" height="80" rx="8"/><text class="plan-part-title" x="497" y="891" text-anchor="middle">影调计划</text><text class="plan-part-en" x="497" y="908" text-anchor="middle">Tone Plan</text><text class="plan-part-note" x="497" y="931" text-anchor="middle">锚点 · 端点 · HDR 肩部</text></g><g class="plan-part color-part"><rect x="562" y="870" width="122" height="80" rx="8"/><text class="plan-part-title" x="623" y="891" text-anchor="middle">色调计划</text><text class="plan-part-en" x="623" y="908" text-anchor="middle">Color Plan</text><text class="plan-part-note" x="623" y="931" text-anchor="middle">色相 · 色度 · HDR 色容积</text></g><text class="invariant plan-invariant" x="436" y="978">色彩不重编译影调；HDR 容量只限峰值</text></g>
       <path class="object-flow" d="M560 992 L560 1014" marker-end="url(#arrow)"/>
-      <g class="object"><rect class="object-shell" x="420" y="1026" width="280" height="106" rx="9"/><text class="object-title" x="436" y="1052">显影执行 · Display Formation</text><text class="behavior" x="436" y="1076">• 合成影调与色调；支持胶片接管</text><text class="behavior" x="436" y="1098">• 执行 AgX / gated / lum / neutral</text><text class="invariant" x="436" y="1122">AgX HDR 独立形成；胶片 HDR 只扩展高光</text></g>
+      <g class="object"><rect class="object-shell" x="420" y="1026" width="280" height="106" rx="9"/><text class="object-title" x="436" y="1052">显影执行 · Display Formation</text><text class="behavior" x="436" y="1076">• 按形成模式合成影调与色调</text><text class="behavior" x="436" y="1098">• 执行 AgX / gated / lum / neutral</text><text class="invariant" x="436" y="1122">SDR 与 HDR 从 scene 独立形成</text></g>
     </g>
 
     <g class="context delivery-context">
@@ -120,7 +120,7 @@
     <g class="capability"><rect x="258" y="1310" width="190" height="62" rx="8"/><text x="353" y="1334" text-anchor="middle">场景解码器</text><text class="behavior" x="353" y="1354" text-anchor="middle">生成场景线性 Rec.2020</text></g>
     <g class="capability"><rect x="468" y="1310" width="190" height="62" rx="8"/><text x="563" y="1334" text-anchor="middle">原生计算后端</text><text class="behavior" x="563" y="1354" text-anchor="middle">加速形成与输出处理</text></g>
     <g class="capability"><rect x="678" y="1310" width="190" height="62" rx="8"/><text x="773" y="1334" text-anchor="middle">图像与 Gain Map 编码器</text><text class="behavior" x="773" y="1354" text-anchor="middle">编码、回读并报告测量</text></g>
-    <g class="capability"><rect x="888" y="1310" width="184" height="62" rx="8"/><text x="980" y="1334" text-anchor="middle">标定资产提供者</text><text class="behavior" x="980" y="1354" text-anchor="middle">传感器、相机与胶片数据</text></g>
+    <g class="capability"><rect x="888" y="1310" width="184" height="62" rx="8"/><text x="980" y="1334" text-anchor="middle">标定资产提供者</text><text class="behavior" x="980" y="1354" text-anchor="middle">传感器与相机数据</text></g>
     <text class="layer-note" x="48" y="1392">外部资源：DNG / RAW 文件 · LibRaw · 系统 RAW 解码服务 · 图像容器 · 本地文件系统</text>
   </g>
 </svg>

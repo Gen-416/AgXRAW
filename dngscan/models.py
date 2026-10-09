@@ -90,7 +90,7 @@ class RawBundle:
     baseline_exposure_baked_in: bool = False
     # Declared lens conversion filter (Wratten), applied to the scene-linear render at
     # float conversion. Capture optics, not a look: the reliable tail, HDR budget and
-    # every downstream stage see the world through the glass, exactly as film would.
+    # every downstream stage sees the same scene through the declared glass.
     lens_filter: str = "none"
     # Which DNG dark-field correction the LibRaw decode applied (gainmap/vignette/None).
     lens_shading: str | None = None
@@ -335,7 +335,7 @@ class ToneCompressionPlan:
     # Fraction of the pre-curve hue restored after the curve. darktable semantics:
     # 0 keeps the per-channel curve shift; 1 fully restores the recorded input hue.
     hue_restore: float = 0.6
-    # Linear output floor of the curve; >0 lifts blacks for faded film looks.
+    # Linear output floor of the curve; >0 lifts the displayed black endpoint.
     target_black_linear: float = 0.0
     # Curve endpoint in display-linear units (darktable target_white): <1 fades an SDR
     # white, 1 is reference white, and >1 requests extended white.
@@ -352,126 +352,13 @@ class ToneCompressionPlan:
     toe_start_ev: float = -4.0
     shoulder_start_ev: float = 1.0
     use_c1_endpoints: bool = True
-    # Named film curve coordinate this plan's curve fields were pinned to, or "none"
-    # for scene-adaptive compilation. Informational: consumers must read the curve
-    # fields themselves, never re-derive behaviour from the name.
-    curve_preset: str = "none"
-    # Mainline A2: whether the stock's declared modelled inter-image beta
-    # applies in full mode. "declared" (default) or "off" (the pure spectral
-    # base — what the oracle gates certify). Compiled into
-    # FilmDevelopmentPlan.interimage_beta; fail-closed on unknown values.
-    # Appearance layer (FILM_APPEARANCE_RECIPE_PLAN P1): "technical" is the
-    # strict fast path (no asset touched, frozen bytes unchanged);
-    # "reference" resolves the stock x medium recipe at compile, fail-closed.
-    film_appearance: str = "technical"
-    film_appearance_strength: float = 1.0
-    # E2: which recipe interpretation (reference/extended) was selected.
-    film_appearance_variant: str = "reference"
-    # The COMPILED FilmAppearancePlan (A3 doctrine: the runtime consumes the
-    # compiled object, never re-resolves from disk or a registry). None on
-    # hand-built plans; a hand-built plan claiming "reference" without it
-    # fails closed at runtime.
-    film_appearance_compiled: object = None
-    # P6 custom controls, meaningful only with film_appearance="custom":
-    # bounded multiplicative modifiers about the recipe's own values (plan
-    # §13: 颜色丰度/色密度/灰阶偏色). 0/0/1 keeps custom == reference exactly.
-    film_richness: float = 0.0
-    film_color_density: float = 0.0
-    film_neutral_bias: float = 1.0
-    film_interimage: str = "declared"
-    # The EFFECTIVE beta, resolved by the compiler from the declared table.
-    # None means "not compiled" (hand-built test plans): the runtime falls
-    # back to the table for those, but a COMPILED plan always carries the
-    # value, which is what makes it immutable — A3 measured a 0.0726 max
-    # pixel difference from mutating the module table after compile when the
-    # runtime still consulted it.
-    film_interimage_beta: float | None = None
-    # Two-mode film contract: "observe" (default) = the film declares what the
-    # observer saw (WB/separation/tone signature), AgX develops — colour stays with
-    # the pipeline's validated rendering. "full" = the film v2 factorized chain
-    # takes over (film_develop core: Stage A analytic front -> B1/tau/paper/B2,
-    # EXPERIMENTAL: colour side has no external oracle); AgX keeps only
-    # delivery-side gamut safety, and Ultra HDR serves full mode as the
-    # "film print + scene HDR extension" pair. Meaningful only while a
-    # curve_preset is active.
-    film_mode: str = "observe"
-    # Enlarger colour head (negative film presets only): Y/M subtractive filtration
-    # in real darkroom CC units — NN CC = 0.NN optical density on the paper layer
-    # the filter's complementary band exposes (Y attenuates the blue-sensitive
-    # layer, M the green-sensitive), ~one stop of that separation's printing
-    # exposure per 30 CC. 0 = the preset's neutral printing decision (byte-exact
-    # status quo). Consumed through the preset's spectrally derived colour-head
-    # field (film_curve.color_head_gain_lms, stage-3 joint field); meaningless without a negative
-    # curve_preset, and physically absent for reversal film (no printing stage).
-    color_head_y: float = 0.0
-    color_head_m: float = 0.0
-    # Declared crossover switch for the film chain's neutral-axis serving.
-    # Meaningful only with film_mode="full"; otherwise inert. Three values:
-    # "off" / "print" / "datasheet" (build_render_plan); None resolves from
-    # the appearance recipe's neutralization_policy ("print" for the
-    # reference recipes). "off"
-    # (default) is the DIGITAL NEUTRALIZED variant: the developed output is
-    # divided per pixel by the shipped bounded neutral-cast curve at the
-    # pixel's luminance exposure (grays neutral wherever the medium's own gray
-    # is within two stops of neutral per channel). "datasheet" serves the
-    # spectral chain verbatim — mid-grey anchored by the printer-light solve,
-    # the rest of the neutral axis drifting per the inter-layer data (the
-    # photographic meaning of crossover: e.g. Velvia's mildly cool shadows).
-    film_crossover: str = "off"
-    # film v2 (FILM_PRINT_RENDERING_PLAN §5.1): the emulsion's exposure state
-    # relative to nominal EI — NOT an output exposure. 0.0 is the exact v1
-    # identity; the public domain is declared by the stock's asset and the
-    # plan compiler fail-closes out-of-domain values (§5.3).
-    film_exposure_ev: float = 0.0
-    # film v2 (§7.2): print timing policy. "fixed" = the EV0 joint solve's
-    # q(0) regardless of exposure state (same enlarger setting); "retimed" =
-    # q(E) re-solved per exposure via the factorized Stage B (negatives with
-    # retimed assets only; fail-closed elsewhere).
-    film_print_timing: str = "fixed"
-    # film v2 P3 (§7.1/§7.2): the selected print medium id ("" = the stock's
-    # default pairing) and the custom-timing manual print exposure in EV
-    # (log2; only meaningful under timing="custom", identity 0.0).
-    film_print_medium: str = ""
-    film_print_exposure_ev: float = 0.0
-    # film v2 P4 (§6): editorial developer recipe — a bounded analytic
-    # perturbation of the three characteristic curves (contrast scales the
-    # logE axis about the mid-grey anchor, colour density scales amounts about
-    # the same anchor, fog adds uniform density and deliberately moves mid).
-    # "measured_default" locks all three deltas at 0.
-    film_development: str = "measured_default"
-    film_dev_contrast: float = 0.0
-    film_dev_fog: float = 0.0
-    film_dev_density: float = 0.0
-    # film v2 P4 (§8): optional editorial Film Compression — a C1 saturating
-    # map on scene luminance EV above the knee, applied BEFORE the emulsion
-    # (impact 0 = strict identity fast path), plus highlight colour density
-    # rho driving C' = C*exp(-rho*d) toward the luminance-preserved neutral.
-    film_compression: float = 0.0
-    film_compression_knee: float = 2.0
-    film_highlight_density: float = 0.0
-    # film v2 P5 (§9): analog optics amounts (modelled_default profile, first
-    # version is profile+amount only). Grain modulates density on a
-    # deterministic film-space field; halation reinjects red-heavy backscatter
-    # into layer exposure; bloom is the positive medium's intrinsic scatter.
-    # All zero = strict identity fast path (chunk streaming preserved).
-    film_grain: float = 0.0
-    film_halation: float = 0.0
-    film_bloom: float = 0.0
-    film_optics_seed: int = 0
-    # Review R1 item 4: the media scatter (emulsion §5.1 / formation §6.2)
-    # is a property of the declared media, not a look amount, so it gets its
-    # own enablement instead of riding whichever optics slider first engages
-    # the spatial context. "declared" applies the compiled profile's scatter;
-    # "off" renders without it (also the operator-isolation setting for
-    # measurement tooling).
-    film_media_scatter: str = "declared"
     # Display-referred dark-scene lift, implemented like darktable's look brightness:
     # it leaves encoded black/white fixed and is never an exposure gain.
     view_brightness: float = 1.0
     # Chroma-only NR (digitization repair, chroma_nr.py): removes low-
     # frequency colour mottle in a declared sensor-pixel band, luminance and
-    # fine chroma speckle untouched by construction. 0 (default) is a strict
-    # identity fast path. SDR paths only in v1; HDR entries refuse it.
+    # fine chroma speckle outside the selected band. 0 (default) is a strict
+    # identity fast path. SDR and HDR share the calibrated scene correction.
     chroma_nr: float = 0.0
     # Which endpoint policy compiled black_ev / white_ev. "adaptive" (default) follows
     # the scene body/tail percentiles exactly as before; "evidence" pins the black
@@ -548,10 +435,6 @@ class RenderPlan:
     tone: ToneCompressionPlan
     color: ColorGeometryPlan
     scene: SceneToneMetrics
-    # film v2 plan objects (FILM_PRINT_RENDERING_PLAN §4): populated (with
-    # identity defaults) whenever a film curve preset is active; None outside
-    # the film domain. Validated fail-closed at compile time.
-    film: tuple | None = None
 
 
 @dataclass(frozen=True)

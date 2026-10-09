@@ -332,7 +332,9 @@ class MaterialWindowSanityTests(unittest.TestCase):
                 if {"foliage", "magenta"} <= {r.name for r in p.regions}]
 
     def test_every_material_window_is_a_real_window(self) -> None:
-        self.assertGreaterEqual(len(self.MATERIAL), 19)
+        self.assertEqual(set(scene_transform.SCENE_TRANSFORMS),
+                         {"arri_skin_d55", "alev_material_d55"})
+        self.assertEqual(self.MATERIAL, ["alev_material_d55"])
         for name in self.MATERIAL:
             for region in scene_transform.SCENE_TRANSFORMS[name].regions:
                 with self.subTest(preset=name, region=region.name):
@@ -344,7 +346,7 @@ class MaterialWindowSanityTests(unittest.TestCase):
     def test_real_material_chroma_lands_in_its_window(self) -> None:
         """Photo-measured clusters (fp frames decoded at 5500 K): foliage at
         R/G 0.72-0.78, B/G 0.34-0.42; sky/cyan at R/G 0.62-0.76, B/G 1.2-1.9."""
-        preset = scene_transform.SCENE_TRANSFORMS["portra400_d55"]
+        preset = scene_transform.SCENE_TRANSFORMS["alev_material_d55"]
         by_name = {r.name: r for r in preset.regions}
         leaf = np.asarray([[0.75, 1.0, 0.38]], dtype=np.float32)
         sky = np.asarray([[0.62, 1.0, 1.35]], dtype=np.float32)

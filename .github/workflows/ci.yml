@@ -55,9 +55,6 @@ jobs:
       - name: Unit tests (strict native path)
         run: DNGSCAN_FAST=1 python -m unittest discover -s tests -q
 
-      - name: Digitization precision gate ran (not skipped)
-        # R11 item 3: this gate used to skip silently when SciPy was absent.
-        run: python -m unittest tests.test_digitization_precision -v 2>&1 | tee /tmp/dig.log; ! grep -qi "skipped" /tmp/dig.log
 
   wheel-smoke:
     name: Wheel install smoke (pure Python)
@@ -70,7 +67,7 @@ jobs:
       - name: Build wheel (native off)
         # R11 item 8: the test jobs run from the source tree and never
         # verify that a BUILT wheel carries the data assets (priors JSONs,
-        # film_optics assets, lens library, spectral data). This builds a
+        # noise calibration, lens library, scene presets). This builds a
         # pure-Python wheel and loads them from the INSTALLED package.
         run: |
           python -m pip install --upgrade pip build
@@ -88,7 +85,10 @@ jobs:
           assert e and priors.gain_e_per_dn(e, 100) > 0, "curated prior missing"
           assert priors.find_priors("SONY", "SLT-A77V"), "bulk tier missing"
           assert len(lens_transmittance.list_entries()) >= 100, "lens library missing"
-          from dngscan.film_optics_assets import load_stock_optics, DEFAULT_STOCK_OPTICS
-          load_stock_optics(DEFAULT_STOCK_OPTICS)
+          from dngscan import noise_model, calibration, spatial
+          from importlib.util import find_spec
+          assert find_spec("dngscan.film_curve") is None, "film code leaked into wheel"
+          assert not resources.files("dngscan").joinpath("data/film_v2").is_dir()
+          assert spatial.spatial_budget_mib() in (512, 1024)
           print("wheel smoke ok:", dngscan.__file__)
           PY

@@ -249,8 +249,8 @@ def apply_chroma_correction_rows(
     """Add the upsampled correction to scene rows [y0, y1) — the streaming
     row-band form; the full-frame oracle passes (0, height). Bilinear
     upsampling is the same continuous surface everywhere, so band seams are
-    zero by construction (film_optics.upsample_rows contract)."""
-    from .film_optics import upsample_rows
+    zero by construction (spatial.upsample_rows contract)."""
+    from .spatial import upsample_rows
 
     rows = np.asarray(rgb_rows, dtype=np.float32).reshape(y1 - y0, width, 3)
     return (
@@ -270,7 +270,7 @@ def apply_chroma_correction_flat(
     mid-way (the 1M-pixel streaming chunks): upsample the covering rows and
     slice — the same continuous bilinear surface, so chunk boundaries are
     seam-free like band boundaries."""
-    from .film_optics import upsample_rows
+    from .spatial import upsample_rows
 
     y0 = start // width
     y1 = (end - 1) // width + 1

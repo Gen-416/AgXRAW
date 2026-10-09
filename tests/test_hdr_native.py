@@ -283,16 +283,6 @@ class NativeHdrFormationParityTests(unittest.TestCase):
 
 
 class NativeHdrDispatchTests(unittest.TestCase):
-    def test_film_takeover_is_excluded(self) -> None:
-        setup = _formation_setup(film_mode="full", curve_preset="portra400")
-        hdr_tone_plan = setup[1]
-        self.assertFalse(fast_backend.supports_hdr_formation(hdr_tone_plan))
-        self.assertIsNone(
-            hdr_agx._compile_native_hdr_plan(
-                setup[0], hdr_tone_plan, setup[2], setup[3], setup[4],
-                setup[5], setup[6], "p3",
-            )
-        )
 
     def test_strict_mode_raises_when_extension_unavailable(self) -> None:
         setup = _formation_setup()

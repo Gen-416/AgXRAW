@@ -255,36 +255,7 @@ def estimate_ev_headroom(
     agx_primaries: str = "base",
     adjustments: dg.RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
-    film_curve: str = "none",
-    film_mode: str = "observe",
-    film_crossover: str = "off",
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_optics_seed: int = 0,
-    film_media_scatter: str = "declared",
-    film_development: str = "measured_default",
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
-    film_interimage_beta: float | None = None,
     chroma_nr: float = 0.0,
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
     lens_filter: str | None = None,
 ) -> dict[str, float | str]:
     if analysis is None:
@@ -307,36 +278,7 @@ def estimate_ev_headroom(
         agx_primaries=agx_primaries,
         adjustments=adjustments,
         endpoint_mode=endpoint_mode,
-        film_curve=film_curve,
-        film_mode=film_mode,
-        film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta_dial=film_interimage_beta,
         chroma_nr=chroma_nr,
-        color_head_y=color_head_y,
-        color_head_m=color_head_m,
         lens_filter=lens_filter,
     )
     return {
@@ -542,6 +484,9 @@ def clip_overlay(params: dict) -> dict:
 
 
 def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, int, bool, Path | None, bool]:
+    obsolete = [key for key in params if key.startswith(("film", "colorHead", "color_head"))]
+    if obsolete:
+        raise ValueError("胶片功能已拆分到 AgXFilm；请刷新页面后重试。")
     inp = Path(str(params["input"])).expanduser()
     if not inp.is_file():
         raise FileNotFoundError(f"文件不存在：{inp}")
@@ -573,7 +518,6 @@ def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, i
     outdir = Path(str(params["outdir"])).expanduser() if params.get("outdir") else None
     ev_auto = bool(params.get("evAuto", "ev" not in params))
     return inp, highlight, gamut, output_format, ev, hdr_headroom, quality, want_png, outdir, ev_auto
-
 
 
 def parse_punch(params: dict) -> float:
@@ -637,14 +581,7 @@ def parse_endpoint_mode(params: dict) -> str:
 
 def parse_scene_transform(params: dict) -> tuple[str, float]:
     transform = dg.validate_scene_transform(str(params.get("sceneTransform", "none")))
-    # Full mode's input-domain contract at the GUI's parameter source: every
-    # consumer (plan, histograms, brightness reference, cache keys, preview
-    # and export) reads the transform through this parse (review batch 10).
-    from dngscan.scene_transform import effective_scene_transform
 
-    film_curve = str(params.get("filmCurve", params.get("film_curve", "none")))
-    film_mode = str(params.get("filmMode", params.get("film_mode", "observe")))
-    transform = effective_scene_transform(transform, film_mode, film_curve)
     strength = float(params.get("sceneTransformStrength", params.get("scene_transform_strength", 1.0)))
     if not 0.0 <= strength <= 3.0:
         raise ValueError("scene transform 强度需在 0-3 之间")
@@ -715,41 +652,9 @@ def _cached_render_plan(
     tone_core: str,
     lum_norm: str,
     agx_primaries: str,
-    film_curve: str,
     adjustments: dg.RenderAdjustments | None,
     endpoint_mode: str = "adaptive",
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
-    film_mode: str = "observe",
-    film_crossover: str = "off",
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    # A13: the film tail is keyword-only — a positional caller
-    # misbinding after signature growth becomes a TypeError, not a
-    # silently wrong preview.
     *,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_optics_seed: int = 0,
-    film_media_scatter: str = "declared",
-    film_interimage_beta: float | None = None,
-    film_development: str = "measured_default",
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
     chroma_nr: float = 0.0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
@@ -761,37 +666,8 @@ def _cached_render_plan(
         tone_core,
         lum_norm,
         agx_primaries,
-        film_curve,
-        _cache_float(color_head_y),
-        _cache_float(color_head_m),
-        film_mode,
-        film_crossover,
-        _cache_float(film_exposure_ev),
-        film_print_timing,
-        film_print_medium,
-        _cache_float(film_print_exposure_ev),
-        _cache_float(film_grain),
-        _cache_float(film_halation),
-        _cache_float(film_bloom),
-        film_interimage,
-        film_appearance,
-        _cache_float(film_appearance_strength),
-        _cache_float(film_richness),
-        _cache_float(film_color_density),
-        _cache_float(film_neutral_bias),
-        film_appearance_variant,
-        int(film_optics_seed),
-        str(film_media_scatter),
-        (None if film_interimage_beta is None else _cache_float(film_interimage_beta)),
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
-        str(film_development),
-        _cache_float(film_dev_contrast),
-        _cache_float(film_dev_fog),
-        _cache_float(film_dev_density),
-        _cache_float(film_compression),
-        _cache_float(film_compression_knee),
-        _cache_float(film_highlight_density),
         _cache_float(chroma_nr),
     )
     base = cached.get_or_build_plan(
@@ -807,38 +683,9 @@ def _cached_render_plan(
             tone_core,
             lum_norm,
             agx_primaries=agx_primaries,
-            film_curve=film_curve,
-            film_mode=film_mode,
-            film_crossover=film_crossover,
-            film_exposure_ev=film_exposure_ev,
-            film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-            film_grain=film_grain,
-            film_halation=film_halation,
-            film_bloom=film_bloom,
-            film_interimage=film_interimage,
-            film_appearance=film_appearance,
-            film_appearance_strength=film_appearance_strength,
-            film_richness=film_richness,
-            film_color_density=film_color_density,
-            film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-            film_optics_seed=film_optics_seed,
-            film_media_scatter=film_media_scatter,
-            film_development=film_development,
-            film_dev_contrast=film_dev_contrast,
-            film_dev_fog=film_dev_fog,
-            film_dev_density=film_dev_density,
-            film_compression=film_compression,
-            film_compression_knee=film_compression_knee,
-            film_highlight_density=film_highlight_density,
-            film_interimage_beta_dial=film_interimage_beta,
             chroma_nr=chroma_nr,
             adjustments=None,
             endpoint_mode=endpoint_mode,
-            color_head_y=color_head_y,
-            color_head_m=color_head_m,
         ),
     )
     return dg.apply_render_adjustments(base, adjustments)
@@ -859,41 +706,9 @@ def _preview_pixel_key(
     lum_norm: str,
     agx_primaries: str,
     lens_filter: str,
-    film_curve: str,
     adjustments: dg.RenderAdjustments | None,
     endpoint_mode: str = "adaptive",
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
-    film_mode: str = "observe",
-    film_crossover: str = "off",
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    # A13: the film tail is keyword-only — a positional caller
-    # misbinding after signature growth becomes a TypeError, not a
-    # silently wrong preview.
     *,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_optics_seed: int = 0,
-    film_media_scatter: str = "declared",
-    film_development: str = "measured_default",
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
-    film_interimage_beta: float | None = None,
     chroma_nr: float = 0.0,
 ) -> tuple[Any, ...]:
     return (
@@ -910,35 +725,6 @@ def _preview_pixel_key(
         lum_norm,
         agx_primaries,
         lens_filter,
-        film_curve,
-        _cache_float(color_head_y),
-        _cache_float(color_head_m),
-        film_mode,
-        film_crossover,
-        _cache_float(film_exposure_ev),
-        film_print_timing,
-        film_print_medium,
-        _cache_float(film_print_exposure_ev),
-        _cache_float(film_grain),
-        _cache_float(film_halation),
-        _cache_float(film_bloom),
-        film_interimage,
-        film_appearance,
-        _cache_float(film_appearance_strength),
-        _cache_float(film_richness),
-        _cache_float(film_color_density),
-        _cache_float(film_neutral_bias),
-        film_appearance_variant,
-        int(film_optics_seed),
-        str(film_media_scatter),
-        str(film_development),
-        _cache_float(film_dev_contrast),
-        _cache_float(film_dev_fog),
-        _cache_float(film_dev_density),
-        _cache_float(film_compression),
-        _cache_float(film_compression_knee),
-        _cache_float(film_highlight_density),
-        (None if film_interimage_beta is None else _cache_float(film_interimage_beta)),
         # review batch 23: the chroma-NR dial changes rendered bytes
         _cache_float(chroma_nr),
         endpoint_mode,
@@ -947,12 +733,7 @@ def _preview_pixel_key(
         # accidentally sharing frames across decoder/cache versions.
         _cache_float(getattr(bundle, "scene_scale", 1.0)),
         str(getattr(bundle, "scene_decoder_runtime", "") or ""),
-        # Review batch 21: the optics budget tier picks the spread-grid size
-        # and the film-optics band height, both of which change rendered
-        # bytes when the spatial optics engage — the export fingerprint
-        # already carries it; a preview cached under the other tier must not
-        # be served as this one.
-        _optics_budget_mib_for_fingerprint(),
+        (_spatial_budget_mib_for_fingerprint() if float(chroma_nr) > 0.0 else 0),
     )
 
 
@@ -991,38 +772,18 @@ def parse_decoder(params: dict) -> tuple[str, str]:
     return decoder, version
 
 
+def parse_lens_filter(params: dict) -> str:
+    from dngscan.lens_filter import validate_lens_filter
+
+    return validate_lens_filter(str(params.get("lensFilter", params.get("lens_filter", "none"))))
+
+
 def parse_chroma_nr(params: dict, output_format: str) -> float:
-    """``chromaNr`` [0, 1] (CLI --chroma-nr). v2 (2026-09-17): the repair is
-    a scene-stage operator shared by every formation — the AgX HDR entries
-    build the same pass-0 correction map the SDR render does, and the film
-    pair's two legs always came from one render — so HDR containers accept
-    it. ``output_format`` stays in the signature for the call sites."""
+    """Parse calibrated scene-stage chroma smoothing shared by SDR and HDR."""
     del output_format
     raw = params.get("chromaNr", params.get("chroma_nr", 0.0))
     value = _finite_number(raw if raw not in (None, "") else 0.0, "色度降噪", 0.0, 1.0)
     return float(value)
-
-
-def _identity_realization(
-    inp: Path, highlight: str, wb: str, require_guidance: bool,
-    decoder: str, coreimage_version: str, demosaic: str,
-    coreimage_scale: str, clip_margin: int,
-) -> int:
-    """The identity-derived auto grain realization (review batch 24) for an
-    export whose preview entry is not loaded. Falls back to a stable hash of
-    the path when the file's evidence identity cannot be read — the export
-    itself then fails on load with the real error, but the payload stays a
-    deterministic integer instead of a fresh random seed."""
-    from dngscan.gui.preview_cache import _realization_id_for
-
-    try:
-        return int(PREVIEW_STORE.realization_id_for(
-            inp, highlight, wb, require_guidance,
-            decoder, coreimage_version, demosaic,
-            coreimage_scale=coreimage_scale, margin=int(clip_margin),
-        ))
-    except Exception:
-        return _realization_id_for(str(inp))
 
 
 def parse_decode_extras(params: dict, decoder: str) -> tuple[str, int]:
@@ -1087,36 +848,7 @@ def export_preview_jpeg(
     coreimage_version: str = "auto",
     demosaic: str = "auto",
     lens_filter: str = "none",
-    film_curve: str = "none",
-    film_mode: str = "observe",
-    film_crossover: str = "off",
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_optics_seed: int | None = None,
-    film_media_scatter: str = "declared",
-    film_interimage_beta: float | None = None,
-    film_development: str = "measured_default",
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
     endpoint_mode: str = "adaptive",
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
     include_metrics: bool = True,
     is_current: Callable[[], bool] | None = None,
     coreimage_scale: str = "aligned",
@@ -1145,9 +877,6 @@ def export_preview_jpeg(
 
     ensure_current()
 
-    if film_optics_seed is None:
-        # the entry's one realization: preview grain IS export grain
-        film_optics_seed = int(getattr(cached, "realization_id", 0) or 0)
     proxy_bundle = dg.with_intent_exposure(
         cached.bundle, user_ev=ev, tone_core=tone_core
     )
@@ -1172,43 +901,8 @@ def export_preview_jpeg(
         lum_norm,
         agx_primaries,
         lens_filter,
-        film_curve,
         adjustments,
         endpoint_mode,
-        color_head_y,
-        color_head_m,
-        film_mode,
-        film_crossover,
-        film_exposure_ev,
-        film_print_timing,
-        film_print_medium,
-        film_print_exposure_ev,
-        # A13 item 1: the film tail binds by KEYWORD — the appearance params
-        # joined the signature after film_bloom, and this positional tail
-        # silently fed film_optics_seed into film_interimage (full-mode
-        # previews failed on "unknown interimage" with any nonzero seed, and
-        # reference/custom never reached the preview or its cache key while
-        # the export path, which passes keywords, honoured them).
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta=film_interimage_beta,
         chroma_nr=chroma_nr,
     )
     frame_key = _preview_frame_key(pixel_key, include_metrics)
@@ -1242,41 +936,8 @@ def export_preview_jpeg(
             tone_core,
             lum_norm,
             agx_primaries,
-            film_curve,
             adjustments,
             endpoint_mode,
-            color_head_y,
-            color_head_m,
-            film_mode,
-            film_crossover,
-            # P5c fix: the preview plan silently dropped every film state
-            # after crossover (exposure/timing/medium/print exposure since
-            # P2/P3, optics now) — the preview rendered EV0 fixed timing
-            # regardless of the dials while the export honoured them.
-            film_exposure_ev,
-            film_print_timing,
-            film_print_medium,
-            film_print_exposure_ev,
-            film_grain=film_grain,
-            film_halation=film_halation,
-            film_bloom=film_bloom,
-            film_interimage=film_interimage,
-            film_appearance=film_appearance,
-            film_appearance_strength=film_appearance_strength,
-            film_richness=film_richness,
-            film_color_density=film_color_density,
-            film_neutral_bias=film_neutral_bias,
-            film_appearance_variant=film_appearance_variant,
-            film_optics_seed=film_optics_seed,
-            film_media_scatter=film_media_scatter,
-            film_development=film_development,
-            film_dev_contrast=film_dev_contrast,
-            film_dev_fog=film_dev_fog,
-            film_dev_density=film_dev_density,
-            film_compression=film_compression,
-            film_compression_knee=film_compression_knee,
-            film_highlight_density=film_highlight_density,
-            film_interimage_beta=film_interimage_beta,
             chroma_nr=chroma_nr,
         )
         # A shared plan may have returned this slot while another owner built
@@ -1395,305 +1056,6 @@ def _finite_number(raw, name: str, lo: float, hi: float) -> float:
     return v
 
 
-def parse_film_params(params: dict) -> tuple:
-    """(lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-    color_head_m, film_exposure_ev, film_print_timing)."""
-    lens_filter = dg.validate_lens_filter(str(params.get("lensFilter", params.get("lens_filter", "none"))))
-    film_curve = str(params.get("filmCurve", params.get("film_curve", "none")))
-    if film_curve not in dg.FILM_CURVE_CHOICES:
-        raise ValueError(f"未知曲线预设：{film_curve}")
-    from dngscan.film_curve import film_process, validate_color_head_cc
-
-    color_head_y = validate_color_head_cc(
-        params.get("colorHeadY", params.get("color_head_y", 0.0)), "色头 Y"
-    )
-    color_head_m = validate_color_head_cc(
-        params.get("colorHeadM", params.get("color_head_m", 0.0)), "色头 M"
-    )
-    if color_head_y > 0.0 or color_head_m > 0.0:
-        # The enlarger colour head is a printing decision: it needs a print stage,
-        # which only negative presets model (reversal film is its own display
-        # medium). Reject rather than ignore — the GUI hides the control in those
-        # states, so a nonzero value here is a direct-API contract violation.
-        if film_curve == "none":
-            raise ValueError("放大机色头需要负片胶片曲线预设（当前未选择胶片）")
-        if film_process(film_curve) != "negative":
-            raise ValueError(
-                f"放大机色头仅对负片预设有效：{film_curve} 是反转片，无印相环节"
-            )
-    film_mode = str(params.get("filmMode", params.get("film_mode", "observe")))
-    if film_mode not in ("observe", "full"):
-        raise ValueError(f"未知胶片分工模式：{film_mode}")
-    if film_mode == "full" and film_curve == "none":
-        # R4: full is a declaration to hand development to a FILM — with no
-        # curve preset there is no film to hand it to, the renderer would run
-        # the plain AgX path anyway, and the export suffix would still claim
-        # "filmfull". The GUI resets the hidden mode with the preset; a
-        # payload carrying the contradiction is a direct-API contract
-        # violation and fails closed like its siblings.
-        raise ValueError(
-            "filmMode=full 需要一个胶片曲线预设(当前 filmCurve=none);"
-            "请选择胶片或把 filmMode 切回 observe"
-        )
-    _timing_req = str(params.get("filmPrintTiming", params.get("film_print_timing", "fixed")) or "fixed")
-    if film_mode == "full" and _timing_req != "custom" and (
-        color_head_y > 0.0 or color_head_m > 0.0
-    ):
-        raise ValueError(
-            "full 模式的色头只在 filmPrintTiming=custom 下可用（paper-layer "
-            "exposure model 内的逐层 Δτ）；fixed/retimed 的印相由联合求解决定——"
-            "请切到 custom 或把色头归零"
-        )
-    tone_core_req = str(params.get("toneCore", params.get("tone_core", "agx")))
-    if film_mode == "full" and tone_core_req != "agx":
-        raise ValueError(
-            "full 模式只在 AgX tone core 上运行；请把 tone 核切回 agx 或使用 observe"
-        )
-    neutral_req = params.get("filmNeutralization", params.get("film_neutralization"))
-    crossover_req = params.get("filmCrossover", params.get("film_crossover"))
-    if neutral_req is not None and crossover_req is not None:
-        raise ValueError(
-            "filmCrossover 已弃用为 filmNeutralization 的别名;两者不能同时给出"
-        )
-    if neutral_req is not None:
-        mapping = {
-            "technical-neutral": "off", "bounded": "off",
-            "print-balanced": "print",
-            "native": "datasheet", "datasheet": "datasheet",
-        }
-        if str(neutral_req) not in mapping:
-            raise ValueError(f"未知灰阶校色：{neutral_req}")
-        film_crossover = mapping[str(neutral_req)]
-    else:
-        # No explicit choice -> None; the COMPILER resolves the default from
-        # the appearance mode (A5 item 6: one resolution point).
-        film_crossover = None if crossover_req is None else str(crossover_req)
-        if film_crossover is not None and film_crossover not in (
-            "off", "print", "datasheet"
-        ):
-            raise ValueError(f"未知层间漂移开关：{film_crossover}")
-    film_exposure_ev = _finite_number(
-        params.get("filmExposure", params.get("film_exposure_ev", 0.0)) or 0.0,
-        "胶片曝光", -8.0, 8.0,
-    )
-    film_print_timing = str(params.get("filmPrintTiming", params.get("film_print_timing", "fixed")) or "fixed")
-    if film_print_timing not in ("fixed", "retimed", "custom"):
-        raise ValueError(f"未知印相曝光方式:{film_print_timing}")
-    film_print_medium = str(params.get("filmPrintMedium", params.get("film_print_medium", "")) or "")
-    film_print_exposure_ev = _finite_number(
-        params.get("filmPrintExposure", params.get("film_print_exposure_ev", 0.0)) or 0.0,
-        "印相曝光", -8.0, 8.0,
-    )
-    if film_mode != "full" and (
-        film_exposure_ev != 0.0 or film_print_timing != "fixed"
-        or film_print_medium != "" or film_print_exposure_ev != 0.0
-    ):
-        raise ValueError(
-            "胶片曝光/印相曝光方式/介质/印相曝光属于接管显影(full 模式);GUI 在"
-            "其他状态灰显/隐藏这些控件,非零载荷是直接 API 合同违规"
-        )
-    if film_print_timing == "custom" and film_crossover != "datasheet":
-        raise ValueError(
-            "custom timing 与有界灰阶校色互斥:请配 filmNeutralization=native"
-        )
-    if film_print_timing != "custom" and film_print_exposure_ev != 0.0:
-        raise ValueError("手动印相曝光仅在 timing=custom 下有意义")
-    # P5c (§11): 颗粒与光晕 tiers. off/light/standard map to declared amount
-    # triples; custom reads the three sliders. Non-full modes must carry no
-    # optics payload (the GUI hides the control there).
-    optics_tier = str(params.get("filmOptics", params.get("film_optics", "off")) or "off")
-    tiers = {
-        "off": (0.0, 0.0, 0.0),
-        "light": (0.25, 0.2, 0.15),
-        "standard": (0.5, 0.4, 0.3),
-    }
-    if optics_tier in tiers:
-        film_grain, film_halation, film_bloom = tiers[optics_tier]
-    elif optics_tier == "custom":
-        film_grain = _finite_number(
-            params.get("filmGrain", params.get("film_grain", 0.0)) or 0.0,
-            "颗粒与光晕颗粒", 0.0, 1.0,
-        )
-        film_halation = _finite_number(
-            params.get("filmHalation", params.get("film_halation", 0.0)) or 0.0,
-            "颗粒与光晕halation", 0.0, 1.0,
-        )
-        film_bloom = _finite_number(
-            params.get("filmBloom", params.get("film_bloom", 0.0)) or 0.0,
-            "颗粒与光晕bloom", 0.0, 1.0,
-        )
-    else:
-        raise ValueError(f"未知颗粒与光晕档位:{optics_tier}(可选 off/light/standard/custom)")
-    if film_mode != "full" and (film_grain or film_halation or film_bloom):
-        raise ValueError(
-            "颗粒与光晕属于接管显影(full 模式);GUI 在其他状态隐藏该控件,"
-            "非零载荷是直接 API 合同违规"
-        )
-    # Review R1 item 4: media-scatter enablement is a declared policy on the
-    # media, independent of the look sliders above.
-    film_media_scatter = str(
-        params.get("filmMediaScatter", params.get("film_media_scatter", "declared"))
-        or "declared"
-    )
-    if film_media_scatter not in ("declared", "off"):
-        raise ValueError(
-            f"未知介质柔化策略:{film_media_scatter}(可选 declared/off)"
-        )
-    # 成片调色控件组 (appearance P1): interimage 底座开关与外观层模式。
-    film_interimage = str(
-        params.get("filmInterimage", params.get("film_interimage", "declared"))
-        or "declared"
-    )
-    if film_interimage not in ("declared", "off", "custom"):
-        raise ValueError(
-            f"未知层间效应档:{film_interimage}(可选 declared/off/custom)"
-        )
-    # Taste-to-dial (2026-08-14): custom opens the beta itself; the declared
-    # table stays the default. Coupling is validated here AND in the compiler.
-    _beta_raw = params.get("filmInterimageBeta", params.get("film_interimage_beta"))
-    if film_interimage == "custom":
-        film_interimage_beta = _finite_number(
-            _beta_raw if _beta_raw is not None else -1.0, "层间效应beta", 0.0, 1.5
-        )
-    else:
-        if _beta_raw not in (None, ""):
-            raise ValueError("filmInterimageBeta 只在 filmInterimage=custom 下有意义")
-        film_interimage_beta = None
-    film_appearance = str(
-        params.get("filmAppearance", params.get("film_appearance", "technical"))
-        or "technical"
-    )
-    if film_appearance not in ("technical", "reference", "custom"):
-        raise ValueError(
-            f"未知成片调色:{film_appearance}(可选 technical/reference/custom)"
-        )
-    film_appearance_strength = _finite_number(
-        params.get(
-            "filmAppearanceStrength",
-            params.get("film_appearance_strength", 1.0),
-        ) or 0.0,
-        "参考印相强度", 0.0, 3.0,
-    )
-    if film_mode != "full" and (
-        film_interimage != "declared" or film_appearance != "technical"
-    ):
-        raise ValueError("成片调色控件属于接管显影(full 模式)")
-    film_richness = _finite_number(
-        params.get("filmRichness", params.get("film_richness", 0.0)) or 0.0,
-        "颜色丰度", -1.0, 1.0,
-    )
-    film_color_density = _finite_number(
-        params.get("filmColorDensity", params.get("film_color_density", 0.0)) or 0.0,
-        "色密度", -1.0, 1.0,
-    )
-    film_neutral_bias = _finite_number(
-        params.get("filmNeutralBias", params.get("film_neutral_bias", 1.0)) or 0.0,
-        "灰阶偏色强度", 0.0, 2.0,
-    )
-    film_appearance_variant = str(
-        params.get(
-            "filmAppearanceVariant", params.get("film_appearance_variant", "reference")
-        ) or "reference"
-    )
-    if film_appearance_variant not in ("reference", "extended"):
-        raise ValueError(
-            f"未知调色版本:{film_appearance_variant}(可选 reference/extended)"
-        )
-    if film_appearance == "technical" and film_appearance_variant != "reference":
-        raise ValueError("filmAppearanceVariant 属于外观层(reference/custom 模式)")
-    if film_appearance != "custom" and (
-        film_richness != 0.0 or film_color_density != 0.0
-        or film_neutral_bias != 1.0
-    ):
-        raise ValueError("丰度/色密度/灰阶偏色修饰只在 filmAppearance=custom 下有意义")
-    # film v2 P4 developer recipe + Film Compression (owner 2026-08-28: every
-    # CLI dial is a GUI dial). Same rules as the CLI parser, mirrored here so
-    # the GUI service fails closed identically instead of at plan compile.
-    film_development = str(
-        params.get("filmDevelopment", params.get("film_development", "measured_default"))
-        or "measured_default"
-    )
-    if film_development not in ("measured_default", "editorial_custom"):
-        raise ValueError(
-            f"未知冲洗方式:{film_development}(可选 measured_default/editorial_custom)"
-        )
-    film_dev_contrast = _finite_number(
-        params.get("filmDevContrast", params.get("film_dev_contrast", 0.0)) or 0.0,
-        "冲洗反差", -0.5, 0.5,
-    )
-    film_dev_fog = _finite_number(
-        params.get("filmDevFog", params.get("film_dev_fog", 0.0)) or 0.0,
-        "显影 fog", 0.0, 0.3,
-    )
-    film_dev_density = _finite_number(
-        params.get("filmDevDensity", params.get("film_dev_density", 0.0)) or 0.0,
-        "染料浓度", -0.5, 0.5,
-    )
-    film_compression = _finite_number(
-        params.get("filmCompression", params.get("film_compression", 0.0)) or 0.0,
-        "Film Compression", 0.0, 1.0,
-    )
-    _knee_raw = params.get("filmCompressionKnee", params.get("film_compression_knee"))
-    film_compression_knee = (
-        2.0 if _knee_raw in (None, "") else _finite_number(_knee_raw, "压缩起点", 0.0, 6.0)
-    )
-    film_highlight_density = _finite_number(
-        params.get("filmHighlightDensity", params.get("film_highlight_density", 0.0)) or 0.0,
-        "高光褪色", 0.0, 2.0,
-    )
-    if film_development == "measured_default" and (
-        film_dev_contrast != 0.0 or film_dev_fog != 0.0 or film_dev_density != 0.0
-    ):
-        raise ValueError(
-            "显影参数需要显式声明 filmDevelopment=editorial_custom"
-            "(measured_default 的显影参数全部锁定)"
-        )
-    if film_development == "editorial_custom":
-        if film_crossover != "datasheet":
-            raise ValueError(
-                "editorial_custom 显影与有界灰阶校色互斥:cast 曲线按 measured "
-                "显影求解;请配 filmNeutralization=native"
-            )
-        if film_print_timing == "retimed":
-            raise ValueError(
-                "editorial_custom 显影与 retimed timing 互斥:retimed τ 表按 measured "
-                "显影求解;请配 fixed 或 custom timing"
-            )
-    if film_compression == 0.0 and film_highlight_density != 0.0:
-        raise ValueError("高光褪色只在 Film Compression > 0 时有意义")
-    if film_mode != "full" and (
-        film_development != "measured_default" or film_compression != 0.0
-        or film_highlight_density != 0.0
-    ):
-        raise ValueError(
-            "冲洗方式与 Film Compression 属于接管显影(full 模式);GUI 在其他状态"
-            "隐藏这些控件,非默认载荷是直接 API 合同违规"
-        )
-    return (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-            color_head_m, film_exposure_ev, film_print_timing,
-            film_print_medium, film_print_exposure_ev,
-            film_grain, film_halation, film_bloom,
-            film_interimage, film_appearance, film_appearance_strength,
-            film_richness, film_color_density, film_neutral_bias,
-            film_appearance_variant, film_media_scatter, film_interimage_beta,
-            film_development, film_dev_contrast, film_dev_fog, film_dev_density,
-            film_compression, film_compression_knee, film_highlight_density)
-
-
-def effective_optics_seed(params: dict, entry) -> int:
-    """Seed lifecycle (batch 15): an explicit integer in the payload always
-    wins (reproducible); otherwise the entry's identity-derived realization_id —
-    the same value serves preview, probes, export and both HDR legs, so the
-    grain a preview shows IS the grain the export carries."""
-    raw = params.get("filmOpticsSeed", params.get("film_optics_seed"))
-    if raw is not None and str(raw) != "" and str(raw) != "auto":
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            raise ValueError("filmOpticsSeed 需要整数或留空(auto)")
-    return int(getattr(entry, "realization_id", 0) or 0)
-
-
 def run_preview(params: dict) -> dict:
     inp, highlight, gamut, output_format, ev, _, quality, _, _, ev_auto = parse_job_params(params)
     try:
@@ -1723,21 +1085,7 @@ def run_preview(params: dict) -> dict:
     tone_core, lum_norm = parse_tone_core(params)
     reject_gated_coreimage(tone_core, decoder)
     agx_primaries = parse_agx_primaries(params)
-    (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-     color_head_m, film_exposure_ev, film_print_timing,
-     film_print_medium, film_print_exposure_ev,
-     film_grain, film_halation, film_bloom,
-     film_interimage, film_appearance, film_appearance_strength,
-     film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant, film_media_scatter, film_interimage_beta,
-     film_development, film_dev_contrast, film_dev_fog, film_dev_density,
-     film_compression, film_compression_knee, film_highlight_density,
-     ) = parse_film_params(params)
-    film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
-    film_optics_seed = (
-        int(film_optics_seed)
-        if film_optics_seed not in (None, "", "auto") else None
-    )
+    lens_filter = parse_lens_filter(params)
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
     try:
@@ -1755,11 +1103,6 @@ def run_preview(params: dict) -> dict:
         )
         if not is_current():
             raise PreviewSuperseded()
-        if film_optics_seed is None:
-            # resolve ONCE against the loaded entry (review batch 16: the
-            # auto-EV branch received None and film plan compilation crashed
-            # on int(None) whenever any film preset was active)
-            film_optics_seed = int(getattr(cached, "realization_id", 0) or 0)
         auto_ev_result = None
         if ev_auto:
             auto_options = dict(
@@ -1775,35 +1118,6 @@ def run_preview(params: dict) -> dict:
                 agx_primaries=agx_primaries,
                 adjustments=adjustments,
                 endpoint_mode=endpoint_mode,
-                film_curve=film_curve,
-                film_mode=film_mode,
-                film_crossover=film_crossover,
-                film_exposure_ev=film_exposure_ev,
-                film_print_timing=film_print_timing,
-                film_print_medium=film_print_medium,
-                film_print_exposure_ev=film_print_exposure_ev,
-                film_grain=film_grain,
-                film_halation=film_halation,
-                film_bloom=film_bloom,
-                film_interimage=film_interimage,
-                film_appearance=film_appearance,
-                film_appearance_strength=film_appearance_strength,
-                film_richness=film_richness,
-                film_color_density=film_color_density,
-                film_neutral_bias=film_neutral_bias,
-                film_appearance_variant=film_appearance_variant,
-                film_optics_seed=film_optics_seed,
-                film_media_scatter=film_media_scatter,
-                film_development=film_development,
-                film_dev_contrast=film_dev_contrast,
-                film_dev_fog=film_dev_fog,
-                film_dev_density=film_dev_density,
-                film_compression=film_compression,
-                film_compression_knee=film_compression_knee,
-                film_highlight_density=film_highlight_density,
-                film_interimage_beta_dial=film_interimage_beta,
-                color_head_y=color_head_y,
-                color_head_m=color_head_m,
                 lens_filter=lens_filter,
                 chroma_nr=chroma_nr,
             )
@@ -1844,36 +1158,7 @@ def run_preview(params: dict) -> dict:
             coreimage_version=coreimage_version,
             demosaic=demosaic,
             lens_filter=lens_filter,
-            film_curve=film_curve,
-            film_mode=film_mode,
-            film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta=film_interimage_beta,
             endpoint_mode=endpoint_mode,
-            color_head_y=color_head_y,
-            color_head_m=color_head_m,
             include_metrics=bool(params.get("includeMetrics", True)),
             is_current=is_current,
             coreimage_scale=coreimage_scale,
@@ -2004,21 +1289,7 @@ def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> di
     punch_scale = parse_punch(params)
     adjustments = parse_render_adjustments(params)
     agx_primaries = parse_agx_primaries(params)
-    (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-     color_head_m, film_exposure_ev, film_print_timing,
-     film_print_medium, film_print_exposure_ev,
-     film_grain, film_halation, film_bloom,
-     film_interimage, film_appearance, film_appearance_strength,
-     film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant, film_media_scatter, film_interimage_beta,
-     film_development, film_dev_contrast, film_dev_fog, film_dev_density,
-     film_compression, film_compression_knee, film_highlight_density,
-     ) = parse_film_params(params)
-    film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
-    film_optics_seed = (
-        int(film_optics_seed)
-        if film_optics_seed not in (None, "", "auto") else None
-    )
+    lens_filter = parse_lens_filter(params)
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
     if not is_current():
@@ -2038,8 +1309,6 @@ def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> di
     if not is_current():
         raise PreviewSuperseded()
     proxy_bundle = entry.bundle
-    if film_optics_seed is None:
-        film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
     if lens_filter != "none":
         import dataclasses as _dc
 
@@ -2056,37 +1325,8 @@ def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> di
         tone_core,
         lum_norm,
         agx_primaries,
-        film_curve,
         adjustments,
         endpoint_mode,
-        color_head_y,
-        color_head_m,
-        film_mode,
-        film_crossover,
-        film_exposure_ev,
-        film_print_timing,
-        film_print_medium,
-        film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta=film_interimage_beta,
         chroma_nr=chroma_nr,
     )
     if not is_current():
@@ -2123,33 +1363,6 @@ def export_suffix_parts(
     lum_norm: str = "y",
     agx_primaries: str = "base",
     endpoint_mode: str = "adaptive",
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
-    film_mode: str = "observe",
-    film_crossover: str = "off",
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_development: str = "measured_default",
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
-    film_media_scatter: str = "declared",
-    explicit_optics_seed: int | None = None,
     coreimage_scale: str = "aligned",
     clip_margin: int = 4,
     decoder: str = "libraw",
@@ -2165,50 +1378,6 @@ def export_suffix_parts(
         # Evidence endpoints change the compiled curve; the filename must not let an
         # evidence export silently overwrite the adaptive one.
         parts.append(endpoint_mode)
-    if film_mode == "full":
-        # Same overwrite rule: the film-takeover render (and its declared
-        # crossover) must not silently replace an observe-mode export.
-        parts.append("filmfull")
-        if film_crossover == "datasheet":
-            parts.append("xover")
-        if float(film_exposure_ev) != 0.0:
-            parts.append(
-                ("fexp" + f"{float(film_exposure_ev):+.2f}")
-                .replace("+", "p").replace("-", "m").replace(".", "_")
-            )
-        if film_print_timing == "retimed":
-            parts.append("retimed")
-        if film_print_timing == "custom":
-            parts.append("customprint")
-        if film_print_medium:
-            parts.append(
-                film_print_medium.replace("__", "-").replace("_", "")[:24]
-            )
-        if float(film_grain) or float(film_halation) or float(film_bloom):
-            # An optics render must not silently overwrite the clean one.
-            parts.append(
-                ("optics" + f"-g{float(film_grain):g}h{float(film_halation):g}"
-                 f"b{float(film_bloom):g}").replace(".", "_")
-            )
-        # Owner 2026-08-28: the GUI now carries every CLI dial; each one that
-        # changes the render names itself so it cannot overwrite the default.
-        if str(film_development) == "editorial_custom":
-            parts.append(
-                ("dev-c" + f"{float(film_dev_contrast):+g}" + "f" + f"{float(film_dev_fog):g}"
-                 + "d" + f"{float(film_dev_density):+g}").replace("+", "p").replace("-", "m").replace(".", "_").replace("devmc", "dev-c")
-            )
-        if float(film_compression) > 0.0:
-            tok = f"comp{float(film_compression):g}k{float(film_compression_knee):g}"
-            if float(film_highlight_density) > 0.0:
-                tok += f"hd{float(film_highlight_density):g}"
-            parts.append(tok.replace(".", "_"))
-        if str(film_media_scatter) == "off":
-            parts.append("scatteroff")
-        if explicit_optics_seed is not None and float(film_grain) > 0.0:
-            # R7 item 6: the seed only changes pixels through grain — the
-            # fingerprint already counts it under that condition; without
-            # grain a byte-identical file must not get a different name.
-            parts.append(f"seed{int(explicit_optics_seed)}")
     if str(decoder) == "coreimage" and str(coreimage_scale) != "aligned":
         parts.append(f"ciscale-{coreimage_scale}")
     if int(clip_margin) != 4:
@@ -2230,23 +1399,20 @@ def export_suffix_parts(
         parts.append(scene_transform)
         if abs(float(scene_transform_strength) - 1.0) > 1e-6:
             parts.append(f"st{float(scene_transform_strength):g}")
-    if float(color_head_y) > 0.0 or float(color_head_m) > 0.0:
-        # A filtered print must not silently overwrite the neutral one.
-        parts.append(f"ch_y{float(color_head_y):g}m{float(color_head_m):g}")
     return "_".join(parts)
 
 
-def _optics_budget_mib_for_fingerprint() -> int:
-    from dngscan.render import _optics_budget_mib
+def _spatial_budget_mib_for_fingerprint() -> int:
+    from dngscan.spatial import spatial_budget_mib
 
-    return _optics_budget_mib()
+    return spatial_budget_mib()
 
 
 def export_plan_fingerprint(**params: object) -> str:
     """A stable short fingerprint of every render-affecting export parameter.
 
     The readable suffix names the headline choices, but it cannot carry all of
-    them (film stock, lens filter, WB, EV, manual tone adjustments…) without
+    them (lens filter, WB, EV, manual tone adjustments…) without
     becoming unusable — and any omission lets two different renders share a
     path and silently overwrite each other. The fingerprint closes that gap:
     identical parameters keep an identical name (re-exporting the same recipe
@@ -2449,41 +1615,13 @@ def run_export(params: dict) -> dict:
     if dg.is_hdr_output_format(output_format) and tone_core != "agx":
         raise RuntimeError("HDR 输出当前只实现 AgX tone core")
     agx_primaries = parse_agx_primaries(params)
-    (lens_filter, film_curve, film_mode, film_crossover, color_head_y,
-     color_head_m, film_exposure_ev, film_print_timing,
-     film_print_medium, film_print_exposure_ev,
-     film_grain, film_halation, film_bloom,
-     film_interimage, film_appearance, film_appearance_strength,
-     film_richness, film_color_density, film_neutral_bias,
-     film_appearance_variant, film_media_scatter, film_interimage_beta,
-     film_development, film_dev_contrast, film_dev_fog, film_dev_density,
-     film_compression, film_compression_knee, film_highlight_density,
-     ) = parse_film_params(params)
-    film_optics_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
-    film_optics_seed = (
-        int(film_optics_seed)
-        if film_optics_seed not in (None, "", "auto") else None
-    )
+    lens_filter = parse_lens_filter(params)
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
     preview_entry = PREVIEW_STORE.peek(
         inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic,
         coreimage_scale=coreimage_scale, margin=clip_margin,
     ) if hasattr(PREVIEW_STORE, "peek") else None
-    if film_optics_seed is None:
-        # the same realization the preview showed, when its entry is loaded;
-        # a cold export (no preview session) mints its own
-        entry = preview_entry
-        if entry is not None:
-            film_optics_seed = int(getattr(entry, "realization_id", 0) or 0)
-        else:
-            # review batch 24: identity-derived, so an evicted or never-
-            # previewed entry still yields the grain the preview would show
-            film_optics_seed = _identity_realization(
-                inp, highlight, wb, tone_core == "gated",
-                decoder, coreimage_version, demosaic,
-                coreimage_scale, clip_margin,
-            )
     preview_contract = preview_entry.bundle if preview_entry is not None else None
     if preview_contract is None and isinstance(params.get("_previewDecode"), dict):
         from types import SimpleNamespace
@@ -2543,35 +1681,6 @@ def run_export(params: dict) -> dict:
             agx_primaries=agx_primaries,
             adjustments=adjustments,
             endpoint_mode=endpoint_mode,
-            film_curve=film_curve,
-            film_mode=film_mode,
-            film_crossover=film_crossover,
-            film_exposure_ev=film_exposure_ev,
-            film_print_timing=film_print_timing,
-            film_print_medium=film_print_medium,
-            film_print_exposure_ev=film_print_exposure_ev,
-            film_grain=film_grain,
-            film_halation=film_halation,
-            film_bloom=film_bloom,
-            film_interimage=film_interimage,
-            film_appearance=film_appearance,
-            film_appearance_strength=film_appearance_strength,
-            film_richness=film_richness,
-            film_color_density=film_color_density,
-            film_neutral_bias=film_neutral_bias,
-            film_appearance_variant=film_appearance_variant,
-            film_optics_seed=film_optics_seed,
-            film_media_scatter=film_media_scatter,
-            film_development=film_development,
-            film_dev_contrast=film_dev_contrast,
-            film_dev_fog=film_dev_fog,
-            film_dev_density=film_dev_density,
-            film_compression=film_compression,
-            film_compression_knee=film_compression_knee,
-            film_highlight_density=film_highlight_density,
-            film_interimage_beta_dial=film_interimage_beta,
-            color_head_y=color_head_y,
-            color_head_m=color_head_m,
             lens_filter=lens_filter,
             chroma_nr=chroma_nr,
             _plan_sink=auto_plans,
@@ -2593,43 +1702,12 @@ def run_export(params: dict) -> dict:
             lum_norm,
             agx_primaries=agx_primaries,
             adjustments=adjustments,
-            film_curve=film_curve,
-            film_mode=film_mode,
-            film_crossover=film_crossover,
-            film_exposure_ev=film_exposure_ev,
-            film_print_timing=film_print_timing,
-            film_print_medium=film_print_medium,
-            film_print_exposure_ev=film_print_exposure_ev,
-            film_grain=film_grain,
-            film_halation=film_halation,
-            film_bloom=film_bloom,
-            film_interimage=film_interimage,
-            film_appearance=film_appearance,
-            film_appearance_strength=film_appearance_strength,
-            film_richness=film_richness,
-            film_color_density=film_color_density,
-            film_neutral_bias=film_neutral_bias,
-            film_appearance_variant=film_appearance_variant,
-            film_optics_seed=film_optics_seed,
-            film_media_scatter=film_media_scatter,
-            film_development=film_development,
-            film_dev_contrast=film_dev_contrast,
-            film_dev_fog=film_dev_fog,
-            film_dev_density=film_dev_density,
-            film_compression=film_compression,
-            film_compression_knee=film_compression_knee,
-            film_highlight_density=film_highlight_density,
-            film_interimage_beta_dial=film_interimage_beta,
             endpoint_mode=endpoint_mode,
-            color_head_y=color_head_y,
-            color_head_m=color_head_m,
             chroma_nr=chroma_nr,
         )
 
     # review batch 24: the id the render resolves, not the raw payload key
     grade_id, grade_strength = resolve_grade_id(params)
-    _seed_raw = params.get("filmOpticsSeed", params.get("film_optics_seed"))
-    _explicit_seed = int(_seed_raw) if _seed_raw not in (None, "", "auto") else None
     suffix = export_suffix_parts(
         highlight,
         gamut,
@@ -2642,42 +1720,10 @@ def run_export(params: dict) -> dict:
         lum_norm,
         agx_primaries,
         endpoint_mode,
-        color_head_y=color_head_y,
-        color_head_m=color_head_m,
-        film_mode=film_mode,
-        film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        # NOT the seed: the readable stem names the headline choices, and a
-        # random realization id would make every export a new filename. The
-        # seed rides the fingerprint below, which is what prevents two
-        # different renders from sharing a path (review batch 18 P0: passing
-        # it here raised TypeError on EVERY GUI export).
-        film_media_scatter=film_media_scatter,
-        explicit_optics_seed=_explicit_seed,
         coreimage_scale=coreimage_scale,
         clip_margin=int(clip_margin),
         decoder=decoder,
         chroma_nr=chroma_nr,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
     )
     # Analysis and the compiled plan now own the calibration coefficients.
     # If another process updated them during analysis, retry before writing
@@ -2711,64 +1757,8 @@ def run_export(params: dict) -> dict:
         agx_primaries=agx_primaries,
         endpoint_mode=endpoint_mode,
         lens_filter=lens_filter,
-        film_curve=film_curve,
-        film_mode=film_mode,
-        film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_appearance_variant=film_appearance_variant,
-        # R4: the seed only reaches rendered bytes through the grain field
-        # (scatter/halation/bloom are deterministic), and it is auto-minted
-        # per session — carrying it unconditionally forked the names of
-        # byte-identical no-grain exports across restarts, silently
-        # duplicating instead of replacing (the unused-knob rule below).
-        film_optics_seed=(film_optics_seed if float(film_grain) > 0.0 else 0),
-        film_media_scatter=film_media_scatter,
-        film_development=film_development,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_interimage_beta_dial=film_interimage_beta,
-        # review batch 23: an SDR-only operator, but one that changes bytes
         chroma_nr=float(chroma_nr),
-        # The optics budget tier picks the spread-grid size (P3) and the
-        # band split whose per-band dither draw orders the output noise, so
-        # it changes rendered bytes whenever the SPATIAL PATH is engaged —
-        # which since R3 includes the scatter-only default (media scatter
-        # declared, film full, all look amounts 0). An unused env var must
-        # still not fork non-spatial exports (same rule as hdr_headroom).
-        optics_budget_mib=(
-            _optics_budget_mib_for_fingerprint()
-            if (
-                film_grain or film_halation or film_bloom
-                or (
-                    film_mode == "full"
-                    and film_curve != "none"
-                    and str(film_media_scatter) != "off"
-                )
-                # math review 2026-09-03: the chroma-NR map lives on the
-                # spread grid, whose size (1408/2048) the tier selects — so
-                # its realized band, and the bytes, change with the tier too
-                or float(chroma_nr) > 0.0
-            )
-            else 0
-        ),
-        color_head_y=float(color_head_y),
-        color_head_m=float(color_head_m),
+        spatial_budget_mib=(_spatial_budget_mib_for_fingerprint() if float(chroma_nr) > 0.0 else 0),
         adjustments=dataclasses.astuple(adjustments),
         # Encode-affecting parameters (review batch 11): the HDR headroom and
         # the delivery/encode knobs change the written bytes, so they must
@@ -2802,15 +1792,6 @@ def run_export(params: dict) -> dict:
     png_temp = None
     if want_png:
         png_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}_scan.png"
-        # The dashboard runs FIRST (it is the analysis buffers' last
-        # consumer) but must not claim its final name until the main export
-        # succeeds: a later ICC/HDR/write failure would otherwise leave a
-        # PNG that looks finished — possibly pairing with an older JPEG from
-        # a different render (review batch 20). Write a temp beside it and
-        # rename atomically once the export is done.
-        # Keep the .png suffix: matplotlib picks its writer from the
-        # extension, so a ".part1234" tail made savefig raise (caught by a
-        # real run — the mocked failure test could not see it).
         png_temp = png_path.with_name(
             f"{png_path.stem}.part{os.getpid()}{png_path.suffix}"
         )
@@ -2890,35 +1871,6 @@ def run_export(params: dict) -> dict:
                     agx_primaries=agx_primaries,
                     adjustments=adjustments,
                     endpoint_mode=endpoint_mode,
-                    film_curve=film_curve,
-                    film_mode=film_mode,
-                    film_crossover=film_crossover,
-            film_exposure_ev=film_exposure_ev,
-            film_print_timing=film_print_timing,
-            film_print_medium=film_print_medium,
-            film_print_exposure_ev=film_print_exposure_ev,
-            film_grain=film_grain,
-            film_halation=film_halation,
-            film_bloom=film_bloom,
-            film_interimage=film_interimage,
-            film_appearance=film_appearance,
-            film_appearance_strength=film_appearance_strength,
-            film_richness=film_richness,
-            film_color_density=film_color_density,
-            film_neutral_bias=film_neutral_bias,
-            film_appearance_variant=film_appearance_variant,
-            film_optics_seed=film_optics_seed,
-            film_media_scatter=film_media_scatter,
-            film_development=film_development,
-            film_dev_contrast=film_dev_contrast,
-            film_dev_fog=film_dev_fog,
-            film_dev_density=film_dev_density,
-            film_compression=film_compression,
-            film_compression_knee=film_compression_knee,
-            film_highlight_density=film_highlight_density,
-            film_interimage_beta=film_interimage_beta,
-                    color_head_y=color_head_y,
-                    color_head_m=color_head_m,
                     lens_filter=lens_filter,
                     chroma_nr=chroma_nr,
                 )
@@ -3007,11 +1959,6 @@ def run_export_isolated(params: dict) -> dict:
     The process is deliberately short-lived: NumPy/libraw allocations then return to the
     OS after every export instead of accumulating in the long-running GUI process.
     """
-    # Resolve the grain realization IN THE PARENT (review batch 18): the
-    # spawned child gets a FRESH PREVIEW_STORE, so a child-side "auto" would
-    # mint a brand-new seed and export grain the preview never showed. The
-    # resolved integer travels in the payload; an explicit seed passes
-    # through unchanged.
     params = dict(params)
     # The export worker has a fresh PREVIEW_STORE. Carry only small capability
     # facts across the process boundary, so auto cannot reselect another decoder.
@@ -3033,33 +1980,6 @@ def run_export_isolated(params: dict) -> dict:
                     params["_previewAnalysis"] = envelope
     except (ValueError, OSError, AttributeError):
         pass  # The worker reports invalid public parameters through the normal path.
-    raw_seed = params.get("filmOpticsSeed", params.get("film_optics_seed"))
-    if raw_seed in (None, "", "auto"):
-        try:
-            inp, highlight, _, _, _, _, _, _, _, _ = parse_job_params(params)
-            wb = str(params.get("wb", "camera"))
-            decoder, coreimage_version = parse_decoder(params)
-            demosaic = parse_demosaic(params, decoder)
-            coreimage_scale, clip_margin = parse_decode_extras(params, decoder)
-            tone_core, _ = parse_tone_core(params)
-            entry = PREVIEW_STORE.peek(
-                inp, "reconstruct" if decoder == "coreimage" else highlight,
-                wb, tone_core == "gated", decoder, coreimage_version, demosaic,
-                coreimage_scale=coreimage_scale, margin=clip_margin,
-            )
-            seed = int(getattr(entry, "realization_id", 0) or 0) or _identity_realization(
-                inp, "reconstruct" if decoder == "coreimage" else highlight,
-                wb, tone_core == "gated", decoder, coreimage_version, demosaic,
-                coreimage_scale, clip_margin,
-            )
-        except Exception:
-            # an unparseable payload fails properly inside the child; the
-            # seed it carries is still a deterministic function of the input
-            from dngscan.gui.preview_cache import _realization_id_for
-
-            seed = _realization_id_for(str(params.get("input", "")))
-        params["filmOpticsSeed"] = int(seed)
-        params.pop("film_optics_seed", None)
     context = mp.get_context("spawn")
     result_queue = context.Queue(maxsize=1)
     process = context.Process(

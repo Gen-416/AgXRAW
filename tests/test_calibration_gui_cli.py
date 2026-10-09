@@ -198,7 +198,7 @@ class CalibrationEntryTests(unittest.TestCase):
             write = stack.enter_context(patch.object(service.dg, "export_jpeg"))
             with self.assertRaisesRegex(RuntimeError, "标定在导出分析期间发生变化"):
                 service.run_export({"input": str(source), "outdir": str(self.root),
-                                    "evAuto": False, "filmOpticsSeed": 1})
+                                    "evAuto": False})
             write.assert_not_called()
         self.assertEqual(list(self.root.glob("*.jpg")), [])
 

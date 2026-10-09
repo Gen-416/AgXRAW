@@ -127,7 +127,7 @@ class ChromaNrParser(unittest.TestCase):
         base = dict(gamut="p3", ev=0.0, look="none", look_strength=1.0, display_filter="none",
                     filter_strength=1.0, scene_transform="none", scene_transform_strength=1.0,
                     punch_scale=1.0, tone_core="agx", lum_norm="y", agx_primaries="base",
-                    lens_filter="none", film_curve="none", adjustments=None)
+                    lens_filter="none", adjustments=None)
         a = service._preview_pixel_key(bundle, **base, chroma_nr=0.0)
         b = service._preview_pixel_key(bundle, **base, chroma_nr=0.3)
         self.assertNotEqual(a, b)
@@ -154,7 +154,10 @@ class PageControl(unittest.TestCase):
         self.assertIn('chromaNr:+$("#chromaNr").value,', payload)
         self.assertNotIn('includes($("#format").value)?0:+$("#chromaNr")', payload)
         self.assertIn('"clipMargin","chromaNr"]', PAGE)  # restoreSettings list
-        self.assertIn('chromaNr:$("#chromaNr").value', PAGE)  # saveSettings
+        settings = PAGE[PAGE.index("const SETTINGS_IDS="):PAGE.index("function saveSettings()")]
+        self.assertIn('"chromaNr"', settings)
+        save = PAGE[PAGE.index("function saveSettings()"):PAGE.index("function restoreSettings()")]
+        self.assertIn("for(const id of SETTINGS_IDS)", save)
         fmt = PAGE[PAGE.index("function updateFormatUi("):]
         fmt = fmt[: fmt.index("\n}")]
         self.assertIn('$("#chromaNr").disabled=false;', fmt)
@@ -258,16 +261,6 @@ class SensorScaleAndBudget(unittest.TestCase):
         # pre-v15 entries have no proxy_scale: the version bump invalidates them
         self.assertGreaterEqual(preview_cache.PREVIEW_CACHE_VERSION, 15)
 
-    def test_resident_map_is_charged_to_the_band_budget(self) -> None:
-        from dngscan import render
-
-        plain = render._optics_band_rows(6000)
-        charged = render._optics_band_rows(6000, reserved_mib=200.0)
-        self.assertLess(charged, plain)
-        src = inspect.getsource(render._prepare_spatial_pass1)
-        self.assertIn("_optics_band_rows(w, _retained_map_mib(chroma_map))", src)
-        self.assertEqual(render._retained_map_mib(None), 0.0)
-        self.assertAlmostEqual(render._retained_map_mib(np.zeros((1024, 256, 1), np.float32)), 1.0)
 
 
 if __name__ == "__main__":

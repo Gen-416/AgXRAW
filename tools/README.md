@@ -15,7 +15,7 @@
 | 测 GUI 预览、缓存和并发 | [GUI 性能工具](#gui-性能) | 预览耗时、缓存工作集、排队与执行时间 |
 | 分析一批 RAW 的自动处理选择 | [corpus_report.py](corpus_report.py)、[hdr_policy_probe.py](hdr_policy_probe.py) | CSV / 逐帧分析报告 |
 | 复现解码或 HDR 差异 | [decode_ab.py](decode_ab.py)、[hdr_ab.py](hdr_ab.py) | 诊断数据、对比图 |
-| 更新测试基准、胶片资产或数据来源 | [数据与资产维护](#数据与资产维护) | 明确写入的资产、清单或测试夹具 |
+| 更新测试基准、标定或数据来源 | [数据与资产维护](#数据与资产维护) | 明确写入的资产、清单或测试夹具 |
 
 大图报告和 RAW 派生图片放在仓库外。以下示例共用一个新的输出目录；长期保留结果时换成自己的目录：
 
@@ -145,13 +145,9 @@ python tools/hdr_ab.py /path/to/photo.DNG --out "$AGXRAW_RUN_DIR/hdr"
 | [hdr_policy_probe.py](hdr_policy_probe.py) | 逐帧查看 HDR 可靠高光、SNR 门控、白点和 headroom |
 | [decode_ab.py](decode_ab.py) | LibRaw / Apple RAW 解码与分析计划交叉对照；几何差异须结合报告解释 |
 | [hdr_ab.py](hdr_ab.py) | SDR/HDR 诊断拼图；拼图本身不是 HDR 交付文件 |
-| [pipeline_impact.py](pipeline_impact.py) | 一张 RAW 上的单项处理影响矩阵；包括 native / NumPy 和胶片选择 |
+| [pipeline_impact.py](pipeline_impact.py) | 一张 RAW 上的单项处理影响矩阵；包括 native / NumPy、解码、曝光与颜色几何 |
 | [scan_drt_geometry.py](scan_drt_geometry.py) | 合成 EV × 色相 × 色度的 DRT 扫描，输出 `--csv` |
 | [validate_ideal_image.py](validate_ideal_image.py) | `python tools/validate_ideal_image.py /path/to/ideal-image-pair`；有已知黑白电平、增益、噪声的合成 DNG 对照 |
-| [film_palette_probe.py](film_palette_probe.py) / [film_visibility_report.py](film_visibility_report.py) | 胶片调色板 / 真实照片可见性；后者默认使用本地样张矩阵 |
-| [film_optics_report.py](film_optics_report.py) / [grain_particle_oracle.py](grain_particle_oracle.py) | 胶片光学算子 / 颗粒统计依据；`film_optics_report.py --perf` 包含大图测量 |
-| [crosscheck_2383.py](crosscheck_2383.py) | 2383 印片资产与外部参考的交叉检验；输入要求见脚本头 |
-| [fit_chroma_field.py](fit_chroma_field.py) / [fit_illuminant_tiers.py](fit_illuminant_tiers.py) | 胶片 Stage A 色度场与光源假设的交叉验证；重算选型证据，会写研究 JSON |
 
 ## 数据与资产维护
 
@@ -160,18 +156,10 @@ python tools/hdr_ab.py /path/to/photo.DNG --out "$AGXRAW_RUN_DIR/hdr"
 ### 只读核验与冻结
 
 ```sh
-python tools/audit_digitization.py
-python tools/sync_film_optics_from_charts.py --check
-python tools/gen_film_optics_manifest.py --check
-python tools/regen_appearance_freeze.py --check
-python tools/regen_optics_freeze.py --check
 ```
 
 | 工具 | 默认行为 |
 |---|---|
-| [audit_digitization.py](audit_digitization.py) | 只读图表采样充分性审计；测试共用同一检查 |
-| [sync_film_optics_from_charts.py](sync_film_optics_from_charts.py) | 重编译图表派生的光学资产；`--check` 只读 |
-| [regen_appearance_freeze.py](regen_appearance_freeze.py) / [regen_optics_freeze.py](regen_optics_freeze.py) | 重写对应冻结与测量基线；`--check` 只读 |
 | [regen_sdr_freeze.py](regen_sdr_freeze.py) | 重写 SDR 冻结；没有 `--check`，核验用 `python -m unittest tests.test_sdr_freeze` |
 | [regen_golden.py](regen_golden.py) | 用 NumPy 参考路径重写 golden；可从 DNG 生成裁切夹具 |
 
@@ -179,32 +167,19 @@ python tools/regen_optics_freeze.py --check
 
 | 工具 | 输入 → 输出 |
 |---|---|
-| [build_film_v2_assets.py](build_film_v2_assets.py) | 光谱底座 → 当前 stock / print-state / B2 资产；可选 `--stocks` |
-| [gen_film_v2_manifest.py](gen_film_v2_manifest.py) / [gen_film_optics_manifest.py](gen_film_optics_manifest.py) | 已审查资产 → 哈希清单；光学清单支持 `--check` |
-| [build_film_appearance_recipes.py](build_film_appearance_recipes.py) | 当前外观层配方定义 → 配方资产及清单 |
-| [fit_film_curve.py](fit_film_curve.py) / [export_film_ssf.py](export_film_ssf.py) | 胶片特性 / 光谱资料 → 曲线拟合与敏感度数据 |
 | [calibrate_skin_matrix.py](calibrate_skin_matrix.py) / [fit_skin_window.py](fit_skin_window.py) | 光谱 / 真实照片 → 前馈矩阵 / 窗口；窗口拟合默认只打印，`--write` 才写回 |
 | [regenerate_material_presets.py](regenerate_material_presets.py) | 各预设记录的目标 SSF → 材质前馈预设；可用 `--out` 指定新文件 |
 | [calibrate_raw9_anchors.py](calibrate_raw9_anchors.py) | 声明的本地相机样张集 → 解码器窗口锚点；会更新 `decoder_anchor_transport.json` |
-| [scan_chart_curves.py](scan_chart_curves.py) | 本地 Kodak PDF → [chart_scans/](chart_scans/) 数字化数据 |
-| [import_kodak_granularity.py](import_kodak_granularity.py) / [import_kodak_mtf.py](import_kodak_mtf.py) | 图表扫描 → 颗粒 σ(D) / MTF 数据；随后用光学同步工具编译渲染资产 |
 | [import_jptc.py](import_jptc.py) / [import_jptc_collect.py](import_jptc_collect.py) | 一手 JPTC 测量 → 传感器 priors；前者有 `--self-test` |
 | [import_cbld.py](import_cbld.py) / [import_p2p_pdr.py](import_p2p_pdr.py) | 本地 CBLD / P2P 表 → priors；来源与分发状态见 [NOTICE](../NOTICE.md) |
 | [import_lens_transmittance.py](import_lens_transmittance.py) | 一手镜头 / 滤镜光谱 → 镜头透过率库 |
 | [make_evidence_shell.py](make_evidence_shell.py) / [import_dngshell.py](import_dngshell.py) | RAW / 上游壳 → 无像素的容器元数据测试语料；不用于解码测试 |
-| [spectral_base.py](spectral_base.py) | 构建器共用的光谱基础库，不是独立操作入口 |
 
 ### 文档图片
 
-[regen_showcases.py](regen_showcases.py) 是整表重新渲染入口；[showcase_manifests/](showcase_manifests/) 保存教程和 README 的输入与参数。先 `--list` 查看，再通过 `--samples`、`--scratch`、`--only` 选择输入、输出和范围；加 `--install` 才替换 `docs/assets/` 中的展示图。
+[regen_showcases.py](regen_showcases.py) 默认加载修图教程清单，是整表重新渲染入口；[showcase_manifests/](showcase_manifests/) 保存教程和 README 的输入与参数。先 `--list` 查看，再通过 `--samples`、`--scratch`、`--only` 选择输入、输出和范围；加 `--install` 才替换 `docs/assets/` 中的展示图。
 
 [make_hdr_showcase.py](make_hdr_showcase.py) 生成网页尺寸的真实 gain-map JPEG；[plot_tone_curve_doc.py](plot_tone_curve_doc.py) 重算教程曲线图。[compose_plate.py](compose_plate.py) 为清单共用拼板器，直接入口是 `python tools/compose_plate.py OUT.jpg SPEC.json`。
 
-## 历史工具与保留原因
 
-| 工具 | 当前定位 |
-|---|---|
-| [build_film_appearance_identity.py](build_film_appearance_identity.py) | 早期 P1 布线验证的 identity 占位生成器。会覆盖同名当前配方；正常重建用 `build_film_appearance_recipes.py` |
-| [build_full_lut.py](build_full_lut.py) | 独立执行生成历史 `full_lut` 资产；其观察者拟合与烘焙函数仍被当前 v2 构建器和交叉验证复用，因此保留原路径 |
-
-历史工具用于追溯模型演进，不属于日常安装或更新步骤。现有性能与质量脚本即使带有阶段编号，仍可复现对应假设，保留在上述任务分类中。
+胶片构建、图表采样、外观与光学冻结工具已移到 AgXFilm，入口见[拆分记录](../docs/FILM_SPLIT.zh-CN.md)。

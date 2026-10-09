@@ -20,13 +20,6 @@ from .models import Analysis, AutoEvResult, RawBundle, ToneCompressionPlan
 from .raw_io import highlight_mode_cn
 from .tone import plan_for_mode
 
-def _optics_budget_mib_report() -> int:
-    """The active optics budget tier, for the report line: since P3 it picks
-    the spread-grid resolution, so it is render-affecting state the reader
-    must be able to see."""
-    from .render import _optics_budget_mib
-
-    return _optics_budget_mib()
 
 
 def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
@@ -438,7 +431,7 @@ def print_report(
                 f"全图自动曝光：提升 {auto_ev.ev_boost:+.2f} EV（相对 EV 0）"
                 f"{limit_note}；应用 EV={auto_ev.ev:+.2f}"
             )
-        print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, 'curve_preset', 'none'), getattr(tone_plan, 'film_mode', 'observe'), chroma)}")
+        print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, chroma)}")
         plan_line = jpeg_tone_plan_cn(
             bundle,
             analysis,
@@ -453,8 +446,7 @@ def print_report(
 
 
 def jpeg_policy_cn(
-    mode: str, output_gamut: str = "srgb", curve_preset: str = "none",
-    film_mode: str = "observe", chroma: str = "444",
+    mode: str, output_gamut: str = "srgb", chroma: str = "444",
 ) -> str:
     label = output_gamut_label(output_gamut)
     # R4: the sampling is the delivery profile's, not a constant — a share
@@ -463,19 +455,7 @@ def jpeg_policy_cn(
         str(chroma), str(chroma)
     )
     if mode == "agx":
-        if film_mode == "full" and str(curve_preset or "none") != "none":
-            # A8 item 5: the runtime is the FACTORISED film chain since
-            # v2 P3 — a monolithic baked 65^3 LUT no longer exists, and the
-            # policy line must describe the stages that actually run.
-            return (
-                f"agx·filmfull: scene-linear Rec.2020 工作空间；白平衡按导出"
-                f"选项；跳过胶片前馈（Stage A 的观察者逆矩阵自担分色），场景"
-                f"颜色进入因式分解的胶片链（Stage A 观察者→层曝光→特性密度 "
-                f"→ B1 → 印相曝光方式 → 相纸显影 → B2 → 灰阶校色 → 可选参考"
-                f"印相外观层），AgX 仅保留交付侧色域安全；"
-                f"最后转 {label}；{_chroma} 色度采样"
-            )
-        return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore→outset（负片色头档位>0 时后接 LMS 对角增益场）；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；{_chroma} 色度采样"
+        return f"agx: scene-linear Rec.2020 工作空间；白平衡按导出选项；无隐式自动增亮；高光重建属于所选解码器；AgX inset→端点归一化 C1→hue restore→outset；可靠 scene Y 只编译黑白范围与 toe/shoulder；逐像素 CFA mask 存在时才驱动曲线前褪白；最后转 {label}；{_chroma} 色度采样"
     if mode == "lum":
         return f"lum: scene-linear Rec.2020 工作空间；逐像素 CFA mask 存在时驱动曲线前褪白；场景编译 C1 作用于标量亮度/norm，RGB 比例保持；显示白附近再温和褪色；无 AgX inset/outset，最后转 {label} 并做输出色域 fit"
     if mode == "gated":
@@ -500,174 +480,6 @@ def jpeg_tone_plan_cn(
         return (
             f"neutral: fixed diagnostic curve (Y ratio, black={NEUTRAL_BLACK_EV:.1f}EV "
             f"white=+{NEUTRAL_WHITE_EV:.1f}EV); no AgX; delivery={output_gamut}"
-        )
-    if mode == "agx" and tone_plan is not None and \
-            str(getattr(tone_plan, "film_mode", "observe")) == "full" and \
-            str(getattr(tone_plan, "curve_preset", "none")) != "none":
-        plan = tone_plan
-        exposure = float(getattr(plan, "film_exposure_ev", 0.0) or 0.0)
-        timing = str(getattr(plan, "film_print_timing", "fixed") or "fixed")
-        medium = str(getattr(plan, "film_print_medium", "") or "")
-        timing_label = {
-            "fixed": "fixed(τ(0))", "retimed": "retimed(τ(E) 表插值)",
-            "custom": "custom(τ(0)+印相曝光+色头 Δτ,modelled)",
-        }.get(timing, timing)
-        state = ""
-        if exposure != 0.0 or timing != "fixed" or medium:
-            state = f"胶片曝光 {exposure:+.2f} EV·印相 {timing_label}"
-            if medium:
-                state += f"·介质 {medium}"
-            state += "；"
-        neutral = {
-            "off": "technical-neutral",
-            "print": "print-balanced",
-            "datasheet": "native",
-        }.get(str(getattr(plan, "film_crossover", "off")), "technical-neutral")
-        if str(getattr(plan, "film_development", "measured_default")) == "editorial_custom":
-            state += (
-                "编辑冲洗方式(对比{:+.2f}/fog{:+.2f}/色密度{:+.2f})；".format(
-                    float(getattr(plan, "film_dev_contrast", 0.0)),
-                    float(getattr(plan, "film_dev_fog", 0.0)),
-                    float(getattr(plan, "film_dev_density", 0.0)),
-                )
-            )
-        compression = float(getattr(plan, "film_compression", 0.0) or 0.0)
-        if compression > 0.0:
-            state += (
-                "Film Compression {:.2f}@knee+{:.1f}EV".format(
-                    compression,
-                    float(getattr(plan, "film_compression_knee", 2.0)),
-                )
-            )
-            rho = float(getattr(plan, "film_highlight_density", 0.0) or 0.0)
-            if rho > 0.0:
-                state += f"·高光褪色ρ={rho:.2f}"
-            state += "；"
-        _nr = float(getattr(plan, "chroma_nr", 0.0) or 0.0)
-        if _nr > 0.0:
-            state += f"色度NR {_nr:.2f}(数字化修复:8-128px色斑,亮度不动)；"
-        if str(getattr(plan, "film_interimage", "declared") or "declared") != "declared":
-            beta = 0.0
-        else:
-            _compiled = getattr(plan, "film_interimage_beta", None)
-            if _compiled is not None:
-                beta = float(_compiled)
-            else:
-                from .film_develop import interimage_beta
-
-                beta = interimage_beta(str(plan.curve_preset))
-        if beta > 0.0:
-            _im_mode = str(getattr(plan, "film_interimage", "declared") or "declared")
-            state += (
-                f"层间效应β={beta:.2f}"
-                + ("(editorial dial)" if _im_mode == "custom" else "(modelled)")
-                + "；"
-            )
-        else:
-            state += "层间效应=off(光谱底座)；"
-        _app_mode = str(getattr(plan, "film_appearance", "technical") or "technical")
-        if _app_mode in ("reference", "custom"):
-            # A6 item 5: the report must let a reader AUDIT the appearance —
-            # mode, variant, exact asset (id + hash prefix), strength, and
-            # any custom modifiers. "custom" was previously invisible.
-            _app = getattr(plan, "film_appearance_compiled", None)
-            _sha = str(getattr(_app, "asset_sha256", "") or "")
-            state += (
-                f"外观层={_app_mode}"
-                f"[{getattr(_app, 'variant', 'reference')}]"
-                f"({getattr(_app, 'recipe_id', '?')}"
-                f"@{_sha[:12] or '?'}"
-                # A7 item 4: ONE strength source — the runtime consumes the
-                # compiled object, so the audit must read the same field
-                # (a replace()d plan could otherwise report a stale dial).
-                f"×{float(getattr(_app, 'strength', 1.0)):.2f},"
-                f"{getattr(_app, 'provenance', '?')})"
-            )
-            if _app_mode == "custom":
-                state += (
-                    f"{{丰度{float(getattr(_app, 'richness_delta', 0.0)):+.2f}"
-                    f"/色密度{float(getattr(_app, 'color_density_delta', 0.0)):+.2f}"
-                    f"/灰偏×{float(getattr(_app, 'neutral_bias_strength', 1.0)):.2f}}}"
-                )
-            state += "；"
-        optics = [
-            f"{label}{val:.2f}"
-            for label, val in (
-                ("颗粒", float(getattr(plan, "film_grain", 0.0) or 0.0)),
-                ("halation", float(getattr(plan, "film_halation", 0.0) or 0.0)),
-                ("bloom", float(getattr(plan, "film_bloom", 0.0) or 0.0)),
-            )
-            if val > 0.0
-        ]
-        # §12.2 refuses a bare "颗粒与光晕 standard": a reader must be able
-        # to tell which asset produced the halo and how honest each field
-        # is without opening the source. The compiled plan owns those
-        # answers, so the line is built from it rather than re-derived.
-        # R4: the line prints whenever the compile ENGAGES — since R3 the
-        # scatter-only default (media scatter declared, all look amounts 0)
-        # applies two derived spatial stages, and gating this line on the
-        # look amounts made a default export and a --film-media-scatter off
-        # export print byte-identical reports for different pixels.
-        from .film_optics_assets import compile_film_optics_plan
-
-        optics_plan = compile_film_optics_plan(plan)
-        if optics_plan is not None:
-            rep = optics_plan.report()
-            prov = rep.get("provenance", {})
-            # Review R1 item 4: the media scatter state and the emulsion
-            # scatter's provenance are part of the line — both stages apply
-            # whenever this context is engaged (unless declared off), so a
-            # report that omitted them attributed their pixels to the look
-            # sliders.
-            _media = str(
-                getattr(plan, "film_media_scatter", "declared") or "declared"
-            )
-            state += (
-                "颗粒与光晕 " + ("·".join(optics) if optics else "无观感量(仅介质柔化)")
-                + f"·seed={int(rep.get('seed', 0))}"
-                + f"·胶片资产={rep.get('stock_optics', '?')}"
-                + f"(颗粒{prov.get('grain') or '—'}"
-                + f"/halation{prov.get('halation') or '—'}"
-                + f"/乳剂散射{prov.get('emulsion_scatter') or '—'})"
-                + f"·印相资产={rep.get('print_optics', '?')}"
-                + f"(散射{prov.get('formation_scatter') or '—'}"
-                + f"/颗粒{prov.get('positive_grain') or '—'})"
-                + f"·介质柔化={_media}"
-                + f"·halation DC={rep.get('halation_dc_mode') or '—'}"
-                + f"·预算档={_optics_budget_mib_report()}MiB；"
-            )
-        # R2 item 23 / route D: the Stage A line names the model that
-        # ACTUALLY ran and its held-out residual, straight off the asset the
-        # render loads — the shipped D55 model (field or 3x3, the route-C
-        # decision), the 3x3 baseline for comparison, and what that same
-        # model measures on white-balanced tungsten / high-CRI LED scenes
-        # (the measured reason no illuminant tier exists).
-        _resid = ""
-        try:
-            from .film_develop import _load_v2
-
-            _stock, _ = _load_v2(str(plan.curve_preset))
-            _is_field = _stock.get("stage_a_model") == "field"
-            _p99 = float(_stock.get("stage_a_p99_stop", float("nan")))
-            _b99 = float(_stock.get("stage_a_3x3_p99_stop", float("nan")))
-            _ua = float(_stock.get("stage_a_p99_under_a", float("nan")))
-            _ul = float(_stock.get("stage_a_p99_under_led", float("nan")))
-            _line = f"StageA=D55{'色度场' if _is_field else '3×3'}(held-out p99 {_p99:.2f}stop"
-            if _is_field and _b99 == _b99:
-                _line += f"，3×3基线{_b99:.2f}"
-            if _ua == _ua and _ul == _ul:
-                _line += f"；白平衡后钨丝光下{_ua:.2f}、高显色LED下{_ul:.2f}"
-            _resid = _line + "；光源假设=D55（实测无需分档）；"
-        except Exception:
-            pass
-        return (
-            f"filmfull({plan.curve_preset}) 接管显影：因式分解链(Stage A 解析"
-            f"→B1→τ→相纸曲线→B2)，{state}"
-            f"{_resid}"
-            f"灰阶校色={neutral}；"
-            f"AgX endpoint/contrast/toe/shoulder/punch 不参与（接管核心整体替换 "
-            f"formation，仅保留交付侧色域安全）；SDR 印相"
-            f"（Ultra HDR 导出时作\"胶片印相+scene HDR 扩展\"的底图）"
         )
     if mode in ("agx", "lum", "gated"):
         plan = tone_plan if tone_plan is not None else plan_for_mode(
@@ -831,7 +643,7 @@ def csv_row(
         "jpeg_exposure_gain": bundle.exposure_gain if jpeg_path is not None else "",
         "jpeg_icc_embedded": jpeg_icc_embedded if jpeg_path is not None else "",
         "jpeg_srgb_icc_embedded": jpeg_icc_embedded if jpeg_path is not None and output_gamut == "srgb" else "",
-        "jpeg_policy_cn": jpeg_policy_cn(reported_mode, output_gamut, getattr(tone_plan, "curve_preset", "none"), getattr(tone_plan, "film_mode", "observe"), chroma) if jpeg_path is not None else "",
+        "jpeg_policy_cn": jpeg_policy_cn(reported_mode, output_gamut, chroma) if jpeg_path is not None else "",
         "jpeg_tone_plan_cn": jpeg_tone_plan_cn(
             bundle,
             analysis,

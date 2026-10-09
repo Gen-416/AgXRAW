@@ -105,12 +105,12 @@ include CLI commands and camera, shutter, ISO and DN-scale requirements.
    **RAW 过曝标记 (RAW clipping)** toggle on the preview card first (end of
    section 3);
 4. **Choose the output** — ordinary JPEG or HDR, for sharing or for archiving
-   (section 10);
+   (section 9);
 5. **Update the preview to confirm, then export.**
 
 There is no "analysis report" in the GUI: it produces images only, and the
 Delivery Report shown after an export lists just the measured facts of the HDR
-container (section 10). For the full analysis report — evidence, curve
+container (section 9). For the full analysis report — evidence, curve
 endpoints, colour-matrix health κ, Stage A residuals and so on — run the CLI
 with `--report`. Without it the CLI prints only the files it wrote
 (`JPEG 图像: …` / `PNG 图像: …`); diagnostic runs with `--scan` or `--csv`
@@ -119,8 +119,8 @@ include the report automatically.
 Apart from those report and diagnostic outputs (`--report`, `--csv`, `--support`,
 `--hdr-debug-dir` and the like) the GUI now covers every CLI dial: anything that
 shapes the image on the CLI has a control on the page, and the ones hidden or greyed
-are simply those that do not apply in the current state (section 11). The six-panel
-dashboard can ride along via the export dialog's 附带分析图 checkbox (section 10).
+are simply those that do not apply in the current state (section 10). The six-panel
+dashboard can ride along via the export dialog's 附带分析图 checkbox (section 9).
 
 ---
 
@@ -173,10 +173,10 @@ That is precisely its use: **telling "the RAW already burned" apart from "it is
 merely rendered too bright"**. When a highlight looks harsh, switch the overlay
 on first. Sparse or absent marks mean the RAW is fine and the tone curve is the
 issue — go to the tone card and work the shoulder (shoulder white, highlight
-transition, section 7) or ease EV down; the gradation comes back. A large white
+transition, section 6) or ease EV down; the gradation comes back. A large white
 patch (all three channels) was already flat in the RAW: lowering EV only turns
 it into flat grey, and no shoulder setting can invent gradation — either accept
-it as dead white or let AgX (section 9) fade it naturally toward white. Marks in
+it as dead white or let AgX (section 8) fade it naturally toward white. Marks in
 only one or two channels mean the colour there is a guess, which the tool
 already trusts less; when a local colour looks wrong, check this layer before
 suspecting other settings.
@@ -200,274 +200,15 @@ no eye in the loop.
 |---|---|---|
 | **As Shot** | The balance the camera metered at capture | Default; everyday output |
 | **6500K · D65** | The standard white point of sRGB/Rec.709 displays | Aligning with display-industry standards |
-| **5500K · photographic daylight** | The calibration temperature of daylight-balanced film | **The correct starting point for film simulation**: one fixed 5500K for the whole roll, letting the actual light's warmth or coolness pass through — tungsten light *should* look orange, exactly as real film behaves |
-| **3400K · Type A** | Type A tungsten film (photoflood lamps) | Tungsten film simulation |
-| **3200K · Type B** | Type B tungsten film (3200K studio tungsten/halogen) | Same, the more common tungsten calibration |
+| **5500K · photographic daylight** | Fixed daylight reference | Keep the same reference across a series; tungsten lighting remains warm |
+| **3400K · Type A** | Fixed 3400 K reference | Warm studio lighting |
+| **3200K · Type B** | Fixed 3200 K reference | Studio tungsten/halogen |
 | **9300K · Japanese broadcast white** | The traditional white point of Japanese television (cool blue) | The "old Japanese TV" cool look — for fun |
 
 Fixed Kelvin works on both decoders. A visible color cast after choosing one is
-**expected behavior** — it is precisely how film sees the world, not a malfunction.
+**expected behavior**: this fixes the reference rather than neutralizing every illuminant.
 
-## 5. Film observation positions (20 stocks + 5 theatrical variants)
-
-Up front: **this is not a one-tap filter**. It decomposes "how a roll of film saw
-the world" into independent, declared layers. The payoff is that every layer can
-be understood and adjusted on its own; the price is two minutes to build the
-mental model. These paragraphs are those two minutes.
-
-### The mental model: film decides what was seen; AgX decides how to develop it
-
-Picking a stock sets five controls at once (**all visible, all adjustable —
-nothing is baked**):
-
-| Layer | What it does | When to touch it |
-|---|---|---|
-| **White balance** (RAW decode card) | Locks the stock's calibration temperature: 5500K daylight, 3200K tungsten cine | Orange tungsten scenes are **by design** (real film behaves this way); switch back to As Shot if you don't want it |
-| **Spectral prefeed** (prefeed card) | How this stock's layers **separate** colour (its skin/foliage character), from datasheets | Usually leave it; set to none to drop the stock's colour separation entirely |
-| **Separation strength** (slider) | Intensity of that separation. The combo sets a per-stock suggestion (Velvia ×1.6) | **Too mild → push up; too strong → pull down.** 1.0 = calibration strength; the suggestion is editorial taste, not measurement |
-| **Development curve** (tone card) | The stock + paired medium's tone signature: black floor, latitude, highlight rolloff. Fixed per roll, no scene adaptation | Usually leave it; the tone trims still stack on top |
-| **AgX primaries** (imaging card) | The density/saturation "punch": base/punchy/muted. Paired per stock (Velvia→punchy, Kodachrome→muted) | **The bigger style lever** — switch here for more bite or more restraint |
-
-How colour finally *develops* onto your screen (path-to-white, hue behaviour)
-always belongs to AgX — the most thoroughly validated part of the pipeline, and
-the reason this film simulation stays stable.
-
-### Three steps to start
-
-1. Pick a stock and export — the combo already carries its suggested style;
-2. Adjust to taste: **too mild** → raise separation strength or switch primaries
-   to punchy; **too strong** → the reverse; **dislike the colour-temperature
-   cast** → set WB back to As Shot (keeping only the separation and curve);
-3. Want the no-film baseline? Set film to none — pure AgX.
-
-### Common intents
-
-- Rich landscape chrome → Velvia 100 (ships punchy + ×1.6)
-- Soft portraits → Portra 400 (switch to muted for softer still)
-- Restrained vintage → Kodachrome 64
-- The raw high-contrast "2383 print on a monitor" look → the **theatrical** variants
-- Flat wide-latitude cine scans → the Vision3 family
-- Film tone only, no colour separation → prefeed none, keep the curve preset
-
-### Boundaries worth knowing
-
-- Slides and cinema prints target **dark projection rooms** (~1.5× contrastier);
-  delivery to an everyday screen translates that away using the classic
-  surround constants — the translation carries the appearance term only. The
-  calibration describes THE MEDIUM (black = the paper's or slide's own Dmax);
-  viewing-room flare is no longer baked into film curves;
-- **Two development roles** (imaging card 胶片模拟方式, CLI `--film-mode
-  observe|full`): the default **胶片风格 · AgX 成像** (observe — AgX develops) is
-  everything above; use it day to day. **完整冲印 · 胶片全流程** (takeover — the
-  film development chain) hands development to the film model as well and
-  reveals a further row of controls — the next subsection covers them;
-- No vignette — it changes *how the camera saw the world*; grain and halation
-  exist only in takeover mode's declared 颗粒与光晕 (analog optics) tiers, never
-  in observe mode;
-- **HDR keeps working**: observe mode as always; takeover-mode Ultra HDR is
-  "film print + scene HDR extension" — the SDR base IS the film print
-  (byte-identical), and reliable scene highlights gain smoothly above the
-  print's reference white. No claim of physical film HDR is made.
-
-### Takeover: the film development chain (controls that appear under 接管)
-
-In observe mode the film only decides what was seen and AgX still develops the
-colour; takeover hands development to the film too. Scene colour first passes
-through the stock's Stage A into three emulsion exposures (per stock, a
-held-out cross-validated, exposure-homogeneous chromaticity-field correction,
-or the constrained 3×3 observer where the field did not earn its place — the
-report names which one and its residual), through the characteristic curves
-into negative dye density, then through the factorized print chain: negative
-density → paper-layer exposure → print timing → paper development → viewing
-colour. AgX keeps only delivery-side gamut safety, so choosing takeover locks
-the compression core to AgX. The illuminant assumption is fixed at D55 —
-measurement showed tungsten and high-CRI LED scenes land in the same class as
-daylight once white-balanced — so **there is no illuminant tier to choose**.
-This chain (film v2), the appearance layer, optics V2 and observe mode have all
-landed (status table in [docs/README.md](README.md)); the GUI no longer labels
-any of it experimental.
-
-The one-line hints on the GUI controls are deliberately basic; the full meaning
-lives here:
-
-- **灰阶校色 — grey-scale neutralization** (CLI `--film-neutralization`):
-  how the grey axis returns to neutral. **跟随成片调色 · 默认** (follow the film
-  interpretation) resolves from the interpretation control — 中性还原 → digital
-  neutral, 参考印相 → print-balanced (the extended scan-reference variant's
-  recipe declares digital neutral and the compiler follows); leaving the CLI
-  flag out hands the same resolution to the compiler. **全程中性** — digital
-  neutral (`technical-neutral`): the chain's output is divided, per pixel by
-  luminance exposure, by the package's bounded neutral-tint curve, so greys
-  within two stops of neutral stay strictly neutral. **只校中灰** —
-  print-balanced (`print-balanced`): one constant balance solved at the EV0
-  anchor, mid-grey neutral by construction while both ends of the grey scale
-  keep the medium's own exposure-dependent crossover. **保留胶片偏色** —
-  datasheet drift (`native`): the chain verbatim with no correction, mid-grey
-  anchored by the print solve and shadows tinting per each stock's datasheet —
-  cine negatives green-teal, Kodachrome amber, Velvia mildly cool. In the CLI,
-  `bounded`/`datasheet` are deprecated aliases of
-  `technical-neutral`/`native`; the old `--film-crossover off|datasheet` is
-  deprecated too — `--film-crossover datasheet` equals `--film-neutralization
-  native` — and giving both is a hard error.
-- **胶片曝光 — film exposure** (±2 EV, CLI `--film-exposure`): the emulsion's
-  exposure state relative to its nominal EI — was the roll over- or
-  under-exposed — **not the output exposure**. It changes the negative itself
-  (colour, contrast, toe and shoulder); the overall brightness of the print is
-  decided by the print timing below.
-- **印相曝光方式 — print timing** (CLI `--film-print-timing`): **固定 · 默认**
-  (fixed) keeps the print time jointly solved at EV0, the same enlarger
-  settings even when film exposure changes; **随胶片曝光补偿** (retimed with
-  film exposure) re-prints darkroom-style as the film exposure moves
-  (interpolated from a 0.25 EV table), overall brightness nearly constant while
-  colour/contrast/toe-shoulder follow the emulsion state — available for **all
-  21 negatives** (theatrical variants included) as long as the stock's retimed
-  print asset is present; **自定义 · 色头+印相曝光** (custom — colour head +
-  print exposure) is manual printing: on top of the fixed timing it adds a
-  print-exposure slider (±2 EV, CLI `--film-print-exposure`) and the enlarger
-  colour head Δτ (resolved inside the paper-layer exposure model, reported as
-  modelled). Custom is open to negatives only and requires the neutralization
-  to be 保留胶片偏色 — the point of manual printing is to keep what came out of
-  the printer — and the GUI switches it over automatically (the CLI needs an
-  explicit `--film-neutralization native`). Slides have no print step: their
-  timing is always fixed and the other two options are greyed with the reason.
-- **印相材料 — print medium** (CLI `--film-print-medium`): defaults to the
-  stock's factory-paired paper; the dropdown only appears for stocks with a
-  second baked medium (at the time of writing Portra 400 also has Supra Endura,
-  Vision3 250D also has 2393 print stock). Changing medium re-prints the same
-  negative on different paper without double tone mapping.
-- **成片调色 — film interpretation** (CLI `--film-appearance`, CLI default
-  technical): **中性还原** (technical neutral) is the spectral chain itself;
-  **参考印相 · 默认** (reference print) adds the stock's palette on its paired
-  paper as an appearance layer, with a strength slider (0 = not applied, 1 = the
-  recipe's declared value, up to 3 extrapolated); **自定义** (custom) is
-  reference plus three bounded modifiers — richness (−1…1), colour density
-  (−1…1, darkens without changing saturation), grey-axis bias (0…2, a zero
-  field in the current recipes, reserved). Recipe coverage is still narrow:
-  for stocks without one, reference/custom are greyed and the control falls
-  back to technical (at the time of writing recipes exist for Portra 400,
-  Ektar 100, Velvia 100 and Vision3 250D).
-- **调色版本 — interpretation variant** (CLI `--film-appearance-variant`):
-  **参考印相 · 默认** is the print reading; **扫描版 extended** is the
-  scan/telecine reference reading — same family direction at 0.6 amplitude,
-  grey axis digitally neutral. The dropdown only appears for stocks with an
-  extended asset (at the time of writing only Vision3 250D).
-- **层间效应 — inter-image amplification** (CLI `--film-interimage`): how
-  much development coupling amplifies colour differences. **按胶片数据 · 默认**
-  (declared) uses the stock's modelled table value (declared range across
-  stocks 0.32–1.05); **关闭 · 纯光谱** (off — spectral baseline) is the pure
-  spectral base, a debugging setting; **自定义强度** exposes a [0, 1.5] slider (0
-  is equivalent to off) and the report labels it an editorial dial.
-- **颗粒与光晕 — analog optics** (CLI `--film-grain/--film-halation/
-  --film-bloom`): three tiers — **关闭 · 默认** (off) / **轻** light (grain
-  0.25 · halation 0.20 · bloom 0.15) / **标准** standard (grain 0.50 ·
-  halation 0.40 · bloom 0.30) — or **自定义** with three 0…1 sliders. What
-  they are: **grain** is a band-limited density grain field in the negative's
-  millimetre coordinates, its response taken from measured σ(D) (per-channel
-  lookup of the 5207 chart, calibrated at a 48 µm aperture), with a fixed
-  statistical master field and one random spatial arrangement per photo; the
-  negative and the paper take independent phases, so the two realizations are
-  uncorrelated. **Halation** is bright scene exposure back-scattered through
-  the base onto the red-sensitive layer and re-injected into layer exposure,
-  before the characteristic curve. **Bloom** is an additive capture glow
-  before the emulsion, declared editorial — not a conservative medium scatter.
-  Two small controls sit beside the tier dropdown. **颗粒种子 — optics seed**
-  (CLI `--film-optics-seed auto|N`) decides only the grain's spatial
-  arrangement, never its size, spectrum, density response or cross-layer
-  covariance: leave it empty for auto, which draws one fixed seed when the RAW
-  is loaded so preview and export match (the report prints the effective
-  seed); type a non-negative integer for a permanently reproducible
-  realization. **介质柔化 — media scatter** (CLI `--film-media-scatter
-  declared|off`) is the media's own scatter (emulsion scatter and
-  print-formation scatter, fitted from MTF), which belongs to the declared
-  medium rather than to a look amount: under **按介质数据 · 默认** (declared) it
-  applies from the compiled profile whenever the optics chain is engaged,
-  independent of the three sliders; **关闭** (off) is the operator-isolation
-  setting the measurement tooling uses, not for everyday work.
-- **冲洗方式 — developer recipe** (CLI `--film-development`): which
-  development the characteristic curves are solved for. **标准冲洗**
-  (`measured_default`) is the datasheet development with the three
-  perturbations locked at 0; **自定义冲洗** (`editorial_custom`) reveals three
-  bounded sliders, and the report labels the result editorial development:
-  **冲洗反差 — development contrast** (−0.5…0.5, CLI `--film-dev-contrast`)
-  scales the characteristic curve's logE axis about the mid-grey anchor — the
-  contrast dimension of push/pull processing, mid-grey held by construction;
-  **灰雾 — development fog** (0…0.3, CLI `--film-dev-fog`) adds uniform
-  density to all three layers — real chemical fog brightens the whole print,
-  and the tool applies no hidden compensation; **染料浓度 — development
-  colour density** (−0.5…0.5, CLI `--film-dev-density`) scales the developed
-  dye amount about the mid-grey anchor, again without moving mid-grey. Two
-  coupling rules match the CLI and are enforced server-side as well: custom
-  development requires the neutralization to be 保留胶片偏色 (the bounded
-  neutralization's cast curve is solved for the measured development) — the
-  GUI switches it automatically with a status message and greys the other
-  neutralization options, while the CLI needs an explicit
-  `--film-neutralization native`; and custom development is mutually
-  exclusive with 随胶片曝光补偿 (the retimed τ table is likewise solved for
-  the measured development) — the GUI greys retimed and falls back to fixed;
-  fixed and custom timing both work.
-- **高光预压缩 — film compression** (0…1, default 0, CLI `--film-compression`):
-  a C1 saturating compression of scene luminance EV before the emulsion — above
-  a knee it eases hard digital highlights into the negative's latitude,
-  declared as an editorial bridge; 0 is the strict identity. Above 0 two more
-  sliders appear: **压缩起点 — compression knee** (0…6 EV above mid-grey,
-  default 2, CLI `--film-compression-knee`) sets the stop at which compression
-  starts; **高光褪色 — highlight colour density** (0…2, default 0, CLI
-  `--film-highlight-density`) lets the compressed highlights converge toward
-  luminance-preserving neutral — the look of negative highlight dye density
-  approaching saturation. The latter is only meaningful with compression > 0:
-  at 0 the GUI zeroes it and the CLI and server reject a non-zero value.
-
-The developer recipe, film compression, media scatter and optics seed are
-takeover-only: they appear only while 胶片模拟方式 is set to 接管, and switching
-back to observe resets all of them to their defaults so no stale value rides
-along in the payload (the server also rejects non-default values in observe
-mode). Exported filenames add a token only when a value is not the default, so
-a dialled render never overwrites the default one: `dev-c…f…d…` for custom
-development, `comp{c}k{knee}` for film compression (plus `hd{x}` when highlight
-colour density > 0), `scatteroff` for media scatter off, and `seed{n}` for an
-explicit seed.
-
-### The enlarger colour head (negatives only)
-
-A colour negative has no colour of its own — the negative is an intermediate
-record, and the final colour is decided by a **person** under the enlarger:
-the Y/M filter settings on the colour head are that decision. Selecting any
-**negative** preset (Portra / Gold / Superia / the Vision3 family and so on)
-shows two sliders on the imaging card:
-
-- **Real darkroom units**: CC filter density, 0–200 in steps of 5 (the GUI slider covers the 0–40 working band by default; tick "色头量程扩展到 200 CC" to expose the full hardware travel); 30CC = 0.30
-  optical density ≈ one stop of print-exposure attenuation for that separation.
-  After a change the exposure time is re-solved darkroom-style, so mid-grey
-  brightness does not move;
-- **Direction follows the darkroom rule**: add the filter of the colour the
-  print leans toward — too yellow, add Y (the yellow filter absorbs blue,
-  exposes the paper's blue-sensitive layer less, forms less yellow dye); too
-  magenta, add M;
-- **Practical scale**: real darkroom fine-tuning moves in 2–10CC steps; 30CC and
-  above is "this print is badly off" coarse correction, and the range to 200
-  only reproduces the physical travel of the hardware dial. From the film
-  tutorial's samples: Y +5CC visibly lightens a warm cast and Y +10CC crosses
-  neutral; the M axis is stronger at the same scale — M +10CC already pushes
-  clearly toward green, so take half-size steps on the magenta–green axis;
-- The response models the real printing light path, and brightness is held
-  constant automatically (implementation in the
-  [architecture notes](ARCHITECTURE.md));
-- **Slides (Velvia / Provia / Ektachrome / Kodachrome) grey both sliders to
-  zero** with the reason shown — the slide is itself the display medium, so
-  physically there is no printing step;
-- **In takeover mode switch the print timing to 自定义 first**: fixed/retimed
-  prints are decided by the joint solve, so the colour head is greyed and zeroed
-  with a hint until then; under custom timing it takes part in the manual print
-  as a modelled Δτ. In observe mode any negative can use it at any time;
-- Both at 0 is exactly the same as not engaging it (the preset's factory
-  neutral print decision).
-
-**Lens filters** (RAW decode card) are the companion control: Wratten conversion
-glass simulated from Kodak's published parameters (85B daylight-to-tungsten, 80A the
-reverse, and others), for recreating historical workflows like "tungsten film + 85B in
-daylight". There is no strength slider — glass has no half-installed state.
-
-## 6. The other EVs in the interface
+## 5. The other EVs in the interface
 
 - **Exposure EV** (the slider): brightens/darkens everything, +1 = one stop up. 0 keeps
   the brightness relationships from capture. The RAW 过曝标记 marks on the preview do
@@ -488,17 +229,7 @@ daylight". There is no strength slider — glass has no half-installed state.
   they are dials. The evidence gates (clip / noise / gamut pressure) always multiply
   and cannot be bypassed. CLI: `--hdr-rho` / `--hdr-white-margin` /
   `--hdr-shoulder-start`.
-- **Inter-image β** (imaging card; appears when 层间效应 is set to 自定义强度 in
-  takeover mode): the development-coupling colour-difference amplification.
-  Default "declared" = the stock's modelled table value (0.32–1.05); a custom
-  value is reported as an editorial dial. CLI:
-  `--film-interimage custom --film-interimage-beta`.
-- **Compression knee** (imaging card; appears in takeover mode once 高光预压缩 is
-  above 0): the stop above mid-grey at which the saturating compression starts,
-  0…6 EV, default 2; only scene luminance above the knee is compressed. CLI:
-  `--film-compression-knee`.
-
-## 7. Tone card: endpoint mode and toe/shoulder offsets
+## 6. Tone card: endpoint mode and toe/shoulder offsets
 
 - **Endpoint mode**: where the curve's black/white endpoints come from.
   **Scene-adaptive** (default) follows this frame's luminance percentiles — right for
@@ -555,7 +286,7 @@ daylight". There is no strength slider — glass has no half-installed state.
   already overflowed in all three channels, no curve setting can invent
   gradation.
 
-## 8. The two live histograms
+## 7. The two live histograms
 
 While previewing, two histograms with different scopes sit next to the controls
 they belong to, and both refresh with every preview frame:
@@ -590,7 +321,7 @@ with exposure and curve; the latter cannot.
 
 ---
 
-## 9. The compression cores, and which to pick
+## 8. The compression cores, and which to pick
 
 RAW records a far wider brightness range than any screen can show; the "compression
 core" is how the former is fitted into the latter. It decides the overall look —
@@ -607,7 +338,7 @@ The last two are comparison/diagnostic tools, not finishing tools.
 
 ---
 
-## 10. Output: formats and delivery profiles
+## 9. Output: formats and delivery profiles
 
 **Formats**:
 - **SDR JPEG** — an ordinary photo for broad sharing;
@@ -647,7 +378,7 @@ instead of failing after the full-resolution analysis has already run.
 
 ---
 
-## 11. Which options grey themselves out
+## 10. Which options grey themselves out
 
 The GUI's rule is: **an option that needs a particular environment or asset is
 greyed with the reason shown beside it when that is missing**, rather than
@@ -661,17 +392,7 @@ letting you choose it and failing at export. Currently handled this way:
 - The **按 RAW 数据自动 · 保留真实颜色** (RAW-gated) compression core is unavailable under
   Apple RAW — it gates the colour path on per-pixel CFA evidence, which Core
   Image does not provide;
-- **成片调色** reference/custom and the **调色版本** scan reference — only open
-  for stocks with a recipe/asset (section 5);
-- **印相曝光方式** retimed/custom and the **colour head** — slides are always
-  fixed and the colour head is greyed and zeroed; in takeover mode the colour
-  head additionally needs custom timing (section 5);
-- **自定义冲洗** (the takeover-mode developer recipe) — locks the grey-scale
-  neutralization to 保留胶片偏色, greys the other neutralization options with a
-  status message, and greys 随胶片曝光补偿 on the print timing, falling back
-  to fixed (section 5). Custom timing likewise locks the neutralization to
-  保留胶片偏色;
-- **附带分析图** — needs matplotlib (section 10);
+- **附带分析图** — needs matplotlib (section 9);
 - **RAW 过曝标记** — Apple RAW decoding has no per-pixel CFA evidence (section 3).
 
 Two more cases **warn without greying**: Apple RAW's RAW 9/8/7 version is probed
@@ -680,15 +401,11 @@ choose (section 1); fixed-Kelvin white balance on a file without colour
 calibration degrades to As Shot, flagged with ⚠ on the Detected Parameters
 card.
 
-A few more controls are **hidden by state rather than greyed**: Apple RAW 亮度基准 appears only
-while the decoder is Apple RAW; the developer recipe, film compression, media scatter
-and optics seed appear only in takeover mode and reset on the way back to observe;
-compression knee and highlight colour density appear only while film compression is
-above 0.
+Apple RAW brightness reference appears only while Apple RAW is selected.
 
 ---
 
-## 12. FAQ
+## 11. FAQ
 
 **HDR export fails with "the reliable highlight tail supports no HDR headroom"?**
 The photo has no genuinely measured highlight content (its earned headroom is 0). This

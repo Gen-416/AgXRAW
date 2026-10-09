@@ -15,8 +15,7 @@ from tools.benchmark_loss_pipeline import json_value
 
 class PreparedSceneSampleTests(unittest.TestCase):
     def test_auto_ev_prepares_only_full_source_nonfilm_nongated(self):
-        for options in ({}, {'tone_core': 'gated'}, {'film_curve': 'velvia100'},
-                        {'film_mode': 'full'}, {'proxy': True}):
+        for options in ({}, {'tone_core': 'gated'}, {'proxy': True}):
             b, a = _bundle(), _analysis()
             kwargs = dict(options)
             if kwargs.pop('proxy', False):

@@ -8,6 +8,8 @@ lives in the GUI page's embedded JS.
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,24 +19,6 @@ import numpy as np
 PAGE = Path(__file__).resolve().parents[1] / "dngscan" / "gui" / "page.py"
 
 
-def _film_plan(**kw) -> SimpleNamespace:
-    base = dict(
-        curve_preset="portra400", film_mode="full", film_crossover="datasheet",
-        film_exposure_ev=0.0, film_print_timing="fixed",
-        film_print_medium="", film_print_exposure_ev=0.0,
-        color_head_y=0.0, color_head_m=0.0,
-        film_development="measured_default",
-        film_dev_contrast=0.0, film_dev_fog=0.0, film_dev_density=0.0,
-        film_compression=0.0, film_compression_knee=2.0,
-        film_highlight_density=0.0,
-        film_grain=0.0, film_halation=0.0, film_bloom=0.0,
-        film_optics_seed=0, film_media_scatter="declared",
-        film_interimage="declared", film_appearance="technical",
-        film_appearance_strength=1.0, film_appearance_variant="reference",
-        film_richness=0.0, film_color_density=0.0, film_neutral_bias=1.0,
-    )
-    base.update(kw)
-    return SimpleNamespace(**base)
 
 
 class SnrCurveSerializationTests(unittest.TestCase):
@@ -102,65 +86,11 @@ class GuidanceProxyBundleTests(unittest.TestCase):
         self.assertIn("_raw_guidance_has_resolved_fullwell", names)
 
 
-class ScatterHaloSupportTests(unittest.TestCase):
-    """P3: the halo bound must cover the small-sigma kernel's hard +-2 tap
-    support, not just ceil(3 sigma)."""
-
-    def test_small_sigma_stage_declares_two_rows(self) -> None:
-        from dngscan.film_optics import _scatter_components, scatter_halo_px
-        from dngscan.film_optics_assets import (
-            DEFAULT_PRINT_OPTICS, DEFAULT_STOCK_OPTICS,
-            load_print_optics, load_stock_optics,
-        )
-
-        stock = load_stock_optics(DEFAULT_STOCK_OPTICS)
-        medium = load_print_optics(DEFAULT_PRINT_OPTICS)
-        kernels = (stock.emulsion_scatter, medium.formation_scatter)
-        # 43 um/px: the pitch the review measured a 4.0e-4 seam at — every
-        # live component is sub-pixel, so each active stage must account the
-        # 5-tap kernel's support of 2, never ceil(3*sigma)=1.
-        mm_per_px = 0.043
-        total = 0
-        for kernel in kernels:
-            if kernel is None:
-                continue
-            live = [
-                scale
-                for ch in range(3)
-                for scale, _w in _scatter_components(kernel, ch, mm_per_px)
-            ]
-            if not live:
-                continue
-            self.assertTrue(all(s < 1.0 for s in live))
-            total += 2
-        self.assertGreater(total, 0)
-        self.assertEqual(scatter_halo_px(kernels, mm_per_px), total)
 
 
-class AutoEvProbeSamplingTests(unittest.TestCase):
-    """F4: the decimated probe (which dilutes point speculars ~cell-area x)
-    is reserved for real look amounts; the scatter-only default keeps the
-    strided real-pixel probe."""
-
-    def test_scatter_only_plan_keeps_strided_probe(self) -> None:
-        import inspect
-
-        from dngscan import auto_ev
-
-        src = inspect.getsource(auto_ev.max_safe_ev)
-        self.assertIn("_probe_needs_spatial", src)
-        self.assertNotIn("_film_spatial_engaged(probe_tone)", src)
 
 
 class ServiceContractTests(unittest.TestCase):
-    def test_film_full_without_curve_is_rejected(self) -> None:
-        from dngscan.gui.service import parse_film_params
-
-        with self.assertRaises(ValueError):
-            parse_film_params({"filmMode": "full"})
-        # observe without curve stays legal
-        out = parse_film_params({"filmMode": "observe"})
-        self.assertEqual(out[2], "observe")
 
     def test_export_demosaic_is_validated(self) -> None:
         import inspect
@@ -179,18 +109,6 @@ class ReportHonestyTests(unittest.TestCase):
         self.assertIn("4:2:0", jpeg_policy_cn("agx", "p3", chroma="420"))
         self.assertIn("4:4:4", jpeg_policy_cn("agx", "p3", chroma="444"))
 
-    def test_film_line_discloses_scatter_only_default(self) -> None:
-        from dngscan.report import jpeg_tone_plan_cn
-
-        plan = _film_plan()
-        line = jpeg_tone_plan_cn(None, None, "agx", plan, "p3")
-        self.assertIn("颗粒与光晕", line)
-        self.assertIn("介质柔化=declared", line)
-        self.assertIn("无观感量", line)
-        off = jpeg_tone_plan_cn(
-            None, None, "agx", _film_plan(film_media_scatter="off"), "p3"
-        )
-        self.assertNotIn("颗粒与光晕", off)
 
 
 class CliGamutContractTests(unittest.TestCase):
@@ -228,16 +146,31 @@ class GuiSourcePins(unittest.TestCase):
         self.assertIn('delete $("#toneCore").dataset.librawValue;', self.src)
 
     def test_save_settings_persists_stashed_tone_core(self) -> None:
-        self.assertIn(
-            'toneCore:$("#toneCore").dataset.librawValue||$("#toneCore").value',
-            self.src,
-        )
+        from dngscan.gui.page import PAGE as html
 
-    def test_film_deselect_resets_mode(self) -> None:
-        self.assertIn('$("#filmMode").value="observe";', self.src)
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node is unavailable")
+        settings = "const SETTINGS_IDS=" + html.split("const SETTINGS_IDS=", 1)[1].split(
+            "function restoreSettings(){", 1)[0]
+        script = r'''
+const STORE_KEY="settings";
+const toneCore={type:"select-one",value:"agx",dataset:{librawValue:"gated"}};
+const $=selector=>selector==="#toneCore"?toneCore:null;
+let saved=null;
+const localStorage={setItem:(key,value)=>{if(key!==STORE_KEY)throw Error("wrong key");saved=JSON.parse(value);}};
+''' + settings + r'''
+saveSettings();
+if(saved.toneCore!=="gated")throw Error("decoder stash was not persisted");
+delete toneCore.dataset.librawValue;
+saveSettings();
+if(saved.toneCore!=="agx")throw Error("visible tone core was not persisted");
+'''
+        result = subprocess.run([node, "-e", script], capture_output=True,
+                                text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_restore_settings_accepts_custom_timing(self) -> None:
-        self.assertIn('["fixed","retimed","custom"].includes(s.filmPrintTiming)', self.src)
+
 
     def test_auto_fallback_keeps_the_request_for_server_capability_selection(self) -> None:
         body = self.src.split('async function ensureRaw9Support(body){', 1)[1].split('let DETECTED_READY', 1)[0]

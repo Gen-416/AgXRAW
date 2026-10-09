@@ -49,11 +49,10 @@ clusters sit at R/G 0.72–0.78, B/G 0.34–0.42 against the foliage window cent
 
 Consequence worth knowing: with honest profiles the fp→stock residual matrices are
 gentle (a few percent off identity) where the old ones had coefficients of 2–3; the
-old "look" was mostly profile error. `--material-look-gain` and the runtime
+old "look" was mostly profile error. Film observer profiles are archived in AgXFilm. `--material-look-gain` and the runtime
 `--scene-transform-strength` remain the declared dials for a stronger separation.
 
-Regenerate every material preset (19 film stocks + `alev_material_d55`) from its
-recorded target SSF with:
+Regenerate the retained `alev_material_d55` material preset from its recorded target SSF with:
 
     python tools/regenerate_material_presets.py
 
@@ -74,7 +73,7 @@ alev_material_d55 --region <name>`.
 - `rawtoaces_training_reflectance.csv`: the 190 AMPAS IDT training reflectances
   (rawtoaces-data), used to fit the per-illuminant camera->Rec2020 profiles.
 
-Recalibrate one preset by hand with (the driver above does this for all of them):
+Recalibrate the retained material preset by hand with:
     python tools/calibrate_skin_matrix.py --preset-mode material \
       --imx410-qe-csv dngscan_assets/spectral/sony_a7m3_ssf_weta_measured.csv \
       --ir-transmission-csv dngscan_assets/spectral/unit_transmission.csv \

@@ -1,5 +1,7 @@
 # 执行模型重构计划:RenderScheduler(已落地)
 
+> 拆仓说明（2026-10-09）：本文保留当时的混合管线测量与历史提案。胶片实现和对应原文快照已移至 AgXFilm，当前 AgXRAW 不提供胶片选项；[拆分范围](FILM_SPLIT.zh-CN.md)。
+
 状态:**已落地**——S1(缓存单飞)、S2(RenderScheduler 骨架+RENDER_LOCK 退役)、S3(CPU 预算贯通)、S4(RawBundle 阶段化)四批全部合并(R2 项 22 更新此行;运行时入口 `dngscan/gui/scheduler.py`)。本文保留原始诊断与合同:回应全量代码审查(2026-08-08)的三条架构级发现(#2 线程池多层嵌套、#3 全局 RENDER_LOCK 单队列化、#4 build_lock 串行化所有缓存 miss),按"先立合同,批准后分批实施"的项目惯例执行完毕。
 
 ## 1. 现状诊断(审查确认)

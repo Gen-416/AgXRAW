@@ -3,7 +3,7 @@ name = "dngscan_fast"
 version = "0.2.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "dngscan native kernels (AgX core, SDR output finalizer, HDR formation, film appearance) — Rust port of the pybind11 C++ extension, same ABI"
+description = "dngscan native kernels (AgX core, SDR output finalizer, HDR formation, RAW correction and spatial repair) — Rust port of the pybind11 C++ extension, same ABI"
 publish = false
 
 [lib]

@@ -97,7 +97,6 @@ class PreviewPlanCacheTests(unittest.TestCase):
                 "agx",
                 "y",
                 "base",
-                "none",
                 adjustments,
             )
 

@@ -37,12 +37,9 @@ def split_for(native_core: bool) -> tuple[int, int]:
 
         native AgX core   unbudgeted 49 thr / 1.43 s
                           6x1  7 thr / 2.63 s     2x5  15 thr / 1.50 s
-        NumPy film core   unbudgeted 14 thr / 3.09 s
-                          6x1  7 thr / 3.22 s     6x2   8 thr / 3.07 s
-
-    The two paths want OPPOSITE splits: when the C++ kernel does the heavy
+    The two paths want OPPOSITE splits: when the native kernel does the heavy
     lifting, few outer workers with a wide native budget wins; when the core
-    is NumPy (film takeover, gated, lum), the outer pipeline is what scales
+    is NumPy (gated, lum), the outer pipeline is what scales
     and the native budget only serves the output finalizer. Dividing the
     machine evenly (TOTAL // outer -> 6x1) is the worst of both, so the
     split follows WHO DOES THE WORK.

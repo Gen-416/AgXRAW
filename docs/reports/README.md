@@ -24,15 +24,7 @@
 | [本轮完成记录](performance/performance-pipeline-completion.zh-CN.md) | 分析和 AutoEV、全路径文件等价、最终门禁与明确保留的候选 |
 | [导出重试复用（2026-10-05）](performance/performance-export-reuse.zh-CN.md) | 手动 HDR 主图复用、Core Image 回读释放、每轮验收与固定母版对照 |
 
-## 胶片冻结基线
-
-这些是引入对应实现前的起点，正文中的问题描述不能直接用于判断当前版本。机器可读冻结数据与回归测试的位置写在各文首；更改冻结数据须遵守对应设计合同。
-
-| 记录 | 口径 |
-| --- | --- |
-| [Film v2 P0](film/FILM_V2_P0_BASELINE.zh-CN.md) | film v2 起点及分解测量 |
-| [外观层 P0](film/FILM_APPEARANCE_P0_BASELINE.zh-CN.md) | 外观层起点；包含后续校准口径说明 |
-| [光学 V2 P0](film/FILM_OPTICS_V2_P0_BASELINE.zh-CN.md) | 旧空间算子测量及后续阶段复测 |
+胶片冻结基线已随资产迁到 AgXFilm；见[拆分记录](../FILM_SPLIT.zh-CN.md)。
 
 ## 工程决策与审查
 
@@ -42,7 +34,6 @@
 | --- | --- |
 | [2026-10-09 噪声与纹理研究](../reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) | 固定源码与基准反例；附实测接口、模型驱动色度核实施记录及暂缓待办 |
 | [工程决策记录](../ENGINEERING_NOTES.zh-CN.md) | 2026-07 集中开发期的证据、推理与教训 |
-| [数据驱动 AgX / 胶片设计审查](../DATA_DRIVEN_AGX_FILM_DESIGN_REVIEW.zh-CN.md) | 2026-08-27 快照与处置，含已撤回设计 |
 | [2026-09-02 审查交接](../reviews/CODE_REVIEW_HANDOFF_2026-09-02.zh-CN.md) | 指定 commit 的问题状态与集成接缝清单 |
 | [更早的 HDR 审查](../archived/REVIEW_FINDINGS.md) | HDR v2 之前的历史合同 |
 | [早期 HDR 对比](../archived/HDR_COMPARISONS.md) | 已退役算法的对比图，不作当前像素参考 |

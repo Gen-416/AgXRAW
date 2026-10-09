@@ -21,43 +21,8 @@ from types import SimpleNamespace
 import numpy as np
 
 
-def _plan(**kw) -> SimpleNamespace:
-    base = dict(
-        curve_preset="portra400", film_mode="full", film_crossover="datasheet",
-        film_exposure_ev=0.0, film_print_timing="fixed", film_print_medium="",
-        film_print_exposure_ev=0.0, color_head_y=0.0, color_head_m=0.0,
-        film_development="measured_default", film_dev_contrast=0.0,
-        film_dev_fog=0.0, film_dev_density=0.0, film_compression=0.0,
-        film_compression_knee=2.0, film_highlight_density=0.0,
-        film_grain=0.0, film_halation=0.0, film_bloom=0.0,
-        film_optics_seed=0, film_media_scatter="off",
-        film_interimage="declared", film_interimage_beta=0.62,
-    )
-    base.update(kw)
-    return SimpleNamespace(**base)
 
 
-class CustomInterimageRendersTests(unittest.TestCase):
-    def test_custom_beta_actually_renders(self) -> None:
-        from dngscan.film_develop import apply_film_core
-
-        rng = np.random.default_rng(0)
-        rgb = (rng.random((4000, 3)).astype(np.float32) * 0.8 + 0.02)
-        declared = apply_film_core(rgb, _plan())
-        same = apply_film_core(
-            rgb, _plan(film_interimage="custom", film_interimage_beta=0.62)
-        )
-        hot = apply_film_core(
-            rgb, _plan(film_interimage="custom", film_interimage_beta=1.4)
-        )
-        self.assertTrue(np.array_equal(declared, same),
-                        "custom at the declared beta must render identically")
-        self.assertGreater(float(np.abs(hot - declared).max()), 1e-3,
-                           "a different beta must change the render")
-        with self.assertRaises(ValueError):  # custom without a beta
-            apply_film_core(
-                rgb, _plan(film_interimage="custom", film_interimage_beta=None)
-            )
 
 
 # ---------------------------------------------------------------------------

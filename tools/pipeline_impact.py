@@ -14,8 +14,6 @@ claims subtlety but measures huge is a leak; a pair that should be identical
 (native kernel vs NumPy reference) measuring above one dither step is a defect.
 
 Special pairs measured against each other rather than the baseline:
-  film full-mode  vs observe-mode   -> the takeover LUT's real contribution
-  theatrical      vs translated     -> the surround term's real contribution
   DNGSCAN_FAST=0  vs baseline       -> native/NumPy parity
 
 Metric caveats (learned on the first indoor-frame run, 2026-07-30):
@@ -52,40 +50,22 @@ _LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float64)
 
 # (name, extra CLI args, claimed-role note). Order is the report order.
 VARIANTS: list[tuple[str, list[str], str]] = [
-    ("decoder=coreimage", ["--decoder", "coreimage"], "相机诠释差异：应为中大"),
-    ("wb=5500k", ["--wb", "5500k"], "声明色温：随场景光源偏离而大"),
-    ("wb=3200k", ["--wb", "3200k"], "声明色温：同上"),
-    # NOTE: the CLI default highlight mode IS clip — a clip variant would measure
-    # itself against itself (the first run's null row). Blend/reconstruct are the
-    # real axes.
-    ("highlight=blend", ["--highlight-mode", "blend"], "仅高光区：局部"),
-    ("highlight=reconstruct", ["--highlight-mode", "reconstruct"], "仅高光区：局部"),
-    ("demosaic=vng", ["--demosaic", "vng"], "插值差异：小，高频处"),
-    ("tone-core=lum", ["--tone-core", "lum"], "无逐通道/AgX 几何：大"),
-    ("tone-core=neutral", ["--tone-core", "neutral"], "诊断曲线：大"),
-    ("tone-core=gated", ["--tone-core", "gated"], "证据门控色彩：中"),
-    ("primaries=punchy", ["--agx-primaries", "punchy"], "纯度几何：中"),
-    ("primaries=muted", ["--agx-primaries", "muted"], "纯度几何：中"),
-    ("punch=1.5", ["--punch", "1.5"], "场景自适应纯度：小（暗场景趋零）"),
-    ("prefeed=portra_d55", ["--scene-transform", "portra400_d55"], "分材料分离：小（有界）"),
-    ("prefeed x2.2", ["--scene-transform", "portra400_d55",
-                      "--scene-transform-strength", "2.2"], "分离超驱动：小-中"),
-    ("lens-filter=85b", ["--lens-filter", "85b"], "+131 mired：大（全局暖移）"),
-    ("film-curve=portra400", ["--film-curve", "portra400"], "音调签名：中-大"),
-    ("film=portra400 (observe)", ["--film", "portra400"], "组合=WB+分离+曲线：大"),
-    ("film=portra400 (full)", ["--film", "portra400", "--film-mode", "full"],
-     "胶片接管显影：大（实验）"),
-    ("film=vision3250d", ["--film", "vision3250d"], "电影链翻译：大"),
-    ("film=v3250d theatrical", ["--film", "vision3250d_theatrical"],
-     "引用原文：大于翻译"),
+    ('decoder=coreimage', ['--decoder', 'coreimage'], '相机诠释差异：应为中大'),
+    ('wb=5500k', ['--wb', '5500k'], '声明色温：随场景光源偏离而大'),
+    ('wb=3200k', ['--wb', '3200k'], '声明色温：同上'),
+    ('highlight=blend', ['--highlight-mode', 'blend'], '仅高光区：局部'),
+    ('highlight=reconstruct', ['--highlight-mode', 'reconstruct'], '仅高光区：局部'),
+    ('demosaic=vng', ['--demosaic', 'vng'], '插值差异：小，高频处'),
+    ('tone-core=lum', ['--tone-core', 'lum'], '无逐通道/AgX 几何：大'),
+    ('tone-core=neutral', ['--tone-core', 'neutral'], '诊断曲线：大'),
+    ('tone-core=gated', ['--tone-core', 'gated'], '证据门控色彩：中'),
+    ('primaries=punchy', ['--agx-primaries', 'punchy'], '纯度几何：中'),
+    ('primaries=muted', ['--agx-primaries', 'muted'], '纯度几何：中'),
+    ('punch=1.5', ['--punch', '1.5'], '场景自适应纯度：小（暗场景趋零）'),
+    ('lens-filter=85b', ['--lens-filter', '85b'], '+131 mired：大（全局暖移）'),
 ]
 
-PAIRS = [
-    ("takeover LUT (full vs observe)", "film=portra400 (full)",
-     "film=portra400 (observe)", "烘焙光谱链 LUT 对 AgX formation+色头的净差"),
-    ("surround term (theatrical vs translated)", "film=v3250d theatrical",
-     "film=vision3250d", "surround 1.5 净贡献：中"),
-]
+PAIRS = []
 
 
 def render(frame: Path, out: Path, extra: list[str], env: dict | None = None) -> None:

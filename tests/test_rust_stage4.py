@@ -65,29 +65,6 @@ class Matrix3Parity(unittest.TestCase):
             apply_rgb_matrix3(rgb, np.eye(3, dtype=np.float32))
 
 
-@unittest.skipUnless(_native_available(), "native stage-4 kernels unavailable")
-class LayerExposureSlabParity(unittest.TestCase):
-    def _prep(self, compression: float):
-        from dngscan.film_develop import FilmSpatialContext
-        from tests.test_film_v2_assets import _stock_files
-
-        stock = next(s for s in _stock_files() if s.startswith("portra"))
-        plan = SimpleNamespace(
-            film_exposure_ev=0.3, film_compression=compression,
-            film_compression_knee=2.0, film_highlight_density=0.2,
-        )
-        return FilmSpatialContext, FilmSpatialContext._hal_prep_from(plan, stock)
-
-    def test_float32_rows_match_the_float64_reference(self) -> None:
-        rng = np.random.default_rng(9)
-        rgb = (0.18 * np.exp2(rng.uniform(-9, 6, (37, 53, 3)))).astype(np.float32)
-        for compression in (0.0, 0.6):
-            ctx, prep = self._prep(compression)
-            with _NoNative():
-                ref = ctx._layer_exposure_f32(rgb, prep)
-            got = ctx._layer_exposure_f32(rgb, prep)
-            self.assertEqual(got.dtype, np.float32)
-            np.testing.assert_array_equal(got, ref)
 
 
 if __name__ == "__main__":

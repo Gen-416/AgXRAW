@@ -88,37 +88,6 @@ class HdrDialTests(unittest.TestCase):
                     self._compile(**kw)
 
 
-@unittest.skipUnless(FRAME.is_file(), "sample frame unavailable")
-class InterimageBetaDialTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.bundle = load_raw(FRAME, scene_half_size=True)
-        cls.analysis, _, _ = analyze(cls.bundle, margin=4, diagnostics=False)
-
-    def _plan(self, **kw):
-        return build_render_plan(
-            self.bundle, self.analysis, RENDER_MODE, "p3",
-            film_curve="portra400", film_mode="full", **kw,
-        )
-
-    def test_custom_beta_lands_on_the_plan(self) -> None:
-        declared = self._plan()
-        self.assertAlmostEqual(declared.tone.film_interimage_beta, 0.62, places=6)
-        dialed = self._plan(
-            film_interimage="custom", film_interimage_beta_dial=0.9
-        )
-        self.assertEqual(dialed.tone.film_interimage, "custom")
-        self.assertAlmostEqual(dialed.tone.film_interimage_beta, 0.9, places=6)
-
-    def test_coupling_fails_closed(self) -> None:
-        with self.assertRaises(ValueError):  # custom without the dial
-            self._plan(film_interimage="custom")
-        with self.assertRaises(ValueError):  # dial without custom
-            self._plan(film_interimage_beta_dial=0.5)
-        with self.assertRaises(ValueError):  # out of domain
-            self._plan(film_interimage="custom", film_interimage_beta_dial=2.0)
-        with self.assertRaises(ValueError):  # unknown mode
-            self._plan(film_interimage="banana")
 
 
 class ServiceDialParsingTests(unittest.TestCase):
@@ -142,23 +111,6 @@ class ServiceDialParsingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_hdr_dials({"hdrRho": 1.5}, "ultrahdr")
 
-    def test_film_interimage_beta_parse(self) -> None:
-        from dngscan.gui.service import parse_film_params
-
-        base = {"filmCurve": "portra400", "filmMode": "full"}
-        out = parse_film_params(
-            {**base, "filmInterimage": "custom", "filmInterimageBeta": 0.8}
-        )
-        self.assertEqual(out[21], 0.8)  # film_interimage_beta's position
-        self.assertIsNone(parse_film_params(base)[21])
-        with self.assertRaises(ValueError):  # beta without custom
-            parse_film_params({**base, "filmInterimageBeta": 0.8})
-        with self.assertRaises(ValueError):  # custom without beta
-            parse_film_params({**base, "filmInterimage": "custom"})
-        with self.assertRaises(ValueError):  # out of domain
-            parse_film_params(
-                {**base, "filmInterimage": "custom", "filmInterimageBeta": 1.6}
-            )
 
 
 class CliDialTests(unittest.TestCase):

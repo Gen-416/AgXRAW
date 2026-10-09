@@ -137,31 +137,6 @@ class NativePipeline(unittest.TestCase):
                 ref = gainmap._base_roundtrip_error_arrays(decoded, intended)
             self.assertEqual(_fast._load_extension().base_roundtrip_metrics(decoded, intended), ref)
 
-    def test_singleton_blurs_finish_and_match_numpy(self):
-        # A subprocess timeout makes the former reflect_index loop a failure
-        # rather than hanging the whole test runner indefinitely.
-        code = '''
-import numpy as np
-from unittest import mock
-from dngscan import _fast
-from dngscan.film_optics import _blur_small_sigma, _gaussian_blur_slabbed
-rng = np.random.default_rng(20)
-for h, w in ((1, 1), (1, 9), (9, 1), (2, 3)):
-    a = rng.uniform(0, 5, (h, w, 3)).astype(np.float32)
-    for sigma in (0.3, 1.7, 7.0):
-        for periodic in (False, True):
-            with mock.patch.object(_fast, "kernel", return_value=None):
-                ref = _gaussian_blur_slabbed(a.copy(), sigma, periodic=periodic)
-            np.testing.assert_array_equal(_gaussian_blur_slabbed(a.copy(), sigma, periodic=periodic), ref)
-    for sigma in (0.3, 0.9):
-        with mock.patch.object(_fast, "kernel", return_value=None):
-            ref = _blur_small_sigma(a[..., 0], sigma)
-        np.testing.assert_array_equal(_blur_small_sigma(a[..., 0], sigma), ref)
-'''
-        result = subprocess.run([sys.executable, "-c", code], cwd=ROOT,
-                                env={**os.environ, "DNGSCAN_FAST": "1"},
-                                capture_output=True, text=True, timeout=30)
-        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 @unittest.skipUnless(NATIVE and sys.platform in ("darwin", "linux"), "native RSS gate needs macOS/Linux")
@@ -170,7 +145,7 @@ class NativeMemory(unittest.TestCase):
         # Fresh processes exclude previous allocations/allocator high-water
         # marks. Limits include output buffers, with headroom for runtime noise.
         for kernel, limit in (("gain", 32), ("feather", 80), ("hdr", 110), ("base", 32),
-                              ("blur", 128), ("small-blur", 48), ("area", 80), ("scatter", 128)):
+                              ("area", 80)):
             with self.subTest(kernel=kernel):
                 result = subprocess.run(
                     [sys.executable, str(ROOT / "tools/benchmark_native_memory.py"),
