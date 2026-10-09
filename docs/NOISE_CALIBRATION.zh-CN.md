@@ -85,7 +85,9 @@ python tools/import_jptc.py /path/to/ptc-iso100.csv --brand SIGMA --model fp --i
 
 选中的先验能构成有效 shot/read 模型时，用其计算归一化 RAW 噪声方差和 SNR。否则尝试文件 Raw IFD 内合法的 DNG `NoiseProfile`；没有可用来源就明确报告不可用，不再用照片纹理的块内方差冒充物理噪声。文件模型是厂商声明，合法解析不等于已由自己的 PTC 验证。
 
-读噪未分辨不会丢弃整份匹配标定并静默退回包内先验：独立有效的增益继续保留，匹配诊断显示 `gain-only`，分别报告增益与读噪状态。没有独立替代来源时，噪声模型为 `unresolved`，分析状态为 `model-unresolved`，不生成物理 SNR 或读噪底，HDR 尾部 SNR 门控为 0，色度核跳过。普通缺测仍为 `unavailable`，该 HDR 因子保持中性值 1；这不绕过剪切、色域及解码器限制。合法的独立 `NoiseProfile` 可以提供替代模型，此时来源明确为 DNG，原标定来源和未分辨原因也随报告、界面和缓存保留。
+读噪未分辨不会丢弃整份匹配标定并静默退回包内先验：独立有效的增益继续保留，匹配诊断显示 `gain-only`，分别报告增益与读噪状态。没有独立替代来源时，噪声模型为 `unresolved`，分析状态为 `model-unresolved`，不生成物理 SNR 或读噪底，HDR 尾部 SNR 门控为 0，色度核跳过。普通缺测仍为 `unavailable`；没有独立异常频谱等负面证据时，该 HDR 因子保持中性值 1，这不绕过剪切、色域及解码器限制。合法的独立 `NoiseProfile` 可以提供替代模型，此时来源明确为 DNG，原标定来源和未分辨原因也随报告、界面和缓存保留。
+
+方差系数来源与独立适用性约束分别处理。读噪未分辨或普通缺测时，同一适用标定已经测得的横纵频谱仍然保留；DNG 替代系数不会将其重置为 `unknown`。例如 ISO 200 读噪未分辨、实测 `h = 0.1` 且 DNG 系数合法时，模型可以为 `valid` / `DNG NoiseProfile`，同时保持 `measured-spectral-imbalance`、HDR 噪声因子为 0、色度核跳过。系数来源及原标定来源、原因、频谱一起进入报告和缓存。频谱仍须满足相机、快门、ISO 域及 DN 尺度检查；不能借用其他 ISO 或不兼容读出条件的测量。普通缺测且无可用 DNG 系数时，独立异常频谱也不会被清空。预览与分析缓存版本 23 淘汰旧的回退结果。
 
 当前检查与限制如下：
 
@@ -116,4 +118,4 @@ Apple RAW 的降噪、解拜耳和其他内部变换没有可用的协方差标�
 
 导入、校验及用户存储在 [calibration.py](../dngscan/calibration.py)，模型选择在 [noise_model.py](../dngscan/noise_model.py)，处理域传播在 [noise_propagation.py](../dngscan/noise_propagation.py)。GUI 及 CLI 使用同一公共导入接口，标定变动会改变预览、磁盘分析和导出配方指纹；导出分析期间变动则在写图前要求重试。
 
-接口与缓存回归见 [test_user_calibration.py](../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../tests/test_calibration_gui_cli.py)；模型和滤波见 [test_noise_model.py](../tests/test_noise_model.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py)。[test_rational_metadata_state.py](../tests/test_rational_metadata_state.py) 通过大小端真实 TIFF 标签检查未知、非法及有效声明；Collect 合成 CSV 和导入后的分析测试覆盖失败点不被重新插值、增益保留及 HDR/色度核行为。合成测试和其他相机数据不能替代自己的 fp PTC、黑场及实拍纹理验收。
+接口与缓存回归见 [test_user_calibration.py](../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../tests/test_calibration_gui_cli.py)；模型和滤波见 [test_noise_model.py](../tests/test_noise_model.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py)。[test_rational_metadata_state.py](../tests/test_rational_metadata_state.py) 通过大小端真实 TIFF 标签检查未知、非法及有效声明；Collect 合成 CSV 和导入后的分析测试覆盖失败点不被重新插值、增益保留及 HDR/色度核行为。[test_spectral_fallback_pipeline.py](../tests/test_spectral_fallback_pipeline.py) 用带真实 ISO / NoiseProfile 标签的合成 DNG，实际执行导入、LibRaw 解码、分析和色度核入口，验证方差回退保留独立异常频谱，并用频谱域外输入验证正常启用的对照路径。合成测试和其他相机数据不能替代自己的 fp PTC、黑场及实拍纹理验收。
