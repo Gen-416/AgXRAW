@@ -29,7 +29,7 @@ exposure anchor, `--delivery-profile share` for manual controls (initially
 q95/4:2:0), or `--delivery-profile archive` for explicit q100/4:4:4.
 [Full-resolution quality/size measurements](docs/DELIVERY_QUALITY_STUDY.zh-CN.md).
 
-Film simulation has moved to the separate **AgXFilm** research repository and is paused.
+Film simulation has moved to the separate private [**AgXFilm** research repository](https://github.com/Gen-416/AgXFilm) and is paused.
 This application now focuses on RAW analysis, AgX, SDR/HDR and delivery.
 [Split and recovery record](docs/FILM_SPLIT.zh-CN.md).
 

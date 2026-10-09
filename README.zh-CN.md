@@ -13,7 +13,7 @@
 [机型支持](docs/SENSOR_SUPPORT.zh-CN.md) ·
 [完整文档索引](docs/README.md)
 
-胶片模拟已移到独立的 **AgXFilm** 研发仓库，暂缓开发。AgXRAW 现在集中维护 RAW 分析、AgX、SDR/HDR 和导出。[拆分与恢复说明](docs/FILM_SPLIT.zh-CN.md)。
+胶片模拟已移到独立的私有 [**AgXFilm** 研发仓库](https://github.com/Gen-416/AgXFilm)，暂缓开发。AgXRAW 现在集中维护 RAW 分析、AgX、SDR/HDR 和导出。[拆分与恢复说明](docs/FILM_SPLIT.zh-CN.md)。
 
 ## 它能做什么
 
