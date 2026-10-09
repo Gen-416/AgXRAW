@@ -85,6 +85,53 @@ def coding_metrics(decoded, intended, *, _include_detail=True):
     return metrics
 
 
+def coding_metrics_float(decoded, intended, *, _include_detail=True):
+    """Nonlinear SDR float errors in the established 8-bit code units.
+
+    This is a new independent NumPy reference, including in strict native
+    mode. No uint8 conversion or integer-only native dispatch is permitted.
+    Finite codec overshoot is measured; the finished master must be in [0,1].
+    """
+    from .local_detail import _valid_sdr_float_inputs, local_detail_loss_sdr_float
+
+    if not _valid_sdr_float_inputs(decoded, intended) or decoded.shape[2] != 3:
+        raise ValueError("浮点 SDR 编码回读尺寸、像素格式或归一化母版无效")
+    n = decoded.shape[0] * decoded.shape[1]
+    luma_sq = chroma_sq = 0.0
+    blocks = []
+    try:
+        with np.errstate(over='raise', invalid='raise', divide='raise'):
+            for y in range(0, decoded.shape[0], 128):
+                diff = decoded[y:y + 128].astype(np.float32) - intended[y:y + 128].astype(np.float32)
+                diff *= 255.
+                dy = diff[..., 0] * .299 + diff[..., 1] * .587 + diff[..., 2] * .114
+                luma_sq += float(np.sum(dy * dy, dtype=np.float64))
+                for c in (0, 2):
+                    dc = diff[..., c] - dy
+                    chroma_sq += float(np.sum(dc * dc, dtype=np.float64))
+                hh, ww = dy.shape[0] // 8 * 8, dy.shape[1] // 8 * 8
+                if hh and ww:
+                    blocks.append(np.abs(dy[:hh, :ww]).reshape(hh // 8, 8, ww // 8, 8).mean(axis=(1, 3)).ravel())
+                    if hh < dy.shape[0]:
+                        blocks.append(np.abs(dy[hh:, :ww]).reshape(dy.shape[0] - hh, ww // 8, 8).mean(axis=(0, 2)))
+                    if ww < dy.shape[1]:
+                        blocks.append(np.abs(dy[:hh, ww:]).reshape(hh // 8, 8, dy.shape[1] - ww).mean(axis=(1, 2)))
+                    if hh < dy.shape[0] and ww < dy.shape[1]:
+                        blocks.append(np.asarray([np.abs(dy[hh:, ww:]).mean()]))
+                else:
+                    blocks.append(np.asarray([np.mean(np.abs(dy))]))
+    except FloatingPointError as exc:
+        raise ValueError("浮点 SDR 编码回读产生非有限误差") from exc
+    metrics = {
+        "coding_luma_rmse": math.sqrt(luma_sq / n),
+        "coding_chroma_rmse": math.sqrt(chroma_sq / (2 * n)),
+        "coding_local_luma_p99": float(np.percentile(np.concatenate(blocks), 99)),
+    }
+    if _include_detail:
+        metrics["coding_local_detail_loss"] = local_detail_loss_sdr_float(decoded, intended)
+    return metrics
+
+
 def _additional_error_acceptable(candidate, reference, rules):
     for key, ratio, offset, floor in rules:
         if key not in reference:

@@ -51,7 +51,7 @@ from .scheduler import shared_flight_wait
 # v24: distinguish DN encoding range from linear response limits, propagate
 # pre-demosaic losses, and place noise evidence in the fixed decoded scene EV.
 # Window geometry also uses JSON-stable metadata for exact analysis reuse.
-PREVIEW_CACHE_VERSION = 24
+PREVIEW_CACHE_VERSION = 25
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024

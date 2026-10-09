@@ -179,6 +179,8 @@ def finalize_output_linear(
     look: str = "none",
     look_strength: float = 1.0,
     color_plan: ColorGeometryPlan | None = None,
+    *,
+    out: Any | None = None,
 ) -> Any:
     """Apply common post-tone color operations in display-linear output RGB.
 
@@ -187,7 +189,13 @@ def finalize_output_linear(
     """
     original_shape = rgb_linear.shape
     flat = rgb_linear.reshape(-1, 3)
-    out = np.empty((flat.shape[0], 3), dtype=np.float32)
+    if out is None:
+        out = np.empty((flat.shape[0], 3), dtype=np.float32)
+    else:
+        if (out.shape != original_shape or out.dtype != np.float32
+                or not out.flags.c_contiguous or not out.flags.writeable):
+            raise ValueError("display-linear destination must be writable contiguous float32 RGB")
+        out = out.reshape(-1, 3)
     chunk = 1_000_000
     for start in range(0, flat.shape[0], chunk):
         end = min(start + chunk, flat.shape[0])
@@ -573,7 +581,43 @@ def render_output_linear(
         analysis=analysis,
     )
     color_plan = effective_plan.color if isinstance(effective_plan, RenderPlan) else None
-    return finalize_output_linear(agx_linear, output_gamut, look, look_strength, color_plan)
+    # This raster belongs to this render. Finalize one chunk before replacing
+    # it, retaining one full-size float master instead of a second RGB copy.
+    return finalize_output_linear(agx_linear, output_gamut, look, look_strength,
+                                  color_plan, out=agx_linear)
+
+
+def render_output_encoded_float(
+    bundle: RawBundle,
+    analysis: Analysis | None,
+    output_gamut: str = "srgb",
+    tone_plan: ToneCompressionPlan | RenderPlan | None = None,
+    look: str = "none",
+    look_strength: float = 1.0,
+    display_filter: str = "none",
+    filter_strength: float = 1.0,
+    scene_transform: str = "none",
+    scene_transform_strength: float = 1.0,
+    tone_core: str = "agx",
+    lum_norm: str = "y",
+    agx_primaries: str = "base",
+) -> Any:
+    """Finished nonlinear SDR float32 RGB, without output quantization.
+
+    All scene/display operations match the linear renderer. The output OETF
+    is applied once, in bounded chunks over the caller-owned finished master.
+    The target codec owns its bit-depth quantization and dither.
+    """
+    rgb = render_output_linear(
+        bundle, analysis, output_gamut, tone_plan, look, look_strength,
+        display_filter, filter_strength, scene_transform,
+        scene_transform_strength, tone_core, lum_norm, agx_primaries,
+    )
+    flat = rgb.reshape(-1, 3)
+    for start in range(0, len(flat), STREAM_RENDER_CHUNK):
+        end = min(start + STREAM_RENDER_CHUNK, len(flat))
+        flat[start:end] = encode_display_linear(flat[start:end], output_gamut)
+    return rgb
 
 
 def render_output_u8(

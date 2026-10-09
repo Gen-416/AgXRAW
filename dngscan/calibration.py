@@ -565,12 +565,17 @@ def build(set_dir: Path, meta: dict | None) -> dict:
         "sheppard_assumption": "uniform quantisation step at black level; "
                                "NOT verified against the companded "
                                "linearisation curve (declared limitation)",
+        "stored_dark_variance_measurement": "paired-frame-pre-sheppard",
+        "stored_dark_variance_domain": "linearized-raw-dn",
     }
+    # The formed RAW contains quantisation as well as physical read noise.
+    # Preserve the measured temporal variance before the optional Sheppard
+    # subtraction; never reconstruct this measurement from an assumed ADC step
+    # when it is already available. Failed physical-RN fits remain separate.
+    entry["stored_dark_variance_dn2_log2iso"] = [
+        [math.log2(iso), d["total_var"]] for iso, d in sorted(dark.items())]
     if clip_status == "declared":
-        entry["noise_aperture"] = (
-            "paired-frame temporal std (FPN excluded); sigma clip undone via "
-            "the declared ClipVarianceFactor; Sheppard step^2/12 quantisation "
-            "correction applied per frame")
+        entry["noise_aperture"] = _LEGACY_SHEPPARD_APERTURE
     else:
         entry["noise_aperture"] = (
             "paired-frame temporal std (FPN excluded); ClipVarianceFactor "
@@ -908,6 +913,7 @@ def _validated_prior(item: dict) -> dict:
              "mode_scope": "shutter-and-dn-scale",
              "unverified_readout_fields": {k: item[k] for k in ("compression", "geometry")
                                            if item.get(k) not in (None, [], [None, None], ["", ""])}}
+    entry.update(stored_dark_variance_fields(item))
     if single:
         iso = _number(item.get("iso"), "iso")
         gain = _number(item.get("gain_e_per_dn"), "gain_e_per_dn")
@@ -988,11 +994,117 @@ def _validated_prior(item: dict) -> dict:
             expected_log = math.log2(rn_dn) + gain_point
             if abs(noise_point - expected_log) > math.log2(1.05):
                 raise ValueError(f"read noise DN/electron units disagree at ISO {2**x:g}")
+        for x, variance in entry.get("stored_dark_variance_dn2_log2iso", []):
+            if _stored_variance_below_physical_read(entry, 2**x, variance, measured_only=True):
+                raise ValueError(f"stored dark variance is below physical read variance at ISO {2**x:g}")
     if not entry.get("gain_log2iso_log2epd") and not entry.get("read_noise_dn_log2iso"):
         raise ValueError("calibration contains no usable gain or dark-noise measurements")
     if item.get("fwc_model_spread_e") is not None:
         entry["fwc_model_spread_e"] = _number(item["fwc_model_spread_e"], "fwc model spread", positive=False)
     return entry
+
+
+def stored_dark_variance_fields(item: dict) -> dict:
+    """Carry an explicitly typed Collect measurement into every runtime tier."""
+    contract = dict(item.get("acquisition_contract") or {})
+    curve = _curve(item.get("stored_dark_variance_dn2_log2iso"),
+                   "stored dark variance", logarithmic=False, allow_zero=True)
+    if curve and (item.get("format") != "dngscan-jptc-collect-1"
+                  or contract.get("stored_dark_variance_measurement") != "paired-frame-pre-sheppard"
+                  or contract.get("stored_dark_variance_domain") != "linearized-raw-dn"):
+        raise ValueError("stored dark variance requires a Collect paired-frame linearized RAW DN contract")
+    return {"source_format": item.get("format"), "noise_aperture": item.get("noise_aperture"),
+            "acquisition_contract": contract,
+            "stored_dark_variance_dn2_log2iso": curve}
+
+
+_LEGACY_SHEPPARD_APERTURE = (
+    "paired-frame temporal std (FPN excluded); sigma clip undone via "
+    "the declared ClipVarianceFactor; Sheppard step^2/12 quantisation "
+    "correction applied per frame"
+)
+
+
+def _stored_variance_below_physical_read(entry: dict, iso: float, variance: float,
+                                         *, measured_only: bool = False) -> bool:
+    """Check both physical-noise units without squaring a potentially large DN value."""
+    def value(key):
+        if measured_only:
+            return next((y for x, y in entry.get(key, [])
+                         if abs(x-math.log2(iso)) < 1e-7), None)
+        return curve_value(entry, key, iso)
+
+    read_variance_logs = []
+    rn_dn = value("read_noise_dn_log2iso")
+    if rn_dn is not None and rn_dn > 0:
+        read_variance_logs.append(2 * math.log2(rn_dn))
+    rn_e_log = value("read_noise_log2iso_log2e")
+    gain_log = value("gain_log2iso_log2epd")
+    if rn_e_log is not None and gain_log is not None:
+        read_variance_logs.append(2 * (rn_e_log - gain_log))
+    # The electron curve may be present without the optional DN-RN curve.
+    # Check either independent unit declaration that is available. Retain
+    # the existing five-percent DN-unit tolerance at measured intersections
+    # and selected ISO values; interpolation is not allowed to evade it.
+    return bool(read_variance_logs) and (variance == 0 or
+        math.log2(variance) < math.log2(.95) + max(read_variance_logs))
+
+
+def stored_dark_variance(entry: dict, iso: float | None) -> tuple[float | None, str]:
+    """Reference-DN variance, with source semantics distinct from electron RN.
+
+    Only Collect's explicit measurement or its unambiguous legacy converter
+    contract authorizes a stored-code variance. This is not a universal 1/12
+    adjustment to PTC intercepts, P2P data, or DNG NoiseProfile coefficients.
+    Consumers must still establish camera, readout, ISO and DN applicability.
+    """
+    if entry.get("source_format") != "dngscan-jptc-collect-1":
+        return None, "read-variance-semantics-unspecified"
+    contract = entry.get("acquisition_contract") or {}
+    curve = entry.get("stored_dark_variance_dn2_log2iso") or []
+    if curve:
+        if (contract.get("stored_dark_variance_measurement") != "paired-frame-pre-sheppard"
+                or contract.get("stored_dark_variance_domain") != "linearized-raw-dn"):
+            return None, "stored-dark-variance-domain-unverified"
+        if contract.get("sigma_clip_correction") != "applied":
+            return None, "stored-dark-variance-sigma-clip-unresolved"
+        value = curve_value(entry, "stored_dark_variance_dn2_log2iso", iso)
+        if value is None:
+            return None, "stored-dark-variance-outside-measured-domain"
+        if not math.isfinite(value) or value < 0:
+            return None, "stored-dark-variance-nonfinite"
+        if _stored_variance_below_physical_read(entry, iso, value):
+            return None, "stored-dark-variance-below-physical-read-variance"
+        measured = any(abs(math.log2(iso)-x) < 1e-7 for x, _ in curve)
+        return value, ("measured-stored-dark-variance" if measured else
+                       "interpolated-stored-dark-variance")
+    # Old bundled/user Collect files did not retain the pre-subtraction
+    # curve. Recover it only where the converter explicitly says what it
+    # subtracted in an identity-linearized DN domain. Companded or missing
+    # acquisition declarations cannot establish this transport.
+    if (entry.get("noise_aperture") != _LEGACY_SHEPPARD_APERTURE
+            or contract.get("sigma_clip_correction") != "applied"
+            or contract.get("linearisation_curve") != "identity"):
+        return None, "stored-dark-variance-unverified"
+    try:
+        step = float(contract["adc_step"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None, "stored-dark-variance-adc-step-unverified"
+    if not math.isfinite(step) or step < 0:
+        return None, "stored-dark-variance-adc-step-unverified"
+    rn_dn = curve_value(entry, "read_noise_dn_log2iso", iso)
+    if rn_dn is None:
+        return None, "stored-dark-variance-outside-measured-domain"
+    # The legacy curve averaged green-plane RMS values, losing their
+    # individual variances. This restores the declared quantisation term
+    # to that scalar approximation; only the new curve retains the mean
+    # measured total variance without this aggregation loss.
+    variance = rn_dn * rn_dn + step * step / 12.
+    if not math.isfinite(variance):
+        return None, "stored-dark-variance-adc-step-unverified"
+    if _stored_variance_below_physical_read(entry, iso, variance):
+        return None, "stored-dark-variance-below-physical-read-variance"
+    return variance, "legacy-sheppard-restored-scalar-variance-approximation"
 
 
 def curve_value(entry: dict, key: str, iso: float) -> float | None:
@@ -1065,6 +1177,9 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         warnings.append("sigma-clip-correction-unresolved")
     if contract.get("linearisation_curve") == "companded":
         warnings.append("quantisation-correction-assumption-unverified")
+    if (prior.get("source_format") == "dngscan-jptc-collect-1"
+            and not prior.get("stored_dark_variance_dn2_log2iso")):
+        warnings.append("stored-dark-variance-not-directly-retained")
     if not gains:
         warnings.append("no-absolute-gain")
     if not prior.get("read_noise_log2iso_log2e"):
@@ -1079,6 +1194,7 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
             "user_applicability": prior.get("user_applicability", {}), "iso_min": 2**domain[0][0] if domain else None,
             "iso_max": 2**domain[-1][0] if domain else None,
             "has_gain": bool(gains), "has_read_noise": bool(prior.get("read_noise_log2iso_log2e")),
+            "has_stored_dark_variance": bool(prior.get("stored_dark_variance_dn2_log2iso")),
             "read_noise_unresolved_isos": prior.get("read_noise_unresolved_isos", []),
             "warnings": warnings, "source_format": prior["source_format"], "path": str(path),
             "imported_at": record.get("imported_at"), "channel_model": prior["noise_model_channels"],
@@ -1266,12 +1382,15 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
         if not record.get("active"):
             reason = "inactive"
         noise_status = read_noise_status(prior, iso)
+        stored_variance, stored_status = stored_dark_variance(prior, iso)
         out.append({"id": record["id"], "label": prior["id"],
                     "status": ("gain-only" if reason == "usable" and noise_status.startswith("read-noise-unresolved")
                                else "usable" if reason == "usable" else "not-applied"),
                     "reason": noise_status if reason == "usable" and noise_status.startswith("read-noise-unresolved") else reason,
                     "gain_status": "usable" if reason == "usable" else "not-applied",
                     "read_noise_status": noise_status,
+                    "stored_dark_variance_status": stored_status,
+                    "stored_dark_variance_dn2": stored_variance,
                     "has_read_noise_at_iso": iso is not None and curve_value(prior, "read_noise_log2iso_log2e", iso) is not None,
                     "mode_scope": prior["mode_scope"],
                     "unverified_readout_fields": prior.get("unverified_readout_fields", {}),

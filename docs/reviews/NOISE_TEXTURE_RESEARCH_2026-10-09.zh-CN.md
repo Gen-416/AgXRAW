@@ -134,12 +134,12 @@ DNG 规范把它定义为归一化线性信号 x 的 `variance = Sx + O`；一�
 
 验证集应覆盖：无噪声周期和随机色度纹理；固定噪声模型加不同真实结构；平场、渐变、边缘；CFA 相位；shot/read/行列相关噪声；黑白剪切和低码值量化；低覆盖与型号/模式不匹配。HDR 要比较相同信号区间的已知噪声与门控，色度滤波要同时度量降噪收益、真实色度振幅、边缘和亮度。实拍以匹配的 fp PTC、黑场及纹理样张补充，不能只看总体 PSNR 或缩图观感。
 
-## 7. 暂缓待办（用户已指定后置）
+## 7. 原后置待办（完成情况见第 13 节）
 
-以下两项尚未修复，本轮仅登记；不是当前噪声研究的实施步骤。
+以下为研究时登记的两项后置任务，后续已完成，实施范围与验证见第 13 节。
 
-- [ ] **SDR 10-bit HEIF 保留浮点输入到编码出口。** `export.py` 目前先 `render_output_u8()` 再分流 HEIF，10-bit 编码不能恢复提前丢失的层级。后续从已完成显示变换的浮点结果分流：`render_output_linear()` 返回 display-linear，进入期望非线性 RGB 的编码器前须正确应用输出 OETF，再做 10-bit 量化。同步补高精度主图回读与度量；现有 u8 指标不能简单接 float。验收包含真实渐变层级、传递函数、ICC/NCLX、自动/手动 HEIF 路径，JPEG 的既有 8-bit 合同保持稳定。
-- [ ] **机型先验规范化精确匹配与显式别名。** `priors.find_priors()` 的 bulk fallback 使用包含关系，`Canon EOS 5D` 可误命中 `EOS 5D Mark II`。后续改成规范化后的完整型号匹配；别名显式登记，未知型号返回无先验，不删除有区分意义的代际/后缀。验收覆盖前缀碰撞、已知别名、未知型号、模式歧义及 fp 既有匹配。
+- [x] **SDR 10-bit HEIF 保留浮点输入到编码出口。** 原 `export.py` 先量化 uint8 的入口现已分流：完成显示变换及输出 OETF 的浮点母版直接进入 10-bit 量化，自动/手动 HEIF 都用高精度回读验收；JPEG 保留既有 8-bit 合同。
+- [x] **机型先验规范化精确匹配与显式别名。** 包内 curated / JPTC / bulk 与用户数据均使用规范化完整型号，未知型号不借用另一代先验；显式别名保留必要兼容写法。
 
 ## 8. 研究阶段的验证边界
 
@@ -158,7 +158,7 @@ DNG 规范把它定义为归一化线性信号 x 的 `variance = Sx + O`；一�
 
 接口和缓存验证见 [test_user_calibration.py](../../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../../tests/test_calibration_gui_cli.py)，模型与滤波验证见 [test_noise_model.py](../../tests/test_noise_model.py)、[test_calibrated_chroma.py](../../tests/test_calibrated_chroma.py)。合成验证覆盖零噪声密集纹理、已知噪声与真实结构、处理域传播和失败跳过；不等于所有自然照片的画质保证。
 
-仍未实施完整的稳健单帧噪声估计/PCA 验证、完整相关噪声与分频传播、行列条纹或固定图样修复。JPTC scalar-green、粗网格 CFA 与几何传播均有明确近似；自己的 fp PTC/黑场还未提供，不能宣称已完成个人相机标定。第 7 节的 SDR 10-bit HEIF 与包内 bulk 模糊机型匹配仍为待办，本轮没有实现。
+仍未实施完整的稳健单帧噪声估计/PCA 验证、完整相关噪声与分频传播、行列条纹或固定图样修复。JPTC scalar-green、粗网格 CFA 与几何传播均有明确近似；自己的 fp PTC/黑场还未提供，不能宣称已完成个人相机标定。在本节记录的实施阶段，第 7 节两项后置任务尚未完成；后续完成情况见第 13 节。
 
 ## 10. 后续管线审查修复（基准 fb91815）
 
@@ -170,7 +170,7 @@ Collect 明确无法分辨的读噪 ISO 及跨越失败点的插值区间，现�
 
 交付新增[局部亮度纹理门禁](../HDR_DELIVERY_VALIDATION.zh-CN.md#局部亮度纹理门禁2026-10-09)，补齐暗部、中间调小区域在均值和百分位中被稀释的覆盖缺口。手动 JPEG 同样验证像素；自动编码和 HDR 的原有色差、亮度、采样及发布原子性约束保留。Rust 执行相同的有符号多尺度差分，NumPy 作为独立参考。局部纯色度纹理仍不在新增门禁的保证范围内，不能把“回读通过”表述为全部纹理完整。
 
-三张 fp 样张的完整 clip scene 缓冲和缩放尺度与基准逐字节一致，原始 RAW 证据保持不变；blend/reconstruct 在此前被重新截断的位置有预期变化。合成 DNG 覆盖恒等镜头操作、非中性 WB、重建高光、全/半尺寸及全部八种方向。实拍与性能记录保存在[机器可读验收记录](../assets/delivery-quality/pipeline-repair-20261009.json)，其中速度仅代表新增指标的独立扫描，不是整条管线加速倍率。两项后置待办不变。
+三张 fp 样张的完整 clip scene 缓冲和缩放尺度与基准逐字节一致，原始 RAW 证据保持不变；blend/reconstruct 在此前被重新截断的位置有预期变化。合成 DNG 覆盖恒等镜头操作、非中性 WB、重建高光、全/半尺寸及全部八种方向。实拍与性能记录保存在[机器可读验收记录](../assets/delivery-quality/pipeline-repair-20261009.json)，其中速度仅代表新增指标的独立扫描，不是整条管线加速倍率。该阶段两项后置任务尚未完成，后续见第 13 节。
 
 最终边界复查还确认：RAW 通道尚未饱和时，白平衡可能已让 LibRaw 的 uint16 相机 RGB 触及 65535。现在在镜头操作前将这类整数交接边界并入不可靠掩膜，供 HDR 与噪声传播使用；不改原始 RAW 饱和百分比，也不把后续浮点镜头增益产生的超范围值误判为截断。这个标记可能与传感器饱和重叠，并不能测量准确的截断幅度。完整 clip 场景缓冲不变，不代表置信度修正后最终 SDR/HDR 像素必然不变。
 
@@ -180,7 +180,7 @@ Collect 明确无法分辨的读噪 ISO 及跨越失败点的插值区间，现�
 
 现在先独立验证标定的 DN 尺度并读取适用频谱，读噪未分辨或普通缺测只影响方差系数。DNG 替代后保留原标定来源、原因及横纵频谱；实测异常继续令 HDR 噪声因子为 0、色度核跳过。相机/快门、ISO 域与 DN 尺度不匹配的频谱不会借用；文件声明已降噪或非法仍优先拒绝。预览与分析缓存升级到 23，淘汰旧回退结果。
 
-[真实 DNG 组合回归](../../tests/test_spectral_fallback_pipeline.py)同时覆盖有效读噪、普通插值、无 DNG 替代及频谱域外对照。域外对照仍实际启用色度核，避免把所有回退都禁用来掩盖问题；模型单元测试另覆盖低/零/高/正常频谱、双轴保留、DN 不匹配及缓存往返。10-bit SDR 母版与 bulk 机型匹配继续后置。
+[真实 DNG 组合回归](../../tests/test_spectral_fallback_pipeline.py)同时覆盖有效读噪、普通插值、无 DNG 替代及频谱域外对照。域外对照仍实际启用色度核，避免把所有回退都禁用来掩盖问题；模型单元测试另覆盖低/零/高/正常频谱、双轴保留、DN 不匹配及缓存往返。10-bit SDR 母版与 bulk 机型匹配在该阶段仍后置，后续见第 13 节。
 
 ## 12. 编码范围、截断支撑与噪声坐标（基准 049bfd6）
 
@@ -192,4 +192,64 @@ DHT 的原地坏点处理及全帧极值步骤尚无已审计的局部支撑。�
 
 三张 fp 实拍的 RAW 证据哈希保持不变，均触发自动 AHD。相对基准，最终 SDR 的逐通道平均绝对差约为 1.93–5.33 个 8-bit 码值，局部最大差更大；这是解拜耳、可靠尾部及黑端规划共同变化的结果，不是编码误差，也不代表量化出的画质提升。对应 HDR 使用量余量分别从 1.122／1.012／1.304 EV 变为 0.943／0.908／1.288 EV，保留正余量。六次全尺寸 SDR JPEG / HDR HEIF 导出通过实际回读及现有门限，独立 SDR 与 HDR base 母版逐字节一致。HEIF 测试使用固定 share q95，JPEG 使用 share-hq q97／4:2:0，未执行自动编码搜索，也没有保证 HEIF 小于 20 MB。
 
-详见[机器可读验收记录](../assets/delivery-quality/pipeline-evidence-boundaries-20261009.json)和新增真实 DNG 回归：[编码范围](../../tests/test_noise_coding_range.py)、[黑位与线性化](../../tests/test_noise_coding_endpoints.py)、[解拜耳支撑](../../tests/test_demosaic_loss_support.py)、[同尺寸 DefaultScale 与 Linear DNG](../../tests/test_decoder_loss_edge_variants.py)、[BE 坐标](../../tests/test_noise_scene_ev.py)、[缓存往返](../../tests/test_analysis_cache_geometry_roundtrip.py)。实拍通过现有交付门限仍不等于全部弱纹理完整；10-bit SDR 母版和 bulk 机型匹配继续后置。
+详见[机器可读验收记录](../assets/delivery-quality/pipeline-evidence-boundaries-20261009.json)和新增真实 DNG 回归：[编码范围](../../tests/test_noise_coding_range.py)、[黑位与线性化](../../tests/test_noise_coding_endpoints.py)、[解拜耳支撑](../../tests/test_demosaic_loss_support.py)、[同尺寸 DefaultScale 与 Linear DNG](../../tests/test_decoder_loss_edge_variants.py)、[BE 坐标](../../tests/test_noise_scene_ev.py)、[缓存往返](../../tests/test_analysis_cache_geometry_roundtrip.py)。实拍通过现有交付门限仍不等于全部弱纹理完整；10-bit SDR 母版和 bulk 机型匹配在该阶段仍后置，后续见第 13 节。
+
+## 13. 真正的 10-bit SDR 与先验边界（基准 f10e664）
+
+独立 SDR HEIF 在完成 AgX/其他受支持 SDR 核、输出颜色处理、色域拟合和 sRGB/P3 输出
+OETF 后保留 float32，编码边界加入确定性 TPDF 抖动并量化到 10-bit。浮点母版的后处理与
+OETF 复用同一张完整 raster，临时计算按块执行。JPEG 和显式 8-bit HEIF 继续走原 uint8
+入口。手动、archive 与 auto 均接入新入口；自动搜索和写入元数据后的验收直接度量浮点
+回读，不再先转 uint8。误差单位仍是等效 8-bit 码值，原预算和局部纹理阈值不变。
+
+Core Image 使用 RGBAf 工作与输出格式，关闭 HDR 展开，输出非线性目标色域；原生
+NSDictionary 解决实际 PyObjC 读取选项的桥接问题。实际 q100/444、无抖动的编码器探针
+保留 1024 级渐变，相邻 512/1023 与 513/1023 灰阶在旧 u8 回读中同为 128，浮点回读
+能正确区分。正式带抖动的 SDR 出口保留 959–979 个渐变层级，不能把无抖动探针的近乎
+精确回读推广为有损 HEIF 的无损保证。ICC 必须精确匹配，NCLX 若存在则检查一致性；
+本机 libheif 在嵌入 ICC 时未额外写出 NCLX，报告保持 `nclx_verified=False`。
+
+三张 fp 全尺寸 q95/420、10-bit SDR HEIF 通过实际回读；日光样张 auto 选择 q90/444，
+通过相同预算。这里没有给 HEIF 增加 20 MB 硬目标，高感手动输出和日光 auto 均可超限。
+JPEG 97/420 与 HDR HEIF 95/420 另作实际回归。具体文件体积、门限和测试范围保存在
+[机器可读验收记录](../assets/delivery-quality/sdr10-prior-boundaries-20261009.json)。
+
+包内 curated / JPTC / bulk 统一采用规范化后的完整机型匹配与显式别名；Canon EOS 5D
+不再误用 Mark II 先验，未知型号不借用同系列数据。制造商前缀与空格可规范化，但代际和
+有区分意义的后缀保留；原用户优先级、快门和 DN 适用性检查保持。
+
+Collect 新导入保留扣量化前的成对暗场总方差，与电子读噪分开。模型在原有适用性及物理
+读噪 resolved 检查通过后，优先用声明明确的线性化 DN 总方差形成存储 RAW 的常数项。
+旧转换器只有明确的 identity/ADC/Sheppard 合同且 sigma-clip 修正完成，才恢复对应量化项，
+并标为绿色汇总近似；其他来源不统一加 `1/12`。导入在实测 ISO 交点用 DN 读噪或电子
+读噪/增益检查总方差下界，运行时在当前 ISO 再检查插值结果，保留 5% 容差。总方差明显
+低于物理读噪方差，或归一化模型系数非有限时，明确记为 `unresolved` 并保留原因，
+不静默退回物理读噪常数项。
+独立有效 DNG `NoiseProfile` 可替代系数，原标定的异常频谱仍约束 HDR 与色度核。
+未分辨物理读噪不会因保留总方差而自动放行。
+预览及完整分析缓存升至 25，避免复用旧机型或方差模型。
+
+实际系统回归还修复了 Apple RAW 的独立参考：`f10e664` 中重建参考的全帧保守损失使可信
+样本归零。现在保留该重建参考和原中位比作为亮度标尺，仅在支撑不可验证时另取校正后的
+clip/auto 参考作为传感器证据。第二份参考使用自己的存储尺度，失败明确关闭 HDR，并不
+撤销已验证的亮度对齐。fp 日光实测保留约 98.0955% 可信样本，相机白平衡 HDR 余量恢复
+至约 0.97767 EV；原全/半尺寸对齐因子不变。新增[真实 DNG 参考回归](../../tests/test_coreimage_sensor_reference.py)
+覆盖 BE、半尺寸、后置 Kelvin 白平衡、缓冲释放和失败关闭。
+
+Apple RAW 日光的 10-bit SDR HEIF、HDR archive 与 HDR auto 均通过实际编码；HDR auto
+选 q85/444，约 31.4 MB。手动 HDR q95/420 在局部纹理指标上为 1.0，未通过，目标文件被
+丢弃。辅助质量 100 时，下采样请求 2 与不指定都实际生成全尺寸增益图，且失败指标相同；
+不能把这个拒绝错误归因于增益图尺寸，也没有为使手动档通过而放宽预算。
+同一母版与同一 gain map 的主图对照中，95/444 的局部指标为 0.39413，95/420 与
+100/420 均为 1.0，NumPy/Rust 完全一致。红色细纹处的线性亮度差从 +0.04151 变为
+约 −0.00276，满足指标要求的空间支撑；本反例确实是 4:2:0 的局部结构损失，提高 quality
+到 100 也不能补回缺失的色度采样。默认 auto 保持 4:4:4 通过验收，手动设置不被静默改写。
+
+回归见 [浮点形成与分流](../../tests/test_sdr_float_render.py)、
+[高精度读取](../../tests/test_sdr_float_readback.py)、[浮点指标](../../tests/test_sdr_float_metrics.py)、
+[HEIF 出口与实际渐变](../../tests/test_sdr_heif_precision.py)、
+[精确机型](../../tests/test_prior_exact_matching.py)与[总方差合同](../../tests/test_calibration_stored_variance.py)。
+HDR gain-map 的 SDR base 仍为 uint8，独立 HDR alternate 保留 float16；Apple SDR 编码
+后备仍限手动 8-bit/420。完整相关噪声传播、FPN/PRNU/坏点与条纹修复、单帧稳健估计，
+以及 Collect 自由文本 compression/geometry 与每份 RAW 的子读出匹配仍未完成。
+自己的 fp PTC/重复黑场尚未提供，因此没有个人机身校正的实拍验收。

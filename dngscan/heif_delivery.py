@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 import os
 from pathlib import Path
+import struct
 import tempfile
 
 from .delivery import DeliveryProfile
@@ -13,6 +14,7 @@ from .delivery import DeliveryProfile
 def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="srgb",
                   *, source_raw: Path | None = None, return_rgb=False):
     from . import heif_encoder
+    from ._deps import np
     from .auto_encode import select_heif_encoding
     from .color import output_icc_profile_bytes
     from .gainmap import (inspect_gainmap_file, read_primary_rgb_u8,
@@ -21,6 +23,18 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
 
     if delivery.container != "heic":
         raise ValueError("SDR HEIF requires a HEIC delivery profile")
+    if delivery.heif_bit_depth not in (8, 10):
+        raise ValueError("SDR HEIF requires 8-bit or 10-bit output")
+    rgb = heif_encoder._validate_rgb(rgb)
+    precise = delivery.heif_bit_depth == 10
+    if not precise and rgb.dtype != np.uint8:
+        raise ValueError("8-bit SDR HEIF requires uint8 RGB")
+    if precise:
+        from .gainmap import read_primary_rgb_float, _base_and_coding_metrics_float
+        intended = (rgb.astype(np.float32) / np.float32(255.)
+                    if rgb.dtype == np.uint8 else rgb)
+    else:
+        intended = rgb
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     use_x265 = delivery.heif_encoder == "x265" or (
@@ -44,10 +58,22 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
         _, _, primary, _, _, props, assocs, _ = _parse(path.read_bytes())
         profiles = [props[i-1][1][4:] for _, i in assocs.get(primary, [])
                     if props[i-1][0] == b"colr" and props[i-1][1][:4] in (b"prof", b"rICC")]
-        if output_icc_profile_bytes(output_gamut) not in profiles:
+        expected_icc = output_icc_profile_bytes(output_gamut)
+        if not profiles or any(profile != expected_icc for profile in profiles):
             raise RuntimeError("SDR HEIF 回读 ICC 与请求不符")
-        decoded = read_primary_rgb_u8(path, output_gamut, _borrow_rgb=True)
-        metrics = _base_and_coding_metrics_arrays(decoded, rgb)
+        nclx = [props[i-1][1] for _, i in assocs.get(primary, [])
+                if props[i-1][0] == b"colr" and props[i-1][1][:4] == b"nclx"]
+        expected_nclx = b"nclx" + struct.pack(">HHHB", 12 if output_gamut == "p3" else 1,
+                                               13, 1, 128)
+        if any(profile != expected_nclx for profile in nclx):
+            raise RuntimeError("SDR HEIF 回读 NCLX 与请求不符")
+        info["nclx_verified"] = bool(nclx)
+        if precise:
+            decoded = read_primary_rgb_float(path, output_gamut, _borrow_rgb=True)
+            metrics = _base_and_coding_metrics_float(decoded, intended)
+        else:
+            decoded = read_primary_rgb_u8(path, output_gamut, _borrow_rgb=True)
+            metrics = _base_and_coding_metrics_arrays(decoded, intended)
         if not _base_roundtrip_is_acceptable(metrics, profile.tolerances):
             raise RuntimeError("SDR HEIF 回读误差超出交付门限")
         info.update(metrics)
@@ -57,12 +83,15 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
         profile = replace(delivery, name="share" if delivery.name == "auto" else delivery.name,
                           quality=q, chroma=chroma)
         encoder = heif_encoder.encode if use_x265 else heif_encoder.encode_apple
-        encoder_info = encoder(rgb, candidate, q, chroma, bit_depth=profile.heif_bit_depth,
-                               preset=profile.heif_preset, tune=profile.heif_tune,
-                               output_gamut=output_gamut)
+        options = dict(bit_depth=profile.heif_bit_depth, preset=profile.heif_preset,
+                       tune=profile.heif_tune, output_gamut=output_gamut)
+        if use_x265 and precise and rgb.dtype != np.uint8:
+            options["dither_quantization"] = True
+        encoder_info = encoder(rgb, candidate, q, chroma, **options)
         info, _ = verify(candidate, profile)
         return {**info, **encoder_info, "delivery_profile": profile.name,
-                "icc_embedded": True}
+                "icc_embedded": True,
+                "readback_precision": "float32" if precise else "uint8"}
 
     with tempfile.TemporaryDirectory(prefix=".agxraw-sdr-heif-", dir=out_path.parent) as td:
         candidate = Path(td) / "verified.heic"
@@ -78,8 +107,16 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
                                 chroma=str(info["delivery_chroma_requested"]))
         _, decoded = verify(candidate, final_profile)
         if return_rgb:
-            from ._deps import np
-            info["_decoded_rgb"] = np.ascontiguousarray(decoded)
+            # GUI preview remains uint8. All quality decisions above consume
+            # the unquantized float readback, including metadata-final checks.
+            if precise:
+                preview = np.empty(decoded.shape, dtype=np.uint8)
+                for y in range(0, decoded.shape[0], 128):
+                    preview[y:y+128] = np.rint(np.clip(decoded[y:y+128], 0, 1)
+                                              * np.float32(255.)).astype(np.uint8)
+                info["_decoded_rgb"] = preview
+            else:
+                info["_decoded_rgb"] = np.ascontiguousarray(decoded)
         del decoded
         info["file_size_bytes"] = candidate.stat().st_size
         os.replace(candidate, out_path)

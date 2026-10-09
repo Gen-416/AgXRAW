@@ -541,6 +541,61 @@ def _read_primary_coreimage_rgb_u8(path: Path, output_gamut: str, *, _borrow_rgb
     return np.ascontiguousarray(rgba[:, :, :3])
 
 
+def read_primary_rgb_float(path: Path, output_gamut: str = "p3", *, _borrow_rgb: bool = False) -> Any:
+    """Read the SDR primary as nonlinear target RGB float32 without 8-bit loss.
+
+    Core Image performs the file-profile to sRGB/Display P3 conversion at
+    float precision. The primary is loaded with HDR expansion explicitly off
+    when that option is available; older APIs retain their default SDR view.
+    The output colour space applies the nonlinear transfer exactly once.
+    """
+    import objc  # type: ignore
+
+    with objc.autorelease_pool():
+        return _read_primary_coreimage_rgb_float(path, output_gamut, _borrow_rgb=_borrow_rgb)
+
+
+def _read_primary_coreimage_rgb_float(path: Path, output_gamut: str, *, _borrow_rgb: bool) -> Any:
+    import Quartz  # type: ignore
+    from Foundation import NSDictionary, NSURL  # type: ignore
+
+    if output_gamut not in ("srgb", "p3"):
+        raise ValueError("unknown primary readback gamut")
+    if not all(hasattr(Quartz, name) for name in ("kCIFormatRGBAf", "kCIContextWorkingFormat")):
+        raise RuntimeError("Core Image 缺少浮点 SDR 回读 API")
+    url = NSURL.fileURLWithPath_(str(path))
+    expand = getattr(Quartz, "kCIImageExpandToHDR", None)
+    # The URL loader asks for additional optional keys internally. A Python
+    # dict proxy raises on missing keys on some macOS/PyObjC combinations;
+    # a native NSDictionary correctly returns nil for those missing options.
+    options = (NSDictionary.dictionaryWithDictionary_({expand: _nsnumber_bool(False)})
+               if expand is not None else None)
+    image = (Quartz.CIImage.imageWithContentsOfURL_options_(url, options)
+             if expand is not None else Quartz.CIImage.imageWithContentsOfURL_(url))
+    if image is None:
+        raise RuntimeError(f"无法解码 SDR 主图：{path}")
+    extent = image.extent()
+    width = int(round(float(extent.size.width)))
+    height = int(round(float(extent.size.height)))
+    if width <= 0 or height <= 0:
+        raise RuntimeError(f"主图尺寸无效：{path}")
+    color = Quartz.CGColorSpaceCreateWithName(
+        Quartz.kCGColorSpaceDisplayP3 if output_gamut == "p3" else Quartz.kCGColorSpaceSRGB)
+    context = Quartz.CIContext.contextWithOptions_({
+        Quartz.kCIContextCacheIntermediates: _nsnumber_bool(False),
+        Quartz.kCIContextWorkingFormat: Quartz.kCIFormatRGBAf,
+    })
+    if context is None or color is None:
+        raise RuntimeError("Core Image 无法创建浮点 SDR 解码上下文")
+    rgba = np.empty((height, width, 4), dtype=np.float32)
+    context.render_toBitmap_rowBytes_bounds_format_colorSpace_(
+        image, rgba, int(rgba.strides[0]), extent, Quartz.kCIFormatRGBAf, color)
+    if _borrow_rgb:
+        owner = np.frombuffer(memoryview(rgba).toreadonly(), dtype=np.float32).reshape(rgba.shape)
+        return owner[..., :3]
+    return np.ascontiguousarray(rgba[..., :3])
+
+
 def _base_roundtrip_error(path: Path, intended_rgb_u8: Any) -> dict[str, float]:
     """Encoded-domain error of the SDR rendition seen by gain-map-unaware readers.
 
@@ -956,6 +1011,65 @@ def _base_and_coding_metrics_arrays(decoded: Any, intended: Any) -> dict[str, fl
     """Share one uint8 scan; keep both established reference functions intact."""
     metrics = _base_and_coding_metrics_arrays_core(decoded, intended)
     detail = local_detail_loss(decoded, intended)
+    metrics.update(base_local_detail_loss=detail, coding_local_detail_loss=detail)
+    return metrics
+
+
+def _base_and_coding_metrics_float(decoded: Any, intended: Any) -> dict[str, float]:
+    """High-precision nonlinear SDR metrics in unchanged 8-bit code units.
+
+    This new banded NumPy reference intentionally bypasses the uint8 native
+    metrics in every backend mode. Fractional codes and finite decoder
+    overshoot remain observable; only the finished master is limited to [0,1].
+    """
+    from .auto_encode import coding_metrics_float
+    from .local_detail import _valid_sdr_float_inputs, local_detail_loss_sdr_float
+
+    if not _valid_sdr_float_inputs(decoded, intended) or decoded.shape[2] != 3:
+        raise ValueError("浮点 SDR 编码回读尺寸、像素格式或归一化母版无效")
+    height, width = decoded.shape[:2]
+    total_px = height * width
+    h8, w8 = height - height % 8, width - width % 8
+    top_k = int(np.ceil(.01 * total_px)) + 8
+    pixel_top = np.empty(0, dtype=np.float32)
+    abs_sum, max_err = 0., 0.
+    signed_sum = np.zeros(3, dtype=np.float64)
+    block_means = (np.empty((h8 // 8, w8 // 8, 3), dtype=np.float32)
+                   if h8 > 0 and w8 > 0 else None)
+    try:
+        with np.errstate(over='raise', invalid='raise', divide='raise'):
+            for row0 in range(0, height, _ROUNDTRIP_BAND_ROWS):
+                row1 = min(row0 + _ROUNDTRIP_BAND_ROWS, height)
+                signed = decoded[row0:row1].astype(np.float32) - intended[row0:row1].astype(np.float32)
+                signed *= 255.
+                channel_error = np.abs(signed)
+                pixel_error = np.max(channel_error, axis=2).reshape(-1)
+                abs_sum += float(channel_error.sum(dtype=np.float64))
+                signed_sum += signed.sum(axis=(0, 1), dtype=np.float64)
+                max_err = max(max_err, float(pixel_error.max()))
+                merged = np.concatenate((pixel_top, pixel_error))
+                if merged.size > top_k:
+                    merged = np.partition(merged, merged.size - top_k)[-top_k:]
+                pixel_top = merged
+                if block_means is not None and row0 < h8:
+                    band_h8 = min(row1, h8) - row0
+                    band_h8 -= band_h8 % 8
+                    if band_h8 > 0:
+                        b0 = row0 // 8
+                        block_means[b0:b0 + band_h8 // 8] = signed[:band_h8, :w8].reshape(
+                            band_h8 // 8, 8, w8 // 8, 8, 3).mean(axis=(1, 3))
+    except FloatingPointError as exc:
+        raise ValueError("浮点 SDR 编码回读产生非有限误差") from exc
+    metrics = {
+        "base_mean_code_error": float(abs_sum / (total_px * 3)),
+        "base_p99_code_error": _exact_upper_percentile(pixel_top, total_px, 99.),
+        "base_max_code_error": max_err,
+        "base_channel_bias_code_error": float(np.max(np.abs(signed_sum / total_px))),
+        "base_block_p99_code_error": (float(np.percentile(np.max(np.abs(block_means), axis=2), 99.))
+                                      if block_means is not None else float('inf')),
+        **coding_metrics_float(decoded, intended, _include_detail=False),
+    }
+    detail = local_detail_loss_sdr_float(decoded, intended)
     metrics.update(base_local_detail_loss=detail, coding_local_detail_loss=detail)
     return metrics
 

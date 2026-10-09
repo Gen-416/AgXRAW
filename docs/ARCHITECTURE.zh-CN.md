@@ -90,7 +90,7 @@ flowchart TB
         CIPROBE["CIRAWFilter 能力探测<br/>RAW 9 或显式 RAW 8/7 回退"]
         CI["固定 AsShot Core Image RAW 配方<br/>RAW 9：CoreML 重建 + 降噪<br/>旧版本：对应系统解码器<br/>高光恢复、镜头校正、DNG opcode"]
         CIRGB["extended-linear Rec.2020 RGBAh<br/>保留负分量与 1 以上数值"]
-        LRREF["仅 aligned 模式<br/>half-size LibRaw reconstruct 参考"]
+        LRREF["LibRaw 重建标尺参考<br/>必要时另取 clip 证据参考"]
         ALIGN["Core Image 尺度策略<br/>aligned：解码后 G 中位比<br/>或 unity / 旧 measured"]
         SELECT --> LR --> LRRGB
         SELECT --> CIPROBE --> CI --> CIRGB --> ALIGN
@@ -835,12 +835,27 @@ RAW headroom retreat 只在解拜耳前 CFA 表明通道接近或到达 full-wel
 方向压回边界，而不是简单逐通道 clip。这样 AgX 或 P3 保下来的高光颜色不会在最后一步突然
 崩成硬原色。
 
+Apple 的亮度对齐标尺与 HDR 传感器证据分别处理。若重建参考在前级损失后只有全帧保守
+支撑，仍保留原重建中位比用于标量对齐，但不把重建像素算作可信尾部。此时另做一次带完整
+校正的 `clip`/auto LibRaw 参考，用自己的 clip 存储尺度提供未受损的原始样本；分配第二张
+参考前先释放第一张。证据解码失败时保留已验证的对齐，传感器参考明确为空，不能因此
+重新启用图像域 HDR 猜测。`noise_decode` 记录两种参考的高光模式、解拜耳与损失支撑。
+
 ## 四层：Delivery — SDR 与 HDR 交付
 
 SDR JPEG 由带确定性 TPDF 抖动的 8-bit 母版编码，默认由 `auto` 在 q95–99 中选择质量与受约束的采样；也支持 SDR HEIC。抖动发生在量化前，
 用来减轻平滑渐变的断层；它不改变 tone plan。也可以选择 4:2:2 或 4:2:0 来减小文件，
 代价是色度分辨率。Display P3 会嵌入 ICC profile，找不到 profile 就停止导出，不写未标记
 的宽色域数据。
+
+SDR 10-bit HEIF 在显示形成、输出颜色处理、色域拟合和 sRGB/P3 输出传递函数之后，仍保留
+float32 母版；编码器按行分块，加入确定性 TPDF 抖动后仅量化一次到 10-bit。最后的颜色处理
+复用已有浮点母版，避免再分配一张完整 RGB 浮点图。JPEG 和显式 8-bit HEIF 保留现有 uint8
+路径。Core Image 关闭 HDR 展开，以非线性目标色域 RGBAf 回读 10-bit SDR；自动候选比较和
+元数据搬运后的最终验收直接使用浮点像素，误差单位仍为等效 8-bit 码值，门限不变。GUI 的
+uint8 缩略图只在验收后生成。ICC 必须存在，NCLX 若存在，其原色、传递函数和范围必须匹配。
+独立 HDR gain-map 封装仍采用 uint8 SDR base 与独立 float16 HDR alternate，本次 SDR 修复
+不改变该合同。
 
 HDR 输出是可选的 Apple ISO 21496-1 gain-map 封装（JPEG 或 HEIC），目前只在
 macOS/Core Image 后端可用，并且只接 AgX tone core。HEIC 与 JPEG 共用同一套 formation

@@ -23,6 +23,9 @@
 
 默认用 AgX 成像：亮的地方自然地过渡到白，颜色不会又亮又假。工具先分析这张照片——主体多亮、最暗最亮到哪里、哪里过曝了——自动定好一条明暗曲线，通常直接导出就是一张可用的照片。需要动手时，按"范围 → 亮度 → 色彩补偿"的顺序，每个滑条只管一件事。
 
+10-bit SDR HEIF 保留完成输出传递函数的浮点母版，到编码出口才量化，并以浮点回读验收。
+JPEG 保持 8-bit；HDR gain-map 封装仍使用 8-bit SDR base 与独立浮点 HDR alternate。
+
 | 默认，什么都不调 | 放出更深的暗部，再整体提亮一档 |
 |---|---|
 | ![默认渲染](docs/assets/editing-tutorial/00_default.jpg) | ![调整后](docs/assets/editing-tutorial/03_range_ev1.jpg) |

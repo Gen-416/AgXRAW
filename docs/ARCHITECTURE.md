@@ -108,7 +108,7 @@ flowchart TB
         CIPROBE["CIRAWFilter capability probe<br/>RAW 9 or explicit RAW 8/7 fallback"]
         CI["Fixed-AsShot Core Image RAW recipe<br/>RAW 9: CoreML reconstruction + denoise<br/>older versions: system decoder<br/>highlight recovery, lens correction, DNG opcodes"]
         CIRGB["Extended-linear Rec.2020 RGBAh<br/>signed components and values above 1 retained"]
-        LRREF["aligned mode only<br/>half-size LibRaw reconstruct reference"]
+        LRREF["LibRaw reconstruction scale reference<br/>separate clip evidence when required"]
         ALIGN["Core Image scale policy<br/>aligned: decoded-G median ratio<br/>or unity / legacy measured"]
         SELECT --> LR --> LRRGB
         SELECT --> CIPROBE --> CI --> CIRGB --> ALIGN
@@ -579,10 +579,19 @@ per-file decoder A/B ruler, not an absolute sensor calibration. It does not targ
 gray or alter within-frame light ratios, but decoder color, geometry, and reconstruction
 can influence the statistic.
 
-`--coreimage-scale unity` bypasses that comparison and preserves Core Image's native
+`--coreimage-scale unity` bypasses that scalar application and preserves Core Image's native
 units. `measured` applies the old fixed `1/1.0293` Sigma-fp fit only to reproduce earlier
 A/B renders. These modes are mutually exclusive in effect; the fixed multiplier is not
 followed by an alignment that cancels it.
+
+The independent HDR sensor reference is distinct from this scale ruler. When
+reconstruction has only conservative global support after a front-end loss, its
+median still supplies the established alignment, but its pixels cannot certify a
+reliable tail. A second corrected `clip`/auto LibRaw decode supplies only unaffected
+original samples, normalized with its own clip storage scale. The first raster is
+released before the second is allocated. A failed evidence decode retains any valid
+alignment but leaves an explicitly empty sensor reference, so it cannot reopen an
+image-only HDR estimate. Reference modes and loss support are reported in `noise_decode`.
 
 Two luminance conventions appear in these comparisons and they must not be quoted
 interchangeably. The *reliable body* median is scene-linear, measured before the tone
@@ -970,6 +979,19 @@ profile selects q95–q99 with constrained sampling; SDR HEIC is also supported.
 does not alter the tone plan. 4:2:2 and 4:2:0 are available when smaller files matter at
 the cost of chroma resolution. Display P3 embeds an ICC profile and export stops if that
 profile is unavailable rather than writing untagged wide-gamut values.
+
+SDR 10-bit HEIF keeps float32 through display formation, output colour operations,
+gamut fitting and the sRGB/P3 output transfer function. The encoder quantizes that
+nonlinear master once to 10-bit with deterministic TPDF dither, in bounded row bands.
+Final colour operations reuse the owned float master instead of allocating another
+full RGB raster. JPEG and explicit 8-bit HEIF retain their existing uint8 path.
+Core Image reads the 10-bit SDR primary into nonlinear target-gamut RGBAf with HDR
+expansion disabled. Candidate selection and metadata-final validation measure the
+float pixels directly; error budgets retain their established 8-bit-equivalent code
+units. A uint8 GUI thumbnail is generated only after validation. ICC is required;
+any NCLX declaration must agree with the requested primaries, transfer and range.
+The separate HDR gain-map package still has a uint8 SDR base and an independent
+float16 HDR alternate; this SDR change does not alter that contract.
 
 HDR output is an optional Apple ISO 21496-1 gain-map package (JPEG or HEIC), currently
 available only through the macOS/Core Image backend and only with the AgX tone core. HEIC

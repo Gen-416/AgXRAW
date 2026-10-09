@@ -1825,10 +1825,11 @@ def load_raw(
     requested_wb_mode = wb_mode
     rawpy_highlight_mode(scene_highlight_mode)
     # CIRAWFilter exposes one calibrated reconstruction path rather than LibRaw's
-    # clip/blend/reconstruct switch. Its comparison reference must always use
-    # reconstruction too, including direct Python API calls that kept the old "clip"
-    # default; otherwise the reported mode and the scale calculation describe different
-    # pipelines.
+    # clip/blend/reconstruct switch. Its scalar-alignment reference must use
+    # reconstruction too, including direct Python API calls that kept the old
+    # "clip" default. A separate clip reference may certify unreconstructed
+    # sensor evidence below; it has its own storage scale and never sets the
+    # Apple decoder's reported mode or alignment statistic.
     effective_highlight_mode = (
         "reconstruct" if decoder == "coreimage" else scene_highlight_mode
     )
@@ -2119,6 +2120,7 @@ def load_raw(
             # scale reference plus an aggregate correction-loss estimate.
             reference_level = float("nan")
             coreimage_level = float("nan")
+            reference_alignment_valid = False
             try:
                 # A fresh handle: reading the mosaic above leaves this LibRaw handle
                 # unable to postprocess (LibRawOutOfOrderCallError).
@@ -2158,21 +2160,64 @@ def load_raw(
                 raw_factor = reference_level / coreimage_level
                 if not np.isfinite(raw_factor) or not (COREIMAGE_ALIGN_MIN <= raw_factor <= COREIMAGE_ALIGN_MAX):
                     raise ValueError(f"implausible decoded-green alignment factor {raw_factor!r}")
-                from .scene_reference import reliable_reference_samples
-                reliable_reference, reliable_reference_pct = reliable_reference_samples(
-                    evidence, reference_scene, reference_scale, reference_loss, reference_recipe,
-                )
                 if coreimage_uses_file_alignment(coreimage_scale):
                     scene_align_factor = float(raw_factor)
                     scene_scale = float(scene_scale) / scene_align_factor
+                reference_alignment_valid = True
+                evidence_reference_mode = effective_highlight_mode
+                evidence_reference_scale = reference_scale
+                noise_decode.update(
+                    alignment_reference_highlight_mode=effective_highlight_mode,
+                    evidence_reference_highlight_mode=evidence_reference_mode,
+                    evidence_reference_status="unavailable",
+                )
+                if (effective_highlight_mode == "reconstruct"
+                        and str(getattr(reference_recipe, "loss_support", "")).startswith(
+                            "global-conservative")):
+                    # Reconstruction's spatial support is not certified after
+                    # a front-end loss. Keep its median for the existing scalar
+                    # decoder alignment, but never credit reconstructed pixels
+                    # as new sensor evidence. A separate corrected clip decode
+                    # can certify the original unaffected signal locally.
+                    # Establish an explicit empty reference first: failure of
+                    # this second decode must not reopen image-only HDR guesses.
+                    reliable_reference = np.empty((0, 3), dtype=np.float32)
+                    reliable_reference_pct = 0.0
+                    reliability_source = "sensor-reference"
+                    reference_scene = reference_loss = None
+                    evidence_reference_mode = "clip"
+                    noise_decode["evidence_reference_highlight_mode"] = evidence_reference_mode
+                    with rawpy.imread(str(path)) as sensor_reference_raw:
+                        reference_algorithm = resolve_demosaic_algorithm(sensor_reference_raw, "auto")
+                        reference_scene, reference_loss, reference_recipe, _ = _decode_corrected_libraw(
+                            sensor_reference_raw, path, evidence, "clip", True,
+                            reference_algorithm, allow_loss_fallback=True,
+                        )
+                    evidence_reference_scale = libraw_scene_scale(
+                        65535.0, "clip", camera_wb,
+                        baseline_exposure=effective_baseline_exposure,
+                    )
+                    scene_processing_loss_pct = (float(np.mean(np.max(reference_loss, axis=2) > 0) * 100)
+                                                 if reference_loss is not None else 0.0)
+                noise_decode.update(
+                    alignment_reference_highlight_mode=effective_highlight_mode,
+                    evidence_reference_highlight_mode=evidence_reference_mode,
+                    evidence_reference_demosaic_algorithm=getattr(reference_recipe, "demosaic_algorithm", None),
+                    evidence_reference_loss_support=getattr(reference_recipe, "loss_support", None),
+                )
+                from .scene_reference import reliable_reference_samples
+                reliable_reference, reliable_reference_pct = reliable_reference_samples(
+                    evidence, reference_scene, evidence_reference_scale, reference_loss, reference_recipe,
+                )
                 # Even unity mode needs a common exposure unit for the reference.
                 # This scalar does not imply spatial correspondence or identical color.
                 reliable_reference *= np.float32(scene_align_factor / raw_factor)
                 reliability_source = "sensor-reference"
+                noise_decode["evidence_reference_status"] = "measured" if len(reliable_reference) else "measured-empty"
             except Exception as exc:  # noqa: BLE001 - a render must not fail over a metric
                 error = f"{type(exc).__name__}: {exc}"
                 scene_reference_error = error
-                if coreimage_uses_file_alignment(coreimage_scale):
+                if coreimage_uses_file_alignment(coreimage_scale) and not reference_alignment_valid:
                     scene_align_error = error
                 if needs_correction_evidence and scene_processing_loss_pct is None:
                     scene_correction_note = f"DNG 校正损失参考不可用；HDR 使用有上限的解码图像估计: {error}"

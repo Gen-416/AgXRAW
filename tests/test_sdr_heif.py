@@ -113,7 +113,7 @@ class HeifSearchTests(unittest.TestCase):
 
 class SdrHeifFinalReadbackTests(unittest.TestCase):
     @contextmanager
-    def codec_fixture(self, out, *, final_value=101, rgb=None):
+    def codec_fixture(self, out, *, final_value=101, rgb=None, bit_depth=10):
         """Stub only container I/O; use the real pixel metrics and delivery gates."""
         if rgb is None:
             rgb = np.full((8, 8, 3), 100, np.uint8)
@@ -127,7 +127,7 @@ class SdrHeifFinalReadbackTests(unittest.TestCase):
 
         def inspect(candidate):
             chroma = candidate.read_bytes().split(b"|")[0].split(b":")[1].decode()
-            return {"width": rgb.shape[1], "height": rgb.shape[0], "bit_depth": 10, "headroom": 1.,
+            return {"width": rgb.shape[1], "height": rgb.shape[0], "bit_depth": bit_depth, "headroom": 1.,
                     "has_iso_gainmap": False, "chroma_subsampling": ":".join(chroma)}
 
         def carry(source, candidate, container):
@@ -140,14 +140,18 @@ class SdrHeifFinalReadbackTests(unittest.TestCase):
             reads.append(after_metadata)
             # Neither candidate validation nor final validation may commit early.
             self.assertEqual(out.read_bytes(), b"previous")
-            decoded = np.full_like(rgb, final_value if after_metadata else 100)
+            if bit_depth == 10:
+                decoded = np.full(rgb.shape, (final_value if after_metadata else 100) / 255., np.float32)
+            else:
+                decoded = np.full_like(rgb, final_value if after_metadata else 100)
             buffers.append(weakref.ref(decoded))
             return decoded
 
         with ExitStack() as stack:
             stack.enter_context(patch("dngscan.heif_encoder.encode", side_effect=encode))
             stack.enter_context(patch("dngscan.gainmap.inspect_gainmap_file", side_effect=inspect))
-            stack.enter_context(patch("dngscan.gainmap.read_primary_rgb_u8", side_effect=read))
+            stack.enter_context(patch("dngscan.gainmap.read_primary_rgb_float" if bit_depth == 10
+                                     else "dngscan.gainmap.read_primary_rgb_u8", side_effect=read))
             stack.enter_context(patch("dngscan.color.output_icc_profile_bytes", return_value=icc))
             stack.enter_context(patch("dngscan.heif_gainmap._parse", return_value=(
                 None, None, 1, None, None, [(b"colr", b"prof" + icc)],
@@ -166,7 +170,8 @@ class SdrHeifFinalReadbackTests(unittest.TestCase):
                 info = save_sdr_heif(rgb, out, profile, source_raw=Path(td) / "source.dng",
                                      return_rgb=True)
             self.assertEqual(reads, [False, True])
-            self.assertIs(info["_decoded_rgb"], buffers[-1]())
+            self.assertIsNone(buffers[-1]())
+            self.assertEqual(info["_decoded_rgb"].dtype, np.uint8)
             np.testing.assert_array_equal(info["_decoded_rgb"], np.full_like(rgb, 101))
             self.assertTrue(info["exif_carried"])
             self.assertTrue(out.read_bytes().endswith(b"|metadata"))
@@ -186,7 +191,8 @@ class SdrHeifFinalReadbackTests(unittest.TestCase):
                                      return_rgb=True)
             self.assertGreater(len(info["auto_attempts"]), 1)
             self.assertEqual(reads, [False] * len(info["auto_attempts"]) + [True])
-            self.assertIs(info["_decoded_rgb"], buffers[-1]())
+            self.assertIsNone(buffers[-1]())
+            self.assertEqual(info["_decoded_rgb"].dtype, np.uint8)
             np.testing.assert_array_equal(info["_decoded_rgb"], np.full_like(rgb, 101))
             self.assertTrue(all(ref() is None for ref in buffers[:-1]))
             json.dumps(info["auto_attempts"])
@@ -240,8 +246,10 @@ class SdrHeifLiveTests(unittest.TestCase):
             for gamut, depth, chroma in (("srgb", 8, "420"), ("p3", 10, "422"), ("srgb", 10, "444")):
                 profile = replace(resolve_delivery_profile("share", quality=95, chroma=chroma, container="heic"),
                                   heif_encoder="x265", heif_bit_depth=depth)
-                from dngscan.gainmap import read_primary_rgb_u8
-                with patch("dngscan.gainmap.read_primary_rgb_u8", wraps=read_primary_rgb_u8) as read:
+                from dngscan.gainmap import read_primary_rgb_u8, read_primary_rgb_float
+                reader = read_primary_rgb_float if depth == 10 else read_primary_rgb_u8
+                with patch("dngscan.gainmap.read_primary_rgb_float" if depth == 10 else
+                           "dngscan.gainmap.read_primary_rgb_u8", wraps=reader) as read:
                     result = save_sdr_heif(rgb, Path(td) / f"{gamut}-{depth}-{chroma}.heic", profile,
                                            gamut, return_rgb=True)
                 self.assertEqual(read.call_count, 2)

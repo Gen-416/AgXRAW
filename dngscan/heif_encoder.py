@@ -83,23 +83,53 @@ def _u8_to_u10_lut():
     return np.frombuffer(quantized.tobytes(), dtype='<u2')
 
 
-def _quantized_band(rgb, bit_depth):
+def _validate_rgb(rgb):
+    """Accept encoded RGB codes or normalized floating RGB, never other integers."""
+    rgb = np.asarray(rgb)
+    if rgb.ndim != 3 or rgb.shape[2] != 3 or not rgb.size:
+        raise ValueError('HEIF requires nonempty HxWx3 RGB')
+    if rgb.dtype == np.uint8:
+        return rgb
+    if not np.issubdtype(rgb.dtype, np.floating):
+        raise ValueError('HEIF requires uint8 codes or normalized floating RGB')
+    for y in range(0, rgb.shape[0], 128):
+        band = rgb[y:y+128]
+        if not np.isfinite(band).all() or np.any(band < 0) or np.any(band > 1):
+            raise ValueError('HEIF floating RGB must be finite and within [0,1]')
+    return rgb
+
+
+def _quantized_band(rgb, bit_depth, *, rng=None):
     if rgb.dtype == np.uint8:
         if bit_depth == 8:
             return np.ascontiguousarray(rgb)
         return _u8_to_u10_lut()[rgb]
     band = rgb.astype(np.float32)
-    return np.rint(np.clip(band, 0, 1) * ((1 << bit_depth) - 1)).astype(
-        np.uint8 if bit_depth == 8 else '<u2')
+    if rng is not None:
+        if bit_depth != 10:
+            raise ValueError('TPDF HEIF quantization requires 10-bit floating RGB')
+        # A new seed-0 generator is shared by the 128-row bands of one encode,
+        # and reset for every candidate. Keep the two draws and additions in
+        # this order; reassociation changes codes at the rounding boundary.
+        quantized = np.clip(band, 0, 1) * np.float32(1023.)
+        quantized = quantized + np.float32(.5)
+        quantized = quantized + rng.random(band.shape, dtype=np.float32)
+        quantized = quantized - rng.random(band.shape, dtype=np.float32)
+        return np.clip(np.floor(quantized), 0, 1023).astype('<u2')
+    return np.ascontiguousarray(np.rint(np.clip(band, 0, 1) * ((1 << bit_depth) - 1)).astype(
+        np.uint8 if bit_depth == 8 else '<u2'))
 
 
 def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
            bit_depth: int = 10, preset: str = 'slow', tune: str = 'ssim',
-           output_gamut: str = 'p3', auxiliary: bool = False) -> dict:
+           output_gamut: str = 'p3', auxiliary: bool = False,
+           dither_quantization: bool = False) -> dict:
     """Encode finished nonlinear RGB, uint8 or float [0,1], as HEVC.
 
     Float input preserves master precision; increasing bit depth on uint8 input
     only improves the coding/conversion step, never recovers discarded detail.
+    SDR float callers may request deterministic TPDF in the final 10-bit code
+    domain. Existing uint8, auxiliary and HDR callers keep their quantization.
     """
     from .color import output_icc_profile_bytes
     if not 1 <= quality <= 100 or chroma not in ('420','422','444'):
@@ -108,10 +138,10 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
         raise ValueError('invalid HEIF bit depth/preset')
     if tune not in ('ssim','psnr','grain') or output_gamut not in ('srgb','p3'):
         raise ValueError('invalid HEIF tune/gamut')
-    rgb = np.asarray(rgb)
-    if (rgb.ndim != 3 or rgb.shape[2] != 3
-            or (rgb.dtype != np.uint8 and not np.isfinite(rgb).all())):
-        raise ValueError('HEIF requires finite HxWx3 RGB')
+    rgb = _validate_rgb(rgb)
+    if dither_quantization and (bit_depth != 10 or rgb.dtype == np.uint8 or auxiliary):
+        raise ValueError('TPDF HEIF quantization requires 10-bit SDR floating RGB')
+    rng = np.random.default_rng(0) if dither_quantization else None
     lib = _library()
     def check(error):
         if error.code:
@@ -139,7 +169,7 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
         if not ptr or stride.value < w*3*(1 if bit_depth==8 else 2):
             raise RuntimeError('invalid libheif interleaved plane')
         for y in range(0,h,128):
-            band = _quantized_band(rgb[y:y+128], bit_depth)
+            band = _quantized_band(rgb[y:y+128], bit_depth, rng=rng)
             for i,row in enumerate(band):
                 C.memmove(ptr+(y+i)*stride.value,row.ctypes.data,row.nbytes)
         # Gain-map RGB is numerical data, not display RGB. Preserve the
@@ -156,6 +186,7 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
         check(lib.heif_context_encode_image(ctx,img,enc,None,C.byref(handle)))
         check(lib.heif_context_write_to_file(ctx,str(path).encode()))
         return {'encoder':name,'bit_depth':bit_depth,'preset':preset,'tune':tune,
+                'quantization_dither': 'TPDF-10bit-seed0' if dither_quantization else 'none',
                 'delivery_quality':quality,'delivery_chroma_requested':chroma,
                 'delivery_container':'heic'}
     finally:

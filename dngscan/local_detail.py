@@ -53,7 +53,7 @@ def _tile_loss(score, tile_size=8):
     return float(np.max(np.mean(top, axis=1, dtype=np.float32)))
 
 
-def _measure_detail(decoded, intended, *, linear_hdr):
+def _measure_detail(decoded, intended, *, linear_hdr, sdr_code_scale=1.):
     height, width = intended.shape[:2]
     weights = _HDR_LUMA if linear_hdr else _SDR_LUMA
     worst = 0.0
@@ -63,6 +63,11 @@ def _measure_detail(decoded, intended, *, linear_hdr):
         stop = min(height, row + rows + _DETAIL_SCALES[-1])
         a = decoded[row:stop, :, :3].astype(np.float32)
         e = intended[row:stop, :, :3].astype(np.float32)
+        if sdr_code_scale != 1.:
+            # Normalized nonlinear SDR remains floating point. This only
+            # expresses the established eight-code floor in the same units.
+            a *= sdr_code_scale
+            e *= sdr_code_scale
         if not (np.isfinite(a).all() and np.isfinite(e).all()):
             return float('inf')
         a = ((a[..., 0] * weights[0] + a[..., 1] * weights[1]) + a[..., 2] * weights[2])[..., None]
@@ -155,6 +160,46 @@ def local_detail_loss(decoded, intended, *, linear_hdr=False):
         except Exception as exc:
             _fast.handle_kernel_error('local_detail_loss', exc)
     return _local_detail_loss_numpy(decoded, intended, linear_hdr=linear_hdr)
+
+
+def _valid_sdr_float_inputs(decoded, intended):
+    """Normalized nonlinear master and finite decoded SDR; never forcecast.
+
+    Decoded YCbCr reconstruction may overshoot the normalized master domain.
+    Keep those errors measurable rather than clipping them away. Alpha is
+    ignored, matching the existing detail contract.
+    """
+    if not (isinstance(decoded, np.ndarray) and isinstance(intended, np.ndarray)):
+        return False
+    if (decoded.shape != intended.shape or decoded.ndim != 3
+            or decoded.shape[2] not in (3, 4) or not decoded.size):
+        return False
+    allowed = (np.dtype(np.float16), np.dtype(np.float32), np.dtype(np.float64))
+    if not all(a.dtype in allowed and a.dtype.isnative and a.flags.aligned
+               for a in (decoded, intended)):
+        return False
+    for row in range(0, decoded.shape[0], 128):
+        a, e = decoded[row:row + 128, :, :3], intended[row:row + 128, :, :3]
+        if not (np.isfinite(a).all() and np.isfinite(e).all()
+                and np.all(e >= 0.) and np.all(e <= 1.)):
+            return False
+    return True
+
+
+def local_detail_loss_sdr_float(decoded, intended):
+    """Detail backstop for nonlinear SDR floats in normalized RGB units.
+
+    The independent NumPy path measures fractional codes directly; it never
+    enters the uint8 native kernel or quantizes the input. Multiplication by
+    255 preserves the existing eight-code activity floor and delivery budget.
+    """
+    if not _valid_sdr_float_inputs(decoded, intended):
+        return float('inf')
+    try:
+        with np.errstate(over='raise', invalid='raise', divide='raise'):
+            return _measure_detail(decoded, intended, linear_hdr=False, sdr_code_scale=255.)
+    except FloatingPointError:
+        return float('inf')
 
 
 def detail_is_acceptable(metrics, key, limit=LOCAL_DETAIL_LOSS_LIMIT):
