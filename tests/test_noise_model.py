@@ -242,6 +242,127 @@ class ImportedNoisePipelineTests(unittest.TestCase):
         self.assertEqual(analysis.noise_model.reason, "read-noise-unavailable")
         self.assertEqual(compile_tail_snr_gate(analysis), 1.)
 
+    def test_file_fallback_preserves_independent_spectrum_when_read_noise_is_missing(self):
+        from dngscan.gui.preview_cache import _analysis_from_json, _analysis_to_json
+        from dngscan.noise_propagation import calibrated_chroma_variance
+        for unresolved in (False, True):
+            for ratio, correlation, gate in ((.1, "measured-spectral-imbalance", 0.),
+                                              (0., "measured-spectral-imbalance", 0.),
+                                              (3., "measured-spectral-imbalance", 0.),
+                                              (1., "measured-spectrum-summary", 1.)):
+                with self.subTest(unresolved=unresolved, ratio=ratio):
+                    profile = unresolved_collect_profile() if unresolved else collect_profile()
+                    if not unresolved:
+                        profile["read_noise_log2iso_log2e"] = []
+                    profile["noise_whiteness_h_log2iso"] = [[math.log2(200), ratio]]
+                    profile["noise_whiteness_v_log2iso"] = [[math.log2(200), 1.25]]
+                    self.install(profile)
+                    bundle = self.bundle()
+                    bundle.shot_iso = 200
+                    with patch("dngscan.spatial_black.sensor_tags", return_value={
+                            262: [32803], 51041: [1e-4, 1e-8]}):
+                        analysis, _, _ = analyze(bundle, 4)
+                    model = analysis.noise_model
+                    self.assertEqual(model.status, "valid")
+                    self.assertEqual(model.source, "DNG NoiseProfile")
+                    self.assertEqual(model.coefficients("G1"), (1e-4, 1e-8))
+                    self.assertEqual(model.spectral_ratios, {"h": ratio, "v": 1.25})
+                    self.assertEqual(model.correlation, correlation)
+                    self.assertIn("User JPTC calibration", model.fallback_source)
+                    self.assertEqual(model.fallback_reason, "read-noise-unresolved" if unresolved
+                                     else "read-noise-unavailable")
+                    self.assertEqual(compile_tail_snr_gate(analysis), gate)
+                    variance, reason = calibrated_chroma_variance(
+                        bundle, model, np.full((64, 64, 3), .2))
+                    if gate == 0:
+                        self.assertIsNone(variance)
+                        self.assertIn("correlated-noise", reason)
+                    else:
+                        self.assertIsNotNone(variance)
+                    restored = _analysis_from_json(json.loads(json.dumps(_analysis_to_json(analysis))))
+                    self.assertEqual(restored.noise_model, model)
+
+    def test_missing_variance_without_replacement_keeps_negative_spectral_evidence(self):
+        profile = collect_profile()
+        profile["read_noise_log2iso_log2e"] = []
+        profile["noise_whiteness_h_log2iso"] = [[math.log2(100), .1]]
+        self.install(profile)
+        for tags in ({262: [32803]}, {262: [2], 51041: [1e-4, 1e-8]}):
+            with self.subTest(tags=tags), patch("dngscan.spatial_black.sensor_tags", return_value=tags):
+                analysis, _, _ = analyze(self.bundle(), 4)
+            self.assertEqual(analysis.noise_model.status, "unavailable")
+            self.assertEqual(analysis.noise_model.spectral_ratios, {"h": .1})
+            self.assertEqual(compile_tail_snr_gate(analysis), 0.)
+
+    def test_incompatible_file_dn_scale_cannot_donate_spectrum(self):
+        for read_state in ("measured", "unresolved", "missing"):
+            with self.subTest(read_state=read_state):
+                profile = unresolved_collect_profile() if read_state == "unresolved" else collect_profile()
+                if read_state == "missing":
+                    profile["read_noise_log2iso_log2e"] = []
+                profile["noise_whiteness_h_log2iso"] = [[math.log2(200), .1]]
+                self.install(profile)
+                bundle = self.bundle()
+                bundle.shot_iso = 200
+                bundle.white_level = 12000
+                bundle.camera_white_levels = [12000.] * 4
+                with patch("dngscan.spatial_black.sensor_tags", return_value={
+                        262: [32803], 51041: [1e-4, 1e-8]}):
+                    analysis, _, _ = analyze(bundle, 4)
+                self.assertEqual(analysis.noise_model.source, "DNG NoiseProfile")
+                self.assertEqual(analysis.noise_model.status, "valid")
+                self.assertEqual(analysis.noise_model.spectral_ratios, {})
+                self.assertEqual(analysis.noise_model.correlation, "unknown")
+
+    def test_inapplicable_user_measurement_cannot_donate_spectrum(self):
+        profile = unresolved_collect_profile()
+        profile["noise_whiteness_h_log2iso"] = [[math.log2(200), .1]]
+        self.install(profile)
+        for changes in ({"shot_make": "unmeasured"}, {"shot_model": "unmeasured"},
+                        {"shot_shutter": "mechanical"}, {"shot_shutter": None},
+                        {"shot_iso": 900}, {"shot_iso": 600}):
+            with self.subTest(changes=changes):
+                bundle = self.bundle()
+                bundle.shot_iso = 200
+                for key, value in changes.items():
+                    setattr(bundle, key, value)
+                with patch("dngscan.spatial_black.sensor_tags", return_value={
+                        262: [32803], 51041: [1e-4, 1e-8]}):
+                    analysis, _, _ = analyze(bundle, 4)
+                self.assertEqual(analysis.noise_model.spectral_ratios, {})
+                self.assertEqual(analysis.noise_model.correlation, "unknown")
+
+    def test_nonfinite_file_scale_does_not_promote_spectrum_or_crash_fallback(self):
+        profile = unresolved_collect_profile()
+        profile["noise_whiteness_h_log2iso"] = [[math.log2(200), .1]]
+        self.install(profile)
+        for black in (float("nan"), float("inf"), 16383., 17000.):
+            with self.subTest(black=black):
+                bundle = self.bundle()
+                bundle.shot_iso = 200
+                bundle.black_levels = [black] * 4
+                with patch("dngscan.spatial_black.sensor_tags", return_value={
+                        262: [32803], 51041: [1e-4, 1e-8]}):
+                    model = resolve_noise_model(bundle, {i: 16383 for i in range(4)})
+                self.assertEqual(model.status, "valid")
+                self.assertEqual(model.source, "DNG NoiseProfile")
+                self.assertEqual(model.spectral_ratios, {})
+
+    def test_raw_processing_declaration_still_overrides_spectral_fallback(self):
+        profile = unresolved_collect_profile()
+        profile["noise_whiteness_h_log2iso"] = [[math.log2(200), .1]]
+        self.install(profile)
+        for reduction in (.5, "invalid"):
+            with self.subTest(reduction=reduction):
+                bundle = self.bundle()
+                bundle.shot_iso = 200
+                with patch("dngscan.spatial_black.sensor_tags", return_value={
+                        262: [32803], 51041: [1e-4, 1e-8], 50935: [reduction]}):
+                    analysis, _, _ = analyze(bundle, 4)
+                self.assertEqual(analysis.noise_model.status, "rejected")
+                self.assertEqual(analysis.noise_model.source, "DNG NoiseReductionApplied")
+                self.assertEqual(compile_tail_snr_gate(analysis), 0.)
+
     def test_measured_nonwhite_noise_restricts_processing_without_revoking_gain(self):
         from dngscan.noise_propagation import calibrated_chroma_variance
         profile = collect_profile()

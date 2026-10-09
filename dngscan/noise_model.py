@@ -42,43 +42,32 @@ def _labels(bundle, ids):
     return channel_labels(bundle.color_desc, ids)
 
 
-def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
+def _prior_signal_scales(bundle, fullwell, prior, iso):
+    """Validate the file's DN/readout scale independently of read-noise fit."""
     from . import priors
 
-    if prior is None:
-        return NoiseModel()
-    usable, reason = priors.prior_usability(prior)
-    source = str(prior.get("source") or prior.get("id") or "sensor-prior")
-    if not usable:
-        return NoiseModel(status="rejected", source=source, reason=reason)
-    iso = getattr(bundle, "shot_iso", None)
-    if not iso or iso <= 0:
-        return NoiseModel(source=source, reason="iso-unavailable")
-    if prior.get("suspect_iso_min") and iso >= prior["suspect_iso_min"]:
-        return NoiseModel(status="rejected", source=source, reason="suspect-iso")
-    from .calibration import read_noise_issue
-    issue = read_noise_issue(prior, iso)
-    if issue:
-        return NoiseModel(status="unresolved", source=source, reason=issue)
-    read = priors.read_noise_e(prior, iso)
-    if read is None or not math.isfinite(read) or read < 0:
-        return NoiseModel(source=source, reason="read-noise-unavailable")
     ids = sorted(fullwell)
     labels = _labels(bundle, ids)
-    coefficients = {}
+    scales = {}
     for cid in ids:
         black = float(bundle.black_levels[cid]) if cid < len(bundle.black_levels) else 0.0
         white = (bundle.camera_white_levels[cid]
                  if cid < len(bundle.camera_white_levels) and bundle.camera_white_levels[cid] > 0
                  else bundle.white_level)
         span = float(white) - black
+        if not math.isfinite(span) or span <= 0:
+            return None
         gain = priors.gain_for_file(prior, iso, span)
-        if gain is None or not math.isfinite(gain) or gain <= 0 or span <= 0:
-            return NoiseModel(status="rejected", source=source, reason="unmatched-dn-scale")
-        coefficients[labels[cid]] = (1.0 / (gain * span), (read / (gain * span)) ** 2)
-    if not coefficients:
-        return NoiseModel(source=source, reason="raw-channels-unavailable")
+        if gain is None or not math.isfinite(gain) or gain <= 0:
+            return None
+        scales[labels[cid]] = gain * span
+    return scales
+
+
+def _prior_spectrum(prior, iso):
+    """Independent measured constraints; read-noise resolution is irrelevant."""
     from .calibration import curve_value
+
     spectral_ratios = {}
     for axis in ("h", "v"):
         key = f"noise_whiteness_{axis}_log2iso"
@@ -98,11 +87,44 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
     correlation = ("measured-spectral-imbalance"
                    if any(r < .5 or r > 2 for r in spectral_ratios.values())
                    else "measured-spectrum-summary" if spectral_ratios else "unknown")
-    return NoiseModel(
-        status="valid", source=source, reason="matched-shot-read-model",
-        channel_variance=coefficients,
+    return correlation, spectral_ratios
+
+
+def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
+    from . import priors
+
+    if prior is None:
+        return NoiseModel()
+    usable, reason = priors.prior_usability(prior)
+    source = str(prior.get("source") or prior.get("id") or "sensor-prior")
+    if not usable:
+        return NoiseModel(status="rejected", source=source, reason=reason)
+    iso = getattr(bundle, "shot_iso", None)
+    if not iso or iso <= 0:
+        return NoiseModel(source=source, reason="iso-unavailable")
+    if prior.get("suspect_iso_min") and iso >= prior["suspect_iso_min"]:
+        return NoiseModel(status="rejected", source=source, reason="suspect-iso")
+    # A failed read-noise fit does not invalidate a separate spectrum
+    # measurement. Its camera/mode/ISO and DN-scale checks still apply.
+    scales = _prior_signal_scales(bundle, fullwell, prior, iso)
+    correlation, spectral_ratios = _prior_spectrum(prior, iso) if scales else ("unknown", {})
+    model = NoiseModel(source=source, correlation=correlation, spectral_ratios=spectral_ratios)
+    from .calibration import read_noise_issue
+    issue = read_noise_issue(prior, iso)
+    if issue:
+        return replace(model, status="unresolved", reason=issue)
+    read = priors.read_noise_e(prior, iso)
+    if read is None or not math.isfinite(read) or read < 0:
+        return replace(model, reason="read-noise-unavailable")
+    if scales is None:
+        return replace(model, status="rejected", reason="unmatched-dn-scale")
+    if not scales:
+        return replace(model, reason="raw-channels-unavailable")
+    return replace(
+        model, status="valid", reason="matched-shot-read-model",
+        channel_variance={label: (1.0 / scale, (read / scale) ** 2)
+                          for label, scale in scales.items()},
         approximation="shared-gain-read-noise-across-colour-planes",
-        correlation=correlation, spectral_ratios=spectral_ratios,
     )
 
 
@@ -192,10 +214,21 @@ def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> Noise
         return file_model
     if model.status == "valid":
         return replace(model, noise_reduction_status=file_model.noise_reduction_status)
+    # File coefficients replace missing variance evidence, not independent
+    # spectral constraints from the applicable external calibration.
+    if file_model.status == "valid" and model.status in ("unresolved", "unavailable"):
+        if model.status == "unresolved" or model.spectral_ratios:
+            return replace(file_model,
+                           reason=("file-declared-model-after-unresolved-prior"
+                                   if model.status == "unresolved" else file_model.reason),
+                           fallback_source=model.source, fallback_reason=model.reason,
+                           correlation=model.correlation,
+                           spectral_ratios=dict(model.spectral_ratios))
+    if model.spectral_ratios and file_model.status == "unavailable":
+        # An unusable file profile cannot erase independent negative evidence
+        # either (for example, a profile attached to an enhanced RGB IFD).
+        return replace(model, noise_reduction_status=file_model.noise_reduction_status)
     if model.status == "unresolved":
-        if file_model.status == "valid":
-            return replace(file_model, reason="file-declared-model-after-unresolved-prior",
-                           fallback_source=model.source, fallback_reason=model.reason)
         if file_model.status == "unavailable":
             return replace(model, noise_reduction_status=file_model.noise_reduction_status)
         return replace(file_model, fallback_source=model.source, fallback_reason=model.reason)

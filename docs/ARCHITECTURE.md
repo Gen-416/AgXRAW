@@ -367,10 +367,13 @@ unsampled intervals. Both imported and packaged Collect priors retain
 or interpolate or extrapolate across them. Independently valid gain remains available,
 with `gain-only` calibration diagnostics. Without an independent replacement, the noise
 model is `unresolved`, HDR tail-SNR confidence is zero, and chroma NR skips the stage;
-ordinary missing calibration retains its distinct neutral HDR factor. A valid RAW-IFD
-DNG `NoiseProfile` may provide a replacement, but reports and caches retain the original
-calibration source and unresolved reason. Scene texture never supplies a replacement
-noise denominator.
+ordinary missing calibration without independent negative evidence retains its neutral
+HDR factor. A valid RAW-IFD DNG `NoiseProfile` may provide a replacement, but reports and caches retain the original
+calibration source and unresolved reason. Applicable independent spectral measurements
+survive unresolved or missing read noise and DNG coefficient fallback: a valid variance
+model with measured spectral imbalance still disables current chroma NR and sets the
+HDR noise factor to zero. Spectrum applicability retains the camera, readout, ISO and
+DN-scale checks. Scene texture never supplies a replacement noise denominator.
 
 TIFF rational parsing preserves zero denominators explicitly. For
 `NoiseReductionApplied`, `0/1` means no declared NR, `0/0` means unknown, and a nonzero
@@ -524,8 +527,9 @@ reference and zero HDR headroom. Known sensor clipping of at least 95% also
 vetoes the decoded-image estimate; unavailable sensor statistics stay unknown.
 
 Cached Analysis reuse replays the measured-full-well mask refresh on the fresh
-bundle, preserving processing loss. Preview cache version 22 invalidates the
-previous correction, calibration validity and sensor-sampling policies.
+bundle, preserving processing loss. Preview cache version 23 invalidates the
+previous correction, calibration validity and sensor-sampling policies, plus
+DNG variance fallbacks that discarded independent spectral constraints.
 LibRaw already handles DNG linearization tables and LinearResponseLimit.
 Spatial BlackLevelRepeatDim and BlackLevelDeltaH/V are evaluated per position
 on a separate working buffer; explicit LibRaw black overrides prevent a second

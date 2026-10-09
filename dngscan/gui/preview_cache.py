@@ -47,7 +47,8 @@ from .scheduler import shared_flight_wait
 # disk analysis to the decoder realization; pre-v20 partial checks are stale.
 # v22: extended highlight lens domain, calibration validity and native sensor
 # window sampling. Both decoded proxy pixels and analysis qualification changed.
-PREVIEW_CACHE_VERSION = 22
+# v23: retain applicable independent spectra when DNG supplies fallback variance.
+PREVIEW_CACHE_VERSION = 23
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
