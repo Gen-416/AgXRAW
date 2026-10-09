@@ -230,6 +230,14 @@ def _form_hdr_chunk(
     )
 
 
+def _qualified_hdr_plan(bundle: RawBundle, hdr_plan: HdrAgxPlan) -> HdrAgxPlan:
+    """Apply decoder qualification even to an explicitly supplied fixed plan."""
+    if (getattr(bundle, "scene_loss_support_untrusted", False)
+            and hdr_plan.color.channel_separation != 0.0):
+        return replace(hdr_plan, color=replace(hdr_plan.color, channel_separation=0.0))
+    return hdr_plan
+
+
 def scene_render_to_hdr_display_linear(
     bundle: RawBundle,
     plan: ToneCompressionPlan | RenderPlan,
@@ -244,6 +252,7 @@ def scene_render_to_hdr_display_linear(
     Display looks and filters are refused by the exporter rather than ignored: they are SDR
     operators that have not been given an independent HDR meaning.
     """
+    hdr_plan = _qualified_hdr_plan(bundle, hdr_plan)
     source_tone = plan.tone if isinstance(plan, RenderPlan) else plan
     if str(getattr(source_tone, "tone_core", "agx")) != "agx":
         raise RuntimeError("HDR AgX 仅支持 tone_core=agx；不能把其他 SDR tone core 标成 HDR AgX")
@@ -370,6 +379,7 @@ def render_ultrahdr_agx_pair(
     """
     if str(getattr(plan.tone, "tone_core", "agx")) != "agx":
         raise RuntimeError("Ultrahdr AgX pair 仅支持 tone_core=agx")
+    hdr_plan = _qualified_hdr_plan(bundle, hdr_plan)
     effective_plan = plan_with_look_overrides(plan, "none", 1.0)
     effective_tone = effective_plan.tone if isinstance(effective_plan, RenderPlan) else effective_plan
     color_plan = effective_plan.color if isinstance(effective_plan, RenderPlan) else None

@@ -309,3 +309,47 @@ Pt0 保码值、Pt1 丢低位；声明的 tile/strip 字节边界之外不能借
 耗时 260.184 秒，包含本机实际 Core Image/ImageIO 与 Rust 核。读出相关 NumPy 回归
 255 项中 252 通过、3 项 native-only 跳过；对应 native 255 项全部通过。各组有重叠，
 不能相加成独立测试总数。系统渐变验收覆盖 Apple-only 与 x265 的手动、自动 HDR HEIF。
+
+## 15. 解码资格与局部损失分离、奇数 CFA 边界（基准 c9adb84）
+
+附件对 `f10e664` 的两个反例在后续 `c9adb84` 仍能复现。未经认证的 DHT 或空间高光
+重建支撑，原先被表示为整帧 RGB 剪切，进而错误触发局部退色。本轮增加独立
+`scene_loss_support_untrusted`：局部掩码只保留实际定位的源/解码损失；全局标记撤销
+可靠尾部资格、跳过当前色度噪声传播、关闭 gated 的非 RAW 颜色许可，不伪造三通道饱和。
+物理噪声系数、原始饱和统计和已有局部 RAW 颜色许可仍各自保留。
+
+自动 HDR 规划没有可信尾部时不分配额外 headroom；两个直接 HDR 渲染入口即使收到
+外部固定计划，也会将未认证帧的通道分离设为零。独立 LibRaw 参考明确返回“已测但为空”，
+不会因缺少空间掩码恢复资格。新标记贯穿延迟掩码、WB 重分析、Prepared 样本、AutoEV、
+proxy 与磁盘缓存，缓存版本升至 27。报告将已知局部损失覆盖率与全局资格分开表达。
+
+两组 128×128 实际 LibRaw DNG 使用相同固定计划：DHT/WB 与非中性 WB 的 GainMap/
+reconstruct 各有 16,375 个解码值不变的像素，误变色数均从 16,375 降为 0，可靠样本
+仍为 0。浮点 SDR、8-bit SDR、配对 SDR/HDR 均有最终形成回归；固定非零 rho 另有
+实际开放对照，排除本来就没有 HDR 色差的无效验收。
+
+传感器剪切聚合、空间黑电平剪切与 headroom/SNR 指导现在保留残缺 CFA 周期中的实际
+感光点。部分单元按真实传感器范围注册后再 warp/crop/orient，不能将 ceil 网格均匀
+拉伸而把已舍弃的残行重新带入裁剪窗口。真正的解码后 2×2 box 缩小仍按其实际 floor
+行为舍弃残边，偶数完整周期的算术保持逐位一致。缺失的颜色样本不会填成三通道剪切。
+
+125×127 DNG 的最后绿色感光点仍产生原有全/半尺寸 scene 差值，但对应 soft mask 现在
+分别为约 0.430 / 0.258，可靠性均为 false；G headroom 为 0，clip class 仅为 G。
+测试另覆盖最后一列、空间黑电平、四种 Bayer、DefaultScale、非恒等 warp、旋转及实际
+DefaultCrop 排除残边。实现不声称这些粗网格掩码等于精确解拜耳协方差。
+
+fp 日光样张在与基准完全相同的 NumPy CLI 下导出原尺寸 JPEG 97/420，像素和整文件
+SHA256 相同；全尺寸 HDR HEIF archive 通过生产回读门禁，实际主图为 10-bit/444，
+ISO gain map 和 headroom 声明存在。生成图片仅用于临时验收，原文件未修改。
+数值及最终测试记录见[本轮验收数据](../assets/delivery-quality/decoder-qualification-20261009.json)。
+
+回归入口：[资格合同](../../tests/test_loss_support_contract.py)、
+[实际 SDR/HDR 形成](../../tests/test_loss_support_render.py)、
+[缓存及公开入口](../../tests/test_loss_qualification_handoff.py)、
+[奇数传感器几何](../../tests/test_odd_raw_clip_masks.py)。DHT/空间高光重建的完整局部
+损失支撑仍未认证，当前全局撤权继续保留；个人机身实测校正仍按用户要求暂缓。
+
+最终冻结代码以 `DNGSCAN_FAST=1` 运行完整 1690 项：1687 通过、3 跳过、0 失败，
+耗时 242.977 秒，包含本机实际 Core Image/ImageIO、10-bit HEIF 渐变和 Rust 核。
+本轮重点 `DNGSCAN_FAST=0` 回归另有 77 项全部通过（2.144 秒），包含独立 partial
+oracle 与旧问题的尺度/频谱/BE/缓存回归；这两组有重叠，不相加为独立总数。

@@ -11,6 +11,13 @@ def reliable_reference_samples(evidence, scene, scale, processing_loss, recipe):
     Returns normalized RGB and retained sample percentage. Empty is a measured
     lack of reliable evidence; callers must distinguish it from unavailable (None).
     """
+    from .decoder_loss import support_is_untrusted
+
+    if support_is_untrusted(getattr(recipe, "loss_support", None)):
+        # An unknown decoder influence range has no spatial mask. Its absence
+        # does not certify the reference: retain the explicit empty result.
+        return np.empty((0, 3), dtype=np.float32), 0.0
+
     from .sensor_summary import summarize_sensor
     from .dng_opcodes import Warp
     from .raw_io import build_clip_masks, _merge_processing_loss

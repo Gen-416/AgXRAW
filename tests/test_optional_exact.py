@@ -16,6 +16,15 @@ def old_bin(arr, ph, pw):
     return arr[:h2 * ph, :w2 * pw].reshape(h2, ph, w2, pw, arr.shape[2]).min(axis=(1, 3))
 
 
+def partial_bin_reference(arr, ph, pw):
+    """Independent padded reduction; missing boundary samples have no vote."""
+    h, w = arr.shape[:2]
+    bh, bw = (h + ph - 1) // ph, (w + pw - 1) // pw
+    padded = np.full((bh * ph, bw * pw, arr.shape[2]), np.inf, arr.dtype)
+    padded[:h, :w] = arr
+    return old_bin(padded, ph, pw)
+
+
 class BoundedGuidanceTests(unittest.TestCase):
     def test_cell_order_and_exceptional_minima(self):
         rng = np.random.default_rng(29)
@@ -28,7 +37,13 @@ class BoundedGuidanceTests(unittest.TestCase):
                     data.reshape(-1)[::17] = np.nan
                 for view in (data, data[::-1, ::-1], data.transpose(1, 0, 2)):
                     self.assertEqual(guidance._bin_period_min(view, *period).tobytes(),
-                                     old_bin(view, *period).tobytes())
+                                     partial_bin_reference(view, *period).tobytes())
+                    # Existing complete-period arithmetic stays bit-exact,
+                    # including NaNs, signed zero and non-contiguous inputs.
+                    ph, pw = period
+                    complete = view[:view.shape[0]//ph*ph, :view.shape[1]//pw*pw]
+                    self.assertEqual(guidance._bin_period_min(complete, ph, pw).tobytes(),
+                                     old_bin(complete, ph, pw).tobytes())
 
     def test_bands_preserve_fullwell_green_alias_snr_geometry_and_half_permission(self):
         rng = np.random.default_rng(30)
@@ -53,7 +68,7 @@ class BoundedGuidanceTests(unittest.TestCase):
                                                  orientation_flip=flip)
                     actual = guidance.build_raw_guidance_maps(bundle, analysis)
                     with mock.patch.object(guidance, '_binned_raw_evidence', return_value=None), \
-                         mock.patch.object(guidance, '_bin_period_min', side_effect=old_bin):
+                         mock.patch.object(guidance, '_bin_period_min', side_effect=partial_bin_reference):
                         expected = guidance.build_raw_guidance_maps(bundle, analysis)
                     for name in ('headroom', 'clip_class', 'snr_confidence', 'raw_permission'):
                         self.assertEqual(getattr(actual, name).tobytes(), getattr(expected, name).tobytes(),

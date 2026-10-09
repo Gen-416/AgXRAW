@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from ._deps import np
+from . import guidance as guidance_engine
 from . import display_filter as filter_engine
 from . import retreat as retreat_engine
 from . import scene_transform as scene_transform_engine
@@ -189,6 +190,10 @@ def render_sample_linear_output(
     effective_plan = plan_with_look_overrides(plan, look, look_strength) if plan is not None else None
     effective_tone = effective_plan.tone if isinstance(effective_plan, RenderPlan) else effective_plan
     eff_color = effective_plan.color if isinstance(effective_plan, RenderPlan) else color_plan
+    if getattr(effective_tone, "tone_core", None) == "gated":
+        sample_raw_guidance = guidance_engine.qualify_decoder_support(
+            bundle, sample_raw_guidance, (rec.shape[0],),
+        )
     mapped_rec = apply_tone_core(rec, effective_tone, eff_color, sample_masks, sample_raw_guidance)
     if display_filter != "none" and filter_strength > 0.0:
         output_linear = filter_engine.apply_display_filter_rec2020(
@@ -316,14 +321,14 @@ def max_safe_ev(
         sample_rgb = flat[::step, :3]
         sample_masks = None
     sample_raw_guidance = None
-    if tone_core == "gated" and getattr(bundle, "clip_masks", None) is not None:
-        masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
-        sample_masks = masks[::step]
-        if tone_core == "gated":
-            from .guidance import flatten_raw_guidance, raw_guidance_for_shape
+    if tone_core == "gated":
+        if getattr(bundle, "clip_masks", None) is not None:
+            masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
+            sample_masks = masks[::step]
+        from .guidance import flatten_raw_guidance, raw_guidance_for_shape
 
-            guidance = raw_guidance_for_shape(bundle, bundle.scene_rec2020_render.shape[:2], analysis)
-            sample_raw_guidance = flatten_raw_guidance(guidance, 0, flat.shape[0], step=step)
+        guidance = raw_guidance_for_shape(bundle, bundle.scene_rec2020_render.shape[:2], analysis)
+        sample_raw_guidance = flatten_raw_guidance(guidance, 0, flat.shape[0], step=step)
     baseline_stats: tuple[float, float, float, float] | None = None
     body_percentile_mask: Any | None = None
 
