@@ -187,9 +187,9 @@ class BandRule(unittest.TestCase):
         self.assertNotIn(4, atrous_levels_for(6.8))
 
 
-def _reference_three_channel_map(scene_dec, amount, levels):
-    """The pre-batch-23 cascade, three channels at once (for byte identity)."""
-    from dngscan.chroma_nr import LUMA_W, _MAD_TO_SIGMA, _THRESHOLD_K, _atrous_smooth
+def _reference_three_channel_map(scene_dec, amount, levels, noise_bands):
+    """Three-channel calibrated cascade, for the per-channel memory contract."""
+    from dngscan.chroma_nr import LUMA_W, _atrous_smooth
 
     dec = np.asarray(scene_dec, dtype=np.float32)
     y = dec @ LUMA_W
@@ -205,9 +205,13 @@ def _reference_three_channel_map(scene_dec, amount, levels):
         coarser = _atrous_smooth(smooth, level)
         if level in included:
             detail = smooth - coarser
-            mad = np.median(np.abs(detail.reshape(-1, 3)), axis=0)
-            threshold = (np.float32(float(amount) * _THRESHOLD_K * _MAD_TO_SIGMA) * mad).astype(np.float32)
-            t2 = np.square(threshold)[None, None, :]
+            noise = np.broadcast_to(np.asarray(noise_bands[level], dtype=np.float32), detail.shape)
+            local_energy = _atrous_smooth(np.square(detail), 0)
+            local_noise = _atrous_smooth(noise, 0)
+            signal = np.maximum(local_energy - local_noise, np.float32(0))
+            floor = np.maximum(noise * np.float32(1e-6), np.float32(1e-30))
+            t2 = np.minimum(noise, np.square(noise) / np.maximum(signal, floor))
+            t2 *= np.float32(float(amount) ** 2 * 9.0)
             total_removed += detail * (t2 / (t2 + np.square(detail) + np.float32(1e-30)))
         smooth = coarser
     correction = -total_removed
@@ -223,9 +227,12 @@ class PerChannelCascade(unittest.TestCase):
         dec = (rng.uniform(0.01, 0.6, (96, 128, 3)) + rng.normal(0.0, 0.02, (96, 128, 3))).astype(np.float32)
         for factor in (1.0, 4.26):
             levels = chroma_nr.atrous_levels_for(factor)
-            got = chroma_nr.chroma_correction_map(dec, 0.5, decimation_factor=factor)
-            ref = _reference_three_channel_map(dec, 0.5, levels)
+            noise_bands = {level: np.asarray([.0001, .0002, .0003], np.float32) for level in levels}
+            got = chroma_nr.chroma_correction_map(dec, 0.5, decimation_factor=factor,
+                                                 detail_variance=noise_bands)
+            ref = _reference_three_channel_map(dec, 0.5, levels, noise_bands)
             self.assertTrue(np.array_equal(got, ref), f"factor {factor}")
+            self.assertTrue(np.any(got != 0), "calibrated cascade must execute")
             self.assertLess(float(np.abs(got @ chroma_nr.LUMA_W).max()), 1e-6)
 
 

@@ -21,6 +21,7 @@ from dngscan.debug_util import maybe_print_exc
 
 from .page import render_page
 from .uploads import UploadStore
+from . import calibration_service
 
 
 # TODO(stage-2): Remove the localhost auth exception, dependency, and handler
@@ -264,6 +265,38 @@ def create_app(
     @protected.post("/reveal")
     async def reveal(request: Request) -> JSONResponse:
         return await legacy_call(request, _reveal_path)
+
+    @protected.post("/calibration/list")
+    async def calibration_list(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.list_calibrations)
+
+    @protected.post("/calibration/import")
+    async def calibration_import(request: Request) -> JSONResponse:
+        # Unlike RAW streaming uploads this is a small selected text package.
+        # Bound the body while reading it, including when Content-Length is
+        # absent, so parsing JSON cannot allocate an unbounded import payload.
+        try:
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > calibration_service.MAX_CALIBRATION_REQUEST_BYTES:
+                    raise ValueError("标定请求超过 16 MiB，请选择单个标定集")
+            params = json.loads(body or b"{}")
+            if not isinstance(params, dict):
+                raise ValueError("JSON 请求必须是对象")
+            result = await _run_service_call(calibration_service.import_calibration, params)
+            return JSONResponse(result)
+        except Exception as exc:
+            maybe_print_exc()
+            return JSONResponse({"ok": False, "error": str(exc)})
+
+    @protected.post("/calibration/remove")
+    async def calibration_remove(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.remove_calibration)
+
+    @protected.post("/calibration/active")
+    async def calibration_active(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.set_calibration_active)
 
     app.include_router(protected)
     return app

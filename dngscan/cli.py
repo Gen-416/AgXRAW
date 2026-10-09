@@ -67,7 +67,8 @@ def require_dependencies(*, dashboard: bool = False) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="AgX RAW/DNG → JPEG；可选六面板诊断 PNG。"
+        description="AgX RAW/DNG → JPEG；可选六面板诊断 PNG。",
+        epilog="实测标定管理：python -m dngscan calibration --help（导入 JPTC JSON 或 Collect 目录）。",
     )
     parser.add_argument("path", type=Path, help="RAW/DNG 文件路径")
     parser.add_argument(
@@ -250,8 +251,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default="adaptive",
         help=(
             "曲线端点策略：adaptive=场景百分位自适应（默认，现状）；"
-            "evidence=端点钉在传感器实测范围——黑端点=实测噪声底 EV（有传感器先验用先验读出噪声，"
-            "无先验用单帧估计并注记），白端点只信可靠 RAW 尾部（保留最低白点地板；"
+            "evidence=黑端点使用独立噪声模型的读出噪声底 EV，"
+            "白端点只信可靠 RAW 尾部（保留最低白点地板；"
             "证据缺席时如实回退自适应并注记）。pivot 锚定不变（0EV→18%%）"
         ),
     )
@@ -641,12 +642,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0.0,
         metavar="0..1",
         help=(
-            "仅色度降噪(数字化修复,默认0=严格恒等):在声明的传感器像素频带"
-            "(约 8-128px,按倍频程对齐,边界最多偏 √2)内按每级噪声底自适应收缩低频"
-            "色斑,场景线性亮度分量与更细的彩色噪点按构造不动(下游显影/光学的"
-            "非线性照常作用)——保留"
-            "的传感器噪声是诚实纹理,这里只清除 CFA 采样工件级的色块。"
-            "v1 仅 SDR 路径;HDR 导出遇非零值失闭拒绝"
+            "基于独立噪声标定的可选色度平滑，0=关闭；在约 8–128 传感器像素频带"
+            "按传播后的噪声方差收缩细节。需要有效标定与解码传播，缺失时跳过并报告；"
+            "支持 SDR/HDR，强度越高真实颜色细节损失风险越大"
         ),
     )
     parser.add_argument(
@@ -1000,8 +998,45 @@ NEUTRALIZATION_TO_CROSSOVER = {
 }
 
 
+def calibration_main(argv: list[str]) -> int:
+    """Manage reusable user measurements without decoding a photograph."""
+    import json
+
+    from . import calibration
+
+    parser = argparse.ArgumentParser(
+        prog="dngscan calibration",
+        description="导入并管理 JPTC 实测标定；匹配相机、RAW 读出模式和 ISO 后自动用于成像分析。",
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    install = commands.add_parser("import", help="导入 JPTC JSON 或 Collect CSV 目录")
+    install.add_argument("path", type=Path)
+    install.add_argument("--inactive", action="store_true", help="导入后先停用")
+    install.add_argument("--shutter-mode", choices=("any", "electronic", "mechanical", "efcs"),
+                         default=None, help="明确覆盖测量适用的读出模式；any 声明适用全部模式，默认遵循文件")
+    commands.add_parser("list", help="列出已安装标定及有效 ISO 范围")
+    for command, description in (("remove", "删除标定"), ("enable", "启用标定"),
+                                 ("disable", "停用标定")):
+        subparser = commands.add_parser(command, help=description)
+        subparser.add_argument("id", help="list 输出的标定 ID")
+    args = parser.parse_args(argv)
+    if args.command == "import":
+        result = calibration.import_calibration(args.path.expanduser(), active=not args.inactive,
+                                                shutter_override=args.shutter_mode)
+    elif args.command == "list":
+        result = calibration.list_calibrations()
+    elif args.command == "remove":
+        result = calibration.remove_calibration(args.id)
+    else:
+        result = calibration.set_calibration_active(args.id, args.command == "enable")
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv: list[str]) -> int:
     try:
+        if argv and argv[0] == "calibration":
+            return calibration_main(argv[1:])
         args = parse_args(argv)
         if not args.path.exists():
             raise FileNotFoundError(f"Input file does not exist: {args.path}")
@@ -1271,6 +1306,9 @@ def main(argv: list[str]) -> int:
                     print(f"高质量分享: q97/4:2:0，{export_result['file_size_bytes']/1_000_000:.2f} MB")
                 if export_result.get("size_warning"):
                     print(f"warning: {export_result['size_warning']}", file=sys.stderr)
+            if args.chroma_nr > 0:
+                print("色度降噪: " + getattr(bundle, "chroma_nr_status", "skipped")
+                      + "；" + (getattr(bundle, "chroma_nr_reason", None) or "处理状态未提供"))
 
         if args.csv is not None:
             # Only built on demand: without --scan/--csv the analysis deliberately

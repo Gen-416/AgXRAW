@@ -47,6 +47,9 @@ class OpcodePlan:
     skipped: list[str] = field(default_factory=list)
     crop: tuple[float, float, float, float] | None = None  # y,x,h,w, active-area pixels
     white_levels: tuple[float, ...] = ()
+    # Actual LibRaw geometry, recorded after its DefaultScale/half-size step.
+    # Small metadata only; never retain a second scene raster in the recipe.
+    noise_geometry: dict = field(default_factory=dict)
 
 
 NAMES = {1:"WarpRectilinear",2:"WarpFisheye",3:"FixVignetteRadial",4:"FixBadPixelsConstant",

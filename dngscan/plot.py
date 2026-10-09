@@ -213,8 +213,8 @@ def threshold_stop_for_channel_ids(
 
 
 def plot_snr_panel(ax: Any, analysis: Analysis) -> None:
-    if analysis.noise_evidence_status == "unavailable":
-        ax.text(.5, .5, "传感器证据不可用\n无法测量 RAW SNR", ha="center", va="center", transform=ax.transAxes)
+    if analysis.noise_evidence_status in ("unavailable", "model-rejected", "linear-camera-rgb"):
+        ax.text(.5, .5, "独立噪声模型不可用\n不以图像纹理估计 RAW SNR", ha="center", va="center", transform=ax.transAxes)
         ax.set_axis_off()
         return
     x_min = EV_REPORT_FLOOR
@@ -280,7 +280,7 @@ def plot_snr_panel(ax: Any, analysis: Analysis) -> None:
     ax.set_ylim(-5.0, y_top)
     ax.set_xlabel("距剪切的档数: log2(signal / fullwell signal)")
     ax.set_ylabel("SNR (dB)")
-    ax.set_title("SNR 曲线: 暗部可拉余量")
+    ax.set_title("SNR 模型预测: 暗部可拉余量")
     ax.grid(True, alpha=0.18)
     if usable_floor is not None:
         ax.text(
@@ -335,7 +335,7 @@ def plot_snr_panel(ax: Any, analysis: Analysis) -> None:
     ax.text(
         0.98,
         0.04,
-        "单帧估计；灰区不可靠",
+        "独立噪声模型预测；灰区谨慎解释",
         ha="right",
         va="bottom",
         fontsize=7.5,

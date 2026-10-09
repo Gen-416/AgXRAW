@@ -162,22 +162,29 @@ def compile_channel_separation(
 
 
 def compile_tail_snr_gate(analysis: Analysis | None) -> float:
-    """The design's tail-SNR confidence factor, from the measured SNR curve.
+    """The tail-SNR confidence factor, from independent noise evidence.
 
     Per-channel highlight expansion amplifies whatever noise the tail carries,
-    so confidence follows the SNR measured in the brightest still-reliable
+    so confidence follows the model SNR in the brightest still-reliable
     window of the curve: the TAIL_SNR_WINDOW_EV just below
-    SNR_BRIGHT_UNRELIABLE_STOP (above that, tile statistics mix highlight
-    rolloff into the noise estimate). Per channel group the window's finite
+    SNR_BRIGHT_UNRELIABLE_STOP. Scene texture never supplies the noise
+    denominator. Per channel group the window's finite
     bins are summarised by their median; the gate follows the WORST group,
     because one noisy channel is enough to make expanded chroma read as noise.
 
-    Withdrawal requires a measurement. When the curve has no reliable bins in
-    the window (non-CFA layout, tiny frame, no coverage at those stops) the
-    factor is neutral 1.0 rather than an invented confidence — the clip,
-    gamut and unaligned-decoder factors still stand guard, and the
-    analysis-is-None case already compiles rho = 0 outright.
+    Explicitly rejected evidence withdraws permission. Missing calibration
+    remains neutral 1.0 for this factor, preserving the existing clip, gamut
+    and decoder restrictions; it does not assert that the noise was measured.
+    The analysis-is-None case already compiles rho = 0 outright.
     """
+    model = getattr(analysis, "noise_model", None)
+    status = getattr(analysis, "noise_evidence_status", "unavailable")
+    # A rejected model is negative evidence, unlike ordinary missing
+    # calibration. Preserve that reason instead of neutral permission.
+    if getattr(model, "status", None) == "rejected" or status == "model-rejected":
+        return 0.0
+    if getattr(model, "correlation", None) == "measured-spectral-imbalance":
+        return 0.0
     curves = getattr(analysis, "snr_curves", None) or {}
     lo = SNR_BRIGHT_UNRELIABLE_STOP - TAIL_SNR_WINDOW_EV
     hi = SNR_BRIGHT_UNRELIABLE_STOP

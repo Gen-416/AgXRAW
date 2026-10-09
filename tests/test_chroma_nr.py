@@ -1,14 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Chroma-only NR (digitization repair, chroma_nr.py) contract gates.
-
-The retained sensor noise is honest texture; this operator may remove ONLY
-the low-frequency colour mottle in its declared sensor-pixel band. The
-gates pin what the design promises structurally: luminance untouched,
-pixel-scale chroma speckle untouched at identity grids, real colour
-surviving shrinkage, mottle-band energy genuinely removed, amount 0 a
-strict identity through the render entry, and (v2, 2026-09-17) the HDR
-entries reading the same repaired scene as the SDR export.
-"""
+"""Calibrated chroma NR: band, luma, shared SDR/HDR and identity gates."""
 from __future__ import annotations
 
 import unittest
@@ -45,6 +36,31 @@ def _fixture(rng: np.random.Generator, dh: int = 256) -> dict:
     return {"scene": scene, "mottle": m, "speckle": speckle}
 
 
+def _noise_bands(fixture: dict, factor: float) -> dict:
+    """An independent noise-only calibration, not scene-detail MAD."""
+    levels = atrous_levels_for(factor)
+    smooth = fixture["mottle"] + fixture["speckle"]
+    result = {}
+    for level in range(max(levels) + 1):
+        coarse = _atrous_smooth(smooth, level)
+        result[level] = np.mean(np.square(smooth - coarse), axis=(0, 1))
+        smooth = coarse
+    return result
+
+
+def _attach_calibration(scene):
+    from dngscan.noise_model import NoiseModel
+
+    h, w = scene.bundle.scene_rec2020_render.shape[:2]
+    scene.bundle.raw_image = np.zeros((h * 4, w * 4), dtype=np.uint16)
+    scene.bundle.proxy_scale = 4.0
+    scene.bundle.noise_decode = {"supported": True, "normalized_raw_to_scene": np.eye(3)}
+    model = NoiseModel(status="valid", source="synthetic calibrated fixture",
+                       channel_variance={c: (0., 1e-4) for c in "RGB"})
+    scene.analysis.noise_model = model
+    scene.bundle.noise_model = model
+
+
 class OperatorContractTests(unittest.TestCase):
     def test_band_anchoring_in_sensor_pixels(self) -> None:
         # export-scale grids start at level 0; identity grids skip the
@@ -57,14 +73,16 @@ class OperatorContractTests(unittest.TestCase):
         f = _fixture(rng)
         noisy = f["scene"] + f["mottle"] + f["speckle"]
         for factor in (1.0, 6.8):
-            corr = chroma_correction_map(noisy, 1.0, decimation_factor=factor)
+            corr = chroma_correction_map(noisy, 1.0, decimation_factor=factor,
+                                         detail_variance=_noise_bands(f, factor))
             self.assertLess(float(np.abs(corr @ LUMA_W).max()), 1e-7)
 
     def test_identity_grid_keeps_pixel_speckle(self) -> None:
         rng = np.random.default_rng(5)
         f = _fixture(rng)
         noisy = f["scene"] + f["mottle"] + f["speckle"]
-        corr = chroma_correction_map(noisy, 1.0, decimation_factor=1.0)
+        corr = chroma_correction_map(noisy, 1.0, decimation_factor=1.0,
+                                     detail_variance=_noise_bands(f, 1.0))
         out = noisy + corr
 
         def level0(x: np.ndarray) -> np.ndarray:
@@ -81,7 +99,8 @@ class OperatorContractTests(unittest.TestCase):
         rng = np.random.default_rng(7)
         f = _fixture(rng)
         noisy = f["scene"] + f["mottle"] + f["speckle"]
-        corr = chroma_correction_map(noisy, 1.0, decimation_factor=6.8)
+        corr = chroma_correction_map(noisy, 1.0, decimation_factor=6.8,
+                                     detail_variance=_noise_bands(f, 6.8))
         out = noisy + corr
 
         def band_rms(x: np.ndarray, levels: set) -> float:
@@ -98,8 +117,8 @@ class OperatorContractTests(unittest.TestCase):
         residual = band_rms(out - f["scene"] - f["speckle"], band) / band_rms(
             f["mottle"], band
         )
-        self.assertLess(residual, 0.6, "the mottle band must lose most of "
-                        "its amplitude at amount 1")
+        self.assertLess(residual, 0.65, "the calibrated mottle band must lose "
+                        "substantial amplitude at amount 1")
         patch = (slice(75, 115), slice(75, 115))
 
         def patch_chroma(x: np.ndarray) -> float:
@@ -117,7 +136,8 @@ class OperatorContractTests(unittest.TestCase):
         noisy = f["scene"] + f["mottle"] + f["speckle"]
         removed = [
             float(np.abs(chroma_correction_map(
-                noisy, amount, decimation_factor=6.8
+                noisy, amount, decimation_factor=6.8,
+                detail_variance=_noise_bands(f, 6.8)
             )).sum())
             for amount in (0.25, 0.5, 1.0)
         ]
@@ -180,6 +200,7 @@ class RenderEntryTests(unittest.TestCase):
         from dngscan.tone import build_render_plan
 
         scene = build_night_sparse_lamps()
+        _attach_calibration(scene)
         base = scene_render_to_display_linear(
             scene.bundle,
             build_render_plan(scene.bundle, scene.analysis, "agx", "srgb"),
@@ -200,6 +221,7 @@ class RenderEntryTests(unittest.TestCase):
         from dngscan.hdr_agx_plan import compile_hdr_agx_plan
         from dngscan.tone import build_render_plan
 
+        _attach_calibration(scene)
         plan = build_render_plan(
             scene.bundle, scene.analysis, "agx", "p3", chroma_nr=amount
         )

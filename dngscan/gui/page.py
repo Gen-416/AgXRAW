@@ -204,7 +204,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
 <section class="dashboardPanel active" id="capturePanel" role="tabpanel" aria-labelledby="captureTab">
 
 <div class="card" id="mobileDecodeCard" data-mobile-card="decode">
-  <div class="secTitle">RAW 解码</div>
+  <div class="secTitle" style="display:flex;align-items:center;justify-content:space-between"><span>RAW 解码</span><button class="ghost" id="calibrationOpen" type="button" style="padding:4px 8px">实测噪声标定</button></div>
   <div class="row">
     <div style="flex:1;min-width:170px" id="decoderBlock">
       <label>解码器</label>
@@ -236,8 +236,9 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
       <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重新解码并分析这张 RAW（数秒）。">
     </div>
     <div class="sliderField" id="chromaNrBlock" style="flex:1;min-width:150px">
-      <div class="labelRow"><label title="仅色度降噪（CLI --chroma-nr，0–1，默认 0=不动）：只去低频色斑，亮度与细彩噪不动；SDR 与 HDR 容器均可用（两腿读同一份修复后的场景）。">色度降噪</label><span class="val" id="chromaNrVal">0.00</span></div>
+      <div class="labelRow"><label title="基于独立噪声标定的可选色度平滑（CLI --chroma-nr，0–1，默认 0=关闭）。需要可用的噪声模型及解码传播；不能处理时会说明原因。强度越高，真实颜色细节损失风险越大。">色度降噪</label><span class="val" id="chromaNrVal">0.00</span></div>
       <input type="range" id="chromaNr" min="0" max="1" step="0.05" value="0">
+      <div class="ctlFact" id="chromaNrFact"></div>
     </div>
     <div style="flex:1;min-width:170px">
       <label>解拜耳</label>
@@ -286,6 +287,10 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
       </select>
     </div>
     <div class="ctlFact" id="wbFact" style="flex-basis:100%;margin-top:0"></div>
+    <div style="flex-basis:100%;min-width:0">
+      <div class="ctlFact" id="noiseModelFact"></div>
+      <div class="ctlFact" id="calibrationMatchFact"></div>
+    </div>
   </div>
 </div>
 
@@ -337,10 +342,10 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
   </div>
   <div class="row" style="margin-top:12px">
     <div style="flex:1;min-width:170px">
-      <label title="adaptive=端点追随场景百分位（默认）；evidence=端点钉在传感器实测范围：黑端点=实测噪声底 EV（有传感器先验用先验读出噪声），白端点只信可靠 RAW 尾部。pivot 锚定不变（0EV→18%）。">黑白点依据</label>
+      <label title="adaptive=端点追随场景百分位（默认）；evidence=黑端点参考独立噪声模型的读噪底 EV，白端点只信可靠 RAW 尾部；缺少可用证据时回退并说明原因。pivot 锚定不变（0EV→18%）。">黑白点依据</label>
       <select id="endpointMode">
         <option value="adaptive">场景自适应 · 默认</option>
-        <option value="evidence">传感器实测 · 噪声底/可信高光</option>
+        <option value="evidence">证据约束 · 模型读噪底/可靠 RAW 尾部</option>
       </select>
     </div>
   </div>
@@ -759,6 +764,24 @@ GRADE_OPTIONS
       <button class="ghost" id="outputCancel" type="button">取消</button>
       <button class="go" id="exportConfirm" type="button">导出</button>
     </div>
+  </div>
+</dialog>
+
+<dialog class="outputDialog" id="calibrationDialog" aria-labelledby="calibrationDialogTitle">
+  <div class="dialogPanel">
+    <div class="dialogHeader"><h2 class="dialogTitle" id="calibrationDialogTitle">实测噪声标定</h2></div>
+    <p class="muted">导入 Jiangtherapee / JPTC 的标定 JSON，或选择一套 Collect CSV 测量目录。匹配相机、快门模式、ISO 和 DN 尺度后，启用的用户实测优先参与分析；无需每张照片重复标定。压缩与分辨率等子读出模式目前尚未验证。</p>
+    <div class="row">
+      <div><label for="calibrationJsonPicker">标定 JSON</label><input type="file" id="calibrationJsonPicker" accept=".json,application/json"></div>
+      <div><label for="calibrationDirectoryPicker">Collect 测量目录</label><input type="file" id="calibrationDirectoryPicker" webkitdirectory directory multiple></div>
+    </div>
+    <div style="margin-top:12px"><label for="calibrationShutterMode">本次导入的读出模式声明</label>
+      <select id="calibrationShutterMode"><option value="">遵循测量文件声明 · 默认</option><option value="electronic">明确声明电子快门</option><option value="mechanical">明确声明机械快门</option><option value="efcs">明确声明电子前帘</option><option value="any">明确声明适用全部读出模式</option></select>
+      <p class="muted">仅在确认测量适用范围时覆盖文件声明。RAW 未记录读出模式时，特定模式的标定不会自动套用；“全部模式”是你的明确声明。</p>
+    </div>
+    <div class="ctlFact" id="calibrationStatus" role="status" aria-live="polite"></div>
+    <div id="calibrationList"></div>
+    <div class="dialogActions"><button class="ghost" id="calibrationClose" type="button">关闭</button></div>
   </div>
 </dialog>
 
@@ -1676,6 +1699,65 @@ function apiFetch(url,opts){
   opts=opts||{};opts.headers=Object.assign({},opts.headers||{},{"X-DngScan-Token":SESSION_TOKEN});
   return fetch(url,opts);
 }
+function setCalibrationStatus(text,isError=false){
+  const el=$("#calibrationStatus");el.textContent=text||"";el.classList.toggle("warn",isError);
+}
+function calibrationReason(reason){
+  return ({usable:"匹配可用",inactive:"已停用","readout-mode-unavailable":"测量未声明读出模式","file-readout-mode-unavailable":"RAW 未记录读出模式","readout-mode-mismatch":"读出模式不匹配","iso-out-of-domain-or-gain-jump":"ISO 超出测量范围或跨越增益跳变","no-absolute-gain":"缺少绝对增益标定","no-electron-read-noise":"缺少可用电子读噪标定","quality-high-residual":"测量拟合残差过高","quality-unconverged":"测量拟合未收敛","estimator-spread":"增益估计分歧过大","invalid-record":"标定记录损坏","sub-readout-mode-not-verified":"压缩与分辨率等子读出模式未验证"})[reason]||reason||"";
+}
+function renderCalibrations(profiles){
+  const list=$("#calibrationList");list.replaceChildren();
+  if(!profiles.length){const empty=document.createElement("p");empty.className="muted";empty.textContent="尚未导入用户实测标定。";list.appendChild(empty);return;}
+  for(const profile of profiles){
+    const row=document.createElement("div");row.className="card";row.style.marginTop="10px";
+    const title=document.createElement("div");title.textContent=profile.label||profile.id;row.appendChild(title);
+    const detail=document.createElement("div");detail.className="muted";
+    const models=Array.isArray(profile.models)?profile.models.join(" / "):"";
+    const iso=profile.iso_min!=null&&profile.iso_max!=null?"ISO "+(+profile.iso_min.toFixed(2))+"–"+(+profile.iso_max.toFixed(2)):"ISO 范围未声明";
+    const mode=({any:"用户声明全部模式",electronic:"电子快门",mechanical:"机械快门",efcs:"电子前帘"})[profile.shutter]||profile.shutter||"读出模式未声明";
+    detail.textContent=[profile.make,models,mode,iso,profile.active?"已启用":"已停用"].filter(Boolean).join(" · ");row.appendChild(detail);
+    if(profile.warnings&&profile.warnings.length){const warning=document.createElement("div");warning.className="ctlFact warn";warning.textContent=profile.warnings.map(calibrationReason).concat(profile.error?[profile.error]:[]).join("；");row.appendChild(warning);}
+    const actions=document.createElement("div");actions.className="actions";actions.style.marginTop="8px";
+    for(const [label,route,body] of [[profile.active?"停用":"启用","/calibration/active",{id:profile.id,active:!profile.active}],["删除","/calibration/remove",{id:profile.id}]]){
+      const button=document.createElement("button");button.type="button";button.className="ghost";button.textContent=label;
+      if(route==="/calibration/active"&&profile.error)button.disabled=true;
+      button.onclick=async()=>{button.disabled=true;await changeCalibration(route,body);button.disabled=false;};actions.appendChild(button);
+    }
+    row.appendChild(actions);list.appendChild(row);
+  }
+}
+async function reloadCalibrations(){
+  try{const j=await postJob("/calibration/list",{});if(!j.ok)throw new Error(j.error);renderCalibrations(j.calibrations||[]);}
+  catch(error){setCalibrationStatus("读取标定失败："+error,true);}
+}
+async function changeCalibration(route,body){
+  try{
+    setCalibrationStatus("正在更新标定…");
+    const j=await postJob(route,body);if(!j.ok)throw new Error(j.error);
+    renderCalibrations(j.calibrations||[]);
+    // The backend invalidates persisted analysis via the calibration digest;
+    // the browser also discards old responses before preparing the new model.
+    beginPreviewSession();lastSavedPath="";$("#revealBtn").style.display="none";
+    setCalibrationStatus("标定已更新。当前照片将重新分析。");
+    if($("#input").value.trim()){RAW9_PROBES.clear();RAW9_PROBE_REQUESTS.clear();fetchDecodeSupport($("#input").value.trim());await preparePreview();}
+  }catch(error){setCalibrationStatus("标定更新失败："+error,true);}
+}
+async function importCalibrationSelection(picker){
+  const chosen=Array.from(picker.files||[]).filter(file=>/[.](json|csv|txt)$/i.test(file.name));
+  if(!chosen.length){setCalibrationStatus("请选择标定 JSON 或包含 CSV 的 Collect 目录。",true);return;}
+  if(chosen.length>128||chosen.reduce((sum,file)=>sum+file.size,0)>8*1024*1024){setCalibrationStatus("请选择单套标定（最多 128 个文本文件、8 MiB）。",true);picker.value="";return;}
+  picker.disabled=true;
+  try{
+    const files=[];
+    for(const file of chosen)files.push({name:file.webkitRelativePath||file.name,text:await file.text()});
+    await changeCalibration("/calibration/import",{files,shutterMode:$("#calibrationShutterMode").value||null});
+  }catch(error){setCalibrationStatus("读取标定失败："+error,true);}
+  finally{picker.value="";picker.disabled=false;}
+}
+$("#calibrationOpen").onclick=()=>{const dialog=$("#calibrationDialog");if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");setCalibrationStatus("");reloadCalibrations();};
+$("#calibrationClose").onclick=()=>{const dialog=$("#calibrationDialog");if(typeof dialog.close==="function")dialog.close();else dialog.removeAttribute("open");};
+$("#calibrationJsonPicker").addEventListener("change",()=>importCalibrationSelection($("#calibrationJsonPicker")));
+$("#calibrationDirectoryPicker").addEventListener("change",()=>importCalibrationSelection($("#calibrationDirectoryPicker")));
 let curDir=INIT_DIR;
 $("#filePicker").addEventListener("change",async()=>{
   const picker=$("#filePicker");const file=picker.files&&picker.files[0];
@@ -1828,12 +1910,18 @@ async function ensureRaw9Support(body){
 }
 let DETECTED_READY=false;
 function setFact(sel,text,isWarn){const el=$(sel);el.textContent=text||"";el.classList.toggle("warn",!!isWarn);}
+function renderChromaNrStatus(report){
+  if(!report||report.status==="disabled"){setFact("#chromaNrFact","");return;}
+  const active=report.status==="active-approximate";
+  setFact("#chromaNrFact",(active?"色度降噪：模型近似已应用":"色度降噪：已跳过")+(report.reason?" · "+report.reason:""),!active);
+}
 function renderDetectedParams(d){
   // Measured scene facts land NEXT TO the control they inform, so the number
   // is in view while the hand is on the slider — never a scroll away.
   DETECTED_READY=!!(d&&typeof d==="object");
   if(!DETECTED_READY){
-    ["#decoderFact","#wbFact","#clipFact","#evFact","#toneFact","#hdrSceneFact"].forEach(s=>setFact(s,""));
+    $("#noiseModelFact").title="";
+    ["#decoderFact","#wbFact","#clipFact","#evFact","#toneFact","#hdrSceneFact","#noiseModelFact","#calibrationMatchFact"].forEach(s=>setFact(s,""));
     return;
   }
   const ev=v=>(v>=0?"+":"")+(+v).toFixed(2)+" EV";
@@ -1843,6 +1931,16 @@ function renderDetectedParams(d){
   if(d.data_support)decoderBits.push(d.data_support);
   setFact("#decoderFact",decoderBits.filter(Boolean).join(" · "),!!(d.decoder_fallback||d.evidence_error||d.data_support));
   setFact("#wbFact",d.wb_degradation?"⚠ 白平衡："+d.wb_degradation:"",true);
+  const noise=d.noise_model||{};
+  const noiseStatus=noise.status==="valid"?"可用":noise.status==="rejected"?"不适用":"不可用";
+  const noiseSource=(noise.source||"").startsWith("DNG ")?"DNG 文件声明":(noise.source||"").startsWith("User JPTC")?"用户实测":noise.source&&noise.source!=="none"?"内置先验":"缺少模型来源";
+  const noiseReason=({"matched-shot-read-model":"噪声模型匹配","file-declared-model":"采用文件噪声声明","no-matched-calibration":"无匹配标定","iso-unavailable":"缺少 ISO","suspect-iso":"ISO 超出可信范围","read-noise-unavailable":"缺少读噪标定","unmatched-dn-scale":"RAW 码值范围不匹配","raw-channels-unavailable":"缺少 RAW 通道","sensor-evidence-unavailable":"缺少传感器证据","not-independent-cfa-samples":"非独立 CFA 感光点","file-noise-metadata-unreadable":"无法读取文件噪声声明","profile-is-not-cfa-raw":"噪声声明不适用于 CFA RAW","unsupported-colour-plane":"噪声声明颜色平面不支持","raw-noise-reduction-declared":"文件声明已降噪，独立噪声模型不适用","invalid-noise-reduction-declaration":"文件降噪声明无效"})[noise.reason]||calibrationReason(noise.reason);
+  const correlation=noise.correlation==="measured-spectral-imbalance"?"实测频谱不均衡：限制 HDR 尾部，跳过色度降噪":noise.correlation==="measured-spectrum-summary"?"有实测频谱摘要（不等于已验证白噪声）":"相关噪声未验证";
+  const spectral=Object.entries(noise.spectral_ratios||{}).filter(([,value])=>Number.isFinite(value)).map(([axis,value])=>axis+" 高频/中频 "+value.toFixed(3)).join("，");
+  setFact("#noiseModelFact",["噪声模型："+noiseStatus,noiseSource,noiseReason,noise.approximation?"模型含近似":"",correlation,spectral].filter(Boolean).join(" · "),noise.status!=="valid"||noise.correlation==="measured-spectral-imbalance");
+  $("#noiseModelFact").title=[noise.source,noise.reason,noise.domain,noise.approximation,noise.correlation].filter(Boolean).join(" · ");
+  const calibrationRows=(d.calibrations||[]).map(profile=>(profile.label||profile.id||"用户实测")+"："+calibrationReason(profile.reason||profile.status));
+  setFact("#calibrationMatchFact",calibrationRows.join("\\n"),(d.calibrations||[]).some(profile=>profile.status!=="usable"));
   setFact("#clipFact",d.raw_clip_union_pct!==null?"实测 RAW 过曝 "+(+d.raw_clip_union_pct).toFixed(2)+"%（≥1 通道）":"");
   const evBits=[];
   if(d.body_median_ev!==null)evBits.push("实测主体中位 "+ev(d.body_median_ev));
@@ -2166,6 +2264,7 @@ function handleJobResult(j, prefix){
   if(!j.ok)return false;
   applyJobEv(j);
   renderDeliveryReport(j);
+  if(j.chroma_nr)renderChromaNrStatus(j.chroma_nr);
   // Full exports do not recompute the realtime histograms; the last live pair
   // stays valid for the same parameters, so absent fields leave them untouched.
   if(j.scene_histogram)renderSceneHistogram(j.scene_histogram);
@@ -2217,6 +2316,7 @@ $("#exportConfirm").onclick=async()=>{
     if(!j.ok){endBusy();setStatus("错误："+j.error,"err");}
     else{applyJobEv(j);setStatus("已保存："+j.saved.join(" · ")+"（"+formatText(j.format)+"，EV "+fmtEv(j.ev)+"，曝光增益 "+j.gain.toFixed(3)+"，高光 "+highlightText(j.highlight)+"，色域 "+gamutText(j.gamut)+decoderText(j)+toneCoreText(j)+sceneTransformText(j)+fullFrameReferenceText(j)+metricText(j)+"）","ok");
       renderDeliveryReport(j);
+      if(j.chroma_nr)renderChromaNrStatus(j.chroma_nr);
       if(j.delivery&&j.delivery.size_warning)setStatus("已保存："+j.saved.join(" · ")+"\\n"+j.delivery.size_warning,"warn");
       lastSavedPath=j.saved[0]||"";$("#revealBtn").style.display=lastSavedPath?"inline-block":"none";setPreviewImage(j.preview);}
   }catch(e){endBusy();setStatus("请求失败："+e,"err");}

@@ -260,7 +260,8 @@ if CNR > 0.0:
     dec0 = acc0.astype(np.float32)
     del acc0
     chroma_map = chroma_correction_map(
-        dec0, CNR, decimation_factor=max(h, w) / max(dh0, dw0)
+        dec0, CNR, decimation_factor=max(h, w) / max(dh0, dw0),
+        chroma_variance=np.asarray([.0001, .0002, .0003], np.float32),
     )
     del dec0
     band_rows = _optics_band_rows(w, chroma_map.nbytes / float(1 << 20))

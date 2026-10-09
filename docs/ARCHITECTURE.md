@@ -377,7 +377,7 @@ rawpy/LibRaw build actually supports. Non-Bayer data such as X-Trans stays on th
 corresponding LibRaw path. Preview uses half-size 2x2 superpixel binning, so it is useful
 for exposure, color, and highlight decisions but not for judging final texture.
 
-dngscan performs no denoising by default, which makes demosaic the main texture choice. The one opt-in exception is the chroma-only digitization repair (`--chroma-nr`, 0 by default): a band-limited, content-adaptive operator (per-level MAD thresholds) that removes low-frequency colour mottle and, by construction, nothing else — see `chroma_nr.py`. It is a scene-stage operator, so SDR, the AgX HDR formation and both legs of an HDR pair read the same repaired scene. DHT suits
+Project chroma denoising (`--chroma-nr`) remains off by default. It now uses an independent `a×signal+b` model propagated through a low-frequency CFA approximation, with BayesShrink-inspired shrinkage; local structure reduces thresholds rather than defining the noise scale. Scene-stage luminance is preserved, but real colour detail can still be attenuated. Missing models, Apple RAW, incompatible measured spectra and unknown transfer operations skip the stage with a reason. Where applicable, SDR, AgX HDR and both legs of an HDR pair share the correction. See the [algorithm](CHROMA_NR.zh-CN.md) and [calibration interface](NOISE_CALIBRATION.zh-CN.md). DHT suits
 clean low-ISO signal; DCB, AAHD, VNG, or PPG can look more natural on noisy night files.
 Standard rawpy wheels do not necessarily include GPL demosaic-pack algorithms such as
 AMaZE, LMMSE, VCD, or AFD, so the available set depends on the local LibRaw build. The
@@ -1333,5 +1333,7 @@ maps, and per-channel full-well, clip, black-level, and WB readouts. RAW distrib
 use stops from clipping on the horizontal axis and peak-normalized linear density on the
 vertical axis. Density curves may be lightly smoothed for display; clip percentages,
 medians, percentiles, and all other statistics always come from the unsmoothed samples.
-SNR and dynamic range are single-frame estimates, not full photon-transfer measurements;
-container bit depth is not the same as usable dynamic range.
+SNR curves are independent-model predictions at this frame's signal coordinates, not
+photon-transfer measurements of the frame. The read-noise floor records its model source;
+missing models omit those values without discarding valid RAW clipping facts.
+Container bit depth is not the same as usable dynamic range.

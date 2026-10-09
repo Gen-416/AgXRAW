@@ -13,6 +13,7 @@
 | [HDR 教程](HDR_TUTORIAL.zh-CN.md) | 参考白、可信高光、HDR 导出与可直接观看的样张 |
 | [胶片教程](FILM_TUTORIAL.zh-CN.md) | 风格模式、完整冲印和各个胶片控件 |
 | [机型支持](SENSOR_SUPPORT.zh-CN.md) | 传感器数据来源、能力降级和 LibRaw 支持边界 |
+| [实测噪声标定](NOISE_CALIBRATION.zh-CN.md) | GUI / CLI 导入 JPTC 测量、启停、匹配范围及成像模型来源 |
 | [JPEG / HEIF 质量与体积实测](DELIVERY_QUALITY_STUDY.zh-CN.md) | 编码参数的选择依据；表中数字属于指定样张和版本 |
 
 ## 当前实现与开发 / Current implementation
@@ -23,7 +24,7 @@
 | [技术架构](ARCHITECTURE.zh-CN.md) / [Architecture](ARCHITECTURE.md) | 解码、证据、分析、成像、交付及双解码器边界 |
 | [产品架构](PRODUCT_ARCHITECTURE.zh-CN.md) / [Product architecture](PRODUCT_ARCHITECTURE.md) | 模块职责、领域模型与扩展边界 |
 | [HDR 编码回读验证](HDR_DELIVERY_VALIDATION.zh-CN.md) | 有损压缩后的检查、容差与不能保证的部分 |
-| [色度降噪](CHROMA_NR.zh-CN.md) | 色度 NR 的层位、尺度与约束 |
+| [色度降噪与纹理保护](CHROMA_NR.zh-CN.md) | 独立噪声模型、处理域近似、BayesShrink 收缩与跳过条件 |
 | [开发与测量工具](../tools/README.md) | 校准、基线生成、编码对照和性能测试的具体命令 |
 
 ## 设计合同与实施记录 / Design contracts
@@ -49,5 +50,7 @@
 [报告索引](reports/README.md) 汇集性能批次、冻结基线、工程决策和旧审查。近期非胶片效率工作从 [管线完成记录](reports/performance/performance-pipeline-completion.zh-CN.md) 读起，它逐项区分已实施、未采用和后续候选；不要把单核提速相加当作整条管线的收益。
 
 2026-10 的 [导出专项记录](reports/performance/performance-export-reuse.zh-CN.md) 接续说明手动 HDR 重试的主图复用、Core Image 回读释放、每轮验收和 GUI 最终预览；测量按固定母版、手动重试与自动搜索分别登记。
+
+[2026-10-09 噪声与纹理研究](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) 保留 `738da0a` 基准上的源码研究与反例，并附本轮实施记录。当前导入与使用见[实测噪声标定](NOISE_CALIBRATION.zh-CN.md)和[色度降噪](CHROMA_NR.zh-CN.md)；SDR 10-bit HEIF、包内 bulk 机型匹配仍为后置待办。
 
 文档图片和机器可读测量保留在 [assets/](assets)。P0 分解数据 `film_v2_p0_decomposition*.json`、色度场 `chroma_field_cv.json` 和光源分档 `illuminant_tier_cv.json` 保留原路径，便于现有工具和引用复现。原始 RAW 和个人导出不属于公共文档资产。

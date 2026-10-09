@@ -522,6 +522,7 @@ def _prepare_chroma_nr_map(
     scene_transform_strength: float,
     wb_adapt: Any,
     retreat_strength: float | None = None,
+    analysis: Analysis | None = None,
 ) -> Any:
     """Pass 0: the chroma-NR correction map, or None when the dial is 0.
 
@@ -539,12 +540,31 @@ def _prepare_chroma_nr_map(
     photograph."""
     amount = float(getattr(tone_plan, "chroma_nr", 0.0) or 0.0)
     if amount <= 0.0:
+        bundle.chroma_nr_status = "disabled"
+        bundle.chroma_nr_reason = None
         return None
     from .chroma_nr import chroma_correction_map
     from .film_optics import area_decimate_rows, spread_grid_shape
+    from .noise_propagation import calibrated_chroma_variance
+
+    model = getattr(analysis, "noise_model", None) or getattr(bundle, "noise_model", None)
+    if model is None or getattr(model, "status", None) != "valid":
+        bundle.chroma_nr_status = "skipped"
+        bundle.chroma_nr_reason = "independent noise calibration unavailable"
+        return None
+    if film_full or (scene_transform != "none" and scene_transform_strength != 0):
+        bundle.chroma_nr_status = "skipped"
+        bundle.chroma_nr_reason = "nonlinear scene-transform noise propagation unavailable"
+        return None
+    descriptor = getattr(bundle, "noise_decode", None) or {}
+    if not descriptor.get("supported", False):
+        bundle.chroma_nr_status = "skipped"
+        bundle.chroma_nr_reason = descriptor.get("reason") or "decoder noise propagation unavailable"
+        return None
 
     dh, dw = spread_grid_shape(h, w)
     acc = np.zeros((dh, dw, 3), dtype=np.float64)
+    invalid_acc = np.zeros((dh, dw, 1), dtype=np.float64)
     band = _optics_band_rows(w)
     if retreat_strength is None:
         retreat_strength = (
@@ -559,6 +579,12 @@ def _prepare_chroma_nr_map(
         if not film_full:
             rec = scene_transform_engine.apply_scene_transform_rec2020(
                 rec, scene_transform, scene_transform_strength, wb_adapt
+            )
+        if clip_masks is not None:
+            invalid = np.any(np.asarray(clip_masks[s0:e0]) > 0, axis=-1)
+            area_decimate_rows(
+                invalid.astype(np.float32).reshape(-1, w, 1),
+                y0, h, w, dh, dw, invalid_acc,
             )
         if clip_masks is not None and retreat_strength > 0.0:
             rec = retreat_engine.apply_clip_retreat_rec2020(
@@ -575,7 +601,18 @@ def _prepare_chroma_nr_map(
     )
     dec32 = acc.astype(np.float32)
     del acc
-    return chroma_correction_map(dec32, amount, decimation_factor=factor)
+    propagated = calibrated_chroma_variance(bundle, model, dec32, return_validity=True)
+    variance, reason = propagated[:2]
+    if variance is None:
+        bundle.chroma_nr_status = "skipped"
+        bundle.chroma_nr_reason = reason
+        return None
+    bundle.chroma_nr_status = "active-approximate"
+    bundle.chroma_nr_reason = reason
+    return chroma_correction_map(
+        dec32, amount, decimation_factor=factor, chroma_variance=variance,
+        valid_mask=(invalid_acc[..., 0] == 0) & propagated[2],
+    )
 
 
 def scene_render_to_display_linear(
@@ -626,6 +663,7 @@ def scene_render_to_display_linear(
     chroma_map = _prepare_chroma_nr_map(
         bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w,
         film_full, scene_transform, scene_transform_strength, wb_adapt,
+        analysis=analysis,
     )
     spatial_ctx = None
     if _film_spatial_engaged(tone_plan):
@@ -929,6 +967,7 @@ def render_output_u8(
     chroma_map = _prepare_chroma_nr_map(
         bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w,
         film_full, scene_transform, scene_transform_strength, wb_adapt,
+        analysis=analysis,
     )
     spatial_ctx = None
     spatial_chunk = 0

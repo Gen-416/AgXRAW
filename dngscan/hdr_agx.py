@@ -250,6 +250,7 @@ def scene_render_to_hdr_display_linear(
     output_gamut: str = "p3",
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
+    analysis: Analysis | None = None,
 ) -> Any:
     """Scene-linear -> extended display-linear, values above 1.0 permitted.
 
@@ -317,6 +318,7 @@ def scene_render_to_hdr_display_linear(
         bundle, source_tone, None, flat_scene, clip_masks, h, w, False,
         scene_transform, scene_transform_strength, wb_adapt,
         retreat_strength=retreat_strength,
+        analysis=analysis,
     )
 
     def render_hdr_chunk(start: int, end: int) -> None:
@@ -613,6 +615,7 @@ def render_ultrahdr_agx_pair(
         bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w, False,
         scene_transform, scene_transform_strength, wb_adapt,
         retreat_strength=shared_retreat,
+        analysis=analysis,
     )
 
     def render_pair_chunk(start: int, end: int) -> tuple[Any, Any]:

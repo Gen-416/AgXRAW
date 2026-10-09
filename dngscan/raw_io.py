@@ -433,6 +433,93 @@ def libraw_scene_scale(
     return scale / baseline_exposure_gain(baseline_exposure)
 
 
+def _libraw_noise_decode(raw, evidence, recipe, highlight, scale, half_size):
+    """Record the known linear units for a coarse CFA noise approximation.
+
+    This is not an exact demosaicing covariance. Nonlinear/spatial opcodes
+    require their own propagation and never inherit this simple transfer.
+    """
+    from . import dng_opcodes as ops
+    descriptor = {"supported": False, "reason": "decoder-transfer-unavailable",
+                  "wb_mode": "camera", "half_size": bool(half_size)}
+    if evidence.raw_image.ndim != 2 or np.asarray(evidence.raw_pattern).shape != (2, 2):
+        descriptor["reason"] = "non-Bayer-noise-transfer-unavailable"
+        return descriptor
+    warps = [op for op in recipe.post if isinstance(op, ops.Warp)]
+    if (recipe.stage1 or any(not isinstance(op, dng_metadata.DngGainMap) for op in recipe.stage2)
+            or any(not isinstance(op, (ops.TrimBounds, ops.Warp)) for op in recipe.post)
+            or len(warps) > 1
+            or any(op.fisheye or op.knots or any(len(c) != 6 for c in op.coefficients)
+                   for op in warps)):
+        descriptor["reason"] = "noise-transfer-for-spatial-or-point-corrections-unavailable"
+        return descriptor
+    if evidence.spatial_black is not None:
+        descriptor["reason"] = "spatial-black-normalization-noise-transfer-unavailable"
+        return descriptor
+    try:
+        rgb_cam = ops.libraw_camera_matrix(raw.color_matrix, raw.rgb_xyz_matrix,
+                                          is_dng=dng_metadata.is_dng_container(evidence.path))
+        # Use the same matrix constants/order as camera_to_rec2020.
+        rec = np.asarray(((.627452, .329249, .043299), (.069109, .919531, .011360),
+                          (.016398, .088030, .895572)), dtype=np.float64)
+        matrix = np.zeros((3, 3), dtype=np.float32)
+        for k in range(3):
+            matrix += (rec[:, k, None] * rgb_cam[None, k, :]).astype(np.float32)
+        wb = np.asarray(evidence.camera_wb[:4], dtype=np.float64)
+        if wb.size < 3 or not np.all(np.isfinite(wb[:3]) & (wb[:3] > 0)):
+            raise ValueError("white-balance-unavailable")
+        if wb.size > 3 and wb[3] > 0 and not np.isclose(wb[3], wb[1], rtol=1e-6, atol=0):
+            raise ValueError("unequal-green-white-balance-noise-transfer-unavailable")
+        positive = wb[np.isfinite(wb) & (wb > 0)]
+        denominator = positive.min() if highlight == "clip" else positive.max()
+        black = np.asarray(evidence.black_levels, dtype=np.float64)
+        global_span = float(evidence.white_level) - float(np.max(black))
+        levels = list(recipe.white_levels) or evidence.camera_white_levels or [evidence.white_level]
+        levels = (levels * 4)[:4]
+        spans = np.asarray(levels[:3], dtype=np.float64) - black[:3]
+        if global_span <= 0 or np.any(spans <= 0) or scale <= 0:
+            raise ValueError("invalid-linear-range")
+        transfer = matrix.astype(np.float64) @ np.diag(
+            65535.0 / float(scale) * wb[:3] / denominator * spans / global_span)
+        geometry = getattr(recipe, "noise_geometry", {})
+        if geometry.get("odd_reduction"):
+            raise ValueError("post-orientation-odd-reduction-noise-transfer-unavailable")
+        effective_crop = geometry.get("effective_sensor_crop")
+        if effective_crop is None:
+            if warps:
+                raise ValueError("decoded-warp-geometry-unavailable")
+            effective_crop = (list(recipe.crop) if recipe.crop is not None
+                              else [0., 0., *evidence.raw_image.shape[:2]])
+        window = effective_crop[2:]
+        descriptor.update(supported=True, reason="approximate-low-frequency-CFA-transfer",
+                          normalized_raw_to_scene=transfer.tolist(),
+                          sensor_window_shape=[float(x) for x in window],
+                          full_sensor_shape=list(evidence.raw_image.shape[:2]),
+                          sensor_crop=(list(recipe.crop) if recipe.crop is not None
+                                       else [0., 0., *evidence.raw_image.shape[:2]]),
+                          effective_sensor_crop=list(effective_crop),
+                          pre_crop_shape=geometry.get("pre_crop_shape"),
+                          decoded_crop=geometry.get("decoded_crop"),
+                          orientation_flip=int(evidence.orientation_flip),
+                          approximation="CFA-counts; demosaic-boundary-correlations-not-exact")
+        if warps:
+            from dataclasses import asdict
+            descriptor["warp_ops"] = [asdict(op) for op in warps]
+        if recipe.gain_maps:
+            from dataclasses import asdict
+            if sum(np.asarray(op.gains).size for op in recipe.gain_maps) > 262144:
+                descriptor.update(supported=False, reason="gainmap-noise-transfer-grid-too-large")
+            else:
+                descriptor["gain_maps"] = []
+                for op in recipe.gain_maps:
+                    payload = asdict(op)
+                    payload["gains"] = np.asarray(op.gains).tolist()
+                    descriptor["gain_maps"].append(payload)
+    except (ValueError, TypeError, AttributeError, np.linalg.LinAlgError) as exc:
+        descriptor["reason"] = str(exc) or "decoder-transfer-unavailable"
+    return descriptor
+
+
 def scene_rec2020_to_xyz_render(scene_rec2020: Any, scene_scale: float) -> Any:
     """Derive XYZ render buffer from a single Rec.2020 demosaic (same geometry as scene)."""
     from .color import rec2020_to_xyz
@@ -886,6 +973,15 @@ def rebalance_raw_bundle(
         )
 
     scene = apply_hot_wb_rec2020(bundle.scene_rec2020_render, transform)
+    noise_decode = getattr(bundle, "noise_decode", None)
+    if noise_decode is not None:
+        noise_decode = dict(noise_decode)
+        if noise_decode.get("supported"):
+            noise_decode["normalized_raw_to_scene"] = (
+                np.asarray(transform, dtype=np.float64)
+                @ np.asarray(noise_decode["normalized_raw_to_scene"], dtype=np.float64)
+            ).tolist()
+            noise_decode["wb_mode"] = wb_mode
     xyz = None if _analysis_luminance_only else scene_rec2020_to_xyz_render(scene, bundle.scene_scale)
     analysis_y = _scene_rec2020_to_y_render(scene, bundle.scene_scale) if _analysis_luminance_only else None
     # R2 item 20: the stored full-resolution tone-plan sample is scene pixels
@@ -917,6 +1013,7 @@ def rebalance_raw_bundle(
         _clip_masks_resized=None,
         _raw_guidance_cache_shape=None,
         _raw_guidance_resized=None,
+        noise_decode=noise_decode,
     )
 
 
@@ -1161,6 +1258,20 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         scene = ops.camera_to_rec2020(scene, ops.libraw_camera_matrix(
             raw.color_matrix, raw.rgb_xyz_matrix,
             is_dng=dng_metadata.is_dng_container(path)))
+    # Noise coordinates must use the same rounded crop as crop_image, after
+    # LibRaw's actual half-size/DefaultScale dimensions are known.
+    ph, pw = scene.shape[:2]
+    sh, sw = evidence.raw_image.shape[:2]
+    cy, cx, ch, cw = recipe.crop if recipe.crop is not None else (0., 0., sh, sw)
+    y0, x0 = max(0, round(cy * ph / sh)), max(0, round(cx * pw / sw))
+    y1, x1 = min(ph, round((cy + ch) * ph / sh)), min(pw, round((cx + cw) * pw / sw))
+    recipe.noise_geometry = {
+        "pre_crop_shape": [ph, pw],
+        "decoded_crop": [y0, x0, y1 - y0, x1 - x0],
+        "effective_sensor_crop": [y0 * sh / ph, x0 * sw / pw,
+                                  (y1 - y0) * sh / ph, (x1 - x0) * sw / pw],
+        "odd_reduction": bool(reduce_after_ops and ((y1-y0) % 2 or (x1-x0) % 2)),
+    }
     scene = ops.crop_image(scene, recipe.crop, evidence.raw_image.shape)
     # Match rawpy's contiguous handoff. A cropped/transposed view would make
     # every downstream reshape(-1, 3) silently copy the complete frame again.
@@ -1687,6 +1798,7 @@ def load_raw(
     render_scale = 1.0
     clip_masks: Any | None = None
     lens_shading: str | None = None
+    noise_decode = {"supported": False, "reason": "opaque-decoder-noise-transfer"}
     processing_clip_masks = None
     scene_geometry_ops = ()
     scene_crop_sensor = None
@@ -1795,6 +1907,11 @@ def load_raw(
                 demosaic_alg = resolve_demosaic_algorithm(raw, demosaic)
                 scene_rec2020_render, processing_clip_masks, recipe, lens_shading = _decode_corrected_libraw(
                     raw, path, evidence, effective_highlight_mode, scene_half_size, demosaic_alg,
+                )
+                noise_decode = _libraw_noise_decode(
+                    raw, evidence, recipe, effective_highlight_mode,
+                    libraw_scene_scale(65535., effective_highlight_mode, camera_wb,
+                                       baseline_exposure=shot.baseline_exposure), scene_half_size,
                 )
                 from .dng_opcodes import Warp
                 scene_geometry_ops = tuple(op for op in recipe.post if isinstance(op, Warp))
@@ -2059,6 +2176,7 @@ def load_raw(
         baseline_exposure_baked_in=baseline_exposure_baked_in,
         applied_wb=[float(x) for x in camera_wb],
         lens_shading=lens_shading,
+        noise_decode=noise_decode,
         processing_clip_masks=processing_clip_masks,
         scene_geometry_ops=scene_geometry_ops,
         scene_crop_sensor=scene_crop_sensor,
