@@ -156,7 +156,6 @@ def render_sample_linear_output(
     sample_masks: Any | None = None,
     sample_raw_guidance: Any | None = None,
     adjustments: RenderAdjustments | None = None,
-    spatial_shape: tuple | None = None,
 ) -> Any:
     from .grade import RENDER_MODE
 
@@ -190,16 +189,7 @@ def render_sample_linear_output(
     effective_plan = plan_with_look_overrides(plan, look, look_strength) if plan is not None else None
     effective_tone = effective_plan.tone if isinstance(effective_plan, RenderPlan) else effective_plan
     eff_color = effective_plan.color if isinstance(effective_plan, RenderPlan) else color_plan
-    if spatial_shape is not None:
-        # Analog-optics probe (review batch 14): the samples are an
-        # area-decimated IMAGE, so the §9 spatial operators participate in
-        # the safe-EV answer at preview scale (halation and bloom are
-        # low-frequency and survive decimation; grain area-averages out).
-        from .film_develop import apply_film_core
-
-        mapped_rec = apply_film_core(rec, effective_tone, spatial_shape=spatial_shape)
-    else:
-        mapped_rec = apply_tone_core(rec, effective_tone, eff_color, sample_masks, sample_raw_guidance)
+    mapped_rec = apply_tone_core(rec, effective_tone, eff_color, sample_masks, sample_raw_guidance)
     if display_filter != "none" and filter_strength > 0.0:
         output_linear = filter_engine.apply_display_filter_rec2020(
             mapped_rec, gamut, display_filter, filter_strength, scene_rec2020=rec
@@ -261,51 +251,20 @@ def max_safe_ev(
     adjustments: RenderAdjustments | None = None,
     tone_plan: RenderPlan | None = None,
     endpoint_mode: str = "adaptive",
-    film_curve: str = "none",
-    film_mode: str = "observe",
-    film_crossover: str | None = None,
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    film_development: str = "measured_default",
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_optics_seed: int = 0,
-    film_media_scatter: str = "declared",
-    film_interimage_beta_dial: float | None = None,
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
     chroma_nr: float = 0.0,
     lens_filter: str | None = None,
 ) -> float:
     """Largest EV (>= from_ev) whose preview-scale output stays below highlight thresholds.
 
     The probe must consult the same compiled curve the real render will use, so the
-    caller's endpoint mode and full film declaration (curve, mode, crossover, color
-    head) and declared lens filter all participate; a None lens_filter keeps whatever
+    caller's endpoint mode and declared lens filter both participate; a None lens_filter keeps whatever
     the bundle already declares.
 
     chroma_nr rides the plan for domain validation only: the sampled probe never
     builds the chroma-NR map (it needs the full spread grid), so the highlight gates
     see the un-repaired scene. The repair is zero-luma at the scene stage and only
-    ever shrinks chroma by MAD-scale amounts inside the 8-128 px band, so the probe
-    is on the conservative side by far less than its 1/128 EV bisection quantum
-    (math review 2026-09-03).
+    ever shrinks chroma inside the 8-128 px band according to the independent
+    calibrated variance; the highlight probe still evaluates the un-repaired input.
     """
     if np is None:
         return float(from_ev)
@@ -330,84 +289,13 @@ def max_safe_ev(
             lum_norm,
             agx_primaries=agx_primaries,
             adjustments=adjustments,
-            film_curve=film_curve,
-            film_mode=film_mode,
-            film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_development=film_development,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_appearance_variant=film_appearance_variant,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_interimage_beta_dial=film_interimage_beta_dial,
-            color_head_y=color_head_y,
-            color_head_m=color_head_m,
-        chroma_nr=chroma_nr,
+            chroma_nr=chroma_nr,
             endpoint_mode=endpoint_mode,
         )
 
     flat = bundle.scene_rec2020_render.reshape(-1, bundle.scene_rec2020_render.shape[-1])
     step = max(1, int(math.ceil(flat.shape[0] / max_samples)))
-    probe_tone = tone_plan.tone if isinstance(tone_plan, RenderPlan) else tone_plan
-    spatial_shape = None
-
-    def _probe_needs_spatial(tone: Any) -> bool:
-        # R4 F4: the probe's decimated image dilutes point speculars by the
-        # cell area (~277x at 61 MP), so it is only worth that cost for the
-        # LOOK amounts whose spread genuinely moves the safe-EV answer
-        # (bloom/halation/grain, review batch 14). The scatter-only default
-        # (R3: media scatter declared, all amounts 0) is a conservative
-        # sub-0.02 mm redistribution that cannot rescue a clipped highlight,
-        # while the decimation would blind the clip budgets to exactly the
-        # pinpoint emitters they police — so it keeps the strided real-pixel
-        # probe.
-        if tone is None or str(getattr(tone, "film_mode", "observe")) != "full" \
-                or str(getattr(tone, "curve_preset", "none")) == "none":
-            return False
-        return any(
-            float(getattr(tone, k, 0.0) or 0.0) > 0.0
-            for k in ("film_grain", "film_halation", "film_bloom")
-        )
-
-    if _probe_needs_spatial(probe_tone):
-        # Decimated-image probe: strided flat samples cannot carry the
-        # spatial operators, so bloom/halation silently sat out the safe-EV
-        # answer (review batch 14).
-        from .film_optics import area_decimate
-
-        sh, sw = bundle.scene_rec2020_render.shape[:2]
-        scale = min(1.0, (max_samples / float(sh * sw)) ** 0.5)
-        dh = max(int(round(sh * scale)), 16)
-        dw = max(int(round(sw * scale)), 16)
-        sample_rgb = area_decimate(
-            bundle.scene_rec2020_render[:, :, :3], dh, dw
-        ).reshape(-1, 3)
-        spatial_shape = (dh, dw)
-        sample_masks = None
-        sample_raw_guidance = None
-        if getattr(bundle, "clip_masks", None) is not None:
-            masks = retreat_engine.clip_masks_for_shape(
-                bundle, (sh, sw)
-            ).astype(np.float32)
-            sample_masks = area_decimate(masks, dh, dw).reshape(-1, 3)
-    elif tone_core != "gated":
+    if tone_core != "gated":
         # Use the SAME full-resolution population on a cached preview and an
         # export. Preview pixels have already averaged away small highlights.
         from .sampling import sample_indices
@@ -428,7 +316,7 @@ def max_safe_ev(
         sample_rgb = flat[::step, :3]
         sample_masks = None
     sample_raw_guidance = None
-    if spatial_shape is None and tone_core == "gated" and getattr(bundle, "clip_masks", None) is not None:
+    if tone_core == "gated" and getattr(bundle, "clip_masks", None) is not None:
         masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
         sample_masks = masks[::step]
         if tone_core == "gated":
@@ -460,7 +348,6 @@ def max_safe_ev(
             sample_masks=sample_masks,
             sample_raw_guidance=sample_raw_guidance,
             adjustments=adjustments,
-            spatial_shape=spatial_shape,
         )
         return output_highlight_margin(rgb, gamut, baseline_stats, body_percentile_mask)
 
@@ -484,7 +371,6 @@ def max_safe_ev(
         sample_masks=sample_masks,
         sample_raw_guidance=sample_raw_guidance,
         adjustments=adjustments,
-        spatial_shape=spatial_shape,
     )
     # R3 item 5: the reliable body is fixed at the BASELINE — the samples not
     # already near-white before any boost. The same sample array renders at
@@ -537,35 +423,6 @@ def compute_auto_ev(
     agx_primaries: str = "base",
     adjustments: RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
-    film_curve: str = "none",
-    film_mode: str = "observe",
-    film_crossover: str | None = None,
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    film_development: str = "measured_default",
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_optics_seed: int = 0,
-    film_media_scatter: str = "declared",
-    film_interimage_beta_dial: float | None = None,
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
     chroma_nr: float = 0.0,
     lens_filter: str | None = None,
     *, _plan_sink: list | None = None,
@@ -579,8 +436,7 @@ def compute_auto_ev(
     limits upward boost only; high-key scenes are never darkened toward gray.
 
     The internal reference plan compiles with the caller's endpoint mode, the full
-    film declaration (curve preset, observe/full mode, crossover switch, enlarger
-    color head) and declared lens filter, so the brightness reference and the
+    render adjustments and declared lens filter, so the brightness reference and the
     highlight-safety cap are judged against the plan the real render will actually
     compile — not a simplified stand-in; a None lens_filter keeps whatever the
     bundle already declares.
@@ -589,7 +445,7 @@ def compute_auto_ev(
 
     if lens_filter is not None and lens_filter != getattr(bundle, "lens_filter", "none"):
         bundle = replace(bundle, lens_filter=lens_filter)
-    if (film_curve == "none" and film_mode != "full" and tone_core != "gated"
+    if (tone_core != "gated"
             and getattr(bundle, "_tone_plan_sample", None) is None
             and getattr(bundle, "scene_rec2020_render", None) is not None):
         from .prepared_sample import PreparedSceneSample
@@ -614,35 +470,6 @@ def compute_auto_ev(
         lum_norm,
         agx_primaries=agx_primaries,
         adjustments=adjustments,
-        film_curve=film_curve,
-        film_mode=film_mode,
-        film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_development=film_development,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_appearance_variant=film_appearance_variant,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_interimage_beta_dial=film_interimage_beta_dial,
-        color_head_y=color_head_y,
-        color_head_m=color_head_m,
         chroma_nr=chroma_nr,
         endpoint_mode=endpoint_mode,
     )
@@ -665,35 +492,6 @@ def compute_auto_ev(
         adjustments=adjustments,
         tone_plan=reference_plan,
         endpoint_mode=endpoint_mode,
-        film_curve=film_curve,
-        film_mode=film_mode,
-        film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_development=film_development,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_appearance_variant=film_appearance_variant,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_interimage_beta_dial=film_interimage_beta_dial,
-        color_head_y=color_head_y,
-        color_head_m=color_head_m,
         chroma_nr=chroma_nr,
     )
     boost_target = max(target, baseline_ev)
@@ -730,35 +528,6 @@ def resolve_export_ev(
     agx_primaries: str = "base",
     adjustments: RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
-    film_curve: str = "none",
-    film_mode: str = "observe",
-    film_crossover: str | None = None,
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    film_development: str = "measured_default",
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_optics_seed: int = 0,
-    film_media_scatter: str = "declared",
-    film_interimage_beta_dial: float | None = None,
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
     chroma_nr: float = 0.0,
     lens_filter: str | None = None,
     *, _plan_sink: list | None = None,
@@ -782,35 +551,6 @@ def resolve_export_ev(
         agx_primaries,
         adjustments,
         endpoint_mode=endpoint_mode,
-        film_curve=film_curve,
-        film_mode=film_mode,
-        film_crossover=film_crossover,
-        film_exposure_ev=film_exposure_ev,
-        film_print_timing=film_print_timing,
-        film_print_medium=film_print_medium,
-        film_print_exposure_ev=film_print_exposure_ev,
-        film_development=film_development,
-        film_interimage=film_interimage,
-        film_appearance=film_appearance,
-        film_appearance_strength=film_appearance_strength,
-        film_appearance_variant=film_appearance_variant,
-        film_richness=film_richness,
-        film_color_density=film_color_density,
-        film_neutral_bias=film_neutral_bias,
-        film_dev_contrast=film_dev_contrast,
-        film_dev_fog=film_dev_fog,
-        film_dev_density=film_dev_density,
-        film_compression=film_compression,
-        film_compression_knee=film_compression_knee,
-        film_highlight_density=film_highlight_density,
-        film_grain=film_grain,
-        film_halation=film_halation,
-        film_bloom=film_bloom,
-        film_optics_seed=film_optics_seed,
-        film_media_scatter=film_media_scatter,
-        film_interimage_beta_dial=film_interimage_beta_dial,
-        color_head_y=color_head_y,
-        color_head_m=color_head_m,
         chroma_nr=chroma_nr,
         lens_filter=lens_filter,
         _plan_sink=_plan_sink,

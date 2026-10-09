@@ -37,76 +37,6 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class HalationGiveTakeGateTheSameExposure(unittest.TestCase):
-    def _setup(self):
-        from dngscan.film_optics import (
-            apply_scatter_mix,
-            area_decimate_rows,
-            halation_component_source,
-            halation_spread_map_from_sources,
-        )
-        from dngscan.film_optics_assets import DEFAULT_STOCK_OPTICS, load_stock_optics
-
-        stock = load_stock_optics(DEFAULT_STOCK_OPTICS)
-        if stock.emulsion_scatter is None:
-            self.skipTest("default stock declares no emulsion scatter")
-        h, w = 96, 128
-        mm_per_px = 36.0 / 6016.0  # export pitch: the scatter halo resolves
-        geometry_w_mm = w * mm_per_px
-        e = np.full((h, w, 3), 0.2, dtype=np.float32)
-        e[h // 2, w // 2, :] = np.float32(2.0 ** 6.5)  # 1-px source
-        e_s = apply_scatter_mix(e, mm_per_px, stock.emulsion_scatter)
-        ref = np.ones(3, dtype=np.float32)
-        dh, dw = h // 7, w // 7  # decimating grid, like a 61 MP export
-        sources = []
-        for comp in stock.halation.components:
-            acc = np.zeros((dh, dw, 3), dtype=np.float64)
-            area_decimate_rows(
-                halation_component_source(e, ref, comp), 0, h, w, dh, dw, acc
-            )
-            sources.append(acc.astype(np.float32))
-        spread = halation_spread_map_from_sources(
-            iter(sources), geometry_w_mm, stock.halation, (dh, dw)
-        )
-        return stock.halation, e, e_s, ref, spread, h, w
-
-    def test_pre_scatter_give_balances_the_unscattered_take(self) -> None:
-        from dngscan.film_optics import halation_reinject_rows, upsample_rows
-
-        hal, e, e_s, ref, spread, h, w = self._setup()
-        if hal.dc_mode != "residual":
-            self.skipTest("stock is not on the residual reinject")
-        log_e = np.log10(np.maximum(e_s, 1e-12)).reshape(-1, 3).astype(np.float64)
-        # the spread map holds per-cell MEANS; its full-resolution mass is
-        # what the reinject adds (upsample_rows), so normalize by that
-        take = upsample_rows(spread, 0, h, h, w)
-        take_total = take.sum(axis=(0, 1))
-        self.assertGreater(float(take_total.max()), 0.0)
-
-        fixed = 10.0 ** halation_reinject_rows(
-            log_e, spread, ref, 0, h, h, w, hal, 1.0, give_lin=e
-        ).reshape(h, w, 3)
-        old = 10.0 ** halation_reinject_rows(
-            log_e, spread, ref, 0, h, h, w, hal, 1.0
-        ).reshape(h, w, 3)
-        # frame-wide layer-exposure change relative to the transferred mass
-        # on the layers that receive halation: the residual form must
-        # conserve (|Δ| small); gating the scattered exposure created energy
-        # (Δ >> 0). Layers without take are excluded — there the only change
-        # is the reinject's floor on the scatter mix's negative lobe (a
-        # separate finding, pinned below).
-        active = take_total > 1e-6 * take_total.max()
-        d_fixed = (fixed - e_s).sum(axis=(0, 1))[active] / take_total[active]
-        d_old = (old - e_s).sum(axis=(0, 1))[active] / take_total[active]
-        self.assertLess(float(np.abs(d_fixed).max()), 0.05, d_fixed)
-        self.assertGreater(float(d_old.max()), 0.3, d_old)
-
-    def test_production_path_passes_the_pre_scatter_exposure(self) -> None:
-        from dngscan import film_develop
-
-        src = inspect.getsource(film_develop)
-        self.assertIn("pre_scatter_lin = e_lin.copy()", src)
-        self.assertIn("give_lin=pre_scatter_lin,", src)
 
 
 class FingerprintCarriesTierForChromaNr(unittest.TestCase):
@@ -114,7 +44,7 @@ class FingerprintCarriesTierForChromaNr(unittest.TestCase):
         from dngscan.gui import service
 
         src = inspect.getsource(service.run_export)
-        block = src[src.find("optics_budget_mib=("):]
+        block = src[src.find("spatial_budget_mib=("):]
         block = block[: block.find("else 0")]
         self.assertIn("float(chroma_nr) > 0.0", block)
 
@@ -150,21 +80,12 @@ class GradeIdNamesWhatRenders(unittest.TestCase):
 
 class DocumentsStateTheReviewedBoundaries(unittest.TestCase):
     def test_wording(self) -> None:
-        chroma = (ROOT / "dngscan" / "chroma_nr.py").read_text(encoding="utf-8")
-        self.assertIn("1/(1 + (d/T)²)", chroma)
-        self.assertIn("LUMINANCE, at the scene stage", chroma)
-        develop = (ROOT / "dngscan" / "film_develop.py").read_text(encoding="utf-8")
-        self.assertIn("not byte-identical", develop)
-        self.assertIn("ONE-SIDED approximation", develop)
-        optics = (ROOT / "dngscan" / "film_optics.py").read_text(encoding="utf-8")
-        self.assertIn("stated non-conservation", optics)
-        self.assertIn("log floor converts", optics)
+        chroma = (ROOT / "docs" / "CHROMA_NR.zh-CN.md").read_text(encoding="utf-8")
+        self.assertIn("BayesShrink", chroma)
         hdr_rs = (ROOT / "rust" / "src" / "hdr.rs").read_text(encoding="utf-8")
         self.assertIn("ABI v11: every matrix stage is an exact float64 stage", hdr_rs)
         plan = (ROOT / "docs" / "HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md").read_text(encoding="utf-8")
         self.assertIn("T_K = T_body(K)^p", plan)
-        optics_doc = (ROOT / "docs" / "FILM_OPTICS_V2_PLAN.zh-CN.md").read_text(encoding="utf-8")
-        self.assertIn("2026-09-03 数学审查（P1）", optics_doc)
 
 
 if __name__ == "__main__":

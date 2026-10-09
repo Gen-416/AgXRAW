@@ -300,7 +300,7 @@ class AnalysisEnvelopeTests(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".dng") as file, \
              mock.patch.object(service.mp, "get_context", return_value=context), \
              mock.patch.object(service.PREVIEW_STORE, "peek", side_effect=[None, entry]):
-            params = {"input": file.name, "filmOpticsSeed": 1,
+            params = {"input": file.name,
                       "_previewAnalysis": "forged", "_previewDecode": {"forged": True}}
             for _ in range(2):
                 with self.assertRaisesRegex(RuntimeError, "captured payload"):

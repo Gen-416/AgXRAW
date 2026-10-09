@@ -58,10 +58,8 @@ class AutoEvChainCarriesChromaNr(unittest.TestCase):
         # both reference plans, the compute->max_safe hop and the resolve->compute hop
         for callee in ("build_render_plan", "max_safe_ev", "compute_auto_ev"):
             for kwargs in _call_kwargs(src, callee):
-                if callee == "build_render_plan" and "film_curve" not in kwargs:
-                    # the sample-probe fallback plan compiles without any film
-                    # declaration by design; only the reference plans that
-                    # mirror the export's full declaration must carry the dial
+                if callee == "build_render_plan" and kwargs == {"agx_primaries", "adjustments"}:
+                    # The standalone sample fallback predates prepared scene context.
                     continue
                 self.assertIn("chroma_nr", kwargs, f"{callee} call drops chroma_nr")
 

@@ -18,27 +18,9 @@ import unittest
 
 import numpy as np
 
-from tests.test_review_batch16 import _negative_stock, _plan
 
 
 class ExportFilenameTests(unittest.TestCase):
-    def test_suffix_call_does_not_pass_the_seed(self) -> None:
-        from dngscan.gui import service
-
-        src = inspect.getsource(service.run_export)
-        call = src[src.find("suffix = export_suffix_parts("):]
-        call = call[:call.find(")\n")]
-        self.assertNotIn(
-            "film_optics_seed", call,
-            "export_suffix_parts has no such parameter — passing it raised "
-            "TypeError on EVERY GUI export (review batch 18 P0)",
-        )
-        fingerprint = src[src.find("fingerprint = export_plan_fingerprint("):]
-        fingerprint = fingerprint[:fingerprint.find(")\n")]
-        self.assertIn(
-            "film_optics_seed", fingerprint,
-            "the seed must still separate two different renders' paths",
-        )
 
     def test_suffix_signature_rejects_the_seed(self) -> None:
         from dngscan.gui.service import export_suffix_parts
@@ -47,67 +29,8 @@ class ExportFilenameTests(unittest.TestCase):
             export_suffix_parts("clip", "srgb", "sdr", film_optics_seed=7)
 
 
-class SpawnSeedTests(unittest.TestCase):
-    def test_parent_resolves_the_seed_before_spawning(self) -> None:
-        from dngscan.gui import service
-
-        src = inspect.getsource(service.run_export_isolated)
-        resolve = src.find("filmOpticsSeed")
-        spawn = src.find('mp.get_context("spawn")')
-        self.assertGreater(resolve, 0, "the parent must resolve the seed")
-        self.assertLess(
-            resolve, spawn,
-            "resolution must happen BEFORE the child is created — a spawned "
-            "child has a fresh PREVIEW_STORE and would mint a new seed",
-        )
-
-    def test_resolved_seed_reaches_the_child_payload(self) -> None:
-        from unittest import mock
-
-        from dngscan.gui import service
-
-        captured: dict = {}
-
-        class _FakeProcess:
-            def __init__(self, target=None, args=(), name=None):
-                captured["params"] = args[0]
-
-            def start(self):
-                raise RuntimeError("stop here: the payload is what we check")
-
-            def is_alive(self):
-                return False
-
-            def join(self, timeout=None):
-                return None
-
-        class _FakeCtx:
-            def Queue(self, maxsize=0):
-                return mock.Mock()
-
-            Process = _FakeProcess
-
-        params = {"input": "/tmp/x.dng", "outdir": "/tmp"}
-        with mock.patch.object(service.mp, "get_context", lambda kind: _FakeCtx()):
-            try:
-                service.run_export_isolated(params)
-            except Exception:
-                pass
-        self.assertIn("params", captured)
-        seed = captured["params"].get("filmOpticsSeed")
-        self.assertIsInstance(seed, int)
-        self.assertGreater(seed, 0)
 
 
-class ScatterSourceTests(unittest.TestCase):
-    def test_bloom_applies_exactly_once(self) -> None:
-        """Pass B renders the pre-bloom print with the same context; the
-        map is None then, so bloom cannot be applied twice."""
-        from dngscan.film_develop import prepare_film_spatial
-
-        ctx = prepare_film_spatial(_plan(_negative_stock(), film_bloom=1.0), 32, 48)
-        self.assertIsNotNone(ctx)
-        self.assertIsNone(ctx.bloom_map, "the map must not exist before pass B")
 
 
 class NestedBudgetTests(unittest.TestCase):

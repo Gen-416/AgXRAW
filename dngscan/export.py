@@ -340,7 +340,6 @@ def export_ultrahdr_jpeg(
 
     try:
         from .grade import RENDER_MODE
-        from .hdr_agx import achieved_headroom, to_gainmap_alternate
         from .hdr_agx_plan import compile_hdr_agx_plan, describe_hdr_plan
         from .models import HdrDisplayTarget, RenderPlan as _RenderPlan
         from .tone import build_render_plan
@@ -374,34 +373,17 @@ def export_ultrahdr_jpeg(
                 f"{describe_hdr_plan(hdr_plan)}。请改用 --output-format sdr"
             )
 
-        film_full = (
-            str(getattr(plan.tone, "film_mode", "observe")) == "full"
-            and str(getattr(plan.tone, "curve_preset", "none")) != "none"
+        from .hdr_agx import render_ultrahdr_agx_pair_packed
+
+        base_u8, alternate, actual = render_ultrahdr_agx_pair_packed(
+            bundle,
+            analysis,
+            plan,
+            hdr_plan,
+            output_gamut,
+            scene_transform,
+            scene_transform_strength,
         )
-        if film_full:
-            # P6 (§10) "胶片印相 + scene HDR 扩展": the film print is the SDR
-            # base; the HDR leg is a C1 scene-highlight gain above the
-            # print's reference white — never a second development.
-            from .hdr_agx import render_ultrahdr_film_pair
-
-            base_u8, hdr_linear = render_ultrahdr_film_pair(
-                bundle, analysis, plan, hdr_plan, output_gamut
-            )
-            actual = achieved_headroom(hdr_linear)
-            alternate = to_gainmap_alternate(hdr_linear, float(hdr_plan.tone.peak_linear))
-            del hdr_linear
-        else:
-            from .hdr_agx import render_ultrahdr_agx_pair_packed
-
-            base_u8, alternate, actual = render_ultrahdr_agx_pair_packed(
-                bundle,
-                analysis,
-                plan,
-                hdr_plan,
-                output_gamut,
-                scene_transform,
-                scene_transform_strength,
-            )
         # Encode-boundary guard at the scene-authorized content peak, not the display
         # capacity: the design contract (§9) keeps the alternate's ceiling at 2^H_content,
         # and the renderer already fitted its volume to exactly this endpoint.
@@ -424,10 +406,7 @@ def export_ultrahdr_jpeg(
             info.update(delivery_size_report(profile, transaction.path.stat().st_size))
             transaction.commit()
         info["output_path"] = str(out_path)
-        info["hdr_plan"] = (
-            "胶片印相+scene HDR 扩展：" + describe_hdr_plan(hdr_plan)
-            if film_full else describe_hdr_plan(hdr_plan)
-        )
+        info["hdr_plan"] = describe_hdr_plan(hdr_plan)
         info["display_headroom_ev"] = float(hdr_plan.tone.display_headroom_ev)
         info["requested_headroom_ev"] = float(hdr_plan.tone.requested_headroom_ev)
         info["rendered_headroom_ev"] = float(hdr_plan.tone.rendered_headroom_ev)

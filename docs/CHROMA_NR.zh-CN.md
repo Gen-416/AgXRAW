@@ -52,7 +52,7 @@ removed = detail × T² / (T² + detail² + ε)
 
 ## 4. 管线位置与状态
 
-pass 0 构造整帧粗网格校正图，按同一连续面应用到各行带或像素块，位于 scene intent 与 clip retreat 之后、AgX formation 之前。当前非线性 `scene_transform` 或 `film-full` 变换没有可靠协方差传播时会跳过；本文以非胶片主流程为范围。
+pass 0 构造整帧粗网格校正图，按同一连续面应用到各行带或像素块，位于 scene intent 与 clip retreat 之后、AgX formation 之前。当前非线性 `scene_transform` 没有可靠协方差传播时会跳过。
 
 适用时 SDR、独立 HDR formation 及 HDR pair 的两腿读取同一份场景校正图。GUI 和导出报告给出 `disabled`、`active-approximate` 或 `skipped` 及原因。强度 0 沿用原有恒等路径；缺模型、未知传递或不适用频谱不退回旧 MAD 阈值。
 
@@ -63,3 +63,5 @@ pass 0 构造整帧粗网格校正图，按同一连续面应用到各行带或�
 入口见 [chroma_nr.py](../dngscan/chroma_nr.py)、[noise_propagation.py](../dngscan/noise_propagation.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py) 和 [test_chroma_nr.py](../tests/test_chroma_nr.py)。Rust B3 与 NumPy 对照证明实现等价，不能证明噪声模型成立或没有细节损失。
 
 自己的 fp PTC、黑场和实拍颜色纹理验收仍需补充。尚未实现完整相关噪声传播、分频模型、行列条纹或固定图样修复；相机/模式适用范围、数据优先级和导入方法见[实测标定说明](NOISE_CALIBRATION.zh-CN.md)。2026-08/09 的旧 MAD 核测量不作为当前核的画质承诺；其失效与外部算法研究保留在[历史研究报告](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md)。
+
+空间临时内存档位由 `DNGSCAN_SPATIAL_BUDGET_MIB=512|1024` 选择，粗网格与行带尺寸共用这一预算；默认 512 MiB。

@@ -60,19 +60,11 @@ class ExportSuffixTests(unittest.TestCase):
         self.assertNotIn('id="browseBtn"', html)
         self.assertNotIn('id="browser"', html)
         self.assertNotIn('optgroup label="本地 LUT"', html)
-        # Vendor display LUTs must never leak into the public GUI. Named film
-        # observation presets ("Kodak Portra 400", "Fujifilm Superia X-TRA 400") are
-        # NOT vendor LUTs — they are dngscan's own calibrated declarations fitted from
-        # published datasheet data — so the guard targets LUT product names, not the
-        # manufacturers whose stocks the film feature legitimately names.
-        # "2383" left this list in P3: the print-MEDIUM selector legitimately
-        # names Kodak 2383/2393 as dngscan's own calibrated print declarations
-        # (the same carve-out as the film stock names); the guard keeps
-        # targeting LUT product names and .cube payloads.
+        # Optional display looks remain available; film-stock selectors are archived.
         for vendor_lut in ("ARRI Classic", "ARRI Reveal", "RED IPP2", "LC-709", ".cube"):
             self.assertNotIn(vendor_lut, html)
-        self.assertIn("Kodak Portra 400", html)
-        self.assertIn("Fujifilm Superia X-TRA 400", html)
+        self.assertNotIn('id="film"', html)
+        self.assertNotIn('id="filmCurve"', html)
 
     def test_default_agx_only(self) -> None:
         self.assertEqual(export_suffix_parts("clip", "srgb", "sdr"), "agx")
@@ -80,7 +72,7 @@ class ExportSuffixTests(unittest.TestCase):
     def test_plan_fingerprint_separates_renders_the_suffix_cannot(self) -> None:
         base = dict(
             wb="camera", ev=0.0, highlight="clip", gamut="p3", output_format="sdr",
-            film_curve="portra400", film_mode="observe", lens_filter="none",
+            lens_filter="none", scene_transform="none",
             adjustments=(0.0,) * 7,
         )
         same = export_plan_fingerprint(**base)
@@ -90,7 +82,7 @@ class ExportSuffixTests(unittest.TestCase):
         # silent overwrite.
         self.assertEqual(len(same), 12)
         for key, value in (
-            ("film_curve", "velvia100"),   # 不同曲线预设的 observe 输出
+            ("scene_transform", "arri_skin_d55"),
             ("wb", "5500k"),
             ("ev", 0.7),
             ("lens_filter", "85b"),
@@ -130,11 +122,8 @@ class ExportSuffixTests(unittest.TestCase):
             "gamut", "output_format", "grade", "grade_strength",
             "scene_transform", "scene_transform_strength", "punch_scale",
             "tone_core", "lum_norm", "agx_primaries", "endpoint_mode",
-            "lens_filter", "film_curve", "film_mode", "film_crossover",
-            "color_head_y", "color_head_m", "adjustments",
+            "lens_filter", "adjustments",
             "hdr_headroom", "delivery", "quality", "chroma",
-            "film_exposure_ev", "film_print_timing",
-            "film_print_medium", "film_print_exposure_ev",
         }
         for kws in keyword_sets:
             self.assertTrue(
@@ -158,8 +147,8 @@ class ExportSuffixTests(unittest.TestCase):
             "agx_look_optic_warm_cyan",
         )
         self.assertEqual(
-            export_suffix_parts("clip", "srgb", "sdr", "filter:kodak_2383_d65", 1.0),
-            "agx_filter_kodak_2383_d65",
+            export_suffix_parts("clip", "srgb", "sdr", "filter:red_ipp2_rec709_medium", 1.0),
+            "agx_filter_red_ipp2_rec709_medium",
         )
 
     def test_includes_grade_strength_when_not_one(self) -> None:

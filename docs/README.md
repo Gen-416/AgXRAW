@@ -11,8 +11,8 @@
 | [使用说明](USER_GUIDE.zh-CN.md) / [User guide](USER_GUIDE.md) | 支持的相机、界面读数、选项置灰、SDR/HDR 和导出档位 |
 | [修图教程](EDITING_TUTORIAL.zh-CN.md) | 从导入到导出，曝光、曲线和 RAW 过曝标记的实拍示例 |
 | [HDR 教程](HDR_TUTORIAL.zh-CN.md) | 参考白、可信高光、HDR 导出与可直接观看的样张 |
-| [胶片教程](FILM_TUTORIAL.zh-CN.md) | 风格模式、完整冲印和各个胶片控件 |
 | [机型支持](SENSOR_SUPPORT.zh-CN.md) | 传感器数据来源、能力降级和 LibRaw 支持边界 |
+| [胶片拆分记录](FILM_SPLIT.zh-CN.md) | AgXFilm 暂停研发档案、迁移边界与旧集成恢复 |
 | [实测噪声标定](NOISE_CALIBRATION.zh-CN.md) | GUI / CLI 导入 JPTC 测量、启停、匹配范围及成像模型来源 |
 | [JPEG / HEIF 质量与体积实测](DELIVERY_QUALITY_STUDY.zh-CN.md) | 编码参数的选择依据；表中数字属于指定样张和版本 |
 
@@ -34,12 +34,6 @@
 | 文档 | 阅读口径 |
 | --- | --- |
 | [HDR AgX v2](HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) | 已落地；HDR tone/color 数学及生产合同，任务拆分为历史记录 |
-| [胶片完整冲印](FILM_PRINT_RENDERING_PLAN.zh-CN.md) | 已落地 film v2 P0–P7 |
-| [胶片外观层](FILM_APPEARANCE_RECIPE_PLAN.zh-CN.md) | 已落地；配方覆盖范围仍有限 |
-| [胶片光学 V2](FILM_OPTICS_V2_PLAN.zh-CN.md) | 已落地 P0–P5 与 R1；冻结基线的变更合同 |
-| [胶片风格模式](FILM_OBSERVATION_PLAN.zh-CN.md) | 已落地 observe 模式 |
-| [胶片 Stage A 色度场](FILM_STAGE_A_CHROMA_FIELD.zh-CN.md) | 实际 shipped 算子与交叉验证；保留被撤回光源分档的测量依据 |
-| [层间效应文献](INTERIMAGE_LITERATURE.zh-CN.md) | 专利定量转录、β 表对照与等效 IIE% 复现路线 |
 | [渲染调度器](RENDER_SCHEDULER_PLAN.zh-CN.md) | 已落地 S1–S4；后续缓存变化另见性能报告 |
 | [热白平衡迁移](HOT_WHITE_BALANCE_MIGRATION.zh-CN.md) | 已落地固定 Kelvin 热 WB |
 | [实时预览](REALTIME_PREVIEW_PLAN.zh-CN.md) | 已落地；文中的 profile 数字为历史测量 |
@@ -53,4 +47,4 @@
 
 [2026-10-09 噪声与纹理研究](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) 保留 `738da0a` 基准上的源码研究与反例，并附本轮实施记录。当前导入与使用见[实测噪声标定](NOISE_CALIBRATION.zh-CN.md)和[色度降噪](CHROMA_NR.zh-CN.md)；SDR 10-bit HEIF、包内 bulk 机型匹配仍为后置待办。
 
-文档图片和机器可读测量保留在 [assets/](assets)。P0 分解数据 `film_v2_p0_decomposition*.json`、色度场 `chroma_field_cv.json` 和光源分档 `illuminant_tier_cv.json` 保留原路径，便于现有工具和引用复现。原始 RAW 和个人导出不属于公共文档资产。
+当前 RAW/HDR 文档图片与机器可读测量保留在 [assets/](assets)。胶片教程、设计、基线、光谱和示例已迁入 AgXFilm，详见[胶片拆分记录](FILM_SPLIT.zh-CN.md)。原始 RAW 和个人导出不属于公共文档资产。

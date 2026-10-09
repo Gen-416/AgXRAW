@@ -298,8 +298,24 @@ class ToeEndOffsetTests(unittest.TestCase):
         self.assertAlmostEqual(wild.tone.toe_power, bounded.tone.toe_power, places=6)
 
 
+_CURVE_CASES = {
+    "lifted": dict(black_ev=-5.0, white_ev=6.0, contrast=3.2, toe_power=2.6,
+                   shoulder_power=2.6, target_black_linear=0.005, latitude_hi_ev=1.4),
+    "hard-shoulder": dict(black_ev=-6.0, white_ev=4.0, contrast=2.8, toe_power=1.8,
+                         shoulder_power=9.1, target_black_linear=0.001),
+    "hard-toe": dict(black_ev=-6.0, white_ev=5.0, contrast=3.0, toe_power=3.45,
+                    shoulder_power=4.0, target_black_linear=0.002),
+}
+
+
+def _bounded_curve_plan(case: str) -> RenderPlan:
+    values = dict(_CURVE_CASES[case])
+    values["dynamic_range_ev"] = values["white_ev"] - values["black_ev"]
+    return _render_plan(_tone_plan(**values))
+
+
 class LiftedBlackToeEndTests(unittest.TestCase):
-    """Floor-relative toe-end semantics on lifted-black (film paper Dmax) plans.
+    """Floor-relative toe-end semantics on generic lifted-black plans.
 
     The near-black reference is TOE_END_DISPLAY_LINEAR ABOVE the compiled
     ``target_black_linear`` floor: identical to the absolute 0.002 level for
@@ -310,19 +326,15 @@ class LiftedBlackToeEndTests(unittest.TestCase):
     control direction.
     """
 
-    PRESETS = ("portra400", "kodachrome64", "vision3250d_theatrical")
+    PRESETS = tuple(_CURVE_CASES)
     OFFSETS = (-3.0, -1.0, -0.05, 0.0, 0.5)
 
-    @staticmethod
-    def _film_plan(preset: str) -> RenderPlan:
-        from dngscan.film_curve import apply_film_curve_preset
-
-        return _render_plan(apply_film_curve_preset(_tone_plan(), preset))
+    _curve_plan = staticmethod(_bounded_curve_plan)
 
     def test_offsets_keep_a_monotone_gradient_with_the_declared_direction(self) -> None:
         for preset in self.PRESETS:
             with self.subTest(preset=preset):
-                plan = self._film_plan(preset)
+                plan = self._curve_plan(preset)
                 base_power = float(plan.tone.toe_power)
                 base_end = compiled_curve_transitions(plan.tone)["toe_end_ev"]
                 self.assertIsNotNone(base_end)
@@ -350,9 +362,9 @@ class LiftedBlackToeEndTests(unittest.TestCase):
     def test_lifted_floor_toe_end_is_a_real_crossing_not_the_black_endpoint(self) -> None:
         from dngscan.drt import TOE_END_DISPLAY_LINEAR, _value_at_ev, curve_params_from_plan
 
-        for preset in ("portra400", "kodachrome64"):
+        for preset in ("lifted", "hard-shoulder"):
             with self.subTest(preset=preset):
-                tone = self._film_plan(preset).tone
+                tone = self._curve_plan(preset).tone
                 end = compiled_curve_transitions(tone)["toe_end_ev"]
                 self.assertIsNotNone(end)
                 self.assertGreater(end, float(tone.black_ev) + 0.05)
@@ -397,11 +409,11 @@ class LiftedBlackToeEndTests(unittest.TestCase):
 
         self.assertIsNone(_finite_or_none(None))
 
-    def test_untouched_sliders_do_not_reclamp_film_preset_powers(self) -> None:
-        # vision3250d_theatrical compiles toe_power 3.45, outside the shadow
+    def test_untouched_sliders_do_not_reclamp_compiled_curve_powers(self) -> None:
+        # The hard-toe case has toe_power 3.45, outside the shadow
         # slider's own clamp range; a zero shadow bias must leave it alone even
         # when another slider is active.
-        plan = self._film_plan("vision3250d_theatrical")
+        plan = self._curve_plan("hard-toe")
         self.assertGreater(float(plan.tone.toe_power), 2.5)
         adjusted = apply_render_adjustments(
             plan, RenderAdjustments(midtone_brightness=0.5)
@@ -539,32 +551,28 @@ class ShoulderWhiteOffsetTests(unittest.TestCase):
         )
 
 
-class FilmPresetShoulderWhiteTests(unittest.TestCase):
-    """Span-relative shoulder-white semantics on film-preset plans.
+class LiftedFloorShoulderWhiteTests(unittest.TestCase):
+    """Span-relative shoulder-white semantics on generic lifted-floor plans.
 
     The near-white reference is SHOULDER_WHITE_DISPLAY_RATIO of the way from the
     compiled black floor to the compiled white target: identical to the absolute
     0.90 level for floor-0 / white-1 plans, and the only definition under which
-    lifted-floor (paper Dmax) or faded-white plans keep a real, monotone
+    lifted-floor (positive black floor) or faded-white plans keep a real, monotone
     measurement — the mirror of the toe fix's floor-relative near-black reference.
-    kodachrome64 additionally compiles shoulder_power 9.1, outside the highlight
+    The hard-shoulder case additionally compiles shoulder_power 9.1, outside the highlight
     slider's own clamp range, so these plans also exercise the no-reclamp-at-zero
     contract and the solve bounds' hard-side margin.
     """
 
-    PRESETS = ("portra400", "kodachrome64", "vision3250d_theatrical")
+    PRESETS = tuple(_CURVE_CASES)
     OFFSETS = (-2.0, -1.0, -0.05, 0.0, 0.05, 1.0, 3.0)
 
-    @staticmethod
-    def _film_plan(preset: str) -> RenderPlan:
-        from dngscan.film_curve import apply_film_curve_preset
-
-        return _render_plan(apply_film_curve_preset(_tone_plan(), preset))
+    _curve_plan = staticmethod(_bounded_curve_plan)
 
     def test_offsets_keep_a_monotone_gradient_with_the_declared_direction(self) -> None:
         for preset in self.PRESETS:
             with self.subTest(preset=preset):
-                plan = self._film_plan(preset)
+                plan = self._curve_plan(preset)
                 base_power = float(plan.tone.shoulder_power)
                 base_white = compiled_curve_transitions(plan.tone)["shoulder_white_ev"]
                 self.assertIsNotNone(base_white)
@@ -601,9 +609,9 @@ class FilmPresetShoulderWhiteTests(unittest.TestCase):
             curve_params_from_plan,
         )
 
-        for preset in ("portra400", "kodachrome64"):
+        for preset in ("lifted", "hard-shoulder"):
             with self.subTest(preset=preset):
-                tone = self._film_plan(preset).tone
+                tone = self._curve_plan(preset).tone
                 white = compiled_curve_transitions(tone)["shoulder_white_ev"]
                 self.assertIsNotNone(white)
                 self.assertLess(white, float(tone.white_ev))
@@ -633,11 +641,11 @@ class FilmPresetShoulderWhiteTests(unittest.TestCase):
             _value_at_ev(float(white), params), SHOULDER_WHITE_DISPLAY_RATIO, places=4
         )
 
-    def test_untouched_sliders_do_not_reclamp_film_preset_shoulder_powers(self) -> None:
-        # kodachrome64 compiles shoulder_power 9.102, outside the highlight
+    def test_untouched_sliders_do_not_reclamp_compiled_curve_shoulder_powers(self) -> None:
+        # The hard-shoulder case has shoulder_power 9.102, outside the highlight
         # slider's own clamp range; a zero shoulder-white bias must leave it
         # alone even when another slider is active.
-        plan = self._film_plan("kodachrome64")
+        plan = self._curve_plan("hard-shoulder")
         self.assertGreater(float(plan.tone.shoulder_power), 5.0)
         adjusted = apply_render_adjustments(
             plan, RenderAdjustments(midtone_brightness=0.5)
@@ -872,11 +880,12 @@ class GuiPageContractTests(unittest.TestCase):
     def test_settings_persist_the_new_controls(self) -> None:
         from dngscan.gui.page import PAGE
 
-        save = PAGE[PAGE.index("function saveSettings()"):]
-        save = save[: save.index("\n}")]
-        self.assertIn("endpointMode", save)
-        self.assertIn("toeEndOffset", save)
-        self.assertIn("shoulderWhiteOffset", save)
+        settings = PAGE[PAGE.index("const SETTINGS_IDS="):PAGE.index("function saveSettings()")]
+        for key in ("endpointMode", "toeEndOffset", "shoulderWhiteOffset"):
+            self.assertIn('"' + key + '"', settings)
+        save = PAGE[PAGE.index("function saveSettings()"):PAGE.index("function restoreSettings()")]
+        self.assertIn("for(const id of SETTINGS_IDS)", save)
+        self.assertIn("state[id]", save)
 
 
 if __name__ == "__main__":

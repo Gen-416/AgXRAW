@@ -41,7 +41,8 @@ from .models import ToneCompressionPlan
 # v17: exact unsigned-sensor ceiling and per-channel clipping counts.
 # v18: borrowed exact B3 smoothing, optional shared gamut median, fused u8
 # delivery metrics and export-local HDR metric workspaces.
-NATIVE_ABI_VERSION = 18
+# v19 removes film-only kernels from the AgXRAW extension.
+NATIVE_ABI_VERSION = 19
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

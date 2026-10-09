@@ -87,14 +87,10 @@ def dither_quantize_u8_with_tpdf(encoded: Any, noise: Any) -> Any:
 
 
 def deterministic_dither_planes(shape: Any) -> tuple[Any, Any]:
-    """Build the seed-0 TPDF source planes consumed by the NON-film streamed SDR path.
+    """Build the seed-0 TPDF source planes consumed by the streamed SDR path.
 
-    The quantize-group ordering is part of that path's pixel contract, so a
-    preview session can reuse one immutable plane across frames. It is NOT a
-    plane-equivalence claim for the film-optics band path: that path draws its
-    dither per band (a declared design, fingerprinted in gui/service), so its
-    bytes depend on the band tier — measured 32.7% of bytes differing by 1 LSB
-    against these planes at the 512 MiB tier (self-review 2026-08-27).
+    Quantize-group ordering is part of the pixel contract, so a preview
+    session can reuse immutable planes across frames without changing bytes.
     """
     dimensions = tuple(int(value) for value in shape)
     if len(dimensions) != 3 or dimensions[-1] != 3:
@@ -287,94 +283,6 @@ def apply_agx_core(rgb_rec2020: Any, plan: ToneCompressionPlan) -> Any:
 # the stored map on a 2048-wide grid) exceeds 256 MiB before a single band
 # exists. Advertising a tier the implementation cannot honour is worse than
 # offering fewer tiers.
-OPTICS_BUDGET_TIERS_MIB = (512, 1024)
-
-
-def _optics_budget_mib() -> int:
-    """§9.3 memory tiers for the analog-optics band path. Default 512 MiB;
-    DNGSCAN_OPTICS_BUDGET_MIB selects 512/1024 (invalid values fail
-    closed to the default rather than silently exceeding the contract)."""
-    import os
-
-    raw = os.environ.get("DNGSCAN_OPTICS_BUDGET_MIB", "")
-    try:
-        v = int(raw)
-    except ValueError:
-        return 512
-    return v if v in OPTICS_BUDGET_TIERS_MIB else 512
-
-
-# Fixed working-set costs of the analog-optics context, charged against the
-# budget BEFORE band sizing (review batch 13: the solver previously budgeted
-# only the band temporaries while the grain field build and the sampling
-# integral image dominated the real peak): the cached float32 grain integral
-# image (the field itself is dropped once the integral exists), plus the
-# decimated spread maps and blur temporaries.
-# Measured fixed context: the float32 grain integral (72 MiB), the decimated
-# scene accumulator and the capture bloom's float64 fine-source accumulator on
-# the spread grid plus the stored glow and halation maps (~300 MiB at 2048
-# wide), and the blur temporaries. Charged before bands are sized.
-#
-# P3 put a second spread operator on the grid, so the tier now also picks the
-# spread grid size (film_optics.spread_max_dim) — at 512 MiB the maps render
-# on a 1408-long grid, which is what makes the charge below fit. Sizing bands
-# against a context that had quietly outgrown the tier is the exact failure
-# this constant exists to prevent, and the independent-process RSS gate is
-# what caught it, at 810 MiB against a 608 MiB allowance.
-# P5f adds the halation fine-source accumulators to the pass A working set:
-# one float32 spread-grid map per component with a nonzero transfer (two in
-# the shipped asset; the zero-transfer aura pays nothing) — ~67 MiB at the
-# 2048 grid, freed when finish_maps builds the spread.
-_OPTICS_FIXED_MIB = 72 + 160 + 48 + 68
-
-
-def _optics_band_rows(width: int, reserved_mib: float = 0.0) -> int:
-    """Rows per sequential band so the fixed context costs PLUS the band's
-    working set (about eight float32 RGB copies through intent/retreat/
-    StageA/B1/paper/B2/finalize) stay inside the budget tier. Sampling and
-    blur paths are slab-bounded upstream so the RENDER path holds no
-    full-frame temporary outside this accounting (the film HDR pair's own
-    band loop keeps its full-frame mapped/hdr buffers, charged nowhere); an
-    independent-process RSS gate pins the sum.
-
-    reserved_mib: full-frame state a caller keeps alive across the bands
-    beyond the optics context — today the chroma-NR correction map (review
-    batch 23: it was allocated before pass A and held through A/B without
-    being charged to the tier)."""
-    budget_bytes = max(
-        (_optics_budget_mib() - _OPTICS_FIXED_MIB - float(reserved_mib)), 32
-    ) * (1 << 20)
-    per_row = max(width, 1) * 3 * 4 * 8
-    # the extra /3 pre-reserves for the halo-slab tripling below (chunk =
-    # min(chunk*3, ...) when a scatter halo widens the band); passes 0/1
-    # never triple and so run 3x smaller bands than the budget allows
-    return int(np.clip(budget_bytes // (3 * per_row), 64, 8192))
-
-
-def _film_spatial_engaged(tone_plan: Any) -> bool:
-    """True when the full-mode film plan MAY need the spatial path: any §9
-    analog-optics amount, or the declared media scatter (R3 item 3 — a media
-    property, engaged independently of the look sliders). The plan alone
-    cannot see the pitch, so the resolution decision stays with
-    prepare_film_spatial: where no scatter kernel resolves (very coarse
-    thumbnails) the context reports unengaged and the chunk-stream fast
-    path proceeds unchanged."""
-    if (
-        str(getattr(tone_plan, "film_mode", "observe")) != "full"
-        or str(getattr(tone_plan, "curve_preset", "none")) == "none"
-    ):
-        return False
-    if any(
-        float(getattr(tone_plan, k, 0.0) or 0.0) > 0.0
-        for k in ("film_grain", "film_halation", "film_bloom")
-    ):
-        return True
-    return (
-        str(getattr(tone_plan, "film_media_scatter", "declared") or "declared")
-        != "off"
-    )
-
-
 def apply_tone_core(
     rgb_rec2020: Any,
     plan: ToneCompressionPlan,
@@ -383,22 +291,6 @@ def apply_tone_core(
     raw_guidance: Any | None = None,
 ) -> Any:
     core = str(getattr(plan, "tone_core", "agx"))
-    # Film takeover: with a film preset in "full" mode, the film's development
-    # model replaces the AgX formation entirely (EXPERIMENTAL; see film_develop).
-    # Downstream finalize keeps delivery-side gamut safety — the small part AgX
-    # still owns in that mode.
-    if (
-        core == "agx"
-        and str(getattr(plan, "film_mode", "observe")) == "full"
-        and str(getattr(plan, "curve_preset", "none")) != "none"
-    ):
-        from .film_develop import apply_film_core
-
-        # The colour head in full mode is consumed INSIDE the takeover chain
-        # (timing=custom converts it to per-layer delta-tau in film_develop;
-        # other timings refuse it at plan compile); the baked chain IS the
-        # development, nothing is appended after it.
-        return apply_film_core(rgb_rec2020, plan)
     if core == "neutral":
         return neutral_engine.apply_neutral_core(rgb_rec2020, plan)
     if core == "lum":
@@ -408,93 +300,6 @@ def apply_tone_core(
             rgb_rec2020, plan, color_plan, clip_masks_rgb, raw_guidance
         )
     return apply_agx_core(rgb_rec2020, plan)
-
-
-def _prepare_spatial_pass1(
-    bundle: RawBundle,
-    tone_plan: Any,
-    color_plan: Any,
-    flat_scene: Any,
-    clip_masks: Any,
-    h: int,
-    w: int,
-    chroma_map: Any = None,
-) -> tuple:
-    """Pass 1 of the §9.3 band pipeline: build the FilmSpatialContext from
-    the band-streamed area-decimated post-intent scene (retreat and, when
-    engaged, the chroma-NR correction included — matching what the film
-    core sees per band). Returns (ctx, band_chunk) where band_chunk is
-    row-aligned flat pixels per sequential band."""
-    from .film_develop import prepare_film_spatial
-    from .film_optics import area_decimate_rows, spread_grid_shape, light_source
-
-    ctx = prepare_film_spatial(tone_plan, h, w)
-    band_rows = _optics_band_rows(w, _retained_map_mib(chroma_map))
-    if ctx is None:
-        # R3 item 3: a scatter-only plan (media scatter declared, all look
-        # amounts 0) resolves to exact identity at this coarse pitch — no
-        # context, and the caller's chunk streaming proceeds as if never
-        # gated.
-        return None, band_rows * w
-    # Pass A exists ONLY for halation (review batch 19): since the bloom
-    # source moved to the full-resolution pass B, decimating the scene for a
-    # bloom-only render walked the whole frame and threw the result away.
-    if ctx.halation > 0.0 or ctx.bloom > 0.0:
-        # ONE pass over the scene now serves both operators (P3). Bloom's
-        # finest detection rung is accumulated at full resolution in this same
-        # loop, so the extra full render pass B used to cost — a whole
-        # colorimetric + grain + halation walk, only to threshold the print —
-        # is gone with the operator that needed it.
-        dh, dw = spread_grid_shape(h, w)
-        acc = np.zeros((dh, dw, 3), dtype=np.float64)
-        retreat_strength = (
-            float(color_plan.raw_clip_retreat_strength)
-            if color_plan is not None else 0.0
-        )
-        ctx.begin_bloom_source()
-        # P5f: when the spread grid is decimated, the halation source gate
-        # runs at full resolution in this same loop (see
-        # FilmSpatialContext.begin_halation_source); at identity grids this
-        # opens nothing and finish_maps keeps the classic decimated gate.
-        ctx.begin_halation_source(
-            tone_plan, str(getattr(tone_plan, "curve_preset", "") or "")
-        )
-        for y0 in range(0, h, band_rows):
-            y1 = min(y0 + band_rows, h)
-            s0, e0 = y0 * w, y1 * w
-            rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
-            if clip_masks is not None and retreat_strength > 0.0:
-                rec = retreat_engine.apply_clip_retreat_rec2020(
-                    rec, clip_masks[s0:e0], retreat_strength
-                )
-            if chroma_map is not None:
-                from .chroma_nr import apply_chroma_correction_flat
-
-                rec = apply_chroma_correction_flat(
-                    rec, chroma_map, s0, e0, h, w
-                )
-            # Light-transport sources see the non-negative part only — the
-            # same boundary apply_film_core's full-frame oracle declares.
-            light = light_source(rec)
-            ctx.accumulate_bloom_source(light, y0, y1)
-            ctx.accumulate_halation_source(light, y0, y1)
-            area_decimate_rows(light, y0, h, w, dh, dw, acc)
-        scene_dec = acc.astype(np.float32)
-        del acc
-        if ctx.bloom > 0.0:
-            ctx.finish_bloom_map(scene_dec)
-        if ctx.halation > 0.0:
-            ctx.finish_maps(
-                scene_dec, tone_plan,
-                str(getattr(tone_plan, "curve_preset", "") or ""),
-            )
-        del scene_dec
-    return ctx, band_rows * w
-
-
-def _retained_map_mib(chroma_map: Any) -> float:
-    """MiB a chroma-NR map keeps resident through the band passes."""
-    return 0.0 if chroma_map is None else float(chroma_map.nbytes) / float(1 << 20)
 
 
 def sensor_px_per_render_px(bundle: RawBundle, h: int, w: int) -> float:
@@ -517,7 +322,6 @@ def _prepare_chroma_nr_map(
     clip_masks: Any,
     h: int,
     w: int,
-    film_full: bool,
     scene_transform: str,
     scene_transform_strength: float,
     wb_adapt: Any,
@@ -531,20 +335,16 @@ def _prepare_chroma_nr_map(
     shared intent strength) and must build the map from the SAME
     preprocessing their chunks apply.
 
-    Walks the scene once in row bands, mirroring EXACTLY the per-chunk
-    preprocessing of the path it serves (intent -> transform when not
-    film-full -> clip retreat), area-decimates the SIGNED result onto the
-    spread grid and hands it to chroma_nr.chroma_correction_map. Runs
-    BEFORE the film spatial pass so the halation/bloom sources read the
-    corrected scene — the operators must not disagree about the same
-    photograph."""
+    Walks the scene in row bands through intent, scene transform and clip retreat,
+    then area-decimates the signed result for the calibrated chroma correction.
+    """
     amount = float(getattr(tone_plan, "chroma_nr", 0.0) or 0.0)
     if amount <= 0.0:
         bundle.chroma_nr_status = "disabled"
         bundle.chroma_nr_reason = None
         return None
     from .chroma_nr import chroma_correction_map
-    from .film_optics import area_decimate_rows, spread_grid_shape
+    from .spatial import area_decimate_rows, spread_grid_shape, spatial_band_rows
     from .noise_propagation import calibrated_chroma_variance
 
     model = getattr(analysis, "noise_model", None) or getattr(bundle, "noise_model", None)
@@ -552,7 +352,7 @@ def _prepare_chroma_nr_map(
         bundle.chroma_nr_status = "skipped"
         bundle.chroma_nr_reason = "independent noise calibration unavailable"
         return None
-    if film_full or (scene_transform != "none" and scene_transform_strength != 0):
+    if scene_transform != "none" and scene_transform_strength != 0:
         bundle.chroma_nr_status = "skipped"
         bundle.chroma_nr_reason = "nonlinear scene-transform noise propagation unavailable"
         return None
@@ -565,7 +365,7 @@ def _prepare_chroma_nr_map(
     dh, dw = spread_grid_shape(h, w)
     acc = np.zeros((dh, dw, 3), dtype=np.float64)
     invalid_acc = np.zeros((dh, dw, 1), dtype=np.float64)
-    band = _optics_band_rows(w)
+    band = spatial_band_rows(w)
     if retreat_strength is None:
         retreat_strength = (
             float(color_plan.raw_clip_retreat_strength)
@@ -576,10 +376,9 @@ def _prepare_chroma_nr_map(
         y1 = min(y0 + band, h)
         s0, e0 = y0 * w, y1 * w
         rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
-        if not film_full:
-            rec = scene_transform_engine.apply_scene_transform_rec2020(
-                rec, scene_transform, scene_transform_strength, wb_adapt
-            )
+        rec = scene_transform_engine.apply_scene_transform_rec2020(
+            rec, scene_transform, scene_transform_strength, wb_adapt
+        )
         if clip_masks is not None:
             invalid = np.any(np.asarray(clip_masks[s0:e0]) > 0, axis=-1)
             area_decimate_rows(
@@ -652,53 +451,18 @@ def scene_render_to_display_linear(
             )
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
-    # Input-domain contract: normalized at the parameter sources (CLI/GUI via
-    # scene_transform.effective_scene_transform, review batch 10) so the plan,
-    # histograms, auto-EV and this render agree. The conditional below stays
-    # as defence in depth for hand-built plans that bypass those sources.
-    film_full = (
-        str(getattr(tone_plan, "film_mode", "observe")) == "full"
-        and str(getattr(tone_plan, "curve_preset", "none")) != "none"
-    )
     chroma_map = _prepare_chroma_nr_map(
         bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w,
-        film_full, scene_transform, scene_transform_strength, wb_adapt,
+        scene_transform, scene_transform_strength, wb_adapt,
         analysis=analysis,
     )
-    spatial_ctx = None
-    if _film_spatial_engaged(tone_plan):
-        # §9.3: sequential row-band spatial path. Pass 1 area-decimates the
-        # post-intent scene in bands and builds the spread maps; pass 2
-        # below streams band-aligned chunks through the same context the
-        # full-frame oracle would build — seams exact, no full-resolution
-        # convolution, extra working set bounded by the budget tier.
-        spatial_ctx, chunk = _prepare_spatial_pass1(
-            bundle, tone_plan, color_plan, flat_scene, clip_masks, h, w,
-            chroma_map=chroma_map,
-        )
-    halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
-    if halo_rows > 0:
-        # amortize the halo redundancy: with 3x bands the extra rows fall
-        # to half their share of the chain; the slab stays row-aligned
-        chunk = min(chunk * 3, flat_scene.shape[0])
     for start in range(0, flat_scene.shape[0], chunk):
         end = min(start + chunk, flat_scene.shape[0])
-        # P5b halo slab: an engaged full-resolution scatter kernel needs
-        # context rows around each band; every upstream op here is
-        # pointwise, so the band simply processes the expanded slab and the
-        # develop core returns only the inner band.
-        if halo_rows > 0:
-            y0b, y1b = start // w, end // w
-            y0e = max(0, y0b - halo_rows)
-            y1e = min(h, y1b + halo_rows)
-            starte, ende = y0e * w, y1e * w
-        else:
-            starte, ende = start, end
+        starte, ende = start, end
         rec = scene_intent_rec2020(flat_scene[starte:ende, :3], bundle)
-        if not film_full:
-            rec = scene_transform_engine.apply_scene_transform_rec2020(
-                rec, scene_transform, scene_transform_strength, wb_adapt
-            )
+        rec = scene_transform_engine.apply_scene_transform_rec2020(
+            rec, scene_transform, scene_transform_strength, wb_adapt
+        )
         if clip_masks is not None and float(color_plan.raw_clip_retreat_strength) > 0.0:
             rec = retreat_engine.apply_clip_retreat_rec2020(
                 rec,
@@ -711,26 +475,13 @@ def scene_render_to_display_linear(
             rec = apply_chroma_correction_flat(
                 rec, chroma_map, starte, ende, h, w
             )
-        if spatial_ctx is not None:
-            from .film_develop import apply_film_core
-
-            mapped_rec = apply_film_core(
-                rec, tone_plan,
-                spatial=(spatial_ctx, start // w, end // w,
-                         starte // w, ende // w),
-            )
-            if starte != start or ende != end:
-                # downstream consumers (display filter scene reference,
-                # capture buffers) expect the inner band
-                rec = rec[start - starte:(start - starte) + (end - start)]
-        else:
-            mapped_rec = apply_tone_core(
-                rec,
-                tone_plan,
-                color_plan,
-                clip_masks[start:end] if clip_masks is not None else None,
-                guidance_engine.flatten_raw_guidance(raw_guidance, start, end) if raw_guidance is not None else None,
-            )
+        mapped_rec = apply_tone_core(
+            rec,
+            tone_plan,
+            color_plan,
+            clip_masks[start:end] if clip_masks is not None else None,
+            guidance_engine.flatten_raw_guidance(raw_guidance, start, end) if raw_guidance is not None else None,
+        )
         if display_filter != "none" and filter_strength > 0.0:
             output_linear = filter_engine.apply_display_filter_rec2020(
                 mapped_rec, output_gamut, display_filter, filter_strength, scene_rec2020=rec
@@ -800,10 +551,6 @@ def render_output_linear(
         raise ValueError("色度 look 与输出滤镜不能同时启用")
     if analysis is None:
         raise ValueError("AgX 导出需要分析结果")
-    # API note (review batch 21): this fallback builds a PLAIN plan — film,
-    # development and optics declarations cannot be expressed through this
-    # entry's kwargs. A caller wanting the film chain must compile its own
-    # plan via build_render_plan and pass it as tone_plan.
     plan = tone_plan if tone_plan is not None else build_render_plan(
         bundle,
         analysis,
@@ -847,19 +594,11 @@ def render_output_u8(
     dither_noise: Any | None = None,
     capture_mapped: Any | None = None,
 ) -> Any:
-    """capture_mapped: optional preallocated [h*w, 3] float32 buffer; when
-    given, every chunk's post-tone-core Rec.2020 pixels are copied into it
-    as they are produced. The Ultra HDR film pair uses this to obtain the
-    high-precision print in the SAME walk that quantizes the SDR base
-    (review batch 17: the pair previously ran the whole film chain twice)."""
+    """Render SDR bytes; optionally capture pre-quantization Rec.2020 pixels."""
     if look != "none" and display_filter != "none":
         raise ValueError("色度 look 与输出滤镜不能同时启用")
     if analysis is None:
         raise ValueError("AgX 导出需要分析结果")
-    # API note (review batch 21): this fallback builds a PLAIN plan — film,
-    # development and optics declarations cannot be expressed through this
-    # entry's kwargs. A caller wanting the film chain must compile its own
-    # plan via build_render_plan and pass it as tone_plan.
     plan = tone_plan if tone_plan is not None else build_render_plan(
         bundle,
         analysis,
@@ -926,7 +665,6 @@ def render_output_u8(
     _native_core = (
         fast_backend.available()
         and str(getattr(effective_tone, "tone_core", "agx")) == "agx"
-        and str(getattr(effective_tone, "film_mode", "observe")) != "full"
         and fast_backend.supports_agx(effective_tone)
     )
     stream_outer, stream_inner = split_for(_native_core)
@@ -956,49 +694,17 @@ def render_output_u8(
             raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
-    # Same defence-in-depth as scene_render_to_display_linear (review batch
-    # 11): the parameter sources normalize the transform away under
-    # full+preset, but a hand-built plan reaching this production path must
-    # not feed the takeover film chain prefeed-separated pixels.
-    film_full = (
-        str(getattr(effective_tone, "film_mode", "observe")) == "full"
-        and str(getattr(effective_tone, "curve_preset", "none")) != "none"
-    )
     chroma_map = _prepare_chroma_nr_map(
         bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w,
-        film_full, scene_transform, scene_transform_strength, wb_adapt,
+        scene_transform, scene_transform_strength, wb_adapt,
         analysis=analysis,
     )
-    spatial_ctx = None
-    spatial_chunk = 0
-    if _film_spatial_engaged(effective_tone):
-        # §9.3: pass 1 builds the spread maps band-streamed; the sequential
-        # band branch below replaces the worker pool (band = quantize group,
-        # dither RNG consumed in deterministic call order).
-        spatial_ctx, spatial_chunk = _prepare_spatial_pass1(
-            bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w,
-            chroma_map=chroma_map,
-        )
-
-    halo_rows = spatial_ctx.scatter_halo_rows() if spatial_ctx is not None else 0
-    if halo_rows > 0:
-        spatial_chunk = min(spatial_chunk * 3, flat_scene.shape[0])
-
     def render_post_tone_chunk(start: int, end: int) -> Any:
-        # P5b halo slab (same protocol as the streaming loop above): expand
-        # the pointwise upstream to the context rows the scatter needs; the
-        # develop core returns only the inner band.
-        if halo_rows > 0:
-            y0e_ = max(0, start // w - halo_rows)
-            y1e_ = min(h, end // w + halo_rows)
-            starte, ende = y0e_ * w, y1e_ * w
-        else:
-            starte, ende = start, end
+        starte, ende = start, end
         rec = scene_intent_rec2020(flat_scene[starte:ende, :3], bundle)
-        if not film_full:
-            rec = scene_transform_engine.apply_scene_transform_rec2020(
-                rec, scene_transform, scene_transform_strength, wb_adapt
-            )
+        rec = scene_transform_engine.apply_scene_transform_rec2020(
+            rec, scene_transform, scene_transform_strength, wb_adapt
+        )
         sample_masks = clip_masks[starte:ende] if clip_masks is not None else None
         if (
             sample_masks is not None
@@ -1014,26 +720,15 @@ def render_output_u8(
             rec = apply_chroma_correction_flat(
                 rec, chroma_map, starte, ende, h, w
             )
-        if spatial_ctx is not None:
-            from .film_develop import apply_film_core
-
-            mapped_rec = apply_film_core(
-                rec, effective_tone,
-                spatial=(spatial_ctx, start // w, end // w,
-                         starte // w, ende // w),
-            )
-            if starte != start or ende != end:
-                rec = rec[start - starte:(start - starte) + (end - start)]
-        else:
-            mapped_rec = apply_tone_core(
-                rec,
-                effective_tone,
-                color_plan,
-                sample_masks,
-                guidance_engine.flatten_raw_guidance(raw_guidance, start, end)
-                if raw_guidance is not None
-                else None,
-            )
+        mapped_rec = apply_tone_core(
+            rec,
+            effective_tone,
+            color_plan,
+            sample_masks,
+            guidance_engine.flatten_raw_guidance(raw_guidance, start, end)
+            if raw_guidance is not None
+            else None,
+        )
         if capture_mapped is not None:
             capture_mapped[start:end] = mapped_rec
         if native_rec2020_input:
@@ -1162,14 +857,6 @@ def render_output_u8(
                 group_start = group_end
                 group_parts = []
 
-    if spatial_ctx is not None:
-        # Sequential band pipeline (§9.3): each band is rendered and
-        # quantized in order; the working set is one band plus the prepared
-        # context, inside the budget tier at any resolution.
-        for s0 in range(0, flat_scene.shape[0], spatial_chunk):
-            e0 = min(s0 + spatial_chunk, flat_scene.shape[0])
-            quantize_chunk(s0, e0, render_post_tone_chunk(s0, e0))
-        return out.reshape(h, w, 3)
     if flat_scene.shape[0] < STREAM_THREAD_MIN_PIXELS or len(ranges) < 2:
         consume_in_quantize_groups(
             (start, end, render_post_tone_chunk(start, end)) for start, end in ranges

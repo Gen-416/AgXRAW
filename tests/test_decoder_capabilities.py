@@ -81,7 +81,7 @@ class AppleOnlyContractTests(unittest.TestCase):
             _load_export_scene(preview.path, 'reconstruct', 'camera', 'coreimage', 'auto', 'auto', 'aligned', preview)
             self.assertEqual(decode.call_args.kwargs['decoder'], 'libraw')
 
-    def test_preview_decoder_contract_reaches_export_child_with_explicit_seed(self):
+    def test_preview_decoder_contract_reaches_export_child_with_decoder_contract(self):
         from tests.test_preview_cache import _bundle
         from types import SimpleNamespace
         from unittest.mock import Mock
@@ -97,8 +97,7 @@ class AppleOnlyContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / 'image.dng'
             path.touch()
-            params = {'input': str(path), 'decoder': 'coreimage', 'coreimageVersion': 'auto',
-                      'filmOpticsSeed': 1234}
+            params = {'input': str(path), 'decoder': 'coreimage', 'coreimageVersion': 'auto'}
             # Exercise the real parser and payload assembly without requiring Quartz.
             with patch.object(ci, 'available', return_value=True), \
                  patch.object(service.PREVIEW_STORE, 'peek', return_value=SimpleNamespace(bundle=preview)), \
@@ -106,7 +105,6 @@ class AppleOnlyContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, 'captured child payload'):
                     service.run_export_isolated(params)
         self.assertEqual(captured['_previewDecode']['scene_decoder_version'], '8')
-        self.assertEqual(captured['filmOpticsSeed'], 1234)
 
     def test_unavailable_coreimage_refuses_export_before_spawning(self):
         from dngscan.gui import service
@@ -114,8 +112,7 @@ class AppleOnlyContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / 'image.dng'
             path.touch()
-            params = {'input': str(path), 'decoder': 'coreimage', 'coreimageVersion': 'auto',
-                      'filmOpticsSeed': 1234}
+            params = {'input': str(path), 'decoder': 'coreimage', 'coreimageVersion': 'auto'}
             with patch.object(ci, 'available', return_value=False), \
                  patch.object(service.PREVIEW_STORE, 'peek') as peek, \
                  patch.object(service.mp, 'get_context') as get_context:

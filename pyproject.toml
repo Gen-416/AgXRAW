@@ -34,12 +34,10 @@ gui = [
 ]
 
 [dependency-groups]
-# scipy: PCHIP interpolation in the importers and the digitization
-# precision gate (R11 item 3: without it CI silently SKIPPED
-# tests/test_digitization_precision.py); matplotlib for the report
-# tools exercised by tests; colour-science for the chroma-field CV
-# record gates (route C phase 1) — without it those gates would
-# silently skip on CI, the exact failure mode R11 closed.
+# SciPy provides an independent interpolation oracle for measurement imports;
+# matplotlib exercises report generation; colour-science supports the retained
+# spectral calibration tools. These are development dependencies, not needed for
+# ordinary RAW conversion.
 test = ["httpx2>=2,<3", "scipy>=1.10", "matplotlib>=3.6",
         "fastapi>=0.141.1,<0.142", "uvicorn>=0.52.2,<0.53",
         "colour-science==0.4.7"]
@@ -54,6 +52,6 @@ include = ["dngscan*"]
 
 [tool.setuptools.package-data]
 # The data assets the wheel-smoke CI job loads from the INSTALLED package:
-# priors JSONs, film_optics/film_v2/appearance assets (npz), lens library,
+# sensor priors, lens library,
 # spectral data.
 dngscan = ["**/*.json", "**/*.npz", "**/*.txt"]

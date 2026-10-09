@@ -160,8 +160,8 @@ def scene_intent_rec2020(values: Any, bundle: Any, gain: float | None = None) ->
     """Storage RGB -> intent-scene float, viewed through any declared lens filter.
 
     The filter multiplies here — before tone metrics, HDR budgeting and both display
-    formations — because glass in front of the lens is capture, not a look: film would
-    have metered, exposed and clipped through it too. The mired shift acts on the
+    formations, because glass in front of the lens changes capture and its exposure.
+    The mired shift acts on the
     rendered balance and is position-invariant, so no illuminant parameter is needed;
     see lens_filter.lens_filter_matrix for the coordinate semantics.
     """
@@ -759,36 +759,16 @@ def apply_render_adjustments(
     shadow_bias = clamp_float(float(adjustments.shadow_transition), -1.0, 1.0)
     highlight_bias = clamp_float(float(adjustments.highlight_transition), -1.0, 1.0)
     fade_bias = clamp_float(float(adjustments.highlight_fade), -1.0, 1.0)
-    if (
-        str(getattr(plan.tone, "film_mode", "observe")) == "full"
-        and str(getattr(plan.tone, "curve_preset", "none")) != "none"
-    ):
-        # The takeover film chain owns the highlight colour path entirely; a stale
-        # highlight-fade value from before the mode switch measurably altered
-        # full-mode exports (0.129 max linear channel diff on _SDI0222 +
-        # Velvia) through a control the GUI shows as disabled. Forced off at
-        # the compiler so no payload can smuggle it in (review batch 10).
-        fade_bias = 0.0
     toe_end_bias = clamp_float(float(adjustments.toe_end_offset), -3.0, 0.5)
     shoulder_white_bias = clamp_float(float(adjustments.shoulder_white_offset), -2.0, 3.0)
 
-    # An untouched slider must not alter the compiled plan: the clamp ranges below
-    # belong to the *moved* value, and film-preset plans legitimately compile powers
-    # outside them (e.g. a fitted toe_power of 3.45). Re-clamping at zero bias would
-    # silently reshape such plans the moment any other slider is touched — and break
-    # the toe_end_offset control's monotone gradient across its own zero point.
+    # An untouched slider must preserve the compiled plan, including values
+    # outside the adjustment window. Only a moved control may change its field.
     def _biased(value: float, bias: float, rate: float, low: float, high: float) -> float:
         if abs(bias) <= 1e-12:
             return float(value)
-        # The window belongs to the MOVED value but must contain the compiled
-        # one: film presets compile toe powers up to 3.5 and shoulder powers
-        # up to 9.3, and clamping them into the scene window snapped every
-        # bias — including the "deeper"/"more direct" direction — to the
-        # window edge, inverting the declared slider direction on 22/25
-        # presets (self-review 2026-08-27, P2). A compiled value outside the
-        # scene window gets the full +-|rate| stop span around itself on that
-        # side, so the slider stays live and sign-correct in BOTH directions;
-        # in-window plans keep the historical clamp byte-for-byte.
+        # Keep room on both sides of an out-of-window compiled value so the
+        # control retains its direction; ordinary plans retain the same clamp.
         value = float(value)
         span = 2.0 ** abs(rate)
         lo = low if value >= low else value / span
@@ -802,7 +782,7 @@ def apply_render_adjustments(
         # compiled base up to 1.3 shifts that window upward. It is a
         # darktable-style interior power on the linear output, not scene
         # exposure: the endpoints hold for zero-floor / unit-white plans, while
-        # a lifted target_black_linear (every film preset) is raised with the
+        # a lifted target_black_linear is raised with the
         # rest of the curve (self-review 2026-08-27).
         view_brightness=_biased(plan.tone.view_brightness, brightness_bias, 0.25, 0.65, 1.65),
         contrast=_biased(plan.tone.contrast, contrast_bias, 0.25, 1.5, 4.5),
@@ -874,19 +854,6 @@ def apply_render_adjustments(
     return replace(plan, tone=tone, color=color)
 
 
-def _default_medium_for(stock: str) -> str:
-    from .film_develop import _load_v2
-
-    st, _media = _load_v2(stock)
-    return str(st["default_medium"])
-
-
-def _interimage_beta_for(stock: str) -> float:
-    from .film_develop import interimage_beta
-
-    return interimage_beta(stock)
-
-
 def build_render_plan(
     bundle: RawBundle,
     analysis: Analysis,
@@ -899,55 +866,10 @@ def build_render_plan(
     lum_norm: str = "y",
     agx_primaries: str = "base",
     adjustments: RenderAdjustments | None = None,
-    film_curve: str = "none",
-    film_mode: str = "observe",
-    film_crossover: str | None = None,
     endpoint_mode: str = "adaptive",
-    color_head_y: float = 0.0,
-    color_head_m: float = 0.0,
-    film_exposure_ev: float = 0.0,
-    film_print_timing: str = "fixed",
-    film_print_medium: str = "",
-    film_print_exposure_ev: float = 0.0,
-    film_development: str = "measured_default",
-    film_interimage: str = "declared",
-    film_appearance: str = "technical",
-    film_appearance_strength: float = 1.0,
-    film_appearance_variant: str = "reference",
-    film_richness: float = 0.0,
-    film_color_density: float = 0.0,
-    film_neutral_bias: float = 1.0,
-    film_dev_contrast: float = 0.0,
-    film_dev_fog: float = 0.0,
-    film_dev_density: float = 0.0,
-    film_compression: float = 0.0,
-    film_compression_knee: float = 2.0,
-    film_highlight_density: float = 0.0,
-    film_grain: float = 0.0,
-    film_halation: float = 0.0,
-    film_bloom: float = 0.0,
-    film_optics_seed: int = 0,
-    film_media_scatter: str = "declared",
-    film_interimage_beta_dial: float | None = None,
     chroma_nr: float = 0.0,
 ) -> RenderPlan:
     """Compile independent scene, tone and colour plans from an immutable capture."""
-    # Full-mode input-domain normalization also lives HERE so hand callers of
-    # build_render_plan cannot desynchronize the plan sample from the render
-    # (review batch 10; the CLI and GUI already normalize at their sources).
-    from .scene_transform import effective_scene_transform
-
-    # Review batch 21: film_mode=full with no preset used to fall through the
-    # film branch entirely — a silent plain render behind a name that claimed
-    # the takeover chain (the GUI guards this at its own source; the CLI and
-    # the Python API reach here unguarded, same class as the tone-core
-    # mismatch guard below).
-    if str(film_mode) == "full" and str(film_curve or "none") == "none":
-        raise ValueError(
-            "胶片接管显影（film_mode=full）需要一个胶片曲线预设：无预设时不存在"
-            "可接管的胶片链；请用 --film/--film-curve 选择，或改用 observe 模式"
-        )
-    scene_transform = effective_scene_transform(scene_transform, film_mode, film_curve)
     tone_core = tone_core if tone_core in TONE_CORE_CHOICES else "agx"
     lum_norm = lum_norm if lum_norm in LUM_NORM_CHOICES else "y"
     endpoint_mode = endpoint_mode if endpoint_mode in ENDPOINT_MODE_CHOICES else "adaptive"
@@ -966,7 +888,7 @@ def build_render_plan(
     # The scene metrics and the tone compiler historically transformed the identical
     # deterministic <=800k sample twice.  Share that exact array: every downstream
     # operation and percentile keeps its original order and dtype, while one full
-    # scene-transform pass disappears from first-WB and first-film plan compilation.
+    # scene-transform pass disappears from first-WB plan compilation.
     rec2020_sample = tone_plan_sample_scene_rec2020(
         bundle,
         scene_transform=scene_transform if mode == "agx" else "none",
@@ -996,362 +918,20 @@ def build_render_plan(
         endpoint_mode=endpoint_mode,
         rec2020_sample=rec2020_sample,
     )
-    # Chroma-only NR (digitization repair, chroma_nr.py): a universal scene
-    # dial, stamped before any film branch — the mottle is a sensor artefact
-    # and exists whether or not a film chain follows. Fail-closed domain.
+    # Independent-model chroma repair, with a fail-closed public amount domain.
     chroma_nr_value = float(chroma_nr or 0.0)
     if not (math.isfinite(chroma_nr_value) and 0.0 <= chroma_nr_value <= 1.0):
         raise ValueError(f"chroma_nr={chroma_nr!r} 域为 [0, 1]")
     if chroma_nr_value > 0.0:
         tone = replace(tone, chroma_nr=chroma_nr_value)
-    if film_curve != "none":
-        from dataclasses import replace as _replace
-
-        from .film_curve import apply_film_curve_preset
-
-        # Film response is fixed: the named coordinate replaces the scene-adaptive
-        # curve wholesale (whole-roll consistency is the point of choosing it). Scene
-        # metrics stay untouched so HDR budgeting keeps reading the real capture, and
-        # user adjustments below still stack on top of the declared coordinate.
-        # A declared film coordinate also supersedes any endpoint mode: its endpoints
-        # are the preset's, so the plan must not keep claiming evidence endpoints.
-        tone = apply_film_curve_preset(tone, film_curve)
-        tone = _replace(tone, endpoint_mode="adaptive", endpoint_note=None)
-        mode_value = film_mode if film_mode in ("observe", "full") else "observe"
-        if mode_value == "full" and str(tone_core) != "agx":
-            # The takeover film chain replaces the AgX formation wholesale and only
-            # runs in the agx pipeline slot; the render stage would otherwise
-            # fall back to the requested core SILENTLY while the filename
-            # still claimed filmfull (the review's measured 0.0-diff bug).
-            raise ValueError(
-                "胶片接管显影（full 模式）只在 AgX tone core 上运行：接管胶片链 "
-                "整体替换 AgX formation，lum/neutral/gated 核会静默退回普通渲染；"
-                "请使用 --tone-core agx 或切回 observe 模式"
-            )
-        # Crossover is a declaration on the takeover chain's neutral axis: it rides the plan only
-        # alongside an active preset, defaults to "off" (byte-identical status quo)
-        # and is inert outside full mode (the film-takeover chain's variant switch).
-        # It must be stamped here, with the preset itself — not inside the
-        # colour-head block below, which only runs for nonzero CC values (the
-        # #20/#21 merge briefly moved it there, which silently killed
-        # --film-crossover for every reversal preset: reversals reject the
-        # colour head, so the stamp became unreachable).
-        # A5 item 6 established the single resolution point HERE; E2 refines
-        # the source: the None-default comes from the selected RECIPE's own
-        # neutralization_policy declaration (reference recipes declare
-        # print-balanced; the extended interpretation declares
-        # technical-neutral — the neutral grey axis is its point).
-        # technical keeps the frozen bounded default. Explicit values win.
-        if film_crossover is None:
-            if str(film_appearance or "technical") in ("reference", "custom"):
-                from .film_appearance import declared_crossover
-
-                crossover_value = declared_crossover(
-                    film_curve,
-                    str(film_print_medium or "") or _default_medium_for(film_curve),
-                    str(film_appearance_variant or "reference"),
-                )
-            else:
-                crossover_value = "off"
-        else:
-            crossover_value = (
-                film_crossover
-                if film_crossover in ("off", "print", "datasheet") else "off"
-            )
-        # film v2 P2: the emulsion exposure state and the print timing are
-        # FULL-mode declarations (observe has no emulsion/print model); the
-        # combination fails closed rather than silently ignoring the dial.
-        exposure_value = float(film_exposure_ev)
-        timing_value = str(film_print_timing or "fixed")
-        medium_value = str(film_print_medium or "")
-        print_exposure_value = float(film_print_exposure_ev)
-        if timing_value not in ("fixed", "retimed", "custom"):
-            raise ValueError(
-                f"未知印相曝光方式:{timing_value}(可选 fixed/retimed/custom)"
-            )
-        if mode_value != "full" and (
-            exposure_value != 0.0 or timing_value != "fixed"
-            or medium_value != "" or print_exposure_value != 0.0
-        ):
-            raise ValueError(
-                "胶片曝光状态、印相曝光方式/介质与手动印相曝光属于接管显影"
-                "(full 模式):observe 模式没有乳剂/印相模型"
-            )
-        development_value = str(film_development or "measured_default")
-        if development_value not in ("measured_default", "editorial_custom"):
-            raise ValueError(
-                f"未知冲洗方式:{development_value}"
-                "(可选 measured_default/editorial_custom)"
-            )
-        if mode_value != "full" and (
-            development_value != "measured_default"
-            or float(film_compression) != 0.0
-            or float(film_highlight_density) != 0.0
-        ):
-            raise ValueError(
-                "冲洗方式与 Film Compression 属于接管显影(full 模式):"
-                "observe 模式没有显影/压缩模型"
-            )
-        if mode_value != "full" and (
-            float(film_grain) != 0.0 or float(film_halation) != 0.0
-            or float(film_bloom) != 0.0
-        ):
-            raise ValueError(
-                "颗粒与光晕(颗粒/halation/bloom)属于接管显影(full 模式):"
-                "observe 模式没有密度/印相空间模型"
-            )
-        if timing_value != "custom" and print_exposure_value != 0.0:
-            raise ValueError(
-                "手动印相曝光仅在 timing=custom 下有意义;fixed/retimed 的印相"
-                "由联合求解决定"
-            )
-        # Review R1 item 4: media scatter enablement is a declared policy,
-        # not an amount — unknown values FAIL CLOSED like every other policy.
-        media_scatter_value = str(film_media_scatter or "declared")
-        if media_scatter_value not in ("declared", "off"):
-            raise ValueError(
-                f"未知介质柔化策略:{media_scatter_value}(可选 declared/off)"
-            )
-        # A4 item 2: the effective beta is resolved from the declared table
-        # exactly ONCE per compile. Both plan copies (ToneCompressionPlan for
-        # the runtime, FilmDevelopmentPlan for the audit surface) receive
-        # this one value, so a mid-compile table mutation cannot fork them.
-        # Taste-to-dial (2026-08-14): "custom" opens the beta itself — the
-        # declared table stays the mathematical default, the dial is the
-        # user's editorial latitude, and unknown modes fail closed.
-        _interimage_mode = str(film_interimage or "declared")
-        if _interimage_mode not in ("declared", "off", "custom"):
-            raise ValueError(
-                f"未知层间效应档:{_interimage_mode}(可选 declared/off/custom)"
-            )
-        _beta_dial = film_interimage_beta_dial
-        if _interimage_mode == "custom":
-            if _beta_dial is None or not (
-                math.isfinite(float(_beta_dial)) and 0.0 <= float(_beta_dial) <= 1.5
-            ):
-                raise ValueError(
-                    "film_interimage=custom 需要 film_interimage_beta_dial∈[0,1.5]"
-                )
-        elif _beta_dial is not None:
-            raise ValueError(
-                "film_interimage_beta_dial 只在 film_interimage=custom 下有意义"
-            )
-        _effective_interimage_beta = (
-            _interimage_beta_for(film_curve)
-            if _interimage_mode == "declared"
-            else float(_beta_dial) if _interimage_mode == "custom"
-            else 0.0
-        )
-        tone = _replace(
-            tone,
-            film_mode=mode_value,
-            film_crossover=crossover_value,
-            film_exposure_ev=exposure_value,
-            film_print_timing=timing_value,
-            film_print_medium=medium_value,
-            film_print_exposure_ev=print_exposure_value,
-            film_development=development_value,
-            film_interimage=str(film_interimage or "declared"),
-            film_appearance=str(film_appearance or "technical"),
-            film_appearance_strength=float(film_appearance_strength),
-            film_appearance_variant=str(film_appearance_variant or "reference"),
-            film_richness=float(film_richness),
-            film_color_density=float(film_color_density),
-            film_neutral_bias=float(film_neutral_bias),
-            film_interimage_beta=_effective_interimage_beta,
-            film_dev_contrast=float(film_dev_contrast),
-            film_dev_fog=float(film_dev_fog),
-            film_dev_density=float(film_dev_density),
-            film_compression=float(film_compression),
-            film_compression_knee=float(film_compression_knee),
-            film_highlight_density=float(film_highlight_density),
-            film_grain=float(film_grain),
-            film_halation=float(film_halation),
-            film_bloom=float(film_bloom),
-            film_optics_seed=int(film_optics_seed),
-            film_media_scatter=media_scatter_value,
-        )
-    if float(color_head_y) != 0.0 or float(color_head_m) != 0.0:
-        # Enlarger colour head: a declared printing decision, valid only where a
-        # printing stage physically exists — a negative preset. Reversal film is
-        # its own display medium (no enlarger pass), and without any film preset
-        # there is no print model at all, so both are rejected rather than
-        # silently ignored.
-        from .film_curve import film_process, validate_color_head_cc
-
-        head_y = validate_color_head_cc(color_head_y, "色头 Y")
-        head_m = validate_color_head_cc(color_head_m, "色头 M")
-        if film_curve == "none":
-            raise ValueError("放大机色头需要一个负片胶片曲线预设（当前未选择胶片）")
-        if film_process(film_curve) != "negative":
-            raise ValueError(
-                f"放大机色头仅对负片预设有效：{film_curve} 是反转片，"
-                "物理上没有印相环节（幻灯片自身就是显示介质）"
-            )
-        if str(film_mode) == "full" and str(film_print_timing or "fixed") != "custom":
-            raise ValueError(
-                "full 模式的色头只在 timing=custom 下可用（P3:在 paper-layer "
-                "exposure model 内转换为 B1 后的逐层 Δτ,标 modelled）;"
-                "fixed/retimed 的印相由联合求解决定,不能追加滤镜"
-            )
-        from dataclasses import replace as _replace
-
-        # film_mode/film_crossover are already stamped with the preset above;
-        # the colour head only adds its own dial values here.
-        tone = _replace(tone, color_head_y=head_y, color_head_m=head_m)
-    # film v2 plan objects (FILM_PRINT_RENDERING_PLAN §4): identity defaults,
-    # validated fail-closed whenever the film domain is active; exposure,
-    # development, print and analog-finish state are all populated below.
-    if film_curve == "none" and (
-        str(film_development or "measured_default") != "measured_default"
-        or float(film_dev_contrast) != 0.0 or float(film_dev_fog) != 0.0
-        or float(film_dev_density) != 0.0 or float(film_compression) != 0.0
-        or float(film_highlight_density) != 0.0
-        or float(film_grain) != 0.0 or float(film_halation) != 0.0
-        or float(film_bloom) != 0.0
-    ):
-        raise ValueError("冲洗方式、Film Compression 与颗粒与光晕需要一个胶片曲线预设")
-    film_plans = None
-    if film_curve != "none":
-        from .film_curve import film_process
-        from .film_plans import (
-            AnalogFinishPlan,
-            FilmDevelopmentPlan,
-            FilmExposurePlan,
-            FilmPrintPlan,
-            validate_film_plans,
-        )
-
-        process = film_process(film_curve)
-        # Review batch 21: an explicit print medium is validated at COMPILE
-        # time against the stock's baked media, not first at the pixel path —
-        # a typo'd --film-print-medium used to survive plan build and export
-        # naming, then fail mid-render with the same message this raises now.
-        _requested_medium = str(getattr(tone, "film_print_medium", "") or "")
-        if _requested_medium and process != "reversal":
-            from .film_develop import _load_v2 as _load_v2_for_medium
-
-            _st, _media = _load_v2_for_medium(film_curve)
-            if _requested_medium not in _media:
-                raise ValueError(
-                    f"'{film_curve}' 未烘焙印相材料 '{_requested_medium}'"
-                    f"（可用：{'/'.join(_st['media'])}）"
-                )
-        # Canonical policy names (plan §8): the internal crossover switch
-        # keeps its historical off/print/datasheet values, the PLAN records
-        # what they mean.
-        neutralization = {
-            "off": "technical-neutral",
-            "print": "print-balanced",
-            "datasheet": "native",
-        }[str(getattr(tone, "film_crossover", "off"))]
-        film_plans = (
-            FilmExposurePlan(
-                stock_id=film_curve,
-                exposure_ev=float(getattr(tone, "film_exposure_ev", 0.0)),
-            ),
-            FilmDevelopmentPlan(
-                recipe_id=str(getattr(tone, "film_development", "measured_default")),
-                contrast_delta=float(getattr(tone, "film_dev_contrast", 0.0)),
-                fog_delta=float(getattr(tone, "film_dev_fog", 0.0)),
-                color_density=float(getattr(tone, "film_dev_density", 0.0)),
-                provenance=(
-                    "editorial"
-                    if str(getattr(tone, "film_development", "measured_default"))
-                    == "editorial_custom" else "measured"
-                ),
-                interimage_mode=str(
-                    getattr(tone, "film_interimage", "declared") or "declared"
-                ),
-                # The SAME resolved value the tone plan carries — resolved
-                # exactly once (A4 item 2), so the two copies cannot diverge
-                # even in principle; a test pins their equality.
-                interimage_beta=float(
-                    getattr(tone, "film_interimage_beta", 0.0) or 0.0
-                ),
-            ),
-            FilmPrintPlan(
-                medium_id=(
-                    "reversal_direct" if process == "reversal"
-                    # Review batch 21: the runtime resolves an unset medium to
-                    # the STOCK's declared default (film_develop reads
-                    # stock["default_medium"]); a hardcoded "print_paper" here
-                    # made the audit plan name a medium the pixels never used
-                    # for any stock whose default differs.
-                    else (
-                        str(getattr(tone, "film_print_medium", ""))
-                        or _default_medium_for(film_curve)
-                    )
-                ),
-                timing_policy=str(getattr(tone, "film_print_timing", "fixed")),
-                neutralization_policy=neutralization,
-                printer_y_cc=float(getattr(tone, "color_head_y", 0.0)),
-                printer_m_cc=float(getattr(tone, "color_head_m", 0.0)),
-                print_exposure_ev=float(getattr(tone, "film_print_exposure_ev", 0.0)),
-            ),
-            AnalogFinishPlan(
-                compression=float(getattr(tone, "film_compression", 0.0)),
-                compression_knee_ev=float(getattr(tone, "film_compression_knee", 2.0)),
-                highlight_color_density=float(
-                    getattr(tone, "film_highlight_density", 0.0)
-                ),
-                grain_profile=(
-                    "modelled_default"
-                    if float(getattr(tone, "film_grain", 0.0)) > 0.0 else "off"
-                ),
-                grain_amount=float(getattr(tone, "film_grain", 0.0)),
-                halation_profile=(
-                    "modelled_default"
-                    if float(getattr(tone, "film_halation", 0.0)) > 0.0 else "off"
-                ),
-                halation_amount=float(getattr(tone, "film_halation", 0.0)),
-                bloom_amount=float(getattr(tone, "film_bloom", 0.0)),
-                seed=int(getattr(tone, "film_optics_seed", 0)),
-            ),
-        )
-        # Appearance layer compiles fail-closed here too: reference mode
-        # resolves and hash-verifies the recipe at plan time or raises. The
-        # compiled object rides RenderPlan.film as the fifth element AND the
-        # tone plan (the runtime consumes the latter — A3 doctrine).
-        from .film_appearance import compile_appearance_plan
-
-        _appearance_mode = str(film_appearance or "technical")
-        if _appearance_mode != "technical" and mode_value != "full":
-            raise ValueError(
-                "film_appearance=reference 属于接管显影(full 模式);"
-                "observe 的风格层是 FILM_STYLE_PAIRINGS"
-            )
-        _appearance_plan = compile_appearance_plan(
-            _appearance_mode,
-            float(film_appearance_strength),
-            richness_delta=float(film_richness),
-            color_density_delta=float(film_color_density),
-            neutral_bias_strength=float(film_neutral_bias),
-            variant=str(film_appearance_variant or "reference"),
-            stock_id=film_curve,
-            medium_id=(
-                (
-                    str(getattr(tone, "film_print_medium", "") or "")
-                    or _default_medium_for(film_curve)
-                )
-                if _appearance_mode != "technical" else ""
-            ),
-        )
-        tone = _replace(tone, film_appearance_compiled=_appearance_plan)
-        validate_film_plans(
-            *film_plans,
-            film_mode=str(getattr(tone, "film_mode", "observe") or "observe"),
-        )
-        # The compiled appearance plan rides as the fifth element — appended
-        # INSIDE the film branch: non-film plans keep film=None.
-        film_plans = (*film_plans, _appearance_plan)
-    plan = RenderPlan(
-        tone=tone,
-        color=build_color_geometry_plan(analysis, output_gamut, tone_core),
-        scene=scene,
-        film=film_plans,
+    return apply_render_adjustments(
+        RenderPlan(
+            tone=tone,
+            color=build_color_geometry_plan(analysis, output_gamut, tone_core),
+            scene=scene,
+        ),
+        adjustments,
     )
-    return apply_render_adjustments(plan, adjustments)
 
 
 def plan_for_mode(

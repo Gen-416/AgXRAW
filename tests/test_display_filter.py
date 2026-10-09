@@ -33,14 +33,6 @@ class DisplayFilterTests(unittest.TestCase):
         self.assertAlmostEqual(float(rec709_inverse_oetf(v)[0]), 0.2597, places=3)
         self.assertAlmostEqual(float(bt1886_eotf(v)[0]), float(0.5**2.4), places=6)
 
-    def test_kodak_filter_no_channel_crush_on_green(self) -> None:
-        if not filter_available("kodak_2383_d65"):
-            self.skipTest("Kodak cube missing")
-        rec = np.array([[[0.18, 0.25, 0.14]]], dtype=np.float32)
-        out = apply_display_filter_rec2020(rec, "srgb", "kodak_2383_d65", 1.0)[0, 0]
-        self.assertGreater(float(out[0]), 0.05)
-        self.assertGreater(float(out[1]), 0.05)
-        self.assertGreater(float(out[2]), 0.05)
 
     def test_log3g10_midgray(self) -> None:
         from dngscan.log_encode import LOG3G10_MIDGRAY
@@ -59,7 +51,7 @@ class DisplayFilterTests(unittest.TestCase):
         rec = np.array([[[0.4, 0.35, 0.3]]], dtype=np.float32)
         flat = rec.reshape(-1, 3)
         expected = rec2020_to_output(flat, "srgb").reshape(rec.shape)
-        out = apply_display_filter_rec2020(rec, "srgb", "kodak_2383_d65", 0.0)
+        out = apply_display_filter_rec2020(rec, "srgb", "red_ipp2_rec709_medium", 0.0)
         np.testing.assert_allclose(out, expected, rtol=0, atol=1e-6)
 
     def test_vendor_cubes_are_not_bundled(self) -> None:
@@ -76,14 +68,6 @@ class DisplayFilterTests(unittest.TestCase):
         ).stdout.strip()
         self.assertEqual(tracked, "", f"vendor cubes tracked in repo: {tracked}")
 
-    def test_kodak_filter_preserves_color(self) -> None:
-        if not filter_available("kodak_2383_d65"):
-            self.skipTest("Kodak cube missing")
-        # Mid-gray with strong green bias in Rec.2020 linear
-        rec = np.array([[[0.18, 0.22, 0.14]]], dtype=np.float32)
-        out = apply_display_filter_rec2020(rec, "srgb", "kodak_2383_d65", 1.0)
-        spread = float(np.max(out) - np.min(out))
-        self.assertGreater(spread, 0.02, "filter output should not be near grayscale")
 
     def test_red_filter_preserves_color(self) -> None:
         if not filter_available("red_ipp2_rec709_medium"):

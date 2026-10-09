@@ -11,7 +11,7 @@ AgXRAW 是项目名，Python 包和命令行入口保留 `dngscan`。运行环�
 | [dngscan/](../dngscan) | 生产 Python 管线；CLI 与 GUI 共享解码、分析、渲染和交付 |
 | [dngscan/gui/](../dngscan/gui) | 本地 HTTP 服务、页面、预览调度、缓存与导出任务 |
 | [rust/src/](../rust/src) | 可选 Rust 计算核；Python 边界与 NumPy 回退仍在 `dngscan` |
-| [dngscan/data/](../dngscan/data) | 随安装包分发的传感器、镜头和胶片资产；另有包根 JSON 预设 |
+| [dngscan/data/](../dngscan/data) | 随安装包分发的传感器与镜头资产；另有包根 JSON 预设 |
 | [dngscan_assets/](../dngscan_assets) | 原始参考、光谱数据与出处；重新校准从这里追溯 |
 | [tests/](../tests) | 正确性、边界、集成和冻结基线；`benchmark_*.py` 需显式运行 |
 | [tools/](../tools/README.md) | 开发、校准和性能分析工具，不是用户启动入口 |
@@ -36,7 +36,7 @@ AgXRAW 是项目名，Python 包和命令行入口保留 `dngscan`。运行环�
 | 编码与发布 | [export.py](../dngscan/export.py)、[auto_encode.py](../dngscan/auto_encode.py)、[delivery.py](../dngscan/delivery.py)、[delivery_transaction.py](../dngscan/delivery_transaction.py) | 固定图像母版、编码候选、实际回读、元数据与最终文件 |
 | 原生加速 | [_fast.py](../dngscan/_fast.py)、[fast_plan.py](../dngscan/fast_plan.py)、[Rust lib.rs](../rust/src/lib.rs) | ABI、输入布局、所有权、失败政策与每个核的数值合同 |
 
-胶片路径在 `film_*.py`、Rust `film_*` / `spatial.rs` 与包内校准资产之间展开；其设计合同和冻结记录由 [文档索引](README.md) 单独列出。
+空间降噪的通用重采样位于 `dngscan/spatial.py`，Rust 空间核由主流程按需使用。胶片研发已拆到 AgXFilm，见[拆分说明](FILM_SPLIT.zh-CN.md)。
 
 ## 建立开发环境
 
@@ -63,7 +63,7 @@ RAW 解码依赖包含固定 Git revision，需要 Git 和 Xcode Command Line To
 DNGSCAN_FAST=0 python -m unittest discover -s tests -q
 PYTHON=python bash tools/build_native.sh
 DNGSCAN_FAST=1 python -m unittest discover -s tests -q
-python -m unittest tests.test_digitization_precision -v
+python -m unittest tests.test_user_calibration tests.test_noise_model tests.test_calibrated_chroma tests.test_spatial -v
 ```
 
 `DNGSCAN_FAST=0` 关闭可选原生核；`1` 要求核加载与执行成功；默认 `auto` 允许回退。构建脚本会检查 ABI、自测，并在 macOS 对生成的扩展签名。切换到不同 ABI 的 checkout 或更换 Python 后应重新构建，不能复用另一版本的 `.so`。原生核依各自合同验证；已有允许容差的路径不代表新优化可以引入额外像素变化。

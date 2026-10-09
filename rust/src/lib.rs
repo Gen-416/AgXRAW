@@ -3,19 +3,15 @@
 //! pybind11 C++ extension (2026-09). The versioned API is checked by the
 //! Python side (dngscan/_fast.py, dngscan/fast_plan.py). Every
 //! kernel replicates the NumPy reference's float32 operation order; the parity
-//! gates are tests/test_fast_backend.py, tests/test_hdr_native.py and
-//! tests/test_film_appearance_p10.py.
+//! gates are tests/test_fast_backend.py and tests/test_hdr_native.py.
 mod agx;
 mod budget;
 mod coding;
 mod evidence;
 mod lens;
 mod loss;
-mod film_appearance;
-mod film_core;
 mod hdr;
 mod metrics;
-mod numpy_sum;
 mod nr;
 mod output;
 mod pixel;
@@ -41,7 +37,8 @@ use std::sync::atomic::Ordering;
 /// v17 adds exact per-channel sensor ceiling and clipping scans.
 /// v18 adds exact borrowed B3 smoothing, shared gamut median, fused u8
 /// delivery metrics and export-local HDR metric workspaces.
-pub const NATIVE_ABI_VERSION: i32 = 18;
+/// v19 separates film kernels into the AgXFilm research repository.
+pub const NATIVE_ABI_VERSION: i32 = 19;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -109,6 +106,14 @@ fn as_view_array<'py, T: numpy::Element>(
 }
 
 fn require_rgb(arr: &Bound<'_, PyArrayDyn<f32>>, name: &str) -> PyResult<usize> {
+    let shape = arr.shape();
+    if shape.len() != 2 || shape[1] != 3 {
+        return Err(PyValueError::new_err(format!("{name} must be (N, 3)")));
+    }
+    Ok(shape[0])
+}
+
+fn require_rgb_f64(arr: &Bound<'_, PyArrayDyn<f64>>, name: &str) -> PyResult<usize> {
     let shape = arr.shape();
     if shape.len() != 2 || shape[1] != 3 {
         return Err(PyValueError::new_err(format!("{name} must be (N, 3)")));
@@ -379,114 +384,6 @@ fn finalize_output_u8_noise_f32<'py>(
     plan: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
     finalize_common(py, rgb, noise, None, plan, false)
-}
-
-/// Film appearance palette kernel (E3); returns (out, pre-clamp rows).
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-fn film_appearance_apply_f32<'py>(
-    py: Python<'py>,
-    rgb: &Bound<'py, PyAny>,
-    scene_ev: &Bound<'py, PyAny>,
-    f_hue: &Bound<'py, PyAny>,
-    d_hue: &Bound<'py, PyAny>,
-    f_chroma: &Bound<'py, PyAny>,
-    d_chroma: &Bound<'py, PyAny>,
-    f_density: &Bound<'py, PyAny>,
-    d_density: &Bound<'py, PyAny>,
-    ev_knots: &Bound<'py, PyAny>,
-    nb_ab: &Bound<'py, PyAny>,
-    has_neutral_bias: bool,
-    strength: f32,
-    neutral_c0: f32,
-    chroma_knee: f32,
-    chroma_power: f32,
-    richness_mult: f32,
-    density_mult: f32,
-    m_fwd: &Bound<'py, PyAny>,
-    m2: &Bound<'py, PyAny>,
-    m2_inv: &Bound<'py, PyAny>,
-    m_inv: &Bound<'py, PyAny>,
-) -> PyResult<(Bound<'py, PyAny>, i64)> {
-    let rgb = as_f32_array(py, rgb)?;
-    let shape = rgb.shape().to_vec();
-    if shape.len() != 2 || shape[1] != 3 {
-        return Err(PyValueError::new_err("rgb must be (N, 3) float32"));
-    }
-    let n = shape[0];
-    let scene_ev = as_f32_array(py, scene_ev)?;
-    if scene_ev.shape().len() != 1 || scene_ev.shape()[0] != n {
-        return Err(PyValueError::new_err("scene_ev must be (N,)"));
-    }
-    let ev_knots = as_f32_array(py, ev_knots)?;
-    let k = ev_knots.shape()[0];
-    let fields = [
-        as_f32_array(py, f_hue)?,
-        as_f32_array(py, d_hue)?,
-        as_f32_array(py, f_chroma)?,
-        as_f32_array(py, d_chroma)?,
-        as_f32_array(py, f_density)?,
-        as_f32_array(py, d_density)?,
-    ];
-    let h = fields[0].shape().get(1).copied().unwrap_or(0);
-    for arr in fields.iter() {
-        let s = arr.shape();
-        if s.len() != 2 || s[0] != k || s[1] != h {
-            return Err(PyValueError::new_err("field tables must be (K, H)"));
-        }
-    }
-    let nb_ab = as_f32_array(py, nb_ab)?;
-    {
-        let s = nb_ab.shape();
-        if s.len() != 2 || s[0] != k || s[1] != 2 {
-            return Err(PyValueError::new_err("nb_ab must be (K, 2)"));
-        }
-    }
-    let mats = [
-        as_f32_array(py, m_fwd)?,
-        as_f32_array(py, m2)?,
-        as_f32_array(py, m2_inv)?,
-        as_f32_array(py, m_inv)?,
-    ];
-    for m in mats.iter() {
-        if m.len() != 9 {
-            return Err(PyValueError::new_err("matrices must have 9 elements"));
-        }
-    }
-    let rgb_ro = rgb.readonly();
-    let ev_ro = scene_ev.readonly();
-    let knots_ro = ev_knots.readonly();
-    let f_ro: Vec<_> = fields.iter().map(|a| a.readonly()).collect();
-    let nb_ro = nb_ab.readonly();
-    let m_ro: Vec<_> = mats.iter().map(|a| a.readonly()).collect();
-    let params = film_appearance::FilmAppearanceParams {
-        f_hue: f_ro[0].as_slice()?,
-        d_hue: f_ro[1].as_slice()?,
-        f_chroma: f_ro[2].as_slice()?,
-        d_chroma: f_ro[3].as_slice()?,
-        f_density: f_ro[4].as_slice()?,
-        d_density: f_ro[5].as_slice()?,
-        ev_knots: knots_ro.as_slice()?,
-        nb_ab: nb_ro.as_slice()?,
-        k_knots: k,
-        h_knots: h,
-        has_neutral_bias,
-        strength,
-        neutral_c0,
-        chroma_knee,
-        chroma_power,
-        richness_mult,
-        density_mult,
-        m_fwd: m_ro[0].as_slice()?,
-        m2: m_ro[1].as_slice()?,
-        m2_inv: m_ro[2].as_slice()?,
-        m_inv: m_ro[3].as_slice()?,
-    };
-    let input = rgb_ro.as_slice()?;
-    let ev = ev_ro.as_slice()?;
-    let mut out = vec![0f32; n * 3];
-    let neg = py.detach(|| film_appearance::film_appearance_apply(input, ev, &mut out, &params));
-    Ok((rows3_f32(py, out, n)?, neg))
 }
 
 /// The C++ extension's self-test, ported verbatim: one grey pixel through the
@@ -1289,32 +1186,7 @@ fn base_and_coding_metrics_u8<'py>(
 }
 
 // ---------------------------------------------------------------------------
-// Stage 2 (2026-09-15): film spatial operators (dngscan/film_optics.py).
-
-fn vec3_f32(v: Vec<f32>, what: &str) -> PyResult<[f32; 3]> {
-    v.as_slice().try_into().map_err(|_| PyValueError::new_err(format!("{what} must have 3 elements")))
-}
-
-fn halation_comps_from_py(py: Python<'_>, comps: &Bound<'_, PyAny>) -> PyResult<Vec<spatial::HalationComponent>> {
-    let mut out = Vec::new();
-    for item in comps.try_iter()? {
-        let item = item?;
-        let gate = as_f32_array(py, &item.get_item(0)?)?;
-        let transfer = as_f32_array(py, &item.get_item(1)?)?;
-        if gate.shape() != [3, 2] || transfer.shape() != [3, 3] {
-            return Err(PyValueError::new_err("halation component must be (gate_ev (3,2), transfer (3,3))"));
-        }
-        let g = gate.readonly();
-        let g = g.as_slice()?;
-        let t = transfer.readonly();
-        let t = t.as_slice()?;
-        out.push(spatial::HalationComponent {
-            gate_ev: [[g[0], g[1]], [g[2], g[3]], [g[4], g[5]]],
-            transfer: [[t[0], t[1], t[2]], [t[3], t[4], t[5]], [t[6], t[7], t[8]]],
-        });
-    }
-    Ok(out)
-}
+// Generic streamed spatial operators (dngscan/spatial.py).
 
 /// Run area decimation on the source dtype, promoting each sample at its
 /// original float64 accumulation point instead of copying the whole band.
@@ -1352,7 +1224,7 @@ fn area_decimate_typed<T: numpy::Element + Copy + Into<f64> + Sync>(
     Ok(())
 }
 
-/// film_optics.area_decimate_rows: float32/float64 source, accumulator in place.
+/// spatial.area_decimate_rows: float32/float64 source, accumulator in place.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 fn area_decimate_rows<'py>(
@@ -1380,7 +1252,7 @@ fn area_decimate_rows<'py>(
     }
 }
 
-/// film_optics.upsample_rows -> (y1 - y0, width, c) float32.
+/// spatial.upsample_rows -> (y1 - y0, width, c) float32.
 #[pyfunction]
 fn upsample_rows<'py>(
     py: Python<'py>,
@@ -1402,559 +1274,11 @@ fn upsample_rows<'py>(
     Ok(PyArray1::from_vec(py, out).reshape([y1 - y0, width, c])?.into_any())
 }
 
-/// film_optics._gaussian_blur_slabbed on (h, w, c) float32 -> new array.
-#[pyfunction]
-fn gaussian_blur_slabbed<'py>(py: Python<'py>, img: &Bound<'py, PyAny>, sigma: f64, periodic: bool) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_view_array::<f32>(py, img, "float32")?;
-    let shape = a.shape().to_vec();
-    if shape.len() != 3 {
-        return Err(PyValueError::new_err("img must be (h, w, c)"));
-    }
-    let (h, w, c) = (shape[0], shape[1], shape[2]);
-    let ro = a.readonly();
-    let view = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
-    let out = py.detach(|| spatial::gaussian_blur(view, sigma, periodic));
-    Ok(PyArray1::from_vec(py, out).reshape([h, w, c])?.into_any())
-}
-
-/// film_optics._blur_small_sigma on one (h, w) float32 plane.
-#[pyfunction]
-fn blur_small_sigma<'py>(py: Python<'py>, chan: &Bound<'py, PyAny>, sigma_px: f64) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_view_array::<f32>(py, chan, "float32")?;
-    let shape = a.shape().to_vec();
-    if shape.len() != 2 {
-        return Err(PyValueError::new_err("chan must be (h, w)"));
-    }
-    let (h, w) = (shape[0], shape[1]);
-    let ro = a.readonly();
-    let view = ro.as_array().into_dimensionality::<numpy::ndarray::Ix2>().unwrap();
-    let out = py.detach(|| spatial::blur_small_sigma(view, sigma_px));
-    Ok(PyArray1::from_vec(py, out).reshape([h, w])?.into_any())
-}
-
-/// film_optics.halation_layer_gate on (..., 3) float32.
-#[pyfunction]
-fn halation_layer_gate<'py>(py: Python<'py>, e_lin: &Bound<'py, PyAny>, e_ref: Vec<f32>, gate_ev: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    let e = as_f32_array(py, e_lin)?;
-    let shape = e.shape().to_vec();
-    if shape.last() != Some(&3) {
-        return Err(PyValueError::new_err("e_lin must be (..., 3)"));
-    }
-    let g = as_f32_array(py, gate_ev)?;
-    if g.shape() != [3, 2] {
-        return Err(PyValueError::new_err("gate_ev must be (3, 2)"));
-    }
-    let gro = g.readonly();
-    let gs = gro.as_slice()?;
-    let gate = [[gs[0], gs[1]], [gs[2], gs[3]], [gs[4], gs[5]]];
-    let r = vec3_f32(e_ref, "e_ref")?;
-    let ro = e.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| {
-        let mut out = vec![0.0f32; d.len()];
-        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
-            let v = spatial::halation_layer_gate_px([px[0], px[1], px[2]], r, &gate);
-            o.copy_from_slice(&v);
-        }
-        out
-    });
-    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
-}
-
-/// film_optics.halation_pointwise_return on (..., 3) float32.
-#[pyfunction]
-fn halation_pointwise_return<'py>(py: Python<'py>, e_lin: &Bound<'py, PyAny>, e_ref: Vec<f32>, comps: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    let e = as_f32_array(py, e_lin)?;
-    let shape = e.shape().to_vec();
-    if shape.last() != Some(&3) {
-        return Err(PyValueError::new_err("e_lin must be (..., 3)"));
-    }
-    let comps = halation_comps_from_py(py, comps)?;
-    let r = vec3_f32(e_ref, "e_ref")?;
-    let ro = e.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| {
-        let mut out = vec![0.0f32; d.len()];
-        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
-            o.copy_from_slice(&spatial::halation_pointwise_return_px([px[0], px[1], px[2]], r, &comps));
-        }
-        out
-    });
-    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
-}
-
-/// film_optics.halation_component_source on (..., 3) float32 for one component.
-#[pyfunction]
-fn halation_component_source<'py>(py: Python<'py>, e_lin: &Bound<'py, PyAny>, e_ref: Vec<f32>, comp: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    let e = as_f32_array(py, e_lin)?;
-    let shape = e.shape().to_vec();
-    if shape.last() != Some(&3) {
-        return Err(PyValueError::new_err("e_lin must be (..., 3)"));
-    }
-    let list = pyo3::types::PyList::new(py, [comp])?;
-    let comps = halation_comps_from_py(py, list.as_any())?;
-    let r = vec3_f32(e_ref, "e_ref")?;
-    let ro = e.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| {
-        let mut out = vec![0.0f32; d.len()];
-        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
-            o.copy_from_slice(&spatial::halation_component_source_px([px[0], px[1], px[2]], r, &comps[0]));
-        }
-        out
-    });
-    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
-}
-
-/// film_optics.capture_bloom_gate on any float32 array.
-#[pyfunction]
-fn capture_bloom_gate<'py>(py: Python<'py>, y: &Bound<'py, PyAny>, t0: f64, t1: f64) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, y)?;
-    let shape = a.shape().to_vec();
-    let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| d.iter().map(|&v| spatial::capture_bloom_gate_px(v, t0, t1)).collect::<Vec<f32>>());
-    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
-}
-
-/// film_optics.capture_bloom_source_rows on (..., 3) float32.
-#[pyfunction]
-fn capture_bloom_source_rows<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, t0: f64, t1: f64) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, rgb)?;
-    let shape = a.shape().to_vec();
-    if shape.last() != Some(&3) {
-        return Err(PyValueError::new_err("rgb must be (..., 3)"));
-    }
-    let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| {
-        let mut out = vec![0.0f32; d.len()];
-        for (px, o) in d.chunks_exact(3).zip(out.chunks_exact_mut(3)) {
-            o.copy_from_slice(&spatial::capture_bloom_source_px([px[0], px[1], px[2]], t0, t1));
-        }
-        out
-    });
-    Ok(PyArray1::from_vec(py, out).reshape(shape)?.into_any())
-}
-
-/// film_optics.capture_bloom_apply_rows -> (n*width, 3) float32.
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-fn capture_bloom_apply_rows<'py>(
-    py: Python<'py>,
-    rgb: &Bound<'py, PyAny>,
-    glow_map: &Bound<'py, PyAny>,
-    y0: usize,
-    y1: usize,
-    height: usize,
-    width: usize,
-    t0: f64,
-    t1: f64,
-    core_ratio: Vec<f64>,
-    save_lights: f32,
-    saturation: f32,
-    amount: f32,
-) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, rgb)?;
-    let n = y1 - y0;
-    if a.len() != n * width * 3 {
-        return Err(PyValueError::new_err("rgb must hold (y1 - y0) * width pixels"));
-    }
-    let m = as_f32_array(py, glow_map)?;
-    let ms = m.shape().to_vec();
-    if ms.len() != 3 || ms[2] != 3 {
-        return Err(PyValueError::new_err("glow_map must be (dh, dw, 3)"));
-    }
-    if core_ratio.len() != 2 {
-        return Err(PyValueError::new_err("core_ratio must have 2 elements"));
-    }
-    let cr = [core_ratio[0], core_ratio[1]];
-    let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let mro = m.readonly();
-    let md = mro.as_slice()?;
-    let out = py.detach(|| {
-        let glow = spatial::upsample_rows(md, ms[0], ms[1], 3, y0, y1, height, width);
-        let mut out = vec![0.0f32; d.len()];
-        for ((px, g), o) in d.chunks_exact(3).zip(glow.chunks_exact(3)).zip(out.chunks_exact_mut(3)) {
-            o.copy_from_slice(&spatial::capture_bloom_apply_px(
-                [px[0], px[1], px[2]], [g[0], g[1], g[2]], t0, t1, cr, save_lights, saturation, amount,
-            ));
-        }
-        out
-    });
-    Ok(PyArray1::from_vec(py, out).reshape([n * width, 3])?.into_any())
-}
-
-/// film_optics.apply_scatter_mix on (h, w, 3) float32; `chans` is
-/// [(s_mix, [(sigma_px, weight), ...]) x 3] as _scatter_components resolves.
-#[pyfunction]
-fn apply_scatter_mix<'py>(py: Python<'py>, img: &Bound<'py, PyAny>, chans: Vec<(f64, Vec<(f64, f64)>)>) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_view_array::<f32>(py, img, "float32")?;
-    let shape = a.shape().to_vec();
-    if shape.len() != 3 || shape[2] != 3 {
-        return Err(PyValueError::new_err("img must be (h, w, 3)"));
-    }
-    if chans.len() != 3 {
-        return Err(PyValueError::new_err("chans must have 3 entries"));
-    }
-    let (h, w) = (shape[0], shape[1]);
-    let sc: [spatial::ScatterChannel; 3] = [
-        spatial::ScatterChannel { s_mix: chans[0].0, comps: chans[0].1.clone() },
-        spatial::ScatterChannel { s_mix: chans[1].0, comps: chans[1].1.clone() },
-        spatial::ScatterChannel { s_mix: chans[2].0, comps: chans[2].1.clone() },
-    ];
-    let ro = a.readonly();
-    let view = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
-    let out = py.detach(|| spatial::apply_scatter_mix(view, &sc));
-    Ok(PyArray1::from_vec(py, out).reshape([h, w, 3])?.into_any())
-}
-
-/// film_optics.sample_field on the cached master integral image (gh+1, gw+1, c)
-/// float32 (landscape store; `rotated` samples it transposed).
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-fn sample_field<'py>(
-    py: Python<'py>,
-    ii: &Bound<'py, PyAny>,
-    rotated: bool,
-    height: usize,
-    width: usize,
-    x0: f64,
-    y0: f64,
-    w_mm: f64,
-    h_mm: f64,
-    gate_w_mm: f64,
-    gate_h_mm: f64,
-    phase: (i64, i64),
-) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f32_array(py, ii)?;
-    let shape = a.shape().to_vec();
-    if shape.len() != 3 {
-        return Err(PyValueError::new_err("ii must be (gh+1, gw+1, c)"));
-    }
-    let (store_h, store_w, c) = (shape[0] - 1, shape[1] - 1, shape[2]);
-    let (gh, gw) = if rotated { (store_w, store_h) } else { (store_h, store_w) };
-    let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let out = py.detach(|| {
-        let img = spatial::IntegralImage { data: d, gh, gw, c, rotated };
-        let edges = spatial::field_edges(height, width, x0, y0, w_mm, h_mm, gate_w_mm, gate_h_mm, gh, gw, phase);
-        spatial::sample_field(&img, &edges, height, width)
-    });
-    Ok(PyArray1::from_vec(py, out).reshape([height, width, c])?.into_any())
-}
-
-/// film_optics.apply_density_grain (band_limited_gaussian_v1) -> (n, 3) float64.
-#[pyfunction]
-fn density_grain_v1<'py>(py: Python<'py>, amounts: &Bound<'py, PyAny>, lo: Vec<f64>, hi: Vec<f64>, field: &Bound<'py, PyAny>, sigma_mul: f64) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f64_array(py, amounts)?;
-    let f = as_f32_array(py, field)?;
-    if a.len() != f.len() || a.len() % 3 != 0 || lo.len() != 3 || hi.len() != 3 {
-        return Err(PyValueError::new_err("amounts/field must be (n, 3), lo/hi 3-vectors"));
-    }
-    let aro = a.readonly();
-    let ad = aro.as_slice()?;
-    let fro = f.readonly();
-    let fd = fro.as_slice()?;
-    let n = ad.len() / 3;
-    let out = py.detach(|| spatial::density_grain_v1(ad, [lo[0], lo[1], lo[2]], [hi[0], hi[1], hi[2]], fd, sigma_mul));
-    Ok(PyArray1::from_vec(py, out).reshape([n, 3])?.into_any())
-}
-
-/// film_optics.apply_density_grain (measured_sigma_v2) -> (n, 3) float64.
-/// `tables` = [(chart_base, density_axis, sigma) x 3].
-#[pyfunction]
-fn density_grain_v2<'py>(py: Python<'py>, amounts: &Bound<'py, PyAny>, field: &Bound<'py, PyAny>, tables: Vec<(f32, Vec<f64>, Vec<f64>)>, amount_over_rms: f32) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f64_array(py, amounts)?;
-    let f = as_f32_array(py, field)?;
-    if a.len() != f.len() || a.len() % 3 != 0 || tables.len() != 3 {
-        return Err(PyValueError::new_err("amounts/field must be (n, 3), tables x3"));
-    }
-    let tabs: [spatial::SigmaTable; 3] = [
-        spatial::SigmaTable { base: tables[0].0, d: tables[0].1.clone(), sigma: tables[0].2.clone() },
-        spatial::SigmaTable { base: tables[1].0, d: tables[1].1.clone(), sigma: tables[1].2.clone() },
-        spatial::SigmaTable { base: tables[2].0, d: tables[2].1.clone(), sigma: tables[2].2.clone() },
-    ];
-    let aro = a.readonly();
-    let ad = aro.as_slice()?;
-    let fro = f.readonly();
-    let fd = fro.as_slice()?;
-    let n = ad.len() / 3;
-    let out = py.detach(|| spatial::density_grain_v2(ad, fd, &tabs, amount_over_rms));
-    Ok(PyArray1::from_vec(py, out).reshape([n, 3])?.into_any())
-}
-
-/// film_optics.halation_reinject_rows -> (n*width, 3) float64.
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-fn halation_reinject_rows<'py>(
-    py: Python<'py>,
-    log_e: &Bound<'py, PyAny>,
-    spread_map: &Bound<'py, PyAny>,
-    e_ref: Vec<f32>,
-    y0: usize,
-    y1: usize,
-    height: usize,
-    width: usize,
-    comps: &Bound<'py, PyAny>,
-    residual: bool,
-    amount: f32,
-    give_lin: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let l = as_f64_array(py, log_e)?;
-    let n = (y1 - y0) * width;
-    if l.len() != n * 3 {
-        return Err(PyValueError::new_err("log_e must hold (y1 - y0) * width pixels"));
-    }
-    let m = as_f32_array(py, spread_map)?;
-    let ms = m.shape().to_vec();
-    if ms.len() != 3 || ms[2] != 3 {
-        return Err(PyValueError::new_err("spread_map must be (dh, dw, 3)"));
-    }
-    let comps = halation_comps_from_py(py, comps)?;
-    let r = vec3_f32(e_ref, "e_ref")?;
-    let give = if give_lin.is_none() {
-        None
-    } else {
-        let g = as_f32_array(py, give_lin)?;
-        if g.len() != n * 3 {
-            return Err(PyValueError::new_err("give_lin must match log_e"));
-        }
-        Some(g)
-    };
-    let lro = l.readonly();
-    let ld = lro.as_slice()?;
-    let mro = m.readonly();
-    let md = mro.as_slice()?;
-    let gro = give.as_ref().map(|g| g.readonly());
-    let gd = match gro.as_ref() {
-        Some(g) => Some(g.as_slice()?),
-        None => None,
-    };
-    let out = py.detach(|| {
-        let up = spatial::upsample_rows(md, ms[0], ms[1], 3, y0, y1, height, width);
-        spatial::halation_reinject(ld, gd, &up, r, &comps, residual, amount)
-    });
-    Ok(PyArray1::from_vec(py, out).reshape([n, 3])?.into_any())
-}
-
-// ---------------------------------------------------------------------------
-// Stage 3 (2026-09-15): film v2 core per-pixel chain (film_v2_math.py, film_develop.py).
-
-fn mat3_f64(v: Vec<f64>, what: &str) -> PyResult<[[f64; 3]; 3]> {
-    if v.len() != 9 {
-        return Err(PyValueError::new_err(format!("{what} must have 9 elements")));
-    }
-    Ok([[v[0], v[1], v[2]], [v[3], v[4], v[5]], [v[6], v[7], v[8]]])
-}
-
-fn vec3_f64(v: Vec<f64>, what: &str) -> PyResult<[f64; 3]> {
-    v.as_slice().try_into().map_err(|_| PyValueError::new_err(format!("{what} must have 3 elements")))
-}
-
-fn rows3_f64<'py>(py: Python<'py>, data: Vec<f64>, n: usize) -> PyResult<Bound<'py, PyAny>> {
-    Ok(PyArray1::from_vec(py, data).reshape([n, 3])?.into_any())
-}
-
-/// film_v2_math.layer_log_exposure -> (n, 3) float64.
-#[pyfunction]
-fn layer_log_exposure<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, observer: Vec<f64>) -> PyResult<Bound<'py, PyAny>> {
-    let obs = mat3_f64(observer, "observer")?;
-    if let Ok(a) = rgb.cast::<PyArrayDyn<f64>>() {
-        let n = require_rgb_f64(a, "rgb")?;
-        let ro = a.readonly();
-        let d = ro.as_slice()?;
-        let mut out = vec![0.0f64; n * 3];
-        py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::layer_log_exposure(i, &obs, o)));
-        return rows3_f64(py, out, n);
-    }
-    let a = as_f32_array(py, rgb)?;
-    let n = require_rgb(&a, "rgb")?;
-    let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::layer_log_exposure(i, &obs, o)));
-    rows3_f64(py, out, n)
-}
-
-/// film_v2_math.chroma_field_log_exposure -> (n, 3) float64.
-#[pyfunction]
-fn chroma_field_log_exposure<'py>(
-    py: Python<'py>,
-    rgb: &Bound<'py, PyAny>,
-    delta_lut: &Bound<'py, PyAny>,
-    domain: Vec<f64>,
-    xyz_from_rec2020: Vec<f64>,
-    observer: Vec<f64>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let lut = as_f64_array(py, delta_lut)?;
-    let ls = lut.shape().to_vec();
-    if ls.len() != 3 || ls[0] != ls[1] || ls[0] < 2 || ls[2] != 3 {
-        return Err(PyValueError::new_err("delta_lut must be (n, n, 3)"));
-    }
-    if domain.len() != 4 {
-        return Err(PyValueError::new_err("domain must have 4 elements"));
-    }
-    let lro = lut.readonly();
-    let ld = lro.as_slice()?;
-    let field = film_core::ChromaField {
-        table: ld,
-        n: ls[0],
-        domain: [domain[0], domain[1], domain[2], domain[3]],
-        xyz_from_rec2020: mat3_f64(xyz_from_rec2020, "xyz_from_rec2020")?,
-        observer: mat3_f64(observer, "observer")?,
-    };
-    if let Ok(a64) = rgb.cast::<PyArrayDyn<f64>>() {
-        let n = require_rgb_f64(a64, "rgb")?;
-        let ro = a64.readonly();
-        let d = ro.as_slice()?;
-        let mut out = vec![0.0f64; n * 3];
-        py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::chroma_field_log_exposure(i, &field, o)));
-        return rows3_f64(py, out, n);
-    }
-    let a = as_f32_array(py, rgb)?;
-    let n = require_rgb(&a, "rgb")?;
-    let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::chroma_field_log_exposure(i, &field, o)));
-    rows3_f64(py, out, n)
-}
-
-/// film_v2_math.characteristic_amounts -> (n, 3) float64.
-#[pyfunction]
-fn characteristic_amounts<'py>(py: Python<'py>, log_e: &Bound<'py, PyAny>, le_axis: Vec<f64>, table: &Bound<'py, PyAny>, ev_offset: f64) -> PyResult<Bound<'py, PyAny>> {
-    let l = as_f64_array(py, log_e)?;
-    let n = require_rgb_f64(&l, "log_e")?;
-    let t = as_f64_array(py, table)?;
-    if t.shape() != [le_axis.len(), 3] {
-        return Err(PyValueError::new_err("amounts_table must be (K, 3)"));
-    }
-    let lro = l.readonly();
-    let ld = lro.as_slice()?;
-    let tro = t.readonly();
-    let td = tro.as_slice()?;
-    let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::par_map3(ld, &mut out, |i, o| film_core::characteristic_amounts(i, &le_axis, td, ev_offset, o)));
-    rows3_f64(py, out, n)
-}
-
-fn require_rgb_f64(arr: &Bound<'_, PyArrayDyn<f64>>, name: &str) -> PyResult<usize> {
-    let shape = arr.shape();
-    if shape.len() != 2 || shape[1] != 3 {
-        return Err(PyValueError::new_err(format!("{name} must be (N, 3)")));
-    }
-    Ok(shape[0])
-}
-
-/// film_develop inter-image amplification -> (n, 3) float64 (new array).
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-fn interimage_amplify<'py>(
-    py: Python<'py>,
-    amounts: &Bound<'py, PyAny>,
-    log_e: &Bound<'py, PyAny>,
-    le_axis: Vec<f64>,
-    table: &Bound<'py, PyAny>,
-    rail_lo: Vec<f64>,
-    rail_hi: Vec<f64>,
-    beta: f64,
-) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f64_array(py, amounts)?;
-    let n = require_rgb_f64(&a, "amounts")?;
-    let l = as_f64_array(py, log_e)?;
-    if require_rgb_f64(&l, "log_e")? != n {
-        return Err(PyValueError::new_err("log_e must match amounts"));
-    }
-    let t = as_f64_array(py, table)?;
-    if t.shape() != [le_axis.len(), 3] {
-        return Err(PyValueError::new_err("table must be (K, 3)"));
-    }
-    let lo = vec3_f64(rail_lo, "rail_lo")?;
-    let hi = vec3_f64(rail_hi, "rail_hi")?;
-    let mut out = a.readonly().as_slice()?.to_vec();
-    let lro = l.readonly();
-    let ld = lro.as_slice()?;
-    let tro = t.readonly();
-    let td = tro.as_slice()?;
-    py.detach(|| film_core::par_map3(ld, &mut out, |i, o| film_core::interimage_amplify(o, i, &le_axis, td, lo, hi, beta)));
-    rows3_f64(py, out, n)
-}
-
-/// film_develop._tetrahedral on a (n, n, n, 3) float32 LUT at (m, 3) float32 coordinates.
-#[pyfunction]
-fn tetrahedral<'py>(py: Python<'py>, lut: &Bound<'py, PyAny>, u: &Bound<'py, PyAny>, n: usize) -> PyResult<Bound<'py, PyAny>> {
-    let l = as_f32_array(py, lut)?;
-    if l.shape() != [n, n, n, 3] {
-        return Err(PyValueError::new_err("lut must be (n, n, n, 3)"));
-    }
-    let uu = as_f32_array(py, u)?;
-    let m = require_rgb(&uu, "u")?;
-    let lro = l.readonly();
-    let ld = lro.as_slice()?;
-    let uro = uu.readonly();
-    let ud = uro.as_slice()?;
-    let mut out = vec![0.0f32; m * 3];
-    py.detach(|| film_core::par_map3(ud, &mut out, |i, o| film_core::tetrahedral(ld, n, i, o)));
-    rows3_f32(py, out, m)
-}
-
-/// film_v2_math.film_compression_ev -> (n, 3) float64.
-#[pyfunction]
-fn film_compression_ev<'py>(py: Python<'py>, rgb: &Bound<'py, PyAny>, impact: f64, knee_ev: f64, width_ev: f64, rho: f64) -> PyResult<Bound<'py, PyAny>> {
-    let a = as_f64_array(py, rgb)?;
-    let n = require_rgb_f64(&a, "rgb")?;
-    let ro = a.readonly();
-    let d = ro.as_slice()?;
-    let mut out = vec![0.0f64; n * 3];
-    py.detach(|| film_core::par_map3(d, &mut out, |i, o| film_core::film_compression_ev(i, impact, knee_ev, width_ev, rho, o)));
-    rows3_f64(py, out, n)
-}
-
-/// developed[:, c] /= np.interp(ev_y, cast_ev, cast[:, c]) with
-/// ev_y = log2(max(rgb @ luma, eps) / 0.18) + offset (float32 rgb) -> new (n, 3) float32.
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-fn cast_divide<'py>(
-    py: Python<'py>,
-    developed: &Bound<'py, PyAny>,
-    rgb: &Bound<'py, PyAny>,
-    eps: f32,
-    offset: f32,
-    cast_ev: Vec<f64>,
-    cast: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let dv = as_f32_array(py, developed)?;
-    let n = require_rgb(&dv, "developed")?;
-    let a = as_f32_array(py, rgb)?;
-    if require_rgb(&a, "rgb")? != n {
-        return Err(PyValueError::new_err("rgb must match developed"));
-    }
-    let c = as_f64_array(py, cast)?;
-    if c.shape() != [cast_ev.len(), 3] {
-        return Err(PyValueError::new_err("cast must be (K, 3)"));
-    }
-    let mut out = dv.readonly().as_slice()?.to_vec();
-    let aro = a.readonly();
-    let ad = aro.as_slice()?;
-    let cro = c.readonly();
-    let cd = cro.as_slice()?;
-    py.detach(|| {
-        film_core::par_map3(ad, &mut out, |i, o| {
-            let mut ev = vec![0.0f32; i.len() / 3];
-            film_core::scene_ev_luma_f32(i, eps, offset, &mut ev);
-            film_core::cast_divide_per_pixel(o, &ev, &cast_ev, cd);
-        });
-    });
-    rows3_f32(py, out, n)
-}
-
 // ---------------------------------------------------------------------------
 // color.apply_rgb_matrix3: float64 products, (a + b) + c, one round to float32.
 
 fn matrix3_rows<T: Copy + Into<f64> + Sync>(d: &[T], m: &[f64; 9], out: &mut [f32]) {
-    film_core::par_map3(d, out, |i, o| {
+    pixel::par_map3(d, out, |i, o| {
         for (px, q) in i.chunks_exact(3).zip(o.chunks_exact_mut(3)) {
             let (r, g, b): (f64, f64, f64) = (px[0].into(), px[1].into(), px[2].into());
             q[0] = ((m[0] * r + m[1] * g) + m[2] * b) as f32;
@@ -1989,7 +1313,6 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "dngscan optional native kernels (Rust)")?;
     m.add_function(wrap_pyfunction!(set_thread_budget, m)?)?;
     m.add_function(wrap_pyfunction!(native_abi_version, m)?)?;
-    m.add_function(wrap_pyfunction!(film_appearance_apply_f32, m)?)?;
     m.add_function(wrap_pyfunction!(apply_agx_core_f32, m)?)?;
     m.add_function(wrap_pyfunction!(apply_hdr_formation_f32, m)?)?;
     m.add_function(wrap_pyfunction!(fit_output_gamut_f32, m)?)?;
@@ -2012,26 +1335,8 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(gamut_counts, m)?)?;
     m.add_function(wrap_pyfunction!(hdr_roundtrip_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(base_roundtrip_metrics, m)?)?;
-    for f in [
-        wrap_pyfunction!(area_decimate_rows, m)?, wrap_pyfunction!(upsample_rows, m)?,
-        wrap_pyfunction!(gaussian_blur_slabbed, m)?, wrap_pyfunction!(blur_small_sigma, m)?,
-        wrap_pyfunction!(halation_layer_gate, m)?, wrap_pyfunction!(halation_pointwise_return, m)?,
-        wrap_pyfunction!(halation_component_source, m)?, wrap_pyfunction!(capture_bloom_gate, m)?,
-        wrap_pyfunction!(capture_bloom_source_rows, m)?, wrap_pyfunction!(capture_bloom_apply_rows, m)?,
-        wrap_pyfunction!(apply_scatter_mix, m)?, wrap_pyfunction!(sample_field, m)?,
-        wrap_pyfunction!(density_grain_v1, m)?, wrap_pyfunction!(density_grain_v2, m)?,
-        wrap_pyfunction!(halation_reinject_rows, m)?,
-    ] {
-        m.add_function(f)?;
-    }
-    for f in [
-        wrap_pyfunction!(layer_log_exposure, m)?, wrap_pyfunction!(chroma_field_log_exposure, m)?,
-        wrap_pyfunction!(characteristic_amounts, m)?, wrap_pyfunction!(interimage_amplify, m)?,
-        wrap_pyfunction!(tetrahedral, m)?, wrap_pyfunction!(film_compression_ev, m)?,
-        wrap_pyfunction!(cast_divide, m)?,
-    ] {
-        m.add_function(f)?;
-    }
+    m.add_function(wrap_pyfunction!(area_decimate_rows, m)?)?;
+    m.add_function(wrap_pyfunction!(upsample_rows, m)?)?;
     m.add_function(wrap_pyfunction!(apply_rgb_matrix3, m)?)?;
     Ok(())
 }

@@ -13,8 +13,6 @@ from dngscan._deps import np
 from dngscan import policy
 from dngscan.agx import look_brightness_power
 from dngscan.color import luminance_from_rec2020
-from dngscan.film_develop import _compression_knee
-from dngscan.film_optics import light_source
 from dngscan.lum import apply_lum_core
 from dngscan.models import ColorGeometryPlan, RenderAdjustments, RenderPlan, ToneCompressionPlan
 from dngscan.priors import gain_e_per_dn
@@ -105,33 +103,8 @@ class NoiseFloorPolicyTests(unittest.TestCase):
         self.assertGreaterEqual(policy.POLICY_VERSION, 5)
 
 
-class FilmBoundaryTests(unittest.TestCase):
-    def test_light_source_keeps_only_light(self) -> None:
-        out = light_source([[-0.5, 0.2, 1.0]])
-        np.testing.assert_array_equal(out, np.asarray([[0.0, 0.2, 1.0]], dtype=np.float32))
-        self.assertEqual(out.dtype, np.float32)
-
-    def test_zero_knee_is_legal(self) -> None:
-        self.assertEqual(_compression_knee(SimpleNamespace(film_compression_knee=0.0)), 0.0)
-        self.assertEqual(_compression_knee(SimpleNamespace(film_compression_knee=None)), 2.0)
-        self.assertEqual(_compression_knee(SimpleNamespace()), 2.0)
 
 
-class PaperIsotonicTests(unittest.TestCase):
-    """Paper amount tables are [n_logE, n_layers]: each layer column must be
-    monotone along the exposure axis for the B1 log2-exposure inversion."""
-
-    def test_columns_become_monotone_and_monotone_columns_are_untouched(self) -> None:
-        from tools.build_film_v2_assets import _isotonic_rows
-
-        mono = np.asarray([[0.0, 2.0], [0.5, 1.5], [1.0, 1.0], [1.5, 0.5]], dtype=np.float64)
-        np.testing.assert_array_equal(_isotonic_rows(mono), mono)
-        wobble = np.asarray([[0.0, 1.0], [0.6, 0.9], [0.4, 0.8], [1.5, 2.0]], dtype=np.float64)
-        fixed = _isotonic_rows(wobble)
-        self.assertTrue(bool(np.all(np.diff(fixed, axis=0) >= 0.0)))
-        np.testing.assert_allclose(fixed[:, 0], [0.0, 0.5, 0.5, 1.5], atol=1e-12)
-        # pool-adjacent-violators preserves the column mean (L2 projection)
-        np.testing.assert_allclose(fixed.mean(axis=0), wobble.mean(axis=0), atol=1e-12)
 
 
 class PriorsBaseIsoTests(unittest.TestCase):
@@ -163,37 +136,10 @@ class CliSentinelTests(unittest.TestCase):
         args = parse_args(["photo.dng", "--jpeg", "out.jpg"])
         self.assertEqual(args.wb, "camera")
         self.assertEqual(args.scene_transform, "none")
-        self.assertEqual(args.film_curve, "none")
-
-    def test_explicit_flags_override_the_film_combo(self) -> None:
-        from dngscan import cli
-
-        combos = getattr(cli, "FILM_COMBOS", None) or getattr(cli, "FILM_PRESET_COMBOS", None)
-        if not combos:
-            self.skipTest("no film combo table exposed")
-        name = next((k for k, v in combos.items() if str(v.get("scene_transform", "none")) != "none"), None)
-        if name is None:
-            self.skipTest("no combo declares a scene transform")
-        filled = cli.parse_args(["photo.dng", "--jpeg", "out.jpg", "--film", name])
-        self.assertEqual(filled.scene_transform, combos[name]["scene_transform"])
-        forced = cli.parse_args(["photo.dng", "--jpeg", "out.jpg", "--film", name, "--scene-transform", "none"])
-        self.assertEqual(forced.scene_transform, "none")
+        self.assertFalse(hasattr(args, "film_curve"))
 
 
-class OpticsFreezeCheckTests(unittest.TestCase):
-    def test_check_fails_on_a_missing_fixture(self) -> None:
-        import tempfile
-        from pathlib import Path
-        from unittest import mock
 
-        from tools import regen_optics_freeze as rof
-
-        with tempfile.TemporaryDirectory() as tmp:
-            fake = SimpleNamespace(path=Path(tmp) / "missing.npz", stem="missing")
-            with mock.patch.object(rof, "iter_cases", return_value=[fake]), mock.patch.object(
-                rof, "render_case", return_value=(np.zeros((2, 2, 3), np.float32), np.zeros((2, 2, 3), np.uint8))
-            ), mock.patch.object(rof, "FREEZE_DIR", Path(tmp)):
-                self.assertEqual(rof.regen(check=True), 1)
 
 
 if __name__ == "__main__":

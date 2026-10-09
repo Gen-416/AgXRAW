@@ -164,10 +164,6 @@ class MetricsDispatchTests(unittest.TestCase):
         plane = rng.random((7, 9, 3), dtype=np.float32)
         self.assertEqual(EXT.feather_masks_f16(unaligned(plane)).tobytes(),
                          EXT.feather_masks_f16(plane).tobytes())
-        rgb = plane.reshape(-1, 3).astype(np.float64)
-        args = (.7, 1.3, 1.1, .2)
-        self.assertEqual(EXT.film_compression_ev(unaligned(rgb), *args).tobytes(),
-                         EXT.film_compression_ev(rgb, *args).tobytes())
         raw = rng.integers(0, 65535, plane.shape, np.uint16)
         args = ([[1., .03, 0., 0., 0., 0.]], .5, .5, 1., False, False)
         self.assertEqual(EXT.warp_dng(unaligned(raw), *args).tobytes(),

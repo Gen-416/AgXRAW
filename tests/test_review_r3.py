@@ -107,57 +107,6 @@ class GainMapPlaneSemanticsTests(unittest.TestCase):
         self.assertEqual(int(img[0, 0]), 3000)
 
 
-class DefaultMediaScatterTests(unittest.TestCase):
-    """R3 item 3: declared media scatter engages without any look amount."""
-
-    @staticmethod
-    def _plan(**kw) -> SimpleNamespace:
-        base = dict(
-            curve_preset="portra400", film_mode="full", film_crossover="datasheet",
-            film_exposure_ev=0.0, film_print_timing="fixed", film_print_medium="",
-            film_print_exposure_ev=0.0, color_head_y=0.0, color_head_m=0.0,
-            film_development="measured_default", film_dev_contrast=0.0,
-            film_dev_fog=0.0, film_dev_density=0.0, film_compression=0.0,
-            film_compression_knee=2.0, film_highlight_density=0.0,
-            film_grain=0.0, film_halation=0.0, film_bloom=0.0,
-            film_optics_seed=0, film_media_scatter="declared",
-        )
-        base.update(kw)
-        return SimpleNamespace(**base)
-
-    def test_declared_engages_scatter_only_context_at_fine_pitch(self) -> None:
-        from dngscan.film_develop import prepare_film_spatial
-
-        ctx = prepare_film_spatial(self._plan(), 512, 4096)  # 8.8 um/px
-        self.assertIsNotNone(ctx)
-        self.assertGreater(ctx.scatter_halo_rows(), 0)
-        self.assertEqual(ctx.grain, 0.0)
-        self.assertEqual(ctx.halation, 0.0)
-        self.assertEqual(ctx.bloom, 0.0)
-
-    def test_off_and_observe_stay_identity(self) -> None:
-        from dngscan.film_develop import prepare_film_spatial
-        from dngscan.film_optics_assets import compile_film_optics_plan
-
-        self.assertIsNone(
-            prepare_film_spatial(self._plan(film_media_scatter="off"), 512, 4096)
-        )
-        self.assertIsNone(
-            compile_film_optics_plan(self._plan(film_mode="observe"))
-        )
-
-    def test_default_full_render_carries_the_declared_scatter(self) -> None:
-        from dngscan.film_develop import apply_film_core
-
-        rng = np.random.default_rng(7)
-        h, w = 96, 4096  # 8.8 um/px: both scatter stages resolve
-        scene = (0.18 * np.exp2(rng.uniform(-3, 3, size=(h * w, 3)))).astype(np.float32)
-        declared = apply_film_core(scene, self._plan(), spatial_shape=(h, w))
-        off = apply_film_core(
-            scene, self._plan(film_media_scatter="off"), spatial_shape=(h, w)
-        )
-        delta = float(np.max(np.abs(np.asarray(declared) - np.asarray(off))))
-        self.assertGreater(delta, 1e-4, "declared media scatter must act by default")
 
 
 class GuidanceFullwellTests(unittest.TestCase):

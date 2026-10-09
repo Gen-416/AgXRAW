@@ -176,25 +176,12 @@ def _form_hdr_chunk(
             if fast_backend.strict_requested():
                 raise fast_backend.NativeKernelError(str(exc)) from exc
     inset, pre_hue = agx_engine.prepare_formation(intent_rec, hdr_tone_plan, inset_matrix)
-    # The HDR plan is a replace() of the film plan so curve_preset rides along;
-    # the retired channel-ratio machinery no longer exists in either dispatcher.
-    # The observe-mode film colour (colour head) is applied in formation_tail
-    # below, mirroring the SDR order — an earlier comment here claimed it was
-    # "SDR/observe-side only", contradicting the very tail that applies it
-    # (review batch 21).
     native_table, reference_table = curve_tables
     native_formation = native_table.apply(inset)
 
     def formation_tail(formation: Any) -> Any:
         mapped_rec = agx_engine.finish_formation(
             formation, pre_hue, hdr_tone_plan, outset_matrix
-        )
-        # Observe-mode film colour joins here — post-outset Rec.2020, scene
-        # luminance axis — mirroring the SDR order (outset -> film colour ->
-        # punch). Native kernels exclude active colour heads, so this stays a
-        # Python-only operator until it earns a C++ port.
-        mapped_rec = agx_engine.apply_film_color_rec2020(
-            mapped_rec, intent_rec, hdr_tone_plan
         )
         mapped_rec = punch_engine.apply_punch_rec2020(
             mapped_rec, float(getattr(hdr_tone_plan, "punch_strength", 0.0))
@@ -260,19 +247,6 @@ def scene_render_to_hdr_display_linear(
     source_tone = plan.tone if isinstance(plan, RenderPlan) else plan
     if str(getattr(source_tone, "tone_core", "agx")) != "agx":
         raise RuntimeError("HDR AgX 仅支持 tone_core=agx；不能把其他 SDR tone core 标成 HDR AgX")
-    if (
-        str(getattr(source_tone, "film_mode", "observe")) == "full"
-        and str(getattr(source_tone, "curve_preset", "none")) != "none"
-    ):
-        # Review batch 21: same kernel-level defence the pair entry carries —
-        # a full+preset plan renders through the takeover film chain in SDR,
-        # while this path is AgX formation; rendering it here would ship an
-        # "HDR of a different developer" behind the film plan's name. Film
-        # HDR has its own honest path (render_ultrahdr_film_pair).
-        raise RuntimeError(
-            "HDR AgX formation 不支持胶片接管显影（film_mode=full）计划："
-            "接管链的 HDR 走 render_ultrahdr_film_pair 的印相+增益扩展"
-        )
     # HdrColorGeometry is the source of truth for the HDR branch. The values currently
     # start from shared scene intent, but both the tone object and geometry are HDR-owned.
     hdr_tone_plan = _hdr_tone_plan(hdr_plan)
@@ -315,7 +289,7 @@ def scene_render_to_hdr_display_linear(
     from .render import _prepare_chroma_nr_map
 
     chroma_map = _prepare_chroma_nr_map(
-        bundle, source_tone, None, flat_scene, clip_masks, h, w, False,
+        bundle, source_tone, None, flat_scene, clip_masks, h, w,
         scene_transform, scene_transform_strength, wb_adapt,
         retreat_strength=retreat_strength,
         analysis=analysis,
@@ -373,130 +347,6 @@ def scene_render_to_hdr_display_linear(
     return out.reshape(h, w, 3)
 
 
-def render_ultrahdr_film_pair(
-    bundle: RawBundle,
-    analysis: Analysis,
-    plan: RenderPlan,
-    hdr_plan: HdrAgxPlan,
-    output_gamut: str = "p3",
-) -> tuple[Any, Any]:
-    """胶片印相 + scene HDR 扩展 (plan §10): SDR base and HDR alternate for a
-    film-takeover plan.
-
-    The SDR base IS the standalone film print — produced by the very same
-    render_output_u8 call an SDR export runs, so it is byte-identical by
-    construction (never a reimplementation that could drift). The HDR
-    alternate multiplies the print's display-linear rendition by a C1
-    luminance gain driven by the SCENE's own highlight EV: gain 1 at and
-    below the print's reference-white join (film_reference_white_ev probe),
-    smoothstep up to the plan's solved reliable headroom. This extends
-    reliable scene highlights above reference white; it never re-develops
-    the body and never claims physical film HDR. The luminance gain is
-    scene-EV-driven; the COLOUR it amplifies is separately authorized by CFA
-    clip evidence (chroma-confidence lerp of the float print toward its own
-    luma axis), so reconstructed hues are extended as neutral light rather
-    than saturated blocks. The film chain runs once:
-    the base render captures its post-film Rec.2020 pixels as it quantizes
-    (review batch 17), and the alternate is built from that captured float
-    print plus the decoded base.
-    """
-    from .film_develop import film_reference_white_ev
-    from .film_v2_math import film_hdr_gain_log2
-    from .hdr_color import output_luma_weights
-    from .render import _optics_band_rows, render_output_u8
-
-    tone = plan.tone
-    if (
-        str(getattr(tone, "film_mode", "observe")) != "full"
-        or str(getattr(tone, "curve_preset", "none")) == "none"
-    ):
-        raise RuntimeError("render_ultrahdr_film_pair 只服务 film full 计划")
-    scene = bundle.scene_rec2020_render
-    h, w = scene.shape[:2]
-    # ONE walk (review batch 17): the base render captures its post-film
-    # Rec.2020 pixels as it quantizes, so the film chain, scene intent and
-    # spatial operators run once instead of twice.
-    mapped = np.empty((h * w, 3), dtype=np.float32)
-    base_u8 = render_output_u8(
-        bundle, analysis, output_gamut, plan, capture_mapped=mapped
-    )
-    # The HDR alternate (review batch 14):
-    #     hdr = decoded_base + float_print * (gain - 1)
-    # Below the join gain == 1, so the body IS the decoded real base (the
-    # 8-bit dithered pixels the file carries — gain >= 1 holds against the
-    # actual SDR leg by construction). Above the join the INCREMENT comes
-    # from the high-precision float print, so highlight detail is not
-    # limited to 8-bit steps and quantization noise is not amplified by the
-    # gain (the pure decoded-base construction measured p99 ~0.007 linear
-    # error at a mere +0.15 EV headroom). Everything is banded float32 —
-    # the previous full-frame float64 decode held ~1.4 GB at 60 MP.
-    from .color import srgb_decode
-
-    color_plan = plan.color
-    gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05
-    join_ev = film_reference_white_ev(tone)
-    # The reliable tail bounds HOW MANY stops the extension may spend (the
-    # solved headroom is co-compiled with the tail's distance from the join,
-    # review batch 14). The ramp itself is scene-EV driven with span
-    # 1.5*max(h, 1) above the join, so it reaches 2^h only at join+span —
-    # which can lie past the tail (self-review 2026-08-27; the old wording
-    # "gain never engages content the RAW cannot vouch for" overstated it).
-    headroom_ev = min(
-        float(hdr_plan.tone.rendered_headroom_ev),
-        max(float(hdr_plan.tone.reliable_tail_ev) - join_ev, 0.0),
-    )
-    span_ev = max(headroom_ev, 1.0) * 1.5
-    flat_scene = scene.reshape(-1, scene.shape[-1])
-    flat_u8 = base_u8.reshape(-1, 3)
-    luma = np.array([0.2627, 0.6780, 0.0593], dtype=np.float32)
-    # Chroma confidence for the HDR increment (two-route doctrine, 2026-08-26):
-    # the luminance gain is scene-EV-driven and stays untouched, but the colour
-    # it amplifies must be RAW-vouched. Where CFA evidence says the hue is
-    # reconstructed, the increment converges to the print's own luminance axis
-    # — the same permission shape the AgX pair uses (half per clipped channel,
-    # second-largest mask withdraws the rest), collapsed to a scalar. This is
-    # what keeps the gain map from re-amplifying a faded print highlight into a
-    # saturated lamp block. No masks (Core Image path) means no per-pixel
-    # evidence, and the increment keeps the print colour unchanged.
-    flat_masks = None
-    if getattr(bundle, "clip_masks", None) is not None:
-        flat_masks = retreat_engine.clip_masks_for_shape(bundle, (h, w)).reshape(-1, 3)
-    w_out = output_luma_weights(output_gamut).astype(np.float32)
-    hdr_out = np.empty((flat_u8.shape[0], 3), dtype=np.float32)
-    band = max(_optics_band_rows(w), 1) * w
-    for s0 in range(0, flat_u8.shape[0], band):
-        e0 = min(s0 + band, flat_u8.shape[0])
-        decoded = srgb_decode(flat_u8[s0:e0].astype(np.float32) / 255.0)
-        band_linear = np.nan_to_num(
-            rec2020_to_output(mapped[s0:e0], output_gamut),
-            nan=0.0, posinf=1e6, neginf=-1e6,
-        )
-        fitted = fit_to_output_gamut(
-            band_linear, output_gamut, alpha=gamut_alpha
-        ).astype(np.float32, copy=False)
-        if flat_masks is not None:
-            m = np.clip(flat_masks[s0:e0], 0.0, 1.0)
-            second = np.partition(m, 1, axis=-1)[..., 1]
-            chroma_confidence = (
-                (np.float32(1.0) - np.float32(0.5) * np.max(m, axis=-1))
-                * (np.float32(1.0) - second)
-            )[..., None]
-            y_fit = np.tensordot(fitted, w_out, axes=([-1], [0]))[..., None]
-            # Lerp toward the luma axis: w_out is normalized, so the increment's
-            # luminance is preserved exactly while its chroma withdraws.
-            fitted = fitted * chroma_confidence + y_fit * (1.0 - chroma_confidence)
-        rec = scene_intent_rec2020(flat_scene[s0:e0, :3], bundle)
-        ev = np.log2(
-            np.maximum(np.asarray(rec, dtype=np.float32) @ luma, 1e-9)
-            / np.float32(0.18)
-        )
-        gain = np.exp2(film_hdr_gain_log2(
-            ev, headroom_ev=headroom_ev, join_ev=join_ev, span_ev=span_ev,
-        )).astype(np.float32)
-        hdr_out[s0:e0] = decoded + fitted * (gain[:, None] - 1.0)
-    return base_u8, hdr_out.reshape(h, w, 3)
-
-
 def render_ultrahdr_agx_pair(
     bundle: RawBundle,
     analysis: Analysis,
@@ -517,18 +367,6 @@ def render_ultrahdr_agx_pair(
     """
     if str(getattr(plan.tone, "tone_core", "agx")) != "agx":
         raise RuntimeError("Ultrahdr AgX pair 仅支持 tone_core=agx")
-    if (
-        str(getattr(plan.tone, "film_mode", "observe")) == "full"
-        and str(getattr(plan.tone, "curve_preset", "none")) != "none"
-    ):
-        # Kernel-level defence (review batch 11): the SDR leg routes through
-        # apply_tone_core, which under full+preset is the takeover film chain, while
-        # the HDR leg below is AgX formation — refusing here keeps the pair
-        # honest even for hand-built plans that bypassed export_jpeg.
-        raise RuntimeError(
-            "Ultrahdr AgX pair 不支持胶片接管显影（film_mode=full）："
-            "SDR 腿是接管 LUT、HDR 腿是 AgX formation，两种显影不能拼进同一个 gain-map"
-        )
     effective_plan = plan_with_look_overrides(plan, "none", 1.0)
     effective_tone = effective_plan.tone if isinstance(effective_plan, RenderPlan) else effective_plan
     color_plan = effective_plan.color if isinstance(effective_plan, RenderPlan) else None
@@ -612,7 +450,7 @@ def render_ultrahdr_agx_pair(
     from .render import _prepare_chroma_nr_map
 
     chroma_map = _prepare_chroma_nr_map(
-        bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w, False,
+        bundle, effective_tone, color_plan, flat_scene, clip_masks, h, w,
         scene_transform, scene_transform_strength, wb_adapt,
         retreat_strength=shared_retreat,
         analysis=analysis,

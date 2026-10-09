@@ -2,7 +2,7 @@
 """Full display LUT filters (log encode -> .cube -> display).
 
 Unlike dngscan.look (chromatic geometry only, L untouched), these are output
-transforms: Kodak 2383 FPE (Cineon log in), RED IPP2 (Log3G10/RWG in) and
+transforms: RED IPP2 (Log3G10/RWG in) and
 Sony LC-709TypeA (S-Log3/S-Gamut3.Cine in).
 """
 from __future__ import annotations
@@ -35,14 +35,6 @@ class DisplayFilter:
 
 
 DISPLAY_FILTERS: dict[str, DisplayFilter] = {
-    "kodak_2383_d65": DisplayFilter(
-        label="Kodak 2383 D65 (Resolve FPE)",
-        cube=_ASSETS / "resolve_film_looks" / "Rec709 Kodak 2383 D65.cube",
-        source="cineon",
-        input_space="rec709",
-        display_gamma=2.4,
-        feed="display",
-    ),
     "red_ipp2_rec709_medium": DisplayFilter(
         label="RED IPP2 Rec709 Medium",
         cube=_ASSETS

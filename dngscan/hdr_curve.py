@@ -37,9 +37,7 @@ def body_brightness_power(formation: Any) -> float:
     auto reaches view_brightness ~1.3). The power therefore joins the body
     definition itself — evaluation here, and the shoulder solve's knee anchor
     in compile_hdr_agx_plan — so the C1 join and the headroom semantics above
-    the knee are preserved. Film plans neutralize view_brightness to 1.0 at
-    preset compile, so the film pair path is untouched by construction. The
-    1e-6 deadband mirrors the SDR gate exactly, keeping brightness-1 plans
+    the knee are preserved. The 1e-6 deadband mirrors the SDR gate exactly, keeping brightness-1 plans
     byte-identical."""
     from .agx import look_brightness_power
 

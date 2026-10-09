@@ -48,39 +48,6 @@ were checked against the DNG specification and Adobe's DNG SDK reference:
 These references document the numerical conventions implemented by this
 project; the DNG SDK is not bundled or linked.
 
-## Status A / Status M densitometer responsivities
-
-`dngscan_assets/spectral/densitometer/` carries the ISO 5-3 Status A and
-Status M spectral responsivities as digitized in Giorgianni, Madden & Kriss,
-*Digital Color Management* (Wiley 2009), p. 335, redistributed from the
-agx-emulsion project's v0.2.0-legacy tree
-(`agx_emulsion/data/densitometer/`, GPL-3.0-or-later — same license as this
-project). Offline verification only (`tools/crosscheck_2383.py`); not used in
-rendering and not packaged into wheels.
-
-## spektrafilm film profiles (CC BY-SA 4.0)
-
-Film stock profiles under `dngscan_assets/spectral/spektrafilm/` (spectral
-sensitivities and characteristic curves for the twenty simulated stocks and their
-paired print media — the full roster is listed in
-`dngscan_assets/spectral/spektrafilm/README.md`) come verbatim from Andrea
-Volpato's spektrafilm project:
-
-- https://github.com/andreavolpato/agx-emulsion
-
-spektrafilm's code is GPL-3.0-or-later; its profile data is licensed separately
-under **CC BY-SA 4.0**. The full license text ships in two places: alongside the
-vendored profiles (`dngscan_assets/spectral/spektrafilm/SPEKTRAFILM_LICENSE.txt`)
-and inside the installed package (`dngscan/SPEKTRAFILM_LICENSE.txt`), so wheels
-carrying the derived preset JSONs carry the license too. The vendored copy is
-pinned to upstream commit `3bb2c2d2801ff68b92019cf1dbcbb133d60832bc` with a
-per-file SHA-256 manifest (`MANIFEST.sha256`). dngscan's film curve presets and
-prefeed targets derived from these profiles are treated as direct derivatives
-under the same CC BY-SA 4.0 terms, with provenance recorded in
-`dngscan_assets/spectral/spektrafilm/README.md` and in each preset's `source` field.
-The upstream data was processed from manufacturer datasheets and scientific papers;
-original measurements remain the property of their respective manufacturers.
-
 ## RAW to ACES spectral data (Apache-2.0)
 
 Selected camera sensitivities and training reflectances under
@@ -185,15 +152,8 @@ decomposition, noise-whiteness ratios) are ours and documented in
 `tools/import_jptc_collect.py`. Same credit-based grant of 2026-08-25 as
 the other first-party data; the directory is removable as a unit.
 
-## Interimage literature anchors & external-dataset registry
+## Film research split
 
-`dngscan/data/interimage_literature.json` transcribes quantitative
-interimage/DIR data from public sources — US patents 5,942,381; 6,004,737;
-4,830,954 (patent full texts are public records; tables transcribed with
-per-value provenance) and the Fuji IS&T 1997 paper's textual conclusions
-(figure not digitized, see the file's note). Method-definition citations:
-Mees & James 4th ed. pp.574/614, Hanson & Horton JOSA 1952 (cited, not
-transcribed). Analysis: docs/INTERIMAGE_LITERATURE.zh-CN.md.
-`dngscan/data/external_datasets.json` is a registry of surveyed public
-film datasets with per-item status, license, pollution chain and allowed
-use — no external dataset bytes enter this repository.
+Film-profile data, derived film presets, densitometer tables and their licence
+notices are preserved in the separate AgXFilm repository. AgXRAW no longer
+packages or uses those film assets.

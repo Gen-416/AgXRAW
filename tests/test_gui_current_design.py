@@ -1,12 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""GUI review 2026-08-27: the page keeps up with the current design.
-
-Wires pinned here (substring assertions against the served HTML, same crude
-contract style as test_gui_page): the RAW over-exposure layer, the hidden
-film-mode reset on the standalone curve select, the HDR latitude clamp, the
-matplotlib gate on the dashboard checkbox, and the film copy that no longer
-calls shipped features experimental. Plus unit tests for the overlay
-builder, the service entry, and the export-side dashboard gate."""
+"""GUI contracts for clipping, HDR, decode, calibration, and export controls."""
 from __future__ import annotations
 
 import base64
@@ -37,7 +30,7 @@ class ClipOverlayPageWires(unittest.TestCase):
         # missing masks grey the toggle with the reason on screen
         self.assertIn('t.disabled=true;lab.classList.add("dim")', PAGE)
         self.assertIn("Core Image 解码没有逐像素 CFA 证据", PAGE)
-        self.assertIn('clipOverlay:$("#clipOverlayToggle").checked', PAGE)
+        self.assertIn('"clipOverlayToggle"', PAGE)
 
     def test_overlay_is_labelled_as_near_full_well_with_hard_clip_authority(self) -> None:
         # R5 item 2: the layer is the soft retreat mask (>= ~97% full well),
@@ -71,11 +64,6 @@ class ClipOverlayPageWires(unittest.TestCase):
         self.assertIn("session!==PREVIEW_SESSION_ID)return;", body)
 
 
-class FilmModeResetWire(unittest.TestCase):
-    def test_curve_none_resets_the_hidden_takeover_declaration(self) -> None:
-        body = PAGE[PAGE.index("function updateFilmModeUi"):]
-        body = body[: body.index("filmWasFull=full;")]
-        self.assertIn('if(!hasCurve&&$("#filmMode").value==="full")$("#filmMode").value="observe";', body)
 
 
 class HdrLatitudeClampWire(unittest.TestCase):
@@ -99,40 +87,6 @@ class MatplotlibGateWire(unittest.TestCase):
         self.assertIn("const MATPLOTLIB_AVAILABLE=true;", html)
 
 
-class FilmCopyMatchesShippedDesign(unittest.TestCase):
-    def test_shipped_film_features_are_not_labelled_experimental(self) -> None:
-        film = PAGE[PAGE.index('id="mobileImagingCard"'):PAGE.index('id="colorPanel"')]
-        self.assertNotIn("实验", film)
-        self.assertNotIn("试点", film)
-        self.assertNotIn("q(0)", film)
-        self.assertIn("完整冲印 · 胶片全流程", film)
-        self.assertIn("固定 · 默认", film)
-
-    def test_film_tooltips_are_basic(self) -> None:
-        film = PAGE[PAGE.index('id="mobileImagingCard"'):PAGE.index('id="colorPanel"')]
-        titles = re.findall(r'title="([^"]*)"', film)
-        self.assertTrue(titles)
-        longest = max(titles, key=len)
-        self.assertLessEqual(len(longest), 120, f"tooltip too long for the GUI (belongs in docs): {longest[:80]}…")
-
-    def test_retimed_presets_are_those_with_a_print_asset_on_disk(self) -> None:
-        html = render_page("/tmp").decode()
-        m = re.search(r"const FILM_RETIMED=(\[.*?\]);", html)
-        self.assertIsNotNone(m)
-        import json
-        listed = set(json.loads(m.group(1)))
-        v2 = ROOT / "dngscan" / "data" / "film_v2"
-        expected = set()
-        for npz in v2.glob("*.npz"):
-            if npz.name.startswith(("print__", "b2__")):
-                continue
-            with np.load(npz, allow_pickle=False) as z:
-                if str(np.asarray(z.get("kind", ""))) != "stock" or bool(z["reversal"]):
-                    continue
-            if any(v2.glob(f"print__{npz.stem}__*.npz")):
-                expected.add(npz.stem)
-        self.assertEqual(listed, expected)
-        self.assertGreater(len(expected), 0)
 
 
 class ClipOverlayBuilderTests(unittest.TestCase):
@@ -311,17 +265,6 @@ class EveryCliDialHasAGuiControl(unittest.TestCase):
         "--coreimage-scale": "coreimageScale",
         "--margin": "clipMargin",
         "--chroma-nr": "chromaNr",
-        "--film-development": "filmDevelopment",
-        "--film-dev-contrast": "filmDevContrast",
-        "--film-dev-fog": "filmDevFog",
-        "--film-dev-density": "filmDevDensity",
-        "--film-compression": "filmCompression",
-        "--film-compression-knee": "filmCompressionKnee",
-        "--film-highlight-density": "filmHighlightDensity",
-        "--film-media-scatter": "filmMediaScatter",
-        "--film-optics-seed": "filmOpticsSeed",
-        "--film-interimage-beta": "filmInterimageBeta",
-        "--film-appearance-variant": "filmAppearanceVariant",
         "--hdr-rho": "hdrRho",
         "--lens-filter": "lensFilter",
         "--endpoint-mode": "endpointMode",
@@ -334,46 +277,14 @@ class EveryCliDialHasAGuiControl(unittest.TestCase):
             with self.subTest(flag=flag):
                 self.assertIn(f"{key}:", body)
 
-    def test_new_controls_exist_and_reset_outside_full(self) -> None:
-        for cid in ("filmDevelopment", "filmDevContrast", "filmDevFog", "filmDevDensity", "filmCompression",
-                    "filmCompressionKnee", "filmHighlightDensity", "filmMediaScatter", "filmOpticsSeed",
-                    "coreimageScale", "clipMargin", "chromaNr"):
+    def test_noise_and_decode_controls_remain_available(self) -> None:
+        for cid in ("coreimageScale", "clipMargin", "chromaNr"):
             self.assertIn(f'id="{cid}"', PAGE)
-        reset = PAGE[PAGE.index("function updateFilmModeUi"):]
-        reset = reset[: reset.index("const preset=$(\"#filmCurve\").value;")]
-        self.assertIn('$("#filmDevelopment").value="measured_default";', reset)
-        self.assertIn('$("#filmCompression").value=0;', reset)
-        self.assertIn('$("#filmMediaScatter").value="declared";', reset)
-        # editorial_custom couples with neutralization=native and disables retimed
-        full = PAGE[PAGE.index("const devCustom=$(\"#filmDevelopment\").value===\"editorial_custom\";"):]
-        full = full[: full.index("// 颗粒与光晕")]
-        self.assertIn("const canRetime=FILM_RETIMED.includes(preset)&&!devCustom;", full)
-        self.assertIn('const forceNative=timing.value==="custom"||devCustom;', full)
-        # the Core Image scale block follows the version block's visibility
         self.assertIn('scl.style.display=raw9?"":"none"', PAGE)
 
 
 class ServiceDialParsingTests(unittest.TestCase):
-    def _base(self):
-        return {"filmCurve": "portra400", "filmMode": "full", "filmNeutralization": "native"}
 
-    def test_development_and_compression_rules_mirror_the_cli(self) -> None:
-        from dngscan.gui.service import parse_film_params
-
-        t = parse_film_params(dict(self._base(), filmDevelopment="editorial_custom", filmDevContrast=0.2,
-                                   filmCompression=0.5, filmCompressionKnee=3, filmHighlightDensity=1.0))
-        self.assertEqual(t[22:29], ("editorial_custom", 0.2, 0.0, 0.0, 0.5, 3.0, 1.0))
-        self.assertEqual(parse_film_params(self._base())[22:29], ("measured_default", 0.0, 0.0, 0.0, 0.0, 2.0, 0.0))
-        for bad, why in (
-            (dict(self._base(), filmDevContrast=0.1), "measured_default locks the deltas"),
-            (dict(self._base(), filmDevelopment="editorial_custom", filmNeutralization="technical-neutral"), "needs native"),
-            (dict(self._base(), filmDevelopment="editorial_custom", filmPrintTiming="retimed"), "no retimed"),
-            (dict(self._base(), filmHighlightDensity=0.5), "needs compression"),
-            (dict(filmCurve="portra400", filmMode="observe", filmCompression=0.3), "full only"),
-            (dict(self._base(), filmCompressionKnee=7), "knee domain"),
-        ):
-            with self.subTest(why=why), self.assertRaises(ValueError):
-                parse_film_params(bad)
 
     def test_decode_extras(self) -> None:
         from dngscan.gui.service import parse_decode_extras
@@ -385,22 +296,14 @@ class ServiceDialParsingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_decode_extras({"coreimageScale": "bogus"}, "coreimage")
 
-    def test_export_suffix_names_every_new_dial(self) -> None:
+    def test_export_suffix_names_decode_and_noise_dials(self) -> None:
         from dngscan.gui.service import export_suffix_parts
 
-        s = export_suffix_parts("clip", "p3", "sdr", film_mode="full", film_development="editorial_custom",
-                                film_dev_contrast=-0.2, film_dev_fog=0.1, film_dev_density=0.3,
-                                film_compression=0.5, film_compression_knee=2.0, film_highlight_density=1.0,
-                                film_media_scatter="off", explicit_optics_seed=7, film_grain=0.5,
-                                coreimage_scale="unity", clip_margin=8, decoder="coreimage")
-        for tok in ("dev-c", "comp0_5k2hd1", "scatteroff", "seed7", "ciscale-unity", "margin8"):
-            self.assertIn(tok, s)
-        # R7 item 6: without grain the seed changes no pixel — no token
-        no_grain = export_suffix_parts("clip", "p3", "sdr", film_mode="full", explicit_optics_seed=7)
-        self.assertNotIn("seed", no_grain)
-        plain = export_suffix_parts("clip", "p3", "sdr", film_mode="full")
-        for tok in ("dev-", "comp", "scatteroff", "seed", "ciscale", "margin"):
-            self.assertNotIn(tok, plain)
+        suffix = export_suffix_parts("clip", "p3", "sdr", coreimage_scale="unity",
+                                     clip_margin=8, decoder="coreimage", chroma_nr=0.5)
+        for token in ("ciscale-unity", "margin8", "cnr0_5"):
+            self.assertIn(token, suffix)
+        self.assertNotIn("ciscale", export_suffix_parts("clip", "p3", "sdr"))
 
     def test_cache_identity_keeps_default_digests(self) -> None:
         from unittest import mock
@@ -432,16 +335,13 @@ class GreyingGapWires(unittest.TestCase):
         self.assertIn('$("#input").value.trim()===input', refresh)
         self.assertIn('o.disabled=!ok', refresh)
 
-    def test_core_deps_and_optics_assets_flags_are_baked_and_acted_on(self) -> None:
+    def test_core_deps_flag_is_baked_and_acted_on(self) -> None:
         self.assertIn("CORE_DEPS_MISSING_JSON", PAGE)
-        self.assertIn("FILM_OPTICS_OK_FLAG", PAGE)
         self.assertIn('$("#go").disabled=true', PAGE)
-        self.assertIn("胶片光学资产缺失或校验失败，接管模式不可用", PAGE)
-        with mock.patch("dngscan.gui.page._core_import_errors", return_value=["rawpy: nope"]), \
-             mock.patch("dngscan.gui.page._film_optics_assets_ok", return_value=False):
+        with mock.patch("dngscan.gui.page._core_import_errors", return_value=["rawpy: nope"]):
             html = render_page("/tmp").decode()
         self.assertIn('const CORE_DEPS_MISSING=["rawpy: nope"];', html)
-        self.assertIn("const FILM_OPTICS_OK=false;", html)
+        self.assertNotIn("FILM_OPTICS", html)
 
     def test_raw9_probe_reports_runtime_contexts(self) -> None:
         from dngscan.gui import service
@@ -456,47 +356,12 @@ class GreyingGapWires(unittest.TestCase):
         self.assertIn("运行时上下文不可用", out["message"])
 
     def test_save_settings_has_no_duplicate_keys(self) -> None:
-        i = PAGE.index("function saveSettings("); j = PAGE.index("}));}catch(e){}", i)
-        keys = re.findall(r"(?:^|[{,\n]\s*)([a-zA-Z]+):", PAGE[i:j])
-        self.assertEqual(sorted(k for k in set(keys) if keys.count(k) > 1), [])
+        ids = PAGE.split("const SETTINGS_IDS=[", 1)[1].split("];", 1)[0]
+        keys = re.findall(r'"([a-zA-Z]+)"', ids)
+        self.assertEqual(len(keys), len(set(keys)))
 
 
 class ReviewR7Tests(unittest.TestCase):
-    def test_headroom_estimate_forwards_every_film_dial(self) -> None:
-        # R7 item 1: the exported "EV still safe" figure must come from the
-        # SAME film chain as the export, dials included.
-        from dngscan.gui import service
-
-        seen = {}
-
-        def fake_max_safe_ev(*args, **kwargs):
-            seen.update(kwargs)
-            return 1.0
-
-        import inspect
-
-        sig = inspect.signature(service.estimate_ev_headroom)
-        defaults = {
-            "bundle": SimpleNamespace(scene_rec2020_render=np.full((4, 4, 3), 0.18, dtype=np.float32), lens_filter="none"),
-            "analysis": SimpleNamespace(),  # non-None: the function returns {} without an analysis
-            "gamut": "p3", "current_ev": 0.0,
-        }
-        required = {
-            name: defaults.get(name, 0.0 if p.annotation in (float, "float") else "none")
-            for name, p in sig.parameters.items()
-            if p.default is inspect.Parameter.empty and p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
-        }
-        with mock.patch.object(service.dg, "max_safe_ev", side_effect=fake_max_safe_ev):
-            service.estimate_ev_headroom(
-                **required,
-                film_development="editorial_custom", film_dev_contrast=0.2, film_dev_fog=0.1,
-                film_dev_density=-0.3, film_compression=0.5, film_compression_knee=3.0,
-                film_highlight_density=1.0,
-            )
-        for k, v in (("film_development", "editorial_custom"), ("film_dev_contrast", 0.2), ("film_dev_fog", 0.1),
-                     ("film_dev_density", -0.3), ("film_compression", 0.5), ("film_compression_knee", 3.0),
-                     ("film_highlight_density", 1.0)):
-            self.assertEqual(seen.get(k), v, k)
 
     def test_peek_uses_the_same_identity_as_get(self) -> None:
         # R7 item 2: an export must find the preview's entry (and its grain
@@ -539,20 +404,6 @@ class ReviewR7Tests(unittest.TestCase):
         self.assertIn("导出上下文", body)
 
 
-class ColourHeadRangeTests(unittest.TestCase):
-    def test_sliders_cover_the_working_band_with_an_opt_in_full_travel(self) -> None:
-        # Owner 2026-08-28: 0-40 CC by default (the 2-10 CC fine band with
-        # room), the 200 CC hardware travel behind a checkbox; a restored
-        # value above 40 widens the range rather than being clamped.
-        for cid in ("colorHeadY", "colorHeadM"):
-            self.assertRegex(PAGE, rf'id="{cid}" min="0" max="40" step="5"')
-        self.assertIn('id="colorHeadWide"', PAGE)
-        body = PAGE[PAGE.index("function applyColorHeadRange"):]
-        body = body[: body.index('$("#colorHeadWide").addEventListener')]
-        self.assertIn("const max=wide?200:40;", body)
-        self.assertIn("if(Number(el.value)>max){el.value=String(max);changed=true;}", body)
-        self.assertIn('if(Math.max(Number($("#colorHeadY").value),Number($("#colorHeadM").value))>40)$("#colorHeadWide").checked=true;', PAGE)
-        self.assertIn('colorHeadWide:$("#colorHeadWide").checked', PAGE)
 
 
 class ResetDefaultsButtonTests(unittest.TestCase):
@@ -567,5 +418,5 @@ class ResetDefaultsButtonTests(unittest.TestCase):
         body = PAGE[PAGE.index("function resetToDefaults"):PAGE.index('$("#resetDefaults").addEventListener')]
         self.assertIn("saveSettings();", body)
         self.assertIn('if($("#input").value.trim())preparePreview();', body)
-        self.assertIn('"updateFilmModeUi"', body)
+        self.assertIn('"updateHdrOptionGate"', body)
         self.assertIn('"updateDecoderUi"', body)

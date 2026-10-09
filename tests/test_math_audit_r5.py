@@ -59,34 +59,6 @@ class PivotUnderflowGuardTests(unittest.TestCase):
         self.assertTrue(np.all(np.diff(ys) >= -1e-9), "curve must stay monotone")
 
 
-class CubeFloorExcursionGateTests(unittest.TestCase):
-    def test_shipped_tables_excurse_below_the_floor_only_boundedly(self) -> None:
-        """The corrected contract: shipped characteristic tables MAY dip
-        below the Stage B cube floor (fit residual vs the physical
-        amount>=0 floor) by a bounded amount — audit worst -1.56e-3, gate
-        at 2e-3. Beyond that is a corrupt or mis-built asset. Above-ceiling
-        excursion is not expected at all."""
-        from dngscan.film_develop import _load_v2
-        from dngscan.film_curve import FILM_CURVE_PRESETS
-
-        checked = 0
-        for preset in FILM_CURVE_PRESETS:
-            try:
-                stock, _media = _load_v2(preset)
-            except Exception:
-                continue  # presets without v2 assets are not in scope
-            below = np.maximum(stock["lo"][None, :] - stock["char_amounts"], 0.0)
-            above = np.maximum(stock["char_amounts"] - stock["hi"][None, :], 0.0)
-            self.assertLess(
-                float(below.max()), 2e-3,
-                f"{preset}: cube-floor excursion beyond the audited bound",
-            )
-            self.assertEqual(
-                float(above.max()), 0.0,
-                f"{preset}: table exceeds the cube ceiling",
-            )
-            checked += 1
-        self.assertGreater(checked, 10, "gate must actually cover the assets")
 
 
 if __name__ == "__main__":

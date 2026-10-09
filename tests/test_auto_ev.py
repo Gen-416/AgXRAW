@@ -198,65 +198,8 @@ def test_compute_auto_ev_caps_upward_boost():
     assert safe.call_args.kwargs["tone_plan"] is plan
 
 
-def test_compute_auto_ev_reference_plan_carries_the_full_film_declaration():
-    """The reference plan must be the plan the real render will compile.
-
-    A reference that omits the film mode, crossover switch or enlarger color head
-    judges brightness and the highlight cap against a different curve; measured on a
-    daylight fixture, that reads +0.469 EV where the true full-film + color-head plan
-    reads +1.008 EV.
-    """
-    analysis = _minimal_analysis(-2.0)
-    bundle = _minimal_bundle()
-    plan = SimpleNamespace(scene=SimpleNamespace(body_ev_p50=-2.0))
-    with patch(
-        "dngscan.auto_ev.build_render_plan", return_value=plan
-    ) as build, patch("dngscan.auto_ev.max_safe_ev", return_value=0.5) as safe:
-        compute_auto_ev(
-            bundle,
-            analysis,
-            "p3",
-            film_curve="velvia100",
-            film_mode="full",
-            film_crossover="datasheet",
-            color_head_y=10.0,
-            color_head_m=5.0,
-        )
-    build_kwargs = build.call_args.kwargs
-    assert build_kwargs["film_curve"] == "velvia100"
-    assert build_kwargs["film_mode"] == "full"
-    assert build_kwargs["film_crossover"] == "datasheet"
-    assert build_kwargs["color_head_y"] == 10.0
-    assert build_kwargs["color_head_m"] == 5.0
-    safe_kwargs = safe.call_args.kwargs
-    assert safe_kwargs["tone_plan"] is plan
-    assert safe_kwargs["film_mode"] == "full"
-    assert safe_kwargs["film_crossover"] == "datasheet"
-    assert safe_kwargs["color_head_y"] == 10.0
-    assert safe_kwargs["color_head_m"] == 5.0
 
 
-def test_resolve_export_ev_forwards_the_full_film_declaration():
-    analysis = _minimal_analysis(-2.0)
-    bundle = _minimal_bundle()
-    with patch("dngscan.auto_ev.compute_auto_ev") as compute:
-        compute.return_value = SimpleNamespace(ev=0.25)
-        resolve_export_ev(
-            "auto",
-            bundle,
-            analysis,
-            "p3",
-            film_curve="portra400",
-            film_mode="full",
-            film_crossover="datasheet",
-            color_head_y=30.0,
-            color_head_m=10.0,
-        )
-    kwargs = compute.call_args.kwargs
-    assert kwargs["film_mode"] == "full"
-    assert kwargs["film_crossover"] == "datasheet"
-    assert kwargs["color_head_y"] == 30.0
-    assert kwargs["color_head_m"] == 10.0
 
 
 class AutoEvTest(unittest.TestCase):
@@ -268,12 +211,6 @@ class AutoEvTest(unittest.TestCase):
     test_render_sample_output_does_not_mutate_bundle_gain = staticmethod(test_render_sample_output_does_not_mutate_bundle_gain)
     test_compute_auto_ev_boost_only_high_key = staticmethod(test_compute_auto_ev_boost_only_high_key)
     test_compute_auto_ev_caps_upward_boost = staticmethod(test_compute_auto_ev_caps_upward_boost)
-    test_compute_auto_ev_reference_plan_carries_the_full_film_declaration = staticmethod(
-        test_compute_auto_ev_reference_plan_carries_the_full_film_declaration
-    )
-    test_resolve_export_ev_forwards_the_full_film_declaration = staticmethod(
-        test_resolve_export_ev_forwards_the_full_film_declaration
-    )
 
 
 class ProbeNativeFinalizeTests(unittest.TestCase):
@@ -377,21 +314,10 @@ class AutoEvReferencePlanTests(unittest.TestCase):
             plan_evidence.tone.black_ev, plan_adaptive.tone.black_ev, places=2
         )
 
-    def test_film_curve_and_lens_filter_reach_the_reference_plan(self) -> None:
-        args, kw, plan = self._capture_reference_plan(
-            film_curve="portra400", lens_filter="85b"
-        )
-        self.assertEqual(kw["film_curve"], "portra400")
-        self.assertEqual(plan.tone.curve_preset, "portra400")
-        from dngscan.film_curve import FILM_CURVE_PRESETS
-
-        self.assertAlmostEqual(
-            plan.tone.target_black_linear,
-            float(FILM_CURVE_PRESETS["portra400"]["params"]["target_black_linear"]),
-            places=6,
-        )
-        # The reference bundle the plan compiles from must see the declared glass.
+    def test_lens_filter_reaches_the_reference_plan(self) -> None:
+        args, kw, plan = self._capture_reference_plan(lens_filter="85b")
         self.assertEqual(args[0].lens_filter, "85b")
+        self.assertEqual(plan.tone.endpoint_mode, "adaptive")
 
     def test_max_safe_ev_compiles_its_own_plan_with_the_parameters(self) -> None:
         import dngscan.auto_ev as auto_ev_mod
@@ -411,14 +337,11 @@ class AutoEvReferencePlanTests(unittest.TestCase):
                 scene.analysis,
                 "p3",
                 endpoint_mode="evidence",
-                film_curve="portra400",
                 lens_filter="85b",
             )
         args, kw, plan = captured[0]
         self.assertEqual(kw["endpoint_mode"], "evidence")
-        self.assertEqual(kw["film_curve"], "portra400")
-        self.assertEqual(plan.tone.endpoint_mode, "adaptive")  # film preset supersedes
-        self.assertEqual(plan.tone.curve_preset, "portra400")
+        self.assertEqual(plan.tone.endpoint_mode, "evidence")
         self.assertEqual(args[0].lens_filter, "85b")
 
 

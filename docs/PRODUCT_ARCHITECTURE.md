@@ -82,11 +82,11 @@ user declares intent; the system adjudicates the plan.
 
 | Domain object | Main behaviours | Invariant |
 |---|---|---|
-| Development Intent | Declares white balance, exposure bias, film observation position, display target, and explicit viewing choices; separates automatic results from user bias | User bias cannot rewrite capture facts |
-| **Development Plan (aggregate root)** | Freezes scene metrics, governs Tone and Color decision rights separately, and validates formation, film, and output-mode compatibility at aggregate scope | Consumed as a read-only contract after compilation; downstream code may not reinterpret it |
+| Development Intent | Declares white balance, exposure bias, display target, and explicit viewing choices; separates automatic results from user bias | User bias cannot rewrite capture facts |
+| **Development Plan (aggregate root)** | Freezes scene metrics, governs Tone and Color decision rights separately, and validates formation and output-mode compatibility at aggregate scope | Consumed as a read-only contract after compilation; downstream code may not reinterpret it |
 | Tone Plan | Fixes the exposure anchor and EV0 pivot; compiles black/white endpoints, dynamic range, toe, shoulder, and local contrast; derives an independent HDR shoulder from the reliable tail | Color pressure and output gamut cannot recompile tone; display capacity may only cap the HDR peak and re-solve the shoulder above K, never rewrite the exposure anchor, scene white endpoint, or body below K |
 | Color Plan | Plans hue paths, chroma retreat, and primaries geometry; grants color freedom according to CFA reliability; fits SDR gamut or HDR color volume | May form color only under the established luminance authority; cannot recompile the exposure anchor or tone endpoints |
-| Display Formation | Composes Tone and Color plans under the selected formation mode; executes AgX, RAW-gated, luminance-only, neutral diagnostic, or film takeover formation | Standard AgX HDR forms directly from the scene, independently of the SDR rendition; film-full keeps the completed film-print SDR as its base and extends only scene-earned highlights above print reference white |
+| Display Formation | Composes Tone and Color plans under the selected formation mode; executes AgX, RAW-gated, luminance-only, neutral diagnostic formation | AgX HDR forms directly from the scene, independently of SDR, with headroom constrained by reliable highlights |
 
 #### Tone Plan and Color Plan
 
@@ -101,21 +101,9 @@ it does not claim every formation algorithm is mathematically separable.
 | Decisions not owned | Gamut packaging and encoding parameters | Tone endpoints, exposure anchor, tone curve |
 | Implementation vocabulary | Tone Compression Plan | Color Geometry Plan |
 
-White balance belongs to Development Intent and scene-frame formation. It affects the scene sample
-observed by plan compilation, but the Color Plan may not rewrite it silently. Film and HDR may each
-constrain both subplans, so the aggregate Development Plan validates formation mode, film mode, and
-SDR/HDR compatibility. Joint formation such as film full may act on Tone and Color together, but it
-must still declare the decision rights and invariants on both sides.
+White balance belongs to Development Intent and scene-frame formation. It affects the scene sample observed by plan compilation, but the Color Plan may not rewrite it silently. The aggregate Development Plan validates formation mode and SDR/HDR compatibility while retaining the decision rights of both subplans.
 
-The current Render Plan already carries scene, tone, and color; when film is active it also carries
-validated film exposure, development, print, and analog-finish plans. The domain contract requires
-read-only consumption after compilation; this states the object-behaviour boundary without claiming
-that every internal data structure has completed a physical split or deep-immutability migration.
-
-HDR therefore has two explicit formation contracts. Standard AgX HDR forms directly from the scene,
-independently of the SDR rendition. Film-full HDR uses the completed film-print SDR as its body and
-adds only scene-earned highlight extension above print reference white; it neither redevelops the
-body nor claims to model a physical film HDR process.
+The Render Plan carries scene, tone and color, consumed as read-only after compilation. This describes object behaviour without claiming deep immutability throughout every internal structure. AgX HDR forms directly from the scene and never uses completed SDR pixels as its tone-map input.
 
 ### Delivery context
 

@@ -1,34 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Regenerate the film showcase assets from their declared parameters.
+"""Regenerate current RAW/HDR tutorial assets from explicit JSON manifests.
 
-Owner directive (2026-08-14): the full-mode showcases went stale when optics
-V2 (R1 density-native grain, R3 default media scatter) changed default full
-output. Doctrine for showcases: every table is rendered in ONE pipeline
-generation (both halves together), dimensions are preserved exactly, and the
-prose numbers are re-measured on the new renders. This manifest closes the
-"no generation script" debt — P7b-era assets were rendered ad-hoc and the
-exact chain state proved unrecoverable (renders from an in-flight working
-tree; today's chain reproduces neither commit's output byte-for-byte, so
-same-generation re-rendering of whole tables is the only honest refresh).
-
-Usage:
-    python tools/regen_showcases.py --list
-    python tools/regen_showcases.py [--only NAME ...] [--samples DIR]
-    python tools/regen_showcases.py --manifest tools/showcase_manifests/*.json --install
-
-2026-08-28 refresh: the tutorial images that predate this script are declared
-in tools/showcase_manifests/{readme,editing_tutorial,film_tutorial}.json
-(same RenderSpec/AssetSpec/PlateSpec vocabulary, JSON) — README plates, the
-editing tutorial (X100VI RAF + two iPhone ProRAW DNGs by absolute path) and
-the film tutorial's curve/WB/strength/primaries/colour-head tables. Crops
-whose published full frame has a different name declare `old_full`; a table
-whose published halves came from an older chain state declares `max_delta`.
-
-Renders land in a scratch directory first; --install resizes to each
-published asset's exact dimensions and replaces docs/assets files. Crops are
-recovered by NCC template matching against the OLD published asset so the
-framing survives regeneration (multi-scale, normalized cross-correlation on
-the green channel).
+Use --list before rendering, --only to select jobs, and --install to replace
+public documentation assets. Film research manifests moved to AgXFilm.
 """
 from __future__ import annotations
 
@@ -75,7 +49,7 @@ class AssetSpec:
     crop_group: str | None = None
     # 2026-08-28 refresh: the pristine published FULL frame the crop's window
     # is recovered against, as a path under docs/assets. Optional — the
-    # film-tutorial convention (crop_<name>.jpg next to <name>.jpg) stays the
+    # crop_<name>.jpg next to <name>.jpg stays the
     # default; the editing tutorial names its crops differently.
     old_full: str | None = None
     # Post-cut delta guard (mean |new - pristine| over the crop). 25 codes
@@ -91,128 +65,9 @@ class AssetSpec:
 # Sigma DNGs use their as-shot balance.
 PARK = ("--wb", "5500k", "--highlight-mode", "reconstruct")
 
-RENDERS: list[RenderSpec] = [
-    # --- park curve-preset gallery + full pair (DSC00225.ARW) ---
-    RenderSpec("park_none", "DSC00225.ARW", PARK),
-    RenderSpec("park_portra400", "DSC00225.ARW", ("--film", "portra400", *PARK)),
-    RenderSpec("park_velvia100", "DSC00225.ARW", ("--film", "velvia100", *PARK)),
-    RenderSpec(
-        "park_velvia100_fullmode",
-        "DSC00225.ARW",
-        ("--film", "velvia100", "--film-mode", "full", *PARK),
-    ),
-    # --- HK hillside observe/full pair (Velvia 100) ---
-    RenderSpec("fullmode_hk_observe", "_SDI0164.DNG", ("--film", "velvia100")),
-    RenderSpec(
-        "fullmode_hk_full",
-        "_SDI0164.DNG",
-        ("--film", "velvia100", "--film-mode", "full",
-         "--film-neutralization", "native"),
-    ),
-    # --- Expo observe/full pair (Portra 400) ---
-    RenderSpec("fullmode_expo_observe", "_SDI0231.DNG", ("--film", "portra400")),
-    RenderSpec(
-        "fullmode_expo_full",
-        "_SDI0231.DNG",
-        ("--film", "portra400", "--film-mode", "full",
-         "--film-neutralization", "native"),
-    ),
-    # --- crossover pairs ---
-    RenderSpec(
-        "crossover_verita_off",
-        "_SDI0115.DNG",
-        ("--film", "verita200d", "--film-mode", "full",
-         "--film-neutralization", "technical-neutral"),
-    ),
-    RenderSpec(
-        "crossover_verita_datasheet",
-        "_SDI0115.DNG",
-        ("--film", "verita200d", "--film-mode", "full",
-         "--film-neutralization", "native"),
-    ),
-    RenderSpec(
-        "crossover_k64_off",
-        "_SDI0165.DNG",
-        ("--film", "kodachrome64", "--film-mode", "full",
-         "--film-neutralization", "technical-neutral"),
-    ),
-    RenderSpec(
-        "crossover_k64_datasheet",
-        "_SDI0165.DNG",
-        ("--film", "kodachrome64", "--film-mode", "full",
-         "--film-neutralization", "native"),
-    ),
-    # --- §九 look grids: six declared readings per scene (doc-recorded CLI) ---
-    RenderSpec("grid_hk_1", "_SDI0164.DNG", ()),
-    RenderSpec("grid_hk_2", "_SDI0164.DNG", ("--film", "velvia100")),
-    RenderSpec("grid_hk_3", "_SDI0164.DNG",
-               ("--film", "velvia100", "--scene-transform-strength", "2.2", "--ev", "-0.3")),
-    RenderSpec("grid_hk_4", "_SDI0164.DNG",
-               ("--film", "velvia100", "--scene-transform-strength", "2.2", "--ev", "-0.3",
-                "--toe-end-offset", "-1", "--midtone-contrast", "0.3")),
-    RenderSpec("grid_hk_5", "_SDI0164.DNG",
-               ("--film", "velvia100", "--film-mode", "full",
-                "--film-neutralization", "datasheet", "--ev", "-0.3")),
-    RenderSpec("grid_hk_6", "_SDI0164.DNG",
-               ("--film", "velvia100", "--grade", "look:optic_warm_cyan",
-                "--grade-strength", "0.5", "--scene-transform-strength", "2.0",
-                "--ev", "-0.2")),
-    RenderSpec("grid_park_1", "DSC00225.ARW", PARK),
-    RenderSpec("grid_park_2", "DSC00225.ARW", ("--film", "portra400", *PARK)),
-    RenderSpec("grid_park_3", "DSC00225.ARW",
-               ("--film", "portra400", "--scene-transform-strength", "1.8",
-                "--ev", "-0.2", "--midtone-contrast", "0.2", *PARK)),
-    RenderSpec("grid_park_4", "DSC00225.ARW",
-               ("--film", "portra400", "--scene-transform-strength", "1.8",
-                "--ev", "-0.2", "--midtone-contrast", "0.2",
-                "--toe-end-offset", "-1", *PARK)),
-    RenderSpec("grid_park_5", "DSC00225.ARW",
-               ("--film", "portra400", "--color-head-y", "15", *PARK)),
-    RenderSpec("grid_park_6", "DSC00225.ARW",
-               ("--film", "portra400", "--film-mode", "full",
-                "--film-neutralization", "datasheet", "--ev", "-0.2", *PARK)),
-    RenderSpec("grid_bs_1", "_SDI0173.DNG", ()),
-    RenderSpec("grid_bs_2", "_SDI0173.DNG", ("--film", "velvia100")),
-    RenderSpec("grid_bs_3", "_SDI0173.DNG",
-               ("--film", "velvia100", "--scene-transform-strength", "2.2", "--ev", "-0.3")),
-    RenderSpec("grid_bs_4", "_SDI0173.DNG",
-               ("--film", "velvia100", "--scene-transform-strength", "2.2", "--ev", "-0.3",
-                "--toe-end-offset", "-1", "--midtone-contrast", "0.3")),
-    RenderSpec("grid_bs_5", "_SDI0173.DNG",
-               ("--film", "velvia100", "--film-mode", "full",
-                "--film-neutralization", "datasheet", "--ev", "-0.3")),
-    RenderSpec("grid_bs_6", "_SDI0173.DNG",
-               ("--film", "velvia100", "--grade", "look:optic_warm_cyan",
-                "--grade-strength", "0.5", "--scene-transform-strength", "2.0",
-                "--ev", "-0.2")),
-    # --- README three-interpretations plate (temple, Vision3 250D) ---
-    RenderSpec("interp_observe", "_SDI0094.DNG", ("--film", "vision3250d")),
-    RenderSpec("interp_technical", "_SDI0094.DNG",
-               ("--film", "vision3250d", "--film-mode", "full",
-                "--film-appearance", "technical")),
-    RenderSpec("interp_reference", "_SDI0094.DNG",
-               ("--film", "vision3250d", "--film-mode", "full",
-                "--film-appearance", "reference")),
-]
+RENDERS: list[RenderSpec] = []
 
-ASSET_SPECS: list[AssetSpec] = [
-    AssetSpec("film-tutorial/park_none.jpg", "park_none"),
-    AssetSpec("film-tutorial/park_portra400.jpg", "park_portra400"),
-    AssetSpec("film-tutorial/park_velvia100.jpg", "park_velvia100"),
-    AssetSpec("film-tutorial/park_velvia100_fullmode.jpg", "park_velvia100_fullmode"),
-    AssetSpec("film-tutorial/fullmode_hk_observe.jpg", "fullmode_hk_observe"),
-    AssetSpec("film-tutorial/fullmode_hk_full.jpg", "fullmode_hk_full"),
-    AssetSpec("film-tutorial/fullmode_expo_observe.jpg", "fullmode_expo_observe"),
-    AssetSpec("film-tutorial/fullmode_expo_full.jpg", "fullmode_expo_full"),
-    AssetSpec("film-tutorial/crossover_verita_off.jpg", "crossover_verita_off"),
-    AssetSpec("film-tutorial/crossover_verita_datasheet.jpg", "crossover_verita_datasheet"),
-    AssetSpec("film-tutorial/crossover_k64_off.jpg", "crossover_k64_off"),
-    AssetSpec("film-tutorial/crossover_k64_datasheet.jpg", "crossover_k64_datasheet"),
-    AssetSpec("film-tutorial/crop_crossover_verita_off.jpg", "crossover_verita_off", crop_from_old=True, crop_group="verita"),
-    AssetSpec("film-tutorial/crop_crossover_verita_datasheet.jpg", "crossover_verita_datasheet", crop_from_old=True, crop_group="verita"),
-    AssetSpec("film-tutorial/crop_crossover_k64_off.jpg", "crossover_k64_off", crop_from_old=True, crop_group="k64"),
-    AssetSpec("film-tutorial/crop_crossover_k64_datasheet.jpg", "crossover_k64_datasheet", crop_from_old=True, crop_group="k64"),
-]
+ASSET_SPECS: list[AssetSpec] = []
 
 
 @dataclass
@@ -240,28 +95,7 @@ def _grid_boxes(cols: tuple[tuple[int, int], ...], rows: tuple[tuple[int, int], 
 # "composed_plates": {asset, cols:[{key,label}], rows:[{key,label,renders:{colkey: render name}}]}).
 COMPOSED_PLATES: list[dict] = []
 
-PLATES: list[PlateSpec] = [
-    PlateSpec(
-        "film-tutorial/look_grid_hk.jpg",
-        ("grid_hk_1", "grid_hk_2", "grid_hk_3", "grid_hk_4", "grid_hk_5", "grid_hk_6"),
-        _grid_boxes(((0, 520), (526, 1046), (1052, 1572)), ((0, 780), (834, 1614))),
-    ),
-    PlateSpec(
-        "film-tutorial/look_grid_park.jpg",
-        ("grid_park_1", "grid_park_2", "grid_park_3", "grid_park_4", "grid_park_5", "grid_park_6"),
-        _grid_boxes(((0, 1100), (1106, 2206)), ((0, 734), (788, 1522), (1576, 2310))),
-    ),
-    PlateSpec(
-        "film-tutorial/look_grid_backstage.jpg",
-        ("grid_bs_1", "grid_bs_2", "grid_bs_3", "grid_bs_4", "grid_bs_5", "grid_bs_6"),
-        _grid_boxes(((0, 520), (526, 1046), (1052, 1572)), ((0, 780), (834, 1614))),
-    ),
-    PlateSpec(
-        "film-three-interpretations.jpg",
-        ("interp_observe", "interp_technical", "interp_reference"),
-        _grid_boxes(((0, 1100), (1108, 2208), (2216, 3316)), ((0, 733),)),
-    ),
-]
+PLATES: list[PlateSpec] = []
 
 
 def build_plate(spec: PlateSpec, scratch: Path) -> dict:
@@ -397,7 +231,7 @@ def install(spec: AssetSpec, scratch: Path, shared_box=None, dry: bool = False) 
             ref = spec.old_full
         else:
             base_name = spec.asset.replace("crop_", "").rsplit("/", 1)[-1]
-            ref = f"film-tutorial/{base_name}"
+            ref = str(Path(spec.asset).parent / base_name)
         blob = _sp.run(
             ["git", "show", f"HEAD:docs/assets/{ref}"],
             capture_output=True, cwd=str(REPO),
@@ -447,6 +281,8 @@ def main() -> int:
                          "appended to the built-in specs (2026-08-28 refresh: "
                          "tutorial images that predate this script)")
     args = ap.parse_args()
+    if not args.manifest:
+        args.manifest = [REPO / "tools" / "showcase_manifests" / "editing_tutorial.json"]
     if args.manifest:
         import json as _json
 

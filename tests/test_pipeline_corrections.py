@@ -202,7 +202,7 @@ class ProcessingLossTests(unittest.TestCase):
                  patch.object(service.dg,'build_render_plan',side_effect=inspect_bundle):
                 with self.assertRaises(ReachedPlan):
                     service.run_export({'input':str(source),'format':'sdr','wb':'camera','ev':0,
-                                        'filmOpticsSeed':1,'outdir':td})
+                                        'outdir':td})
             self.assertTrue(load.call_args.kwargs['_defer_clip_masks'])
             analyze.assert_not_called()
             self.assertEqual(build_masks.call_count,1)

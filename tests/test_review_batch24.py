@@ -27,35 +27,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class IdentityDerivedRealization(unittest.TestCase):
-    def test_helper_is_deterministic_odd_and_32_bit(self) -> None:
-        from dngscan.gui.preview_cache import _realization_id_for
-
-        a = _realization_id_for("0f1e2d3c4b5a69788796a5b4c3d2e1f0")
-        self.assertEqual(a, _realization_id_for("0f1e2d3c4b5a69788796a5b4c3d2e1f0"))
-        self.assertEqual(a & 1, 1)
-        self.assertLess(a, 1 << 32)
-        self.assertNotEqual(a, _realization_id_for("ffffffff0000000011111111"))
-
-    def test_store_stamps_the_entry_and_exposes_the_same_value(self) -> None:
-        from dngscan.gui import preview_cache
-
-        src = inspect.getsource(preview_cache.PreviewCache.get)
-        self.assertIn("built.realization_id = _realization_id_for(digest)", src)
-        self.assertTrue(hasattr(preview_cache.PreviewCache, "realization_id_for"))
-        src = inspect.getsource(preview_cache.PreviewCache.realization_id_for)
-        self.assertIn("_cache_identity(", src)
-        self.assertIn("return _realization_id_for(digest)", src)
-
-    def test_export_fallbacks_no_longer_mint_random_seeds(self) -> None:
-        from dngscan.gui import service
-
-        for fn in (service.run_export, service.run_export_isolated):
-            src = inspect.getsource(fn)
-            with self.subTest(fn=fn.__name__):
-                for needle in ("secrets", "randbits"):
-                    self.assertNotIn(needle, src)
-                self.assertIn("_identity_realization(", src)
 
 
 class GradeIdResolution(unittest.TestCase):
@@ -113,19 +84,12 @@ class DeclaredBoundaries(unittest.TestCase):
         self.assertIn('"numpy>=2.0"', (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertIn("numpy>=2.0", (ROOT / "requirements.txt").read_text(encoding="utf-8"))
 
-    def test_documents_state_the_film_pair_and_optics_dial_exceptions(self) -> None:
+    def test_documents_state_independent_hdr_formation(self) -> None:
         arch = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
-        self.assertIn("On the AgX path\nHDR never uses the completed SDR pixels", arch)
-        self.assertIn("render_ultrahdr_film_pair", arch)
+        self.assertIn("HDR never uses the completed SDR pixels", arch)
+        self.assertNotIn("render_ultrahdr_film_pair", arch)
         arch_zh = (ROOT / "docs" / "ARCHITECTURE.zh-CN.md").read_text(encoding="utf-8")
-        self.assertIn("AgX 路径上 HDR 不会把已经完成的 SDR 像素当作 tone-map 输入", arch_zh)
-        self.assertIn("render_ultrahdr_film_pair", arch_zh)
-        notes = (ROOT / "docs" / "ENGINEERING_NOTES.zh-CN.md").read_text(encoding="utf-8")
-        self.assertIn("默认不运送", notes)
-        self.assertIn("可选拨盘", notes)
-        plan = (ROOT / "docs" / "FILM_OPTICS_V2_PLAN.zh-CN.md").read_text(encoding="utf-8")
-        self.assertIn("R-P3-5", plan)
-        self.assertIn("尚未接入 halation 源", plan)
+        self.assertIn("HDR 不会把已经完成的 SDR 像素当作 tone-map 输入", arch_zh)
 
 
 if __name__ == "__main__":
