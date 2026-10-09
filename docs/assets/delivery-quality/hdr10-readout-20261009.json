@@ -1,0 +1,1872 @@
+{
+  "schema": "agxraw-hdr10-readout-1",
+  "date": "2026-10-09",
+  "baseline_commit": "e55835cbad01cb5517e876616a7addacc3a74dfb",
+  "runtime": {
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw": [
+      0,
+      22,
+      0
+    ],
+    "python": "3.14.4",
+    "native_abi": 20
+  },
+  "delivery": [
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "libraw",
+      "format": "ultrahdr-heic",
+      "profile": "archive",
+      "analysis": {
+        "decoder": "libraw",
+        "shutter": "electronic",
+        "noise_model": {
+          "status": "valid",
+          "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored 2026-08-24 (see module docstring and the comments above)",
+          "reason": "matched-shot-read-model",
+          "channel_variance": {
+            "R": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G1": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "B": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G2": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ]
+          },
+          "domain": "normalized-raw",
+          "approximation": "shared-gain-read-noise-across-colour-planes; sub-readout-not-declared",
+          "correlation": "unknown",
+          "spectral_ratios": {},
+          "noise_reduction_status": "absent",
+          "fallback_source": null,
+          "fallback_reason": null
+        },
+        "prior_id": "Sigma fp",
+        "prior_mode_match": "curated",
+        "capture_readout": {
+          "version": 1,
+          "source": "dng-main-raw-ifd",
+          "shutter": "electronic",
+          "shutter_source": "manufacturer-capability:SIGMA-fp",
+          "sensor_binning": null,
+          "default_crop": [
+            6000.0,
+            4000.0
+          ],
+          "storage_lossless": true,
+          "libraw_raw_geometry": [
+            6064,
+            4042
+          ],
+          "active_geometry": [
+            6064,
+            4042
+          ],
+          "raw_geometry": [
+            6064,
+            4042
+          ],
+          "readout_id": null,
+          "sample_bits": 14,
+          "capture_kind": null,
+          "sensor_bits": null,
+          "compression_code": 7,
+          "compression_process": "lossless-jpeg-sof3-pt0",
+          "shutter_source_url": "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
+        }
+      },
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9228515625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 100,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 0.9432473959015537,
+        "base_mean_code_error": 0.43946908947026253,
+        "base_p99_code_error": 2.008126735687256,
+        "base_max_code_error": 6.808930397033691,
+        "base_channel_bias_code_error": 0.019642373959314285,
+        "base_block_p99_code_error": 0.2450396865606308,
+        "coding_luma_rmse": 0.23036846644088804,
+        "coding_chroma_rmse": 0.6116274062850412,
+        "coding_local_luma_p99": 0.24097639322280884,
+        "base_local_detail_loss": 0.1049899160861969,
+        "coding_local_detail_loss": 0.1049899160861969,
+        "chroma_error": 0.010693341493606567,
+        "relative_error": 0.04095563292503357,
+        "median_relative_error": 0.009922041557729244,
+        "p95_relative_error": 0.029296875,
+        "p99_relative_error": 0.04095563292503357,
+        "p999_relative_error": 0.055936675518751144,
+        "block_median_relative_error": 0.0016188621520996094,
+        "block_p95_relative_error": 0.004067965317517519,
+        "block_p99_relative_error": 0.00550070172175765,
+        "block_chroma_error": 0.0013816356658935547,
+        "block_p95_luma_error": 0.005696127191185951,
+        "highlight_max_luma_error": 0.07624270021915436,
+        "local_detail_loss": 0.3331773579120636,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "archive",
+        "gainmap_encoding_quality": 100,
+        "sdr_master_precision": "float32",
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 36975424,
+        "hdr_plan": "HDR: 原生 AgX 白点 +0.94EV / 容量 +3.00EV；K +0.20EV / W +3.72EV，alpha 1.291，单段 shoulder，尾部 +3.42EV",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 0.9431937983161474,
+        "rendered_headroom_ev": 0.9431937983161474,
+        "actual_headroom_ev": 0.9431938194722875,
+        "reliable_tail_ev": 3.4171249866485596,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 3.7171249866485594,
+        "shoulder_alpha": 1.2913997774525323,
+        "shoulder_segments": 1,
+        "channel_separation": 0.45035798260742416
+      },
+      "exit_code": 0,
+      "production_gate": "accepted",
+      "file_bytes": 36975424,
+      "wall_s": 39.73335670900997
+    },
+    {
+      "sample": "_SDI0199.DNG",
+      "decoder": "libraw",
+      "format": "ultrahdr-heic",
+      "profile": "archive",
+      "analysis": {
+        "decoder": "libraw",
+        "shutter": "electronic",
+        "noise_model": {
+          "status": "valid",
+          "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored 2026-08-24 (see module docstring and the comments above)",
+          "reason": "matched-shot-read-model",
+          "channel_variance": {
+            "R": [
+              0.0034172689746177075,
+              4.364134544903188e-06
+            ],
+            "G1": [
+              0.0034172689746177075,
+              4.364134544903188e-06
+            ],
+            "B": [
+              0.0034172689746177075,
+              4.364134544903188e-06
+            ],
+            "G2": [
+              0.0034172689746177075,
+              4.364134544903188e-06
+            ]
+          },
+          "domain": "normalized-raw",
+          "approximation": "shared-gain-read-noise-across-colour-planes; sub-readout-not-declared",
+          "correlation": "unknown",
+          "spectral_ratios": {},
+          "noise_reduction_status": "absent",
+          "fallback_source": null,
+          "fallback_reason": null
+        },
+        "prior_id": "Sigma fp",
+        "prior_mode_match": "curated",
+        "capture_readout": {
+          "version": 1,
+          "source": "dng-main-raw-ifd",
+          "shutter": "electronic",
+          "shutter_source": "manufacturer-capability:SIGMA-fp",
+          "sensor_binning": null,
+          "default_crop": [
+            6000.0,
+            4000.0
+          ],
+          "storage_lossless": true,
+          "libraw_raw_geometry": [
+            6064,
+            4042
+          ],
+          "active_geometry": [
+            6064,
+            4042
+          ],
+          "raw_geometry": [
+            6064,
+            4042
+          ],
+          "readout_id": null,
+          "sample_bits": 14,
+          "capture_kind": null,
+          "sensor_bits": null,
+          "compression_code": 7,
+          "compression_process": "lossless-jpeg-sof3-pt0",
+          "shutter_source_url": "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
+        }
+      },
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 1.876953125,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 6000,
+        "height": 4000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 6000,
+        "gainmap_height": 4000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 100,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 0.9083926207737504,
+        "base_mean_code_error": 0.5135212209035881,
+        "base_p99_code_error": 2.3459181785583496,
+        "base_max_code_error": 6.418995380401611,
+        "base_channel_bias_code_error": 0.02944464431337599,
+        "base_block_p99_code_error": 0.29105377197265625,
+        "coding_luma_rmse": 0.258252422075705,
+        "coding_chroma_rmse": 0.7132281414513537,
+        "coding_local_luma_p99": 0.2851395308971405,
+        "base_local_detail_loss": 0.11662794649600983,
+        "coding_local_detail_loss": 0.11662794649600983,
+        "chroma_error": 0.013387978076934814,
+        "relative_error": 0.0506591796875,
+        "median_relative_error": 0.011864406988024712,
+        "p95_relative_error": 0.036165326833724976,
+        "p99_relative_error": 0.0506591796875,
+        "p999_relative_error": 0.06983087956905365,
+        "block_median_relative_error": 0.0018446381436660886,
+        "block_p95_relative_error": 0.0046885013580322266,
+        "block_p99_relative_error": 0.006286439020186663,
+        "block_chroma_error": 0.0016558170318603516,
+        "block_p95_luma_error": 0.006391341798007488,
+        "highlight_max_luma_error": 0.015523150563240051,
+        "local_detail_loss": 0.1799006164073944,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "archive",
+        "gainmap_encoding_quality": 100,
+        "sdr_master_precision": "float32",
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 55982294,
+        "hdr_plan": "HDR: 原生 AgX 白点 +0.91EV / 容量 +3.00EV；K +0.20EV / W +3.68EV，alpha 1.290，单段 shoulder，尾部 +3.38EV",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 0.9083737185126806,
+        "rendered_headroom_ev": 0.9083737185126806,
+        "actual_headroom_ev": 0.9083737451516735,
+        "reliable_tail_ev": 3.3823049068450928,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 3.6823049068450926,
+        "shoulder_alpha": 1.2895514789360838,
+        "shoulder_segments": 1,
+        "channel_separation": 0.49537348359370753
+      },
+      "exit_code": 0,
+      "production_gate": "accepted",
+      "file_bytes": 55982294,
+      "wall_s": 37.71650337500614
+    },
+    {
+      "sample": "_SDI0133.DNG",
+      "decoder": "libraw",
+      "format": "ultrahdr-heic",
+      "profile": "archive",
+      "analysis": {
+        "decoder": "libraw",
+        "shutter": "electronic",
+        "noise_model": {
+          "status": "valid",
+          "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored 2026-08-24 (see module docstring and the comments above)",
+          "reason": "matched-shot-read-model",
+          "channel_variance": {
+            "R": [
+              0.00021357235823575547,
+              2.619811752717359e-08
+            ],
+            "G1": [
+              0.00021357235823575547,
+              2.619811752717359e-08
+            ],
+            "B": [
+              0.00021357235823575547,
+              2.619811752717359e-08
+            ],
+            "G2": [
+              0.00021357235823575547,
+              2.619811752717359e-08
+            ]
+          },
+          "domain": "normalized-raw",
+          "approximation": "shared-gain-read-noise-across-colour-planes; sub-readout-not-declared",
+          "correlation": "unknown",
+          "spectral_ratios": {},
+          "noise_reduction_status": "absent",
+          "fallback_source": null,
+          "fallback_reason": null
+        },
+        "prior_id": "Sigma fp",
+        "prior_mode_match": "curated",
+        "capture_readout": {
+          "version": 1,
+          "source": "dng-main-raw-ifd",
+          "shutter": "electronic",
+          "shutter_source": "manufacturer-capability:SIGMA-fp",
+          "sensor_binning": null,
+          "default_crop": [
+            6000.0,
+            4000.0
+          ],
+          "storage_lossless": true,
+          "libraw_raw_geometry": [
+            6064,
+            4042
+          ],
+          "active_geometry": [
+            6064,
+            4042
+          ],
+          "raw_geometry": [
+            6064,
+            4042
+          ],
+          "readout_id": null,
+          "sample_bits": 14,
+          "capture_kind": null,
+          "sensor_bits": null,
+          "compression_code": 7,
+          "compression_process": "lossless-jpeg-sof3-pt0",
+          "shutter_source_url": "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
+        }
+      },
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 2.439453125,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 6000,
+        "height": 4000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 6000,
+        "gainmap_height": 4000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 100,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 1.2865577616079573,
+        "base_mean_code_error": 0.44302185902062047,
+        "base_p99_code_error": 2.003377914428711,
+        "base_max_code_error": 7.694108486175537,
+        "base_channel_bias_code_error": 0.018721022046506098,
+        "base_block_p99_code_error": 0.24376992881298065,
+        "coding_luma_rmse": 0.23052182858032733,
+        "coding_chroma_rmse": 0.6135310024005796,
+        "coding_local_luma_p99": 0.24920183420181274,
+        "base_local_detail_loss": 0.11254850775003433,
+        "coding_local_detail_loss": 0.11254850775003433,
+        "chroma_error": 0.010526478290557861,
+        "relative_error": 0.03943314775824547,
+        "median_relative_error": 0.00885009765625,
+        "p95_relative_error": 0.0274658203125,
+        "p99_relative_error": 0.03943314775824547,
+        "p999_relative_error": 0.05454545468091965,
+        "block_median_relative_error": 0.0013875961303710938,
+        "block_p95_relative_error": 0.003604888916015625,
+        "block_p99_relative_error": 0.00497773289680481,
+        "block_chroma_error": 0.001409769058227539,
+        "block_p95_luma_error": 0.005476057529449463,
+        "highlight_max_luma_error": 0.009854673407971859,
+        "local_detail_loss": 0.2953857183456421,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "archive",
+        "gainmap_encoding_quality": 100,
+        "sdr_master_precision": "float32",
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 46824768,
+        "hdr_plan": "HDR: 原生 AgX 白点 +1.29EV / 容量 +3.00EV；K +0.20EV / W +4.06EV，alpha 1.279，单段 shoulder，尾部 +3.76EV",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 1.2880381395942235,
+        "rendered_headroom_ev": 1.2880381395942235,
+        "actual_headroom_ev": 1.2865156016964183,
+        "reliable_tail_ev": 3.7619693279266357,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 4.061969327926636,
+        "shoulder_alpha": 1.27909119762253,
+        "shoulder_segments": 1,
+        "channel_separation": 0.4984944263764988
+      },
+      "exit_code": 0,
+      "production_gate": "accepted",
+      "file_bytes": 46824768,
+      "wall_s": 38.024425584007986
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "libraw",
+      "format": "ultrahdr-heic",
+      "profile": "auto",
+      "analysis": {
+        "decoder": "libraw",
+        "shutter": "electronic",
+        "noise_model": {
+          "status": "valid",
+          "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored 2026-08-24 (see module docstring and the comments above)",
+          "reason": "matched-shot-read-model",
+          "channel_variance": {
+            "R": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G1": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "B": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G2": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ]
+          },
+          "domain": "normalized-raw",
+          "approximation": "shared-gain-read-noise-across-colour-planes; sub-readout-not-declared",
+          "correlation": "unknown",
+          "spectral_ratios": {},
+          "noise_reduction_status": "absent",
+          "fallback_source": null,
+          "fallback_reason": null
+        },
+        "prior_id": "Sigma fp",
+        "prior_mode_match": "curated",
+        "capture_readout": {
+          "version": 1,
+          "source": "dng-main-raw-ifd",
+          "shutter": "electronic",
+          "shutter_source": "manufacturer-capability:SIGMA-fp",
+          "sensor_binning": null,
+          "default_crop": [
+            6000.0,
+            4000.0
+          ],
+          "storage_lossless": true,
+          "libraw_raw_geometry": [
+            6064,
+            4042
+          ],
+          "active_geometry": [
+            6064,
+            4042
+          ],
+          "raw_geometry": [
+            6064,
+            4042
+          ],
+          "readout_id": null,
+          "sample_bits": 14,
+          "capture_kind": null,
+          "sensor_bits": null,
+          "compression_code": 7,
+          "compression_process": "lossless-jpeg-sof3-pt0",
+          "shutter_source_url": "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
+        }
+      },
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9228515625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 90,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 0.9432473959015537,
+        "base_mean_code_error": 0.4835317185011522,
+        "base_p99_code_error": 2.3084142208099365,
+        "base_max_code_error": 7.691076278686523,
+        "base_channel_bias_code_error": 0.020482986174739398,
+        "base_block_p99_code_error": 0.2870124280452728,
+        "coding_luma_rmse": 0.25134759869125284,
+        "coding_chroma_rmse": 0.6806241990219344,
+        "coding_local_luma_p99": 0.29251834750175476,
+        "base_local_detail_loss": 0.15584729611873627,
+        "coding_local_detail_loss": 0.15584729611873627,
+        "chroma_error": 0.012092143297195435,
+        "relative_error": 0.04549950361251831,
+        "median_relative_error": 0.011042945086956024,
+        "p95_relative_error": 0.032380953431129456,
+        "p99_relative_error": 0.04549950361251831,
+        "p999_relative_error": 0.06317138671875,
+        "block_median_relative_error": 0.001773834228515625,
+        "block_p95_relative_error": 0.0045299530029296875,
+        "block_p99_relative_error": 0.006157716270536184,
+        "block_chroma_error": 0.0016108572017401457,
+        "block_p95_luma_error": 0.006355365738272667,
+        "highlight_max_luma_error": 0.07711669057607651,
+        "local_detail_loss": 0.35310593247413635,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "auto",
+        "gainmap_encoding_quality": 80,
+        "sdr_master_precision": "float32",
+        "readback_precision": "float32",
+        "gainmap_encoder": "x265",
+        "gainmap_chroma_requested": "444",
+        "file_size_bytes": 31073957,
+        "auto_reference_quality": 95,
+        "auto_reference_chroma": "444",
+        "auto_reference_bytes": 36974397,
+        "auto_saved_pct": 15.958177762844928,
+        "auto_search": "bounded-quality-chroma-gainmap",
+        "auto_attempts": [
+          {
+            "quality": 95,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 36974397,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.43946908947026253,
+              "base_p99_code_error": 2.008126735687256,
+              "base_max_code_error": 6.808930397033691,
+              "base_channel_bias_code_error": 0.019642373959314285,
+              "base_block_p99_code_error": 0.2450396865606308,
+              "coding_luma_rmse": 0.23036846644088804,
+              "coding_chroma_rmse": 0.6116274062850412,
+              "coding_local_luma_p99": 0.24097639322280884,
+              "base_local_detail_loss": 0.1049899160861969,
+              "coding_local_detail_loss": 0.1049899160861969,
+              "chroma_error": 0.010693341493606567,
+              "block_p95_luma_error": 0.005696127191185951,
+              "highlight_max_luma_error": 0.07624270021915436,
+              "local_detail_loss": 0.3331773579120636
+            }
+          },
+          {
+            "quality": 92,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 36567210,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.45270637256332547,
+              "base_p99_code_error": 2.1111743450164795,
+              "base_max_code_error": 7.014359951019287,
+              "base_channel_bias_code_error": 0.01982692734427385,
+              "base_block_p99_code_error": 0.2610919773578644,
+              "coding_luma_rmse": 0.23684034951945093,
+              "coding_chroma_rmse": 0.6328904049461497,
+              "coding_local_luma_p99": 0.2654567062854767,
+              "base_local_detail_loss": 0.13123898208141327,
+              "coding_local_detail_loss": 0.13123898208141327,
+              "chroma_error": 0.01108202338218689,
+              "block_p95_luma_error": 0.005863732658326626,
+              "highlight_max_luma_error": 0.09053093940019608,
+              "local_detail_loss": 0.34263503551483154
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 35633352,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.4835317185011522,
+              "base_p99_code_error": 2.3084142208099365,
+              "base_max_code_error": 7.691076278686523,
+              "base_channel_bias_code_error": 0.020482986174739398,
+              "base_block_p99_code_error": 0.2870124280452728,
+              "coding_luma_rmse": 0.25134759869125284,
+              "coding_chroma_rmse": 0.6806241990219344,
+              "coding_local_luma_p99": 0.29251834750175476,
+              "base_local_detail_loss": 0.15584729611873627,
+              "coding_local_detail_loss": 0.15584729611873627,
+              "chroma_error": 0.012066185474395752,
+              "block_p95_luma_error": 0.0063256933353841305,
+              "highlight_max_luma_error": 0.07999469339847565,
+              "local_detail_loss": 0.3509844243526459
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 0.5870445633388094,
+              "base_p99_code_error": 2.8868114948272705,
+              "base_max_code_error": 10.209763526916504,
+              "base_channel_bias_code_error": 0.021502979815514744,
+              "base_block_p99_code_error": 0.36409518122673035,
+              "coding_luma_rmse": 0.2999678588546614,
+              "coding_chroma_rmse": 0.8369253342956671,
+              "coding_local_luma_p99": 0.3571072220802307,
+              "base_local_detail_loss": 0.16883119940757751,
+              "coding_local_detail_loss": 0.16883119940757751
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 32724074
+          },
+          {
+            "quality": 80,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 0.7918847145199222,
+              "base_p99_code_error": 4.039414882659912,
+              "base_max_code_error": 17.155778884887695,
+              "base_channel_bias_code_error": 0.02492641909440369,
+              "base_block_p99_code_error": 0.5058944821357727,
+              "coding_luma_rmse": 0.40411138068194796,
+              "coding_chroma_rmse": 1.145816223735466,
+              "coding_local_luma_p99": 0.4874001145362854,
+              "base_local_detail_loss": 0.22844147682189941,
+              "coding_local_detail_loss": 0.22844147682189941
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 28323674
+          },
+          {
+            "quality": 70,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 1.2723476094643695,
+              "base_p99_code_error": 6.986373424530029,
+              "base_max_code_error": 27.613317489624023,
+              "base_channel_bias_code_error": 0.023954104120980618,
+              "base_block_p99_code_error": 0.9212712049484253,
+              "coding_luma_rmse": 0.6700835179254475,
+              "coding_chroma_rmse": 1.8822802737865172,
+              "coding_local_luma_p99": 0.8139127492904663,
+              "base_local_detail_loss": 0.42947983741760254,
+              "coding_local_detail_loss": 0.42947983741760254
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 22063761
+          },
+          {
+            "quality": 90,
+            "chroma": "422",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 1.3618550516452372,
+              "base_p99_code_error": 14.583707809448242,
+              "base_max_code_error": 119.39310455322266,
+              "base_channel_bias_code_error": 0.01746515846525512,
+              "base_block_p99_code_error": 2.159440040588379,
+              "coding_luma_rmse": 0.3468530122865398,
+              "coding_chroma_rmse": 2.872095558098295,
+              "coding_local_luma_p99": 0.4412212371826172,
+              "base_local_detail_loss": 0.36239081621170044,
+              "coding_local_detail_loss": 0.36239081621170044
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 34045118
+          },
+          {
+            "quality": 95,
+            "chroma": "422",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 1.3582615681540875,
+              "base_p99_code_error": 14.581730842590332,
+              "base_max_code_error": 120.43484497070312,
+              "base_channel_bias_code_error": 0.016601014734882263,
+              "base_block_p99_code_error": 2.163182497024536,
+              "coding_luma_rmse": 0.3403772697435511,
+              "coding_chroma_rmse": 2.870802880833996,
+              "coding_local_luma_p99": 0.4323394000530243,
+              "base_local_detail_loss": 0.3681742548942566,
+              "coding_local_detail_loss": 0.3681742548942566
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 34508619
+          },
+          {
+            "quality": 90,
+            "chroma": "420",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 1.6356260357637116,
+              "base_p99_code_error": 14.523974418640137,
+              "base_max_code_error": 83.50209045410156,
+              "base_channel_bias_code_error": 0.028420701544945467,
+              "base_block_p99_code_error": 0.9521566033363342,
+              "coding_luma_rmse": 0.3696873742173682,
+              "coding_chroma_rmse": 3.2083485323619785,
+              "coding_local_luma_p99": 0.48415520787239075,
+              "base_local_detail_loss": 0.37870246171951294,
+              "coding_local_detail_loss": 0.37870246171951294
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 28426242
+          },
+          {
+            "quality": 95,
+            "chroma": "420",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 1.6330523324754336,
+              "base_p99_code_error": 14.525704383850098,
+              "base_max_code_error": 82.78983306884766,
+              "base_channel_bias_code_error": 0.027587543441669676,
+              "base_block_p99_code_error": 0.9487496018409729,
+              "coding_luma_rmse": 0.3637712947439068,
+              "coding_chroma_rmse": 3.20745787930549,
+              "coding_local_luma_p99": 0.4775595963001251,
+              "base_local_detail_loss": 0.3698277473449707,
+              "coding_local_detail_loss": 0.3698277473449707
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 28758668
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": 95,
+            "accepted": true,
+            "bytes": 34322631,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.4835317185011522,
+              "base_p99_code_error": 2.3084142208099365,
+              "base_max_code_error": 7.691076278686523,
+              "base_channel_bias_code_error": 0.020482986174739398,
+              "base_block_p99_code_error": 0.2870124280452728,
+              "coding_luma_rmse": 0.25134759869125284,
+              "coding_chroma_rmse": 0.6806241990219344,
+              "coding_local_luma_p99": 0.29251834750175476,
+              "base_local_detail_loss": 0.15584729611873627,
+              "coding_local_detail_loss": 0.15584729611873627,
+              "chroma_error": 0.012073218822479248,
+              "block_p95_luma_error": 0.006330588366836309,
+              "highlight_max_luma_error": 0.07999469339847565,
+              "local_detail_loss": 0.35128694772720337
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": 90,
+            "accepted": true,
+            "bytes": 33810655,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.4835317185011522,
+              "base_p99_code_error": 2.3084142208099365,
+              "base_max_code_error": 7.691076278686523,
+              "base_channel_bias_code_error": 0.020482986174739398,
+              "base_block_p99_code_error": 0.2870124280452728,
+              "coding_luma_rmse": 0.25134759869125284,
+              "coding_chroma_rmse": 0.6806241990219344,
+              "coding_local_luma_p99": 0.29251834750175476,
+              "base_local_detail_loss": 0.15584729611873627,
+              "coding_local_detail_loss": 0.15584729611873627,
+              "chroma_error": 0.012075543403625488,
+              "block_p95_luma_error": 0.006331730633974075,
+              "highlight_max_luma_error": 0.07774075865745544,
+              "local_detail_loss": 0.343109130859375
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": 85,
+            "accepted": true,
+            "bytes": 32875670,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.4835317185011522,
+              "base_p99_code_error": 2.3084142208099365,
+              "base_max_code_error": 7.691076278686523,
+              "base_channel_bias_code_error": 0.020482986174739398,
+              "base_block_p99_code_error": 0.2870124280452728,
+              "coding_luma_rmse": 0.25134759869125284,
+              "coding_chroma_rmse": 0.6806241990219344,
+              "coding_local_luma_p99": 0.29251834750175476,
+              "base_local_detail_loss": 0.15584729611873627,
+              "coding_local_detail_loss": 0.15584729611873627,
+              "chroma_error": 0.012080729007720947,
+              "block_p95_luma_error": 0.006336966995149851,
+              "highlight_max_luma_error": 0.08002106100320816,
+              "local_detail_loss": 0.3452828526496887
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": 80,
+            "accepted": true,
+            "bytes": 31073957,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.4835317185011522,
+              "base_p99_code_error": 2.3084142208099365,
+              "base_max_code_error": 7.691076278686523,
+              "base_channel_bias_code_error": 0.020482986174739398,
+              "base_block_p99_code_error": 0.2870124280452728,
+              "coding_luma_rmse": 0.25134759869125284,
+              "coding_chroma_rmse": 0.6806241990219344,
+              "coding_local_luma_p99": 0.29251834750175476,
+              "base_local_detail_loss": 0.15584729611873627,
+              "coding_local_detail_loss": 0.15584729611873627,
+              "chroma_error": 0.012092143297195435,
+              "block_p95_luma_error": 0.006355365738272667,
+              "highlight_max_luma_error": 0.07711669057607651,
+              "local_detail_loss": 0.35310593247413635
+            }
+          }
+        ],
+        "exif_carried": false,
+        "hdr_plan": "HDR: 原生 AgX 白点 +0.94EV / 容量 +3.00EV；K +0.20EV / W +3.72EV，alpha 1.291，单段 shoulder，尾部 +3.42EV",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 0.9431937983161474,
+        "rendered_headroom_ev": 0.9431937983161474,
+        "actual_headroom_ev": 0.9431938194722875,
+        "reliable_tail_ev": 3.4171249866485596,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 3.7171249866485594,
+        "shoulder_alpha": 1.2913997774525323,
+        "shoulder_segments": 1,
+        "channel_separation": 0.45035798260742416
+      },
+      "exit_code": 0,
+      "production_gate": "accepted",
+      "file_bytes": 31073957,
+      "wall_s": 245.25903079198906
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "coreimage",
+      "format": "ultrahdr-heic",
+      "profile": "auto",
+      "analysis": {
+        "decoder": "coreimage",
+        "shutter": "electronic",
+        "noise_model": {
+          "status": "valid",
+          "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored 2026-08-24 (see module docstring and the comments above)",
+          "reason": "matched-shot-read-model",
+          "channel_variance": {
+            "R": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G1": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "B": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G2": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ]
+          },
+          "domain": "normalized-raw",
+          "approximation": "shared-gain-read-noise-across-colour-planes; sub-readout-not-declared",
+          "correlation": "unknown",
+          "spectral_ratios": {},
+          "noise_reduction_status": "absent",
+          "fallback_source": null,
+          "fallback_reason": null
+        },
+        "prior_id": "Sigma fp",
+        "prior_mode_match": "curated",
+        "capture_readout": {
+          "version": 1,
+          "source": "dng-main-raw-ifd",
+          "shutter": "electronic",
+          "shutter_source": "manufacturer-capability:SIGMA-fp",
+          "sensor_binning": null,
+          "default_crop": [
+            6000.0,
+            4000.0
+          ],
+          "storage_lossless": true,
+          "libraw_raw_geometry": [
+            6064,
+            4042
+          ],
+          "active_geometry": [
+            6064,
+            4042
+          ],
+          "raw_geometry": [
+            6064,
+            4042
+          ],
+          "readout_id": null,
+          "sample_bits": 14,
+          "capture_kind": null,
+          "sensor_bits": null,
+          "compression_code": 7,
+          "compression_process": "lossless-jpeg-sof3-pt0",
+          "shutter_source_url": "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
+        }
+      },
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9697265625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 85,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 0.9779953686129614,
+        "base_mean_code_error": 0.20159909130278095,
+        "base_p99_code_error": 1.3961515426635742,
+        "base_max_code_error": 10.245254516601562,
+        "base_channel_bias_code_error": 0.02377344752998568,
+        "base_block_p99_code_error": 0.3447687327861786,
+        "coding_luma_rmse": 0.14494011292462372,
+        "coding_chroma_rmse": 0.2918146432623383,
+        "coding_local_luma_p99": 0.2735069692134857,
+        "base_local_detail_loss": 0.19525867700576782,
+        "coding_local_detail_loss": 0.19525867700576782,
+        "chroma_error": 0.00534433126449585,
+        "relative_error": 0.02109704725444317,
+        "median_relative_error": 0.004194630775600672,
+        "p95_relative_error": 0.012573344632983208,
+        "p99_relative_error": 0.02109704725444317,
+        "p999_relative_error": 0.0422535203397274,
+        "block_median_relative_error": 0.001784701133146882,
+        "block_p95_relative_error": 0.005317586939781904,
+        "block_p99_relative_error": 0.00972749013453722,
+        "block_chroma_error": 0.0022248374298214912,
+        "block_p95_luma_error": 0.004176746588200331,
+        "highlight_max_luma_error": 0.1133430004119873,
+        "local_detail_loss": 0.6461036801338196,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "auto",
+        "gainmap_encoding_quality": 80,
+        "sdr_master_precision": "float32",
+        "readback_precision": "float32",
+        "gainmap_encoder": "x265",
+        "gainmap_chroma_requested": "444",
+        "file_size_bytes": 3590478,
+        "auto_reference_quality": 95,
+        "auto_reference_chroma": "444",
+        "auto_reference_bytes": 6601893,
+        "auto_saved_pct": 45.61441695586402,
+        "auto_search": "bounded-quality-chroma-gainmap",
+        "auto_attempts": [
+          {
+            "quality": 95,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 6601893,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.1856785998681689,
+              "base_p99_code_error": 1.0918941497802734,
+              "base_max_code_error": 7.956062316894531,
+              "base_channel_bias_code_error": 0.02329910436535498,
+              "base_block_p99_code_error": 0.28686004877090454,
+              "coding_luma_rmse": 0.13179098775205503,
+              "coding_chroma_rmse": 0.25319219898087914,
+              "coding_local_luma_p99": 0.20112816989421844,
+              "base_local_detail_loss": 0.09707997739315033,
+              "coding_local_detail_loss": 0.09707997739315033,
+              "chroma_error": 0.004537761211395264,
+              "block_p95_luma_error": 0.0036555170081555843,
+              "highlight_max_luma_error": 0.11392573267221451,
+              "local_detail_loss": 0.5740481615066528
+            }
+          },
+          {
+            "quality": 92,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 6546469,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.1879820512348313,
+              "base_p99_code_error": 1.1468886137008667,
+              "base_max_code_error": 7.53068208694458,
+              "base_channel_bias_code_error": 0.02333507459863564,
+              "base_block_p99_code_error": 0.2936987578868866,
+              "coding_luma_rmse": 0.13367320348335657,
+              "coding_chroma_rmse": 0.2594208990780734,
+              "coding_local_luma_p99": 0.21710635721683502,
+              "base_local_detail_loss": 0.10941704362630844,
+              "coding_local_detail_loss": 0.10941704362630844,
+              "chroma_error": 0.0046599507331848145,
+              "block_p95_luma_error": 0.0037120271008461714,
+              "highlight_max_luma_error": 0.11254341155290604,
+              "local_detail_loss": 0.590278148651123
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 6477031,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.191415381642787,
+              "base_p99_code_error": 1.2175325155258179,
+              "base_max_code_error": 8.433514595031738,
+              "base_channel_bias_code_error": 0.02344612173051657,
+              "base_block_p99_code_error": 0.3047918975353241,
+              "coding_luma_rmse": 0.1365795568963623,
+              "coding_chroma_rmse": 0.26788770169791726,
+              "coding_local_luma_p99": 0.2340419888496399,
+              "base_local_detail_loss": 0.1270158588886261,
+              "coding_local_detail_loss": 0.1270158588886261,
+              "chroma_error": 0.0048195719718933105,
+              "block_p95_luma_error": 0.003816033713519573,
+              "highlight_max_luma_error": 0.11465352028608322,
+              "local_detail_loss": 0.5996127724647522
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 6297063,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.20159909130278095,
+              "base_p99_code_error": 1.3961515426635742,
+              "base_max_code_error": 10.245254516601562,
+              "base_channel_bias_code_error": 0.02377344752998568,
+              "base_block_p99_code_error": 0.3447687327861786,
+              "coding_luma_rmse": 0.14494011292462372,
+              "coding_chroma_rmse": 0.2918146432623383,
+              "coding_local_luma_p99": 0.2735069692134857,
+              "base_local_detail_loss": 0.19525867700576782,
+              "coding_local_detail_loss": 0.19525867700576782,
+              "chroma_error": 0.005284726619720459,
+              "block_p95_luma_error": 0.004120609723031521,
+              "highlight_max_luma_error": 0.11429727077484131,
+              "local_detail_loss": 0.6236727833747864
+            }
+          },
+          {
+            "quality": 80,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "bytes": 5960111,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.226566375588572,
+              "base_p99_code_error": 1.7409981489181519,
+              "base_max_code_error": 13.297301292419434,
+              "base_channel_bias_code_error": 0.02414248630146386,
+              "base_block_p99_code_error": 0.4582245945930481,
+              "coding_luma_rmse": 0.1657497826575651,
+              "coding_chroma_rmse": 0.3441085240867614,
+              "coding_local_luma_p99": 0.3491334319114685,
+              "base_local_detail_loss": 0.2427935153245926,
+              "coding_local_detail_loss": 0.2427935153245926,
+              "chroma_error": 0.0062571135349571705,
+              "block_p95_luma_error": 0.00487214419990778,
+              "highlight_max_luma_error": 0.1155291497707367,
+              "local_detail_loss": 0.6939715147018433
+            }
+          },
+          {
+            "quality": 70,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 0.2882967226714443,
+              "base_p99_code_error": 2.4879050254821777,
+              "base_max_code_error": 24.15793228149414,
+              "base_channel_bias_code_error": 0.02570130156489576,
+              "base_block_p99_code_error": 0.7620135545730591,
+              "coding_luma_rmse": 0.22181585744964127,
+              "coding_chroma_rmse": 0.4645873694869587,
+              "coding_local_luma_p99": 0.5294007062911987,
+              "base_local_detail_loss": 0.4615013301372528,
+              "coding_local_detail_loss": 0.4615013301372528
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 5445728
+          },
+          {
+            "quality": 85,
+            "chroma": "422",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 0.23763368064587662,
+              "base_p99_code_error": 3.4770262241363525,
+              "base_max_code_error": 73.50023651123047,
+              "base_channel_bias_code_error": 0.023936104457968285,
+              "base_block_p99_code_error": 2.2292444705963135,
+              "coding_luma_rmse": 0.15941968699910491,
+              "coding_chroma_rmse": 0.6350596812758786,
+              "coding_local_luma_p99": 0.3657127618789673,
+              "base_local_detail_loss": 0.420490562915802,
+              "coding_local_detail_loss": 0.420490562915802
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 6641477
+          },
+          {
+            "quality": 90,
+            "chroma": "422",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 0.23276742880537576,
+              "base_p99_code_error": 3.4512598514556885,
+              "base_max_code_error": 72.80574798583984,
+              "base_channel_bias_code_error": 0.024111687832674575,
+              "base_block_p99_code_error": 2.229466199874878,
+              "coding_luma_rmse": 0.15277023766013542,
+              "coding_chroma_rmse": 0.6307586803934558,
+              "coding_local_luma_p99": 0.3419017493724823,
+              "base_local_detail_loss": 0.42009320855140686,
+              "coding_local_detail_loss": 0.42009320855140686
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 6838163
+          },
+          {
+            "quality": 85,
+            "chroma": "420",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 0.20734237422882015,
+              "base_p99_code_error": 2.626434564590454,
+              "base_max_code_error": 57.30606460571289,
+              "base_channel_bias_code_error": 0.022524152086814152,
+              "base_block_p99_code_error": 0.7781177163124084,
+              "coding_luma_rmse": 0.1513221204952494,
+              "coding_chroma_rmse": 0.4882993659063697,
+              "coding_local_luma_p99": 0.3209480047225952,
+              "base_local_detail_loss": 0.37652388215065,
+              "coding_local_detail_loss": 0.37652388215065
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 6279516
+          },
+          {
+            "quality": 90,
+            "chroma": "420",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "base_mean_code_error": 0.20048859414963938,
+              "base_p99_code_error": 2.577204465866089,
+              "base_max_code_error": 57.55533218383789,
+              "base_channel_bias_code_error": 0.02246999796656279,
+              "base_block_p99_code_error": 0.7582846283912659,
+              "coding_luma_rmse": 0.1441155963350347,
+              "coding_chroma_rmse": 0.47984339930109043,
+              "coding_local_luma_p99": 0.29229745268821716,
+              "base_local_detail_loss": 0.39103007316589355,
+              "coding_local_detail_loss": 0.39103007316589355
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 6434833
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 95,
+            "accepted": true,
+            "bytes": 4684664,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.20159909130278095,
+              "base_p99_code_error": 1.3961515426635742,
+              "base_max_code_error": 10.245254516601562,
+              "base_channel_bias_code_error": 0.02377344752998568,
+              "base_block_p99_code_error": 0.3447687327861786,
+              "coding_luma_rmse": 0.14494011292462372,
+              "coding_chroma_rmse": 0.2918146432623383,
+              "coding_local_luma_p99": 0.2735069692134857,
+              "base_local_detail_loss": 0.19525867700576782,
+              "coding_local_detail_loss": 0.19525867700576782,
+              "chroma_error": 0.005304992198944092,
+              "block_p95_luma_error": 0.004135651048272848,
+              "highlight_max_luma_error": 0.11448158323764801,
+              "local_detail_loss": 0.630196213722229
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 90,
+            "accepted": true,
+            "bytes": 4521369,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.20159909130278095,
+              "base_p99_code_error": 1.3961515426635742,
+              "base_max_code_error": 10.245254516601562,
+              "base_channel_bias_code_error": 0.02377344752998568,
+              "base_block_p99_code_error": 0.3447687327861786,
+              "coding_luma_rmse": 0.14494011292462372,
+              "coding_chroma_rmse": 0.2918146432623383,
+              "coding_local_luma_p99": 0.2735069692134857,
+              "base_local_detail_loss": 0.19525867700576782,
+              "coding_local_detail_loss": 0.19525867700576782,
+              "chroma_error": 0.005311369895935059,
+              "block_p95_luma_error": 0.004138692282140255,
+              "highlight_max_luma_error": 0.11488662660121918,
+              "local_detail_loss": 0.6159610748291016
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 85,
+            "accepted": true,
+            "bytes": 4237043,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.20159909130278095,
+              "base_p99_code_error": 1.3961515426635742,
+              "base_max_code_error": 10.245254516601562,
+              "base_channel_bias_code_error": 0.02377344752998568,
+              "base_block_p99_code_error": 0.3447687327861786,
+              "coding_luma_rmse": 0.14494011292462372,
+              "coding_chroma_rmse": 0.2918146432623383,
+              "coding_local_luma_p99": 0.2735069692134857,
+              "base_local_detail_loss": 0.19525867700576782,
+              "coding_local_detail_loss": 0.19525867700576782,
+              "chroma_error": 0.005321621894836426,
+              "block_p95_luma_error": 0.004152676556259394,
+              "highlight_max_luma_error": 0.11524929851293564,
+              "local_detail_loss": 0.6302766799926758
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 80,
+            "accepted": true,
+            "bytes": 3590478,
+            "metrics": {
+              "base_headroom": 1.0,
+              "base_mean_code_error": 0.20159909130278095,
+              "base_p99_code_error": 1.3961515426635742,
+              "base_max_code_error": 10.245254516601562,
+              "base_channel_bias_code_error": 0.02377344752998568,
+              "base_block_p99_code_error": 0.3447687327861786,
+              "coding_luma_rmse": 0.14494011292462372,
+              "coding_chroma_rmse": 0.2918146432623383,
+              "coding_local_luma_p99": 0.2735069692134857,
+              "base_local_detail_loss": 0.19525867700576782,
+              "coding_local_detail_loss": 0.19525867700576782,
+              "chroma_error": 0.00534433126449585,
+              "block_p95_luma_error": 0.004176746588200331,
+              "highlight_max_luma_error": 0.1133430004119873,
+              "local_detail_loss": 0.6461036801338196
+            }
+          }
+        ],
+        "exif_carried": false,
+        "hdr_plan": "HDR: 原生 AgX 白点 +0.98EV / 容量 +3.00EV；K +0.20EV / W +3.75EV，alpha 1.290，单段 shoulder，尾部 +3.45EV；独立 RAW 参考",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 0.9776715090400243,
+        "rendered_headroom_ev": 0.9776715090400243,
+        "actual_headroom_ev": 0.977671488502785,
+        "reliable_tail_ev": 3.4516026973724365,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 3.7516026973724363,
+        "shoulder_alpha": 1.290050158178186,
+        "shoulder_segments": 1,
+        "channel_separation": 0.25
+      },
+      "exit_code": 0,
+      "production_gate": "accepted",
+      "file_bytes": 3590478,
+      "wall_s": 151.07351654197555
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "libraw",
+      "format": "sdr",
+      "profile": "share-hq",
+      "analysis": {
+        "decoder": "libraw",
+        "shutter": "electronic",
+        "noise_model": {
+          "status": "valid",
+          "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored 2026-08-24 (see module docstring and the comments above)",
+          "reason": "matched-shot-read-model",
+          "channel_variance": {
+            "R": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G1": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "B": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G2": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ]
+          },
+          "domain": "normalized-raw",
+          "approximation": "shared-gain-read-noise-across-colour-planes; sub-readout-not-declared",
+          "correlation": "unknown",
+          "spectral_ratios": {},
+          "noise_reduction_status": "absent",
+          "fallback_source": null,
+          "fallback_reason": null
+        },
+        "prior_id": "Sigma fp",
+        "prior_mode_match": "curated",
+        "capture_readout": {
+          "version": 1,
+          "source": "dng-main-raw-ifd",
+          "shutter": "electronic",
+          "shutter_source": "manufacturer-capability:SIGMA-fp",
+          "sensor_binning": null,
+          "default_crop": [
+            6000.0,
+            4000.0
+          ],
+          "storage_lossless": true,
+          "libraw_raw_geometry": [
+            6064,
+            4042
+          ],
+          "active_geometry": [
+            6064,
+            4042
+          ],
+          "raw_geometry": [
+            6064,
+            4042
+          ],
+          "readout_id": null,
+          "sample_bits": 14,
+          "capture_kind": null,
+          "sensor_bits": null,
+          "compression_code": 7,
+          "compression_process": "lossless-jpeg-sof3-pt0",
+          "shutter_source_url": "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
+        }
+      },
+      "delivery": {
+        "delivery_profile": "share-hq",
+        "delivery_container": "jpeg",
+        "delivery_quality": 97,
+        "delivery_chroma_requested": "420",
+        "chroma_subsampling": "4:2:0",
+        "icc_embedded": true,
+        "exif_carried": true,
+        "file_size_bytes": 9227919,
+        "share_size_limit_bytes": 20000000,
+        "share_size_exceeded": false,
+        "base_mean_code_error": 2.2781519444444442,
+        "base_p99_code_error": 17.0,
+        "base_max_code_error": 82.0,
+        "base_channel_bias_code_error": 0.03214008333333333,
+        "base_block_p99_code_error": 1.265625,
+        "base_local_detail_loss": 0.411932110786438
+      },
+      "exit_code": 0,
+      "production_gate": "accepted",
+      "file_bytes": 9227919,
+      "wall_s": 7.942861290997826
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "libraw",
+      "format": "sdr-heic",
+      "profile": "share",
+      "analysis": {
+        "decoder": "libraw",
+        "shutter": "electronic",
+        "noise_model": {
+          "status": "valid",
+          "source": "PhotonsToPhotos PDR.htm / RN_e.htm, retrieved 2026-07-06; x axis re-referenced to EXIF ISO and unity_gain_ev re-anchored 2026-08-24 (see module docstring and the comments above)",
+          "reason": "matched-shot-read-model",
+          "channel_variance": {
+            "R": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G1": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "B": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ],
+            "G2": [
+              0.00021357931091360672,
+              2.6199823272596884e-08
+            ]
+          },
+          "domain": "normalized-raw",
+          "approximation": "shared-gain-read-noise-across-colour-planes; sub-readout-not-declared",
+          "correlation": "unknown",
+          "spectral_ratios": {},
+          "noise_reduction_status": "absent",
+          "fallback_source": null,
+          "fallback_reason": null
+        },
+        "prior_id": "Sigma fp",
+        "prior_mode_match": "curated",
+        "capture_readout": {
+          "version": 1,
+          "source": "dng-main-raw-ifd",
+          "shutter": "electronic",
+          "shutter_source": "manufacturer-capability:SIGMA-fp",
+          "sensor_binning": null,
+          "default_crop": [
+            6000.0,
+            4000.0
+          ],
+          "storage_lossless": true,
+          "libraw_raw_geometry": [
+            6064,
+            4042
+          ],
+          "active_geometry": [
+            6064,
+            4042
+          ],
+          "raw_geometry": [
+            6064,
+            4042
+          ],
+          "readout_id": null,
+          "sample_bits": 14,
+          "capture_kind": null,
+          "sensor_bits": null,
+          "compression_code": 7,
+          "compression_process": "lossless-jpeg-sof3-pt0",
+          "shutter_source_url": "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
+        }
+      },
+      "delivery": {
+        "has_iso_gainmap": false,
+        "headroom": 1.0,
+        "base_headroom": null,
+        "headroom_source": "sdr-no-gainmap",
+        "headroom_status": "not-declared",
+        "profile": "sRGB IEC61966-2.1",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 0,
+        "gainmap_height": 0,
+        "gainmap_pixel_format": "",
+        "nclx_verified": false,
+        "base_mean_code_error": 1.8746807587169774,
+        "base_p99_code_error": 16.962188720703125,
+        "base_max_code_error": 85.1600112915039,
+        "base_channel_bias_code_error": 0.030906814053484388,
+        "base_block_p99_code_error": 1.0936592817306519,
+        "coding_luma_rmse": 0.4144211023147046,
+        "coding_chroma_rmse": 3.6651038779575575,
+        "coding_local_luma_p99": 0.565499484539032,
+        "base_local_detail_loss": 0.3690781593322754,
+        "coding_local_detail_loss": 0.3690781593322754,
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 95,
+        "delivery_chroma_requested": "420",
+        "delivery_container": "heic",
+        "delivery_profile": "share",
+        "icc_embedded": true,
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 16905786
+      },
+      "exit_code": 0,
+      "production_gate": "accepted",
+      "file_bytes": 16905786,
+      "wall_s": 27.97037795901997
+    }
+  ],
+  "formation": {
+    "hdr_heif_10_sdr_master": "nonlinear Display P3 float32",
+    "hdr_alternate": "display-linear Display P3 float16 RGBA",
+    "shared_scene_processing_passes": 1,
+    "x265_quantization": "deterministic TPDF at 10-bit boundary",
+    "validation": "floating SDR primary and expanded linear HDR; unchanged budgets"
+  },
+  "api_precision_probe": [
+    {
+      "writer": "generic-xf44",
+      "success": true,
+      "error": null,
+      "info": {
+        "has_iso_gainmap": true,
+        "headroom": 2.0,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 1024,
+        "height": 64,
+        "bit_depth": 8,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 1024,
+        "gainmap_height": 64,
+        "gainmap_pixel_format": "444f"
+      },
+      "uniqueR": 256,
+      "source_max_error": 0.0019550342112779617,
+      "max_off_u8_grid": 0.0,
+      "hdr_metrics": {
+        "chroma_error": 0.0,
+        "relative_error": 0.014899713918566704,
+        "median_relative_error": 0.0038272636011242867,
+        "p95_relative_error": 0.0128173828125,
+        "p99_relative_error": 0.014899713918566704,
+        "p999_relative_error": 0.015513126738369465,
+        "block_median_relative_error": 0.0009606432868167758,
+        "block_p95_relative_error": 0.0024618415627628565,
+        "block_p99_relative_error": 0.0031594359315931797,
+        "block_chroma_error": 0.0,
+        "block_p95_luma_error": 0.00919917318969965,
+        "highlight_max_luma_error": 0.0029752065893262625,
+        "local_detail_loss": 0.026987925171852112
+      }
+    },
+    {
+      "writer": "10-xf44",
+      "success": true,
+      "error": null,
+      "info": {
+        "has_iso_gainmap": true,
+        "headroom": 2.0,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 1024,
+        "height": 64,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 1024,
+        "gainmap_height": 64,
+        "gainmap_pixel_format": "444f"
+      },
+      "uniqueR": 1024,
+      "source_max_error": 1.1920928955078125e-07,
+      "max_off_u8_grid": 0.498565673828125,
+      "hdr_metrics": {
+        "chroma_error": 0.0,
+        "relative_error": 0.0009633911540731788,
+        "median_relative_error": 0.0005369128193706274,
+        "p95_relative_error": 0.0009090909152291715,
+        "p99_relative_error": 0.0009633911540731788,
+        "p999_relative_error": 0.000974658876657486,
+        "block_median_relative_error": 0.00042235630098730326,
+        "block_p95_relative_error": 0.0006780235562473536,
+        "block_p99_relative_error": 0.0008090615156106651,
+        "block_chroma_error": 0.0,
+        "block_p95_luma_error": 0.0006780648836866021,
+        "highlight_max_luma_error": 0.0008279624744318426,
+        "local_detail_loss": 0.003675132291391492
+      }
+    },
+    {
+      "writer": "10-xf20",
+      "success": true,
+      "error": null,
+      "info": {
+        "has_iso_gainmap": true,
+        "headroom": 2.0,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 1024,
+        "height": 64,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 1024,
+        "gainmap_height": 64,
+        "gainmap_pixel_format": "444f"
+      },
+      "uniqueR": 1024,
+      "source_max_error": 1.1920928955078125e-07,
+      "max_off_u8_grid": 0.498565673828125,
+      "hdr_metrics": {
+        "chroma_error": 0.0,
+        "relative_error": 0.0009633911540731788,
+        "median_relative_error": 0.0005367686389945447,
+        "p95_relative_error": 0.0009090909152291715,
+        "p99_relative_error": 0.0009633911540731788,
+        "p999_relative_error": 0.000974658876657486,
+        "block_median_relative_error": 0.00042235630098730326,
+        "block_p95_relative_error": 0.0006780235562473536,
+        "block_p99_relative_error": 0.0008090615156106651,
+        "block_chroma_error": 0.0,
+        "block_p95_luma_error": 0.0006780648836866021,
+        "highlight_max_luma_error": 0.0008279624744318426,
+        "local_detail_loss": 0.003675132291391492
+      }
+    },
+    {
+      "writer": "10-444f",
+      "success": true,
+      "error": null,
+      "info": {
+        "has_iso_gainmap": true,
+        "headroom": 2.0,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 1024,
+        "height": 64,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 1024,
+        "gainmap_height": 64,
+        "gainmap_pixel_format": "444f"
+      },
+      "uniqueR": 1024,
+      "source_max_error": 1.1920928955078125e-07,
+      "max_off_u8_grid": 0.498565673828125,
+      "hdr_metrics": {
+        "chroma_error": 0.0,
+        "relative_error": 0.0009633911540731788,
+        "median_relative_error": 0.0005367686389945447,
+        "p95_relative_error": 0.0009090909152291715,
+        "p99_relative_error": 0.0009633911540731788,
+        "p999_relative_error": 0.000974658876657486,
+        "block_median_relative_error": 0.00042235630098730326,
+        "block_p95_relative_error": 0.0006780235562473536,
+        "block_p99_relative_error": 0.0008090615156106651,
+        "block_chroma_error": 0.0,
+        "block_p95_luma_error": 0.0006780648836866021,
+        "highlight_max_luma_error": 0.0008279624744318426,
+        "local_detail_loss": 0.003675132291391492
+      }
+    }
+  ],
+  "readout_scope": {
+    "verified_fields": [
+      "main RAW IFD stored sample bits",
+      "RAW and active geometry",
+      "DefaultCropSize",
+      "LibRaw full mosaic geometry",
+      "compression process and JPEG point transform",
+      "shutter when independently known"
+    ],
+    "not_inferred": [
+      "ADC precision from BitsPerSample",
+      "binning from crop",
+      "still/video from size",
+      "vendor readout ID"
+    ],
+    "fp_shutter": "exact-model manufacturer electronic-shutter capability",
+    "camera_level_prior": "sub-readout-not-declared approximation retained",
+    "explicit_contract": "matching, missing evidence and mismatches remain distinct; no silent unverified packaged replacement",
+    "personal_sensor_correction": "deferred at user request; no personal PTC/dark files provided"
+  },
+  "acceptance_options": {
+    "exposure": "CLI default auto",
+    "tone_core": "AgX",
+    "scene_transform": "none",
+    "dimensions": "original; no resize",
+    "chroma_nr_strength": 0,
+    "budgets": "production defaults; no overrides",
+    "timings": "concurrent with test work; not a performance benchmark"
+  },
+  "limits": [
+    "Three fp samples cannot establish all camera/readout-mode support.",
+    "10-bit HEIF is lossy and does not guarantee all source levels or local texture.",
+    "HEIF has no 20 MB cap; fixed JPEG 97/420 at original size warns when over 20 MB.",
+    "Source originals were untouched; generated image outputs are temporary and not committed."
+  ],
+  "controlled_jpeg_regression": {
+    "baseline_commit": "e55835cbad01cb5517e876616a7addacc3a74dfb",
+    "baseline_exit_code": 0,
+    "wall_s": 6.920652417000383,
+    "baseline_bytes": 9227919,
+    "current_bytes": 9227919,
+    "shape": [
+      6000,
+      4000,
+      3
+    ],
+    "pixels_equal": true,
+    "different_channel_values": 0,
+    "max_pixel_code_error": 0,
+    "mean_pixel_code_error": 0.0,
+    "encoded_content_equal": true,
+    "baseline_sha256": "4421ea868e05326b8597859468b3a89e8a3e10f6d96a6a76e15ff98871d2b343",
+    "current_sha256": "4421ea868e05326b8597859468b3a89e8a3e10f6d96a6a76e15ff98871d2b343",
+    "invocation": "_SDI0150.DNG --decoder libraw --output-format sdr --delivery-profile share-hq; default auto EV"
+  },
+  "readout_regressions": {
+    "production_dng_cases": [
+      "larger enhanced IFD cannot replace main RAW tags or BE",
+      "later larger main0 frame cannot replace default first frame",
+      "main RAW BE wins over IFD0; absent RAW BE falls back to IFD0",
+      "matching declared submode preferred over newer incompatible calibration",
+      "explicit mismatch or missing file evidence cannot silently borrow curated prior",
+      "DNG variance fallback does not borrow inapplicable external frequency constraints",
+      "Collect RawSize conflict rejected; partial coverage remains unverified",
+      "capture descriptor survives analysis/preview cache round trip"
+    ],
+    "actual_lossless_jpeg": {
+      "test": "tests/test_readout_lossless_jpeg_pipeline.py",
+      "point_transform_0_decoded_dn": 2401,
+      "point_transform_0_storage_lossless": true,
+      "point_transform_1_decoded_dn": 1200,
+      "point_transform_1_storage_lossless": false
+    },
+    "selection_rule": "pinned LibRaw default first main NewSubfileType=0 RAW in TIFF parse order; no largest/enhanced option enabled",
+    "jpeg_inspection": "every declared tile/strip bytecount bounds its header; SOF3 plus full component first SOS and Pt0 required; unknown remains unknown"
+  },
+  "tests": {
+    "final_native_full_suite": {
+      "discovered": 1662,
+      "passed": 1659,
+      "skipped": 3,
+      "failed": 0,
+      "seconds": 260.184,
+      "DNGSCAN_FAST": "1",
+      "actual_apple_backend": true
+    },
+    "affected_readout_numpy": {
+      "discovered": 255,
+      "passed": 252,
+      "skipped": 3,
+      "failed": 0
+    },
+    "affected_readout_native": {
+      "discovered": 255,
+      "passed": 255,
+      "skipped": 0,
+      "failed": 0
+    },
+    "actual_hdr_heif_precision": {
+      "discovered": 2,
+      "passed": 2,
+      "skipped": 0,
+      "seconds": 3.573,
+      "backends": [
+        "Apple HEIF10",
+        "libheif/x265 donor",
+        "Apple auto",
+        "x265 auto"
+      ]
+    },
+    "counts_overlap_and_are_not_added": true,
+    "initial_full_run": {
+      "discovered": 1657,
+      "failed": 1,
+      "skipped": 3,
+      "reason": "older high-residual quality status was masked during integration; corrected before final frozen full-suite run; test expectation unchanged"
+    }
+  }
+}

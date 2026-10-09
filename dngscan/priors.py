@@ -199,6 +199,8 @@ def _jptc_entries() -> list[dict[str, Any]]:
         }
         from .calibration import _read_noise_unresolved_isos, stored_dark_variance_fields
         entry.update(stored_dark_variance_fields(item))
+        from .readout import measurement_fields
+        entry.update(measurement_fields(item))
         entry["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
             item.get("read_noise_unresolved_isos"), entry["read_noise_log2iso_log2e"],
             entry["read_noise_dn_log2iso"])
@@ -282,8 +284,18 @@ def _packaged_entry_matches(entry: dict[str, Any], camera: tuple[str, str]) -> b
                for model in entry["model_equals"])
 
 
+def with_readout(entry: dict[str, Any], readout: dict | None) -> dict[str, Any]:
+    """Bind the same capture constraints for model and electron-domain consumers."""
+    from .readout import match
+    entry = dict(entry)
+    status, reason = match(entry, readout)
+    entry["readout_match_status"], entry["readout_match_reason"] = status, reason
+    return entry
+
+
 def find_priors(make: str | None, model: str | None,
-                shutter: str | None = None, iso: float | None = None) -> dict[str, Any] | None:
+                shutter: str | None = None, iso: float | None = None,
+                readout: dict | None = None) -> dict[str, Any] | None:
     """Resolve a sensor prior. `shutter` ("mechanical"/"electronic"), when
     the caller knows it, prefers a same-shutter tier-2 entry — gain and
     especially read noise differ materially between readout modes (review
@@ -297,7 +309,8 @@ def find_priors(make: str | None, model: str | None,
     # Explicitly imported measurements supersede packaged priors only when
     # exact camera/readout and measured ISO applicability are established.
     from .calibration import matching_prior
-    user = matching_prior(make, model, shutter=shutter, iso=iso)
+    options = {"readout": readout} if readout is not None else {}
+    user = matching_prior(make, model, shutter=shutter, iso=iso, **options)
     if user is not None:
         return user
     camera = _packaged_camera_key(make, model)
@@ -307,13 +320,15 @@ def find_priors(make: str | None, model: str | None,
         if _packaged_entry_matches(entry, camera):
             entry = dict(entry)
             entry["mode_match"] = "curated"
-            return entry
-    tier2 = [e for e in _jptc_entries() if _packaged_entry_matches(e, camera)]
+            return with_readout(entry, readout)
+    tier2 = [with_readout(e, readout) for e in _jptc_entries() if _packaged_entry_matches(e, camera)]
     if tier2:
+        tier2.sort(key=lambda e: {"matched": 0, "not-declared": 1}.get(e["readout_match_status"], 2))
         if shutter:
             exact = [e for e in tier2 if e.get("shutter") == shutter]
             if exact:
-                entry = dict(exact[0])
+                applicable = [e for e in exact if e["readout_match_status"] not in ("unverified", "mismatch")]
+                entry = dict((applicable or exact)[0])
                 entry["mode_match"] = "exact-shutter"
                 return entry
         shutters = {e.get("shutter") for e in tier2 if e.get("shutter")}
@@ -334,7 +349,7 @@ def find_priors(make: str | None, model: str | None,
         if len(name) == 2 and _packaged_camera_key(*name) == camera:
             entry = dict(entry)
             entry["mode_match"] = "bulk-model-only"
-            return entry
+            return with_readout(entry, readout)
     return None
 
 
@@ -441,6 +456,8 @@ def prior_usability(entry: dict[str, Any] | None) -> tuple[bool, str]:
     spread = q.get("estimator_spread")
     if spread is not None and math.isfinite(spread) and spread > 0.10:
         return False, "estimator-spread"
+    if entry.get("readout_match_status") in ("unverified", "mismatch"):
+        return False, entry.get("readout_match_reason") or "readout-unverified"
     if entry.get("mode_match") in ("model-only-ambiguous-shutter", "model-only"):
         return False, "ambiguous-shutter"
     return True, entry.get("mode_match") or "ok"

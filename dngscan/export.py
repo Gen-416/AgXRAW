@@ -375,7 +375,8 @@ def export_ultrahdr_jpeg(
 
         from .hdr_agx import render_ultrahdr_agx_pair_packed
 
-        base_u8, alternate, actual = render_ultrahdr_agx_pair_packed(
+        float_base = profile.container == "heic" and profile.heif_bit_depth == 10
+        base, alternate, actual = render_ultrahdr_agx_pair_packed(
             bundle,
             analysis,
             plan,
@@ -383,15 +384,17 @@ def export_ultrahdr_jpeg(
             output_gamut,
             scene_transform,
             scene_transform_strength,
+            sdr_float=float_base,
         )
         # Encode-boundary guard at the scene-authorized content peak, not the display
         # capacity: the design contract (§9) keeps the alternate's ceiling at 2^H_content,
         # and the renderer already fitted its volume to exactly this endpoint.
         pair = FinishedPair(
-            sdr_rgb_u8=base_u8,
+            sdr_rgb_u8=None if float_base else base,
             hdr_rgba_f16=alternate,
             display_headroom_ev=float(hdr_plan.tone.display_headroom_ev),
             output_gamut=output_gamut,
+            sdr_rgb_float=base if float_base else None,
         )
         with DeliveryTransaction(out_path) as transaction:
             info = encode_finished_pair(pair, transaction.path, profile)

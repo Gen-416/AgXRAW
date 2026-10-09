@@ -356,14 +356,17 @@ def render_ultrahdr_agx_pair(
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
     *,
+    sdr_float: bool = False,
     _pack_hdr: bool = False,
 ) -> tuple[Any, Any]:
-    """One intent walk producing SDR u8 and HDR display-linear.
+    """One intent walk producing finished SDR and HDR display-linear.
 
     Ultrahdr previously paid for two full-resolution formations of the same scene intent.
     Scale, scene transform and clip retreat are shared; each branch then runs its own
     display formation. SDR still goes through ``apply_tone_core`` so the native AgX kernel
     and dither grouping match a standalone ``render_output_u8`` export.
+    ``sdr_float`` retains nonlinear float32 SDR through the delivery boundary;
+    its target encoder then quantizes at the requested output bit depth.
     """
     if str(getattr(plan.tone, "tone_core", "agx")) != "agx":
         raise RuntimeError("Ultrahdr AgX pair 仅支持 tone_core=agx")
@@ -377,7 +380,7 @@ def render_ultrahdr_agx_pair(
     # render workers; the same strict/fallback ladder applies.
     gamut_alpha = float(color_plan.gamut_fit_alpha) if color_plan is not None else 0.05
     native_output_plan = None
-    if fast_backend.supports_output_finalizer():
+    if not sdr_float and fast_backend.supports_output_finalizer():
         try:
             native_output_plan = fast_backend.compile_output_plan(
                 output_gamut, gamut_alpha
@@ -410,7 +413,7 @@ def render_ultrahdr_agx_pair(
     scene = bundle.scene_rec2020_render
     h, w = scene.shape[:2]
     flat_scene = scene.reshape(-1, scene.shape[-1])
-    sdr_out = np.empty((flat_scene.shape[0], 3), dtype=np.uint8)
+    sdr_out = np.empty((flat_scene.shape[0], 3), dtype=np.float32 if sdr_float else np.uint8)
     if _pack_hdr:
         hdr_out = np.empty((flat_scene.shape[0], 4), dtype=np.float16)
         hdr_out[:, 3] = np.float16(1.0)
@@ -560,6 +563,12 @@ def render_ultrahdr_agx_pair(
                 hdr_out[start:end, :3] = np.clip(hdr_final, 0.0, float(hdr_plan.tone.peak_linear))
             else:
                 hdr_out[start:end] = hdr_final
+            if sdr_float:
+                # Finalize/encode each completed chunk directly into the one
+                # float master. No earlier byte image or quantization noise is
+                # needed, and no second full scene formation is performed.
+                sdr_out[start:end] = encode_display_linear(sdr_final, output_gamut)
+                continue
             group_parts.append(sdr_final)
             group_end = min(group_start + quantize_chunk_size, flat_scene.shape[0])
             if end == group_end:
@@ -623,7 +632,11 @@ def render_ultrahdr_agx_pair(
 
 
 def render_ultrahdr_agx_pair_packed(*args: Any, **kwargs: Any) -> tuple[Any, Any, float]:
-    """Internal delivery boundary: keep only per-chunk f32 HDR and final half RGBA."""
+    """Delivery boundary with per-chunk f32 HDR and a final half RGBA master.
+
+    SDR remains uint8 unless ``sdr_float=True`` explicitly requests the
+    finished nonlinear float32 master for a high-precision primary encoder.
+    """
     return render_ultrahdr_agx_pair(*args, **kwargs, _pack_hdr=True)
 
 

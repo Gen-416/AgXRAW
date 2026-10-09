@@ -1230,6 +1230,7 @@ def detected_scene_params(
     calibration_status = calibration_diagnostics(
         getattr(bundle, "shot_make", None), getattr(bundle, "shot_model", None),
         shutter=getattr(bundle, "shot_shutter", None), iso=getattr(bundle, "shot_iso", None),
+        readout=getattr(bundle, "capture_readout", None),
     )
     return {
         "data_support": getattr(bundle, "camera_data_support", None),

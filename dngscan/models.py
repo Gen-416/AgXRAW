@@ -33,6 +33,7 @@ class RawEvidence:
     orientation_flip: int
     xyz_to_cam: Any | None
     shot_shutter: str | None = None
+    capture_readout: dict[str, Any] | None = None
     spatial_black: Any | None = None
     sample_kind: str = "cfa"  # cfa or linear-camera-rgb; never sensor SNR for the latter
     provider: str = "libraw"
@@ -84,6 +85,7 @@ class RawBundle:
     shot_model: str | None = None
     shot_iso: int | None = None
     shot_shutter: str | None = None
+    capture_readout: dict[str, Any] | None = None
     # DNG BaselineExposure as written by the camera, or None when the file omits it. This
     # is file-authored baseline rendering compensation, not shutter/aperture/ISO or an
     # auto-gray target. Both decoders honour it before dngscan's explicit EV adjustment.

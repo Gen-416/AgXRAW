@@ -1106,6 +1106,7 @@ def sensor_prior_evidence(
     make: str | None, model: str | None, iso: int | None,
     *, nf: float, fullwell: float, mean_black: float,
     coding_range: float | None = None, shutter: str | None = None,
+    readout: dict | None = None,
     noise_status: str = "independent",
 ):
     """EVERYTHING analyze() derives from sensor priors, in one place.
@@ -1115,15 +1116,18 @@ def sensor_prior_evidence(
     floor) is None TOGETHER, so SNR guidance, endpoint evidence and the DR
     clamp all degrade to frame-derived estimates. The prior's identity and
     the gate reason are still reported for diagnostics."""
-    prior = sensor_priors.find_priors(make, model, shutter=shutter, iso=iso)
+    prior = sensor_priors.find_priors(make, model, shutter=shutter, iso=iso, readout=readout)
     prior_id = prior["id"] if prior else None
     _pq = prior.get("quality") if prior else None
     quality_status = (_pq or {}).get("status") if isinstance(_pq, dict) else None
     model_spread = (_pq or {}).get("estimator_spread") if isinstance(_pq, dict) else None
     mode_match = prior.get("mode_match") if prior else None
     usable, gate_reason = sensor_priors.prior_usability(prior)
+    readout_rejected = ((prior or {}).get("readout_match_status") in ("unverified", "mismatch")
+                        and gate_reason == (prior or {}).get("readout_match_reason"))
     if not usable:
-        quality_status = quality_status or gate_reason
+        quality_status = (gate_reason if readout_rejected
+                          else quality_status or gate_reason)
     if usable and iso and prior.get("suspect_iso_min") and iso >= prior["suspect_iso_min"]:
         usable, quality_status = False, "suspect-iso"
     if noise_status == "model-unresolved":
@@ -1133,7 +1137,9 @@ def sensor_prior_evidence(
         from .calibration import read_noise_issue
         quality_status = read_noise_issue(prior or {}, iso) or noise_status
     elif noise_status != "independent":
-        usable, quality_status = False, noise_status
+        usable = False
+        if not readout_rejected:
+            quality_status = noise_status
     use = usable and iso
     gain_e = (sensor_priors.gain_for_file(prior, iso, coding_range)
               if use and coding_range is not None
@@ -1276,7 +1282,8 @@ def analyze(
     from .noise_model import resolve_noise_model, model_snr_curves, model_read_floor
     prior = sensor_priors.find_priors(bundle.shot_make, bundle.shot_model,
                                      shutter=getattr(bundle, "shot_shutter", None),
-                                     iso=getattr(bundle, "shot_iso", None))
+                                     iso=getattr(bundle, "shot_iso", None),
+                                     readout=getattr(bundle, "capture_readout", None))
     noise_model = resolve_noise_model(bundle, channel_fullwell, prior)
     nf = model_read_floor(noise_model)
     usable_dr = (math.log2(1.0 / nf) if math.isfinite(nf) and nf > 0
@@ -1311,6 +1318,7 @@ def analyze(
         nf=nf, fullwell=fullwell, mean_black=mean_black,
         coding_range=float(bundle.white_level) - mean_black,
         shutter=getattr(bundle, "shot_shutter", None),
+        readout=getattr(bundle, "capture_readout", None),
         noise_status="independent" if noise_model.status == "valid" else noise_status)
     # The normalized model uses declared coding endpoints, not the frame's
     # observed maximum. Do not turn a file-declared variance into electrons

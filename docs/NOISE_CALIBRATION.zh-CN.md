@@ -81,7 +81,7 @@ python tools/import_jptc.py /path/to/ptc-iso100.csv --brand SIGMA --model fp --i
 
 ## 何时参与成像
 
-传感器先验选择顺序为：适用且启用的用户标定、包内 curated 先验、包内 JPTC、P2P bulk。多个适用用户记录优先选择最近导入的一份；需要固定另一份时，停用其余记录。用户标定可覆盖 fp 的包内 curated 数据，但「保存成功」不绕过适用性检查。
+传感器先验选择顺序为：适用且启用的用户标定、包内 curated 先验、包内 JPTC、P2P bulk。同等读出适用范围内，多个用户记录优先选择最近导入的一份；需要固定另一份时，停用其余记录。用户标定可覆盖 fp 的包内 curated 数据，但「保存成功」不绕过适用性检查。
 
 选中的先验能构成有效 shot/read 模型时，用其计算归一化 RAW 噪声方差和 SNR。否则尝试文件 Raw IFD 内合法的 DNG `NoiseProfile`；没有可用来源就明确报告不可用，不再用照片纹理的块内方差冒充物理噪声。文件模型是厂商声明，合法解析不等于已由自己的 PTC 验证。
 
@@ -109,7 +109,72 @@ NoiseProfile 不统一加 `1/12`。读噪明确未分辨仍按原状态处理，
 并保留原因，不会静默生成零噪声模型或退回物理读噪常数项。合法独立 DNG `NoiseProfile`
 仍可提供替代系数，原标定的适用频谱约束继续保留；已测异常频谱仍令 HDR 尾部噪声因子
 为 0、色度核跳过。
-缓存版本 25 淘汰旧模型及模糊机型匹配结果。
+缓存版本 26 同时淘汰旧模型、模糊机型匹配及缺少逐文件读出描述的结果。
+
+## 逐文件读出约束
+
+解码时独立读取采集描述，不再通过可选镜头配置取得快门信息。DNG 使用主 RAW IFD，
+分别保存 RAW 栅格、ActiveArea 和 DefaultCrop；缩略图的位深与尺寸不参与匹配。
+主 RAW 按固定 LibRaw 默认选帧规则选择第一个 `NewSubfileType=0` 的 CFA / LinearRAW
+帧，不把更大的增强 IFD、预览或掩膜当作实际解码帧。噪声标签、校正配方及读出约束共用
+这一来源；BaselineExposure 优先取实际 RAW 帧，缺少时才取 IFD0 全局值。
+LibRaw 的完整马赛克尺寸另行保存，不用 `raw_image_visible` 或显影尺寸代替。
+这些小型描述随分析、预览及导出缓存保存，参与完整来源比对。
+
+JSON 可在现有测量内容之外添加明确的约束，例如与本地 fp 样张相同的存储配置：
+
+```json
+"readout_contract": {
+  "version": 1,
+  "sample_bits": 14,
+  "raw_geometry": [6064, 4042],
+  "storage_lossless": true
+}
+```
+
+这是添加到完整标定对象的片段，不是独立可导入文件。数值须来自对应测量文件，不能
+照抄示例证明自己的测量适用。`sample_bits` 是 TIFF 存储样本位数，不能据此声称已测得
+ADC 有效位数。`raw_geometry` 也只限定文件 RAW 栅格，不独自证明没有像素合并或其他处理。
+
+| 约束字段 | 当前逐文件依据 |
+| --- | --- |
+| `raw_geometry` | DNG 主 RAW IFD 的 ImageWidth / ImageHeight。 |
+| `libraw_raw_geometry` | 当前文件的 LibRaw `raw_width` / `raw_height`；包含完整马赛克，不借用可见窗口。 |
+| `active_geometry` | DNG 明确存在的 ActiveArea 宽高；缺 tag 时保持未知。 |
+| `default_crop` | DNG 明确声明的 DefaultCropSize，可含合法分数；与 RAW 栅格分开。 |
+| `sample_bits` | 主 RAW IFD 的 BitsPerSample。 |
+| `storage_lossless` | 当前编码过程是否保留存储码值；无压缩和 Deflate 可确认，JPEG 7 在各 tile/strip 的声明 bytecount 范围内检查 SOF3、完整分量覆盖及 SOS point transform 为 0。缺少块长度、不完整或未支持过程保持未知。 |
+| `sensor_bits`、`sensor_binning`、`capture_kind`、`readout_id` | 可以显式声明，但当前没有足够的通用文件字段映射；未知不会当作匹配。 |
+
+每个明确声明的约束都必须有对应证据并相符。声明为 lossless、无损压缩、uncompressed
+或无压缩的旧 `compression` 文本接受同一保码值约束；无损 JPEG 与无压缩容器不同，
+本身不证明传感器读出不同。`12bit`、`14bit`、`RAW HQ` 等重载文本不会被猜成 ADC 位深
+或特定读出模式。已确认有损、或 DNG 压缩过程尚不能确认保码值时，不应用外部 shot/read
+先验；合法文件内 `NoiseProfile` 仍可独立提供系数。这里核对的是当前存储过程，不能证明
+图像在更早阶段从未经历有损处理。
+
+Collect 的 ImageWidth / ImageHeight 是操作者声明的相机 JPEG 输出尺寸，`RawSize`
+才是 LibRaw 完整马赛克尺寸，二者的层位由[固定版本输出合同](https://github.com/y-g-jiang/JiangtherapeeTesterView/blob/57567edfa0ec16ee0b00c6b4a1a325c8da40bf1c/src/output/darkCsv.mjs#L43)确认。
+新 CSV 导入用 `RawSize` 形成 `libraw_raw_geometry` 约束，JPEG 尺寸作为信息保留；
+Dark/PTC 等文件已声明的 RawSize 相互矛盾时拒绝导入。任何一份参与测量的 CSV 声明了
+RawSize、另一份却缺少时，保留逐文件声明覆盖并报告不可核对；不拿暗场尺寸补齐 PTC，
+也不反向补齐暗场，更不从 JPEG 尺寸推断。此规则同时用于离线 Collect 构建与用户导入。
+旧 JSON 若只剩无数据域声明的 `geometry`，报告不可核对；
+可重新导入保留完整头部的 CSV，或在有原始证据时明确 `acquisition_contract.geometry_domain`
+为 `raw-ifd`、`active-area`、`default-crop` 或 `libraw-raw-mosaic`，不能通过猜尺寸解除限制。
+仅 JPEG 尺寸、缺少 RAW 尺寸依据的 Collect 也不宣称已经验证传感器栅格。
+
+同机型、快门及 ISO 有多份记录时，优先选择实际读出约束匹配的记录，再按原策略处理
+未声明子模式的记录；同等适用范围内仍按导入时间选择。没有可用候选时，保留失败记录
+和明确原因，不静默回退到同样未核对的 curated/bulk 标定。增益、读噪、PDR 与噪声模型
+使用同一上下文，不能一项拒用而另一项继续借用。独立 DNG 模型可替代方差系数，但不能
+因此借用不适用标定的增益或频谱。
+
+fp 的电子快门来自[精确型号的厂商规格](https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934)，
+来源标为 `manufacturer-capability:SIGMA-fp`，不冒充文件内快门 tag。这项能力只证明快门
+类型，不把所有静态、视频、位深、裁切或像素合并模式视为相同。当前也不向 fp L 或其他
+型号推广。未声明完整子模式的 curated/bulk 先验继续属于明确标记的近似；匹配已声明字段
+不等于验证了全部传感器读出状态。
 
 当前检查与限制如下：
 
@@ -117,7 +182,7 @@ NoiseProfile 不统一加 `1/12`。读噪明确未分辨仍按原状态处理，
 - 快门模式必须匹配或由用户明确声明 `any`。缺少照片快门信息时，不默认为机械或电子快门。
 - 用户标定仅在测量 ISO 域内插值，不外推，不跨已声明的增益跳变或读噪失败点插值。单点只适用于该点；增益覆盖不代表读噪也已覆盖。失败点只阻断读噪证据，不自动撤销独立增益。
 - 必须有可核对的 DN 范围，照片的编码范围须匹配标定或满足现有存储位移换算检查。拟合残差过高、未收敛或增益估计分歧过大等记录不会作为有效物理先验使用。
-- `compression`、`geometry` 会保存为测量声明，Collect 内互相矛盾会拒绝；当前尚未逐文件验证它们是否匹配照片。因此这里只验证相机、快门、ISO 和 DN 尺度，不能称为覆盖全部子读出模式。
+- `compression`、`geometry` 保留原测量声明；可明确解释的数据域和 typed `readout_contract` 逐文件核对。未知域、未知过程和不能映射的子模式明确报告，不当作匹配。单纯改变 DefaultCrop 不自动视为传感器读出变化；全子读出模式仍未覆盖，具体范围见上节。
 - 当前 JPTC 输入使用 G1 或绿色汇总形成 scalar-green 模型。后续把同一增益和读噪用于不同颜色平面是明确的近似，不是实测得到了完整 RGB 协方差。频谱摘要可触发保守限制，尚未自动变成分频降噪、条纹修复或固定图样校正；旧行列方差字段的语义也不升级为已验证条纹比例。
 
 模型状态、来源与单帧相关性线索分开记录。真实纹理导致 G1/G2 残差相关时，不会单凭它撤销匹配标定。HDR 使用模型 SNR；有效、普通缺测、未分辨和明确拒绝分别记录，剪切、色域和解码器约束仍独立存在。证据约束黑端点的读噪底来自独立模型，可靠 RAW 尾部单独约束白端点；缺模型时不把局部变化量改称实测读噪底，RAW 剪切分析也不会因此消失。
@@ -150,3 +215,7 @@ Apple RAW 的降噪、解拜耳和其他内部变换没有可用的协方差标�
 编码范围与频谱约束组合见 [test_noise_coding_range.py](../tests/test_noise_coding_range.py)，
 黑位／线性化端点见 [test_noise_coding_endpoints.py](../tests/test_noise_coding_endpoints.py)，
 实际 BE 解码至 SDR/HDR 计划的坐标一致性见 [test_noise_scene_ev.py](../tests/test_noise_scene_ev.py)。
+
+逐文件读出与真实 DNG/CSV 导入回归见 [test_readout_contract.py](../tests/test_readout_contract.py)：
+主 RAW 与缩略图区分、快门来源、无损过程、位深和几何约束、同 ISO 子模式选择、失败后
+独立 DNG 替代，以及采集描述的缓存往返。

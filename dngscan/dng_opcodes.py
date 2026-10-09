@@ -66,151 +66,125 @@ def read_plan(path: Path) -> OpcodePlan:
     is a decode error, rather than an apparently successful uncorrected image.
     """
     plan = OpcodePlan()
-    with open(path, "rb") as fh:
-        head = fh.read(8)
-        if len(head) != 8 or head[:2] not in (b"II", b"MM"):
-            return plan
-        endian = "<" if head[:2] == b"II" else ">"
-        if struct.unpack(endian + "H", head[2:4])[0] != 42:
-            return plan
-        root = md._read_ifd_entries(fh, struct.unpack(endian + "L", head[4:])[0], endian)
-        if not any(t == md.TAG_DNG_VERSION for t, *_ in root):
-            return plan
-        wanted = {254, 256, 257, 262, 330, 50717, 50718, 50719, 50720, 51008, 51009, 51022}
-
-        def values(entries):
-            result = {}
-            for tag, typ, count, data in entries:
-                if tag in wanted:
-                    if count * md._TYPE_SIZES.get(typ, 1) > 16_000_000:
-                        raise ValueError("DNG correction metadata exceeds supported size")
-                    result[tag] = md._entry_values(fh, typ, count, data, endian)
-            return result
-
-        first = values(root)
-        ifds = [first]
-        for off in first.get(330, [])[:64]:
-            ifds.append(values(md._read_ifd_entries(fh, int(off), endian)))
-        candidates = [v for v in ifds if v.get(262, [0])[0] in (32803, 34892)
-                      and not (int(v.get(254, [0])[0]) & 1)]
-        if not candidates:
-            return plan
-        tags = max(candidates, key=lambda v: v.get(256, [0])[0] * v.get(257, [0])[0])
-        plan.white_levels = tuple(float(v) for v in tags.get(50717, ()))
-        if any(not math.isfinite(v) or v <= 0 for v in plan.white_levels):
-            raise ValueError("invalid DNG WhiteLevel")
-        scale = tags.get(50718, [1.0, 1.0])
-        if len(scale) != 2 or not all(math.isfinite(v) and v > 0 for v in scale):
-            raise ValueError("invalid DNG DefaultScale")
-        aspect = float(scale[0] / scale[1])
-        origin, size = tags.get(50719, [0., 0.]), tags.get(50720)
-        if origin is not None and size is not None:
-            if len(origin) != 2 or len(size) != 2 or not all(
-                math.isfinite(v) and v >= 0 for v in origin + size
-            ) or min(size) <= 0:
-                raise ValueError("invalid DNG DefaultCrop")
-            plan.crop = (float(origin[1]), float(origin[0]), float(size[1]), float(size[0]))
-        for stage, tag in enumerate((51008, 51009, 51022), 1):
-            if tag not in tags:
-                continue
-            raw = tags[tag]
-            if len(raw) != 1 or not isinstance(raw[0], bytes):
-                raise ValueError(f"invalid DNG OpcodeList{stage}")
-            blob = raw[0]
-            if len(blob) < 4:
+    from .spatial_black import sensor_tags
+    tags = sensor_tags(path, {50717, 50718, 50719, 50720, 51008, 51009, 51022})
+    if not tags:
+        return plan
+    plan.white_levels = tuple(float(v) for v in tags.get(50717, ()))
+    if any(not math.isfinite(v) or v <= 0 for v in plan.white_levels):
+        raise ValueError("invalid DNG WhiteLevel")
+    scale = tags.get(50718, [1.0, 1.0])
+    if len(scale) != 2 or not all(math.isfinite(v) and v > 0 for v in scale):
+        raise ValueError("invalid DNG DefaultScale")
+    aspect = float(scale[0] / scale[1])
+    origin, size = tags.get(50719, [0., 0.]), tags.get(50720)
+    if origin is not None and size is not None:
+        if len(origin) != 2 or len(size) != 2 or not all(
+            math.isfinite(v) and v >= 0 for v in origin + size
+        ) or min(size) <= 0:
+            raise ValueError("invalid DNG DefaultCrop")
+        plan.crop = (float(origin[1]), float(origin[0]), float(size[1]), float(size[0]))
+    for stage, tag in enumerate((51008, 51009, 51022), 1):
+        if tag not in tags:
+            continue
+        raw = tags[tag]
+        if len(raw) != 1 or not isinstance(raw[0], bytes):
+            raise ValueError(f"invalid DNG OpcodeList{stage}")
+        blob = raw[0]
+        if len(blob) < 4:
+            raise ValueError(f"truncated DNG OpcodeList{stage}")
+        count = struct.unpack_from(">L", blob)[0]
+        if count > 1024:
+            raise ValueError("too many DNG opcodes")
+        pos = 4
+        previous_optional_warp2 = False
+        for _ in range(count):
+            if pos + 16 > len(blob):
                 raise ValueError(f"truncated DNG OpcodeList{stage}")
-            count = struct.unpack_from(">L", blob)[0]
-            if count > 1024:
-                raise ValueError("too many DNG opcodes")
-            pos = 4
+            oid, version, flags, length = struct.unpack_from(">4L", blob, pos)
+            pos += 16
+            if pos + length > len(blob):
+                raise ValueError(f"truncated DNG opcode {oid}")
+            payload = blob[pos:pos + length]
+            pos += length
+            name = NAMES.get(oid, f"Opcode{oid}")
+            if previous_optional_warp2 and oid in (1,2):
+                continue  # DNG 1.6 fallback warp skip rule.
             previous_optional_warp2 = False
-            for _ in range(count):
-                if pos + 16 > len(blob):
-                    raise ValueError(f"truncated DNG OpcodeList{stage}")
-                oid, version, flags, length = struct.unpack_from(">4L", blob, pos)
-                pos += 16
-                if pos + length > len(blob):
-                    raise ValueError(f"truncated DNG opcode {oid}")
-                payload = blob[pos:pos + length]
-                pos += length
-                name = NAMES.get(oid, f"Opcode{oid}")
-                if previous_optional_warp2 and oid in (1,2):
-                    continue  # DNG 1.6 fallback warp skip rule.
-                previous_optional_warp2 = False
-                supported = version <= 0x01060000 and (
-                    (stage == 1 and oid in (4,5,7,8,10,11,12,13)) or
-                    (stage == 2 and oid in (7,8,9,10,11,12,13)) or
-                    (stage == 3 and oid in (1,2,3,6,7,8,10,11,12,13,14))
-                )
-                if not supported:
-                    label = f"OpcodeList{stage}/{name} (version {version:#x})"
-                    if flags & 1:
-                        plan.skipped.append(label)
-                        continue
-                    raise ValueError(f"LibRaw pipeline does not support required DNG {label}; use Apple RAW")
-                if stage == 3 and oid != 6 and any(isinstance(op,TrimBounds) for op in plan.post):
-                    raise ValueError("DNG operations after TrimBounds require retained image-origin coordinates; use Apple RAW")
-                if oid == 6:
-                    if length != 16:
-                        raise ValueError("invalid DNG TrimBounds size")
-                    bounds=struct.unpack('>4l',payload)
-                    t,l,b,r=bounds
-                    if min(t,l)<0 or b<=t or r<=l:
-                        raise ValueError("invalid DNG TrimBounds rectangle")
-                    plan.post.append(TrimBounds(bounds))
-                elif oid in (4,5,7,8,10,11,12,13):
-                    from .dng_point_ops import parse
-                    op = parse(oid,payload,stage)
-                    (plan.stage1 if stage==1 else plan.stage2 if stage==2 else plan.post).append(op)
-                elif oid == 14:
-                    planes=struct.unpack_from(">L",payload)[0] if length>=4 else 0
-                    if planes not in (1,3) or length != 4+planes*19*8+20:
-                        raise ValueError("invalid WarpRectilinear2 planes or size")
-                    vals=struct.unpack_from(f">{planes*19+2}d",payload,4)
-                    reciprocal=struct.unpack_from(">L",payload,length-4)[0]
-                    if reciprocal not in (0,1) or not np.isfinite(vals).all() or not all(0<=v<=1 for v in vals[-2:]):
-                        raise ValueError("invalid WarpRectilinear2 parameters")
-                    coeff=tuple(tuple(vals[i*19:(i+1)*19])+(float(reciprocal),) for i in range(planes))
-                    if any(not 0<=c[17]<c[18]<=1 for c in coeff):
-                        raise ValueError("invalid WarpRectilinear2 radius range")
-                    # Division poles and non-invertible radial fields cannot
-                    # be sent to a sampler as NaN/Inf coordinates.
-                    for c in coeff:
-                        r=np.linspace(0.,1.,8193)
-                        f=np.polynomial.polynomial.polyval(np.clip(r,c[17],c[18]),c[:15])
-                        mapped=r/f if reciprocal else r*f
-                        if np.any(f<=0) or not np.isfinite(mapped).all() or np.any(np.diff(mapped)<=0):
-                            raise ValueError("non-invertible WarpRectilinear2 radial field")
-                    plan.post.append(Warp(coeff,vals[-2],vals[-1],aspect=aspect))
-                    previous_optional_warp2=bool(flags&1)
-                elif oid == 9:
-                    op = md._parse_gain_map_payload(payload)
-                    if op is None or not np.all(np.isfinite(op.gains)) or np.any(op.gains < 0):
-                        raise ValueError("invalid DNG GainMap")
-                    if not all(math.isfinite(v) for v in (op.spacing_v, op.spacing_h, op.origin_v, op.origin_h)):
-                        raise ValueError("invalid DNG GainMap coordinates")
-                    plan.gain_maps.append(op)
-                    plan.stage2.append(op)
-                elif oid == 3:
-                    if length != 56:
-                        raise ValueError("invalid DNG FixVignetteRadial size")
-                    vals = struct.unpack(">7d", payload)
-                    if not all(math.isfinite(v) for v in vals) or not all(0 <= v <= 1 for v in vals[5:]):
-                        raise ValueError("invalid DNG FixVignetteRadial parameters")
-                    plan.post.append(md.DngVignetteRadial(tuple(vals[:5]), vals[5], vals[6]))
-                else:
-                    planes = struct.unpack_from(">L", payload)[0] if length >= 4 else 0
-                    stride = 4 if oid == 2 else 6
-                    if planes not in (1, 3) or length != 4 + planes * stride * 8 + 16:
-                        raise ValueError(f"invalid DNG {name} planes or size")
-                    vals = struct.unpack_from(f">{planes * stride + 2}d", payload, 4)
-                    if not all(math.isfinite(v) for v in vals) or not all(0 <= v <= 1 for v in vals[-2:]):
-                        raise ValueError(f"invalid DNG {name} parameters")
-                    coeff = tuple(tuple(vals[i * stride:(i + 1) * stride]) + ((0., 0.) if oid == 2 else ()) for i in range(planes))
-                    plan.post.append(Warp(coeff, vals[-2], vals[-1], oid == 2, aspect))
-                plan.names.append(name)
-            if pos != len(blob):
-                raise ValueError(f"trailing bytes in DNG OpcodeList{stage}")
+            supported = version <= 0x01060000 and (
+                (stage == 1 and oid in (4,5,7,8,10,11,12,13)) or
+                (stage == 2 and oid in (7,8,9,10,11,12,13)) or
+                (stage == 3 and oid in (1,2,3,6,7,8,10,11,12,13,14))
+            )
+            if not supported:
+                label = f"OpcodeList{stage}/{name} (version {version:#x})"
+                if flags & 1:
+                    plan.skipped.append(label)
+                    continue
+                raise ValueError(f"LibRaw pipeline does not support required DNG {label}; use Apple RAW")
+            if stage == 3 and oid != 6 and any(isinstance(op,TrimBounds) for op in plan.post):
+                raise ValueError("DNG operations after TrimBounds require retained image-origin coordinates; use Apple RAW")
+            if oid == 6:
+                if length != 16:
+                    raise ValueError("invalid DNG TrimBounds size")
+                bounds=struct.unpack('>4l',payload)
+                t,l,b,r=bounds
+                if min(t,l)<0 or b<=t or r<=l:
+                    raise ValueError("invalid DNG TrimBounds rectangle")
+                plan.post.append(TrimBounds(bounds))
+            elif oid in (4,5,7,8,10,11,12,13):
+                from .dng_point_ops import parse
+                op = parse(oid,payload,stage)
+                (plan.stage1 if stage==1 else plan.stage2 if stage==2 else plan.post).append(op)
+            elif oid == 14:
+                planes=struct.unpack_from(">L",payload)[0] if length>=4 else 0
+                if planes not in (1,3) or length != 4+planes*19*8+20:
+                    raise ValueError("invalid WarpRectilinear2 planes or size")
+                vals=struct.unpack_from(f">{planes*19+2}d",payload,4)
+                reciprocal=struct.unpack_from(">L",payload,length-4)[0]
+                if reciprocal not in (0,1) or not np.isfinite(vals).all() or not all(0<=v<=1 for v in vals[-2:]):
+                    raise ValueError("invalid WarpRectilinear2 parameters")
+                coeff=tuple(tuple(vals[i*19:(i+1)*19])+(float(reciprocal),) for i in range(planes))
+                if any(not 0<=c[17]<c[18]<=1 for c in coeff):
+                    raise ValueError("invalid WarpRectilinear2 radius range")
+                # Division poles and non-invertible radial fields cannot
+                # be sent to a sampler as NaN/Inf coordinates.
+                for c in coeff:
+                    r=np.linspace(0.,1.,8193)
+                    f=np.polynomial.polynomial.polyval(np.clip(r,c[17],c[18]),c[:15])
+                    mapped=r/f if reciprocal else r*f
+                    if np.any(f<=0) or not np.isfinite(mapped).all() or np.any(np.diff(mapped)<=0):
+                        raise ValueError("non-invertible WarpRectilinear2 radial field")
+                plan.post.append(Warp(coeff,vals[-2],vals[-1],aspect=aspect))
+                previous_optional_warp2=bool(flags&1)
+            elif oid == 9:
+                op = md._parse_gain_map_payload(payload)
+                if op is None or not np.all(np.isfinite(op.gains)) or np.any(op.gains < 0):
+                    raise ValueError("invalid DNG GainMap")
+                if not all(math.isfinite(v) for v in (op.spacing_v, op.spacing_h, op.origin_v, op.origin_h)):
+                    raise ValueError("invalid DNG GainMap coordinates")
+                plan.gain_maps.append(op)
+                plan.stage2.append(op)
+            elif oid == 3:
+                if length != 56:
+                    raise ValueError("invalid DNG FixVignetteRadial size")
+                vals = struct.unpack(">7d", payload)
+                if not all(math.isfinite(v) for v in vals) or not all(0 <= v <= 1 for v in vals[5:]):
+                    raise ValueError("invalid DNG FixVignetteRadial parameters")
+                plan.post.append(md.DngVignetteRadial(tuple(vals[:5]), vals[5], vals[6]))
+            else:
+                planes = struct.unpack_from(">L", payload)[0] if length >= 4 else 0
+                stride = 4 if oid == 2 else 6
+                if planes not in (1, 3) or length != 4 + planes * stride * 8 + 16:
+                    raise ValueError(f"invalid DNG {name} planes or size")
+                vals = struct.unpack_from(f">{planes * stride + 2}d", payload, 4)
+                if not all(math.isfinite(v) for v in vals) or not all(0 <= v <= 1 for v in vals[-2:]):
+                    raise ValueError(f"invalid DNG {name} parameters")
+                coeff = tuple(tuple(vals[i * stride:(i + 1) * stride]) + ((0., 0.) if oid == 2 else ()) for i in range(planes))
+                plan.post.append(Warp(coeff, vals[-2], vals[-1], oid == 2, aspect))
+            plan.names.append(name)
+        if pos != len(blob):
+            raise ValueError(f"trailing bytes in DNG OpcodeList{stage}")
     return plan
 
 

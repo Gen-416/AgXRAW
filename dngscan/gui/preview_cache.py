@@ -51,7 +51,8 @@ from .scheduler import shared_flight_wait
 # v24: distinguish DN encoding range from linear response limits, propagate
 # pre-demosaic losses, and place noise evidence in the fixed decoded scene EV.
 # Window geometry also uses JSON-stable metadata for exact analysis reuse.
-PREVIEW_CACHE_VERSION = 25
+# v26: independently acquired capture readout and per-file calibration constraints.
+PREVIEW_CACHE_VERSION = 26
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -510,6 +511,7 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "shot_model": bundle.shot_model,
         "shot_iso": bundle.shot_iso,
         "shot_shutter": bundle.shot_shutter,
+        "capture_readout": copy.deepcopy(getattr(bundle, "capture_readout", None)),
         "baseline_exposure": bundle.baseline_exposure,
         "baseline_exposure_baked_in": bool(bundle.baseline_exposure_baked_in),
         "evidence_provider": str(
@@ -612,6 +614,7 @@ def _bundle_from_cache(
         shot_model=metadata["shot_model"],
         shot_iso=metadata["shot_iso"],
         shot_shutter=metadata.get("shot_shutter"),
+        capture_readout=copy.deepcopy(metadata.get("capture_readout")),
         baseline_exposure=metadata.get("baseline_exposure"),
         baseline_exposure_baked_in=bool(
             metadata.get("baseline_exposure_baked_in", False)

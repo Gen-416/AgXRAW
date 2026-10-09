@@ -319,9 +319,36 @@ def hdr_profile_from_encode_settings(
 
 @dataclass(frozen=True)
 class FinishedPair:
-    """Formation masters ready for any encoder. Pixels are already display-referred."""
+    """Finished nonlinear SDR and display-linear half-float HDR masters.
+
+    Legacy calls supply ``sdr_rgb_u8``. A high-precision primary supplies
+    ``sdr_rgb_u8=None`` and normalized nonlinear ``sdr_rgb_float`` instead.
+    Exactly one SDR master exists; encoders consume ``sdr_rgb`` without
+    manufacturing an earlier 8-bit image. The encoder validates its domain.
+    """
 
     sdr_rgb_u8: Any
     hdr_rgba_f16: Any
     display_headroom_ev: float
     output_gamut: str = "p3"
+    sdr_rgb_float: Any | None = None
+
+    def __post_init__(self) -> None:
+        from ._deps import np
+
+        if (self.sdr_rgb_u8 is None) == (self.sdr_rgb_float is None):
+            raise ValueError("FinishedPair requires exactly one SDR master")
+        source = self.sdr_rgb
+        expected = np.float32 if self.sdr_rgb_float is not None else np.uint8
+        if (not isinstance(source, np.ndarray) or source.dtype != expected
+                or source.ndim != 3 or source.shape[2] != 3 or not source.size):
+            raise ValueError("FinishedPair SDR master must be HxWx3 uint8 or normalized float32")
+
+    @property
+    def sdr_rgb(self) -> Any:
+        """The one finished nonlinear master, preserving its actual precision."""
+        return self.sdr_rgb_float if self.sdr_rgb_float is not None else self.sdr_rgb_u8
+
+    @property
+    def sdr_precision(self) -> str:
+        return "float32" if self.sdr_rgb_float is not None else "uint8"

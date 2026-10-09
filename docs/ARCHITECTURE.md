@@ -359,6 +359,18 @@ Non-DNG files retain LibRaw's per-channel endpoint convention. The decoder's
 own scaling denominator is different: pinned LibRaw subtracts the common minimum
 channel pedestal from its encoding maximum. Existing prior-scale tolerances remain.
 
+Capture readout constraints are acquired independently of lens correction. The main
+RAW IFD supplies stored sample bits, RAW/active/crop geometry and compression process;
+LibRaw supplies its full mosaic dimensions. Compression 7 requires JPEG-header and
+point-transform checks before being called lossless. Stored bits do not establish ADC
+bits, and a crop does not establish binning. Explicit calibration `readout_contract`
+fields must match file evidence; unknown fields and mismatches remain separate. Model
+selection and electron-domain reporting share this result. A failed user constraint
+cannot silently select an unverified packaged substitute, although an independent
+valid DNG NoiseProfile may supply variance coefficients. Camera-level priors without
+declared submodes retain their documented approximation. Preview/analysis cache 26
+preserves this descriptor. See [calibration scope](NOISE_CALIBRATION.zh-CN.md).
+
 Highlight reconstruction can create continuous luminance and plausible color, but it
 cannot recover signal the sensor never recorded. Clipping evidence is saved before
 reconstruction, so a repaired pixel can never feed back and define the global white
@@ -990,8 +1002,14 @@ expansion disabled. Candidate selection and metadata-final validation measure th
 float pixels directly; error budgets retain their established 8-bit-equivalent code
 units. A uint8 GUI thumbnail is generated only after validation. ICC is required;
 any NCLX declaration must agree with the requested primaries, transfer and range.
-The separate HDR gain-map package still has a uint8 SDR base and an independent
-float16 HDR alternate; this SDR change does not alter that contract.
+HDR HEIF also keeps a finished nonlinear float32 SDR base alongside its independent
+float16 HDR alternate, sharing one scene-processing pass. Core Image receives float
+inputs through its dedicated HEIF10 writer to generate the template; the primary
+donor quantizes that same floating base with deterministic 10-bit TPDF. Search and
+primary validation use floating readback. A generic HEIF writer with a float pixel
+format is insufficient: local tests still produced an 8-bit template. JPEG and
+explicit 8-bit HEIF retain uint8 bases. Metadata carry must preserve image payloads,
+colour properties and rendition relationships.
 
 HDR output is an optional Apple ISO 21496-1 gain-map package (JPEG or HEIC), currently
 available only through the macOS/Core Image backend and only with the AgX tone core. HEIC

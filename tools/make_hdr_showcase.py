@@ -31,15 +31,17 @@ def _box(a: np.ndarray, k: int) -> np.ndarray:
     return a.reshape(h // k, k, w // k, k, a.shape[2]).mean(axis=(1, 3))
 
 
-def _srgb_decode(u8: np.ndarray) -> np.ndarray:
-    v = u8.astype(np.float32) / 255.0
+def _srgb_decode(source: np.ndarray) -> np.ndarray:
+    v = source.astype(np.float32)
+    if source.dtype == np.uint8:
+        v /= 255.0
     return np.where(v <= 0.04045, v / 12.92, np.power((v + 0.055) / 1.055, 2.4))
 
 
-def _srgb_encode(lin: np.ndarray) -> np.ndarray:
+def _srgb_encode(lin: np.ndarray, *, floating: bool = False) -> np.ndarray:
     lin = np.clip(lin, 0.0, 1.0)
     v = np.where(lin <= 0.0031308, 12.92 * lin, 1.055 * np.power(lin, 1 / 2.4) - 0.055)
-    return np.clip(np.rint(v * 255.0), 0, 255).astype(np.uint8)
+    return v.astype(np.float32) if floating else np.clip(np.rint(v * 255.0), 0, 255).astype(np.uint8)
 
 
 def main() -> int:
@@ -55,14 +57,18 @@ def main() -> int:
     real_encode = export_mod.encode_finished_pair
 
     def downsized_encode(pair, out_path, delivery):
-        h, w = pair.sdr_rgb_u8.shape[:2]
+        h, w = pair.sdr_rgb.shape[:2]
         k = max(1, -(-max(h, w) // int(args.long_edge)))
         if k > 1:
-            base = _srgb_encode(_box(_srgb_decode(pair.sdr_rgb_u8), k))
+            floating = pair.sdr_rgb_float is not None
+            base = np.ascontiguousarray(_srgb_encode(
+                _box(_srgb_decode(pair.sdr_rgb), k), floating=floating))
             hdr = _box(np.asarray(pair.hdr_rgba_f16, dtype=np.float32), k).astype(np.float16)
-            pair = replace(pair, sdr_rgb_u8=np.ascontiguousarray(base), hdr_rgba_f16=np.ascontiguousarray(hdr))
+            pair = replace(pair, sdr_rgb_u8=None if floating else base,
+                           sdr_rgb_float=base if floating else None,
+                           hdr_rgba_f16=np.ascontiguousarray(hdr))
         info = real_encode(pair, out_path, delivery)
-        print(f"showcase: {w}x{h} -> {pair.sdr_rgb_u8.shape[1]}x{pair.sdr_rgb_u8.shape[0]} (box {k}x{k}), "
+        print(f"showcase: {w}x{h} -> {pair.sdr_rgb.shape[1]}x{pair.sdr_rgb.shape[0]} (box {k}x{k}), "
               f"headroom {pair.display_headroom_ev:+.2f} EV")
         return info
 

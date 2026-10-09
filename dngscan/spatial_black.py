@@ -16,22 +16,14 @@ def sensor_tags(path: Path, wanted: set[int]) -> dict:
         if len(head)!=8 or head[:2] not in (b'II',b'MM'):return {}
         endian='<' if head[:2]==b'II' else '>'
         if struct.unpack(endian+'H',head[2:4])[0]!=42:return {}
-        root=md._read_ifd_entries(f,struct.unpack(endian+'L',head[4:])[0],endian)
-        if not any(t==md.TAG_DNG_VERSION for t,*_ in root):return {}
-        def values(entries):
-            result={}
-            for tag,typ,count,data in entries:
-                if tag in wanted|{254,256,257,262,330}:
-                    if count*md._TYPE_SIZES.get(typ,1)>16_000_000:
-                        raise ValueError('DNG calibration metadata too large')
-                    result[tag]=md._entry_values(f,typ,count,data,endian)
-            return result
-        first=values(root);ifds=[first]
-        for off in first.get(330,[])[:64]:
-            ifds.append(values(md._read_ifd_entries(f,int(off),endian)))
-        candidates=[v for v in ifds if v.get(262,[0])[0] in (32803,34892)
-                    and not int(v.get(254,[0])[0])&1]
-        return max(candidates,key=lambda v:v.get(256,[0])[0]*v.get(257,[0])[0]) if candidates else {}
+        entries=md._main_dng_raw_ifd_entries(f,struct.unpack(endian+'L',head[4:])[0],endian)
+        result={}
+        for tag,typ,count,data in entries:
+            if tag in wanted|{254,256,257,262,330}:
+                if count*md._TYPE_SIZES.get(typ,1)>16_000_000:
+                    raise ValueError('DNG calibration metadata too large')
+                result[tag]=md._entry_values(f,typ,count,data,endian)
+        return result
 
 
 @dataclass(frozen=True)
