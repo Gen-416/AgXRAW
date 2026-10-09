@@ -115,7 +115,12 @@ class ShareHqProfileTests(unittest.TestCase):
 
 class ShareHqJpegExportTests(unittest.TestCase):
     def setUp(self):
-        self.rgb = np.random.default_rng(97).integers(0, 256, (37, 59, 3), dtype=np.uint8)
+        # Parameter/size/return contracts use a faithfully encodable master.
+        # Fully independent RGB random fields lose catastrophic colour structure
+        # under 4:2:0 and are now covered by the delivery-detail rejection tests.
+        yy, xx = np.indices((37, 59))
+        gray = np.random.default_rng(97).integers(-2, 3, (37, 59))
+        self.rgb = np.stack((40+xx*2+gray, 50+yy*3+gray, 70+xx+yy+gray), axis=2).astype(np.uint8)
         self.profile = resolve_delivery_profile("share-hq")
 
     def test_real_jpeg_is_q97_420_with_original_dimensions_even_with_legacy_arguments(self):

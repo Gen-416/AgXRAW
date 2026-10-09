@@ -36,7 +36,7 @@ _SQRT2 = 2.0 ** 0.5
 _B3 = np.asarray([1.0, 4.0, 6.0, 4.0, 1.0], dtype=np.float32) / 16.0
 
 
-def atrous_levels_for(decimation_factor: float) -> tuple[int, ...]:
+def atrous_levels_for(decimation_factor: float, *, axis_factors=None) -> tuple[int, ...]:
     """Which à-trous levels on the decimated grid fall inside the declared
     full-resolution band. Level k shrinks detail between hole spacings
     2^k and 2^(k+1) cells, i.e. factor·2^k .. factor·2^(k+1) sensor px —
@@ -50,13 +50,18 @@ def atrous_levels_for(decimation_factor: float) -> tuple[int, ...]:
     tier could silently widen the declared band.) At identity grids (small
     renders) the first levels fall below BAND_LO_PX and are skipped, which
     is what keeps pixel-scale speckle untouched there."""
-    factor = max(float(decimation_factor), 1.0)
+    if axis_factors is None:
+        factors = (max(float(decimation_factor), 1.0),)
+    else:
+        factors = tuple(float(v) for v in axis_factors)
+        if len(factors) != 2 or not np.isfinite(factors).all() or min(factors) <= 0:
+            raise ValueError("sensor sampling must contain two finite positive axis scales")
     levels = []
     for k in range(13):
-        centre = factor * (2.0 ** k) * _SQRT2
-        if centre > BAND_HI_PX:
+        centres = tuple(factor * (2.0 ** k) * _SQRT2 for factor in factors)
+        if max(centres) > BAND_HI_PX:
             break
-        if centre >= BAND_LO_PX:
+        if min(centres) >= BAND_LO_PX:
             levels.append(k)
     return tuple(levels)
 
@@ -109,6 +114,7 @@ def chroma_correction_map(
     scene_dec: np.ndarray,
     amount: float,
     decimation_factor: float = 1.0,
+    decimation_axis_factors: tuple[float, float] | None = None,
     *,
     noise_covariance: np.ndarray | None = None,
     chroma_variance: np.ndarray | None = None,
@@ -174,7 +180,7 @@ def chroma_correction_map(
     # corrections bounded by their own chroma.
     total_removed = np.zeros_like(chroma)
     max_step = max((min(chroma.shape[:2]) - 1) // 2, 1)
-    included = set(atrous_levels_for(decimation_factor))
+    included = set(atrous_levels_for(decimation_factor, axis_factors=decimation_axis_factors))
     top = max(included) if included else -1
     validity = {}
     if valid_mask is not None:

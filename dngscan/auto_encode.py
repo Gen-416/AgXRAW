@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from ._deps import np
+from .local_detail import local_detail_loss
 
 HEIF_AUTO_QUALITIES = (95, 92, 90, 85, 80, 70)
 HEIF_AUTO_GAINMAP_QUALITIES = (95, 90, 85, 80)
@@ -23,9 +24,11 @@ _ADDITIONAL_ERROR_RULES = (
     ("coding_luma_rmse", 1.12, .05, 1.0),
     ("coding_chroma_rmse", 1.10, .10, 0.0),
     ("coding_local_luma_p99", 1.12, .10, 1.5),
+    ("coding_local_detail_loss", 1.10, .03, .35),
     ("block_p95_luma_error", 1.10, .002, .04),
     ("highlight_max_luma_error", 1.00, .02, 0.0),
     ("chroma_error", 1.05, .002, 0.0),
+    ("local_detail_loss", 1.10, .03, .35),
 )
 _SDR_ADDITIONAL_ERROR_RULES = tuple(
     rule for rule in _ADDITIONAL_ERROR_RULES if rule[0].startswith("coding_")
@@ -42,7 +45,7 @@ class EncodingStageRejected(RuntimeError):
         self.file_size_bytes = file_size_bytes
 
 
-def coding_metrics(decoded, intended):
+def coding_metrics(decoded, intended, *, _include_detail=True):
     """Full-resolution luma/chroma error with bounded row-band temporaries."""
     if (decoded.shape != intended.shape or decoded.dtype != np.uint8
             or intended.dtype != np.uint8 or decoded.ndim != 3
@@ -72,11 +75,14 @@ def coding_metrics(decoded, intended):
                 blocks.append(np.asarray([np.abs(dy[hh:, ww:]).mean()]))
         else:
             blocks.append(np.asarray([np.mean(np.abs(dy))]))
-    return {
+    metrics = {
         "coding_luma_rmse": math.sqrt(luma_sq/max(n, 1)),
         "coding_chroma_rmse": math.sqrt(chroma_sq/max(2*n, 1)),
         "coding_local_luma_p99": float(np.percentile(np.concatenate(blocks), 99)),
     }
+    if _include_detail:
+        metrics["coding_local_detail_loss"] = local_detail_loss(decoded, intended)
+    return metrics
 
 
 def _additional_error_acceptable(candidate, reference, rules):
@@ -117,7 +123,7 @@ def _require_coding_metrics(metrics, *, file_size_bytes=None):
 def _attempt_metrics(metrics):
     return {k: v for k, v in metrics.items()
             if k.startswith(("coding_", "base_"))
-            or k in ("chroma_error", "block_p95_luma_error", "highlight_max_luma_error")}
+            or k in ("chroma_error", "block_p95_luma_error", "highlight_max_luma_error", "local_detail_loss")}
 
 
 def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98,97,96,95)):

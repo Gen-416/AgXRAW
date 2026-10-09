@@ -159,3 +159,17 @@ DNG 规范把它定义为归一化线性信号 x 的 `variance = Sx + O`；一�
 接口和缓存验证见 [test_user_calibration.py](../../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../../tests/test_calibration_gui_cli.py)，模型与滤波验证见 [test_noise_model.py](../../tests/test_noise_model.py)、[test_calibrated_chroma.py](../../tests/test_calibrated_chroma.py)。合成验证覆盖零噪声密集纹理、已知噪声与真实结构、处理域传播和失败跳过；不等于所有自然照片的画质保证。
 
 仍未实施完整的稳健单帧噪声估计/PCA 验证、完整相关噪声与分频传播、行列条纹或固定图样修复。JPTC scalar-green、粗网格 CFA 与几何传播均有明确近似；自己的 fp PTC/黑场还未提供，不能宣称已完成个人相机标定。第 7 节的 SDR 10-bit HEIF 与包内 bulk 模糊机型匹配仍为待办，本轮没有实现。
+
+## 10. 后续管线审查修复（基准 fb91815）
+
+镜头操作不再把 LibRaw 已恢复的高光重新裁到重建前的通道上限。`blend` / `reconstruct` 的晚期暗角和畸变处理使用有符号 float32，保留超范围增益；默认 `clip` 量程不变。Rust ABI 20 同时传输重采样图像与损失掩膜，避免重复坐标扫描，并记录 clip 域实际发生的负插值截断。这个合同没有重排 LibRaw 内部的高光重建；stage-3 点变换与重建模式尚无可靠扩展域定义，明确拒绝该组合。详见[解码与校正架构](../ARCHITECTURE.zh-CN.md)。
+
+Collect 明确无法分辨的读噪 ISO 及跨越失败点的插值区间，现在保留为 `model-unresolved`，不再生成有效读噪；有效 gain 独立保留。独立 DNG NoiseProfile 可作为替代，但报告保留原失败标定来源。`NoiseReductionApplied` 的 `0/0` 未知、`0/1` 未应用和非法零分母声明分别保留，不再统一变成数值零。
+
+色度核采样从实际保留的传感器窗口与输出网格推导，计入半尺寸、DefaultScale、裁剪和方向；双轴均落在声明波段时才选择该尺度。半尺寸 box 缩小丢弃奇数边界后，保留窗口逆向映射回原传感器坐标，修正旋转/镜像时的轴与原点偏移。预览缓存升至 22。
+
+交付新增[局部亮度纹理门禁](../HDR_DELIVERY_VALIDATION.zh-CN.md#局部亮度纹理门禁2026-10-09)，补齐暗部、中间调小区域在均值和百分位中被稀释的覆盖缺口。手动 JPEG 同样验证像素；自动编码和 HDR 的原有色差、亮度、采样及发布原子性约束保留。Rust 执行相同的有符号多尺度差分，NumPy 作为独立参考。局部纯色度纹理仍不在新增门禁的保证范围内，不能把“回读通过”表述为全部纹理完整。
+
+三张 fp 样张的完整 clip scene 缓冲和缩放尺度与基准逐字节一致，原始 RAW 证据保持不变；blend/reconstruct 在此前被重新截断的位置有预期变化。合成 DNG 覆盖恒等镜头操作、非中性 WB、重建高光、全/半尺寸及全部八种方向。实拍与性能记录保存在[机器可读验收记录](../assets/delivery-quality/pipeline-repair-20261009.json)，其中速度仅代表新增指标的独立扫描，不是整条管线加速倍率。两项后置待办不变。
+
+最终边界复查还确认：RAW 通道尚未饱和时，白平衡可能已让 LibRaw 的 uint16 相机 RGB 触及 65535。现在在镜头操作前将这类整数交接边界并入不可靠掩膜，供 HDR 与噪声传播使用；不改原始 RAW 饱和百分比，也不把后续浮点镜头增益产生的超范围值误判为截断。这个标记可能与传感器饱和重叠，并不能测量准确的截断幅度。完整 clip 场景缓冲不变，不代表置信度修正后最终 SDR/HDR 像素必然不变。

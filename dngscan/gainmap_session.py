@@ -18,6 +18,7 @@ _METRIC_NAMES = frozenset((
     "base_mean_code_error", "base_p99_code_error", "base_max_code_error",
     "base_channel_bias_code_error", "base_block_p99_code_error",
     "coding_luma_rmse", "coding_chroma_rmse", "coding_local_luma_p99",
+    "base_local_detail_loss", "coding_local_detail_loss",
 ))
 
 

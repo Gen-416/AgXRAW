@@ -784,6 +784,60 @@ def _curve(value: Any, label: str, *, logarithmic: bool = True,
     return out
 
 
+def _read_noise_unresolved_isos(value: Any, *curves) -> list[float]:
+    """Retain failed measurements as barriers, rather than missing samples."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("read_noise_unresolved_isos must be a list")
+    result = sorted({_number(v, "unresolved read-noise ISO") for v in value})
+    for iso in result:
+        if not 1 <= iso <= 2**24:
+            raise ValueError("unresolved read-noise ISO: unsupported numeric scale")
+        if any(abs(math.log2(iso)-x) < 1e-7 for curve in curves for x, _ in curve):
+            raise ValueError(f"read-noise ISO {iso:g} is both resolved and unresolved")
+    return result
+
+
+def read_noise_issue(entry: dict, iso: float, key: str = "read_noise_log2iso_log2e") -> str | None:
+    """Identify unresolved samples and intervals that would cross one.
+
+    Gain is independent evidence and is deliberately not constrained here.
+    An unresolved point is not a zero-noise measurement or a license to
+    interpolate through its neighbours.
+    """
+    if not iso or iso <= 0 or not math.isfinite(float(iso)):
+        return None
+    failed = entry.get("read_noise_unresolved_isos") or []
+    x = math.log2(iso)
+    if any(abs(x-math.log2(i)) < 1e-7 for i in failed):
+        return "read-noise-unresolved"
+    curve = entry.get(key) or []
+    # Resolved points on either side remain valid measurements themselves.
+    if any(abs(x-px) < 1e-7 for px, _ in curve):
+        return None
+    if curve and (x < curve[0][0] and any(x <= math.log2(i) < curve[0][0] for i in failed)
+                  or x > curve[-1][0] and any(curve[-1][0] < math.log2(i) <= x for i in failed)):
+        return "read-noise-unresolved-interval"
+    for (x0, _), (x1, _) in zip(curve, curve[1:]):
+        if x0 < x < x1 and any(x0 < math.log2(i) < x1 for i in failed):
+            return "read-noise-unresolved-interval"
+    return None
+
+
+def read_noise_status(entry: dict, iso: float | None) -> str:
+    """Report measured, interpolated, unavailable and failed evidence separately."""
+    issue = read_noise_issue(entry, iso)
+    if issue is not None:
+        return issue
+    value = curve_value(entry, "read_noise_log2iso_log2e", iso)
+    if value is None:
+        return "unavailable"
+    x = math.log2(iso)
+    return ("measured" if any(abs(x-px) < 1e-7 for px, _ in
+                              entry.get("read_noise_log2iso_log2e", [])) else "interpolated")
+
+
 def _shutter(value: Any) -> str | None:
     if value is None or value == "":
         return None
@@ -859,10 +913,15 @@ def _validated_prior(item: dict) -> dict:
         gain = _number(item.get("gain_e_per_dn"), "gain_e_per_dn")
         rn = _number(item.get("read_noise_e", 0), "read_noise_e", positive=False)
         x = math.log2(iso)
+        failed = _read_noise_unresolved_isos(item.get("read_noise_unresolved_isos"))
+        if rn == 0:
+            failed = sorted(set(failed + [iso]))
         entry.update(measured_iso=iso, unity_gain_ev=math.log2(iso*gain),
                      gain_log2iso_log2epd=[[x, math.log2(gain)]],
                      read_noise_log2iso_log2e=[[x, math.log2(rn)]] if rn > 0 else [],
+                     read_noise_unresolved_isos=failed,
                      quality=_quality(item))
+        _read_noise_unresolved_isos(failed, entry["read_noise_log2iso_log2e"])
         fwc = _number(item.get("fwc_e"), "fwc_e")
         white, black = item.get("white_level_used"), item.get("black_level_g1")
         if white is not None and black is not None:
@@ -886,6 +945,9 @@ def _validated_prior(item: dict) -> dict:
         entry["gain_log2iso_log2epd"] = gains
         entry["read_noise_log2iso_log2e"] = _curve(item.get("read_noise_log2iso_log2e"), "read-noise curve")
         entry["read_noise_dn_log2iso"] = _curve(item.get("read_noise_dn_log2iso"), "DN read-noise curve", logarithmic=False)
+        entry["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
+            item.get("read_noise_unresolved_isos"), entry["read_noise_log2iso_log2e"],
+            entry["read_noise_dn_log2iso"])
         entry["quality"] = _quality(anchor)
         if item.get("fwc_e") is not None:
             entry["fwc_e"] = _number(item["fwc_e"], "fwc_e")
@@ -934,9 +996,11 @@ def _validated_prior(item: dict) -> dict:
 
 
 def curve_value(entry: dict, key: str, iso: float) -> float | None:
-    """Interpolate only measured domain, never through a declared gain jump."""
+    """Interpolate within measured domains, respecting jumps and failed noise points."""
     curve = entry.get(key) or []
     if not curve or not iso or iso <= 0 or not math.isfinite(float(iso)):
+        return None
+    if key in ("read_noise_log2iso_log2e", "read_noise_dn_log2iso") and read_noise_issue(entry, iso, key):
         return None
     x = math.log2(iso)
     if x < curve[0][0]-1e-7 or x > curve[-1][0]+1e-7:
@@ -1005,6 +1069,8 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         warnings.append("no-absolute-gain")
     if not prior.get("read_noise_log2iso_log2e"):
         warnings.append("no-electron-read-noise")
+    if prior.get("read_noise_unresolved_isos"):
+        warnings.append("read-noise-unresolved-measurements")
     if gains and not prior.get("reference_dn_range"):
         warnings.append("reference-dn-range-unavailable")
     return {"id": record["id"], "label": prior["id"], "active": bool(record.get("active", True)),
@@ -1013,6 +1079,7 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
             "user_applicability": prior.get("user_applicability", {}), "iso_min": 2**domain[0][0] if domain else None,
             "iso_max": 2**domain[-1][0] if domain else None,
             "has_gain": bool(gains), "has_read_noise": bool(prior.get("read_noise_log2iso_log2e")),
+            "read_noise_unresolved_isos": prior.get("read_noise_unresolved_isos", []),
             "warnings": warnings, "source_format": prior["source_format"], "path": str(path),
             "imported_at": record.get("imported_at"), "channel_model": prior["noise_model_channels"],
             "mode_scope": prior["mode_scope"],
@@ -1198,8 +1265,13 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
             continue
         if not record.get("active"):
             reason = "inactive"
+        noise_status = read_noise_status(prior, iso)
         out.append({"id": record["id"], "label": prior["id"],
-                    "status": "usable" if reason == "usable" else "not-applied", "reason": reason,
+                    "status": ("gain-only" if reason == "usable" and noise_status.startswith("read-noise-unresolved")
+                               else "usable" if reason == "usable" else "not-applied"),
+                    "reason": noise_status if reason == "usable" and noise_status.startswith("read-noise-unresolved") else reason,
+                    "gain_status": "usable" if reason == "usable" else "not-applied",
+                    "read_noise_status": noise_status,
                     "has_read_noise_at_iso": iso is not None and curve_value(prior, "read_noise_log2iso_log2e", iso) is not None,
                     "mode_scope": prior["mode_scope"],
                     "unverified_readout_fields": prior.get("unverified_readout_fields", {}),

@@ -36,7 +36,7 @@ def write_dng_tags(path, opcodes):
 
 
 def write_sensor_dng(path, limit=1., lut=False, spatial_black=False, *, linear=False, scale=None, opcodes=None,
-                     black_pattern=None, black_deltas=None, signal=None):
+                     black_pattern=None, black_deltas=None, signal=None, neutral=None):
     pix=np.full((128,128),int(.88*4095),dtype='<u2')
     entries=[]
     def add(tag,typ,values):
@@ -63,6 +63,9 @@ def write_sensor_dng(path, limit=1., lut=False, spatial_black=False, *, linear=F
         entries=[e for e in entries if e[0] not in (262,277,279,33421,33422,50710,50711)]
         add(262,3,[34892]);add(277,3,[3]);add(279,4,[pix.nbytes])
     if scale is not None:add(50718,5,scale)
+    if neutral is not None:
+        entries=[e for e in entries if e[0]!=50728]
+        add(50728,5,neutral)
     for tag,ops in (opcodes or {}).items():
         data=struct.pack('>L',len(ops))+b''.join(struct.pack('>4L',oid,0x01060000,0,len(payload))+payload for oid,payload in ops)
         entries.append((tag,7,len(data),data))

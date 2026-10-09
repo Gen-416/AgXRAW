@@ -7,6 +7,7 @@
 mod agx;
 mod budget;
 mod coding;
+mod detail;
 mod evidence;
 mod lens;
 mod loss;
@@ -38,7 +39,9 @@ use std::sync::atomic::Ordering;
 /// v18 adds exact borrowed B3 smoothing, shared gamut median, fused u8
 /// delivery metrics and export-local HDR metric workspaces.
 /// v19 separates film kernels into the AgXFilm research repository.
-pub const NATIVE_ABI_VERSION: i32 = 19;
+/// v20 preserves floating HDR camera planes, fuses warp processing-loss transport,
+/// and adds a bounded multiscale local luminance-detail scan.
+pub const NATIVE_ABI_VERSION: i32 = 20;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -824,10 +827,11 @@ fn merge_processing_loss_f16_inplace<'py>(
 
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-#[pyo3(signature=(image, coefficients, cx, cy, aspect, fisheye, loss, knots=None, scales=None, scale=1.0))]
+#[pyo3(signature=(image, coefficients, cx, cy, aspect, fisheye, loss, knots=None, scales=None, scale=1.0, processing_loss=None))]
 fn warp_dng<'py>(py: Python<'py>, image: &Bound<'py, PyAny>, coefficients: Vec<Vec<f64>>,
     cx: f64, cy: f64, aspect: f64, fisheye: bool, loss: bool,
     knots: Option<Vec<f64>>, scales: Option<Vec<Vec<f64>>>, scale: f64,
+    processing_loss: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Bound<'py, PyAny>> {
     if ![1,3].contains(&coefficients.len()) || coefficients.iter().any(|r| ![6,20].contains(&r.len()) || r.iter().any(|x| !x.is_finite()))
         || !cx.is_finite() || !cy.is_finite() || !(0.0..=1.0).contains(&cx) || !(0.0..=1.0).contains(&cy)
@@ -850,6 +854,14 @@ fn warp_dng<'py>(py: Python<'py>, image: &Bound<'py, PyAny>, coefficients: Vec<V
             return Err(PyValueError::new_err("invalid extended DNG radial parameters"));
         }
     }
+    if loss && processing_loss.is_some() {
+        return Err(PyValueError::new_err("processing_loss requires a camera RGB image"));
+    }
+    let processing = processing_loss.map(|value| as_view_array::<half::f16>(py, value, "float16")).transpose()?;
+    let processing_ro = processing.as_ref().map(|array| array.readonly());
+    let processing_view = processing_ro.as_ref().map(|array| array.as_array()
+        .into_dimensionality::<numpy::ndarray::Ix3>()
+        .map_err(|_| PyValueError::new_err("processing_loss must be H,W,3"))).transpose()?;
     if loss {
         let a = as_f16_array(py, image)?;
         let ro = a.readonly();
@@ -857,19 +869,41 @@ fn warp_dng<'py>(py: Python<'py>, image: &Bound<'py, PyAny>, coefficients: Vec<V
             .map_err(|_| PyValueError::new_err("warp image must be H,W,3"))?;
         let (h,w,c) = src.dim();
         if h==0 || w==0 || c!=3 { return Err(PyValueError::new_err("warp image must be nonempty H,W,3")); }
-        let out = py.detach(|| lens::warp(src,&coeff,&coefficients,cx,cy,aspect,fisheye,true,&knots,&scales,scale,
+        let (out, _) = py.detach(|| lens::warp(src,&coeff,&coefficients,cx,cy,aspect,fisheye,true,false,None,&knots,&scales,scale,
             |v| v.to_f64(), half::f16::from_f64));
         Ok(PyArray1::from_vec(py,out).reshape([h,w,3])?.into_any())
+    } else if image.getattr("dtype")?.getattr("kind")?.extract::<String>()? == "f" {
+        let a = as_view_array::<f32>(py, image, "float32")?;
+        let ro = a.readonly();
+        let src = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
+            .map_err(|_| PyValueError::new_err("warp image must be H,W,3"))?;
+        let (h,w,c) = src.dim();
+        if h==0 || w==0 || c!=3 || processing_view.as_ref().is_some_and(|mask| mask.dim() != src.dim()) {
+            return Err(PyValueError::new_err("warp image/processing_loss must match nonempty H,W,3"));
+        }
+        let (out, mask) = py.detach(|| lens::warp(src,&coeff,&coefficients,cx,cy,aspect,fisheye,false,false,processing_view,&knots,&scales,scale,
+            |v| v as f64, |v| v as f32));
+        let image = PyArray1::from_vec(py,out).reshape([h,w,3])?;
+        match mask {
+            Some(mask) => Ok((image, PyArray1::from_vec(py,mask).reshape([h,w,3])?).into_pyobject(py)?.into_any()),
+            None => Ok(image.into_any()),
+        }
     } else {
         let a = as_view_array::<u16>(py, image, "uint16")?;
         let ro = a.readonly();
         let src = ro.as_array().into_dimensionality::<numpy::ndarray::Ix3>()
             .map_err(|_| PyValueError::new_err("warp image must be H,W,3"))?;
         let (h,w,c) = src.dim();
-        if h==0 || w==0 || c!=3 { return Err(PyValueError::new_err("warp image must be nonempty H,W,3")); }
-        let out = py.detach(|| lens::warp(src,&coeff,&coefficients,cx,cy,aspect,fisheye,false,&knots,&scales,scale,
+        if h==0 || w==0 || c!=3 || processing_view.as_ref().is_some_and(|mask| mask.dim() != src.dim()) {
+            return Err(PyValueError::new_err("warp image/processing_loss must match nonempty H,W,3"));
+        }
+        let (out, mask) = py.detach(|| lens::warp(src,&coeff,&coefficients,cx,cy,aspect,fisheye,false,true,processing_view,&knots,&scales,scale,
             |v| v as f64, |v| v as u16));
-        Ok(PyArray1::from_vec(py,out).reshape([h,w,3])?.into_any())
+        let image = PyArray1::from_vec(py,out).reshape([h,w,3])?;
+        match mask {
+            Some(mask) => Ok((image, PyArray1::from_vec(py,mask).reshape([h,w,3])?).into_pyobject(py)?.into_any()),
+            None => Ok(image.into_any()),
+        }
     }
 }
 
@@ -1134,6 +1168,70 @@ fn base_roundtrip_metrics<'py>(
     Ok(d)
 }
 
+fn local_detail_pair<A: numpy::Element + detail::Sample, E: numpy::Element + detail::Sample>(
+    py: Python<'_>, decoded: &Bound<'_, PyArrayDyn<A>>, intended: &Bound<'_, PyArrayDyn<E>>, hdr: bool,
+    weights: [f32; 3],
+) -> PyResult<f32> {
+    let len = sensor_view_shape(decoded, "decoded")?;
+    sensor_view_shape(intended, "intended")?;
+    let shape = decoded.shape();
+    if len == 0 || shape.len() != 3 || ![3,4].contains(&shape[2]) || shape != intended.shape() {
+        return Err(PyValueError::new_err("local detail inputs must be nonempty matching H,W,3/4 arrays"));
+    }
+    let aro = decoded.readonly();
+    let ero = intended.readonly();
+    let a = aro.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+    let e = ero.as_array().into_dimensionality::<numpy::ndarray::Ix3>().unwrap();
+    py.detach(|| detail::local_detail(a,e,hdr,weights)).map_err(PyValueError::new_err)
+}
+
+fn local_detail_decoded<A: numpy::Element + detail::Sample>(
+    py: Python<'_>, decoded: &Bound<'_, PyArrayDyn<A>>, intended: &Bound<'_, PyAny>,
+    weights: [f32; 3],
+) -> PyResult<f32> {
+    if let Ok(e) = intended.cast::<PyArrayDyn<u8>>() {
+        local_detail_pair(py, decoded, e, true,weights)
+    } else if let Ok(e) = intended.cast::<PyArrayDyn<half::f16>>() {
+        local_detail_pair(py, decoded, e, true,weights)
+    } else if let Ok(e) = intended.cast::<PyArrayDyn<f32>>() {
+        local_detail_pair(py, decoded, e, true,weights)
+    } else if let Ok(e) = intended.cast::<PyArrayDyn<f64>>() {
+        local_detail_pair(py, decoded, e, true,weights)
+    } else {
+        Err(PyValueError::new_err("local detail HDR inputs must be uint8, float16, float32, or float64"))
+    }
+}
+
+/// Borrowed RGB/RGBA detail comparison; fixed tile scratch, no full-image cast.
+#[pyfunction]
+#[pyo3(signature = (decoded, intended, linear_hdr=false, luma_weights=None))]
+fn local_detail_loss(py: Python<'_>, decoded: &Bound<'_, PyAny>, intended: &Bound<'_, PyAny>,
+                     linear_hdr: bool, luma_weights: Option<[f32; 3]>) -> PyResult<f32> {
+    let weights = luma_weights.unwrap_or_else(|| detail::default_weights(linear_hdr));
+    if weights.iter().any(|v| !v.is_finite() || *v < 0.0)
+        || !weights.iter().any(|v| *v > 0.0) {
+        return Err(PyValueError::new_err("local detail luma weights must be finite nonnegative with a positive component"));
+    }
+    if !linear_hdr {
+        let a = decoded.cast::<PyArrayDyn<u8>>()
+            .map_err(|_| PyValueError::new_err("local detail SDR inputs must be uint8"))?;
+        let e = intended.cast::<PyArrayDyn<u8>>()
+            .map_err(|_| PyValueError::new_err("local detail SDR inputs must be uint8"))?;
+        return local_detail_pair(py,a,e,false,weights);
+    }
+    if let Ok(a) = decoded.cast::<PyArrayDyn<u8>>() {
+        local_detail_decoded(py,a,intended,weights)
+    } else if let Ok(a) = decoded.cast::<PyArrayDyn<half::f16>>() {
+        local_detail_decoded(py,a,intended,weights)
+    } else if let Ok(a) = decoded.cast::<PyArrayDyn<f32>>() {
+        local_detail_decoded(py,a,intended,weights)
+    } else if let Ok(a) = decoded.cast::<PyArrayDyn<f64>>() {
+        local_detail_decoded(py,a,intended,weights)
+    } else {
+        Err(PyValueError::new_err("local detail HDR inputs must be uint8, float16, float32, or float64"))
+    }
+}
+
 #[pyfunction]
 #[pyo3(signature = (decoded, intended, sum_buffer_size=None))]
 fn base_and_coding_metrics_u8<'py>(
@@ -1327,6 +1425,7 @@ fn _dngscan_fast(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(atrous_smooth_f32, m)?)?;
     m.add_class::<HdrMetricsWorkspace>()?;
     m.add_function(wrap_pyfunction!(base_and_coding_metrics_u8, m)?)?;
+    m.add_function(wrap_pyfunction!(local_detail_loss, m)?)?;
     m.add_function(wrap_pyfunction!(feather_masks_f16, m)?)?;
     m.add_function(wrap_pyfunction!(crop_loss_footprint, m)?)?;
     m.add_function(wrap_pyfunction!(merge_processing_loss_f16_inplace, m)?)?;

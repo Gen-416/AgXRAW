@@ -113,9 +113,10 @@ class HeifSearchTests(unittest.TestCase):
 
 class SdrHeifFinalReadbackTests(unittest.TestCase):
     @contextmanager
-    def codec_fixture(self, out, *, final_value=101):
+    def codec_fixture(self, out, *, final_value=101, rgb=None):
         """Stub only container I/O; use the real pixel metrics and delivery gates."""
-        rgb = np.full((8, 8, 3), 100, np.uint8)
+        if rgb is None:
+            rgb = np.full((8, 8, 3), 100, np.uint8)
         icc = b"test-icc"
         reads, buffers = [], []
 
@@ -126,7 +127,7 @@ class SdrHeifFinalReadbackTests(unittest.TestCase):
 
         def inspect(candidate):
             chroma = candidate.read_bytes().split(b"|")[0].split(b":")[1].decode()
-            return {"width": 8, "height": 8, "bit_depth": 10, "headroom": 1.,
+            return {"width": rgb.shape[1], "height": rgb.shape[0], "bit_depth": 10, "headroom": 1.,
                     "has_iso_gainmap": False, "chroma_subsampling": ":".join(chroma)}
 
         def carry(source, candidate, container):

@@ -19,7 +19,7 @@ from dngscan.constants import MIDGRAY_HEADROOM_STOPS
 from dngscan.hdr_agx_plan import compile_tail_snr_gate
 from dngscan.noise_model import NoiseModel, model_snr_curves, resolve_noise_model
 from tests.golden_support import _bundle_from_scene
-from tests.test_user_calibration import single_profile, collect_profile
+from tests.test_user_calibration import single_profile, collect_profile, unresolved_collect_profile
 
 
 def frame(texture=False, *, known=True):
@@ -81,6 +81,8 @@ class AnalysisNoiseModelTests(unittest.TestCase):
         rejected = SimpleNamespace(noise_model=NoiseModel(status="rejected"), snr_curves={})
         self.assertEqual(compile_tail_snr_gate(missing), 1.)
         self.assertEqual(compile_tail_snr_gate(rejected), 0.)
+        unresolved = SimpleNamespace(noise_model=NoiseModel(status="unresolved"), snr_curves={})
+        self.assertEqual(compile_tail_snr_gate(unresolved), 0.)
 
     def test_noise_curve_matches_independent_physics(self):
         a, b = 1e-4, 1e-8
@@ -178,6 +180,66 @@ class ImportedNoisePipelineTests(unittest.TestCase):
         variance, _ = calibrated_chroma_variance(bundle, model, np.full((64, 64, 3), .2))
         self.assertIsNotNone(variance)
         self.assertTrue(np.all(variance > 0))
+        self.assertEqual(compile_tail_snr_gate(analysis), 1.)
+
+    def test_failed_read_noise_is_not_a_valid_model_or_missing_calibration(self):
+        from dngscan.render import _prepare_chroma_nr_map
+        from dngscan.noise_propagation import calibrated_chroma_variance
+        self.install(unresolved_collect_profile())
+        for iso in (150, 200, 300):
+            with self.subTest(iso=iso):
+                bundle = self.bundle()
+                bundle.shot_iso = iso
+                analysis, _, _ = analyze(bundle, 4)
+                self.assertEqual(analysis.noise_model.status, "unresolved")
+                self.assertEqual(analysis.noise_evidence_status, "model-unresolved")
+                self.assertEqual(analysis.noise_model.reason, "read-noise-unresolved" if iso == 200
+                                 else "read-noise-unresolved-interval")
+                self.assertAlmostEqual(analysis.gain_e_per_dn, 400/iso)
+                self.assertIsNone(analysis.prior_read_noise_e)
+                self.assertTrue(math.isnan(analysis.noise_floor))
+                self.assertIsNone(analysis.noise_model.coefficients("G1"))
+                self.assertEqual(compile_tail_snr_gate(analysis), 0.)
+                variance, _ = calibrated_chroma_variance(bundle, analysis.noise_model,
+                                                         np.full((64, 64, 3), .2))
+                self.assertIsNone(variance)
+                self.assertIsNone(_prepare_chroma_nr_map(
+                    bundle, SimpleNamespace(chroma_nr=1), None, None, None,
+                    256, 256, "none", 0., None, analysis=analysis))
+                self.assertEqual(bundle.chroma_nr_status, "skipped")
+
+    def test_independent_file_profile_replacement_retains_unresolved_evidence(self):
+        from dngscan.calibration import calibration_diagnostics
+        self.install(unresolved_collect_profile())
+        bundle = self.bundle()
+        bundle.shot_iso = 200
+        tags = {262: [32803], 51041: [1e-4, 1e-8]}
+        with patch("dngscan.spatial_black.sensor_tags", return_value=tags):
+            analysis, _, _ = analyze(bundle, 4)
+        model = analysis.noise_model
+        self.assertEqual(model.status, "valid")
+        self.assertEqual(model.source, "DNG NoiseProfile")
+        self.assertEqual(model.reason, "file-declared-model-after-unresolved-prior")
+        self.assertEqual(model.fallback_reason, "read-noise-unresolved")
+        self.assertIn("User JPTC calibration", model.fallback_source)
+        self.assertEqual(analysis.gain_e_per_dn, 2)
+        self.assertIsNone(analysis.prior_read_noise_e)
+        self.assertEqual(calibration_diagnostics("SIGMA", "fp", "electronic", 200)[0]["status"], "gain-only")
+        self.assertEqual(compile_tail_snr_gate(analysis), 1.)
+        from dngscan.gui.preview_cache import _analysis_from_json, _analysis_to_json
+        from dngscan.report import noise_model_line_cn
+        restored = _analysis_from_json(json.loads(json.dumps(_analysis_to_json(analysis))))
+        self.assertEqual(restored.noise_model, model)
+        self.assertIn("原标定=", noise_model_line_cn(restored))
+        self.assertIn("read-noise-unresolved", noise_model_line_cn(restored))
+
+    def test_ordinary_missing_noise_is_not_promoted_to_failed_measurement(self):
+        profile = collect_profile()
+        profile["read_noise_log2iso_log2e"] = []
+        self.install(profile)
+        analysis, _, _ = analyze(self.bundle(), 4)
+        self.assertEqual(analysis.noise_model.status, "unavailable")
+        self.assertEqual(analysis.noise_model.reason, "read-noise-unavailable")
         self.assertEqual(compile_tail_snr_gate(analysis), 1.)
 
     def test_measured_nonwhite_noise_restricts_processing_without_revoking_gain(self):

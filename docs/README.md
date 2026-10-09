@@ -47,4 +47,6 @@
 
 [2026-10-09 噪声与纹理研究](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) 保留 `738da0a` 基准上的源码研究与反例，并附本轮实施记录。当前导入与使用见[实测噪声标定](NOISE_CALIBRATION.zh-CN.md)和[色度降噪](CHROMA_NR.zh-CN.md)；SDR 10-bit HEIF、包内 bulk 机型匹配仍为后置待办。
 
+同轮 `fb91815` 后续修复见研究记录第 10 节：[镜头与重建范围](ARCHITECTURE.zh-CN.md)、标定失败点、实际传感器采样与奇数裁剪，以及[局部亮度纹理和 HDR 声明回读](HDR_DELIVERY_VALIDATION.zh-CN.md#局部亮度纹理门禁2026-10-09)。原始数字保存在[管线验收记录](assets/delivery-quality/pipeline-repair-20261009.json)。
+
 当前 RAW/HDR 文档图片与机器可读测量保留在 [assets/](assets)。胶片教程、设计、基线、光谱和示例已迁入 AgXFilm，详见[胶片拆分记录](FILM_SPLIT.zh-CN.md)。原始 RAW 和个人导出不属于公共文档资产。

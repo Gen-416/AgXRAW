@@ -1114,7 +1114,13 @@ def sensor_prior_evidence(
         quality_status = quality_status or gate_reason
     if usable and iso and prior.get("suspect_iso_min") and iso >= prior["suspect_iso_min"]:
         usable, quality_status = False, "suspect-iso"
-    if noise_status != "independent":
+    if noise_status == "model-unresolved":
+        # Gain and PDR remain independent evidence when only the read-noise
+        # measurement failed. Keep that failure visible without falling back
+        # to another camera prior or inventing a read-noise denominator.
+        from .calibration import read_noise_issue
+        quality_status = read_noise_issue(prior or {}, iso) or noise_status
+    elif noise_status != "independent":
         usable, quality_status = False, noise_status
     use = usable and iso
     gain_e = (sensor_priors.gain_for_file(prior, iso, coding_range)
@@ -1275,6 +1281,7 @@ def analyze(
                                if diagnostics else (float("nan"), float("nan")))
     noise_status = ("linear-camera-rgb" if raw_image.ndim == 3 else
                     "model-valid" if noise_model.status == "valid" else
+                    "model-unresolved" if noise_model.status == "unresolved" else
                     "model-rejected" if noise_model.status == "rejected" else "unavailable")
     correlation_status = (noise_model.correlation if noise_model.correlation != "unknown" else
                           "spatial-residual-clue" if math.isfinite(health_lag1)

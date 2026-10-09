@@ -162,7 +162,9 @@ class AutomaticEncodingTests(unittest.TestCase):
     def test_sdr_writer_renders_once_and_returns_actual_decoded_pixels(self):
         from PIL import Image, JpegImagePlugin
         from dngscan.export import export_srgb_jpeg
-        rgb = np.random.default_rng(17).integers(0, 256, (129, 177, 3), np.uint8)
+        yy, xx = np.indices((129, 177))
+        gray = np.random.default_rng(17).integers(-2, 3, (129, 177))
+        rgb = np.stack((30+xx+gray, 40+yy+gray, 50+xx//2+yy//2+gray), axis=2).astype(np.uint8)
         with tempfile.TemporaryDirectory() as td:
             out = Path(td)/"photo.jpg"
             with mock.patch("dngscan.export.render_output_u8", return_value=rgb) as render, \
@@ -172,7 +174,8 @@ class AutomaticEncodingTests(unittest.TestCase):
             render.assert_called_once()
             with Image.open(out) as im:
                 np.testing.assert_array_equal(info["_decoded_rgb"], np.asarray(im.convert("RGB")))
-                self.assertEqual(JpegImagePlugin.get_sampling(im), 1)
+                self.assertEqual(JpegImagePlugin.get_sampling(im),
+                                 1 if info['delivery_chroma_requested'] == '422' else 2)
                 self.assertTrue(im.info["icc_profile"])
             self.assertGreaterEqual(info["delivery_quality"], 95)
 

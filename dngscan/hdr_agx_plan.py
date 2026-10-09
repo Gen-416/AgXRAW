@@ -172,7 +172,7 @@ def compile_tail_snr_gate(analysis: Analysis | None) -> float:
     bins are summarised by their median; the gate follows the WORST group,
     because one noisy channel is enough to make expanded chroma read as noise.
 
-    Explicitly rejected evidence withdraws permission. Missing calibration
+    Explicitly rejected or unresolved measured evidence withdraws permission. Missing calibration
     remains neutral 1.0 for this factor, preserving the existing clip, gamut
     and decoder restrictions; it does not assert that the noise was measured.
     The analysis-is-None case already compiles rho = 0 outright.
@@ -181,7 +181,8 @@ def compile_tail_snr_gate(analysis: Analysis | None) -> float:
     status = getattr(analysis, "noise_evidence_status", "unavailable")
     # A rejected model is negative evidence, unlike ordinary missing
     # calibration. Preserve that reason instead of neutral permission.
-    if getattr(model, "status", None) == "rejected" or status == "model-rejected":
+    if (getattr(model, "status", None) in ("rejected", "unresolved")
+            or status in ("model-rejected", "model-unresolved")):
         return 0.0
     if getattr(model, "correlation", None) == "measured-spectral-imbalance":
         return 0.0

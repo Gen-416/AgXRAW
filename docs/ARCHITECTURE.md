@@ -354,11 +354,37 @@ endpoint.
 
 Full-resolution `auto` export tries DHT, DCB, then AHD according to what the local
 rawpy/LibRaw build actually supports. Non-Bayer data such as X-Trans stays on the
-corresponding LibRaw path. Preview uses half-size 2x2 superpixel binning, so it is useful
-for exposure, color, and highlight decisions but not for judging final texture.
+corresponding LibRaw path. The GUI decodes at full resolution and downsamples the
+display preview; CLI half-size probes remain available. A display proxy is useful for
+exposure, color, and highlight decisions but does not show all final-resolution texture.
 
 Project chroma denoising (`--chroma-nr`) remains off by default. It now uses an independent `a×signal+b` model propagated through a low-frequency CFA approximation, with BayesShrink-inspired shrinkage; local structure reduces thresholds rather than defining the noise scale. Scene-stage luminance is preserved, but real colour detail can still be attenuated. Missing models, Apple RAW, incompatible measured spectra and unknown transfer operations skip the stage with a reason. Where applicable, SDR, AgX HDR and both legs of an HDR pair share the correction. See the [algorithm](CHROMA_NR.zh-CN.md) and [calibration interface](NOISE_CALIBRATION.zh-CN.md). DHT suits
 clean low-ISO signal; DCB, AAHD, VNG, or PPG can look more natural on noisy night files.
+
+Read-noise measurements that were explicitly unresolved remain separate from ordinary
+unsampled intervals. Both imported and packaged Collect priors retain
+`read_noise_unresolved_isos`; DN/electron read-noise curves cannot evaluate those points
+or interpolate or extrapolate across them. Independently valid gain remains available,
+with `gain-only` calibration diagnostics. Without an independent replacement, the noise
+model is `unresolved`, HDR tail-SNR confidence is zero, and chroma NR skips the stage;
+ordinary missing calibration retains its distinct neutral HDR factor. A valid RAW-IFD
+DNG `NoiseProfile` may provide a replacement, but reports and caches retain the original
+calibration source and unresolved reason. Scene texture never supplies a replacement
+noise denominator.
+
+TIFF rational parsing preserves zero denominators explicitly. For
+`NoiseReductionApplied`, `0/1` means no declared NR, `0/0` means unknown, and a nonzero
+numerator over zero is invalid. Unknown does not itself reject a matched noise model;
+invalid or positive processing declarations do. Absent, unknown, no-NR, applied, invalid
+and unreadable declarations remain separate model/report states.
+
+Chroma band selection uses the retained native sensor window
+`scene_sensor_window_shape`, orientation and the current raster to derive independent
+row/column sampling ratios. DefaultScale, crop, half-size decode and proxy/coarse-grid
+resampling therefore share the same approximate 8–128 sensor-pixel octave ruler. Both
+axes must support a selected band. This sampling geometry does not establish a complete
+demosaic/warp noise covariance or guarantee preservation of weak real colour detail.
+
 Standard rawpy wheels do not necessarily include GPL demosaic-pack algorithms such as
 AMaZE, LMMSE, VCD, or AFD, so the available set depends on the local LibRaw build. The
 GUI/CLI can select `dht / dcb / ahd / aahd / vng / ppg` manually; an algorithm supplied
@@ -472,10 +498,23 @@ empty reference never falls back to that estimate.
 The LibRaw path now executes the main RAW IFD's ordered DNG recipe: stage-2
 `GainMap` in place on the mosaic, then stage-3 `WarpRectilinear`, `WarpFisheye`
 and `FixVignetteRadial` in camera RGB, before the actual LibRaw colour matrix,
-DefaultCrop and orientation. The stage-3 white bounds follow the fixed WB
-scaling. Unsupported required opcodes fail explicitly; skipped optional ones
+DefaultCrop and orientation. In `blend` / `reconstruct`, late shading and warp
+operate on float32 camera RGB without reapplying sensor-white or unsigned
+storage bounds; cubic interpolation may retain signed values. The default
+`clip` path keeps its uint16 range. This preserves recovered highlights but
+does not move stage 3 before LibRaw's nonlinear highlight recovery or establish
+that those operations commute. Stage-3 point transforms with `blend` /
+`reconstruct` fail explicitly until their extended-domain contract is defined.
+Unsupported required opcodes fail explicitly; skipped optional ones
 are reported. A separate processing-loss raster follows clipping and the
 interpolation footprint, while sensor statistics retain the original mosaic.
+The uint16 LibRaw camera-RGB handoff also records channels at code 65535 as
+unreliable decoder-range boundaries before lens operations. This conservative
+flag does not establish how far a sample was clipped and may overlap sensor
+saturation; it does not change the original RAW clipping statistics. Late
+floating lens values above 65535 are valid extended values, not this boundary.
+The ABI 20 warp transports image and processing loss in one pass; identity
+operations preserve pixels and do not flag existing saturation as new loss.
 RAW masks and guidance follow the same per-camera-channel geometry. This does
 not establish a pixel correspondence with Apple's opaque reconstruction, so
 Core Image uses the independent reference described above. Unity/measured modes
@@ -485,10 +524,12 @@ reference and zero HDR headroom. Known sensor clipping of at least 95% also
 vetoes the decoded-image estimate; unavailable sensor statistics stay unknown.
 
 Cached Analysis reuse replays the measured-full-well mask refresh on the fresh
-bundle, preserving processing loss. Preview cache version 16 invalidates the
-previous correction and evidence policies. LibRaw already handles DNG
-linearization tables and LinearResponseLimit; spatial BlackLevelDeltaH/V remain
-a declared mean-only approximation. These DNG operators do not provide a lens
+bundle, preserving processing loss. Preview cache version 22 invalidates the
+previous correction, calibration validity and sensor-sampling policies.
+LibRaw already handles DNG linearization tables and LinearResponseLimit.
+Spatial BlackLevelRepeatDim and BlackLevelDeltaH/V are evaluated per position
+on a separate working buffer; explicit LibRaw black overrides prevent a second
+subtraction. The original sensor evidence remains unchanged. These DNG operators do not provide a lens
 database for proprietary RAF/ARW corrections. The older comparison images below
 illustrate dark-field behaviour, rather than pixel baselines for the new warp.
 Both decode paths honour the same vignette

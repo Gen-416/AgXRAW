@@ -18,6 +18,7 @@ def _sdr_metrics():
         "coding_luma_rmse": .5,
         "coding_chroma_rmse": .5,
         "coding_local_luma_p99": .5,
+        "coding_local_detail_loss": .1,
     }
 
 
@@ -84,7 +85,7 @@ class StagedEncodingGateTests(unittest.TestCase):
 
     def test_missing_or_nonfinite_candidate_metrics_reject_before_hdr(self):
         missing = object()
-        for key in ("coding_luma_rmse", "coding_chroma_rmse", "coding_local_luma_p99"):
+        for key in ("coding_luma_rmse", "coding_chroma_rmse", "coding_local_luma_p99", "coding_local_detail_loss"):
             for value in (missing, float("nan"), float("inf"), -float("inf"), None):
                 with self.subTest(key=key, value=value), tempfile.TemporaryDirectory() as td:
                     hdr_calls = []

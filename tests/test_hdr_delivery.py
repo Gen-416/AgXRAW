@@ -611,6 +611,7 @@ class PerProfileToleranceContractTests(unittest.TestCase):
             "chroma_error": chroma_error,
             "block_p95_luma_error": 0.01,
             "highlight_max_luma_error": 0.02,
+            "local_detail_loss": 0.0,
         }
 
     def test_mid_chroma_error_splits_archive_from_share(self) -> None:

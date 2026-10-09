@@ -56,6 +56,10 @@ class DeliveryTolerances:
     hdr_highlight_max_luma_error: float
     # Optional Apple gain-map auxiliary downsample. None leaves Core Image default.
     gainmap_subsample_factor: int | None = None
+    # Spatially supported signed luminance-detail distortion. This conservative
+    # catastrophic-loss backstop is independent of image-wide percentiles;
+    # it is an engineering budget, not a perceptual equivalence claim.
+    local_detail_loss: float = 0.90
 
 
 # Original tone/chroma tolerance sets were calibrated 2026-07-29 against the macOS Core Image

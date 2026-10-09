@@ -98,6 +98,9 @@ class RawBundle:
     processing_clip_masks: Any | None = None
     scene_geometry_ops: tuple[Any, ...] = ()
     scene_crop_sensor: tuple[float, float, float, float] | None = None
+    # Un-oriented retained window, in native sensor pixels. Independent of
+    # the noise-model qualification; survives after RAW buffers are released.
+    scene_sensor_window_shape: tuple[float, float] | None = None
     scene_correction_note: str | None = None
     # LibRaw processing-loss coverage, or the same reference's aggregate on
     # Core Image. None means correction evidence could not be measured.
@@ -175,11 +178,9 @@ class RawBundle:
     # Per-file scalar used only by the aligned policy. It compares two decoded green
     # medians; it is not an absolute sensor calibration or content-adaptive auto exposure.
     scene_align_factor: float = 1.0
-    # Review batch 23: full-resolution sensor pixels per pixel of
-    # scene_rec2020_render along the long edge — 1.0 for a full decode, the
-    # downsample ratio on a GUI preview proxy. Operators whose scale is
-    # declared in sensor pixels (chroma_nr's band) read it so a preview
-    # measures the same physical band the export does.
+    # Legacy proxy ruler. New decodes use scene_sensor_window_shape and the
+    # actual render grid for native sampling, including half-size/DefaultScale.
+    # Retained for old callers and cache proxy bookkeeping.
     proxy_scale: float = 1.0
     # Why aligned mode fell back to identity. None is expected for unity/measured modes.
     scene_align_error: str | None = None
