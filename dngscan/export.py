@@ -25,7 +25,7 @@ from .delivery import (
 )
 from .gainmap import apple_gainmap_backend_status, encode_finished_pair
 from .models import Analysis, RawBundle, RenderPlan, ToneCompressionPlan
-from .render import render_output_u8
+from .render import render_output_u8, render_output_encoded_float
 from .delivery_integrity import encoded_content_signature
 from .delivery_transaction import DeliveryTransaction
 
@@ -470,7 +470,10 @@ def export_srgb_jpeg(
         if delivery is not None and delivery.name == "share-hq":
             quality = delivery.quality
             subsampling = chroma_to_subsampling(delivery.chroma)
-        rgb = render_output_u8(
+        renderer = (render_output_encoded_float
+                    if delivery is not None and delivery.container == "heic"
+                    and delivery.heif_bit_depth == 10 else render_output_u8)
+        rgb = renderer(
             bundle, analysis, output_gamut, tone_plan,
             look, look_strength, display_filter, filter_strength,
             scene_transform, scene_transform_strength,

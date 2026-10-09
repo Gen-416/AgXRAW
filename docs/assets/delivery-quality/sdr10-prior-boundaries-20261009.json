@@ -1,0 +1,1323 @@
+{
+  "schema": "agxraw-sdr10-prior-boundaries-1",
+  "date": "2026-10-09",
+  "baseline_commit": "f10e6643efcc82454e82b7e880fef1c5e6cc33a2",
+  "runtime": {
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.4",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw": [
+      0,
+      22,
+      0
+    ],
+    "native_abi": 20
+  },
+  "tests": {
+    "numpy_full_suite": {
+      "discovered": 1620,
+      "passed": 1553,
+      "skipped": 67,
+      "seconds": 407.504
+    },
+    "final_affected_numpy_suite": {
+      "discovered": 99,
+      "passed": 96,
+      "skipped": 3,
+      "seconds": 1.173
+    },
+    "final_native_full_suite": {
+      "discovered": 1627,
+      "passed": 1624,
+      "skipped": 3,
+      "seconds": 260.732
+    },
+    "counts_overlap_and_are_not_added": true,
+    "initial_system_native_run": {
+      "discovered": 1622,
+      "passed": 1617,
+      "skipped": 3,
+      "failed": 2,
+      "failure": "RAW9 reconstruction reference withheld all samples; corrected by separate clip evidence reference"
+    }
+  },
+  "delivery": [
+    {
+      "sample": "_SDI0133.DNG",
+      "format": "sdr-heic",
+      "profile": "share",
+      "wall_s": 36.529748041997664,
+      "file_bytes": 16877976,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": false,
+        "headroom": 1.0,
+        "base_headroom": null,
+        "headroom_source": "sdr-no-gainmap",
+        "headroom_status": "not-declared",
+        "profile": "Display P3",
+        "width": 6000,
+        "height": 4000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 0,
+        "gainmap_height": 0,
+        "gainmap_pixel_format": "",
+        "nclx_verified": false,
+        "base_mean_code_error": 2.0914756926103593,
+        "base_p99_code_error": 19.255611419677734,
+        "base_max_code_error": 137.3702850341797,
+        "base_channel_bias_code_error": 0.02656183380033737,
+        "base_block_p99_code_error": 0.986903727054596,
+        "coding_luma_rmse": 0.45242062887950774,
+        "coding_chroma_rmse": 4.193430179825974,
+        "coding_local_luma_p99": 0.6759857535362244,
+        "base_local_detail_loss": 0.47628965973854065,
+        "coding_local_detail_loss": 0.47628965973854065,
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 95,
+        "delivery_chroma_requested": "420",
+        "delivery_container": "heic",
+        "delivery_profile": "share",
+        "icc_embedded": true,
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 16877976
+      },
+      "float_readback": {
+        "shape": [
+          4000,
+          6000,
+          3
+        ],
+        "dtype": "float32",
+        "minimum": -0.08158190548419952,
+        "maximum": 1.0682148933410645,
+        "sha256": "ce389ebc4ec3f9b55833af0855e1b3e8bda096af688ea4e24b7d4ce279d76791"
+      },
+      "decoder": "libraw"
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "coreimage",
+      "format": "ultrahdr-heic",
+      "profile": "archive",
+      "wall_s": 19.246933999995235,
+      "file_bytes": 32219432,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9697265625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "none",
+        "delivery_quality": 100,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 0.9779953686129614,
+        "base_mean_code_error": 0.30991366666666664,
+        "base_p99_code_error": 2.0,
+        "base_max_code_error": 8.0,
+        "base_channel_bias_code_error": 0.02655025,
+        "base_block_p99_code_error": 0.421875,
+        "base_local_detail_loss": 0.1305348426103592,
+        "chroma_error": 0.010085268877446651,
+        "relative_error": 0.0408935546875,
+        "median_relative_error": 0.010223388671875,
+        "p95_relative_error": 0.029296875,
+        "p99_relative_error": 0.0408935546875,
+        "p999_relative_error": 0.056891024112701416,
+        "block_median_relative_error": 0.0031535529997199774,
+        "block_p95_relative_error": 0.008068084716796875,
+        "block_p99_relative_error": 0.01097051426768303,
+        "block_chroma_error": 0.002507495228201151,
+        "block_p95_luma_error": 0.006502917036414146,
+        "highlight_max_luma_error": 0.06154274195432663,
+        "local_detail_loss": 0.3941299319267273,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "archive",
+        "gainmap_encoding_quality": 100,
+        "exif_carried": true,
+        "file_size_bytes": 32219432,
+        "hdr_plan": "HDR: 原生 AgX 白点 +0.98EV / 容量 +3.00EV；K +0.20EV / W +3.75EV，alpha 1.290，单段 shoulder，尾部 +3.45EV；独立 RAW 参考",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 0.9776715090400243,
+        "rendered_headroom_ev": 0.9776715090400243,
+        "actual_headroom_ev": 0.977671488502785,
+        "reliable_tail_ev": 3.4516026973724365,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 3.7516026973724363,
+        "shoulder_alpha": 1.290050158178186,
+        "shoulder_segments": 1,
+        "channel_separation": 0.25
+      }
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "coreimage",
+      "format": "ultrahdr-heic",
+      "profile": "auto",
+      "wall_s": 171.90341141700628,
+      "file_bytes": 31368298,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9697265625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "none",
+        "delivery_quality": 85,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 0.9779953686129614,
+        "base_mean_code_error": 0.33238416666666665,
+        "base_p99_code_error": 2.0,
+        "base_max_code_error": 11.0,
+        "base_channel_bias_code_error": 0.027303125,
+        "base_block_p99_code_error": 0.4375,
+        "coding_luma_rmse": 0.28784525069239675,
+        "coding_chroma_rmse": 0.6046071752585093,
+        "coding_local_luma_p99": 0.35653141140937805,
+        "base_local_detail_loss": 0.17381827533245087,
+        "coding_local_detail_loss": 0.17381827533245087,
+        "chroma_error": 0.0103798508644104,
+        "relative_error": 0.04180743545293808,
+        "median_relative_error": 0.01051733922213316,
+        "p95_relative_error": 0.02988150529563427,
+        "p99_relative_error": 0.04180743545293808,
+        "p999_relative_error": 0.058987200260162354,
+        "block_median_relative_error": 0.00324249267578125,
+        "block_p95_relative_error": 0.008313067257404327,
+        "block_p99_relative_error": 0.011196136474609375,
+        "block_chroma_error": 0.0026323136407881975,
+        "block_p95_luma_error": 0.007307854015380144,
+        "highlight_max_luma_error": 0.06038634851574898,
+        "local_detail_loss": 0.41057828068733215,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "auto",
+        "gainmap_encoding_quality": 100,
+        "gainmap_encoder": "Apple ImageIO",
+        "gainmap_chroma_requested": "444",
+        "file_size_bytes": 31368298,
+        "auto_reference_quality": 95,
+        "auto_reference_chroma": "444",
+        "auto_reference_bytes": 32218658,
+        "auto_saved_pct": 2.6417425579923326,
+        "auto_search": "bounded-quality-chroma-gainmap",
+        "auto_attempts": [
+          {
+            "quality": 95,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 32218658,
+            "metrics": {
+              "coding_luma_rmse": 0.25950701055038167,
+              "coding_chroma_rmse": 0.5776705308628198,
+              "base_local_detail_loss": 0.1305348426103592,
+              "highlight_max_luma_error": 0.06154274195432663,
+              "local_detail_loss": 0.3941299319267273
+            }
+          },
+          {
+            "quality": 92,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 32100446,
+            "metrics": {
+              "coding_luma_rmse": 0.26302324185807757,
+              "coding_chroma_rmse": 0.5818602214482201,
+              "base_local_detail_loss": 0.13562199473381042,
+              "highlight_max_luma_error": 0.06163157895207405,
+              "local_detail_loss": 0.411305695772171
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 31933500,
+            "metrics": {
+              "coding_luma_rmse": 0.2685107331856699,
+              "coding_chroma_rmse": 0.5876143036203575,
+              "base_local_detail_loss": 0.14815320074558258,
+              "highlight_max_luma_error": 0.05974453315138817,
+              "local_detail_loss": 0.40284186601638794
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": true,
+            "bytes": 31367524,
+            "metrics": {
+              "coding_luma_rmse": 0.28784525069239675,
+              "coding_chroma_rmse": 0.6046071752585093,
+              "base_local_detail_loss": 0.17381827533245087,
+              "highlight_max_luma_error": 0.06038634851574898,
+              "local_detail_loss": 0.41057828068733215
+            }
+          },
+          {
+            "quality": 80,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "bytes": 29940640,
+            "metrics": {
+              "coding_luma_rmse": 0.33621937057377105,
+              "coding_chroma_rmse": 0.6428022310818943,
+              "base_local_detail_loss": 0.24198657274246216,
+              "highlight_max_luma_error": 0.0635368824005127,
+              "local_detail_loss": 0.47534266114234924
+            }
+          },
+          {
+            "quality": 70,
+            "chroma": "444",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "coding_luma_rmse": 0.42647752505643727,
+              "coding_chroma_rmse": 0.7267623222249429,
+              "base_local_detail_loss": 0.37244081497192383
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 27402624
+          },
+          {
+            "quality": 85,
+            "chroma": "422",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "coding_luma_rmse": 0.2852789027320888,
+              "coding_chroma_rmse": 0.8127318661635936,
+              "base_local_detail_loss": 0.45070359110832214
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 34002452
+          },
+          {
+            "quality": 90,
+            "chroma": "422",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "coding_luma_rmse": 0.2671417976969751,
+              "coding_chroma_rmse": 0.8060046116785086,
+              "base_local_detail_loss": 0.4315016567707062
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 34879394
+          },
+          {
+            "quality": 85,
+            "chroma": "420",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "coding_luma_rmse": 0.2862872039479246,
+              "coding_chroma_rmse": 0.7160328573326272,
+              "base_local_detail_loss": 0.3883798122406006
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 31401135
+          },
+          {
+            "quality": 90,
+            "chroma": "420",
+            "gainmap_quality": 100,
+            "accepted": false,
+            "reason": "SDR 编码附加误差超出参考预算",
+            "metrics": {
+              "coding_luma_rmse": 0.2692777346506692,
+              "coding_chroma_rmse": 0.7068061755939772,
+              "base_local_detail_loss": 0.37905964255332947
+            },
+            "rejected_at": "sdr_additional",
+            "bytes": 31895454
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 95,
+            "accepted": false,
+            "bytes": 29954906,
+            "metrics": {
+              "coding_luma_rmse": 0.28784525069239675,
+              "coding_chroma_rmse": 0.6046071752585093,
+              "base_local_detail_loss": 0.17381827533245087,
+              "highlight_max_luma_error": 0.07370308041572571,
+              "local_detail_loss": 0.46445658802986145
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 90,
+            "accepted": false,
+            "bytes": 28801724,
+            "metrics": {
+              "coding_luma_rmse": 0.28784525069239675,
+              "coding_chroma_rmse": 0.6046071752585093,
+              "base_local_detail_loss": 0.17381827533245087,
+              "highlight_max_luma_error": 0.07008707523345947,
+              "local_detail_loss": 0.4665556252002716
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 85,
+            "accepted": false,
+            "bytes": 27389195,
+            "metrics": {
+              "coding_luma_rmse": 0.28784525069239675,
+              "coding_chroma_rmse": 0.6046071752585093,
+              "base_local_detail_loss": 0.17381827533245087,
+              "highlight_max_luma_error": 0.06465711444616318,
+              "local_detail_loss": 0.4709962010383606
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": 80,
+            "accepted": false,
+            "bytes": 23466253,
+            "metrics": {
+              "coding_luma_rmse": 0.28784525069239675,
+              "coding_chroma_rmse": 0.6046071752585093,
+              "base_local_detail_loss": 0.17381827533245087,
+              "highlight_max_luma_error": 0.06117067486047745,
+              "local_detail_loss": 0.5406192541122437
+            }
+          }
+        ],
+        "exif_carried": true,
+        "hdr_plan": "HDR: 原生 AgX 白点 +0.98EV / 容量 +3.00EV；K +0.20EV / W +3.75EV，alpha 1.290，单段 shoulder，尾部 +3.45EV；独立 RAW 参考",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 0.9776715090400243,
+        "rendered_headroom_ev": 0.9776715090400243,
+        "actual_headroom_ev": 0.977671488502785,
+        "reliable_tail_ev": 3.4516026973724365,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 3.7516026973724363,
+        "shoulder_alpha": 1.290050158178186,
+        "shoulder_segments": 1,
+        "channel_separation": 0.25
+      }
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "format": "sdr-heic",
+      "profile": "auto",
+      "wall_s": 171.26453733301605,
+      "file_bytes": 23486435,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": false,
+        "headroom": 1.0,
+        "base_headroom": null,
+        "headroom_source": "sdr-no-gainmap",
+        "headroom_status": "not-declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 0,
+        "gainmap_height": 0,
+        "gainmap_pixel_format": "",
+        "nclx_verified": false,
+        "base_mean_code_error": 0.4835317185011522,
+        "base_p99_code_error": 2.3084142208099365,
+        "base_max_code_error": 7.691076278686523,
+        "base_channel_bias_code_error": 0.020482986174739398,
+        "base_block_p99_code_error": 0.2870124280452728,
+        "coding_luma_rmse": 0.25134759869125284,
+        "coding_chroma_rmse": 0.6806241990219344,
+        "coding_local_luma_p99": 0.29251834750175476,
+        "base_local_detail_loss": 0.15584729611873627,
+        "coding_local_detail_loss": 0.15584729611873627,
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 90,
+        "delivery_chroma_requested": "444",
+        "delivery_container": "heic",
+        "delivery_profile": "auto",
+        "icc_embedded": true,
+        "readback_precision": "float32",
+        "file_size_bytes": 23486435,
+        "auto_reference_quality": 95,
+        "auto_reference_chroma": "444",
+        "auto_reference_bytes": 24825305,
+        "auto_saved_pct": 5.401927589610677,
+        "auto_search": "bounded-quality-chroma",
+        "auto_attempts": [
+          {
+            "quality": 95,
+            "chroma": "444",
+            "gainmap_quality": null,
+            "accepted": true,
+            "bytes": 24825305,
+            "metrics": {
+              "coding_luma_rmse": 0.23036846644088804,
+              "coding_chroma_rmse": 0.6116274062850412,
+              "base_local_detail_loss": 0.1049899160861969
+            }
+          },
+          {
+            "quality": 92,
+            "chroma": "444",
+            "gainmap_quality": null,
+            "accepted": true,
+            "bytes": 24418118,
+            "metrics": {
+              "coding_luma_rmse": 0.23684034951945093,
+              "coding_chroma_rmse": 0.6328904049461497,
+              "base_local_detail_loss": 0.13123898208141327
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "444",
+            "gainmap_quality": null,
+            "accepted": true,
+            "bytes": 23484260,
+            "metrics": {
+              "coding_luma_rmse": 0.25134759869125284,
+              "coding_chroma_rmse": 0.6806241990219344,
+              "base_local_detail_loss": 0.15584729611873627
+            }
+          },
+          {
+            "quality": 85,
+            "chroma": "444",
+            "gainmap_quality": null,
+            "accepted": false,
+            "bytes": 20574982,
+            "metrics": {
+              "coding_luma_rmse": 0.2999678588546614,
+              "coding_chroma_rmse": 0.8369253342956671,
+              "base_local_detail_loss": 0.16883119940757751
+            }
+          },
+          {
+            "quality": 80,
+            "chroma": "444",
+            "gainmap_quality": null,
+            "accepted": false,
+            "bytes": 16174582,
+            "metrics": {
+              "coding_luma_rmse": 0.40411138068194796,
+              "coding_chroma_rmse": 1.145816223735466,
+              "base_local_detail_loss": 0.22844147682189941
+            }
+          },
+          {
+            "quality": 70,
+            "chroma": "444",
+            "gainmap_quality": null,
+            "accepted": false,
+            "bytes": 9914669,
+            "metrics": {
+              "coding_luma_rmse": 0.6700835179254475,
+              "coding_chroma_rmse": 1.8822802737865172,
+              "base_local_detail_loss": 0.42947983741760254
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "422",
+            "gainmap_quality": null,
+            "accepted": false,
+            "bytes": 21896026,
+            "metrics": {
+              "coding_luma_rmse": 0.3468530122865398,
+              "coding_chroma_rmse": 2.872095558098295,
+              "base_local_detail_loss": 0.36239081621170044
+            }
+          },
+          {
+            "quality": 95,
+            "chroma": "422",
+            "gainmap_quality": null,
+            "accepted": false,
+            "bytes": 22359527,
+            "metrics": {
+              "coding_luma_rmse": 0.3403772697435511,
+              "coding_chroma_rmse": 2.870802880833996,
+              "base_local_detail_loss": 0.3681742548942566
+            }
+          },
+          {
+            "quality": 90,
+            "chroma": "420",
+            "gainmap_quality": null,
+            "accepted": false,
+            "bytes": 16277150,
+            "metrics": {
+              "coding_luma_rmse": 0.3696873742173682,
+              "coding_chroma_rmse": 3.2083485323619785,
+              "base_local_detail_loss": 0.37870246171951294
+            }
+          },
+          {
+            "quality": 95,
+            "chroma": "420",
+            "gainmap_quality": null,
+            "accepted": false,
+            "bytes": 16609576,
+            "metrics": {
+              "coding_luma_rmse": 0.3637712947439068,
+              "coding_chroma_rmse": 3.20745787930549,
+              "base_local_detail_loss": 0.3698277473449707
+            }
+          }
+        ],
+        "exif_carried": true
+      },
+      "float_readback": {
+        "shape": [
+          6000,
+          4000,
+          3
+        ],
+        "dtype": "float32",
+        "minimum": -0.020572632551193237,
+        "maximum": 1.0113993883132935,
+        "sha256": "58e9bd605d25470b6dd5543f2a09ba97b828f961a6d5d85d1c4796f69b9dc1b4"
+      },
+      "decoder": "libraw"
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "format": "sdr",
+      "profile": "share-hq",
+      "wall_s": 10.661682707985165,
+      "file_bytes": 8954774,
+      "production_gate": "accepted",
+      "delivery": {
+        "delivery_profile": "share-hq",
+        "delivery_container": "jpeg",
+        "delivery_quality": 97,
+        "delivery_chroma_requested": "420",
+        "chroma_subsampling": "4:2:0",
+        "icc_embedded": true,
+        "exif_carried": true,
+        "file_size_bytes": 8954774,
+        "share_size_limit_bytes": 20000000,
+        "share_size_exceeded": false,
+        "base_mean_code_error": 2.09400275,
+        "base_p99_code_error": 15.0,
+        "base_max_code_error": 79.0,
+        "base_channel_bias_code_error": 0.028076041666666666,
+        "base_block_p99_code_error": 1.15625,
+        "base_local_detail_loss": 0.4058982729911804
+      },
+      "decoder": "libraw"
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "coreimage",
+      "format": "sdr-heic",
+      "profile": "share",
+      "wall_s": 15.840394375001779,
+      "file_bytes": 1929364,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": false,
+        "headroom": 1.0,
+        "base_headroom": null,
+        "headroom_source": "sdr-no-gainmap",
+        "headroom_status": "not-declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 0,
+        "gainmap_height": 0,
+        "gainmap_pixel_format": "",
+        "nclx_verified": false,
+        "base_mean_code_error": 0.1974994844121628,
+        "base_p99_code_error": 2.551692008972168,
+        "base_max_code_error": 55.86377716064453,
+        "base_channel_bias_code_error": 0.02274907753852387,
+        "base_block_p99_code_error": 0.7489795088768005,
+        "coding_luma_rmse": 0.14034791269844127,
+        "coding_chroma_rmse": 0.47625878428581275,
+        "coding_local_luma_p99": 0.2706315517425537,
+        "base_local_detail_loss": 0.3893217444419861,
+        "coding_local_detail_loss": 0.3893217444419861,
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 95,
+        "delivery_chroma_requested": "420",
+        "delivery_container": "heic",
+        "delivery_profile": "share",
+        "icc_embedded": true,
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 1929364
+      },
+      "float_readback": {
+        "shape": [
+          6000,
+          4000,
+          3
+        ],
+        "dtype": "float32",
+        "minimum": -0.04777764528989792,
+        "maximum": 1.0766448974609375,
+        "sha256": "b9f5a8b6848b78e3f95f1b6dd67fb90165b4df3afd5d10de1d88a568af8d138a"
+      }
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "format": "ultrahdr-heic",
+      "profile": "share",
+      "wall_s": 27.633826957986457,
+      "file_bytes": 48045859,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9228515625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f",
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "none",
+        "delivery_quality": 95,
+        "delivery_chroma_requested": "420",
+        "delivery_container": "heic",
+        "headroom_error_ev": 0.0,
+        "file_headroom_ev": 0.9432473959015537,
+        "base_mean_code_error": 1.6297511388888888,
+        "base_p99_code_error": 15.0,
+        "base_max_code_error": 83.0,
+        "base_channel_bias_code_error": 0.03667254166666667,
+        "base_block_p99_code_error": 0.96875,
+        "base_local_detail_loss": 0.39899271726608276,
+        "chroma_error": 0.052444346249103546,
+        "relative_error": 0.1788330078125,
+        "median_relative_error": 0.03218390792608261,
+        "p95_relative_error": 0.1143646240234375,
+        "p99_relative_error": 0.1788330078125,
+        "p999_relative_error": 0.28360849618911743,
+        "block_median_relative_error": 0.0040531158447265625,
+        "block_p95_relative_error": 0.012579119764268398,
+        "block_p99_relative_error": 0.018324876204133034,
+        "block_chroma_error": 0.006647997070103884,
+        "block_p95_luma_error": 0.01128064189106226,
+        "highlight_max_luma_error": 0.09927737712860107,
+        "local_detail_loss": 0.8647853136062622,
+        "gainmap_as_rgb": true,
+        "delivery_profile": "share",
+        "gainmap_encoding_quality": 100,
+        "exif_carried": true,
+        "file_size_bytes": 48045859,
+        "hdr_plan": "HDR: 原生 AgX 白点 +0.94EV / 容量 +3.00EV；K +0.20EV / W +3.72EV，alpha 1.291，单段 shoulder，尾部 +3.42EV",
+        "display_headroom_ev": 3.0,
+        "requested_headroom_ev": 0.9431937983161474,
+        "rendered_headroom_ev": 0.9431937983161474,
+        "actual_headroom_ev": 0.9431938194722875,
+        "reliable_tail_ev": 3.4171249866485596,
+        "shoulder_start_ev": 0.2,
+        "hdr_white_ev": 3.7171249866485594,
+        "shoulder_alpha": 1.2913997774525323,
+        "shoulder_segments": 1,
+        "channel_separation": 0.45035798260742416
+      },
+      "decoder": "libraw"
+    },
+    {
+      "sample": "_SDI0150.DNG",
+      "format": "sdr-heic",
+      "profile": "share",
+      "wall_s": 19.875588875001995,
+      "file_bytes": 16611751,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": false,
+        "headroom": 1.0,
+        "base_headroom": null,
+        "headroom_source": "sdr-no-gainmap",
+        "headroom_status": "not-declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 0,
+        "gainmap_height": 0,
+        "gainmap_pixel_format": "",
+        "nclx_verified": false,
+        "base_mean_code_error": 1.6330523324754336,
+        "base_p99_code_error": 14.525704383850098,
+        "base_max_code_error": 82.78983306884766,
+        "base_channel_bias_code_error": 0.027587543441669676,
+        "base_block_p99_code_error": 0.9487496018409729,
+        "coding_luma_rmse": 0.3637712947439068,
+        "coding_chroma_rmse": 3.20745787930549,
+        "coding_local_luma_p99": 0.4775595963001251,
+        "base_local_detail_loss": 0.3698277473449707,
+        "coding_local_detail_loss": 0.3698277473449707,
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 95,
+        "delivery_chroma_requested": "420",
+        "delivery_container": "heic",
+        "delivery_profile": "share",
+        "icc_embedded": true,
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 16611751
+      },
+      "float_readback": {
+        "shape": [
+          6000,
+          4000,
+          3
+        ],
+        "dtype": "float32",
+        "minimum": -0.059745222330093384,
+        "maximum": 1.05039381980896,
+        "sha256": "6b5b44d990a5b2a2c5e0524ffe98ff514146da6e81fa3153f92ace429818b932"
+      },
+      "decoder": "libraw"
+    },
+    {
+      "sample": "_SDI0199.DNG",
+      "format": "sdr-heic",
+      "profile": "share",
+      "wall_s": 26.98717929198756,
+      "file_bytes": 24609127,
+      "production_gate": "accepted",
+      "delivery": {
+        "has_iso_gainmap": false,
+        "headroom": 1.0,
+        "base_headroom": null,
+        "headroom_source": "sdr-no-gainmap",
+        "headroom_status": "not-declared",
+        "profile": "Display P3",
+        "width": 6000,
+        "height": 4000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 0,
+        "gainmap_height": 0,
+        "gainmap_pixel_format": "",
+        "nclx_verified": false,
+        "base_mean_code_error": 3.582985890983304,
+        "base_p99_code_error": 23.052974700927734,
+        "base_max_code_error": 108.32444763183594,
+        "base_channel_bias_code_error": 0.037117937034491975,
+        "base_block_p99_code_error": 1.5129467248916626,
+        "coding_luma_rmse": 0.8822370373766121,
+        "coding_chroma_rmse": 5.838919335453087,
+        "coding_local_luma_p99": 1.1045887470245361,
+        "base_local_detail_loss": 0.536209225654602,
+        "coding_local_detail_loss": 0.536209225654602,
+        "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+        "preset": "slow",
+        "tune": "ssim",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "delivery_quality": 95,
+        "delivery_chroma_requested": "420",
+        "delivery_container": "heic",
+        "delivery_profile": "share",
+        "icc_embedded": true,
+        "readback_precision": "float32",
+        "exif_carried": true,
+        "file_size_bytes": 24609127
+      },
+      "float_readback": {
+        "shape": [
+          4000,
+          6000,
+          3
+        ],
+        "dtype": "float32",
+        "minimum": -0.09148157387971878,
+        "maximum": 1.1587040424346924,
+        "sha256": "aa48cbf2fef377331d995576abf197560de05463ebbb9633ec51ebb238882ab0"
+      },
+      "decoder": "libraw"
+    }
+  ],
+  "high_precision_probes": {
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "reader": "CoreImage RGBAf, working RGBAf, native NSDictionary expandToHDR=False",
+    "probes": [
+      {
+        "kind": "16bitPNG nonlinear source to target gamut",
+        "gamut": "srgb",
+        "levels_r": 1024,
+        "max_abs_error": 7.62939453125e-06,
+        "mean_abs_error": 5.084710664959857e-06,
+        "readonly": true,
+        "strides": [
+          16384,
+          16,
+          4
+        ]
+      },
+      {
+        "kind": "16bitPNG nonlinear source to target gamut",
+        "gamut": "p3",
+        "levels_r": 1024,
+        "max_abs_error": 0.00022813677787780762,
+        "mean_abs_error": 4.4468219130067155e-05,
+        "readonly": true,
+        "strides": [
+          16384,
+          16,
+          4
+        ]
+      },
+      {
+        "kind": "10bitHEIF grayscale ramp",
+        "gamut": "srgb",
+        "encoder": {
+          "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+          "bit_depth": 10,
+          "preset": "fast",
+          "tune": "ssim",
+          "quantization_dither": "none",
+          "delivery_quality": 100,
+          "delivery_chroma_requested": "444",
+          "delivery_container": "heic"
+        },
+        "levels_r": 1024,
+        "max_abs_error": 1.1920928955078125e-07,
+        "metrics": {
+          "base_mean_code_error": 2.889276280596912e-06,
+          "base_p99_code_error": 3.039836883544922e-05,
+          "base_max_code_error": 3.039836883544922e-05,
+          "base_channel_bias_code_error": 3.909264719825778e-06,
+          "base_block_p99_code_error": 3.039836883544922e-05,
+          "coding_luma_rmse": 5.767231642422764e-06,
+          "coding_chroma_rmse": 6.103436209051304e-06,
+          "coding_local_luma_p99": 1.7843842215370387e-05,
+          "base_local_detail_loss": 9.50898538576439e-07,
+          "coding_local_detail_loss": 9.50898538576439e-07
+        }
+      },
+      {
+        "kind": "10bit adjacent patches sharing one 8bit code",
+        "gamut": "srgb",
+        "encoder": {
+          "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+          "bit_depth": 10,
+          "preset": "fast",
+          "tune": "ssim",
+          "quantization_dither": "none",
+          "delivery_quality": 100,
+          "delivery_chroma_requested": "444",
+          "delivery_container": "heic"
+        },
+        "expected_left": 0.5004887580871582,
+        "expected_right": 0.5014662742614746,
+        "actual_left": 0.5004887580871582,
+        "actual_right": 0.5014662742614746,
+        "difference": 0.0009775161743164062,
+        "u8_left_codes": [
+          128
+        ],
+        "u8_right_codes": [
+          128
+        ],
+        "metrics": {
+          "base_mean_code_error": 0.0,
+          "base_p99_code_error": 0.0,
+          "base_max_code_error": 0.0,
+          "base_channel_bias_code_error": 0.0,
+          "base_block_p99_code_error": 0.0,
+          "coding_luma_rmse": 0.0,
+          "coding_chroma_rmse": 0.0,
+          "coding_local_luma_p99": 0.0,
+          "base_local_detail_loss": 0.0,
+          "coding_local_detail_loss": 0.0
+        }
+      },
+      {
+        "kind": "10bitHEIF grayscale ramp",
+        "gamut": "p3",
+        "encoder": {
+          "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+          "bit_depth": 10,
+          "preset": "fast",
+          "tune": "ssim",
+          "quantization_dither": "none",
+          "delivery_quality": 100,
+          "delivery_chroma_requested": "444",
+          "delivery_container": "heic"
+        },
+        "levels_r": 1024,
+        "max_abs_error": 1.1920928955078125e-07,
+        "metrics": {
+          "base_mean_code_error": 2.889276280596912e-06,
+          "base_p99_code_error": 3.039836883544922e-05,
+          "base_max_code_error": 3.039836883544922e-05,
+          "base_channel_bias_code_error": 3.909264719825778e-06,
+          "base_block_p99_code_error": 3.039836883544922e-05,
+          "coding_luma_rmse": 5.767231642422764e-06,
+          "coding_chroma_rmse": 6.103436209051304e-06,
+          "coding_local_luma_p99": 1.7843842215370387e-05,
+          "base_local_detail_loss": 9.50898538576439e-07,
+          "coding_local_detail_loss": 9.50898538576439e-07
+        }
+      },
+      {
+        "kind": "10bit adjacent patches sharing one 8bit code",
+        "gamut": "p3",
+        "encoder": {
+          "encoder": "x265 HEVC encoder (4.2+1-e444744)",
+          "bit_depth": 10,
+          "preset": "fast",
+          "tune": "ssim",
+          "quantization_dither": "none",
+          "delivery_quality": 100,
+          "delivery_chroma_requested": "444",
+          "delivery_container": "heic"
+        },
+        "expected_left": 0.5004887580871582,
+        "expected_right": 0.5014662742614746,
+        "actual_left": 0.5004887580871582,
+        "actual_right": 0.5014662742614746,
+        "difference": 0.0009775161743164062,
+        "u8_left_codes": [
+          128
+        ],
+        "u8_right_codes": [
+          128
+        ],
+        "metrics": {
+          "base_mean_code_error": 0.0,
+          "base_p99_code_error": 0.0,
+          "base_max_code_error": 0.0,
+          "base_channel_bias_code_error": 0.0,
+          "base_block_p99_code_error": 0.0,
+          "coding_luma_rmse": 0.0,
+          "coding_chroma_rmse": 0.0,
+          "coding_local_luma_p99": 0.0,
+          "base_local_detail_loss": 0.0,
+          "coding_local_detail_loss": 0.0
+        }
+      }
+    ]
+  },
+  "limits": [
+    "Full-size deliveries use the declared decoder, camera WB, automatic exposure, AgX, P3, no film and unchanged production gates.",
+    "SDR HEIF manual is q95/420/10bit. Auto uses the existing quality/error search, with no 20 MB hard target.",
+    "No-dither codec ramp probes establish precision/transfer correctness, not a lossless guarantee for production TPDF or HEVC.",
+    "Delivery timings overlapped other verification workloads and are not performance benchmarks.",
+    "Float metrics retain fractional 8-bit-equivalent code errors and finite decoder overshoot; their existing activity budgets do not protect every weak luma/chroma texture.",
+    "ICC is mandatory. NCLX, if present, must agree; this libheif runtime writes only ICC when both are set.",
+    "HDR gain-map retains uint8 SDR base and independent float16 HDR alternate. Apple SDR fallback remains manual 8bit/420.",
+    "No personal fp PTC/repeated-dark measurements were available. FPN/PRNU/stripe/bad-pixel correction and complete correlated covariance remain unimplemented.",
+    "Collect free-text compression/geometry declarations are retained but not verified against each RAW sub-readout mode."
+  ],
+  "apple_reference_verification": {
+    "sample": "_SDI0150.DNG",
+    "baseline_reliable_pct": 0.0,
+    "corrected_reliable_pct": 98.0955,
+    "corrected_processing_loss_pct": 1.73203,
+    "corrected_camera_wb_headroom_ev": 0.97767,
+    "corrected_5500k_headroom_ev": 1.08313,
+    "original_alignment_preserved": true,
+    "half_alignment": 1.0436084973,
+    "full_alignment": 1.0458372394,
+    "file_baseline_exposure_ev": 1.0,
+    "references": "reconstruct scalar alignment; clip original-signal evidence",
+    "failure_policy": "empty sensor reference and HDR closed; already valid scalar alignment retained"
+  },
+  "rejected_delivery": [
+    {
+      "sample": "_SDI0150.DNG",
+      "decoder": "coreimage",
+      "format": "ultrahdr-heic",
+      "profile": "share",
+      "quality": 95,
+      "chroma": "420",
+      "local_detail_loss": 1.0,
+      "outcome": "rejected by unchanged production gate; no output published"
+    }
+  ],
+  "hdr_sampling_probes": [
+    {
+      "case": {
+        "primary_quality": 95,
+        "primary_chroma": "420",
+        "auxiliary_quality": 100,
+        "subsample": 2
+      },
+      "file": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9697265625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f"
+      },
+      "metrics": {
+        "chroma_error": 0.010935813188552856,
+        "relative_error": 0.04368932172656059,
+        "median_relative_error": 0.01029336079955101,
+        "p95_relative_error": 0.0299072265625,
+        "p99_relative_error": 0.04368932172656059,
+        "p999_relative_error": 0.07339449226856232,
+        "block_median_relative_error": 0.003176128026098013,
+        "block_p95_relative_error": 0.00812780112028122,
+        "block_p99_relative_error": 0.011730536818504333,
+        "block_chroma_error": 0.0028956502210348845,
+        "block_p95_luma_error": 0.006537136621773243,
+        "highlight_max_luma_error": 0.14030000567436218,
+        "local_detail_loss": 1.0
+      },
+      "numpy_detail": 1.0,
+      "worst_tile": {
+        "score": 1.0,
+        "row": 1096,
+        "col": 328,
+        "distance": 2
+      },
+      "worst_patch": {
+        "max_abs_rgb_error": 0.2548828125,
+        "intended_rgb_min": 0.0,
+        "intended_rgb_max": 1.7138671875,
+        "expanded_rgb_min": 8.058547973632812e-05,
+        "expanded_rgb_max": 1.8564453125
+      }
+    },
+    {
+      "case": {
+        "primary_quality": 95,
+        "primary_chroma": "420",
+        "auxiliary_quality": 100,
+        "subsample": null
+      },
+      "file": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9697265625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f"
+      },
+      "metrics": {
+        "chroma_error": 0.010935813188552856,
+        "relative_error": 0.04368932172656059,
+        "median_relative_error": 0.01029336079955101,
+        "p95_relative_error": 0.0299072265625,
+        "p99_relative_error": 0.04368932172656059,
+        "p999_relative_error": 0.07339449226856232,
+        "block_median_relative_error": 0.003176128026098013,
+        "block_p95_relative_error": 0.00812780112028122,
+        "block_p99_relative_error": 0.011730536818504333,
+        "block_chroma_error": 0.0028956502210348845,
+        "block_p95_luma_error": 0.006537136621773243,
+        "highlight_max_luma_error": 0.14030000567436218,
+        "local_detail_loss": 1.0
+      },
+      "numpy_detail": 1.0,
+      "worst_tile": {
+        "score": 1.0,
+        "row": 1096,
+        "col": 328,
+        "distance": 2
+      },
+      "worst_patch": {
+        "max_abs_rgb_error": 0.2548828125,
+        "intended_rgb_min": 0.0,
+        "intended_rgb_max": 1.7138671875,
+        "expanded_rgb_min": 8.058547973632812e-05,
+        "expanded_rgb_max": 1.8564453125
+      }
+    },
+    {
+      "case": {
+        "primary_quality": 95,
+        "primary_chroma": "444",
+        "auxiliary_quality": 100,
+        "subsample": null
+      },
+      "file": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9697265625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f"
+      },
+      "metrics": {
+        "chroma_error": 0.010085268877446651,
+        "relative_error": 0.0408935546875,
+        "median_relative_error": 0.010223388671875,
+        "p95_relative_error": 0.029296875,
+        "p99_relative_error": 0.0408935546875,
+        "p999_relative_error": 0.056891024112701416,
+        "block_median_relative_error": 0.0031535529997199774,
+        "block_p95_relative_error": 0.008068084716796875,
+        "block_p99_relative_error": 0.01097051426768303,
+        "block_chroma_error": 0.002507495228201151,
+        "block_p95_luma_error": 0.006502917036414146,
+        "highlight_max_luma_error": 0.06154274195432663,
+        "local_detail_loss": 0.3941299319267273
+      },
+      "numpy_detail": 0.3941299319267273,
+      "worst_tile": {
+        "score": 0.3941299319267273,
+        "row": 1128,
+        "col": 64,
+        "distance": 8
+      },
+      "worst_patch": {
+        "max_abs_rgb_error": 0.0673828125,
+        "intended_rgb_min": 0.0,
+        "intended_rgb_max": 1.4873046875,
+        "expanded_rgb_min": 0.01381683349609375,
+        "expanded_rgb_max": 1.4990234375
+      }
+    },
+    {
+      "case": {
+        "primary_quality": 100,
+        "primary_chroma": "420",
+        "auxiliary_quality": 100,
+        "subsample": null
+      },
+      "file": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9697265625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:2:0",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f"
+      },
+      "metrics": {
+        "chroma_error": 0.010935813188552856,
+        "relative_error": 0.04368932172656059,
+        "median_relative_error": 0.01029336079955101,
+        "p95_relative_error": 0.0299072265625,
+        "p99_relative_error": 0.04368932172656059,
+        "p999_relative_error": 0.07339449226856232,
+        "block_median_relative_error": 0.003176128026098013,
+        "block_p95_relative_error": 0.00812780112028122,
+        "block_p99_relative_error": 0.011730536818504333,
+        "block_chroma_error": 0.0028956502210348845,
+        "block_p95_luma_error": 0.006537136621773243,
+        "highlight_max_luma_error": 0.14030000567436218,
+        "local_detail_loss": 1.0
+      },
+      "numpy_detail": 1.0,
+      "worst_tile": {
+        "score": 1.0,
+        "row": 1096,
+        "col": 328,
+        "distance": 2
+      },
+      "worst_patch": {
+        "max_abs_rgb_error": 0.2548828125,
+        "intended_rgb_min": 0.0,
+        "intended_rgb_max": 1.7138671875,
+        "expanded_rgb_min": 8.058547973632812e-05,
+        "expanded_rgb_max": 1.8564453125
+      }
+    }
+  ],
+  "production_tpdf_ramp_probe": {
+    "manual_q100_444_levels": 979,
+    "auto_q70_420_levels": 959,
+    "source_columns": 1024,
+    "gamuts": [
+      "srgb",
+      "p3"
+    ],
+    "mean_manual_error_8bit_equivalent_codes": 0.069
+  }
+}

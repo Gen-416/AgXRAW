@@ -57,7 +57,10 @@ def _prior_signal_scales(bundle, fullwell, prior, iso):
         gain = priors.gain_for_file(prior, iso, span)
         if gain is None or not math.isfinite(gain) or gain <= 0:
             return None
-        scales[labels[cid]] = gain * span
+        scale = gain * span
+        if not math.isfinite(scale) or scale <= 0:
+            return None
+        scales[labels[cid]] = scale
     return scales
 
 
@@ -117,12 +120,38 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
         return replace(model, status="rejected", reason="unmatched-dn-scale")
     if not scales:
         return replace(model, reason="raw-channels-unavailable")
-    return replace(
-        model, status="valid", reason="matched-shot-read-model",
-        channel_variance={label: (1.0 / scale, (read / scale) ** 2)
-                          for label, scale in scales.items()},
-        approximation="shared-gain-read-noise-across-colour-planes",
-    )
+    from .calibration import stored_dark_variance
+    stored_variance, variance_source = stored_dark_variance(prior, iso)
+    if variance_source in ("stored-dark-variance-below-physical-read-variance",
+                           "stored-dark-variance-nonfinite"):
+        # Contradictory total-variance evidence is unresolved, not missing.
+        # Keep its independent spectrum and permit a valid DNG profile to
+        # supply alternative coefficients through the existing resolver.
+        return replace(model, status="unresolved", reason=variance_source,
+                       approximation=variance_source)
+    measured_gain = None
+    if stored_variance is not None:
+        # Stored variance is in the measurement's reference DN, while scales
+        # are electrons per normalized file sample. Use measured e-/DN here;
+        # gain_for_file already checked any power-of-two DN storage transport.
+        measured_gain = priors.gain_e_per_dn(prior, iso)
+        if measured_gain is None or not math.isfinite(measured_gain) or measured_gain <= 0:
+            return replace(model, status="unresolved", reason="stored-dark-variance-gain-unavailable")
+    approximation = "shared-gain-read-noise-across-colour-planes"
+    if prior.get("source_format") == "dngscan-jptc-collect-1":
+        approximation += "; " + variance_source
+    try:
+        coefficients = {label: (1.0 / scale, (read / scale) ** 2 if stored_variance is None
+                                 else stored_variance * (measured_gain / scale) ** 2)
+                        for label, scale in scales.items()}
+    except (OverflowError, ZeroDivisionError):
+        coefficients = {}
+    if not coefficients or any(not math.isfinite(a) or a <= 0 or not math.isfinite(b) or b < 0
+                               for a, b in coefficients.values()):
+        return replace(model, status="unresolved", reason="nonfinite-noise-model-coefficients",
+                       approximation=approximation)
+    return replace(model, status="valid", reason="matched-shot-read-model",
+                   channel_variance=coefficients, approximation=approximation)
 
 
 def _file_model(bundle) -> NoiseModel:

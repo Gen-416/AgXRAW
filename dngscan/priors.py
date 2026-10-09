@@ -197,7 +197,8 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "within_var_raw_log2iso": item.get("within_var_raw_log2iso"),
             "source": f"JPTC collect set ({path.name})",
         }
-        from .calibration import _read_noise_unresolved_isos
+        from .calibration import _read_noise_unresolved_isos, stored_dark_variance_fields
+        entry.update(stored_dark_variance_fields(item))
         entry["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
             item.get("read_noise_unresolved_isos"), entry["read_noise_log2iso_log2e"],
             entry["read_noise_dn_log2iso"])
@@ -256,6 +257,31 @@ def _bulk_entries() -> list[dict[str, Any]]:
     return entries
 
 
+# The bulk table uses marketed Lumix names while Panasonic DNG Model tags
+# omit that label. Keep these identities explicit: stripping arbitrary words
+# or matching a substring can silently turn a first-generation camera into
+# its successor (for example EOS 5D into EOS 5D Mark II).
+_PACKAGED_MODEL_ALIASES = {
+    ("PANASONIC", "LUMIX DC-S1"): "DC-S1",
+    ("PANASONIC", "LUMIX DC-S1R"): "DC-S1R",
+    ("PANASONIC", "LUMIX DC-S5"): "DC-S5",
+}
+
+
+def _packaged_camera_key(make: str, model: str) -> tuple[str, str]:
+    from .calibration import normalise_make, normalise_model
+
+    brand = normalise_make(make)
+    name = normalise_model(make, model)
+    return brand, _PACKAGED_MODEL_ALIASES.get((brand, name), name)
+
+
+def _packaged_entry_matches(entry: dict[str, Any], camera: tuple[str, str]) -> bool:
+    make = str(entry["make_contains"])
+    return any(_packaged_camera_key(make, str(model)) == camera
+               for model in entry["model_equals"])
+
+
 def find_priors(make: str | None, model: str | None,
                 shutter: str | None = None, iso: float | None = None) -> dict[str, Any] | None:
     """Resolve a sensor prior. `shutter` ("mechanical"/"electronic"), when
@@ -263,7 +289,9 @@ def find_priors(make: str | None, model: str | None,
     especially read noise differ materially between readout modes (review
     4.2: a mode-mismatched precise prior is worse than a vague one). The
     returned entry carries `mode_match`: "exact-shutter", "model-only", or
-    "curated" so consumers can degrade confidence on inexact matches."""
+    "curated" so consumers can degrade confidence on inexact readout matches.
+    Camera identity is exact after manufacturer/whitespace normalization and
+    explicit model aliases; an unrecognized generation has no prior."""
     if not make or not model:
         return None
     # Explicitly imported measurements supersede packaged priors only when
@@ -272,17 +300,15 @@ def find_priors(make: str | None, model: str | None,
     user = matching_prior(make, model, shutter=shutter, iso=iso)
     if user is not None:
         return user
-    make_u = make.upper().strip()
-    model_u = model.upper().strip()
+    camera = _packaged_camera_key(make, model)
     # Tier 1: curated entries (hand-checked series, DCG annotations).
     # Tier 2: first-party JPTC measurements. Tier 3: P2P bulk table.
     for entry in PRIOR_TABLE:
-        if str(entry["make_contains"]).upper() in make_u and model_u in entry["model_equals"]:
+        if _packaged_entry_matches(entry, camera):
             entry = dict(entry)
             entry["mode_match"] = "curated"
             return entry
-    tier2 = [e for e in _jptc_entries()
-             if str(e["make_contains"]).upper() in make_u and model_u in e["model_equals"]]
+    tier2 = [e for e in _jptc_entries() if _packaged_entry_matches(e, camera)]
     if tier2:
         if shutter:
             exact = [e for e in tier2 if e.get("shutter") == shutter]
@@ -303,10 +329,9 @@ def find_priors(make: str | None, model: str | None,
         else:
             entry["mode_match"] = "model-only-single-mode"
         return entry
-    make_token = make_u.split()[0] if make_u.split() else make_u
     for entry in _bulk_entries():
-        name_u = str(entry["make_model"]).upper()
-        if make_token in name_u and model_u in name_u:
+        name = str(entry["make_model"]).split(maxsplit=1)
+        if len(name) == 2 and _packaged_camera_key(*name) == camera:
             entry = dict(entry)
             entry["mode_match"] = "bulk-model-only"
             return entry
