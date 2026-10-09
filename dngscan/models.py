@@ -100,15 +100,18 @@ class RawBundle:
     lens_filter: str = "none"
     # Which DNG dark-field correction the LibRaw decode applied (gainmap/vignette/None).
     lens_shading: str | None = None
-    # Scene-space processing loss, independent of immutable sensor clip statistics.
+    # Known scene-space processing loss, independent of immutable sensor clip
+    # statistics. Unknown influence ranges are a separate reliability flag;
+    # they must never masquerade as spatial/channel clipping for retreat.
     processing_clip_masks: Any | None = None
+    scene_loss_support_untrusted: bool = False
     scene_geometry_ops: tuple[Any, ...] = ()
     scene_crop_sensor: tuple[float, float, float, float] | None = None
     # Un-oriented retained window, in native sensor pixels. Independent of
     # the noise-model qualification; survives after RAW buffers are released.
     scene_sensor_window_shape: tuple[float, float] | None = None
     scene_correction_note: str | None = None
-    # LibRaw processing-loss coverage, or the same reference's aggregate on
+    # Known LibRaw processing-loss coverage, or the same reference's aggregate on
     # Core Image. None means correction evidence could not be measured.
     scene_processing_loss_pct: float | None = 0.0
     # Independent LibRaw samples in normalized, scene-linear Rec.2020, mapped

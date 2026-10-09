@@ -292,7 +292,13 @@ def reliable_scene_ev_selection(
         masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
         reliable &= np.max(masks[indices], axis=1) < np.float32(0.10)
 
-    if getattr(bundle, "scene_decoder", "libraw") == "coreimage":
+    # Uncertified propagation withdraws evidence authority; it does not say
+    # that each channel of every pixel clipped. Local masks remain local.
+    if getattr(bundle, "scene_loss_support_untrusted", False):
+        reliable[:] = False
+
+    if (getattr(bundle, "scene_decoder", "libraw") == "coreimage"
+            and not getattr(bundle, "scene_loss_support_untrusted", False)):
         # A percentage has no location: loss in the reference's dark border
         # cannot justify deleting Apple's brightest pixels. Sensor-backed
         # tail measurements use an independent, calibrated reference sample
@@ -365,7 +371,10 @@ def scene_tone_metrics(
         else float("nan")
     )
     source = str(getattr(bundle, "scene_reliability_source", "sensor-spatial"))
-    if getattr(bundle, "scene_decoder", "libraw") == "coreimage":
+    if getattr(bundle, "scene_loss_support_untrusted", False):
+        source = "decoder-support-untrusted"
+    if (getattr(bundle, "scene_decoder", "libraw") == "coreimage"
+            and not getattr(bundle, "scene_loss_support_untrusted", False)):
         reference = getattr(bundle, "scene_reliable_reference_rec2020", None)
         if reference is None:
             source = "decoded-image-estimate"

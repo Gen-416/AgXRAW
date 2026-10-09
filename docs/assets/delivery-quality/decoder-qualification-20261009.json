@@ -1,0 +1,343 @@
+{
+  "schema": "agxraw-decoder-qualification-1",
+  "date": "2026-10-09",
+  "baseline_commit": "c9adb84915a51b226f60e44c7ca7cdc9aea22ee7",
+  "reviewed_report_commit": "f10e6643efcc82454e82b7e880fef1c5e6cc33a2",
+  "runtime": {
+    "python": "3.14.4",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw": [
+      0,
+      22,
+      0
+    ],
+    "native_abi": 20,
+    "preview_cache": 27
+  },
+  "fixed_plan_colour_probe": {
+    "before": [
+      {
+        "case": "dht-wb",
+        "neutral": [
+          0.5,
+          1.0,
+          1.0
+        ],
+        "far_scene_same": true,
+        "far_masks": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ]
+        ],
+        "far_output": [
+          [
+            255,
+            151,
+            186
+          ],
+          [
+            207,
+            177,
+            185
+          ]
+        ],
+        "unchanged_scene_pixels": 16375,
+        "changed_unchanged_pixels": 16375,
+        "support_untrusted": null,
+        "reliable_samples": 0,
+        "evidence_ok": false,
+        "known_loss_pct": 100.0
+      },
+      {
+        "case": "reconstruct-gain",
+        "neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "far_scene_same": true,
+        "far_masks": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            1.0,
+            1.0
+          ]
+        ],
+        "far_output": [
+          [
+            255,
+            185,
+            217
+          ],
+          [
+            226,
+            199,
+            210
+          ]
+        ],
+        "unchanged_scene_pixels": 16375,
+        "changed_unchanged_pixels": 16375,
+        "support_untrusted": null,
+        "reliable_samples": 0,
+        "evidence_ok": false,
+        "known_loss_pct": 100.0
+      }
+    ],
+    "after": [
+      {
+        "case": "dht-wb",
+        "neutral": [
+          0.5,
+          1.0,
+          1.0
+        ],
+        "far_scene_same": true,
+        "far_masks": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "far_output": [
+          [
+            255,
+            151,
+            186
+          ],
+          [
+            255,
+            151,
+            186
+          ]
+        ],
+        "unchanged_scene_pixels": 16375,
+        "changed_unchanged_pixels": 0,
+        "support_untrusted": true,
+        "reliable_samples": 0,
+        "evidence_ok": false,
+        "known_loss_pct": 0.006103515625
+      },
+      {
+        "case": "reconstruct-gain",
+        "neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "far_scene_same": true,
+        "far_masks": [
+          [
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "far_output": [
+          [
+            255,
+            185,
+            217
+          ],
+          [
+            255,
+            185,
+            217
+          ]
+        ],
+        "unchanged_scene_pixels": 16375,
+        "changed_unchanged_pixels": 0,
+        "support_untrusted": true,
+        "reliable_samples": 0,
+        "evidence_ok": false,
+        "known_loss_pct": 0.0
+      }
+    ],
+    "note": "Identical synthetic fixtures, NumPy, actual pinned LibRaw. RAW hard clipping is zero; only the red sensel 2000->3000 changes. Counts describe unmodified decoded pixels, not perceived saturation."
+  },
+  "odd_boundary_probe": [
+    {
+      "half": false,
+      "raw_shape": [
+        125,
+        127
+      ],
+      "scene_shape": [
+        125,
+        127,
+        3
+      ],
+      "sample": [
+        124,
+        125
+      ],
+      "scene_delta": [
+        -6232.2421875,
+        28327.59375,
+        -749.6875
+      ],
+      "clip_mask": [
+        0.0,
+        0.4296875,
+        0.0
+      ],
+      "processing_mask_present": false,
+      "sample_reliable": false,
+      "headroom": [
+        0.755859375,
+        0.0,
+        1.0
+      ],
+      "clip_class": 2,
+      "raw_permission": 0.3999999761581421
+    },
+    {
+      "half": true,
+      "raw_shape": [
+        125,
+        127
+      ],
+      "scene_shape": [
+        63,
+        64,
+        3
+      ],
+      "sample": [
+        62,
+        62
+      ],
+      "scene_delta": [
+        -3116.12109375,
+        14163.79296875,
+        -374.84393310546875
+      ],
+      "clip_mask": [
+        0.0,
+        0.2578125,
+        0.0
+      ],
+      "processing_mask_present": false,
+      "sample_reliable": false,
+      "headroom": [
+        0.755859375,
+        0.0,
+        1.0
+      ],
+      "clip_class": 2,
+      "raw_permission": 0.3999999761581421
+    }
+  ],
+  "controlled_jpeg_regression": {
+    "baseline_commit": "c9adb84915a51b226f60e44c7ca7cdc9aea22ee7",
+    "sample": "_SDI0150.DNG",
+    "invocation": "--decoder libraw --output-format sdr --delivery-profile share-hq; default auto EV; DNGSCAN_FAST=0",
+    "bytes": [
+      9228234,
+      9228234
+    ],
+    "shape": [
+      6000,
+      4000,
+      3
+    ],
+    "pixels_equal": true,
+    "different_channel_values": 0,
+    "sha256": [
+      "4d0c9b20a66094d824e815ce983749ecaa736de65200e3f328287b00f58352af",
+      "4d0c9b20a66094d824e815ce983749ecaa736de65200e3f328287b00f58352af"
+    ]
+  },
+  "actual_hdr_heif": {
+    "has_iso_gainmap": true,
+    "headroom": 1.9228515625,
+    "base_headroom": 1.0,
+    "headroom_source": "iso-derivation",
+    "headroom_status": "declared",
+    "profile": "Display P3",
+    "width": 4000,
+    "height": 6000,
+    "bit_depth": 10,
+    "chroma_subsampling": "4:4:4",
+    "gainmap_width": 4000,
+    "gainmap_height": 6000,
+    "gainmap_pixel_format": "444f",
+    "file_bytes": 36975424,
+    "sample": "_SDI0150.DNG",
+    "invocation": "--decoder libraw --output-format ultrahdr-heic --delivery-profile archive; default auto EV; DNGSCAN_FAST=1; production budgets"
+  },
+  "limits": [
+    "DHT/reconstruction influence support remains uncertified; global qualification still fails closed.",
+    "Known local processing loss percentage excludes uncertainty coverage.",
+    "Fixed HDR plans have separation qualified; automatic headroom additionally requires reliable tail evidence.",
+    "Masks and covariance remain conservative approximations, not exact demosaic covariance.",
+    "One fp delivery regression cannot establish every camera or RAW mode.",
+    "Originals untouched; generated images are temporary, not committed."
+  ],
+  "validation": {
+    "final_native": {
+      "command": "DNGSCAN_FAST=1 python -m unittest discover -s tests -q",
+      "discovered": 1690,
+      "passed": 1687,
+      "skipped": 3,
+      "failures": 0,
+      "errors": 0,
+      "wall_s": 242.977,
+      "actual_backends": [
+        "Rust ABI20",
+        "Core Image/CIRAWFilter",
+        "ImageIO",
+        "libheif/x265",
+        "Apple HEIF10 writer and gain-map readback"
+      ]
+    },
+    "focused_reference": {
+      "environment": "DNGSCAN_FAST=0",
+      "modules": [
+        "test_optional_exact",
+        "test_review_batch21",
+        "test_loss_support_contract",
+        "test_loss_support_render",
+        "test_loss_qualification_handoff",
+        "test_odd_raw_clip_masks",
+        "test_guidance",
+        "test_analysis_cache_geometry_roundtrip",
+        "test_demosaic_loss_support",
+        "test_decoder_loss_edge_variants",
+        "test_noise_scene_ev",
+        "test_spectral_fallback_pipeline"
+      ],
+      "discovered": 77,
+      "passed": 77,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "wall_s": 2.144
+    },
+    "note": "Groups overlap. Skip counts are excluded from passes. Entire final production/test source was frozen before the complete native run."
+  },
+  "temporary_cleanup_mb": 95.09
+}

@@ -269,6 +269,7 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
          if bundle.raw_image is not None else "可见传感器: 不可用（解码场景可用）"),
         f"实际解码: {bundle.scene_decoder} {bundle.scene_decoder_version or ''}；传感器证据: {bundle.evidence_provider}",
         f"HDR 证据来源: {bundle.scene_reliability_source}",
+        f"解码损失传播支撑: {'未认证（限制证据资格，不代表整帧剪切）' if bundle.scene_loss_support_untrusted else '无全局未认证标记'}",
         *([f"解码回退: {bundle.scene_decoder_fallback}"] if bundle.scene_decoder_fallback else []),
         *([f"证据不可用: {bundle.evidence_error}"] if bundle.evidence_error else []),
         *([f"HDR 参考不可用: {bundle.scene_reference_error}"] if bundle.scene_reference_error else []),
@@ -602,6 +603,7 @@ def csv_row(
         "evidence_provider": bundle.evidence_provider,
         "evidence_error": bundle.evidence_error or "",
         "scene_reliability_source": bundle.scene_reliability_source,
+        "scene_loss_support_untrusted": bundle.scene_loss_support_untrusted,
         "scene_reference_error": bundle.scene_reference_error or "",
         "scene_decoder_fallback": bundle.scene_decoder_fallback or "",
         "scene_geometry_corr": (

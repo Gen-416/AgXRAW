@@ -346,6 +346,10 @@ def _prepare_chroma_nr_map(
         bundle.chroma_nr_status = "disabled"
         bundle.chroma_nr_reason = None
         return None
+    if getattr(bundle, "scene_loss_support_untrusted", False):
+        bundle.chroma_nr_status = "skipped"
+        bundle.chroma_nr_reason = "decoder loss propagation support is uncertified"
+        return None
     from .chroma_nr import chroma_correction_map
     from .spatial import area_decimate_rows, spread_grid_shape, spatial_band_rows
     from .noise_propagation import calibrated_chroma_variance
@@ -446,16 +450,15 @@ def scene_render_to_display_linear(
     chunk = 1_000_000
     clip_masks = None
     raw_guidance = None
-    if color_plan is not None and getattr(bundle, "clip_masks", None) is not None:
-        clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
-        if str(getattr(tone_plan, "tone_core", "agx")) == "gated":
-            # Review batch 21 item 5: same evidence as the streaming u8 path
-            # below — without the analysis the gated guidance builds against
-            # metadata white and no sensor-SNR prior, so a linear render that
-            # ran first diverged from the u8 render of the same plan.
-            raw_guidance = guidance_engine.raw_guidance_for_shape(
-                bundle, (h, w), analysis
-            )
+    if color_plan is not None:
+        if getattr(bundle, "clip_masks", None) is not None:
+            clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
+    if str(getattr(tone_plan, "tone_core", "agx")) == "gated":
+        # The guidance contract also applies to a bare ToneCompressionPlan.
+        # Use the same analysis-resolved evidence as the streaming u8 path.
+        raw_guidance = guidance_engine.raw_guidance_for_shape(
+            bundle, (h, w), analysis
+        )
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
     chroma_map = _prepare_chroma_nr_map(
@@ -731,10 +734,11 @@ def render_output_u8(
 
     clip_masks = None
     raw_guidance = None
-    if color_plan is not None and getattr(bundle, "clip_masks", None) is not None:
-        clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
-        if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
-            raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
+    if color_plan is not None:
+        if getattr(bundle, "clip_masks", None) is not None:
+            clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
+    if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
+        raw_guidance = guidance_engine.raw_guidance_for_shape(bundle, (h, w), analysis)
 
     wb_adapt = scene_transform_engine.window_transport(bundle)
     chroma_map = _prepare_chroma_nr_map(

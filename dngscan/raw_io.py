@@ -1204,7 +1204,7 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
             _apply_gain_maps_mosaic(raw, [op], working_black,
                                    65535 if calibration_kwargs else evidence.white_level,
                                    working_white, loss)
-    from .decoder_loss import record_wb_ceiling_loss, propagate_mosaic_loss
+    from .decoder_loss import record_wb_ceiling_loss, propagate_mosaic_loss, support_is_untrusted
     if track_loss or allow_loss_fallback:
         loss = record_wb_ceiling_loss(
             raw, working_black, 65535. if calibration_kwargs else float(raw.white_level),
@@ -1238,11 +1238,13 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         half_size=half_size and not reduce_after_ops, demosaic=demosaic, highlight=highlight,
         is_bayer=np.asarray(evidence.raw_pattern).shape == (2, 2),
         pixel_aspect=float(raw.sizes.pixel_aspect))
+    recipe.loss_support_untrusted = support_is_untrusted(recipe.loss_support)
     del loss
     if track_loss:
         # Capture the decoder's uint16 boundary before extended float lens
         # operations or camera-colour mixing erase its provenance. Existing
-        # masks and this evidence then share every warp/crop/orientation.
+        # known local masks and this evidence share every warp/crop/orientation.
+        # Unknown support is recorded separately and never merged as RGB ones.
         processing = _merge_decoder_ceiling_loss(scene, processing)
     # LibRaw has already applied DefaultScale (pixel_aspect) before returning
     # this buffer. The remaining pixel aspect is one; applying the DNG aspect
@@ -1421,10 +1423,22 @@ def _smoothstep(edge0: float, edge1: float, x: Any) -> Any:
     return t * t * (np.float32(3.0) - np.float32(2.0) * t)
 
 
-def _bin_2x2_max(mask: Any) -> Any:
+def _bin_2x2_max(mask: Any, *, include_partial: bool = False) -> Any:
+    """Pool real samples, optionally keeping incomplete boundary cells.
+
+    Actual box-reduced scene images discard incomplete cells, so their loss
+    companion keeps the default floor shape. Sensor evidence must explicitly
+    retain partial cells: LibRaw's Bayer half-size path can keep those sensels.
+    """
     h, w = mask.shape[:2]
-    h2 = max(1, h // 2)
-    w2 = max(1, w // 2)
+    if include_partial:
+        out = mask[::2, ::2].copy()
+        for row, col in ((0, 1), (1, 0), (1, 1)):
+            plane = mask[row::2, col::2]
+            target = out[:plane.shape[0], :plane.shape[1]]
+            np.maximum(target, plane, out=target)
+        return out
+    h2, w2 = h // 2, w // 2
     cropped = mask[: h2 * 2, : w2 * 2]
     return cropped.reshape(h2, 2, w2, 2, mask.shape[2]).max(axis=(1, 3))
 
@@ -1558,8 +1572,8 @@ def _build_bayer_clip_mask_planes(
     pattern = np.asarray(raw_pattern)
     if pattern.shape != (2, 2):
         return None
-    h2 = raw_image.shape[0] // 2
-    w2 = raw_image.shape[1] // 2
+    h2 = (raw_image.shape[0] + 1) // 2
+    w2 = (raw_image.shape[1] + 1) // 2
     if h2 == 0 or w2 == 0:
         return None
     binned = np.zeros((h2, w2, 3), dtype=np.float32)
@@ -1578,14 +1592,48 @@ def _build_bayer_clip_mask_planes(
             black = channel_black_level(black_levels, cid)
             fullwell = channel_fullwell(white_level, camera_white_levels, cid)
             denom = max(fullwell - black, 1.0)
-            plane = raw_image[
-                row : row + h2 * 2 : 2,
-                col : col + w2 * 2 : 2,
-            ].astype(np.float32, copy=False)
+            plane = raw_image[row::2, col::2].astype(np.float32, copy=False)
             raw_norm = (plane - np.float32(black)) / np.float32(denom)
             channel_soft = _smoothstep(0.95, 0.99, raw_norm)
-            np.maximum(binned[:, :, out_idx], channel_soft, out=binned[:, :, out_idx])
+            target = binned[:plane.shape[0], :plane.shape[1], out_idx]
+            np.maximum(target, channel_soft, out=target)
     return binned
+
+
+def _align_sensor_cell_loss(
+    binned: Any,
+    sensor_shape: tuple[int, ...],
+    scene_shape: tuple[int, int],
+    orientation_flip: int,
+    geometry_ops: tuple = (),
+    crop_sensor: tuple | None = None,
+    period: tuple[int, int] = (2, 2),
+) -> Any:
+    """Register CFA-cell loss using each partial cell's actual sensor extent.
+
+    A ceil-sized cell grid must not be uniformly stretched across an odd
+    sensor: its final cell can span fewer sensels than its neighbours. Expand
+    integer cell ownership before geometry when necessary. An unchanged
+    cell-resolution scene already has that registration and needs no extra
+    sensor-sized allocation. Complete-period grids retain their original path.
+    """
+    h, w = sensor_shape[:2]
+    ph, pw = period
+    if ph < 1 or pw < 1:
+        raise ValueError("sensor cell period must be positive")
+    unoriented_scene = scene_shape[::-1] if orientation_flip & 4 else scene_shape
+    full_crop = crop_sensor is None or tuple(crop_sensor) == (0., 0., float(h), float(w))
+    if ((h % ph or w % pw)
+            and (geometry_ops or not full_crop or tuple(unoriented_scene) != binned.shape[:2])):
+        sensor_grid = np.empty((h, w, binned.shape[2]), dtype=binned.dtype)
+        cols = np.arange(w) // pw
+        for y in range(0, h, 128):
+            end = min(y + 128, h)
+            sensor_grid[y:end] = binned[(np.arange(y, end) // ph)[:, None], cols[None, :]]
+        binned = sensor_grid
+    from .dng_opcodes import align_sensor_loss
+    return align_sensor_loss(binned, sensor_shape, scene_shape,
+                             orientation_flip, geometry_ops, crop_sensor)
 
 
 def build_clip_masks(
@@ -1614,7 +1662,7 @@ def build_clip_masks(
             white = channel_fullwell(white_level, camera_white_levels, c)
             soft[..., c] = _smoothstep(.95, .99,
                 (raw_image[..., c].astype(np.float32) - black) / max(white - black, 1.0))
-        binned = _bin_2x2_max(soft)
+        binned = _bin_2x2_max(soft, include_partial=True)
     else:
         binned = _build_bayer_clip_mask_planes(
         raw_image,
@@ -1646,10 +1694,9 @@ def build_clip_masks(
             soft[:, :, out_idx] = np.maximum(
                 soft[:, :, out_idx], np.where(raw_colors == cid_int, channel_soft, 0.0)
             )
-        binned = _bin_2x2_max(soft)
-    from .dng_opcodes import align_sensor_loss
-    oriented = align_sensor_loss(binned, raw_image.shape, scene_shape,
-                                 orientation_flip, geometry_ops, crop_sensor)
+        binned = _bin_2x2_max(soft, include_partial=True)
+    oriented = _align_sensor_cell_loss(binned, raw_image.shape, scene_shape,
+                                       orientation_flip, geometry_ops, crop_sensor)
     aligned = _resize_mask_to_shape(oriented, scene_shape)
     return _feather_masks_f16(aligned)
 
@@ -1854,6 +1901,7 @@ def load_raw(
     lens_shading: str | None = None
     noise_decode = {"supported": False, "reason": "opaque-decoder-noise-transfer"}
     processing_clip_masks = None
+    scene_loss_support_untrusted = False
     scene_geometry_ops = ()
     scene_crop_sensor = None
     scene_sensor_window_shape = None
@@ -1977,6 +2025,10 @@ def load_raw(
                 )
                 noise_decode["demosaic_algorithm"] = recipe.demosaic_algorithm
                 noise_decode["loss_support"] = recipe.loss_support
+                scene_loss_support_untrusted = recipe.loss_support_untrusted
+                noise_decode["loss_support_untrusted"] = scene_loss_support_untrusted
+                if scene_loss_support_untrusted:
+                    reliability_source = "decoder-support-untrusted"
                 from .dng_opcodes import Warp
                 scene_geometry_ops = tuple(op for op in recipe.post if isinstance(op, Warp))
                 scene_crop_sensor = recipe.crop
@@ -1987,7 +2039,7 @@ def load_raw(
                 notes = []
                 if getattr(recipe, "demosaic_note", None):
                     notes.append(recipe.demosaic_note)
-                if recipe.loss_support and recipe.loss_support.startswith("global-conservative"):
+                if scene_loss_support_untrusted:
                     notes.append("前级损失支撑未完成局部标定，使用整帧保守置信度: " + recipe.loss_support)
                 if recipe.skipped:
                     notes.append("跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped))
@@ -2298,6 +2350,7 @@ def load_raw(
         lens_shading=lens_shading,
         noise_decode=noise_decode,
         processing_clip_masks=processing_clip_masks,
+        scene_loss_support_untrusted=scene_loss_support_untrusted,
         scene_geometry_ops=scene_geometry_ops,
         scene_crop_sensor=scene_crop_sensor,
         scene_sensor_window_shape=scene_sensor_window_shape,

@@ -123,25 +123,25 @@ def corrected_plane(bundle,yoff,xoff,ph,pw):
 
 def clip_mask(raw,colors,desc,black_levels,white_levels,model):
     """Per-position headroom in sensor coordinates, bounded to 128-row bands."""
-    from .raw_io import _smoothstep
+    from .raw_io import _smoothstep, _bin_2x2_max
     h,w=raw.shape[:2]
-    out=np.zeros((max(1,h//2),max(1,w//2),3),dtype=np.float32)
-    for y in range(0,h//2*2,128):
-        end=min(y+128,h//2*2)
-        soft=np.zeros((end-y,w//2*2,3),dtype=np.float32)
+    out=np.zeros(((h+1)//2,(w+1)//2,3),dtype=np.float32)
+    for y in range(0,h,128):
+        end=min(y+128,h)
+        soft=np.zeros((end-y,w,3),dtype=np.float32)
         if raw.ndim==3:
             for c in range(3):
-                black=model.band(y,end,w,c)[:,:w//2*2]
+                black=model.band(y,end,w,c)
                 white=white_levels[min(c,len(white_levels)-1)]
-                soft[...,c]=_smoothstep(.95,.99,(raw[y:end,:w//2*2,c]-black)/np.maximum(white-black,1.))
+                soft[...,c]=_smoothstep(.95,.99,(raw[y:end,:,c]-black)/np.maximum(white-black,1.))
         else:
-            black=model.band(y,end,w)[:,:w//2*2]
+            black=model.band(y,end,w)
             for cid in np.unique(colors):
                 label=desc[int(cid):int(cid)+1]
                 if label not in ('R','G','B'):continue
                 white=white_levels[min(int(cid),len(white_levels)-1)]
-                proximity=_smoothstep(.95,.99,(raw[y:end,:w//2*2]-black)/np.maximum(white-black,1.))
-                plane=np.where(colors[y:end,:w//2*2]==cid,proximity,0.)
+                proximity=_smoothstep(.95,.99,(raw[y:end]-black)/np.maximum(white-black,1.))
+                plane=np.where(colors[y:end]==cid,proximity,0.)
                 np.maximum(soft[..., 'RGB'.index(label)],plane,out=soft[..., 'RGB'.index(label)])
-        out[y//2:end//2]=soft.reshape((end-y)//2,2,w//2,2,3).max(axis=(1,3))
+        out[y//2:(end+1)//2]=_bin_2x2_max(soft,include_partial=True)
     return out

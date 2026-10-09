@@ -380,7 +380,7 @@ def compile_hdr_agx_plan(
         if analysis is not None
         else 0.0
     )
-    if reliability_source == "decoded-image-estimate":
+    if reliability_source in ("decoded-image-estimate", "decoder-support-untrusted"):
         rho = 0.0
     color = HdrColorGeometry(
         channel_separation=rho,

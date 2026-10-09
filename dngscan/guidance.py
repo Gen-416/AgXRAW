@@ -7,6 +7,7 @@ appearance; output gamut controls final constraint. These weights are not style 
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any
 
 from ._deps import np
@@ -182,19 +183,16 @@ def sector_hue_multiplier(scene_rgb_rec2020: Any, scene_ev: Any) -> Any:
 
 def _bin_period_min(arr: Any, ph: int, pw: int) -> Any:
     h, w = arr.shape[:2]
-    h2 = max(1, h // ph)
-    w2 = max(1, w // pw)
-    cropped = arr[: h2 * ph, : w2 * pw]
-    if h >= ph and w >= pw:
-        # A whole-array reduction over two interleaved axes is expensive.
-        # Visit cells in the same row-major order with contiguous RGB vectors.
-        result = cropped[::ph, ::pw].copy()
-        for dy in range(ph):
-            for dx in range(pw):
-                if dy or dx:
-                    np.minimum(result, cropped[dy::ph, dx::pw], out=result)
-        return result
-    return cropped.reshape(h2, ph, w2, pw, arr.shape[2]).min(axis=(1, 3))
+    # Partial cells contain real boundary sensels too. Absent colour samples
+    # keep their neutral capacity; they must not become fabricated RGB clipping.
+    result = arr[::ph, ::pw].copy()
+    for dy in range(min(ph, h)):
+        for dx in range(min(pw, w)):
+            if dy or dx:
+                plane = arr[dy::ph, dx::pw]
+                target = result[:plane.shape[0], :plane.shape[1]]
+                np.minimum(target, plane, out=target)
+    return result
 
 
 def _cfa_bin_period(bundle: RawBundle) -> tuple[int, int]:
@@ -227,6 +225,18 @@ def _align_cfa_rgb_map(bundle: RawBundle, values: Any, target_shape: tuple[int, 
 def _align_binned_cfa_rgb_map(bundle: RawBundle, binned: Any, target_shape: tuple[int, int]) -> Any:
     from . import raw_io
     from .dng_opcodes import align_loss
+    ph, pw = _cfa_bin_period(bundle)
+    h, w = bundle.raw_image.shape[:2]
+    if h % ph or w % pw:
+        # Partial cells have their actual sensor extent, rather than a
+        # uniformly stretched ceil-sized grid. Share clipping's registration.
+        loss = raw_io._align_sensor_cell_loss(
+            1.0 - binned, bundle.raw_image.shape, bundle.scene_rec2020_render.shape[:2],
+            bundle.orientation_flip, getattr(bundle, "scene_geometry_ops", ()),
+            getattr(bundle, "scene_crop_sensor", None), period=(ph, pw),
+        )
+        return (1.0 - raw_io._resize_loss_to_shape(loss, target_shape)).astype(
+            np.float32, copy=False)
     # Capacity/confidence takes the minimum over the same camera-plane
     # footprint used to form the corrected scene. Work in complementary loss.
     if getattr(bundle, "scene_geometry_ops", ()) or getattr(bundle, "scene_crop_sensor", None):
@@ -252,7 +262,7 @@ def _binned_raw_evidence(bundle: RawBundle, analysis: Analysis | None, *, snr: b
             or getattr(getattr(bundle, "evidence", None), "spatial_black", None) is not None):
         return None
     h, w = raw.shape
-    bh, bw = h // ph, w // pw
+    bh, bw = (h + ph - 1) // ph, (w + pw - 1) // pw
     result = np.empty((bh, bw, 3), np.float32)
     resolved = dict(getattr(analysis, "channel_fullwell", None) or {})
     specs = []
@@ -277,8 +287,8 @@ def _binned_raw_evidence(bundle: RawBundle, analysis: Analysis | None, *, snr: b
     rows_per_band = max(1, 128 // ph)
     for start in range(0, bh, rows_per_band):
         end = min(start + rows_per_band, bh)
-        values = np.asarray(raw[start * ph:end * ph, :bw * pw], dtype=np.float32)
-        labels = colors[start * ph:end * ph, :bw * pw]
+        values = np.asarray(raw[start * ph:end * ph, :], dtype=np.float32)
+        labels = colors[start * ph:end * ph, :]
         evidence = np.ones(values.shape + (3,), dtype=np.float32)
         for cid, out_idx, spec in specs:
             if snr:
@@ -437,7 +447,7 @@ def build_raw_guidance_maps(
     if getattr(bundle, "raw_image", None) is None:
         # R4 F2: a cache-proxy bundle has no mosaic to measure; whatever maps
         # it carries were built from the full mosaic at entry-build time.
-        return getattr(bundle, "raw_guidance", None)
+        return qualify_decoder_support(bundle, getattr(bundle, "raw_guidance", None))
     target_shape = np.asarray(masks).shape[:2]
     headroom = _raw_headroom_rgb(bundle, target_shape, analysis)
     processing = getattr(bundle, "processing_clip_masks", None)
@@ -452,12 +462,38 @@ def build_raw_guidance_maps(
         headroom_rgb=stored_headroom.reshape(-1, 3),
         clip_class=stored_class.reshape(-1),
     ).reshape(target_shape)
-    return RawGuidanceMaps(
+    return qualify_decoder_support(bundle, RawGuidanceMaps(
         headroom=stored_headroom,
         clip_class=stored_class,
         snr_confidence=snr.astype(np.float16, copy=False) if snr is not None else None,
         raw_permission=permission,
-    )
+    ))
+
+
+def qualify_decoder_support(
+    bundle: RawBundle, maps: RawGuidanceMaps | None,
+    shape: tuple[int, ...] | None = None,
+) -> RawGuidanceMaps | None:
+    """Withdraw scene-driven colour permission without inventing RAW clipping.
+
+    Unknown decoder support is a global qualification, not a measurement that
+    every channel clipped. Keep measured headroom and RAW-loss permission; only
+    close the non-RAW permission path. Broadcast constants need no image buffer.
+    """
+    if not getattr(bundle, "scene_loss_support_untrusted", False):
+        return maps
+    if maps is None:
+        if shape is None:
+            return None
+        maps = RawGuidanceMaps(
+            headroom=np.broadcast_to(np.float16(1), shape + (3,)),
+            clip_class=np.broadcast_to(np.uint8(0), shape),
+            snr_confidence=None,
+            raw_permission=np.broadcast_to(np.float32(0), shape),
+        )
+    return replace(maps, snr_confidence=np.broadcast_to(
+        np.float16(0), maps.headroom.shape[:-1],
+    ))
 
 
 def ensure_raw_guidance(bundle: RawBundle, analysis: Analysis | None = None) -> RawGuidanceMaps | None:
@@ -482,6 +518,7 @@ def ensure_raw_guidance(bundle: RawBundle, analysis: Analysis | None = None) -> 
         not wants_resolved_fullwell
         or getattr(bundle, "_raw_guidance_has_resolved_fullwell", False)
     ):
+        bundle.raw_guidance = qualify_decoder_support(bundle, bundle.raw_guidance)
         return bundle.raw_guidance
     maps = build_raw_guidance_maps(bundle, analysis)
     bundle.raw_guidance = maps
@@ -524,13 +561,13 @@ def raw_guidance_for_shape(
     """Resize immutable RAW evidence once per output geometry."""
     maps = ensure_raw_guidance(bundle, analysis)
     if maps is None:
-        return None
+        return qualify_decoder_support(bundle, None, shape)
     if maps.headroom.shape[:2] == shape:
         return maps
     if getattr(bundle, "_raw_guidance_cache_shape", None) == shape:
         cached = getattr(bundle, "_raw_guidance_resized", None)
         if cached is not None:
-            return cached
+            return qualify_decoder_support(bundle, cached)
     from .retreat import resize_clip_masks
 
     crop = getattr(bundle, "scene_geometry_crop", None)
@@ -549,11 +586,12 @@ def raw_guidance_for_shape(
             resize_clip_masks(maps.snr_confidence[:, :, None], shape, crop=crop)[:, :, 0].astype(
                 np.float16, copy=False
             )
-            if maps.snr_confidence is not None
+            if maps.snr_confidence is not None and not getattr(bundle, "scene_loss_support_untrusted", False)
             else None
         ),
         raw_permission=resized_permission,
     )
+    resized = qualify_decoder_support(bundle, resized)
     bundle._raw_guidance_cache_shape = shape
     bundle._raw_guidance_resized = resized
     return resized

@@ -52,7 +52,8 @@ from .scheduler import shared_flight_wait
 # pre-demosaic losses, and place noise evidence in the fixed decoded scene EV.
 # Window geometry also uses JSON-stable metadata for exact analysis reuse.
 # v26: independently acquired capture readout and per-file calibration constraints.
-PREVIEW_CACHE_VERSION = 26
+# v27: uncertified decoder support is separate from local clipping evidence.
+PREVIEW_CACHE_VERSION = 27
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -495,6 +496,7 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "lens_shading": bundle.lens_shading,
         "scene_correction_note": bundle.scene_correction_note,
         "scene_processing_loss_pct": bundle.scene_processing_loss_pct,
+        "scene_loss_support_untrusted": bool(getattr(bundle, "scene_loss_support_untrusted", False)),
         "scene_reliable_reference_pct": bundle.scene_reliable_reference_pct,
         "scene_reliability_source": bundle.scene_reliability_source,
         "scene_reference_error": bundle.scene_reference_error,
@@ -601,6 +603,7 @@ def _bundle_from_cache(
         lens_shading=metadata.get("lens_shading"),
         scene_correction_note=metadata.get("scene_correction_note"),
         scene_processing_loss_pct=metadata.get("scene_processing_loss_pct", 0.0),
+        scene_loss_support_untrusted=bool(metadata.get("scene_loss_support_untrusted", False)),
         scene_reliable_reference_rec2020=reliable_reference,
         scene_reliable_reference_pct=metadata.get("scene_reliable_reference_pct"),
         scene_reliability_source=metadata.get("scene_reliability_source", "sensor-spatial"),

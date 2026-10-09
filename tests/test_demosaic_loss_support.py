@@ -250,7 +250,13 @@ class ProductionLossSupportTests(unittest.TestCase):
                 self.assertEqual(explicit.noise_decode["demosaic_algorithm"], "DHT")
                 self.assertIn("global-conservative", explicit.noise_decode["loss_support"])
                 self.assertIn("整帧保守", explicit.scene_correction_note)
-                self.assertTrue(np.all(explicit.processing_clip_masks == 1))
+                self.assertTrue(explicit.scene_loss_support_untrusted)
+                self.assertEqual(explicit.scene_reliability_source, "decoder-support-untrusted")
+                # Uncertified propagation denies reliability through the flag,
+                # never by claiming every colour is clipped everywhere.
+                np.testing.assert_array_equal(explicit.clip_masks[16, 16], 0)
+                if explicit.processing_clip_masks is not None:
+                    np.testing.assert_array_equal(explicit.processing_clip_masks[16, 16], 0)
                 with rawpy.imread(str(path)) as raw:
                     camera = raw_io.render_to_scene_rec2020(raw, "clip", False, dht,
                         raw_io._fixed_asshot_wb_kwargs(raw.camera_whitebalance), camera_rgb=True)

@@ -158,6 +158,9 @@ def calibrated_chroma_variance(bundle, model, scene_dec, *, return_validity=Fals
     model. Unknown spatial gains, warps and unrecorded decoder transforms
     fail closed. Returns ``(projected_variance, reason)``.
     """
+    if (getattr(bundle, "scene_loss_support_untrusted", False)
+            or (getattr(bundle, "noise_decode", None) or {}).get("loss_support_untrusted", False)):
+        return None, "decoder loss propagation support is uncertified"
     if model is None or getattr(model, "status", None) != "valid":
         return None, "independent noise calibration unavailable"
     if getattr(model, "domain", None) != "normalized-raw":

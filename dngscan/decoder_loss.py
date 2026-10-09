@@ -14,6 +14,15 @@ from typing import Any
 from ._deps import np
 
 
+def support_is_untrusted(reason: Any | None) -> bool:
+    """Whether a loss event has an uncertified spatial influence range.
+
+    This is a qualification of the frame's evidence, not a measured mask of
+    clipped colours. Keep it separate from spatial masks used for retreat.
+    """
+    return str(reason or "").startswith("global-conservative:")
+
+
 def record_wb_ceiling_loss(raw: Any, black_levels: Any, white_level: float,
                            camera_wb: Any, highlight: str,
                            loss: Any | None = None, *, colors: Any | None = None) -> Any | None:
@@ -139,14 +148,17 @@ def propagate_mosaic_loss(loss: Any | None, colors: Any, color_desc: str,
                            shape: tuple[int, int], *, half_size: bool,
                            demosaic: Any, highlight: str,
                            is_bayer: bool, pixel_aspect: float = 1.) -> tuple[Any | None, str | None]:
-    """Return float16 RGB permission evidence and its explicit support policy.
+    """Return known float16 RGB loss coverage and its explicit support policy.
 
     Full-resolution DHT includes an in-place hot-pixel pass and frame-wide
     extrema clamps.  Its complete loss support has no audited local bound in
     this adapter.  Until decoder-side evidence is exposed, an actual
     pre-demosaic loss makes that frame's support uncertified.  Other unaudited
     interpolation/recovery paths use the same conservative policy; image
-    formation and RAW saturation statistics are unaffected.
+    formation and RAW saturation statistics are unaffected. Uncertified
+    support returns no spatial mask and a global-conservative reason: callers
+    must deny reliability independently, never treat it as three clipped
+    colours at every pixel.
 
     Bayer half-size clip bypasses demosaic and has an audited 2x2 footprint.
     AHD's source support is bounded by five native pixels: green radius 2,
@@ -158,7 +170,7 @@ def propagate_mosaic_loss(loss: Any | None, colors: Any, color_desc: str,
     source = np.asarray(loss)
     algorithm = str(getattr(demosaic, "name", demosaic) or "default").upper()
     if highlight == "reconstruct":
-        return (np.ones((*shape, 3), dtype=np.float16),
+        return (None,
                 "global-conservative: pre-demosaic loss with spatial highlight reconstruction")
     if source.ndim == 3:
         mask = (source[..., :3] != 0).astype(np.uint8)
@@ -171,7 +183,7 @@ def propagate_mosaic_loss(loss: Any | None, colors: Any, color_desc: str,
         mask = np.broadcast_to(spatial[..., None], (*spatial.shape, 3))
         reason = "bayer-AHD: conservative radius-5 source support; maximum DefaultScale support"
     else:
-        return (np.ones((*shape, 3), dtype=np.float16),
+        return (None,
                 f"global-conservative: pre-demosaic loss with uninstrumented {algorithm} support")
     if highlight == "blend":
         joined = np.max(mask, axis=2)
