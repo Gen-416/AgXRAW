@@ -45,16 +45,13 @@ def _labels(bundle, ids):
 def _prior_signal_scales(bundle, fullwell, prior, iso):
     """Validate the file's DN/readout scale independently of read-noise fit."""
     from . import priors
+    from .raw_units import normalized_raw_span
 
     ids = sorted(fullwell)
     labels = _labels(bundle, ids)
     scales = {}
     for cid in ids:
-        black = float(bundle.black_levels[cid]) if cid < len(bundle.black_levels) else 0.0
-        white = (bundle.camera_white_levels[cid]
-                 if cid < len(bundle.camera_white_levels) and bundle.camera_white_levels[cid] > 0
-                 else bundle.white_level)
-        span = float(white) - black
+        span = normalized_raw_span(bundle, cid)
         if not math.isfinite(span) or span <= 0:
             return None
         gain = priors.gain_for_file(prior, iso, span)

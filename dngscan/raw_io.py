@@ -476,10 +476,12 @@ def _libraw_noise_decode(raw, evidence, recipe, highlight, scale, half_size):
         positive = wb[np.isfinite(wb) & (wb > 0)]
         denominator = positive.min() if highlight == "clip" else positive.max()
         black = np.asarray(evidence.black_levels, dtype=np.float64)
-        global_span = float(evidence.white_level) - float(np.max(black))
-        levels = list(recipe.white_levels) or evidence.camera_white_levels or [evidence.white_level]
-        levels = (levels * 4)[:4]
-        spans = np.asarray(levels[:3], dtype=np.float64) - black[:3]
+        # adjust_bl moves the minimum channel pedestal into LibRaw's common
+        # black before scale_colors subtracts it from maximum. This decoder
+        # slope is distinct from each plane's normalized-RAW coding span.
+        global_span = float(evidence.white_level) - float(np.min(black))
+        from .raw_units import normalized_raw_span
+        spans = np.asarray([normalized_raw_span(evidence, cid) for cid in range(3)], dtype=np.float64)
         if global_span <= 0 or np.any(spans <= 0) or scale <= 0:
             raise ValueError("invalid-linear-range")
         transfer = matrix.astype(np.float64) @ np.diag(
@@ -1081,24 +1083,6 @@ def channel_label(color_desc: str, cid: int) -> str:
     return str(cid)
 
 
-def _mosaic_loss_rgb(loss: Any, colors: Any, color_desc: str) -> Any:
-    """Conservative 2x2 reduction of a one-byte per-sensel processing log."""
-    if loss.ndim == 3:
-        return loss[..., :3].astype(np.float16)
-    h, w = loss.shape
-    out = np.zeros(((h + 1)//2, (w + 1)//2, 3), dtype=np.float16)
-    for r in range(2):
-        for c in range(2):
-            plane = loss[r::2, c::2]
-            ids = colors[r::2, c::2]
-            for cid in np.unique(ids):
-                label = channel_label(color_desc, int(cid))[:1]
-                if label in "RGB":
-                    dest = out[:plane.shape[0], :plane.shape[1], "RGB".index(label)]
-                    np.maximum(dest, (plane != 0) & (ids == cid), out=dest)
-    return out
-
-
 def _resize_loss_to_shape(mask: Any, shape: tuple[int, int]) -> Any:
     """Nearest expansion keeps a recorded clipping event at full strength."""
     if mask.shape[:2] == shape:
@@ -1132,7 +1116,8 @@ def _merge_decoder_ceiling_loss(camera_rgb: Any, processing: Any | None) -> Any 
 
 
 def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str,
-                             half_size: bool, demosaic: Any, *, track_loss: bool = True):
+                             half_size: bool, demosaic: Any, *, track_loss: bool = True,
+                             allow_loss_fallback: bool = False):
     """One production recipe, also used by the Core Image scale reference.
 
     Lens corrections run on LibRaw's reconstructed camera-linear output. For
@@ -1148,7 +1133,8 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     if lens is not None:
         recipe.post.extend((lens.vignette,lens.warp))
         recipe.names.extend((lens.source+" shading",lens.source+" distortion/TCA"))
-    loss = np.zeros(evidence.raw_image.shape, dtype=np.uint8) if track_loss and (recipe.stage1 or recipe.stage2 or evidence.spatial_black is not None) else None
+    source_loss_needed = track_loss or allow_loss_fallback
+    loss = np.zeros(evidence.raw_image.shape, dtype=np.uint8) if source_loss_needed and (recipe.stage1 or recipe.stage2 or evidence.spatial_black is not None) else None
     from . import dng_point_ops
     extended_linear = highlight != "clip"
     if extended_linear and any(isinstance(op, dng_point_ops.PointOp) for op in recipe.post):
@@ -1175,7 +1161,7 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
                 if np.any(index>=table.size) or not np.array_equal(table[index],band):
                     raise ValueError("cannot recover DNG stage-1 codes from LinearizationTable")
                 band[:]=index
-        full_loss=np.zeros(image.shape,dtype=np.uint8) if track_loss else None
+        full_loss=np.zeros(image.shape,dtype=np.uint8) if source_loss_needed else None
         for op in recipe.stage1:
             if isinstance(op,dng_point_ops.BadPixels):
                 dng_point_ops.repair_bad_pixels(raw,op,loss)
@@ -1218,8 +1204,27 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
             _apply_gain_maps_mosaic(raw, [op], working_black,
                                    65535 if calibration_kwargs else evidence.white_level,
                                    working_white, loss)
-    processing = _mosaic_loss_rgb(loss, evidence.raw_colors, evidence.color_desc) if loss is not None else None
-    del loss
+    from .decoder_loss import record_wb_ceiling_loss, propagate_mosaic_loss
+    if track_loss or allow_loss_fallback:
+        loss = record_wb_ceiling_loss(
+            raw, working_black, 65535. if calibration_kwargs else float(raw.white_level),
+            evidence.camera_wb, highlight, loss, colors=evidence.raw_colors)
+    # Auto selection must account for evidence propagation as well as detail.
+    # DHT's in-place hot-pixel pass has no audited local support bound.
+    # Prefer audited AHD after an actual pre-demosaic loss; explicit algorithm
+    # requests are retained and receive conservative support qualification.
+    if (allow_loss_fallback and highlight == "clip" and not (half_size and not reduce_after_ops)
+            and np.asarray(evidence.raw_pattern).shape == (2, 2)
+            and loss is not None and np.any(loss)):
+        ahd = getattr(rawpy.DemosaicAlgorithm, "AHD", None)
+        if ahd is not None and getattr(ahd, "isSupported", False) and demosaic != ahd:
+            recipe.demosaic_note = "自动解拜耳使用 AHD：前级截断需要已验证的局部支撑范围"
+            demosaic = ahd
+    recipe.demosaic_algorithm = ("linear-planes" if evidence.raw_image.ndim == 3 else
+                                 "half-size" if half_size and not reduce_after_ops else
+                                 str(getattr(demosaic, "name", demosaic) or "default"))
+    if not track_loss:
+        loss = None
     # Colour mixing follows camera-plane corrections. LibRaw already owns the
     # fixed as-shot preconditioning, demosaic and highlight reconstruction.
     camera_rgb = True
@@ -1228,10 +1233,12 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
                                    calibration_kwargs=calibration_kwargs)
     if scene.ndim != 3 or scene.shape[2] != 3:
         raise ValueError("DNG corrections require three camera colour planes")
-    if processing is not None:
-        # DefaultScale and half-size affect the *input* geometry of every
-        # subsequent warp, so transport the raster before resampling it.
-        processing = _resize_loss_to_shape(processing, scene.shape[:2])
+    processing, recipe.loss_support = propagate_mosaic_loss(
+        loss, evidence.raw_colors, evidence.color_desc, scene.shape[:2],
+        half_size=half_size and not reduce_after_ops, demosaic=demosaic, highlight=highlight,
+        is_bayer=np.asarray(evidence.raw_pattern).shape == (2, 2),
+        pixel_aspect=float(raw.sizes.pixel_aspect))
+    del loss
     if track_loss:
         # Capture the decoder's uint16 boundary before extended float lens
         # operations or camera-colour mixing erase its provenance. Existing
@@ -1954,12 +1961,15 @@ def load_raw(
                 demosaic_alg = resolve_demosaic_algorithm(raw, demosaic)
                 scene_rec2020_render, processing_clip_masks, recipe, lens_shading = _decode_corrected_libraw(
                     raw, path, evidence, effective_highlight_mode, scene_half_size, demosaic_alg,
+                    allow_loss_fallback=demosaic == "auto",
                 )
                 noise_decode = _libraw_noise_decode(
                     raw, evidence, recipe, effective_highlight_mode,
                     libraw_scene_scale(65535., effective_highlight_mode, camera_wb,
                                        baseline_exposure=shot.baseline_exposure), scene_half_size,
                 )
+                noise_decode["demosaic_algorithm"] = recipe.demosaic_algorithm
+                noise_decode["loss_support"] = recipe.loss_support
                 from .dng_opcodes import Warp
                 scene_geometry_ops = tuple(op for op in recipe.post if isinstance(op, Warp))
                 scene_crop_sensor = recipe.crop
@@ -1967,8 +1977,14 @@ def load_raw(
                 scene_sensor_window_shape = sensor_window_from_recipe(
                     recipe, scene_rec2020_render.shape[:2], orientation_flip)
                 scene_opcode_names = tuple(recipe.names)
+                notes = []
+                if getattr(recipe, "demosaic_note", None):
+                    notes.append(recipe.demosaic_note)
+                if recipe.loss_support and recipe.loss_support.startswith("global-conservative"):
+                    notes.append("前级损失支撑未完成局部标定，使用整帧保守置信度: " + recipe.loss_support)
                 if recipe.skipped:
-                    scene_correction_note = "跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped)
+                    notes.append("跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped))
+                scene_correction_note = "; ".join(notes) or None
         except Exception as exc:
             raise RuntimeError(
                 f"Cannot decode RAW scene with rawpy/libraw: {exc}"
@@ -2209,6 +2225,8 @@ def load_raw(
         color_desc=color_desc,
         raw_pattern=raw_pattern,
         camera_white_levels=[float(x) for x in camera_white_levels],
+        coding_white_levels=list(getattr(evidence, "coding_white_levels", ())),
+        coding_black_levels=list(getattr(evidence, "coding_black_levels", ())),
         # RAW 9 has one calibrated reconstruction path. LibRaw's clip/blend/gated
         # selector does not map onto CIRAWFilter and must not be reported as if it did.
         scene_highlight_mode=effective_highlight_mode,

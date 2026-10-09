@@ -7,10 +7,32 @@ reordering them. Pixel maths must stay identical to
 """
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 from .models import RawBundle, SceneScaleContract
 from .tone import compute_exposure_gain, exposure_mode_for_tone_core
+
+
+def sensor_to_scene_ev_offset(bundle: RawBundle) -> float:
+    """Known fixed exposure shift from normalized RAW to planning scene EV.
+
+    The nominal sensor full well uses the fixed mid-gray anchor. File-authored
+    BaselineExposure moves that anchor's scene coordinates in both decoders:
+    normally through ``scene_scale``, or already inside Apple's pixels on an
+    older API. This translates evidence once; it never reapplies a pixel gain.
+    Storage normalization, WB headroom reservation and a decoder comparison's
+    alignment divisor are not additional capture exposures. In particular the
+    mutable ``exposure_gain`` containing user EV must not enter fixed planning.
+
+    Use exactly the renderer's finite-value policy and corrupt-tag clamp. The
+    Core Image path has already selected its authoritative effective baseline
+    when it constructs the bundle. Its decoder-native radiometry remains an
+    approximation; this scalar does not upgrade its calibration confidence.
+    """
+    from .raw_io import baseline_exposure_gain
+
+    return math.log2(baseline_exposure_gain(getattr(bundle, "baseline_exposure", None)))
 
 
 def calibration_confidence_for_mode(decoder: str, scale_mode: str | None) -> str:

@@ -48,7 +48,10 @@ from .scheduler import shared_flight_wait
 # v22: extended highlight lens domain, calibration validity and native sensor
 # window sampling. Both decoded proxy pixels and analysis qualification changed.
 # v23: retain applicable independent spectra when DNG supplies fallback variance.
-PREVIEW_CACHE_VERSION = 23
+# v24: distinguish DN encoding range from linear response limits, propagate
+# pre-demosaic losses, and place noise evidence in the fixed decoded scene EV.
+# Window geometry also uses JSON-stable metadata for exact analysis reuse.
+PREVIEW_CACHE_VERSION = 24
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -462,6 +465,8 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "color_desc": str(bundle.color_desc),
         "raw_pattern": bundle.raw_pattern,
         "camera_white_levels": [float(value) for value in bundle.camera_white_levels],
+        "coding_white_levels": [float(value) for value in getattr(bundle, "coding_white_levels", ())],
+        "coding_black_levels": [float(value) for value in getattr(bundle, "coding_black_levels", ())],
         "scene_highlight_mode": str(bundle.scene_highlight_mode),
         "orientation_flip": int(bundle.orientation_flip),
         "wb_mode": str(bundle.wb_mode),
@@ -519,7 +524,11 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "scene_scale_mode": getattr(bundle, "scene_scale_mode", None),
         "scene_align_factor": float(getattr(bundle, "scene_align_factor", 1.0)),
         "proxy_scale": float(getattr(bundle, "proxy_scale", 1.0)),
-        "scene_sensor_window_shape": getattr(bundle, "scene_sensor_window_shape", None),
+        "scene_sensor_window_shape": (
+            [float(v) for v in bundle.scene_sensor_window_shape]
+            if getattr(bundle, "scene_sensor_window_shape", None) is not None
+            else None
+        ),
         "scene_align_error": getattr(bundle, "scene_align_error", None),
         "scene_opcode_names": list(getattr(bundle, "scene_opcode_names", ()) or ()),
         "evidence_shape": (
@@ -567,6 +576,8 @@ def _bundle_from_cache(
         color_desc=str(metadata["color_desc"]),
         raw_pattern=metadata["raw_pattern"],
         camera_white_levels=[float(value) for value in metadata["camera_white_levels"]],
+        coding_white_levels=[float(value) for value in metadata.get("coding_white_levels", ())],
+        coding_black_levels=[float(value) for value in metadata.get("coding_black_levels", ())],
         scene_highlight_mode=str(metadata["scene_highlight_mode"]),
         _tone_plan_sample=tone_sample,
         _tone_plan_sample_masks=tone_sample_masks,

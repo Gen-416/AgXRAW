@@ -289,6 +289,10 @@ RAW 9 不是第五条 tone curve，`neutral` 也不是另一种 RAW 解码器。
 - DNG [`BaselineExposure`](https://developer.apple.com/documentation/coreimage/cirawfilter/baselineexposure)
   是文件写入的基线显影补偿。它不是快门/光圈/ISO，不是传感器
   绝对标定，也不是内容自适应自动曝光；显式 `--ev` 调整发生在它之后。
+  RAW 噪声、SNR 和传感器 DR 保持原单位；转换为规划用 scene EV 时，
+  `Analysis.sensor_to_scene_ev_offset` 计入有效文件基线。BE +1 EV 会让噪声底、
+  SNR 坐标及受噪声限制的黑端点同步增加 1 EV，用户 EV 不重新塑造固定计划。
+  Apple 像素中已烘焙 BE 时仍只转换一次证据坐标，不再次乘像素增益。
 - 场景亮度只编译 tone endpoint 与趾部/肩部；RAW 过曝和输出色域压力只编译颜色
   权限。颜色指标不能移动黑白端点，亮度百分位也不能冒充已经丢失的 CFA 色彩。
 - `agx` 配 darktable `base` primaries 是成片默认。`lum`、`neutral` 是受控对照，
@@ -309,6 +313,12 @@ ceiling，没有才回退到逐通道 metadata white level。它不会拿一个�
 每个通道都按扣黑后的 full-well 从 95% 处的 0 平滑渐入到 99% 处的 1，让颜色能在插值形成
 硬断层前开始退让。如果绿色比红色更早到满阱，硬统计与软权限图都会保留这个通道差别。
 
+噪声标定另用编码范围：线性化后的 DNG `WhiteLevel` 减该分量的最大黑电平。
+`coding_white_levels` / `coding_black_levels` 同时供标定 DN 尺度检查和解码方差传递使用。
+`LinearResponseLimit` 仍描述线性有效区间，不能改变存储 DN 尺度或撤销本来适用的频谱约束。
+非 DNG 保留 LibRaw 的逐通道端点约定，现有先验尺度匹配容差不放宽。
+LibRaw 自己的解码缩放分母则是编码最大值减各通道的共同最小黑位，与上述归一化范围分别保存。
+
 2×2 cell 的旧指标保留“裁切感光点数量”语义；HDR 通道分离另用 `color_clip_k_of_all_pct`
 统计丢失的 R/G/B 颜色组数量。Bayer 的 G1、G2 同时裁切仍只算一种颜色，不能与 R+B 裁切
 混为一谈。X-Trans 按一个完整 CFA 周期聚合，Linear RGB 按像素聚合；未知颜色布局不给
@@ -320,7 +330,9 @@ ceiling，没有才回退到逐通道 metadata white level。它不会拿一个�
 ### 解拜耳
 
 全分辨率导出的 `auto` 顺序是 DHT → DCB → AHD，具体取当前 rawpy/LibRaw 构建实际支持的
-最高优先级算法；X-Trans 等非 Bayer 数据继续走 LibRaw 对应路径。GUI 使用全尺寸解码后
+最高优先级算法。全尺寸 Bayer 的 `clip` 解码若记录到实际前级截断，`auto` 改选构建支持的
+AHD，以使用已核对的局部损失支撑范围，并报告实际算法和原因；手动选择仍保留。
+X-Trans 等非 Bayer 数据继续走 LibRaw 对应路径。GUI 使用全尺寸解码后
 缩小显示；CLI 仍可执行 half-size 探测。显示代理适合看曝光、颜色和高光路径，但不能展示
 全部原尺寸纹理。
 
@@ -443,9 +455,18 @@ LibRaw 的 DNG 校正由 `dng_opcodes.read_plan` 读取主 RAW IFD，保留指�
 
 Fujifilm RAF 和 Sony ARW 可读取文件自带的暗角、畸变与横向色差曲线。标签布局与数学约定对照 [darktable 的 EXIF 解析](https://github.com/darktable-org/darktable/blob/master/src/common/exif.cc) 和 [镜头模块](https://github.com/darktable-org/darktable/blob/master/src/iop/lens.cc)。没有文件参数时不套用猜测的镜头配置；DNG 由 opcode 负责，避免重复应用私有曲线。这仍不是通用镜头数据库。
 
-校正新增的剪切、坏点替代和边界外采样进入独立 `processing_clip_masks`；后续降低增益不能恢复这些已丢失的信息。LibRaw 的 uint16 相机 RGB 交接还在镜头操作前记录达到 65535 的通道，避免 RAW 尚未饱和、白平衡却已触及解码上限时仍被当成可靠信息。这是保守的量程边界标记，不能据此算出截断幅度，可能与传感器饱和重叠；传感器硬剪切百分比仍只描述原始证据。晚期浮点镜头处理产生的合法超 65535 值不属于这个整数交接边界。可靠性经过插值支撑范围时取保守值，因此 HDR 不会把校正后出现的像素当成新的传感器余量。ABI 20 的畸变核在一次坐标与插值遍历中同时传输图像和损失掩膜，恒等操作不改变像素，也不将已有饱和重复计为镜头新增损失。预览缓存版本 22 同时淘汰旧高光范围、标定有效性和采样尺度结果。
+校正新增的剪切、坏点替代和边界外采样进入独立 `processing_clip_masks`；后续降低增益不能恢复这些已丢失的信息。LibRaw 的 uint16 相机 RGB 交接还在镜头操作前记录达到 65535 的通道，避免 RAW 尚未饱和、白平衡却已触及解码上限时仍被当成可靠信息。这是保守的量程边界标记，不能据此算出截断幅度，可能与传感器饱和重叠；传感器硬剪切百分比仍只描述原始证据。晚期浮点镜头处理产生的合法超 65535 值不属于这个整数交接边界。ABI 20 的畸变核在一次坐标与插值遍历中同时传输图像和损失掩膜，恒等操作不改变像素，也不将已有饱和重复计为镜头新增损失。
 
-`clip` 的图像量程没有扩大，但损失记录现在包含三次插值产生的负值被无符号量程截断这一事件。因此损失百分比可能提高，并不表示新版本额外改变了这些图像像素；`blend` / `reconstruct` 保留同样的负值，不将它当作已截断的信息。
+WB 溢出和 stage-2 损失在解拜耳前记录，再覆盖其输出依赖范围：Bayer 半尺寸按来源
+2×2 的每颜色平面取最大值，全尺寸 AHD 使用原生像素半径 5 的保守范围；DefaultScale
+按 LibRaw 的两个来源 tap 取最大证据，再进入既有 warp、crop、orientation 传递。
+全尺寸 DHT 的原地处理和全帧步骤尚无已审计的局部边界，手动选择 DHT 且存在前级损失时
+采用整帧保守权限；其他未核对算法、空间高光重建遇到来源损失也采取该策略。
+这些是损失影响范围的边界，不是精确的解拜耳协方差或截断幅度测量。
+
+`clip` 的图像量程没有扩大，但损失记录包含三次插值产生的负值被无符号量程截断这一事件。
+固定同一解拜耳算法时，这类记录本身不改变图像；自动改选 AHD 则会改变重建像素。
+`blend` / `reconstruct` 保留同样的负值，不将它当作已截断的信息。
 
 尚未支持的具体组合包括：stage-1/2 TrimBounds、TrimBounds 后仍有其他 stage-3 指令、不可逆线性化表上的 stage-1 操作、非方形像素与 stage-3 点变换或 TrimBounds，以及 stage-3 点变换与 blend/reconstruct。前级裁剪需要正确改变后续图像原点、CFA 相位和标定坐标，不能挪到导出末尾代替执行。当前对这些必需组合明确报错；按可选标志跳过的未支持指令写入诊断。
 
@@ -453,7 +474,10 @@ Fujifilm RAF 和 Sony ARW 可读取文件自带的暗角、畸变与横向色差
 
 噪声模型来源、单帧局部变化和相关性证据分别记录。空间错位 G1/G2 的残差相关性仅为线索，不单独认定机内处理，也不撤销匹配标定。Linear DNG、可疑 ISO、读出模式不匹配或无法校准 DN 尺度时，不宣称有效电子域先验；缺噪声模型与 RAW 剪切证据缺失是不同状态。独立实测频谱高/中频比超出 [0.5, 2] 时保留有效 shot/read 模型，但限制 HDR 尾部并跳过当前粗网格 NR；比值正常不是白噪声证明。完整适用范围见[实测标定接口](NOISE_CALIBRATION.zh-CN.md)。等面积确定性采样减少固定步长与周期高光对齐的盲区；默认 AgX 自动曝光与预览共享全尺寸统计样本。
 
-GUI 重用 Analysis 时会对新解码的 bundle 重放实测 full-well 掩码刷新，并保留处理损失。预览缓存版本为 23，淘汰旧计算、几何结果及丢失独立频谱约束的 DNG 方差回退结果。
+GUI 重用 Analysis 时会对新解码的 bundle 重放实测 full-well 掩码刷新，并保留处理损失。
+预览缓存版本为 24，淘汰旧编码范围、损失支撑和噪声 scene-EV 结果，以及此前几何与频谱回退结果。
+原生窗口尺寸在 metadata 中统一保存为 JSON 稳定的列表，避免运行时 tuple 与缓存 list 的差异
+造成完整 Analysis 复用失效；恢复运行时对象可转回 tuple。固定噪声坐标上下文也随 Analysis 保留。
 以下图片为此前暗角补偿路径的对照记录，不作为新畸变核的像素回归基准：
 
 ![iPhone 16 Pro 同帧双解码：LibRaw 施加 DNG GainMap 与 RAW 9 的 FixVignetteRadial，角部亮度一致](assets/decoder-iphone-libraw-vs-raw9.jpg)

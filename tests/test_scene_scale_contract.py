@@ -14,6 +14,7 @@ from dngscan.raw_io import baseline_exposure_gain, libraw_scene_scale
 from dngscan.scene_scale import (
     calibration_confidence_for_mode,
     scene_scale_contract_from_bundle,
+    sensor_to_scene_ev_offset,
     with_intent_exposure,
 )
 from dngscan.tone import compute_exposure_gain, exposure_mode_for_tone_core, scene_rec2020_to_float
@@ -146,6 +147,26 @@ class SceneScaleContractTest(unittest.TestCase):
         self.assertEqual(c_bright.fixed_midgray_gain, c_dark.fixed_midgray_gain)
         self.assertEqual(c_bright.user_ev_gain, c_dark.user_ev_gain)
         self.assertEqual(c_bright.total_render_gain, c_dark.total_render_gain)
+
+    def test_noise_scene_coordinates_apply_file_baseline_once_in_every_handoff(self) -> None:
+        for decoder, mode, baked in (("libraw", None, False),
+                                     ("coreimage", "aligned", False),
+                                     ("coreimage", "unity", False),
+                                     ("coreimage", "unity", True)):
+            for baseline in (-1., 0., 1.):
+                with self.subTest(decoder=decoder, mode=mode, baked=baked, baseline=baseline):
+                    bundle = _tiny_bundle(decoder=decoder, scale_mode=mode,
+                                          baseline=baseline, baseline_baked=baked,
+                                          scene_scale=.25 if baked else .5,
+                                          exposure_gain=20.)
+                    self.assertEqual(sensor_to_scene_ev_offset(bundle), baseline)
+                    self.assertEqual(sensor_to_scene_ev_offset(with_intent_exposure(bundle, user_ev=-3.)), baseline)
+
+    def test_noise_scene_coordinates_share_renderer_baseline_guard(self) -> None:
+        for baseline in (None, float("nan"), float("inf"), -100., 100., .35):
+            with self.subTest(baseline=baseline):
+                offset = sensor_to_scene_ev_offset(_tiny_bundle(baseline=baseline))
+                self.assertAlmostEqual(2 ** offset, baseline_exposure_gain(baseline))
 
     def test_aligned_coreimage_is_relative_confidence(self) -> None:
         self.assertEqual(
