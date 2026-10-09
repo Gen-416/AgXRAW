@@ -63,9 +63,9 @@ SIGMA_FP = {
         (16.6439, -0.72),
     ],
     # P2P marks values from here up with hollow markers (decoded: the ISO 32000
-    # setting). Note: fp's read noise below ~1 e- from ISO ~1000 is widely
-    # attributed to spatial filtering baked into the DNG; the empirical
-    # RAW-health autocorrelation check is the per-frame verdict on that.
+    # setting). A single photograph's green residual correlation is not
+    # proof of filtering. Only independent measurements can characterize
+    # the noise covariance; retain the published suspect-ISO boundary.
     "suspect_iso_min": 32256,
     # Read-noise curve drops sharply at the ISO 640 setting (stored x 9.3139) —
     # the known IMX410 (A7 III / Z 6) dual-conversion-gain point. The audit's
@@ -188,6 +188,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
             "shutter": shutter_map.get(str(item.get("shutter")), item.get("shutter")),
             "measured_iso": int(item["ptc_anchor"]["iso"]) if item.get("ptc_anchor") else 10 ** 9,
             "noise_whiteness_h_log2iso": item.get("noise_whiteness_h_log2iso"),
+            "noise_whiteness_v_log2iso": item.get("noise_whiteness_v_log2iso"),
             # raw within-row/col variance metrics; semantics UNCONFIRMED
             # upstream — NOT a banding fraction (2026-08-25 review 4.4)
             "within_var_raw_log2iso": item.get("within_var_raw_log2iso"),
@@ -249,7 +250,7 @@ def _bulk_entries() -> list[dict[str, Any]]:
 
 
 def find_priors(make: str | None, model: str | None,
-                shutter: str | None = None) -> dict[str, Any] | None:
+                shutter: str | None = None, iso: float | None = None) -> dict[str, Any] | None:
     """Resolve a sensor prior. `shutter` ("mechanical"/"electronic"), when
     the caller knows it, prefers a same-shutter tier-2 entry — gain and
     especially read noise differ materially between readout modes (review
@@ -258,6 +259,12 @@ def find_priors(make: str | None, model: str | None,
     "curated" so consumers can degrade confidence on inexact matches."""
     if not make or not model:
         return None
+    # Explicitly imported measurements supersede packaged priors only when
+    # exact camera/readout and measured ISO applicability are established.
+    from .calibration import matching_prior
+    user = matching_prior(make, model, shutter=shutter, iso=iso)
+    if user is not None:
+        return user
     make_u = make.upper().strip()
     model_u = model.upper().strip()
     # Tier 1: curated entries (hand-checked series, DCG annotations).
@@ -317,6 +324,10 @@ def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
     # A measured gain curve (JPTC collect tier) wins over the reciprocal
     # law: extended-ISO segments and conversion-gain switches break the
     # unity-gain extrapolation, and the curve encodes both.
+    if priors.get("user_calibration"):
+        from .calibration import curve_value
+        value = curve_value(priors, "gain_log2iso_log2epd", iso)
+        return float(2.0 ** value) if value is not None else None
     curve = priors.get("gain_log2iso_log2epd")
     if curve:
         return float(2.0 ** _interp(curve, math.log2(iso)))
@@ -338,6 +349,10 @@ def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
 def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:
     if not iso or iso <= 0:
         return None
+    if priors.get("user_calibration"):
+        from .calibration import curve_value
+        value = curve_value(priors, "read_noise_log2iso_log2e", iso)
+        return float(2.0 ** value) if value is not None else None
     curve = priors.get("read_noise_log2iso_log2e")
     if not curve:
         return None

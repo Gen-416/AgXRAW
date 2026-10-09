@@ -1,49 +1,19 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Chroma-only noise reduction: remove low-frequency colour mottle, keep
-everything else (2026-08-31, owner-approved work item).
+"""Model-guided chroma smoothing in a declared sensor-pixel band.
 
-WHAT THIS IS. The LibRaw decode path applies no noise reduction at all and
-the Core Image path is pinned to its least-smoothed calibrated end, so the
-sensor's own noise flows through the pipeline as honest texture — the
-retained luminance noise reads as grain, and that is deliberate. What does
-NOT read as texture is the LOW-FREQUENCY chroma mottle: magenta/green
-blotches tens of pixels across in high-ISO shadows, born from per-channel
-noise integrated over the CFA at scales no demosaic can reach. This
-operator removes exactly that band and nothing else. It is classified as
-DIGITIZATION REPAIR (the same ethical slot as highlight reconstruction and
-clip retreat): the mottle is a sampling artefact, not optical information.
+The noise scale must come from independent calibration, propagated into
+this scene grid. Image details only provide evidence for preserving
+structure; they never estimate the noise threshold. Missing or zero noise
+models produce an exact zero correction. This is a denoising tradeoff:
+weak colour structure near the noise scale can still be attenuated.
 
-WHAT IT MUST NOT TOUCH, by construction rather than by tuning:
-
-- LUMINANCE, at the scene stage: the correction is projected to the
-  zero-luma subspace (P = I - 1·w^T with the Rec.2020 luma row w), so the
-  grain carried by scene Y is untouched to float precision. Bilinear
-  upsampling is linear, so the projection survives the map's trip to full
-  resolution. Every downstream tone core is per-channel nonlinear, so a
-  zero-Y scene change still moves display luminance slightly — the
-  promise is about what the operator touches, not the output.
-- FINE CHROMA SPECKLE: the analysis runs on the DECIMATED spread grid
-  (film_optics.spread_grid_shape, <= 1408/2048 on the long side), so all
-  chroma structure finer than a decimated cell — including the film-like
-  coloured graininess worth keeping — never enters the operator at all.
-- LARGE-SCALE REAL COLOUR: the à-trous residual (everything coarser than
-  the last detail level) passes through unshrunk. A plain lowpass
-  subtraction would eat genuine colour gradients along with the mottle;
-  the wavelet split is what makes "去斑不去色" a structural property.
-- HIGH-AMPLITUDE CHROMA EDGES: within the detail levels the garrote
-  removes the fraction 1/(1 + (d/T)²) of each coefficient d against the
-  level's own robust noise floor (T = amount·3·σ_MAD): 94% at |d| = T/4,
-  50% at |d| = T, 20% at 2T, and only ~T²/|d| of a strong edge; the
-  absolute bite never exceeds T/2. A real colour boundary's coefficients
-  sit far above T.
-
-The realized band is octave-aligned to within √2 of [BAND_LO_PX,
-BAND_HI_PX] (atrous_levels_for); on grids too small to reflect-pad a
-level (min side < 2·2^k + 1) the cascade stops early and the band is
-truncated at the top — only tiny renders, and silently.
-
-Amount 0 is a strict identity — callers keep the no-context fast path and
-never call in here.
+Corrections preserve scene Rec.2020 luminance by projection. Fine detail
+levels and the coarsest residual pass through; neither property is a
+guarantee that all real colour texture survives in the processed band.
+The removed fraction is 1/(1 + (d/T)²), with the threshold derived from
+calibrated noise and excess local signal energy. Only LUMINANCE, at the scene stage,
+is preserved; subsequent tone/gamut operations can change display luminance.
+Amount zero remains the caller's original no-context fast path.
 """
 from __future__ import annotations
 
@@ -54,8 +24,8 @@ from ._deps import np
 LUMA_W = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
 
 # The shrunk band, declared in FULL-RESOLUTION SENSOR PIXELS — the
-# mottle's native coordinate (it is a CFA sampling artefact, so its scale
-# rides the sensor grid, not the output size). Structure finer than
+# sensor coordinate, so the scale follows capture pixels rather than the
+# output size. Structure finer than
 # BAND_LO_PX is the kept texture — pixel speckle and the film-like fine
 # coloured graininess; structure coarser than BAND_HI_PX is treated as
 # real colour and passes through in the residual. Both bounds are
@@ -89,17 +59,6 @@ def atrous_levels_for(decimation_factor: float) -> tuple[int, ...]:
         if centre >= BAND_LO_PX:
             levels.append(k)
     return tuple(levels)
-
-
-# Shrinkage scale: T_level = amount * K * sigma_level, sigma from the
-# level's own median absolute deviation (MAD / 0.6745). The shrink is the
-# Wiener-flavoured garrote removed = d·T²/(T²+d²): a noise-consistent
-# coefficient (|d| ≲ T) is removed almost entirely, while a strong real
-# structure loses only ~T²/|d| — unlike a hard/soft threshold's constant
-# bite, which measurably desaturated a large uniform colour patch by tens
-# of percent over the level cascade (probe 2026-08-31).
-_THRESHOLD_K = 3.0
-_MAD_TO_SIGMA = 1.0 / 0.6745
 
 
 def _atrous_smooth(plane: np.ndarray, level: int) -> np.ndarray:
@@ -150,6 +109,11 @@ def chroma_correction_map(
     scene_dec: np.ndarray,
     amount: float,
     decimation_factor: float = 1.0,
+    *,
+    noise_covariance: np.ndarray | None = None,
+    chroma_variance: np.ndarray | None = None,
+    detail_variance: dict[int, np.ndarray] | None = None,
+    valid_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """The zero-luma correction to ADD to the scene, on the decimated grid.
 
@@ -159,12 +123,47 @@ def chroma_correction_map(
     decimation_factor: full-resolution pixels per decimated cell (long-side
     ratio) — anchors the shrunk band in sensor pixels (atrous_levels_for).
 
-    Returns [dh, dw, 3] float32 with w·map == 0 per pixel (float
-    precision): callers upsample bilinearly and add.
+    ``noise_covariance`` is a constant or per-pixel scene-RGB covariance;
+    pixels must be spatially independent. ``chroma_variance`` supplies its
+    already-projected diagonal instead. Correlated-noise models can supply
+    ``detail_variance`` directly for each wavelet band. These are independent
+    model inputs, never statistics calculated from ``scene_dec``.
+
+    Returns [dh, dw, 3] float32 with w·map == 0 per pixel. Without noise
+    evidence, returns zeros rather than falling back to image-detail MAD.
     """
-    if amount <= 0.0:
+    if not np.isfinite(amount) or amount <= 0.0:
         raise ValueError("chroma_correction_map is only defined for amount > 0")
     dec = np.asarray(scene_dec, dtype=np.float32)
+    if dec.ndim != 3 or dec.shape[-1] != 3 or not np.isfinite(dec).all():
+        raise ValueError("scene must be finite HxWx3 Rec.2020")
+    if sum(x is not None for x in (noise_covariance, chroma_variance, detail_variance)) > 1:
+        raise ValueError("provide one noise variance representation")
+    if noise_covariance is None and chroma_variance is None and detail_variance is None:
+        return np.zeros_like(dec)
+    if noise_covariance is not None:
+        from .noise_propagation import transform_covariance
+
+        projection = np.eye(3) - np.ones((3, 1)) * LUMA_W.astype(np.float64)[None, :]
+        cov = transform_covariance(noise_covariance, projection)
+        chroma_variance = np.diagonal(cov, axis1=-2, axis2=-1)
+    if chroma_variance is not None:
+        variance = np.asarray(chroma_variance, dtype=np.float32)
+        if variance.shape not in ((3,), dec.shape):
+            raise ValueError("chroma variance must be RGB or HxWx3")
+        if not np.isfinite(variance).all() or np.any(variance < 0):
+            raise ValueError("noise variance must be finite and nonnegative")
+        variance = np.broadcast_to(variance, dec.shape)
+        if not np.any(variance):
+            return np.zeros_like(dec)
+    else:
+        variance = None
+        for value in detail_variance.values():
+            value = np.asarray(value)
+            if value.shape not in ((3,), dec.shape) or not np.isfinite(value).all() or np.any(value < 0):
+                raise ValueError("detail variance must be finite nonnegative RGB or HxWx3")
+        if not any(np.any(value) for value in detail_variance.values()):
+            return np.zeros_like(dec)
     y = dec @ LUMA_W
     chroma = dec - y[..., None]
     del dec, y
@@ -177,17 +176,24 @@ def chroma_correction_map(
     max_step = max((min(chroma.shape[:2]) - 1) // 2, 1)
     included = set(atrous_levels_for(decimation_factor))
     top = max(included) if included else -1
+    validity = {}
+    if valid_mask is not None:
+        valid = np.asarray(valid_mask, dtype=np.float32)
+        if valid.shape != chroma.shape[:2] or not np.isfinite(valid).all():
+            raise ValueError("noise validity mask must match the scene grid")
+        valid = (valid > 0.999999).astype(np.float32)
+        for level in range(top + 1):
+            invalid = _atrous_smooth(np.float32(1) - valid, level)
+            valid = (invalid == 0).astype(np.float32)
+            validity[level] = valid.astype(bool)
     # The cascade always runs from level 0 — an à-trous level's hole
     # spacing only avoids aliasing on the PROGRESSIVELY smoothed image —
     # but only the in-band levels shrink; protected fine levels pass
     # through untouched inside their detail coefficients.
     #
-    # Review batch 23 (memory): the cascade runs ONE CHANNEL AT A TIME.
-    # Every operation below is elementwise per channel (separable B3
-    # smoothing, per-channel MAD, per-channel garrote), so the result is
-    # byte-identical to the three-channel form while the transient working
-    # set drops to about a third — measured 227 MiB -> ~70 MiB on the 1408
-    # grid, which is what lets the pass-0 peak stay under the optics tier.
+    # Retain the per-channel cascade to bound scratch storage. Noise
+    # propagation adds its own working set; old MAD-path memory figures
+    # are not a measurement of this calibrated implementation.
     for c in range(3):
         smooth = chroma[..., c]
         for level in range(top + 1):
@@ -196,16 +202,27 @@ def chroma_correction_map(
             coarser = _atrous_smooth(smooth, level)
             if level in included:
                 detail = smooth - coarser
-                # Per-level, per-channel robust noise floor. abs+median over
-                # the whole grid: the mottle and noise dominate the
-                # coefficient population at these scales; sparse real edges
-                # do not move a MAD.
-                mad = np.median(np.abs(detail))
-                threshold = np.float32(
-                    np.float32(float(amount) * _THRESHOLD_K * _MAD_TO_SIGMA)
-                    * np.float32(mad)
-                )
-                t2 = np.square(threshold)
+                if detail_variance is not None:
+                    supplied = detail_variance.get(level)
+                    if supplied is None:
+                        smooth = coarser
+                        continue
+                    noise_var = np.broadcast_to(np.asarray(supplied, dtype=np.float32), chroma.shape)[..., c]
+                else:
+                    from .noise_propagation import atrous_detail_variance
+
+                    noise_var = atrous_detail_variance(variance[..., c], level)
+                if level in validity:
+                    noise_var = np.where(validity[level], noise_var, np.float32(0))
+                # Profiled/BayesShrink principle: expected random noise is
+                # known independently. Observed energy above that expectation
+                # protects local structure; it cannot increase the noise model.
+                local_energy = _atrous_smooth(np.square(detail), 0)
+                local_noise = _atrous_smooth(noise_var, 0)
+                signal_var = np.maximum(local_energy - local_noise, np.float32(0))
+                floor = np.maximum(noise_var * np.float32(1e-6), np.float32(1e-30))
+                t2 = np.minimum(noise_var, np.square(noise_var) / np.maximum(signal_var, floor))
+                t2 *= np.float32(float(amount) ** 2 * 9.0)
                 total_removed[..., c] += detail * (
                     t2 / (t2 + np.square(detail) + np.float32(1e-30))
                 )

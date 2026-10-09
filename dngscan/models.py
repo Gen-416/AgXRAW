@@ -214,6 +214,12 @@ class RawBundle:
     # bundle (like ``wb_xyz_to_cam``) because compact preview-cache entries discard the
     # large RawEvidence payload but must still rebalance.
     wb_color_matrix: Any | None = None
+    # Decoder-owned units/colour transform for approximate low-frequency noise
+    # propagation. None means that the transfer has not been established.
+    noise_decode: dict[str, Any] | None = None
+    chroma_nr_status: str = "disabled"
+    chroma_nr_reason: str | None = None
+    noise_model: Any | None = None
 
 
 @dataclass
@@ -283,6 +289,11 @@ class Analysis:
     noise_evidence_status: str = "independent"
     health_lag1_corr: float = float("nan")
     health_hist_empty_pct: float = float("nan")
+    # Local spatial variation and correlation are diagnostics, independent of
+    # the calibration model's validity. Neither can silently revoke a profile.
+    noise_model: Any | None = None
+    noise_observation_status: str = "unavailable"
+    noise_correlation_status: str = "unknown"
 
 
 # frozen (review batch 21): compiled plans are cached and shared across

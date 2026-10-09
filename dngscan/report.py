@@ -31,7 +31,7 @@ def _optics_budget_mib_report() -> int:
 
 def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
     lines = ["Darktable 修图建议:"]
-    if analysis.noise_evidence_status == "unavailable":
+    if not analysis.channel_ids:
         return lines + ["仅有解码场景统计，无法判断传感器过曝或噪声余量。", "曝光与压缩按场景亮度估计；RAW 恢复能力未知。"]
     max_clip = max(analysis.clip_pct.values()) if analysis.clip_pct else 0.0
     if analysis.ev_p999 > -0.10 or max_clip > 0.05:
@@ -57,7 +57,7 @@ def darktable_guidance_lines(bundle: RawBundle, analysis: Analysis) -> list[str]
     finite_dr = [v for v in analysis.snr1_dr.values() if math.isfinite(v)]
     if finite_dr:
         limiting_dr = min(finite_dr)
-        lines.append(f"暗部: 三通道共同可用边界约 {limiting_dr:.2f} 档；更暗处主要是在放大噪声。")
+        lines.append(f"暗部: 噪声模型预测的共同 SNR=1 边界约 {limiting_dr:.2f} 档；更暗处主要是在放大噪声。")
         if limiting_dr < 8.7 or analysis.ev_floor_hit_pct > 1.0:
             lines.append("降噪: 深阴影建议先用配置文件降噪 denoise(profiled)，再控制暗部拉升。")
         else:
@@ -98,8 +98,8 @@ def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
     iso = f"ISO{bundle.shot_iso}" if bundle.shot_iso else "ISO?"
     if analysis.prior_id is None:
         return (
-            f"机型/先验: {ident} @ {iso}（无先验表条目，全部使用单帧实测；"
-            "传感器标定数据不完整，绝对档位/动态范围数字可能有偏差，渲染仍可正常使用）"
+            f"机型/先验: {ident} @ {iso}（无可用电子域先验；"
+            "图像统计仍可用，噪声与 SNR 只使用独立模型，缺测时不推定）"
         )
     parts = [f"机型/先验: {analysis.prior_id} @ {iso}"]
     if analysis.prior_quality_status:
@@ -107,7 +107,7 @@ def priors_line_cn(bundle: RawBundle, analysis: Analysis) -> str:
     if analysis.gain_e_per_dn is not None:
         parts.append(f"增益≈{analysis.gain_e_per_dn:.2f} e⁻/DN")
     if analysis.noise_floor_e is not None:
-        parts.append(f"实测噪声底≈{analysis.noise_floor_e:.1f} e⁻")
+        parts.append(f"模型噪声底≈{analysis.noise_floor_e:.1f} e⁻")
     if analysis.prior_read_noise_e is not None:
         parts.append(f"读出噪声先验={analysis.prior_read_noise_e:.2f} e⁻")
     if analysis.prior_pdr_ev is not None:
@@ -173,15 +173,22 @@ def matrix_health_line_cn(bundle: RawBundle) -> str:
 
 def health_line_cn(analysis: Analysis) -> str:
     status=getattr(analysis,"noise_evidence_status","independent")
-    if status != "independent":
+    if status not in ("independent", "model-valid", "model-rejected", "unavailable"):
         return f"RAW 健康度: {status}；不声明独立感光点噪声/电子域 SNR"
     if not math.isfinite(analysis.health_lag1_corr):
         return "RAW 健康度: n/a"
     return (
-        f"RAW 健康度: 暗部lag1相关={analysis.health_lag1_corr:.3f}"
+        f"RAW 诊断线索: 绿色残差lag1相关={analysis.health_lag1_corr:.3f}"
         f"  直方图空码={analysis.health_hist_empty_pct:.1f}%"
         f" → {raw_health_verdict_cn(analysis.health_lag1_corr, analysis.health_hist_empty_pct)}"
     )
+
+
+def noise_model_line_cn(analysis: Analysis) -> str:
+    model = getattr(analysis, "noise_model", None)
+    if model is None:
+        return "噪声模型: 未提供独立标定"
+    return f"噪声模型: {model.status}；{model.source}；{model.reason}；相关性={model.correlation}"
 
 
 def describe_wb_mode(wb_mode: str) -> str:
@@ -283,7 +290,8 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
         f"{analysis.ev_p99:.2f} / {analysis.ev_p999:.2f}",
         f"画面 DR p1->p99.9: {analysis.ev_dr_p1_p999:.2f} 档  左端压底: {analysis.ev_floor_hit_pct:.2f}% 原始p1={analysis.ev_raw_p1:.2f}",
         f"中位亮度相对 18% 灰: {analysis.median_vs_gray_ev:+.2f} EV",
-        f"RAW 噪声底: {analysis.noise_floor:.6g}  可用 DR 上限: {analysis.usable_dr_ev:.2f} 档",
+        f"RAW 模型读出噪声底: {analysis.noise_floor:.6g}  工程 DR 上限: {analysis.usable_dr_ev:.2f} 档",
+        noise_model_line_cn(analysis),
         priors_line_cn(bundle, analysis),
         matrix_health_line_cn(bundle),
         *(_cbld_line(bundle) or ()),
@@ -301,7 +309,7 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
         ),
         f"高亮采样比例: {analysis.bright_pixel_pct:.2f}% 像素",
         f"最不易剪切通道: {analysis.survivor_channel}",
-        "注: SNR/噪声为单帧估计，不是光子转移测量。",
+        "注: SNR/噪声来自独立标定或文件声明的模型预测；不以图像纹理估计噪声。",
         policy_line(),
     ]
 
@@ -672,7 +680,8 @@ def jpeg_tone_plan_cn(
         if float(getattr(plan, "chroma_nr", 0.0) or 0.0) > 0.0:
             extras.append(
                 f"色度NR={float(plan.chroma_nr):.2f}"
-                "(数字化修复:8-128px色斑,亮度不动)"
+                f"({getattr(bundle, 'chroma_nr_status', 'disabled')};"
+                "独立模型,8-128传感器px,场景Y保持;颜色细节仍可能损失)"
             )
         if abs(plan.pivot_ev_offset) > 1e-3:
             extras.append(f"pivot={plan.pivot_ev_offset:+.2f}EV")
@@ -751,7 +760,14 @@ def csv_row(
         "ev_report_floor": EV_REPORT_FLOOR,
         "ev_floor_hit_pct": analysis.ev_floor_hit_pct,
         "median_vs_18pct_gray_ev": analysis.median_vs_gray_ev,
-        "raw_noise_floor_single_frame": analysis.noise_floor,
+        # Retain the old column for legacy consumers, without mislabelling
+        # the current calibrated model as a single-frame measurement.
+        "raw_noise_floor_single_frame": (analysis.noise_floor if analysis.noise_model is None else ""),
+        "raw_noise_floor_normalized": analysis.noise_floor,
+        "noise_model_source": getattr(analysis.noise_model, "source", ""),
+        "noise_model_reason": getattr(analysis.noise_model, "reason", ""),
+        "noise_observation_status": analysis.noise_observation_status,
+        "noise_correlation_status": analysis.noise_correlation_status,
         "usable_dr_noise_limited_upper_bound_stops": analysis.usable_dr_ev,
         "camera_make": bundle.shot_make or "",
         "camera_model": bundle.shot_model or "",
@@ -825,7 +841,7 @@ def csv_row(
             scene_transform,
             scene_transform_strength,
         ) if jpeg_path is not None else "",
-        "note": "SNR/噪声为单帧估计，不是光子转移测量；位深不等于可用动态范围。",
+        "note": "SNR/噪声为独立模型预测，图像纹理不是噪声标尺；位深不等于可用动态范围。",
         "darktable_guidance_cn": " | ".join(darktable_guidance_lines(bundle, analysis)[1:]),
         "fullwell_note_cn": fullwell_note_cn(analysis.fullwell_note),
     }

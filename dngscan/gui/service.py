@@ -18,6 +18,7 @@ from typing import Any, Callable
 import dngscan as dg
 from dngscan.debug_util import maybe_print_exc
 from dngscan.grade import RENDER_MODE, resolve_grade_id, resolve_grade_params
+from dngscan.calibration import calibration_diagnostics, calibration_fingerprint
 
 from .constants import (
     PROXY_LONG_EDGE,
@@ -1290,7 +1291,9 @@ def export_preview_jpeg(
                 dither_noise=cached.get_or_build_dither_noise(),
             )
             ensure_current()
-            rgb_u8 = cached.put_pixels(pixel_key, rgb_u8, _take_ownership=True)
+            rgb_u8 = cached.put_pixels(pixel_key, rgb_u8, _take_ownership=True,
+                                       report={"status": getattr(proxy_bundle, "chroma_nr_status", "disabled"),
+                                               "reason": getattr(proxy_bundle, "chroma_nr_reason", None)})
         icc_profile = dg.output_icc_profile_bytes(gamut)
         # Both histograms ride the same response as the frame they describe, so
         # the page's latest-wins logic keeps image and histograms in lockstep.
@@ -1340,6 +1343,7 @@ def export_preview_jpeg(
         "scene_histogram": scene_hist,
         "display_histogram": display_hist,
         "hdr_earned_ev": hdr_earned_ev(render_plan),
+        "chroma_nr": cached.get_pixel_report(pixel_key),
     }
     cached.put_frame(frame_key, payload)
     return payload
@@ -1924,6 +1928,21 @@ def detected_scene_params(
             shoulder_white_ev = _finite_or_none(transitions["shoulder_white_ev"])
         except Exception:
             pass
+    noise_model = getattr(analysis, "noise_model", None)
+    noise = {
+        "status": getattr(noise_model, "status", "unavailable"),
+        "source": getattr(noise_model, "source", None),
+        "reason": getattr(noise_model, "reason", None),
+        "domain": getattr(noise_model, "domain", None),
+        "approximation": getattr(noise_model, "approximation", None),
+        "correlation": getattr(noise_model, "correlation", "unknown"),
+        "spectral_ratios": getattr(noise_model, "spectral_ratios", {}),
+        "evidence_status": getattr(analysis, "noise_evidence_status", None),
+    }
+    calibration_status = calibration_diagnostics(
+        getattr(bundle, "shot_make", None), getattr(bundle, "shot_model", None),
+        shutter=getattr(bundle, "shot_shutter", None), iso=getattr(bundle, "shot_iso", None),
+    )
     return {
         "data_support": getattr(bundle, "camera_data_support", None),
         "decoder_actual": f"{bundle.scene_decoder} {bundle.scene_decoder_version or ''}".strip(),
@@ -1947,6 +1966,10 @@ def detected_scene_params(
         "endpoint_mode": str(getattr(tone, "endpoint_mode", "adaptive")),
         "endpoint_note": getattr(tone, "endpoint_note", None),
         "hdr_earned_ev": earned,
+        "chroma_nr": {"status": getattr(bundle, "chroma_nr_status", "disabled"),
+                      "reason": getattr(bundle, "chroma_nr_reason", None)},
+        "noise_model": noise,
+        "calibrations": calibration_status,
     }
 
 
@@ -2352,6 +2375,7 @@ def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, pr
 
 
 def run_export(params: dict) -> dict:
+    calibration_generation = calibration_fingerprint()
     inp, highlight, gamut, output_format, ev, hdr_headroom, quality, want_png, outdir_arg, ev_auto = parse_job_params(
         params
     )
@@ -2655,12 +2679,18 @@ def run_export(params: dict) -> dict:
         film_compression_knee=film_compression_knee,
         film_highlight_density=film_highlight_density,
     )
+    # Analysis and the compiled plan now own the calibration coefficients.
+    # If another process updated them during analysis, retry before writing
+    # an output rather than attaching one generation's name to another model.
+    if calibration_fingerprint() != calibration_generation:
+        raise RuntimeError("实测标定在导出分析期间发生变化，请重新导出。")
     fingerprint = export_plan_fingerprint(
         input_path=str(inp.resolve()),
         input_size=int(inp.stat().st_size),
         # review batch 24: a same-size in-place replacement of the RAW is a
         # different input; the preview cache already keys on mtime
         input_mtime_ns=int(inp.stat().st_mtime_ns),
+        calibration=calibration_generation,
         wb=wb,
         ev=float(ev),
         highlight=highlight,
@@ -2930,6 +2960,8 @@ def run_export(params: dict) -> dict:
         "preview": preview,
         "metrics": metrics,
         "metrics_kind": "full",
+        "chroma_nr": {"status": getattr(bundle, "chroma_nr_status", "disabled"),
+                      "reason": getattr(bundle, "chroma_nr_reason", None)},
         "gain": bundle.exposure_gain,
         "ev": ev,
         "ev_auto": auto_ev_payload(auto_ev_result),

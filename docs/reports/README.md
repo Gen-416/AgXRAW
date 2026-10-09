@@ -40,6 +40,7 @@
 
 | 记录 | 口径 |
 | --- | --- |
+| [2026-10-09 噪声与纹理研究](../reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) | 固定源码与基准反例；附实测接口、模型驱动色度核实施记录及暂缓待办 |
 | [工程决策记录](../ENGINEERING_NOTES.zh-CN.md) | 2026-07 集中开发期的证据、推理与教训 |
 | [数据驱动 AgX / 胶片设计审查](../DATA_DRIVEN_AGX_FILM_DESIGN_REVIEW.zh-CN.md) | 2026-08-27 快照与处置，含已撤回设计 |
 | [2026-09-02 审查交接](../reviews/CODE_REVIEW_HANDOFF_2026-09-02.zh-CN.md) | 指定 commit 的问题状态与集成接缝清单 |

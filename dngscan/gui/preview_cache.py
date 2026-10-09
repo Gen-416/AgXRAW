@@ -104,6 +104,7 @@ class PreviewEntry:
     _pixel_cache: OrderedDict[Hashable, Any] = field(
         default_factory=OrderedDict, init=False, repr=False
     )
+    _pixel_reports: dict[Hashable, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
     _balance_cache: OrderedDict[str, "PreviewEntry"] = field(
         default_factory=OrderedDict, init=False, repr=False
     )
@@ -163,7 +164,9 @@ class PreviewEntry:
             for cache in (self._balance_cache, self._pixel_cache, self._frame_cache,
                           self._plan_cache, self._auto_ev_cache):
                 if cache:
-                    cache.popitem(last=False)
+                    key, _ = cache.popitem(last=False)
+                    if cache is self._pixel_cache:
+                        self._pixel_reports.pop(key, None)
                     return True
         return False
 
@@ -191,6 +194,8 @@ class PreviewEntry:
             result = dict(payload)
             if isinstance(payload.get("metrics"), dict):
                 result["metrics"] = dict(payload["metrics"])
+            if isinstance(payload.get("chroma_nr"), dict):
+                result["chroma_nr"] = dict(payload["chroma_nr"])
             return result
 
     def get_pixels(self, key: Hashable) -> Any | None:
@@ -201,7 +206,13 @@ class PreviewEntry:
                 self._pixel_cache.move_to_end(key)
             return pixels
 
-    def put_pixels(self, key: Hashable, pixels: Any, *, _take_ownership: bool = False) -> Any:
+    def get_pixel_report(self, key: Hashable) -> dict[str, Any] | None:
+        with self._runtime_cache_lock:
+            report = self._pixel_reports.get(key)
+            return dict(report) if report is not None else None
+
+    def put_pixels(self, key: Hashable, pixels: Any, *, _take_ownership: bool = False,
+                   report: dict[str, Any] | None = None) -> Any:
         """Keep only the newest full preview frames; each is several MiB."""
         np = dg.np
         # Only internal producers transfer their fresh, exclusive render output.
@@ -212,9 +223,14 @@ class PreviewEntry:
         stored.setflags(write=False)
         with self._runtime_cache_lock:
             self._pixel_cache[key] = stored
+            if report is not None:
+                self._pixel_reports[key] = dict(report)
+            else:
+                self._pixel_reports.pop(key, None)
             self._pixel_cache.move_to_end(key)
             while len(self._pixel_cache) > MAX_PIXEL_CACHE_ITEMS:
-                self._pixel_cache.popitem(last=False)
+                evicted_key, _ = self._pixel_cache.popitem(last=False)
+                self._pixel_reports.pop(evicted_key, None)
         self._changed()
         return stored
 
@@ -223,6 +239,8 @@ class PreviewEntry:
         stored = dict(payload)
         if isinstance(payload.get("metrics"), dict):
             stored["metrics"] = dict(payload["metrics"])
+        if isinstance(payload.get("chroma_nr"), dict):
+            stored["chroma_nr"] = dict(payload["chroma_nr"])
         with self._runtime_cache_lock:
             self._frame_cache[key] = stored
             self._frame_cache.move_to_end(key)
@@ -372,6 +390,8 @@ def _cache_identity(
     coreimage_scale: str = "aligned",
     margin: int = 4,
 ) -> tuple[tuple, str]:
+    from dngscan.calibration import calibration_fingerprint
+
     evidence_key = _evidence_cache_identity(path)
     # GUI-exposed decode dials (owner 2026-08-28): the Core Image scale
     # policy changes the decoded scene, the clip margin changes the
@@ -389,6 +409,10 @@ def _cache_identity(
         str(coreimage_version),
         str(demosaic),
         _scene_decoder_runtime_id(decoder),
+        # Calibration changes invalidate the full Analysis, plans, WB children
+        # and rendered frames together. Export's analysis envelope recomputes
+        # this same identity, including when a CLI imports while GUI is open.
+        "calibration=" + calibration_fingerprint(),
         *extras,
     )
     encoded = "\0".join(
@@ -430,6 +454,7 @@ def _analysis_from_json(data: dict[str, Any]) -> Analysis:
     curves = restored.get("snr_curves") or {}
     restored["snr_curves"] = {
         group: {
+            **curve,
             "stops": np.asarray(curve.get("stops", ()), dtype=np.float32),
             "snr_db": np.asarray(curve.get("snr_db", ()), dtype=np.float32),
             "count": np.asarray(curve.get("count", ()), dtype=np.int32),
@@ -437,6 +462,16 @@ def _analysis_from_json(data: dict[str, Any]) -> Analysis:
         }
         for group, curve in curves.items()
     }
+    model = restored.get("noise_model")
+    if isinstance(model, dict):
+        from dngscan.noise_model import NoiseModel
+
+        model = dict(model)
+        model["channel_variance"] = {
+            str(label): tuple(float(value) for value in coefficients)
+            for label, coefficients in (model.get("channel_variance") or {}).items()
+        }
+        restored["noise_model"] = NoiseModel(**model)
     return Analysis(**restored)
 
 
@@ -522,6 +557,10 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
             else None
         ),
         "scene_geometry_corr": getattr(bundle, "scene_geometry_corr", None),
+        # Small decoder contract only: the RAW mosaic and large correction
+        # rasters remain discarded. Noise propagation needs sensor sampling
+        # geometry even after the scene is reduced to a compact proxy.
+        "noise_decode": copy.deepcopy(getattr(bundle, "noise_decode", None)),
     }
 
 
@@ -622,6 +661,7 @@ def _bundle_from_cache(
             if metadata.get("scene_geometry_corr") is not None
             else None
         ),
+        noise_decode=copy.deepcopy(metadata.get("noise_decode")),
     )
 
 
@@ -717,6 +757,7 @@ def build_proxy_entry(
         reliable_reference=(None if source.scene_reliable_reference_rec2020 is None
                             else np.asarray(source.scene_reliable_reference_rec2020).copy()),
     )
+    bundle = replace(bundle, noise_model=getattr(analysis, "noise_model", None))
     return PreviewEntry(bundle=bundle, analysis=analysis, source_metadata=source_metadata)
 
 
@@ -771,7 +812,9 @@ def _read_disk_entry(
                 reliable_reference=(np.asarray(payload["reliable_reference"]).copy()
                                     if "reliable_reference" in payload.files else None),
             )
-            return PreviewEntry(bundle=bundle, analysis=_analysis_from_json(metadata["analysis"]),
+            analysis = _analysis_from_json(metadata["analysis"])
+            bundle = replace(bundle, noise_model=getattr(analysis, "noise_model", None))
+            return PreviewEntry(bundle=bundle, analysis=analysis,
                                 source_metadata=metadata.get("source_bundle"))
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         try:
@@ -945,7 +988,7 @@ def _owned_bytes(value: Any, seen: set[int] | None = None) -> int:
             values = [value.bundle, value.analysis, value.source_metadata, value._dither_owner,
                       *value._balance_cache.values(), *value._plan_cache.values(),
                       *value._pixel_cache.values(), *value._frame_cache.values(),
-                      *value._auto_ev_cache.values()]
+                      *value._auto_ev_cache.values(), *value._pixel_reports.values()]
         return sum(_owned_bytes(item, seen) for item in values)
     if isinstance(value, dg.np.ndarray):
         owner = value

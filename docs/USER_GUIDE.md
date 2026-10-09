@@ -79,13 +79,19 @@ and the whole Detected Parameters card are recomputed against it, so changing it
 re-decodes and re-analyses this RAW (a few seconds) in the current implementation. Neither needs attention day to day; exported filenames carry
 `ciscale-unity` / `ciscale-measured` or `margin{n}` only when the value is not the
 default. The **色度降噪 — chroma NR** slider on the same row (CLI `--chroma-nr`, 0–1,
-default 0 = strict identity) is an optional digitization repair: inside a band of
-roughly 8–128 sensor pixels (octave-aligned, so the edges can sit up to √2 off) it
-shrinks low-frequency colour mottle against each level's own noise floor — a
-content-adaptive operator; the scene-linear luminance component and finer coloured
-noise are untouched by construction. It works under SDR and HDR containers alike: both
-legs of an HDR pair read the same repaired scene, so the gain map never encodes the
-repair. A nonzero value names the file `cnr{x}`.
+default 0 = strict identity) uses an independent noise model to smooth chroma at
+roughly 8–128 sensor pixels (octave-aligned, with boundaries accurate to about √2).
+It preserves luminance at this scene-linear stage, but can still attenuate real colour
+structure. Missing calibration, Apple RAW or unsupported noise-transfer operations
+skip this optional stage with a reason. Where applicable, SDR and both legs of an HDR
+pair use the same corrected scene. A nonzero value names the file `cnr{x}`. See the
+[current algorithm and limits](CHROMA_NR.zh-CN.md).
+
+Use **实测噪声标定** on the RAW decode card to import JPTC Collect directories or
+calibration JSON, then enable, disable or remove local profiles. Successful installation
+does not establish applicability to the current photo; the noise-model readout shows
+its source and any rejection reason. [Calibration instructions](NOISE_CALIBRATION.zh-CN.md)
+include CLI commands and camera, shutter, ISO and DN-scale requirements.
 
 ---
 
@@ -498,10 +504,10 @@ daylight". There is no strength slider — glass has no half-installed state.
   **Scene-adaptive** (default) follows this frame's luminance percentiles — right for
   most photos, but large deep-shadow areas (a backlit bridge underside, a dark alley)
   can be declared "black" by the percentiles. **Evidence** pins the endpoints to
-  sensor evidence instead: black = the measured noise-floor EV (the sensor prior's
-  published read noise when available; a single-frame estimate otherwise, truthfully
-  noted), and white trusts only the reliable RAW tail (reconstructed highlights do
-  not count; absent evidence falls back with a note). The exposure anchor does not
+  independent evidence instead: black uses the matched noise model's read-noise floor,
+  and white trusts only the reliable RAW tail. Reconstructed highlights do not count;
+  missing evidence falls back with a note. Local texture variation is never substituted
+  for a measured read-noise floor. The exposure anchor does not
   move — 0 EV still maps to 18% gray — so overall brightness stays put.
 - **Toe end** (EV slider): the scene EV at which the curve lands at near-black.
   Dragging left pushes that point deeper — deeper shadows stay readable and dive to

@@ -655,7 +655,8 @@ def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
     ``MIDGRAY_HEADROOM_STOPS + log2(f)`` scene EV — the same convention every scene
     tone metric already uses.
 
-    Two sources, following the existing prior/degradation philosophy:
+    Production prefers the matched normalized-RAW model (``model``). Legacy
+    callers without a model retain their prior/frame fallback contract:
 
     - ``("prior", ...)``: the sensor prior's published read noise in electrons over
       the frame's own electron-domain full well (recovered from the stored
@@ -666,6 +667,13 @@ def noise_floor_ev_estimate(analysis: Analysis) -> tuple[float, str]:
       therefore reads conservatively shallow; callers should note the degradation.
     - ``("none", nan)``: no usable estimate at all.
     """
+    model = getattr(analysis, "noise_model", None)
+    if model is not None:
+        from .noise_model import model_read_floor
+        floor = model_read_floor(model)
+        if math.isfinite(floor) and 0 < floor < 1:
+            return MIDGRAY_HEADROOM_STOPS + math.log2(floor), "model"
+        return float("nan"), "none"
     noise_e = analysis.noise_floor_e
     read_e = analysis.prior_read_noise_e
     nf = float(analysis.noise_floor)
@@ -702,6 +710,20 @@ def snr_ev_coordinates(analysis: Analysis) -> dict[str, float] | None:
     engineering floor (``N = r``) the evidence black endpoint uses; both are
     stated definitions, not a disagreement.
     """
+    model = getattr(analysis, "noise_model", None)
+    if model is not None:
+        if model.status != "valid" or model.domain != "normalized-raw" or not model.channel_variance:
+            return None
+        result = {}
+        for snr in (1, 10, 20):
+            levels = []
+            for a, b in model.channel_variance.values():
+                signal = (snr * snr * a + math.sqrt((snr * snr * a) ** 2 + 4 * snr * snr * b)) / 2
+                if not math.isfinite(signal) or not 0 < signal < 1:
+                    return None
+                levels.append(MIDGRAY_HEADROOM_STOPS + math.log2(signal))
+            result[f"snr{snr}"] = max(levels)
+        return result
     noise_e = analysis.noise_floor_e
     read_e = analysis.prior_read_noise_e
     nf = float(analysis.noise_floor)
@@ -1058,13 +1080,13 @@ def raw_health_verdict_cn(lag1: float, hist_empty: float) -> str:
     if not math.isfinite(lag1):
         return "n/a"
     if lag1 < 0.08:
-        verdict = "干净(近白噪声)"
+        verdict = "绿色残差相关性低（不能证明噪声独立）"
     elif lag1 < 0.20:
-        verdict = "轻度空间处理迹象"
+        verdict = "绿色残差轻度相关（含场景结构）"
     else:
-        verdict = "明显平滑(疑似机内降噪)"
+        verdict = "绿色残差相关（不能单独判定机内降噪）"
     if math.isfinite(hist_empty) and hist_empty > 5.0:
-        verdict += "; 直方图有梳齿(疑似机内缩放)"
+        verdict += "; 码值分布有空档（需独立验证）"
     return verdict
 
 
@@ -1081,7 +1103,7 @@ def sensor_prior_evidence(
     floor) is None TOGETHER, so SNR guidance, endpoint evidence and the DR
     clamp all degrade to frame-derived estimates. The prior's identity and
     the gate reason are still reported for diagnostics."""
-    prior = sensor_priors.find_priors(make, model, shutter=shutter)
+    prior = sensor_priors.find_priors(make, model, shutter=shutter, iso=iso)
     prior_id = prior["id"] if prior else None
     _pq = prior.get("quality") if prior else None
     quality_status = (_pq or {}).get("status") if isinstance(_pq, dict) else None
@@ -1228,22 +1250,18 @@ def analyze(
         median_y = float(np.median(y))
     if not _return_planes:
         ev = None
-    from .phase_statistics import build_phase_statistics
-    prepared_phases = build_phase_statistics(bundle, channel_ids, labels)
-    phase_stats: dict = {} if prepared_phases is None else prepared_phases.snr
-    nf = estimate_raw_noise_floor(bundle, channel_fullwell, _phase_stats=phase_stats,
-                                  _prepared_phases=prepared_phases)
-    usable_dr = math.log2(1.0 / max(nf, NOISE_DR_EPS)) if math.isfinite(nf) else float("nan")
-    # Review R2 item 1: the SNR curve is a RENDER input now, not a diagnostic.
-    # compile_channel_separation's design lists a tail-SNR confidence factor,
-    # and gating this behind `diagnostics` made the same photograph render
-    # differently depending on whether --csv/--scan happened to be passed.
-    # Always-on costs ~0.2 s at 61 MP (vectorized tile means/stds), which the
-    # one analyze() per loaded file absorbs.
-    snr_curves, snr1_dr, snr1_stop = compute_snr_curves(
-        bundle, channel_ids, labels, channel_fullwell, _phase_stats=phase_stats
-    )
-    del phase_stats
+    # Spatial tile variance includes scene structure. Only independently
+    # matched calibration/file metadata may define rendering noise evidence.
+    # Standalone tile helpers remain diagnostics, not physical SNR inputs.
+    from .noise_model import resolve_noise_model, model_snr_curves, model_read_floor
+    prior = sensor_priors.find_priors(bundle.shot_make, bundle.shot_model,
+                                     shutter=getattr(bundle, "shot_shutter", None),
+                                     iso=getattr(bundle, "shot_iso", None))
+    noise_model = resolve_noise_model(bundle, channel_fullwell, prior)
+    nf = model_read_floor(noise_model)
+    usable_dr = (math.log2(1.0 / nf) if math.isfinite(nf) and nf > 0
+                 else float("nan"))
+    snr_curves, snr1_dr, snr1_stop = model_snr_curves(noise_model, channel_ids, labels)
     if not balanced:
         gamut_pct, bright_pct = compute_gamut_metrics(
             bundle.scene_rec2020_render, bundle.scene_scale, y, gamut_names, _median_y=median_y
@@ -1251,22 +1269,16 @@ def analyze(
 
     if not _return_planes:
         y = None
-    # This is decision evidence, so requesting a CSV must not change rendering.
-    health_lag1, health_hist = raw_health_metrics(bundle, channel_ids, labels,
-                                               _prepared_phases=prepared_phases)
-    del prepared_phases
+    # G1/G2 occupy different sensor locations. Their residual correlation is
+    # a scene-dependent clue, never proof of filtering or a calibration veto.
+    health_lag1, health_hist = (raw_health_metrics(bundle, channel_ids, labels)
+                               if diagnostics else (float("nan"), float("nan")))
     noise_status = ("linear-camera-rgb" if raw_image.ndim == 3 else
-                    "spatially-correlated" if math.isfinite(health_lag1) and health_lag1 >= .20
-                    else "independent")
-    if noise_status != "independent":
-        # Correlation suppresses spatial sigma: do not grant high sensor-SNR
-        # confidence or a deep physical noise floor from processed samples.
-        usable_dr = float("nan")
-        for curve in snr_curves.values():
-            curve["snr_db"][:] = np.nan
-            curve["count"][:] = 0
-        snr1_dr = {k: float("nan") for k in snr1_dr}
-        snr1_stop = {k: float("nan") for k in snr1_stop}
+                    "model-valid" if noise_model.status == "valid" else
+                    "model-rejected" if noise_model.status == "rejected" else "unavailable")
+    correlation_status = (noise_model.correlation if noise_model.correlation != "unknown" else
+                          "spatial-residual-clue" if math.isfinite(health_lag1)
+                          and abs(health_lag1) >= .20 else "unknown")
 
     # Priors layer: electron-domain calibration from public measurements
     # (best-effort). Extracted into sensor_prior_evidence() so the whole
@@ -1277,9 +1289,15 @@ def analyze(
         bundle.shot_make, bundle.shot_model, bundle.shot_iso,
         nf=nf, fullwell=fullwell, mean_black=mean_black,
         coding_range=float(bundle.white_level) - mean_black,
-        shutter=getattr(bundle, "shot_shutter", None), noise_status=noise_status)
-    # Effective DR for downstream tone planning: the empirical single-frame estimate,
-    # gently bounded by the published PDR when available (never replaced by it).
+        shutter=getattr(bundle, "shot_shutter", None),
+        noise_status="independent" if noise_model.status == "valid" else noise_status)
+    # The normalized model uses declared coding endpoints, not the frame's
+    # observed maximum. Do not turn a file-declared variance into electrons
+    # by silently combining it with a different source's gain calibration.
+    noise_e = (prior_rn_e if noise_model.reason == "matched-shot-read-model"
+               and noise_model.status == "valid" else None)
+    # Engineering read-noise DR and photographic DR have different definitions.
+    # Retain the existing planning bound when a measured PDR is available.
     if prior_pdr is not None and math.isfinite(usable_dr):
         usable_dr_eff = clamp_float(usable_dr, prior_pdr - 1.5, prior_pdr + 1.5)
     else:
@@ -1337,7 +1355,11 @@ def analyze(
         noise_evidence_status=noise_status,
         health_lag1_corr=health_lag1,
         health_hist_empty_pct=health_hist,
+        noise_model=noise_model,
+        noise_observation_status="not-used-for-noise-calibration",
+        noise_correlation_status=correlation_status,
     )
+    bundle.noise_model = noise_model
     return (analysis, y, ev) if _return_planes else (analysis, None, None)
 
 

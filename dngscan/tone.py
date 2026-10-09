@@ -580,6 +580,8 @@ def build_tone_compression_plan(
             black_ev = clamp_float(floor_ev_est, -14.0, -1.5)
             if floor_source == "prior":
                 notes.append("黑端点=先验读出噪声底")
+            elif floor_source == "model":
+                notes.append("黑端点=独立噪声模型的读出噪声底")
             else:
                 notes.append("黑端点=单帧噪声底估计（无传感器先验）")
         else:

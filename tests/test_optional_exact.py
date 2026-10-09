@@ -119,14 +119,17 @@ class NativeB3Tests(unittest.TestCase):
                 actual = ext.atrous_smooth_f32(plane, level)
             self.assertEqual(actual.tobytes(), expected.tobytes())
 
-    def test_complete_nr_keeps_mad_shrinkage_and_projection_exact(self):
+    def test_complete_nr_keeps_calibrated_shrinkage_and_projection_exact(self):
         scene = np.random.default_rng(32).uniform(-.02, 1, (193, 211, 3)).astype(np.float32)
         for factor in (1., 4.25):
             with mock.patch.dict(os.environ, {'DNGSCAN_FAST': '1', 'DNGSCAN_FAST_SKIP': ''}):
-                actual = chroma_nr.chroma_correction_map(scene, .67, factor)
+                actual = chroma_nr.chroma_correction_map(scene, .67, factor,
+                    chroma_variance=np.asarray([.0001, .0002, .0003], np.float32))
             with mock.patch.object(chroma_nr, '_atrous_smooth', side_effect=chroma_nr._atrous_smooth_reference):
-                expected = chroma_nr.chroma_correction_map(scene, .67, factor)
+                expected = chroma_nr.chroma_correction_map(scene, .67, factor,
+                    chroma_variance=np.asarray([.0001, .0002, .0003], np.float32))
             self.assertEqual(actual.tobytes(), expected.tobytes())
+            self.assertTrue(np.any(actual != 0), "native NR parity must exercise the operator")
 
 
 if __name__ == '__main__':
