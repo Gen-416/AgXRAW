@@ -239,9 +239,17 @@ python tools/validate_native_raw.py "$SAMPLES/DSC00225.ARW" --sizes half full \
 ```
 
 这份对照验证同一固定 LibRaw 下的实现一致性。当前缺少厂商／Adobe 的独立解码
-参考、Sony 其他编码与 APS-C／快门／ISO 组合、同模式暗场／平场／近饱和标定对；
-授权本地样本目录也没有 Nikon NEF，因此 Nikon 传统／HE／HE* 均未完成实片验收。
-这些缺口记录为未测，不计为通过。
+参考、Sony 其他编码与 APS-C／快门／ISO 组合、同模式暗场／平场／近饱和标定对。
+本地目录没有 Nikon NEF；额外使用 [raw.pixls.us](https://raw.pixls.us/) 明确逐文件
+CC0 的 D750 12-bit lossless-compressed 传统 NEF，完成 full／half × NumPy/native
+四次分析与 SDR/HDR 形成验收，详见 [Nikon 记录](assets/delivery-quality/nikon-nef-20261010.json)。
+下载 hash 与原站一致，临时 RAW 已删除。实际 Compression 34713 不足以让生产路径
+确认 lossless，因此外部物理先验仍按未知资格拒绝；语料站的描述没有改变运行时门控。
+Nikon HE／HE*、其他传统编码／读出组合及独立参考仍未测，不计为通过。
+
+损坏输入另见[异常输入记录](assets/delivery-quality/raw-failures-20261010.json)：
+Sony、Fuji、fp、iPhone 正常原件均通过控制解码，15 个临时副本的结构性破坏均明确
+失败，没有进入分析或导出；RAF 的 TIFF 压缩标记修改不适用，单独记录。
 
 ## iPhone 传感器声明的边界
 

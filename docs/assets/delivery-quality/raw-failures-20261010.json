@@ -1,0 +1,460 @@
+{
+  "schema": "agxraw-raw-failure-acceptance-1",
+  "created_utc": "2026-10-10T03:37:50Z",
+  "source_commit": "4a9b9dd2323064a59cdb1947b433cf730e5c4fe7",
+  "working_changes": true,
+  "runtime": {
+    "python": "3.14.4",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw_version": [
+      0,
+      22,
+      0
+    ],
+    "libraw_commit": "e419de08001de28ae6988ecb22df47e52b9c5eaa"
+  },
+  "parameters": {
+    "decoder": "libraw",
+    "half_size": true,
+    "highlight": "clip",
+    "analysis_on_failure": false
+  },
+  "scope": "chosen structural corruption only; no guarantee to detect arbitrary syntactically valid pixel mutation",
+  "samples": [
+    {
+      "file": "DSC00225.ARW",
+      "source_sha256": "752749232a3d9baa84fec24b4663557ec743a495fbe5d65b8600ed72d7bfa6d2",
+      "source_bytes": 27824128,
+      "cases": [
+        {
+          "mutation": {
+            "kind": "invalid-header",
+            "offset": 0,
+            "replacement_hex": "4641494c"
+          },
+          "copy_sha256": "15c6b489820b0a4c7e9ad22846ad2cfa62611f103a601fe07533e282d5c13ecd",
+          "copy_bytes": 27824128,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 ? ?，.ARW）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "prefix-4096",
+            "retained_bytes": 4096
+          },
+          "copy_sha256": "38c77fb8384fb0382601bc04b42fdeb8940727b556d4bd4e67124a9eb6cac24d",
+          "copy_bytes": 4096,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "Cannot acquire RAW evidence with rawpy/libraw: b'Input/output error'"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "truncated-half",
+            "retained_bytes": 13912064
+          },
+          "copy_sha256": "10fe4d67a460833ec997ee2e355d633169448420e267db512d67f0fcc7d0c259",
+          "copy_bytes": 13912064,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "Cannot acquire RAW evidence with rawpy/libraw: b'Input/output error'"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "unsupported-main-cfa-compression",
+            "ifd_offset": 145426,
+            "original_compression": 32766,
+            "replacement_compression": 65534
+          },
+          "copy_sha256": "3a4d65c7205ef4e16fc0c09515ae2aedb51b84f6ba6da20c61542ad049b11006",
+          "copy_bytes": 27824128,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 SONY ILCE-7M5，.ARW）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        }
+      ],
+      "control": {
+        "process_returncode": 0,
+        "stderr": "",
+        "result": {
+          "decode_supported": true,
+          "render_supported": false,
+          "measurement_qualified": false,
+          "analysis_attempted": false,
+          "published_output": false,
+          "status": "decoded",
+          "raw_shape": [
+            4688,
+            7028
+          ],
+          "raw_nonzero_fraction": 1.0
+        },
+        "passed": true
+      },
+      "original_unchanged": true
+    },
+    {
+      "file": "DSCF0214.RAF",
+      "source_sha256": "649f3899eb5e8504353e9e332440ab98e401937c309ddadacfda0a1a6b251af2",
+      "source_bytes": 38996640,
+      "cases": [
+        {
+          "mutation": {
+            "kind": "invalid-header",
+            "offset": 0,
+            "replacement_hex": "4641494c"
+          },
+          "copy_sha256": "4905f9e9e0c3076a0888a4cc08b32647eea62d63f6d1d6cd27da43a0872b1949",
+          "copy_bytes": 38996640,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 ? ?，.RAF）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "prefix-4096",
+            "retained_bytes": 4096
+          },
+          "copy_sha256": "dd9ef231e7a439e1183e8c37f37862c4ebffb446cd777872ea12d8dbece854c5",
+          "copy_bytes": 4096,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 FUJIFILM X100VI，.RAF）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "truncated-half",
+            "retained_bytes": 19498320
+          },
+          "copy_sha256": "17f82266d75af11aa9f24c8d383447404f7b46913cdb2e1f56a922bfb3698afb",
+          "copy_bytes": 19498320,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "Cannot acquire RAW evidence with rawpy/libraw: b'Input/output error'"
+          },
+          "passed": true
+        },
+        {
+          "mutation": "unsupported-main-cfa-compression",
+          "status": "not-applicable",
+          "passed": null,
+          "reason": "no-unique-classic-TIFF-main-CFA-IFD"
+        }
+      ],
+      "control": {
+        "process_returncode": 0,
+        "stderr": "",
+        "result": {
+          "decode_supported": true,
+          "render_supported": false,
+          "measurement_qualified": false,
+          "analysis_attempted": false,
+          "published_output": false,
+          "status": "decoded",
+          "raw_shape": [
+            5178,
+            7752
+          ],
+          "raw_nonzero_fraction": 1.0
+        },
+        "passed": true
+      },
+      "original_unchanged": true
+    },
+    {
+      "file": "_SDI0016.DNG",
+      "source_sha256": "1a501662a4ef4634b3e084e2b3f3a0d3ebe6a12bcd7ab73ba3867b7ff707a9ac",
+      "source_bytes": 37618937,
+      "cases": [
+        {
+          "mutation": {
+            "kind": "invalid-header",
+            "offset": 0,
+            "replacement_hex": "4641494c"
+          },
+          "copy_sha256": "42c74d98707dd4f09f8aec8a86bd363404116191ebf4903cb9412aed82b86fee",
+          "copy_bytes": 37618937,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 ? ?，.DNG）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "prefix-4096",
+            "retained_bytes": 4096
+          },
+          "copy_sha256": "e1771c1656f7bbf004af05bb91a899c8a025a46d1e5f0ad88322ffaa8b46d409",
+          "copy_bytes": 4096,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "Cannot acquire RAW evidence with rawpy/libraw: b'Input/output error'"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "truncated-half",
+            "retained_bytes": 18809468
+          },
+          "copy_sha256": "26279fb663c56eab0d908bb8919c85da62f9129e6963256e39e0e7a050d99020",
+          "copy_bytes": 18809468,
+          "process_returncode": 0,
+          "stderr": "<temporary>/truncated-half.DNG: Unexpected end of file\n",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "Cannot acquire RAW evidence with rawpy/libraw: b'Input/output error'"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "unsupported-main-cfa-compression",
+            "ifd_offset": 3882,
+            "original_compression": 7,
+            "replacement_compression": 65534
+          },
+          "copy_sha256": "56b5599ef7ff55a946bc8abdec56cc1444b97b9cb9eda0f8ad3d92b9e5453ade",
+          "copy_bytes": 37618937,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 SIGMA SIGMA fp，.DNG）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        }
+      ],
+      "control": {
+        "process_returncode": 0,
+        "stderr": "",
+        "result": {
+          "decode_supported": true,
+          "render_supported": false,
+          "measurement_qualified": false,
+          "analysis_attempted": false,
+          "published_output": false,
+          "status": "decoded",
+          "raw_shape": [
+            4042,
+            6064
+          ],
+          "raw_nonzero_fraction": 1.0
+        },
+        "passed": true
+      },
+      "original_unchanged": true
+    },
+    {
+      "file": "Original RAW 26-07-11 202403093.dng",
+      "source_sha256": "9d53f9a850f7935d1751a2f6f75e21fc93e27a8acf3a610819da852962b05dde",
+      "source_bytes": 9840536,
+      "cases": [
+        {
+          "mutation": {
+            "kind": "invalid-header",
+            "offset": 0,
+            "replacement_hex": "4641494c"
+          },
+          "copy_sha256": "020dca4a02d953b39147fde0c20472cfeca78d4867f371acf06a3ef181b2e2c4",
+          "copy_bytes": 9840536,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 ? ?，.dng）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "prefix-4096",
+            "retained_bytes": 4096
+          },
+          "copy_sha256": "04772f2ef4c2ac7018c109a2494b1b133533a458674ca7ba84302a1ac82ba934",
+          "copy_bytes": 4096,
+          "process_returncode": 0,
+          "stderr": "<temporary>/prefix-4096.dng: Unexpected end of file\n",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "Cannot acquire RAW evidence with rawpy/libraw: b'Input/output error'"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "truncated-half",
+            "retained_bytes": 4920268
+          },
+          "copy_sha256": "37ecc2f696ccd65d44fe7b8e718ee67360b5d3af19cbd71c932fbc2451a7f6f0",
+          "copy_bytes": 4920268,
+          "process_returncode": 0,
+          "stderr": "<temporary>/truncated-half.dng: Unexpected end of file\n",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "Cannot acquire RAW evidence with rawpy/libraw: b'Input/output error'"
+          },
+          "passed": true
+        },
+        {
+          "mutation": {
+            "kind": "unsupported-main-cfa-compression",
+            "ifd_offset": 18,
+            "original_compression": 7,
+            "replacement_compression": 65534
+          },
+          "copy_sha256": "cf345875994ad0ffb78bbd2a3593d9d11d1c315a8856c84d0ab6ff62722b88d8",
+          "copy_bytes": 9840536,
+          "process_returncode": 0,
+          "stderr": "",
+          "result": {
+            "decode_supported": false,
+            "render_supported": false,
+            "measurement_qualified": false,
+            "analysis_attempted": false,
+            "published_output": false,
+            "status": "explicit-decoder-failure",
+            "exception_type": "RuntimeError",
+            "error": "LibRaw 无法打开此文件（机型 Apple iPhone 16 Pro，.dng）：b'Unsupported file format or not RAW file'\n若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 LibRaw master 快照；仍失败请反馈样张（机型支持策略见 docs/SENSOR_SUPPORT.zh-CN.md）。\n用 `--support` 可查看此文件在两条解码线上的逐档支持报告。"
+          },
+          "passed": true
+        }
+      ],
+      "control": {
+        "process_returncode": 0,
+        "stderr": "",
+        "result": {
+          "decode_supported": true,
+          "render_supported": false,
+          "measurement_qualified": false,
+          "analysis_attempted": false,
+          "published_output": false,
+          "status": "decoded",
+          "raw_shape": [
+            3024,
+            4032
+          ],
+          "raw_nonzero_fraction": 1.0
+        },
+        "passed": true
+      },
+      "original_unchanged": true
+    }
+  ]
+}
