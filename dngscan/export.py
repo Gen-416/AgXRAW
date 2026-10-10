@@ -29,6 +29,8 @@ from .render import render_output_u8, render_output_encoded_float
 from .delivery_integrity import encoded_content_signature
 from .delivery_transaction import DeliveryTransaction
 
+_ICC_PROFILE_AUTO = object()
+
 
 def chroma_to_subsampling(name: str) -> int:
     # PIL subsampling: 0 = 4:4:4 (full chroma), 1 = 4:2:2, 2 = 4:2:0 (smallest).
@@ -36,7 +38,8 @@ def chroma_to_subsampling(name: str) -> int:
 
 
 def save_jpeg_array(
-    rgb_u8: Any, out_path: Path, quality: int, output_gamut: str = "srgb", subsampling: int = 0
+    rgb_u8: Any, out_path: Path, quality: int, output_gamut: str = "srgb", subsampling: int = 0,
+    *, icc_profile: Any = _ICC_PROFILE_AUTO,
 ) -> bool:
     try:
         from PIL import Image
@@ -48,7 +51,8 @@ def save_jpeg_array(
     # Written by PIL directly: mpimg.imsave was a thin pass-through to this same
     # encoder call, at the price of importing matplotlib in every export worker.
     pil_kwargs: dict[str, Any] = {"quality": int(quality), "subsampling": int(subsampling), "optimize": True}
-    icc_profile = output_icc_profile_bytes(output_gamut)
+    if icc_profile is _ICC_PROFILE_AUTO:
+        icc_profile = output_icc_profile_bytes(output_gamut)
     if icc_profile is not None:
         pil_kwargs["icc_profile"] = icc_profile
     # R4: temp-write + atomic replace, matching the HDR writer — a direct
@@ -487,17 +491,24 @@ def export_srgb_jpeg(
 
             return save_sdr_heif(rgb, out_path, delivery, output_gamut,
                                  source_raw=path, return_rgb=return_rgb)
+        # A generated sRGB ICC includes its creation timestamp. Resolve once
+        # for this complete export/search, then compare the actual embedded
+        # bytes to that same reference rather than generating another profile.
+        icc_profile = output_icc_profile_bytes(output_gamut)
+        if not icc_profile:
+            raise RuntimeError("JPEG 导出缺少输出 ICC")
         if delivery is not None and delivery.name == "auto":
             from PIL import Image, JpegImagePlugin
             from .auto_encode import select_encoding
             from .gainmap import _base_and_coding_metrics_arrays, _base_roundtrip_is_acceptable
 
             def encode(q, candidate, subsampling=1):
-                embedded = save_jpeg_array(rgb, candidate, q, output_gamut, subsampling)
+                embedded = save_jpeg_array(rgb, candidate, q, output_gamut, subsampling,
+                                           icc_profile=icc_profile)
                 with Image.open(candidate) as im:
                     im.load()
                     if (not embedded or im.size != (rgb.shape[1], rgb.shape[0])
-                            or im.info.get("icc_profile") != output_icc_profile_bytes(output_gamut)):
+                            or im.info.get("icc_profile") != icc_profile):
                         raise RuntimeError("JPEG 回读尺寸或 ICC 配置不符")
                     if JpegImagePlugin.get_sampling(im) != subsampling:
                         raise RuntimeError("JPEG 主图采样与编码请求不符")
@@ -526,12 +537,13 @@ def export_srgb_jpeg(
         out_path.parent.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".agxraw-jpeg-",dir=out_path.parent) as td:
             candidate=Path(td)/"verified.jpg"
-            embedded = save_jpeg_array(rgb, candidate, quality, output_gamut, subsampling)
+            embedded = save_jpeg_array(rgb, candidate, quality, output_gamut, subsampling,
+                                       icc_profile=icc_profile)
             exif_carried = carry_capture_metadata(path, candidate)
             with Image.open(candidate) as im:
                 im.load()
                 if (not embedded or im.size != (rgb.shape[1], rgb.shape[0])
-                        or im.info.get("icc_profile") != output_icc_profile_bytes(output_gamut)
+                        or im.info.get("icc_profile") != icc_profile
                         or JpegImagePlugin.get_sampling(im) != subsampling):
                     raise RuntimeError("JPEG 回读尺寸、ICC 或采样与请求不符")
                 decoded = np.asarray(im.convert("RGB"))

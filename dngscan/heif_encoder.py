@@ -123,7 +123,7 @@ def _quantized_band(rgb, bit_depth, *, rng=None):
 def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
            bit_depth: int = 10, preset: str = 'slow', tune: str = 'ssim',
            output_gamut: str = 'p3', auxiliary: bool = False,
-           dither_quantization: bool = False) -> dict:
+           dither_quantization: bool = False, icc_profile: bytes | None = None) -> dict:
     """Encode finished nonlinear RGB, uint8 or float [0,1], as HEVC.
 
     Float input preserves master precision; increasing bit depth on uint8 input
@@ -179,7 +179,7 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
                      2 if auxiliary else 13,6 if auxiliary else 1,1)
         check(lib.heif_image_set_nclx_color_profile(img,C.byref(nclx)))
         if not auxiliary:
-            icc = output_icc_profile_bytes(output_gamut)
+            icc = icc_profile if icc_profile is not None else output_icc_profile_bytes(output_gamut)
             if not icc:
                 raise RuntimeError('missing HEIF output ICC')
             check(lib.heif_image_set_raw_color_profile(img,b'prof',icc,len(icc)))
@@ -228,7 +228,8 @@ def read_rgb_item(path: Path, item: int):
 
 
 def encode_apple(rgb, path: Path, quality: int, chroma: str = "420", *,
-                 bit_depth: int = 10, preset="slow", tune="ssim", output_gamut="p3"):
+                 bit_depth: int = 10, preset="slow", tune="ssim", output_gamut="p3",
+                 icc_profile: bytes | None = None):
     """System SDR writer. The caller verifies every requested property after writing.
 
     Apple does not expose x265 preset/tune; those controls apply only to x265.
@@ -242,7 +243,7 @@ def encode_apple(rgb, path: Path, quality: int, chroma: str = "420", *,
         raise ValueError("invalid Apple HEIF controls")
     if output_gamut not in ("srgb", "p3"):
         raise ValueError("invalid Apple HEIF gamut")
-    icc = output_icc_profile_bytes(output_gamut)
+    icc = icc_profile if icc_profile is not None else output_icc_profile_bytes(output_gamut)
     if not icc:
         raise RuntimeError("missing HEIF output ICC")
     color = Quartz.CGColorSpaceCreateWithICCData(NSData.dataWithBytes_length_(icc, len(icc)))

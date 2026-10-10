@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Generic area resampling and row-streamed spatial correction utilities."""
 from __future__ import annotations
+import math
 import os
 from ._deps import np
 
@@ -24,6 +25,41 @@ def spread_grid_shape(height: int, width: int) -> tuple[int, int]:
         return height, width
     scale = limit / long_side
     return max(int(round(height * scale)), 1), max(int(round(width * scale)), 1)
+
+
+def chroma_nr_grid_shape(bundle, height: int, width: int) -> tuple[int, int]:
+    """Memory-bounded NR grid with at least four native sensels per cell.
+
+    More working memory permits a finer grid, but cannot make the independent
+    Bayer-sample approximation invalid. Use the same retained sensor window as
+    covariance propagation; the sampling ruler covers callers without that
+    descriptor, including full/half decodes, oriented crops and compact proxies.
+    The propagator still validates the resulting sample count independently.
+    """
+    dh, dw = spread_grid_shape(height, width)
+    descriptor = getattr(bundle, "noise_decode", None) or {}
+    native = descriptor.get("sensor_window_shape")
+    try:
+        nh, nw = (float(x) for x in native)
+        if not all(math.isfinite(x) and x > 0 for x in (nh, nw)):
+            raise ValueError("invalid sensor window")
+    except (TypeError, ValueError, OverflowError):
+        from .sampling_geometry import sensor_px_per_render_axes
+        sy, sx = sensor_px_per_render_axes(bundle, height, width)
+        nh, nw = sy * height, sx * width
+    max_cells = nh * nw / 4.
+    if dh * dw <= max_cells:
+        return dh, dw
+    scale = math.sqrt(max_cells / (dh * dw))
+    dh, dw = max(1, math.floor(dh * scale)), max(1, math.floor(dw * scale))
+    # A very thin raster can hit the one-cell minimum on one axis. Keep the
+    # other axis within the area bound too, rather than rounding above it.
+    if dh * dw > max_cells:
+        if dw >= dh:
+            dw = max(1, math.floor(max_cells / dh))
+        else:
+            dh = max(1, math.floor(max_cells / dw))
+    return dh, dw
 
 
 def spatial_band_rows(width: int) -> int:

@@ -335,10 +335,14 @@ def read_dng_shot_info(path: Path) -> DngShotInfo:
 
 @dataclass
 class DngColorCalibration:
-    """XYZ->camera matrices under one or two named illuminants (DNG ColorMatrix1/2).
+    """DNG colour calibration under up to three named illuminants.
 
-    ``matrix*`` are row-major 3x3 (RGB planes); ``cct*`` are the CCTs of the
-    calibration illuminants. ``matrix2`` may be None (single-calibration files).
+    ``matrix*`` retain the composed endpoint XYZ->camera matrices for callers
+    inspecting an individual calibration. The original ColorMatrix and
+    CameraCalibration components must be interpolated separately before
+    composition at an intermediate CCT. ``color_matrix*`` are absent on legacy
+    programmatically constructed calibrations, whose ``matrix*`` are already
+    the complete transform.
     """
 
     matrix1: tuple[tuple[float, float, float], ...]
@@ -350,6 +354,14 @@ class DngColorCalibration:
     # unmapped in _LIGHT_SOURCE_CCT and therefore skipped).
     matrix3: tuple[tuple[float, float, float], ...] | None = None
     cct3: float | None = None
+    color_matrix1: tuple[tuple[float, float, float], ...] | None = None
+    color_matrix2: tuple[tuple[float, float, float], ...] | None = None
+    color_matrix3: tuple[tuple[float, float, float], ...] | None = None
+    camera_calibration1: tuple[tuple[float, float, float], ...] | None = None
+    camera_calibration2: tuple[tuple[float, float, float], ...] | None = None
+    camera_calibration3: tuple[tuple[float, float, float], ...] | None = None
+    analog_balance: tuple[float, float, float] | None = None
+    calibration_signatures_match: bool = True
 
 
 def _ascii_signature(vals) -> str:
@@ -465,15 +477,17 @@ def read_dng_color_calibration(path: Path) -> DngColorCalibration | None:
                 elif tag == TAG_PROFILE_CALIBRATION_SIGNATURE:
                     vals = _entry_values(fh, typ, num, raw, endian)
                     profile_signature = _ascii_signature(vals)
-            # R6 item 3 — compose per DNG spec: AB x CC_i x CM_i. CC applies
-            # only when the calibration signatures MATCH (both absent = both
-            # default empty = match); AB always applies (identity default).
+            # Keep the components as well as the composed endpoints. DNG
+            # interpolation is AB x interp(CC) x interp(CM), not interpolation
+            # of AB x CC_i x CM_i. CC applies only when the signatures match
+            # (both absent = both default empty); AB always applies.
             signatures_match = (cc_signature or "") == (profile_signature or "")
             ab = None
             if analog_balance is not None and all(
                 v > 0 and v == v and abs(v) != float("inf") for v in analog_balance
             ):
                 ab = analog_balance
+            color_matrices = dict(matrices)
             for idx in list(matrices):
                 m = [list(row) for row in matrices[idx]]
                 cc = camera_cal.get(idx) if signatures_match else None
@@ -492,9 +506,23 @@ def read_dng_color_calibration(path: Path) -> DngColorCalibration | None:
             cct2=illuminants.get(2) if 2 in matrices else None,
             matrix3=matrices.get(3),
             cct3=illuminants.get(3) if 3 in matrices else None,
+            color_matrix1=color_matrices[1],
+            color_matrix2=color_matrices.get(2),
+            color_matrix3=color_matrices.get(3),
+            camera_calibration1=camera_cal.get(1),
+            camera_calibration2=camera_cal.get(2),
+            camera_calibration3=camera_cal.get(3),
+            analog_balance=ab,
+            calibration_signatures_match=signatures_match,
         )
     if 2 in matrices and 2 in illuminants:
-        return DngColorCalibration(matrix1=matrices[2], cct1=illuminants[2])
+        return DngColorCalibration(
+            matrix1=matrices[2], cct1=illuminants[2],
+            color_matrix1=color_matrices[2],
+            camera_calibration1=camera_cal.get(2),
+            analog_balance=ab,
+            calibration_signatures_match=signatures_match,
+        )
     return None
 
 

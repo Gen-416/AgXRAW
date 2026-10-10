@@ -197,8 +197,8 @@ class LocalDetailTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / 'existing.jpg'
             out.write_bytes(b'previous good image')
-            def damaged_encoder(rgb, path, quality, gamut, subsampling):
-                return save_jpeg_array(a, path, quality, gamut, subsampling)
+            def damaged_encoder(rgb, path, quality, gamut, subsampling, **options):
+                return save_jpeg_array(a, path, quality, gamut, subsampling, **options)
             with patch('dngscan.export.render_output_u8', return_value=e), \
                  patch('dngscan.export.save_jpeg_array', side_effect=damaged_encoder), \
                  patch('dngscan.export.carry_capture_metadata', return_value=False):

@@ -44,6 +44,11 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
         raise ValueError("Apple SDR HEIF 当前仅能可靠写入 8-bit/4:2:0；"
                          "自动压缩、10-bit 或 4:2:2/4:4:4 请使用 libheif/x265，"
                          "或手动选择 share、8-bit、4:2:0")
+    # Keep one exact ICC reference across candidates and metadata-final
+    # verification; generated fallback profiles carry a creation timestamp.
+    expected_icc = output_icc_profile_bytes(output_gamut)
+    if not expected_icc:
+        raise RuntimeError("SDR HEIF 导出缺少输出 ICC")
 
     def verify(path, profile):
         info = inspect_gainmap_file(path)
@@ -58,7 +63,6 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
         _, _, primary, _, _, props, assocs, _ = _parse(path.read_bytes())
         profiles = [props[i-1][1][4:] for _, i in assocs.get(primary, [])
                     if props[i-1][0] == b"colr" and props[i-1][1][:4] in (b"prof", b"rICC")]
-        expected_icc = output_icc_profile_bytes(output_gamut)
         if not profiles or any(profile != expected_icc for profile in profiles):
             raise RuntimeError("SDR HEIF 回读 ICC 与请求不符")
         nclx = [props[i-1][1] for _, i in assocs.get(primary, [])
@@ -84,7 +88,8 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
                           quality=q, chroma=chroma)
         encoder = heif_encoder.encode if use_x265 else heif_encoder.encode_apple
         options = dict(bit_depth=profile.heif_bit_depth, preset=profile.heif_preset,
-                       tune=profile.heif_tune, output_gamut=output_gamut)
+                       tune=profile.heif_tune, output_gamut=output_gamut,
+                       icc_profile=expected_icc)
         if use_x265 and precise and rgb.dtype != np.uint8:
             options["dither_quantization"] = True
         encoder_info = encoder(rgb, candidate, q, chroma, **options)

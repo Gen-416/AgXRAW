@@ -88,6 +88,8 @@ pub fn apply_gain_map_mosaic(
     blacks: &[f32],
     whites: &[f32],
     mut loss: Option<ArrayViewMut2<'_, u8>>,
+    origin: (i64, i64),
+    image_shape: (i64, i64),
 ) {
     let (h, w) = img.dim();
     let hi = h as i64;
@@ -122,8 +124,8 @@ pub fn apply_gain_map_mosaic(
             (0, 0.0)
         }
     };
-    let (v0s, fvs): (Vec<usize>, Vec<f64>) = rows.iter().map(|&r| axis(r, hi, op.origin_v, sv, pv)).unzip();
-    let (h0s, fhs): (Vec<usize>, Vec<f64>) = cols.iter().map(|&x| axis(x, wi, op.origin_h, sh, ph)).unzip();
+    let (v0s, fvs): (Vec<usize>, Vec<f64>) = rows.iter().map(|&r| axis(r + origin.0, image_shape.0, op.origin_v, sv, pv)).unzip();
+    let (h0s, fhs): (Vec<usize>, Vec<f64>) = cols.iter().map(|&x| axis(x + origin.1, image_shape.1, op.origin_h, sh, ph)).unzip();
     let phu = ph as usize;
     let blacks_scalar = blacks.len() <= 1;
     let whites_scalar = whites.len() <= 1;

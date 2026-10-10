@@ -1,0 +1,67 @@
+{
+  "test": "real-synthetic-DNG-production-chroma-map",
+  "raw_shape": [
+    3000,
+    4000
+  ],
+  "demosaic": "ahd",
+  "noise_profile": [
+    0.0001,
+    4e-06
+  ],
+  "chroma_nr": 1.0,
+  "container_encoding": false,
+  "rawpy": "0.27.0+libraw.e419de08",
+  "libraw": [
+    0,
+    22,
+    0
+  ],
+  "native_abi": 21,
+  "results": [
+    {
+      "half": false,
+      "budget_mib": 512,
+      "grid": [
+        1056,
+        1408
+      ],
+      "status": "active-approximate",
+      "gui_available": true,
+      "max_correction": 0.006778721231967211
+    },
+    {
+      "half": false,
+      "budget_mib": 1024,
+      "grid": [
+        1500,
+        2000
+      ],
+      "status": "active-approximate",
+      "gui_available": true,
+      "max_correction": 0.003971366677433252
+    },
+    {
+      "half": true,
+      "budget_mib": 512,
+      "grid": [
+        1056,
+        1408
+      ],
+      "status": "active-approximate",
+      "gui_available": true,
+      "max_correction": 0.006765705533325672
+    },
+    {
+      "half": true,
+      "budget_mib": 1024,
+      "grid": [
+        1500,
+        2000
+      ],
+      "status": "active-approximate",
+      "gui_available": true,
+      "max_correction": 0.003957182168960571
+    }
+  ]
+}

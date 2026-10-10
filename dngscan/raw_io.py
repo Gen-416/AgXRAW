@@ -68,6 +68,8 @@ def _apply_gain_maps_mosaic(
     raw: Any, maps: list, black_levels: list[float], white_level: int,
     camera_white_levels: list[float] | None = None,
     loss_mask: Any | None = None,
+    *, image_origin: tuple[int, int] = (0, 0),
+    image_shape: tuple[int, int] | None = None,
 ) -> None:
     """Apply pre-demosaic GainMap opcodes to the live rawpy mosaic in place.
 
@@ -100,10 +102,15 @@ def _apply_gain_maps_mosaic(
                 _apply_gain_maps_mosaic(view, [single],
                     [channel_black_level(black_levels,c)], white_level,
                     [channel_fullwell(white_level,camera_white_levels or [],c)],
-                    None if loss_mask is None else loss_mask[..., c])
+                    None if loss_mask is None else loss_mask[..., c],
+                    image_origin=image_origin, image_shape=image_shape)
         return
     colors = raw.raw_colors_visible
     h, w = img.shape
+    oy, ox = map(int, image_origin)
+    ah, aw = (h, w) if image_shape is None else tuple(map(int, image_shape))
+    if min(oy, ox) < 0 or min(ah, aw) <= 0 or oy + h > ah or ox + w > aw:
+        raise ValueError("DNG GainMap ActiveArea does not cover visible pixels")
     blacks = np.asarray(black_levels or [0.0], dtype=np.float32)
     whites = np.asarray(
         [
@@ -123,13 +130,14 @@ def _apply_gain_maps_mosaic(
         if m.bottom <= m.top or m.right <= m.left:
             if m.row_pitch != 1 or m.col_pitch != 1:
                 raise ValueError("empty DNG GainMap area requires unit pitches")
-            m.top,m.left,m.bottom,m.right=0,0,h,w
-        else:
-            # AreaSpec coordinates are signed. Intersect with the image while
-            # retaining the declared pitch's phase, as dng_area_spec::Overlap.
-            top=m.top+max(0,(-m.top+m.row_pitch-1)//m.row_pitch)*m.row_pitch
-            left=m.left+max(0,(-m.left+m.col_pitch-1)//m.col_pitch)*m.col_pitch
-            m.top,m.left,m.bottom,m.right=top,left,min(m.bottom,h),min(m.right,w)
+            m.top,m.left,m.bottom,m.right=0,0,ah,aw
+        # Translate AreaSpec into the live window, retaining the authored
+        # pitch phase. Gain-grid interpolation keeps the original coordinates.
+        m.top -= oy; m.bottom -= oy
+        m.left -= ox; m.right -= ox
+        top=m.top+max(0,(-m.top+m.row_pitch-1)//m.row_pitch)*m.row_pitch
+        left=m.left+max(0,(-m.left+m.col_pitch-1)//m.col_pitch)*m.col_pitch
+        m.top,m.left,m.bottom,m.right=top,left,min(m.bottom,h),min(m.right,w)
         if m.bottom <= m.top or m.right <= m.left:
             # An empty intersection is a no-op, not the authored empty AreaSpec.
             # Do not pass negative clipped bounds into the unsigned Rust ABI.
@@ -149,7 +157,7 @@ def _apply_gain_maps_mosaic(
             native(
                 img, colors, m,
                 [float(v) for v in blacks], [float(v) for v in whites],
-                loss_mask,
+                loss_mask, (oy, ox), (ah, aw),
             )
             continue
         rows = np.arange(m.top, min(m.bottom, h), m.row_pitch)
@@ -157,8 +165,8 @@ def _apply_gain_maps_mosaic(
         if rows.size == 0 or cols.size == 0:
             continue
         gains_grid = np.asarray(m.gains, dtype=np.float64)[:, :, 0]
-        iv = np.clip(((rows + 0.5) / h - m.origin_v) / max(m.spacing_v, 1e-9), 0, m.points_v - 1)
-        ih = np.clip(((cols + 0.5) / w - m.origin_h) / max(m.spacing_h, 1e-9), 0, m.points_h - 1)
+        iv = np.clip(((rows + oy + 0.5) / ah - m.origin_v) / max(m.spacing_v, 1e-9), 0, m.points_v - 1)
+        ih = np.clip(((cols + ox + 0.5) / aw - m.origin_h) / max(m.spacing_h, 1e-9), 0, m.points_h - 1)
         v0 = np.clip(np.floor(iv).astype(int), 0, m.points_v - 2) if m.points_v > 1 else np.zeros(rows.size, int)
         h0 = np.clip(np.floor(ih).astype(int), 0, m.points_h - 2) if m.points_h > 1 else np.zeros(cols.size, int)
         fv = (iv - v0)[:, None] if m.points_v > 1 else np.zeros((rows.size, 1))
@@ -516,6 +524,11 @@ def _libraw_noise_decode(raw, evidence, recipe, highlight, scale, half_size):
                 descriptor.update(supported=False, reason="gainmap-noise-transfer-grid-too-large")
             else:
                 descriptor["gain_maps"] = []
+                descriptor["gain_map_origin"] = list(recipe.visible_origin)
+                descriptor["gain_map_shape"] = (list(evidence.raw_image.shape[:2])
+                    if recipe.active_area is None else
+                    [recipe.active_area[2]-recipe.active_area[0],
+                     recipe.active_area[3]-recipe.active_area[1]])
                 for op in recipe.gain_maps:
                     payload = asdict(op)
                     payload["gains"] = np.asarray(op.gains).tolist()
@@ -1128,6 +1141,17 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
     """
     from . import dng_opcodes as ops
     recipe = ops.read_plan(path)
+    if recipe.active_area is not None:
+        t, l, b, r = recipe.active_area
+        recipe.visible_origin = (int(raw.sizes.top_margin) - t,
+                                 int(raw.sizes.left_margin) - l)
+        oy, ox = recipe.visible_origin
+        h, w = raw.raw_image_visible.shape[:2]
+        if min(oy, ox) < 0 or oy + h > b - t or ox + w > r - l:
+            raise ValueError("DNG ActiveArea does not cover LibRaw visible pixels")
+        if recipe.crop is not None:
+            cy, cx, ch, cw = recipe.crop
+            recipe.crop = (cy - oy, cx - ox, ch, cw)
     from . import embedded_lens
     lens = embedded_lens.read(path)
     if lens is not None:
@@ -1199,11 +1223,16 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
             levels=working_white
             levels=(levels*4)[:4]
             dng_point_ops.apply(img,op,black=working_black,white=levels,
-                               colors=np.asarray(raw.raw_colors_visible) if img.ndim==2 else None,loss=loss)
+                               colors=np.asarray(raw.raw_colors_visible) if img.ndim==2 else None,
+                               loss=loss,image_origin=recipe.visible_origin)
         else:
             _apply_gain_maps_mosaic(raw, [op], working_black,
                                    65535 if calibration_kwargs else evidence.white_level,
-                                   working_white, loss)
+                                   working_white, loss,
+                                   image_origin=recipe.visible_origin,
+                                   image_shape=None if recipe.active_area is None else
+                                   (recipe.active_area[2]-recipe.active_area[0],
+                                    recipe.active_area[3]-recipe.active_area[1]))
     from .decoder_loss import record_wb_ceiling_loss, propagate_mosaic_loss, support_is_untrusted
     if track_loss or allow_loss_fallback:
         loss = record_wb_ceiling_loss(
@@ -1265,7 +1294,30 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         raise ValueError("DNG camera-plane corrections require explicit positive as-shot WB")
     limits = (np.minimum(65535., 65535. * wb[:3] / positive_wb.min())
               if camera_rgb and not extended_linear else None)
-    if extended_linear and any(not isinstance(op, ops.TrimBounds) for op in recipe.post):
+    stage3_points = any(isinstance(op, dng_point_ops.PointOp) for op in recipe.post)
+    point_white = 65535. * wb[:3] / positive_wb.min() if stage3_points else None
+    if stage3_points:
+        if calibration_kwargs is None:
+            # LibRaw uses one scaling denominator, while DNG normalizes each
+            # plane by its own encoding span. Unequal WhiteLevel values must
+            # therefore survive undoing the fixed decoder preconditioner too.
+            # Spatial-black overrides already made every working span 65535.
+            black = np.asarray(working_black or [0.], dtype=np.float64)
+            white = np.asarray(working_white, dtype=np.float64)
+            spans = np.asarray([white[min(c, white.size-1)] - black[min(c, black.size-1)]
+                                for c in range(3)], dtype=np.float64)
+            global_span = float(evidence.white_level) - float(black.min())
+            if (not np.isfinite(global_span) or global_span <= 0 or
+                    not np.all(np.isfinite(spans) & (spans > 0))):
+                raise ValueError("invalid DNG camera-plane normalization range")
+            point_white *= spans / global_span
+        # LibRaw's immutable WB preconditioner is already present in camera
+        # RGB. DNG point transforms act on normalized *unbalanced* camera
+        # planes: src / point_white undoes WB, and the inverse multiplication
+        # restores it. The logical white may exceed uint16 storage white;
+        # retain it as float after this boundary, including later lens ops.
+        limits = point_white
+    if stage3_points or (extended_linear and any(not isinstance(op, ops.TrimBounds) for op in recipe.post)):
         # One promotion, only when a late correction needs it. Shading then
         # works in-place; warps retain negative ringing and over-range gains.
         scene = scene.astype(np.float32)
@@ -1284,7 +1336,8 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
             if scene.shape[:2] != evidence.raw_image.shape[:2]:
                 raise ValueError("stage-3 point-op coordinates require a full-resolution square-pixel decode")
             if processing is None and track_loss:processing=np.zeros(scene.shape,dtype=np.float16)
-            dng_point_ops.apply(scene,op,black=0.,white=limits,loss=processing)
+            dng_point_ops.apply(scene,op,black=0.,white=point_white,loss=processing,
+                               image_origin=recipe.visible_origin)
         elif isinstance(op, ops.Warp):
             if track_loss:
                 if processing is None:
@@ -1302,7 +1355,10 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
                 _apply_vignette_render(scene, op, loss_mask=processing, channel_limits=limits)
             shading.append("vignette")
     if terminal_trims:
-        recipe.crop=ops.terminal_trim_crop(terminal_trims,evidence.raw_image.shape,recipe.crop)
+        recipe.crop=ops.terminal_trim_crop(terminal_trims,evidence.raw_image.shape,recipe.crop,
+            image_origin=recipe.visible_origin,
+            image_shape=None if recipe.active_area is None else
+            (recipe.active_area[2]-recipe.active_area[0],recipe.active_area[3]-recipe.active_area[1]))
     if camera_rgb:
         scene = ops.camera_to_rec2020(scene, ops.libraw_camera_matrix(
             raw.color_matrix, raw.rgb_xyz_matrix,

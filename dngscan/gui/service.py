@@ -1198,11 +1198,11 @@ def chroma_nr_capability(
     No image texture is measured and no noise/correction map is allocated.
     """
     from ..noise_propagation import chroma_nr_skip_reason
-    from ..spatial import spread_grid_shape
+    from ..spatial import chroma_nr_grid_shape
 
     model = getattr(analysis, "noise_model", None) or getattr(bundle, "noise_model", None)
     shape = getattr(getattr(bundle, "scene_rec2020_render", None), "shape", ())
-    coarse_shape = spread_grid_shape(*shape[:2]) if len(shape) >= 2 else None
+    coarse_shape = chroma_nr_grid_shape(bundle, *shape[:2]) if len(shape) >= 2 else None
     reason = chroma_nr_skip_reason(
         bundle, model, coarse_shape, scene_transform=scene_transform,
         scene_transform_strength=scene_transform_strength,
