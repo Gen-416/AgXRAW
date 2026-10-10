@@ -346,30 +346,21 @@ def _prepare_chroma_nr_map(
         bundle.chroma_nr_status = "disabled"
         bundle.chroma_nr_reason = None
         return None
-    if getattr(bundle, "scene_loss_support_untrusted", False):
-        bundle.chroma_nr_status = "skipped"
-        bundle.chroma_nr_reason = "decoder loss propagation support is uncertified"
-        return None
     from .chroma_nr import chroma_correction_map
     from .spatial import area_decimate_rows, spread_grid_shape, spatial_band_rows
-    from .noise_propagation import calibrated_chroma_variance
+    from .noise_propagation import calibrated_chroma_variance, chroma_nr_skip_reason
 
     model = getattr(analysis, "noise_model", None) or getattr(bundle, "noise_model", None)
-    if model is None or getattr(model, "status", None) != "valid":
+    dh, dw = spread_grid_shape(h, w)
+    reason = chroma_nr_skip_reason(
+        bundle, model, (dh, dw), scene_transform=scene_transform,
+        scene_transform_strength=scene_transform_strength,
+    )
+    if reason is not None:
         bundle.chroma_nr_status = "skipped"
-        bundle.chroma_nr_reason = "independent noise calibration unavailable"
-        return None
-    if scene_transform != "none" and scene_transform_strength != 0:
-        bundle.chroma_nr_status = "skipped"
-        bundle.chroma_nr_reason = "nonlinear scene-transform noise propagation unavailable"
-        return None
-    descriptor = getattr(bundle, "noise_decode", None) or {}
-    if not descriptor.get("supported", False):
-        bundle.chroma_nr_status = "skipped"
-        bundle.chroma_nr_reason = descriptor.get("reason") or "decoder noise propagation unavailable"
+        bundle.chroma_nr_reason = reason
         return None
 
-    dh, dw = spread_grid_shape(h, w)
     acc = np.zeros((dh, dw, 3), dtype=np.float64)
     invalid_acc = np.zeros((dh, dw, 1), dtype=np.float64)
     band = spatial_band_rows(w)

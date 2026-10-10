@@ -155,8 +155,8 @@ def probe_decode_support(path: Path) -> dict[str, Any]:
     ci_line += "；尚未验证实际渲染"
     lines.append(ci_line)
     lines.append(
-        "传感器先验：" + ("✓ 有（PhotonsToPhotos 实测标尺）" if priors
-                     else "－ 无（绝对档位/动态范围为单帧估计）")
+        "传感器先验：" + ("✓ 找到相机条目（ISO 与读出条件仍需分析核对）" if priors
+                     else "－ 未找到相机条目（通用成像仍可用，不推定物理噪声）")
     )
     return {
         "make": shot.make,
