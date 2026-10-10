@@ -15,6 +15,9 @@
 | 测 GUI 预览、缓存和并发 | [GUI 性能工具](#gui-性能) | 预览耗时、缓存工作集、排队与执行时间 |
 | 分析一批 RAW 的自动处理选择 | [corpus_report.py](corpus_report.py)、[hdr_policy_probe.py](hdr_policy_probe.py) | CSV / 逐帧分析报告 |
 | 复现解码或 HDR 差异 | [decode_ab.py](decode_ab.py)、[hdr_ab.py](hdr_ab.py) | 诊断数据、对比图 |
+| 验证原生 RAW 与 Rust/NumPy 成像 | [validate_native_raw.py](validate_native_raw.py) | 样本 hash、codec／读出、逐相位和局部区域指标；不冒充独立解码器准确度 |
+| 检查 RAW 损坏／截断的明确失败行为 | [validate_raw_failures.py](validate_raw_failures.py) | 仅修改临时副本，记录正常解码控制、损坏类型、原件 hash、失败状态；不输出照片 |
+| 复现近黑、固定偏置、二维色度与重复量化研究 | [validate_sensor_precision.py](validate_sensor_precision.py) | 无需个人文件的合成矩阵，可选真实 LibRaw 合成 DNG 到 SDR/HDR |
 | 更新测试基准、标定或数据来源 | [数据与资产维护](#数据与资产维护) | 明确写入的资产、清单或测试夹具 |
 
 大图报告和 RAW 派生图片放在仓库外。以下示例共用一个新的输出目录；长期保留结果时换成自己的目录：
