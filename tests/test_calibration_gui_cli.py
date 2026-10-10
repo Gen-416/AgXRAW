@@ -74,6 +74,11 @@ class CalibrationEntryTests(unittest.TestCase):
         clear.assert_called_once()
         generations.assert_called_once()
 
+    def test_public_library_rejects_nonobject_selection_with_user_error(self) -> None:
+        for files in ([7], [None], ["library.json"]):
+            with self.subTest(files=files), self.assertRaises(ValueError):
+                calibration_service.install_public_library({"files": files})
+
     def test_picker_directory_preserves_basenames_without_selected_root(self) -> None:
         seen = {}
 
@@ -81,23 +86,23 @@ class CalibrationEntryTests(unittest.TestCase):
             seen["dark"] = (path / "dark-scalars.csv").read_text()
             seen["ptc"] = (path / "ptc-iso100.csv").read_text()
             seen["options"] = options
-            return {"id": "test"}
+            return {"profiles": [{"id": "test"}], "manifest": {}}
 
-        with patch.object(calibration, "import_calibration", side_effect=consume), patch.object(
+        with patch.object(calibration, "import_calibrations", side_effect=consume), patch.object(
             calibration_service, "_invalidate_preview"
         ):
             calibration_service.import_calibration({"files": [
                 {"name": "my-measurement/dark-scalars.csv", "text": "paired dark"},
                 {"name": "my-measurement/ptc-iso100.csv", "text": "PTC"},
             ]})
-        self.assertEqual(seen, {"dark": "paired dark", "ptc": "PTC", "options": {"shutter_override": None}})
+        self.assertEqual(seen, {"dark": "paired dark", "ptc": "PTC", "options": {"shutter_override": None, "group_ids": None}})
 
     def test_picker_rejects_arbitrary_server_paths_traversal_and_oversized_text(self) -> None:
         for name in ("/tmp/profile.json", "../profile.json", "safe/../../profile.json", "safe\\profile.json", "profile.dng", "a//profile.json"):
             with self.subTest(name=name), self.assertRaises(ValueError), patch.object(calibration, "import_calibration") as install:
                 calibration_service.import_calibration({"files": [{"name": name, "text": "{}"}]})
                 install.assert_not_called()
-        with patch.object(calibration_service, "MAX_CALIBRATION_TEXT_BYTES", 4), self.assertRaisesRegex(ValueError, "8 MiB"):
+        with patch.object(calibration_service, "MAX_CALIBRATION_TEXT_BYTES", 4), self.assertRaisesRegex(ValueError, "64 MiB"):
             calibration_service.import_calibration({"files": [{"name": "profile.json", "text": "12345"}]})
         self.assertEqual(calibration.list_calibrations(), [])
 
@@ -232,7 +237,7 @@ class CalibrationHttpTests(unittest.TestCase):
             response = client.post("/calibration/import", content=b"x" * 65,
                                    headers={"X-DngScan-Token": "calibration-test"})
         self.assertFalse(response.json()["ok"])
-        self.assertIn("16 MiB", response.json()["error"])
+        self.assertIn("96 MiB", response.json()["error"])
         install.assert_not_called()
 
 
@@ -243,26 +248,32 @@ NODE = shutil.which("node")
 class CalibrationPageRuntimeTests(unittest.TestCase):
     def test_picker_reads_selected_text_and_carries_explicit_mode(self) -> None:
         start = PAGE.index("async function importCalibrationSelection(picker)")
-        source = PAGE[start:PAGE.index('$("#calibrationOpen").onclick=', start)]
+        source = PAGE[start:PAGE.index('function renderCalibrationLibrary', start)]
         harness = r"""
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const source=require('node:fs').readFileSync(0,'utf8');
 const calls=[],statuses=[];
+const elements={'#calibrationShutterMode':{value:'any'},'#calibrationImportConfirm':{disabled:true},'#calibrationManifest':{querySelectorAll:()=>[{value:'group'}],replaceChildren:()=>{}}};
 const context=vm.createContext({
-  $:id=>{assert.equal(id,'#calibrationShutterMode');return {value:'any'};},
+  $:id=>elements[id],
+  postJob:async(route,body)=>{calls.push({route,body});return {ok:true,manifest:{groups:[{id:'group'}]}};},
   setCalibrationStatus:(text,error)=>statuses.push({text,error}),
   changeCalibration:async(route,body)=>calls.push({route,body}),
 });
 vm.runInContext(source,context);
+context.renderCalibrationManifest=()=>{};
 const picker={files:[{name:'profile.json',webkitRelativePath:'measurements/profile.json',size:2,text:async()=>'{}'},
                     {name:'capture.DNG',size:100000000,text:async()=>{throw Error('RAW must not be read');}}],value:'selected',disabled:false};
 context.picker=picker;
 (async()=>{
   await vm.runInContext('importCalibrationSelection(picker)',context);
-  assert.equal(calls.length,1);assert.equal(calls[0].route,'/calibration/import');
-  assert.deepEqual(JSON.parse(JSON.stringify(calls[0].body)),{files:[{name:'measurements/profile.json',text:'{}'}],shutterMode:'any'});
-  assert.equal(picker.disabled,false);assert.equal(picker.value,'');assert.equal(statuses.length,0);
+  assert.equal(calls.length,1);assert.equal(calls[0].route,'/calibration/inspect');
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0].body)),{files:[{name:'measurements/profile.json',text:'{}'}]});
+  await elements['#calibrationImportConfirm'].onclick();
+  assert.equal(calls[1].route,'/calibration/import');
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[1].body)),{files:[{name:'measurements/profile.json',text:'{}'}],shutterMode:'any',groupIds:['group']});
+  assert.equal(picker.disabled,false);assert.equal(picker.value,'');assert.equal(statuses.some(x=>x.error),false);
 })().catch(error=>{console.error(error);process.exitCode=1;});
 """
         result = subprocess.run([NODE, "-e", harness], input=source, text=True, capture_output=True, timeout=10)

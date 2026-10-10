@@ -1,0 +1,14 @@
+{
+  "upstream": "https://github.com/y-g-jiang/JiangtherapeeTesterView",
+  "commit": "57567edfa0ec16ee0b00c6b4a1a325c8da40bf1c",
+  "source_sha256": {
+    "src/analysis/pairing.mjs": "52b380a227b1b02a4564de3b12077a46d60a9364dc0ebe4c825621ff2c991dce",
+    "src/analysis/exifShutter.mjs": "285618eebe184193b46b638c91bf21171e3fa110adab3f56faf6eaf7fc5520a9",
+    "src/analysis/shutterText.mjs": "b7f7bafa2dd709d6b4beb0390a7f982350031741d6aafe24af36f6fc1e039b1e",
+    "src/analysis/channelOrder.mjs": "f6078e82172cc8a43d28886c8895290ba188d66a961d25f76235f94833c53348",
+    "src/output/darkCsv.mjs": "fd8083c61da34ce1d9039b67dc4499d6c3e2768ea3fb0940d09b89b4b02ff303",
+    "src/output/entryCsv.mjs": "650b4ea931eb7f2c11642b5ca131485d92e4d456eb9d060f874a0e3c943d2f7b"
+  },
+  "fixture": "synthetic measured statistics, not real camera captures",
+  "zip_sha256": "bcbdb04461a1169a6b69d99ee34e8d4eea805ce14ee7033239069b747da3d591"
+}

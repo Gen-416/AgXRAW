@@ -77,7 +77,7 @@ class OperatorContractTests(unittest.TestCase):
                                          detail_variance=_noise_bands(f, factor))
             self.assertLess(float(np.abs(corr @ LUMA_W).max()), 1e-7)
 
-    def test_identity_grid_keeps_pixel_speckle(self) -> None:
+    def test_coarse_identity_grid_does_not_claim_fine_speckle_removal(self) -> None:
         rng = np.random.default_rng(5)
         f = _fixture(rng)
         noisy = f["scene"] + f["mottle"] + f["speckle"]
@@ -93,7 +93,7 @@ class OperatorContractTests(unittest.TestCase):
             np.sum(level0(out) * level0(f["speckle"]))
             / max(np.sum(level0(f["speckle"]) ** 2), 1e-12)
         )
-        self.assertGreater(kept, 0.98, "pixel speckle is the kept texture")
+        self.assertGreater(kept, 0.98, "fine speckle lies outside the coarse capability")
 
     def test_mottle_removed_and_colour_kept(self) -> None:
         rng = np.random.default_rng(7)

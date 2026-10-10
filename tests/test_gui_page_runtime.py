@@ -20,7 +20,7 @@ def _page_section(start: str, end: str) -> str:
 
 CAPABILITY_SOURCE = "\n".join((
     _page_section("let CHROMA_NR_CAPABILITY=", "function setGradeStrengthLabel()"),
-    _page_section("function setChromaNrLabel()", "function fmtBias("),
+    _page_section("function effectiveChromaNrAmount()", "function fmtBias("),
     _page_section("function calibrationReason(", "function renderCalibrations("),
     _page_section("let DETECTED_READY=false;", "// Each probe line lands"),
 ))
@@ -46,6 +46,9 @@ const $ = id => {
   return elements.get(id);
 };
 $('#chromaNr').value='0.40';
+$('#chromaCleanup').value='custom';
+$('#chromaCleanup').tagName='SELECT';
+$('#chromaCleanup').options=['off','conservative','custom'].map(value=>({value}));
 const calls=[];
 const context=vm.createContext({$, console, ...payload.globals,
   saveSettings:()=>calls.push('save'), scheduleLivePreview:()=>calls.push('preview')});

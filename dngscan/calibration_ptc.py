@@ -150,24 +150,23 @@ def _channel_phase(dark_iso, channel):
     return matches[0] if len(matches)==1 else (None,None)
 
 
-def read_anchors(set_dir, dark):
+def read_anchors(set_dir, dark, *, files=None):
     from .calibration import _parse_rows, _sha256, infer_white
     result = []
-    for path in sorted(set_dir.glob("*ptc-iso*.csv")):
+    for path in sorted(files if files is not None else set_dir.glob("*ptc-iso*.csv")):
         record = {"file":path.name,"sha256":_sha256(path),"status":"rejected"}
         try:
-            match = re.search(r"ptc-iso(\d+)",path.stem)
-            if not match:
-                raise ValueError("PTC filename has no ISO")
-            iso = int(match[1])
-            if iso <= 0 or "unusable" in path.name:
-                raise ValueError("PTC marked unusable or invalid ISO")
-            record["iso"] = iso
+            diagnostic_iso = re.search(r"ptc[-_]iso([1-9][0-9]*)", path.stem)
+            if diagnostic_iso:
+                record["iso"] = int(diagnostic_iso[1])
             header, rows = _parse_rows(path)
             if not rows:
                 raise ValueError("empty PTC file")
-            if header.get("ISO") and float(header["ISO"]) != iso:
-                raise ValueError("PTC declared ISO disagrees with filename ISO")
+            from .collect_manifest import resolve_ptc_iso
+            iso, authority = resolve_ptc_iso(header, rows, path.name)
+            if "unusable" in path.name and files is None:
+                raise ValueError("PTC marked unusable or invalid ISO")
+            record.update(iso=iso, iso_authority=authority)
             descriptions = {p["color_desc"] for p in dark.get(iso,{}).get("phases",{}).values()
                             if p.get("color_desc")}
             if header.get("CfaPattern") and descriptions and descriptions != {header["CfaPattern"].strip().upper()}:

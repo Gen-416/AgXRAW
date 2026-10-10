@@ -678,7 +678,7 @@ def _find(set_dir: Path, *patterns: str) -> Path | None:
             return hits[0]
     return None
 
-def _collect_raw_geometry_coverage(set_dir: Path, dark_path: Path) -> dict:
+def _collect_raw_geometry_coverage(set_dir: Path, dark_path: Path | None, *, files=None) -> dict:
     """Keep every supplied measurement's RawSize, including explicit gaps.
 
     A dark-frame size cannot fill a missing PTC/gain/spectrum declaration.
@@ -686,30 +686,45 @@ def _collect_raw_geometry_coverage(set_dir: Path, dark_path: Path) -> dict:
     acquisition contract rather than validating only the GUI entry point.
     """
     from .readout import collect_fields
-    files = sorted({dark_path, *set_dir.glob("*gain-levels*.csv"),
-                    *set_dir.glob("*spectrum-*.csv"),
-                    *(p for p in set_dir.glob("*ptc-iso*.csv") if "unusable" not in p.name)})
-    coverage, declared = {}, None
-    for path in files:
+    paths = sorted({p for paths in files.values() for p in paths}) if files is not None else sorted(
+        {p for p in (dark_path, *set_dir.glob("*gain-levels*.csv"), *set_dir.glob("*spectrum-*.csv"),
+         *(p for p in set_dir.glob("*ptc-iso*.csv") if "unusable" not in p.name)) if p is not None})
+    coverage, declared, constraints = {}, None, {}
+    for path in paths:
         header, _ = _parse_rows(path)
         contract = collect_fields(header).get("readout_contract") or {}
+        for key, value in contract.items():
+            if key in constraints and constraints[key] != value:
+                from .readout import match
+                status, _ = match({"readout_contract": {key: value}}, constraints)
+                if status != "matched":
+                    raise ValueError(f"{path.name}: {key} disagrees with other measurements")
+            constraints[key] = value
         size = contract.get("libraw_raw_geometry")
         coverage[path.name] = size
         if size is not None:
             if declared is not None and declared != size:
                 raise ValueError(f"{path.name}: RawSize disagrees with other measurements")
             declared = size
-    result = {"raw_geometry_measurements": coverage}
+    result = {"raw_geometry_measurements": coverage, "readout_contract": constraints}
     if declared is not None:
         result["raw_geometry_complete"] = all(size is not None for size in coverage.values())
     return result
 
-def build(set_dir: Path, meta: dict | None) -> dict:
-    dark_path = _find(set_dir, "dark-scalars.csv", "*dark*scalars.csv")
-    if dark_path is None:
+def build(set_dir: Path, meta: dict | None, *, files: dict | None = None) -> dict:
+    """Convert a legacy set, or an explicitly content-selected manifest group."""
+    dark_path = (files.get("dark") or [None])[0] if files is not None else _find(set_dir, "dark-scalars.csv", "*dark*scalars.csv")
+    if dark_path is None and files is None:
         raise SystemExit(f"{set_dir.name}: no dark scalars file — set unusable")
-    header, dark = read_dark(dark_path)
-    input_hashes = {dark_path.name: _sha256(dark_path)}
+    if dark_path is not None:
+        header, dark = read_dark(dark_path)
+    else:
+        selected = [p for paths in files.values() for p in paths]
+        if not selected:
+            raise ValueError("measurement group is empty")
+        header, _ = _parse_rows(selected[0])
+        dark = {}
+    input_hashes = {dark_path.name: _sha256(dark_path)} if dark_path is not None else {}
     camera = header.get("Camera", "")
     make = camera.split()[0] if camera.split() else ""
     model_rest = camera[len(make):].strip()
@@ -734,7 +749,8 @@ def build(set_dir: Path, meta: dict | None) -> dict:
             "inputs": {},
         },
     }
-    entry["source"]["formats"].append("JPTC-DARK/1")
+    if dark_path is not None:
+        entry["source"]["formats"].append("JPTC-DARK/1")
     entry["source"]["inputs"] = input_hashes
     clip_status = header.get("_clip_factor_status", "declared")
     entry["acquisition_contract"] = {
@@ -752,7 +768,11 @@ def build(set_dir: Path, meta: dict | None) -> dict:
     from .readout import collect_fields
     readout_fields = collect_fields(header)
     entry["acquisition_contract"].update(readout_fields.pop("acquisition_contract_fields"))
-    entry["acquisition_contract"].update(_collect_raw_geometry_coverage(set_dir, dark_path))
+    coverage = _collect_raw_geometry_coverage(set_dir, dark_path, files=files)
+    combined_readout = coverage.pop("readout_contract")
+    if combined_readout:
+        readout_fields["readout_contract"] = combined_readout
+    entry["acquisition_contract"].update(coverage)
     entry.update(readout_fields)
     # The formed RAW contains quantisation as well as physical read noise.
     # Preserve the measured temporal variance before the optional Sheppard
@@ -790,7 +810,7 @@ def build(set_dir: Path, meta: dict | None) -> dict:
             for iso, d in sorted(dark.items()) if d["row_var"] is not None],
     }
 
-    gain_path = _find(set_dir, "gain-levels.csv", "*gain-levels*.csv")
+    gain_path = (files.get("gain") or [None])[0] if files is not None else _find(set_dir, "gain-levels.csv", "*gain-levels*.csv")
     if gain_path:
         input_hashes[gain_path.name] = _sha256(gain_path)
     if gain_path:
@@ -818,7 +838,7 @@ def build(set_dir: Path, meta: dict | None) -> dict:
                 product["read_noise_dn_log2iso"].append([x, phase["rn_dn"]])
     entry["phase_calibration"] = phase_products
     from .calibration_ptc import read_anchors, anchor_gain_graph, gain_jumps
-    records = read_anchors(set_dir, dark)
+    records = read_anchors(set_dir, dark, files=files.get("ptc", []) if files is not None else None)
     for record in records:
         input_hashes[record["file"]] = record["sha256"]
     entry["ptc_anchors"] = records
@@ -876,10 +896,10 @@ def build(set_dir: Path, meta: dict | None) -> dict:
             if len(error) == len(values):
                 product["gain_standard_error_e_per_dn_log2iso"] = [[math.log2(i),e] for i,e in sorted(error)]
     from .noise_spectrum import SCHEMA, dark_phase_mapping
-    mapping_header, mapping_rows = _parse_rows(dark_path)
+    mapping_header, mapping_rows = _parse_rows(dark_path) if dark_path is not None else ({}, [])
     spectrum = {"schema": SCHEMA, "mapping": dark_phase_mapping(mapping_header, mapping_rows), "axes": {}}
     for ax in ("h", "v"):
-        sp = _find(set_dir, f"spectrum-{ax}.csv", f"*spectrum-{ax}.csv")
+        sp = (files.get("spectrum_"+ax) or [None])[0] if files is not None else _find(set_dir, f"spectrum-{ax}.csv", f"*spectrum-{ax}.csv")
         if sp is not None:
             input_hashes[sp.name] = _sha256(sp)
             detail = read_whiteness(sp, phase_mapping=spectrum["mapping"], return_details=True,
@@ -1202,6 +1222,12 @@ def _validated_prior(item: dict) -> dict:
                 entry[key] = _curve(item[key], key, logarithmic=False, allow_zero=True)
         if gains and any(not gains[0][0]+1e-7 < math.log2(j) <= gains[-1][0]+1e-7 for j in entry["gain_jump_isos"]):
             raise ValueError("gain jump outside measured ISO domain")
+    if item.get("reference_dn_range") is not None:
+        declared_span = _number(item["reference_dn_range"], "reference DN range")
+        derived_span = entry.get("reference_dn_range")
+        if derived_span is not None and abs(declared_span/derived_span - 1.) > .05:
+            raise ValueError("declared reference DN range disagrees with PTC/FWC")
+        entry["reference_dn_range"] = declared_span
     # Apply the same finite scale/order checks to synthesized single-ISO
     # points as to supplied ladders.
     entry["gain_log2iso_log2epd"] = _curve(entry.get("gain_log2iso_log2epd"), "gain curve")
@@ -1496,7 +1522,14 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         warnings.append("read-noise-unresolved-measurements")
     if gains and not prior.get("reference_dn_range"):
         warnings.append("reference-dn-range-unavailable")
+    manifest = record.get("collect_manifest") or {}
+    capabilities = manifest.get("capabilities") or {
+        "absolute_gain": bool(gains), "read_noise": bool(prior.get("read_noise_dn_log2iso") or prior.get("read_noise_log2iso_log2e")),
+        "stored_dark_variance": bool(prior.get("stored_dark_variance_dn2_log2iso")),
+        "spectrum_h": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("h")),
+        "spectrum_v": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("v")), "spectrum_2d": False}
     return {"id": record["id"], "label": prior["id"], "active": bool(record.get("active", True)),
+            "capabilities": capabilities, "import_status": "imported", "match_status": "not-evaluated", "apply_status": "not-applied",
             "make": prior["make_contains"], "models": prior["model_labels"],
             "shutter": prior.get("shutter"), "source_shutter": prior.get("source_shutter"),
             "user_applicability": prior.get("user_applicability", {}), "iso_min": 2**domain[0][0] if domain else None,
@@ -1553,48 +1586,24 @@ def import_calibration(path: str | Path, *, active: bool = True,
     if not isinstance(active, bool):
         raise ValueError("active must be a boolean")
     source = Path(path).expanduser()
-    if source.is_dir():
-        # Match only the files consumed by build; reject foreign format
-        # versions instead of accepting similarly named, incompatible CSVs.
-        dark = _find(source, "dark-scalars.csv", "*dark*scalars.csv")
-        if dark is None:
-            raise ValueError("Collect directory requires dark-scalars.csv")
-        main_header, _ = _parse_rows(dark)
-        declared_raw_size = None
-        for file, formats in [(dark, {"JPTC-DARK/1"}),
-                              *[(p, {"JPTC/2"}) for p in source.glob("*ptc-iso*.csv") if "unusable" not in p.name],
-                              *[(p, {"JPTC-ISOGAIN/1"}) for p in source.glob("*gain-levels*.csv")],
-                              *[(p, {"JPTC-SPECTRUM/1"}) for p in source.glob("*spectrum-*.csv")]]:
-            if file.stat().st_size > _MAX_JSON_BYTES:
-                raise ValueError(f"{file.name}: measurement file too large")
-            header, _ = _parse_rows(file)
-            if header.get("Format") not in formats:
-                raise ValueError(f"{file.name}: unsupported measurement format")
-            if header.get("RawSize"):
-                from .readout import collect_fields
-                raw_size = collect_fields(header)["readout_contract"]["libraw_raw_geometry"]
-                if declared_raw_size is not None and raw_size != declared_raw_size:
-                    raise ValueError(f"{file.name}: RawSize disagrees with other measurements")
-                declared_raw_size = raw_size
-            for field in ("Camera", "ShutterType", "Compression", "ImageWidth", "ImageHeight"):
-                if header.get(field) and main_header.get(field) and _normalise(header[field]) != _normalise(main_header[field]):
-                    raise ValueError(f"{file.name}: {field} disagrees with dark measurements")
-        try:
-            payload = sanitize_json(build(source, None))
-        except (SystemExit, KeyError, ZeroDivisionError, OverflowError, TypeError, IndexError) as exc:
-            raise ValueError(f"invalid Collect measurements: {exc}") from exc
-        payload["source"]["kind"] = "user-imported JPTC Collect measurements"
-        # Browser uploads are reconstructed in randomly named temporary
-        # directories. Their identity must depend on measurement bytes,
-        # never on that transient directory name.
-        payload["id"] = f"{payload['camera']} (user JPTC Collect)"
-        payload["source"]["set"] = "local-" + _digest(payload["source"]["inputs"])[:12]
-        payload["source"].pop("url_base", None)
-        payload["source"].pop("url_note", None)
-    else:
-        payload = _json_load(source)
-        if payload.get("format") == _USER_FORMAT:
-            payload = payload.get("payload")
+    import zipfile
+    if source.is_dir() or source.is_file() and zipfile.is_zipfile(source):
+        from .collect_manifest import prepare_sources
+        manifest, payloads = prepare_sources(source)
+        if len(manifest["groups"]) != 1 or len(payloads) != 1:
+            detail = "; ".join(d for g in manifest["groups"] for d in g["diagnostics"])
+            raise ValueError("Collect source requires explicit group selection via import_calibrations: " + detail)
+        result = import_calibrations(source, active=active, shutter_override=shutter_override)
+        return result["profiles"][0]
+    payload = _json_load(source)
+    if payload.get("format") == _USER_FORMAT:
+        payload = payload.get("payload")
+    return _install_payload(payload, active=active, shutter_override=shutter_override)
+
+
+def _install_payload(payload: dict, *, active: bool = True,
+                     shutter_override: str | None = None, provenance: dict | None = None) -> dict:
+    """Persist one validated payload; provenance names do not alter content identity."""
     if shutter_override is not None:
         if shutter_override not in ("any", "mechanical", "electronic", "efcs"):
             raise ValueError("unsupported shutter override")
@@ -1607,6 +1616,8 @@ def import_calibration(path: str | Path, *, active: bool = True,
     target = data_path() / (identity + ".json")
     record = {"format": _USER_FORMAT, "id": identity, "content_sha256": digest, "active": active,
               "imported_at": datetime.now(timezone.utc).isoformat(), "payload": payload}
+    if provenance is not None:
+        record["collect_manifest"] = provenance
     encoder = json.JSONEncoder(ensure_ascii=False, allow_nan=False, indent=2)
     size = sum(len(piece.encode("utf-8")) for piece in encoder.iterencode(record)) + 1
     if size > _MAX_JSON_BYTES:
@@ -1614,6 +1625,50 @@ def import_calibration(path: str | Path, *, active: bool = True,
     _atomic_write(target, record)
     return _summary(record, target, prior)
 
+
+
+def import_calibrations(sources, *, active: bool = True, shutter_override: str | None = None,
+                        group_ids: list[str] | None = None) -> dict:
+    """Inspect and import each explicitly compatible Collect acquisition group.
+
+    Ambiguous or unusable groups are retained in the returned manifest with
+    their reasons. They are never averaged or substituted by a nearby mode.
+    """
+    if not isinstance(active, bool):
+        raise ValueError("active must be a boolean")
+    if shutter_override not in (None, "any", "mechanical", "electronic", "efcs"):
+        raise ValueError("unsupported shutter override")
+    from .collect_manifest import prepare_sources
+    manifest, payloads = prepare_sources(sources)
+    available = {group["id"] for group in manifest["groups"]}
+    if group_ids is not None:
+        if not isinstance(group_ids, (list, tuple)) or not all(isinstance(i, str) for i in group_ids):
+            raise ValueError("group_ids must be a list of manifest group identifiers")
+        if unknown := set(group_ids)-available:
+            raise ValueError("unknown calibration group: " + ", ".join(sorted(unknown)))
+        selected = set(group_ids)
+    else:
+        selected = available
+    profiles = []
+    for group in manifest["groups"]:
+        if group["id"] not in selected:
+            group["import_status"] = "not-selected"
+            continue
+        if group["id"] not in payloads:
+            group["import_status"] = "not-importable"
+            continue
+        provenance = {"schema": manifest["schema"], "content_id": manifest["content_id"],
+            "group_id": group["id"], "capabilities": group["capabilities"],
+            "files": [file for file in manifest["files"] if file.get("group_id") == group["id"]]}
+        summary = _install_payload(payloads[group["id"]], active=active,
+            shutter_override=shutter_override, provenance=provenance)
+        group["import_status"] = "imported"
+        summary.update(manifest_group_id=group["id"], capabilities=group["capabilities"],
+            import_status="imported", match_status="not-evaluated", apply_status="not-applied")
+        profiles.append(summary)
+    manifest["import_status"] = ("imported" if profiles and all(g["import_status"] in
+        ("imported", "not-selected") for g in manifest["groups"]) else "partial" if profiles else "not-imported")
+    return {"profiles": profiles, "manifest": manifest}
 
 def list_calibrations() -> list[dict]:
     """List imported records, including damaged records with a visible error."""
@@ -1648,6 +1703,8 @@ def set_calibration_active(identity: str, active: bool) -> dict:
 def calibration_fingerprint() -> str:
     """Content identity for analysis/preview caches; invalid records also count."""
     digest = hashlib.sha256(str(data_path().resolve()).encode())
+    from .calibration_registry import library_fingerprint
+    digest.update(library_fingerprint().encode())
     try:
         paths = sorted(data_path().glob("*.json"))
     except OSError as exc:
@@ -1693,12 +1750,102 @@ def _match_reason(prior: dict, make: str, model: str, shutter: str | None,
     return "usable"
 
 
+def _calibration_application(record, match_reason, *, analysis=None, chroma_nr=None):
+    """Report the completed pipeline separately from a candidate's match.
+
+    Imported statistical measurements do not apply personal black/flat maps.
+    A valid DNG fallback may supply coefficients while user measurements still
+    contribute gain evidence or independent spectral restrictions.
+    """
+    source = f"User JPTC calibration ({record['id']})"
+    model = getattr(analysis, "noise_model", None)
+    # Consume immutable model provenance; a catalogue query here could credit
+    # newly installed contributors to an older composed/cached analysis.
+    selected_source = getattr(model, "prior_source", None)
+    selected_id = getattr(model, "prior_calibration_id", None)
+    capability_sources = dict(getattr(model, "capability_sources", {}) or {})
+    base_source = capability_sources.get("gain") or selected_source
+    gain_context = (getattr(model, "prior_id", None) is not None
+                    and getattr(model, "prior_id", None) == getattr(analysis, "prior_id", None))
+    coefficient_sources = {}
+    if model is not None and model.status == "valid":
+        if model.source == "DNG NoiseProfile":
+            coefficient_sources = {"shot_variance": model.source, "constant_variance": model.source}
+        else:
+            coefficient_sources = {"shot_variance": capability_sources.get("gain", base_source),
+                "constant_variance": capability_sources.get("stored_dark_variance",
+                    capability_sources.get("read_noise", base_source))}
+    spectral_sources = dict(getattr(model, "spectral_sources", {}) or {})
+    contributes_coefficients = source in coefficient_sources.values()
+    contributes_spectrum = source in spectral_sources.values()
+    gain_used = (gain_context and source == capability_sources.get("gain", base_source)
+                 and getattr(analysis, "gain_e_per_dn", None) is not None)
+    attempted = (record["id"] == selected_id or source in capability_sources.values()
+                 or contributes_spectrum)
+    rejected_reason = None
+    if attempted and model is not None:
+        if model.source == selected_source and model.status in ("rejected", "unavailable", "unresolved"):
+            rejected_reason = model.reason
+        elif model.fallback_source == selected_source:
+            rejected_reason = model.fallback_reason
+        elif model.status == "rejected":
+            rejected_reason = model.reason
+    if analysis is None:
+        analysis_status, analysis_reason = "not-evaluated", "analysis-not-evaluated"
+    elif contributes_coefficients:
+        analysis_status, analysis_reason = "used", "variance-coefficients-used"
+    elif contributes_spectrum or gain_used:
+        analysis_status, analysis_reason = "partial", rejected_reason or "independent-evidence-used"
+    elif attempted:
+        analysis_status, analysis_reason = "rejected", rejected_reason or getattr(model, "reason", "model-unavailable")
+    else:
+        analysis_status, analysis_reason = "not-selected", "candidate-not-selected"
+    chroma = chroma_nr or {}
+    chroma_status = chroma.get("status", "not-evaluated")
+    chroma_applied = chroma_status == "active-approximate" and contributes_coefficients
+    return {
+        "import_status": "imported",
+        "match_status": "matched" if match_reason == "usable" else "not-matched",
+        "match_reason": match_reason,
+        "selected_for_analysis": attempted,
+        "analysis_status": analysis_status, "analysis_reason": analysis_reason,
+        "actual_model": {"status": getattr(model, "status", "not-evaluated"),
+                         "source": getattr(model, "source", None),
+                         "reason": getattr(model, "reason", None),
+                         "prior_id": getattr(model, "prior_id", None),
+                         "prior_source": selected_source,
+                         "fallback_source": getattr(model, "fallback_source", None),
+                         "fallback_reason": getattr(model, "fallback_reason", None)},
+        "capability_sources": {**coefficient_sources,
+            "gain_evidence": (capability_sources.get("gain", base_source)
+                              if gain_context and getattr(analysis, "gain_e_per_dn", None) is not None else None),
+            "spectral_constraints": spectral_sources},
+        "analysis_capabilities": {
+            "gain_evidence": "used" if gain_used else "not-used",
+            "variance_coefficients": "used" if contributes_coefficients else "not-used",
+            "spectral_constraints": "used" if contributes_spectrum else "not-used"},
+        "apply_status": "not-applied",
+        "apply_reason": "statistical-profile-does-not-apply-personal-pixel-corrections",
+        "chroma_application": {"status": "applied" if chroma_applied else "not-applied",
+                               "pipeline_status": chroma_status,
+                               "reason": ("render-not-evaluated" if chroma_status == "not-evaluated"
+                                          else chroma.get("reason") or "chroma-disabled" if chroma_status == "disabled"
+                                          else chroma.get("reason") or "chroma-render-skipped" if chroma_status == "skipped"
+                                          else None if chroma_applied
+                                          else "profile-coefficients-not-used" if analysis is not None
+                                          else "render-not-evaluated")},
+    }
+
+
 def calibration_diagnostics(make: str | None, model: str | None, shutter: str | None = None,
-                            iso: float | None = None, readout: dict | None = None) -> list[dict]:
+                            iso: float | None = None, readout: dict | None = None, *,
+                            analysis=None, chroma_nr=None) -> list[dict]:
     out = []
     for path, record, prior, error in _records():
         if error is not None:
-            out.append({"id": path.stem, "status": "invalid", "reason": error})
+            out.append({"id": path.stem, "status": "invalid", "reason": error,
+                        "import_status": "invalid", "match_status": "not-evaluated",
+                        "analysis_status": "not-evaluated", "apply_status": "not-applied"})
             continue
         reason = _match_reason(prior, make or "", model or "", shutter, iso, readout)
         if reason == "camera-mismatch":
@@ -1712,7 +1859,8 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
         warnings = _summary(record, path, prior)["warnings"]
         if readout_status == "matched":
             warnings = [warning for warning in warnings if warning != "sub-readout-mode-not-verified"]
-        out.append({"id": record["id"], "label": prior["id"],
+        application = _calibration_application(record, reason, analysis=analysis, chroma_nr=chroma_nr)
+        row = {"id": record["id"], "label": prior["id"],
                     "status": ("gain-only" if reason == "usable" and noise_status.startswith("read-noise-unresolved")
                                else "usable" if reason == "usable" else "not-applied"),
                     "reason": noise_status if reason == "usable" and noise_status.startswith("read-noise-unresolved") else reason,
@@ -1726,7 +1874,13 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                     "has_read_noise_at_iso": iso is not None and curve_value(prior, "read_noise_log2iso_log2e", iso) is not None,
                     "mode_scope": prior["mode_scope"],
                     "unverified_readout_fields": ({} if readout_status == "matched" else prior.get("unverified_readout_fields", {})),
-                    "warnings": warnings})
+                    "warnings": warnings, **application}
+        # The old status vocabulary remains compatible, but a candidate which
+        # failed in the actual analysis cannot be advertised as usable.
+        if application["analysis_status"] == "rejected" and reason == "usable":
+            row.update(status="not-applied", reason=application["analysis_reason"],
+                       gain_status="not-applied")
+        out.append(row)
     return out
 
 
@@ -1750,3 +1904,20 @@ def matching_prior(make: str, model: str, *, shutter: str | None = None,
         priority = {"matched": 2, "not-declared": 1}.get(entry["readout_match_status"], 0)
         candidates.append((priority, record.get("imported_at", ""), record["id"], entry))
     return max(candidates, key=lambda c: c[:3])[3] if candidates else None
+
+
+def matching_capability_priors(make, model, *, shutter=None, readout=None):
+    """Partial user measurements need not pretend to contain absolute gain."""
+    from .priors import with_readout, prior_usability
+    result = []
+    for path, record, prior, error in _records():
+        if record is None or not record.get("active"):
+            continue
+        if (normalise_make(make) != prior["make_equals"]
+                or normalise_model(make, model) not in prior["model_equals"]):
+            continue
+        entry = with_readout(dict(prior, calibration_id=record["id"],
+            source=f"User JPTC calibration ({record['id']})"), readout, shutter=shutter)
+        if prior_usability(entry)[0] and entry.get("readout_match_status") == "matched":
+            result.append(entry)
+    return result

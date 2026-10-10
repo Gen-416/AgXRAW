@@ -1,151 +1,161 @@
 {
- "version": 1,
- "coreimage": {
-  "default": {
-   "global_ratio_rg_bg": [
-    1.05293,
-    0.98438
-   ],
-   "per_class": {
-    "cool_balance": {
-     "ratio_rg_bg": [
-      0.98514,
-      0.97576
+ "schema": "decoder-anchor-transport-3",
+ "version": 3,
+ "profiles": [],
+ "qualification_note": "No shipped anchor profile has exact actual RAW9 token, runtime, configuration and independently verified spatial-support/holdout evidence. Missing qualification uses identity window transport and does not block basic rendering.",
+ "archived_legacy": {
+  "status": "unqualified",
+  "reason": "missing-exact-recipe-and-verified-spatial-support",
+  "historical_data": {
+   "version": 1,
+   "coreimage": {
+    "default": {
+     "global_ratio_rg_bg": [
+      1.05293,
+      0.98438
      ],
-     "effective_support": 5281.7,
-     "basis": "class-weighted"
+     "per_class": {
+      "cool_balance": {
+       "ratio_rg_bg": [
+        0.98514,
+        0.97576
+       ],
+       "effective_support": 5281.7,
+       "basis": "class-weighted"
+      },
+      "cyan": {
+       "ratio_rg_bg": [
+        0.95756,
+        0.95932
+       ],
+       "effective_support": 46.1,
+       "basis": "class-weighted"
+      },
+      "foliage": {
+       "ratio_rg_bg": [
+        0.97025,
+        0.88577
+       ],
+       "effective_support": 186.4,
+       "basis": "class-weighted"
+      },
+      "magenta": {
+       "ratio_rg_bg": [
+        1.15327,
+        1.12364
+       ],
+       "effective_support": 419.4,
+       "basis": "class-weighted"
+      },
+      "neutral": {
+       "ratio_rg_bg": [
+        0.99626,
+        0.97701
+       ],
+       "effective_support": 681.4,
+       "basis": "class-weighted"
+      },
+      "skin": {
+       "ratio_rg_bg": [
+        1.14688,
+        0.8815
+       ],
+       "effective_support": 1430.2,
+       "basis": "class-weighted"
+      }
+     },
+     "source": {
+      "method": "dual-decode block-paired chroma transport, 5500K declared WB, grid 64x96, central crop 0.6, weighted median per window class",
+      "corpus": [
+       "_SDI0133.DNG",
+       "_SDI0150.DNG",
+       "_SDI0165.DNG",
+       "_SDI0199.DNG",
+       "_SDI0222.DNG",
+       "_SDI0238.DNG",
+       "_SDI0200.DNG",
+       "_SDI0206.DNG",
+       "_SDI0237.DNG"
+      ],
+      "decoder_runtime": "版本27.0（版号26A428）",
+      "measured": "2026-09-17"
+     }
     },
-    "cyan": {
-     "ratio_rg_bg": [
-      0.95756,
-      0.95932
-     ],
-     "effective_support": 46.1,
-     "basis": "class-weighted"
-    },
-    "foliage": {
-     "ratio_rg_bg": [
-      0.97025,
-      0.88577
-     ],
-     "effective_support": 186.4,
-     "basis": "class-weighted"
-    },
-    "magenta": {
-     "ratio_rg_bg": [
-      1.15327,
-      1.12364
-     ],
-     "effective_support": 419.4,
-     "basis": "class-weighted"
-    },
-    "neutral": {
-     "ratio_rg_bg": [
-      0.99626,
-      0.97701
-     ],
-     "effective_support": 681.4,
-     "basis": "class-weighted"
-    },
-    "skin": {
-     "ratio_rg_bg": [
-      1.14688,
-      0.8815
-     ],
-     "effective_support": 1430.2,
-     "basis": "class-weighted"
-    }
-   },
-   "source": {
-    "method": "dual-decode block-paired chroma transport, 5500K declared WB, grid 64x96, central crop 0.6, weighted median per window class",
-    "corpus": [
-     "_SDI0133.DNG",
-     "_SDI0150.DNG",
-     "_SDI0165.DNG",
-     "_SDI0199.DNG",
-     "_SDI0222.DNG",
-     "_SDI0238.DNG",
-     "_SDI0200.DNG",
-     "_SDI0206.DNG",
-     "_SDI0237.DNG"
-    ],
-    "decoder_runtime": "版本27.0（版号26A428）",
-    "measured": "2026-09-17"
-   }
-  },
-  "Apple iPhone 16 Pro": {
-   "global_ratio_rg_bg": [
-    1.00489,
-    0.98458
-   ],
-   "per_class": {
-    "cool_balance": {
-     "ratio_rg_bg": [
-      0.99017,
-      0.98933
-     ],
-     "effective_support": 7334.9,
-     "basis": "class-weighted"
-    },
-    "cyan": {
-     "ratio_rg_bg": [
-      0.97709,
-      0.99004
-     ],
-     "effective_support": 105.1,
-     "basis": "class-weighted"
-    },
-    "foliage": {
-     "ratio_rg_bg": [
-      0.98962,
-      0.97166
-     ],
-     "effective_support": 354.6,
-     "basis": "class-weighted"
-    },
-    "magenta": {
-     "ratio_rg_bg": [
+    "Apple iPhone 16 Pro": {
+     "global_ratio_rg_bg": [
       1.00489,
       0.98458
      ],
-     "effective_support": 4.4,
-     "basis": "global-fallback"
-    },
-    "neutral": {
-     "ratio_rg_bg": [
-      0.99029,
-      0.98768
-     ],
-     "effective_support": 354.4,
-     "basis": "class-weighted"
-    },
-    "skin": {
-     "ratio_rg_bg": [
-      1.04417,
-      0.98985
-     ],
-     "effective_support": 3371.9,
-     "basis": "class-weighted"
+     "per_class": {
+      "cool_balance": {
+       "ratio_rg_bg": [
+        0.99017,
+        0.98933
+       ],
+       "effective_support": 7334.9,
+       "basis": "class-weighted"
+      },
+      "cyan": {
+       "ratio_rg_bg": [
+        0.97709,
+        0.99004
+       ],
+       "effective_support": 105.1,
+       "basis": "class-weighted"
+      },
+      "foliage": {
+       "ratio_rg_bg": [
+        0.98962,
+        0.97166
+       ],
+       "effective_support": 354.6,
+       "basis": "class-weighted"
+      },
+      "magenta": {
+       "ratio_rg_bg": [
+        1.00489,
+        0.98458
+       ],
+       "effective_support": 4.4,
+       "basis": "global-fallback"
+      },
+      "neutral": {
+       "ratio_rg_bg": [
+        0.99029,
+        0.98768
+       ],
+       "effective_support": 354.4,
+       "basis": "class-weighted"
+      },
+      "skin": {
+       "ratio_rg_bg": [
+        1.04417,
+        0.98985
+       ],
+       "effective_support": 3371.9,
+       "basis": "class-weighted"
+      }
+     },
+     "source": {
+      "method": "dual-decode block-paired chroma transport, 5500K declared WB, grid 64x96, central crop 0.6, weighted median per window class",
+      "corpus": [
+       "Original RAW 26-05-10 173311434.dng",
+       "Original RAW 26-05-11 193721820.dng",
+       "Original RAW 26-05-11 193727279.dng",
+       "Original RAW 26-05-11 193738485.dng",
+       "Original RAW 26-05-12 210128342.dng",
+       "Original RAW 26-06-17 222639798.dng",
+       "Original RAW 26-06-26 131513584.dng",
+       "Original RAW 26-06-28 133947250.dng",
+       "Original RAW 26-07-05 115326540.dng",
+       "Original RAW 26-07-11 202403093.dng",
+       "Original RAW 26-07-12 182506394.dng",
+       "Original RAW 26-07-24 194203657.dng"
+      ],
+      "decoder_runtime": "版本27.0（版号26A428）",
+      "measured": "2026-09-17"
+     }
     }
-   },
-   "source": {
-    "method": "dual-decode block-paired chroma transport, 5500K declared WB, grid 64x96, central crop 0.6, weighted median per window class",
-    "corpus": [
-     "Original RAW 26-05-10 173311434.dng",
-     "Original RAW 26-05-11 193721820.dng",
-     "Original RAW 26-05-11 193727279.dng",
-     "Original RAW 26-05-11 193738485.dng",
-     "Original RAW 26-05-12 210128342.dng",
-     "Original RAW 26-06-17 222639798.dng",
-     "Original RAW 26-06-26 131513584.dng",
-     "Original RAW 26-06-28 133947250.dng",
-     "Original RAW 26-07-05 115326540.dng",
-     "Original RAW 26-07-11 202403093.dng",
-     "Original RAW 26-07-12 182506394.dng",
-     "Original RAW 26-07-24 194203657.dng"
-    ],
-    "decoder_runtime": "版本27.0（版号26A428）",
-    "measured": "2026-09-17"
    }
   }
  }

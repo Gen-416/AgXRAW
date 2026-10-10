@@ -1,232 +1,300 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Measure the RAW 9 chromaticity transport for prefeed window anchors.
+"""Measure exact-scope RAW9 anchors using verified flat target ROIs.
 
-The prefeed windows are calibrated in the LibRaw-decoded reference frame. Apple's
-RAW 9 interprets the same scene slightly differently, so materials land at slightly
-shifted (R/G, B/G) chromaticities. This tool measures that shift empirically:
-
-- decode each corpus frame with BOTH decoders under the same declared WB (5500K).
-  Since the 2026-08-27 hot-WB migration both paths realise that declaration with the
-  SAME project Rec.2020 hot-WB matrix (RAW 9 decodes at AsShot, the matrix is applied
-  after), so what remains in the ratio is Apple's opaque colour transform against
-  LibRaw's linear one — no longer two different 5500K realisations. Recalibrate
-  whenever the WB realisation of either path changes (the 2026-08-04 values, measured
-  against CIRAWFilter's own neutralTemperature, put B/G at x0.85 on the fp corpus;
-  the 2026-09-16 recalibration on the current chain measures x0.98);
-- box-downsample both renders to a coarse common grid — RAW 9's DNG-opcode warp moves
-  corners by ~70 px at 24 MP, which vanishes at block scale (same reasoning as the
-  existing geometry_correlation diagnostic);
-- pair blocks, drop low-signal and near-clipped ones, and compute per-block
-  chromaticity ratios r = chroma_raw9 / chroma_libraw;
-- per material class, take the window-membership-weighted median ratio; classes with
-  insufficient effective support fall back to the global median.
-
-The result is a von Kries-style transport per class, stored in
-dngscan/decoder_anchor_transport.json and composed at runtime with the existing WB
-window transport. It moves *windows*, never pixels: neutrality and the matrices are
-untouched, only where the class weights center.
+Coarse natural-image blocks are not registration. This initial tool requires
+corresponding dedicated flat targets and independent held-out files. It writes
+a candidate report; installing a qualified candidate is a separate command.
 """
 from __future__ import annotations
 
+import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
-import sys
-from datetime import date
 from pathlib import Path
-
+import sys
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
-
 from dngscan.analysis import analyze  # noqa: E402
-from dngscan.coreimage_decode import decoder_runtime_id  # noqa: E402
 from dngscan.raw_io import load_raw  # noqa: E402
-from dngscan.scene_transform import SCENE_TRANSFORMS  # noqa: E402
+from dngscan.scene_transform import (  # noqa: E402
+    DECODER_ANCHOR_SCHEMA, DECODER_ANCHOR_TRANSPORT_JSON, SCENE_TRANSFORMS,
+    ANCHOR_RATIO_BOUNDS, ANCHOR_MAX_HOLDOUT_MEDIAN_ERROR, ANCHOR_MAX_HOLDOUT_P95_ERROR,
+    _qualified_anchor_entry, _validated_anchor_scope, decoder_anchor_scope,
+)
 from dngscan.tone import scene_intent_rec2020  # noqa: E402
 
-OUT_PATH = PROJECT_ROOT / "dngscan" / "decoder_anchor_transport.json"
-GRID = (64, 96)  # coarse block grid: warp-immune, still ~6k samples per frame
-MIN_EFFECTIVE_SUPPORT = 40.0  # weighted sample mass below which a class uses global
-RATIO_BOUNDS = (0.65, 1.30)  # 2026-08 native-neutral era measured global bg 0.82; implausible transport = measurement problem, refuse
-
-import argparse
-
-_FP_CORPUS = (
-    "_SDI0133", "_SDI0150", "_SDI0165", "_SDI0199", "_SDI0200",
-    "_SDI0206", "_SDI0222", "_SDI0237", "_SDI0238",
-)
-CORPORA = {
-    # camera scope key -> (glob patterns under ~/Pictures, central-crop fraction)
-    # Central crop 1.0 = full frame. iPhone ProRAW under LibRaw carries uncorrected
-    # lens shading (the DNG GainMap opcode is Apple-side), which colours the corners;
-    # restricting the measurement to the central region keeps the pairing clean.
-    # fp DNGs carry a lens-shading GainMap opcode that RAW 9 applies and LibRaw does
-    # not (measured in coreimage_decode), so fp needs the same central crop as iPhone;
-    # the radial warp is also near a full block at the corners. The first fp pass ran
-    # full-frame — corner shading contaminated ~40% of blocks.
-    # The fp corpus is pinned by name so a recalibration measures the same nine frames
-    # the 2026-08-04 values came from (they have since moved into the 样张 folder).
-    "default": (
-        tuple(f"{n}.DNG" for n in _FP_CORPUS) + tuple(f"AgXRAW样张/{n}.DNG" for n in _FP_CORPUS),
-        0.6,
-    ),
-    "Apple iPhone 16 Pro": (("Original RAW *.dng",), 0.6),
-}
+MANIFEST_SCHEMA = "raw9-anchor-manifest-1"
+CANDIDATE_SCHEMA = "raw9-anchor-candidate-1"
+RATIO_BOUNDS = ANCHOR_RATIO_BOUNDS  # Measurement guard; never clamp into qualification.
+MIN_ROI_PIXELS = 64
+MIN_INDEPENDENT_FRAMES = 2  # In each of train and holdout.
+MAX_FLAT_RELATIVE_MAD = .03
+MAX_CHROMA_RELATIVE_MAD = .02
+MAX_HOLDOUT_MEDIAN_ERROR = ANCHOR_MAX_HOLDOUT_MEDIAN_ERROR
+MAX_HOLDOUT_P95_ERROR = ANCHOR_MAX_HOLDOUT_P95_ERROR
 
 
-def _block_chroma(bundle, crop: float = 1.0) -> np.ndarray:
-    flat = bundle.scene_rec2020_render.reshape(-1, bundle.scene_rec2020_render.shape[-1])
-    rec = scene_intent_rec2020(flat[:, :3], bundle, 1.0)
-    h, w = bundle.scene_rec2020_render.shape[:2]
-    rec = rec.reshape(h, w, 3)
-    if crop < 1.0:
-        dh, dw = int(h * (1 - crop) / 2), int(w * (1 - crop) / 2)
-        rec = rec[dh:h - dh, dw:w - dw]
-        h, w = rec.shape[:2]
-    gh, gw = GRID
-    ys = (np.linspace(0, h, gh + 1)).astype(int)
-    xs = (np.linspace(0, w, gw + 1)).astype(int)
-    out = np.empty((gh, gw, 3), dtype=np.float64)
-    for i in range(gh):
-        for j in range(gw):
-            out[i, j] = rec[ys[i]:ys[i + 1], xs[j]:xs[j + 1]].reshape(-1, 3).mean(axis=0)
-    return out.reshape(-1, 3)
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+                      allow_nan=False).encode("utf-8")
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--camera", default="default", choices=tuple(CORPORA))
-    args = ap.parse_args()
-    patterns, crop = CORPORA[args.camera]
-    frames = sorted({f for pat in patterns for f in Path.home().glob(f"Pictures/{pat}") if f.is_file()})
-    if not frames:
-        raise SystemExit("corpus unavailable")
+def _sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
-    pairs = []
-    for frame in frames:
-        row = {}
-        for decoder in ("libraw", "coreimage"):
-            bundle = load_raw(frame, scene_half_size=True, wb_mode="5500k", decoder=decoder)
-            analyze(bundle, margin=4, diagnostics=False)
-            row[decoder] = _block_chroma(bundle, crop)
-        a, b = row["libraw"], row["coreimage"]
-        g_a = np.maximum(a[:, 1], 1e-6)
-        g_b = np.maximum(b[:, 1], 1e-6)
-        # signal / clipping guards on BOTH decodes
-        ok = (
-            (a.max(axis=1) > 0.02) & (b.max(axis=1) > 0.02)
-            & (a.max(axis=1) < 0.90) & (b.max(axis=1) < 0.90)
-        )
-        chroma_a = np.stack([a[:, 0] / g_a, a[:, 2] / g_a], axis=1)[ok]
-        chroma_b = np.stack([b[:, 0] / g_b, b[:, 2] / g_b], axis=1)[ok]
-        pairs.append((chroma_a, chroma_b))
-        print(f"{frame.name}: {int(ok.sum())} usable blocks")
 
-    chroma_l = np.concatenate([p[0] for p in pairs])
-    chroma_r = np.concatenate([p[1] for p in pairs])
-    ratios = chroma_r / np.maximum(chroma_l, 1e-6)
+def _roi_pixels(bundle, bounds):
+    image = np.asarray(bundle.scene_rec2020_render)
+    if (image.ndim != 3 or image.shape[-1] < 3 or not isinstance(bounds, list)
+            or len(bounds) != 4 or any(type(value) is not int for value in bounds)):
+        raise ValueError("invalid-decoded-roi")
+    y0, x0, y1, x1 = bounds
+    height, width = image.shape[:2]
+    if not (0 <= y0 < y1 <= height and 0 <= x0 < x1 <= width):
+        raise ValueError("roi-outside-actual-decoded-geometry")
+    # Separate coordinates in each decoder; no assumed registration/resampling.
+    y0, x0, y1, x1 = y0 + 2, x0 + 2, y1 - 2, x1 - 2
+    patch = image[y0:y1, x0:x1, :3]
+    if min(patch.shape[:2], default=0) < 8 or patch.size // 3 < MIN_ROI_PIXELS:
+        raise ValueError("flat-target-roi-insufficient-support")
+    if not np.isfinite(patch).all():
+        raise ValueError("nonfinite-decoded-roi")
+    pixels = scene_intent_rec2020(patch.reshape(-1, 3), bundle, 1.)
+    if not (np.isfinite(pixels).all() and np.all(pixels > 1e-5)
+            and np.all(np.max(pixels, axis=1) > .02) and np.all(pixels < .90)):
+        raise ValueError("roi-low-signal-negative-or-near-clipped")
+    mask = getattr(bundle, "scene_reliability_exclusion", None)
+    if mask is not None and np.asarray(mask).shape[:2] == image.shape[:2]:
+        if np.any(np.asarray(mask)[y0:y1, x0:x1]):
+            raise ValueError("roi-depends-on-unreliable-sensor-samples")
+    median = np.median(pixels, axis=0)
+    relative_mad = 1.4826 * np.median(np.abs(pixels - median), axis=0) / median
+    chroma = pixels[:, (0, 2)] / pixels[:, 1, None]
+    chroma_median = np.median(chroma, axis=0)
+    chroma_mad = 1.4826 * np.median(np.abs(chroma - chroma_median), axis=0) / chroma_median
+    if np.max(relative_mad) > MAX_FLAT_RELATIVE_MAD or np.max(chroma_mad) > MAX_CHROMA_RELATIVE_MAD:
+        raise ValueError("roi-not-qualified-as-flat-target")
+    grid = pixels.reshape(patch.shape)
+    gradients = np.concatenate((np.abs(np.diff(grid, axis=0)).reshape(-1, 3),
+                                np.abs(np.diff(grid, axis=1)).reshape(-1, 3))) / median
+    gradient_p99 = float(np.percentile(gradients, 99))
+    if gradient_p99 > .08:
+        raise ValueError("roi-has-unqualified-spatial-structure")
+    return median, {"bounds": [y0, x0, y1, x1], "decoded_shape": list(image.shape),
+        "pixels": int(pixels.shape[0]), "relative_mad": relative_mad.tolist(),
+        "chroma_relative_mad": chroma_mad.tolist(), "gradient_p99": gradient_p99}
 
-    global_ratio = np.median(ratios, axis=0)
-    print(f"global transport: rg x{global_ratio[0]:.4f}  bg x{global_ratio[1]:.4f}")
 
-    # Split-half stability: the same estimator on odd/even frames. The disagreement is
-    # an honest scale for how much the corpus (not the estimator) constrains the value.
-    if len(pairs) >= 4:
-        halves = []
-        for sel in (pairs[0::2], pairs[1::2]):
-            cl = np.concatenate([p[0] for p in sel])
-            cr = np.concatenate([p[1] for p in sel])
-            halves.append(np.median(cr / np.maximum(cl, 1e-6), axis=0))
-        drift = np.abs(halves[0] - halves[1])
-        print(f"split-half drift: rg {drift[0]:.4f}  bg {drift[1]:.4f}"
-              f"  (halves rg {halves[0][0]:.4f}/{halves[1][0]:.4f},"
-              f" bg {halves[0][1]:.4f}/{halves[1][1]:.4f})")
+def _fit_transport(samples, weights=None):
+    weights = np.ones(len(samples)) if weights is None else np.asarray(weights)
+    train = np.asarray([row["split"] == "train" for row in samples]) & (weights > .05)
+    holdout = np.asarray([row["split"] == "holdout" for row in samples]) & (weights > .05)
+    counts = {"train": len({row["input_sha256"] for row, used in zip(samples, train) if used}),
+              "holdout": len({row["input_sha256"] for row, used in zip(samples, holdout) if used})}
+    result = {"status": "unmeasured", "independent_frames": counts}
+    if min(counts.values()) < MIN_INDEPENDENT_FRAMES:
+        return {**result, "reason": "insufficient-independent-train-or-holdout-support"}
+    ratios = np.asarray([row["ratio_rg_bg"] for row in samples], dtype=np.float64)
+    fit, fit_weights = ratios[train], weights[train]
+    ratio = np.asarray([fit[order, axis][np.searchsorted(np.cumsum(fit_weights[order]), fit_weights.sum() / 2)]
+                        for axis in range(2) for order in [np.argsort(fit[:, axis])]])
+    result["ratio_rg_bg"] = ratio.tolist()
+    if not np.isfinite(ratio).all() or np.any(ratio < RATIO_BOUNDS[0]) or np.any(ratio > RATIO_BOUNDS[1]):
+        return {**result, "status": "rejected", "reason": "measured-ratio-outside-guard-no-clamping"}
+    residual = np.abs(ratios[holdout] / ratio - 1.)
+    median_error, p95_error = np.median(residual, axis=0), np.percentile(residual, 95, axis=0)
+    result.update(holdout_median_relative_error=median_error.tolist(),
+        holdout_p95_relative_error=p95_error.tolist(), train_ratio_min=np.min(fit, axis=0).tolist(),
+        train_ratio_max=np.max(fit, axis=0).tolist(),
+        uncertainty="between-file spread; spatial samples are not independent replicates")
+    if np.max(median_error) > MAX_HOLDOUT_MEDIAN_ERROR or np.max(p95_error) > MAX_HOLDOUT_P95_ERROR:
+        return {**result, "status": "rejected", "reason": "independent-holdout-disagreement"}
+    return {**result, "status": "qualified", "reason": "flat-target-independent-holdout-passed"}
 
-    # Per-class, weighted by the LibRaw-side window membership of every film preset's
-    # material family. Classes share names across presets; measure once per name using
-    # the union of matching windows (they are near-identical across stocks by design).
-    class_windows: dict[str, list] = {}
-    for preset in SCENE_TRANSFORMS.values():
-        for region in preset.regions:
-            class_windows.setdefault(region.name, []).append(region)
 
-    def _window_weight(chroma: np.ndarray, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
-        inv = np.linalg.pinv(cov)
-        d = chroma - mu
-        mahal = np.einsum("ni,ij,nj->n", d, inv, d)
-        return np.exp(np.clip(-0.5 * mahal, -60.0, 0.0))
+def measure_candidate(manifest, directory, *, loader=load_raw, analyzer=analyze):
+    report = {"schema": CANDIDATE_SCHEMA, "status": "unmeasured", "profile": None,
+              "failures": [], "frames": []}
+    try:
+        report["manifest_sha256"] = hashlib.sha256(_canonical(manifest)).hexdigest()
+        if not isinstance(manifest, dict) or manifest.get("schema") != MANIFEST_SCHEMA:
+            raise ValueError("unsupported-anchor-manifest")
+        support = manifest.get("spatial_support")
+        if (not isinstance(support, dict) or support.get("kind") != "flat-target-rois"
+                or support.get("verified") is not True or not isinstance(support.get("verification_note"), str)
+                or not support["verification_note"].strip()
+                or manifest.get("target_kind") != "dedicated-flat-color-target"):
+            raise ValueError("verified-flat-target-spatial-support-required")
+        token = manifest.get("actual_decoder_token")
+        if token not in ("9", "9.dng"):
+            raise ValueError("explicit-exact-raw9-token-required")
+        if manifest.get("scale_mode", "unity") != "unity":
+            raise ValueError("anchor-tool-requires-explicit-unity-scale-policy")
+        if "half_size" in manifest and type(manifest["half_size"]) is not bool:
+            raise ValueError("half-size-must-be-explicit-boolean")
+        frames = manifest.get("frames")
+        if not isinstance(frames, list) or len(frames) < 4:
+            raise ValueError("two-training-and-two-independent-holdout-files-required")
+        samples, inputs, scopes, reference_versions, seen_hashes = [], [], [], [], set()
+        for frame in frames:
+            if not isinstance(frame, dict) or frame.get("split") not in ("train", "holdout"):
+                raise ValueError("invalid-frame-or-independent-split")
+            if not isinstance(frame.get("path"), str) or not frame["path"]:
+                raise ValueError("frame-path-required")
+            path = (Path(directory) / frame["path"]).resolve()
+            digest = _sha256(path)
+            if digest in seen_hashes:
+                raise ValueError("duplicate-file-content-not-independent-support")
+            seen_hashes.add(digest)
+            if frame.get("sha256") is not None and frame["sha256"] != digest:
+                raise ValueError("input-file-hash-mismatch")
+            bundles = {}
+            for decoder in ("libraw", "coreimage"):
+                bundle = loader(path, scene_half_size=manifest.get("half_size", False), wb_mode="5500k",
+                    decoder=decoder, scene_highlight_mode="clip", coreimage_version=token, coreimage_scale="unity")
+                if bundle.scene_decoder != decoder or getattr(bundle, "scene_decoder_fallback", None):
+                    raise ValueError("actual-decoder-fallback-not-calibration-evidence")
+                if getattr(bundle, "wb_degradation", None):
+                    raise ValueError("declared-white-balance-not-realized")
+                analysis = analyzer(bundle, margin=4, diagnostics=False)[0]
+                # Apple has no registered RAW loss mask. Require no aggregate
+                # loss rather than pretending that a copied RAW mask localizes it.
+                if (not np.isfinite(analysis.cell_union_pct) or analysis.cell_union_pct != 0
+                        or getattr(bundle, "scene_processing_loss_pct", None) != 0
+                        or getattr(bundle, "scene_loss_support_untrusted", False)):
+                    raise ValueError("raw-or-decoder-loss-not-spatially-excluded")
+                bundles[decoder] = bundle
+            reference_versions.append(str(getattr(bundles["libraw"], "scene_decoder_version", None)
+                                          or getattr(bundles["libraw"], "evidence_provider_version", "")))
+            scope = decoder_anchor_scope(bundles["coreimage"])
+            if scope is None or scope["actual_decoder_token"] != token:
+                raise ValueError("actual-raw9-recipe-identity-not-qualified")
+            if (bundles["libraw"].shot_make, bundles["libraw"].shot_model) != (scope["make"], scope["model"]):
+                raise ValueError("paired-camera-identity-mismatch")
+            if scopes and scope != scopes[0]:
+                raise ValueError("mixed-camera-runtime-or-configuration")
+            scopes.append(scope)
+            rois = frame.get("rois")
+            if not isinstance(rois, list) or not rois:
+                raise ValueError("corresponding-flat-target-rois-required")
+            frame_report = {"path": str(path), "sha256": digest, "split": frame["split"], "scope": scope, "rois": []}
+            names = set()
+            for roi in rois:
+                if (not isinstance(roi, dict) or not isinstance(roi.get("id"), str)
+                        or not roi["id"] or roi["id"] in names):
+                    raise ValueError("unique-physical-target-roi-id-required")
+                names.add(roi["id"])
+                a, left = _roi_pixels(bundles["libraw"], roi.get("libraw"))
+                b, right = _roi_pixels(bundles["coreimage"], roi.get("coreimage"))
+                ca, cb = a[[0, 2]] / a[1], b[[0, 2]] / b[1]
+                samples.append({"split": frame["split"], "input_sha256": digest,
+                    "roi": roi["id"], "chroma_libraw": ca.tolist(), "ratio_rg_bg": (cb / ca).tolist()})
+                frame_report["rois"].append({"id": roi["id"], "libraw": left, "coreimage": right})
+            report["frames"].append(frame_report)
+            inputs.append({"name": path.name, "sha256": digest, "split": frame["split"]})
+        if len(set(reference_versions)) != 1 or reference_versions[0] in ("", "None"):
+            raise ValueError("mixed-or-unidentified-libraw-reference-version")
+        global_fit = _fit_transport(samples)
+        chroma = np.asarray([row["chroma_libraw"] for row in samples])
+        class_weights = {}
+        for preset in SCENE_TRANSFORMS.values():
+            for region in preset.regions:
+                for component in region.components or (region,):
+                    delta = chroma - np.asarray(component.mu_rg_bg)
+                    inverse = np.linalg.inv(np.asarray(component.cov_rg_bg) * region.scale**2)
+                    weights = np.exp(-.5 * np.einsum("ni,ij,nj->n", delta, inverse, delta))
+                    weights *= min(1., max(0., getattr(component, "weight", 1.)))
+                    class_weights[region.name] = np.maximum(class_weights.get(region.name, np.zeros(len(samples))), weights)
+        per_class = {name: _fit_transport(samples, weights) for name, weights in class_weights.items()}
+        qualified = global_fit["status"] == "qualified" or any(row["status"] == "qualified" for row in per_class.values())
+        identity = hashlib.sha256(_canonical({"scope": scopes[0], "inputs": inputs,
+                                              "manifest_sha256": report["manifest_sha256"]})).hexdigest()
+        profile = {"id": identity[:24], "status": "qualified" if qualified else "unmeasured", "scope": scopes[0],
+            "transport": {"global": global_fit, "per_class": per_class},
+            "validation": {"status": "passed" if qualified else "not-passed", "independent_holdout": True,
+                "spatial_support": "flat-target-rois", "verification_note": support["verification_note"],
+                "thresholds": {"ratio_bounds": list(RATIO_BOUNDS), "holdout_median_relative_error": MAX_HOLDOUT_MEDIAN_ERROR,
+                               "holdout_p95_relative_error": MAX_HOLDOUT_P95_ERROR}},
+            "source": {"method": "corresponding dedicated flat targets; independent-file holdout; no resampling",
+                "inputs": inputs, "manifest_sha256": report["manifest_sha256"],
+                "libraw_reference_version": reference_versions[0],
+                "measured_utc": datetime.now(timezone.utc).isoformat()}}
+        report.update(status="qualified-candidate" if qualified else "unmeasured", profile=profile, samples=samples,
+                      profile_sha256=hashlib.sha256(_canonical(profile)).hexdigest())
+        if not qualified:
+            report["failures"].append("no-global-or-class-transport-passed-independent-holdout")
+    except (ValueError, TypeError, KeyError, OSError, RuntimeError, np.linalg.LinAlgError) as error:
+        report["failures"].append(str(error))
+    return report
 
-    per_class = {}
-    for name, regions in sorted(class_windows.items()):
-        region = regions[0]
-        mu = np.asarray(region.mu_rg_bg, dtype=np.float64)
-        cov = np.asarray(region.cov_rg_bg, dtype=np.float64) * (region.scale ** 2)
-        # Dual-side membership: a block must belong to the class in BOTH decodes (the
-        # RAW9-side window pre-shifted by the global transport). Mixed edge blocks —
-        # where the coarse pairing straddles a chroma boundary and the two decoders
-        # average different mixtures — fail one side and drop out; they were dragging
-        # saturated classes to impossible ratios.
-        w = _window_weight(chroma_l, mu, cov) * _window_weight(
-            chroma_r, mu * global_ratio, cov * np.outer(global_ratio, global_ratio)
-        )
-        # Percentile trim inside the class for residual pairing outliers.
-        active = w > 1e-4
-        if active.sum() >= 12:
-            for c in range(2):
-                lo, hi = np.percentile(ratios[active, c], [10.0, 90.0])
-                w = np.where((ratios[:, c] < lo) | (ratios[:, c] > hi), 0.0, w)
-        support = float(w.sum())
-        if support >= MIN_EFFECTIVE_SUPPORT:
-            order = np.argsort(ratios, axis=0)
-            ratio = []
-            for c in range(2):
-                idx = order[:, c]
-                cw = np.cumsum(w[idx])
-                ratio.append(float(ratios[idx, c][np.searchsorted(cw, cw[-1] / 2.0)]))
-            source = "class-weighted"
-        else:
-            ratio = [float(global_ratio[0]), float(global_ratio[1])]
-            source = "global-fallback"
-        clamped = [min(max(r, RATIO_BOUNDS[0]), RATIO_BOUNDS[1]) for r in ratio]
-        if clamped != ratio:
-            source += "+clamped"
-        per_class[name] = {
-            "ratio_rg_bg": [round(clamped[0], 5), round(clamped[1], 5)],
-            "effective_support": round(support, 1),
-            "basis": source,
-        }
-        ratio = clamped
-        print(f"  {name:10s} rg x{ratio[0]:.4f} bg x{ratio[1]:.4f}  support {support:8.1f}  ({source})")
 
-    existing = {}
-    if OUT_PATH.is_file():
+def install_candidate(report, destination):
+    if (not isinstance(report, dict) or report.get("schema") != CANDIDATE_SCHEMA
+            or report.get("status") != "qualified-candidate" or report.get("failures")):
+        raise ValueError("only-qualified-candidate-reports-can-be-installed")
+    profile = report.get("profile")
+    if not _qualified_anchor_entry(profile) or _validated_anchor_scope(profile.get("scope")) is None:
+        raise ValueError("candidate-profile-contract-invalid")
+    if report.get("profile_sha256") != hashlib.sha256(_canonical(profile)).hexdigest():
+        raise ValueError("candidate-profile-changed-after-measurement")
+    evidence = report.get("frames")
+    if not isinstance(evidence, list) or len(evidence) != len(profile["source"]["inputs"]):
+        raise ValueError("candidate-input-evidence-incomplete")
+    expected = {(row["sha256"], row["split"]) for row in profile["source"]["inputs"]}
+    observed = set()
+    for row in evidence:
+        if (not isinstance(row, dict) or (row.get("sha256"), row.get("split")) not in expected
+                or _sha256(row["path"]) != row["sha256"]):
+            raise ValueError("candidate-input-changed-since-measurement")
+        observed.add((row["sha256"], row["split"]))
+    if observed != expected:
+        raise ValueError("candidate-input-evidence-incomplete")
+    try:
+        asset = json.loads(destination.read_text())
+    except (OSError, ValueError):
+        asset = {"schema": DECODER_ANCHOR_SCHEMA, "version": 3, "profiles": []}
+    if not isinstance(asset, dict) or asset.get("schema") != DECODER_ANCHOR_SCHEMA or asset.get("version") != 3 or not isinstance(asset.get("profiles"), list):
+        raise ValueError("refuse-implicit-legacy-asset-migration")
+    asset["profiles"] = [row for row in asset["profiles"] if isinstance(row, dict) and row.get("scope") != profile["scope"]] + [profile]
+    temporary = destination.with_name(destination.name + ".tmp")
+    temporary.write_text(json.dumps(asset, ensure_ascii=False, indent=1, allow_nan=False) + "\n")
+    temporary.replace(destination)
+    return {"status": "installed", "profile_id": profile["id"], "asset": str(destination)}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("manifest", nargs="?", type=Path)
+    parser.add_argument("--report", type=Path)
+    parser.add_argument("--install-candidate", type=Path)
+    parser.add_argument("--asset", type=Path, default=DECODER_ANCHOR_TRANSPORT_JSON)
+    args = parser.parse_args(argv)
+    if args.install_candidate:
+        if args.manifest is not None or args.report is not None:
+            parser.error("installation is separate from measurement")
         try:
-            existing = json.loads(OUT_PATH.read_text(encoding="utf-8"))
-        except ValueError:
-            existing = {}
-    existing.setdefault("version", 2)
-    scopes = existing.setdefault("coreimage", {})
-    # migrate v1 flat layout into the "default" scope
-    if "global_ratio_rg_bg" in scopes:
-        scopes = {"default": scopes}
-        existing["coreimage"] = scopes
-    scopes[args.camera] = {
-        "global_ratio_rg_bg": [round(float(global_ratio[0]), 5), round(float(global_ratio[1]), 5)],
-        "per_class": per_class,
-        "source": {
-            "method": "dual-decode block-paired chroma transport, 5500K declared WB, "
-                      f"grid {GRID[0]}x{GRID[1]}, central crop {crop:g}, "
-                      "weighted median per window class",
-            "corpus": [p.name for p in frames],
-            # Apple revises RAW 9 by OS build: record which build measured this.
-            "decoder_runtime": decoder_runtime_id(),
-            "measured": date.today().isoformat(),
-        },
-    }
-    OUT_PATH.write_text(json.dumps(existing, indent=1, ensure_ascii=False) + "\n")
-    print(f"wrote {OUT_PATH}")
-    return 0
+            result = install_candidate(json.loads(args.install_candidate.read_text()), args.asset)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            parser.exit(2, f"candidate not installed: {error}\n")
+        print(json.dumps(result, ensure_ascii=False))
+        return 0
+    if args.manifest is None or args.report is None:
+        parser.error("measurement needs a manifest and --report; no implicit image-folder corpus")
+    try:
+        report = measure_candidate(json.loads(args.manifest.read_text()), args.manifest.parent)
+    except (OSError, ValueError, TypeError) as error:
+        report = {"schema": CANDIDATE_SCHEMA, "status": "unmeasured", "profile": None, "failures": [str(error)]}
+    args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+    print(json.dumps({"status": report["status"], "report": str(args.report), "failures": report["failures"]}, ensure_ascii=False))
+    return 0 if report["status"] == "qualified-candidate" else 2
 
 
 if __name__ == "__main__":

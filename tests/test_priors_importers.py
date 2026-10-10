@@ -83,13 +83,21 @@ class TestJptcImporter(unittest.TestCase):
     def test_collect_entries_resolve_new_makes(self):
         for mk, md in [("Canon", "Canon EOS R5 Mark II"),
                        ("Canon", "Canon EOS R6 Mark II"),
-                       ("Panasonic", "DC-S1RM2"),
                        ("Leica", "M11 Monochrom")]:
             e = priors.find_priors(mk, md)
             self.assertIsNotNone(e, md)
             self.assertIn("collect", e["source"])
             self.assertGreater(priors.gain_e_per_dn(e, 100), 0)
             self.assertIsNotNone(priors.read_noise_e(e, 100))
+
+    def test_retired_s1r2_dark_is_not_replaced_by_unqualified_borrowed_gain(self):
+        e = priors.find_priors("Panasonic", "DC-S1RM2")
+        self.assertIsNotNone(e)
+        self.assertIn("collect", e["source"])
+        self.assertIsNone(priors.gain_e_per_dn(e, 100))
+        self.assertIsNone(priors.read_noise_e(e, 100))
+        self.assertFalse(any("s1r2-mech-20260812" in row.get("source", "")
+                             for row in priors._jptc_entries()))
 
     def test_collect_whiteness_evidence_present(self):
         e = priors.find_priors("Canon", "Canon EOS R6 Mark II")

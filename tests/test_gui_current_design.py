@@ -370,8 +370,9 @@ class ReviewR7Tests(unittest.TestCase):
 
         calls = []
 
-        def fake_identity(*args):
+        def fake_identity(*args, capture_declaration=None):
             calls.append(args)
+            self.assertIsNone(capture_declaration)
             return (("k",) + tuple(str(a) for a in args[1:]), "digest")
 
         store = pc.PreviewCache.__new__(pc.PreviewCache)

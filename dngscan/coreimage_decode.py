@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Core Image RAW 9 scene-linear Rec.2020 decoder.
+"""Core Image RAW scene-linear Rec.2020 decoder with an auditable decode recipe.
 
-A separate pipeline rather than a LibRaw back end: Core Image executes the file's DNG
-opcodes, so its frame is a warp of LibRaw's and per-pixel CFA evidence cannot be carried
-across (raw_io drops the masks; see the comment there). Aggregate RAW facts — levels,
-clip percentages, SNR, noise floor, white-balance testimony — are distributions rather
-than pixel positions and still come from LibRaw.
+Exact pixel correspondence with the corrected LibRaw output has not been established,
+even when both interpret the same file opcodes. Sensor-grid masks are therefore not
+transported across this handoff. Aggregate RAW measurements may still characterize the
+original sensor evidence; they do not measure Core Image's processed output noise.
 
 The decode follows Apple's recipe for reaching linear scene-referred data (WWDC21
 "Capture and process ProRAW images"): baselineExposure, shadowBias, boostAmount,
 localToneMapAmount and the RAW exposure control at 0, EDR and gamut mapping off, rendered
-into extendedLinearITUR_2020. Adjustable look controls are neutralised where RAW 9 exposes
-a meaningful neutral value; moire is deliberately left at Apple's default because its zero
-is the strongest smoothing end. Highlight recovery and lens correction are enabled
+into extendedLinearITUR_2020. Adjustable look controls are neutralised where the filter
+exposes a meaningful neutral value; moire is left at Apple's default and is documented as
+unsupported in RAW 9. Zero legacy parameter values do not disable RAW 9's integrated
+demosaic/denoise model. Highlight recovery and lens correction are requested
 explicitly because they belong to Apple's camera interpretation, not to dngscan's
 downstream display transform.
 
@@ -32,6 +32,12 @@ from __future__ import annotations
 import struct
 import threading
 import platform
+import hashlib
+import json
+import os
+import subprocess
+import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -54,8 +60,12 @@ COREIMAGE_SCALE_MODES = {
 COREIMAGE_SCALE_COMPENSATION = COREIMAGE_SCALE_MODES[COREIMAGE_SCALE_DEFAULT_MODE]
 COREIMAGE_PREVIEW_LONG_EDGE = 1280
 COREIMAGE_EXPORT_MEMORY_LIMIT_MB = 1024
+COREIMAGE_RUNTIME_FAILURE_TTL_SECONDS = 60.
+COREIMAGE_RECIPE_VERSION = "coreimage-decode-recipe-1"
+PROJECT_HOT_WB_IMPLEMENTATION = "rec2020-conjugate-camera-matrix-approx-v1"
 
 _CONTEXTS: dict[bool, Any] = {}
+_CONTEXT_RECIPES: dict[bool, dict[str, Any]] = {}
 _CONTEXT_LOCK = threading.Lock()
 
 
@@ -73,6 +83,23 @@ def decoder_runtime_id() -> str:
     return f"macOS {version}" if version else platform.platform()
 
 
+@lru_cache(maxsize=1)
+def decoder_hardware_id() -> dict[str, Any]:
+    """Non-unique hardware facts; CIRAWFilter does not expose actual ANE scheduling."""
+    facts: dict[str, Any] = {"architecture": platform.machine(), "processor": platform.processor(),
+                             "execution_device": "not-observable-via-CIRAWFilter"}
+    if platform.system() == "Darwin":
+        for field, key in (("model", "hw.model"), ("cpu_brand", "machdep.cpu.brand_string")):
+            try:
+                result = subprocess.run(["/usr/sbin/sysctl", "-n", key], capture_output=True,
+                                        text=True, timeout=2, check=False)
+                if result.returncode == 0 and result.stdout.strip():
+                    facts[field] = result.stdout.strip()
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return facts
+
+
 def describe_scale_compensation(gain: float) -> str:
     """Describe the gain that was actually applied.
 
@@ -83,8 +110,8 @@ def describe_scale_compensation(gain: float) -> str:
     if abs(float(gain) - 1.0) <= 1e-9:
         return "no fixed decode-time correction (native or per-file aligned handoff)"
     return (
-        f"measured 2026-07 Sigma fp; CI/LibRaw median ratio "
-        f"{1.0 / float(gain):.4f} (per-frame spread 0.94..1.12)"
+        f"legacy empirical fixed multiplier; inverse ratio {1.0 / float(gain):.4f}; "
+        "not a per-camera or per-file calibration"
     )
 
 
@@ -101,17 +128,10 @@ def scale_compensation_for_mode(mode: str) -> float:
 COREIMAGE_DECODER_VERSIONS = COREIMAGE_VERSION_CHOICES
 
 # DNG opcode IDs (DNG 1.7 spec, Chapter 6) that make Apple's decoded frame geometrically
-# or radiometrically incomparable to LibRaw's. WarpRectilinear is the decisive one: it is
-# a per-plane radial polynomial, so corners move by tens of pixels (measured ~70 px on a
-# 24 MP Sigma fp frame) and no affine crop can reconcile the two frames.
-#
-# CIRAWFilter does expose lensCorrectionEnabled, which defaults to true and partly undoes
-# this: measured on a Sigma fp frame it lifts corner correlation against LibRaw from 0.24
-# to 0.64. That is nowhere near the ~0.999 a genuinely aligned crop reaches, so it does
-# not make per-pixel mask reuse viable, and it is left enabled deliberately rather than by
-# default — the file asks for those corrections (WarpRectilinear for lateral CA, GainMap
-# for lens shading) and the separate-pipeline design has no need of the alignment that
-# turning them off would partially buy.
+# or radiometrically incomparable to LibRaw's. WarpRectilinear is a per-plane radial
+# polynomial; a crop alone does not prove that sensor-grid masks align with its output.
+# lensCorrectionEnabled requests Apple's camera interpretation. Its getter is not proof
+# of an exact opcode execution history or pixel correspondence with another decoder.
 DNG_OPCODE_WARP_RECTILINEAR = 1
 DNG_OPCODE_WARP_FISHEYE = 2
 DNG_OPCODE_FIX_VIGNETTE_RADIAL = 3
@@ -138,9 +158,10 @@ def available() -> bool:
 
 
 _RUNTIME_AVAILABLE: dict[bool, bool] = {}
+_RUNTIME_FAILED_AT: dict[bool, float] = {}
 
 
-def runtime_available(*, interactive: bool = False) -> bool:
+def runtime_available(*, interactive: bool = False, retry: bool = False) -> bool:
     """True when THIS workload's render context can be built and can
     render one pixel, cached per (process, workload).
 
@@ -151,10 +172,19 @@ def runtime_available(*, interactive: bool = False) -> bool:
     probe therefore exercises the REAL path — _render_context plus a
     minimal 1x1 bitmap render — and preview (interactive) and export
     capabilities are cached separately because their option sets differ.
+    Failures expire after 60 seconds; ``retry=True`` explicitly probes a fresh
+    context immediately. Successful probes may be reused for the process.
     Never raises."""
     key = bool(interactive)
-    if key in _RUNTIME_AVAILABLE:
-        return _RUNTIME_AVAILABLE[key]
+    if key in _RUNTIME_AVAILABLE and not retry:
+        if _RUNTIME_AVAILABLE[key]:
+            return True
+        if time.monotonic() - _RUNTIME_FAILED_AT.get(key, float("-inf")) < COREIMAGE_RUNTIME_FAILURE_TTL_SECONDS:
+            return False
+    if retry or key in _RUNTIME_FAILED_AT:
+        with _CONTEXT_LOCK:
+            _CONTEXTS.pop(key, None)
+            _CONTEXT_RECIPES.pop(key, None)
     ok = False
     if available():
         try:
@@ -183,6 +213,10 @@ def runtime_available(*, interactive: bool = False) -> bool:
         except Exception:
             ok = False
     _RUNTIME_AVAILABLE[key] = ok
+    if ok:
+        _RUNTIME_FAILED_AT.pop(key, None)
+    else:
+        _RUNTIME_FAILED_AT[key] = time.monotonic()
     return ok
 
 
@@ -328,30 +362,66 @@ def resolve_decoder_version(requested: str, offered: tuple[str, ...]) -> str:
     return chosen
 
 
-def _set_amount(filt: Any, setter: str, supported_pred: str | None, value: float) -> bool:
-    """Set a CIRAW amount when the control exists; return whether it was written."""
-    if supported_pred is not None:
-        pred = getattr(filt, supported_pred, None)
-        if callable(pred) and not bool(pred()):
-            return False
-    fn = getattr(filt, setter, None)
+def _observe_control(filt: Any, selector: str, kind: str = "float") -> dict[str, Any]:
+    fn = getattr(filt, selector, None)
+    result: dict[str, Any] = {"selector": selector, "status": "absent", "value": None}
     if not callable(fn):
-        return False
-    fn(float(value))
-    return True
+        return result
+    try:
+        raw = fn()
+        if raw is None:
+            result["status"] = "no-value"
+            return result
+        value = bool(raw) if kind == "bool" else str(raw) if kind == "str" else float(raw)
+        if kind == "float" and not np.isfinite(value):
+            result["status"] = "nonfinite"
+            return result
+        result.update(status="read", value=value)
+    except Exception as exc:
+        result.update(status="error", error=f"{type(exc).__name__}: {exc}")
+    return result
 
 
-def _set_bool(filt: Any, setter: str, supported_pred: str | None, value: bool) -> bool:
-    """Set a CIRAW boolean when the control exists; return whether it was written."""
-    if supported_pred is not None:
-        pred = getattr(filt, supported_pred, None)
-        if callable(pred) and not bool(pred()):
-            return False
-    fn = getattr(filt, setter, None)
-    if not callable(fn):
-        return False
-    fn(bool(value))
-    return True
+def _configure_control(filt: Any, *, setter: str | None, getter: str, requested: Any,
+                       predicate: str | None = None, kind: str = "float",
+                       semantics: str, documented_inert: bool = False,
+                       force_legacy_parameter: bool = False) -> dict[str, Any]:
+    """Keep API support, writes, readback, and actual processing semantics distinct."""
+    before = _observe_control(filt, getter, kind)
+    support = (_observe_control(filt, predicate, "bool") if predicate else
+               {"selector": None, "status": "no-predicate", "value": None})
+    supported = support["value"] if support["status"] == "read" else None
+    fn = getattr(filt, setter, None) if setter else None
+    written: dict[str, Any] = {"selector": setter, "available": callable(fn),
+                               "attempted": False, "status": "preserved-default"}
+    if requested is not None:
+        if not callable(fn):
+            written["status"] = "absent"
+        elif supported is False and not force_legacy_parameter:
+            written["status"] = "skipped-unsupported"
+        else:
+            written["attempted"] = True
+            try:
+                fn(requested)
+                written["status"] = "applied"
+            except Exception as exc:
+                written.update(status="error", error=f"{type(exc).__name__}: {exc}")
+    after = _observe_control(filt, getter, kind)
+    match = (after["status"] == "read" and requested is not None and
+             (after["value"] == requested if kind != "float" else
+              abs(after["value"] - float(requested)) <= 1e-6 * max(1., abs(float(requested)))))
+    if documented_inert:
+        applicability, effective = "documented-inert-raw9", "not-applicable"
+    elif supported is False:
+        applicability, effective = "unsupported-by-instance", "not-applicable"
+    else:
+        applicability = "supported-by-instance" if supported is True else "not-declared"
+        effective = ("preserved-default" if requested is None else "parameter-confirmed" if match
+                     else "parameter-mismatch" if after["status"] == "read" else "unconfirmed")
+    return {"requested": requested, "support": support, "applicability": applicability,
+            "setter": written, "getter": {"selector": getter, "before": before, "after": after},
+            "effective": {"status": effective, "value": after["value"], "semantics": semantics,
+                          "processing_effect_verified": False}}
 
 
 def _read_float(filt: Any, getter: str) -> float | None:
@@ -393,149 +463,113 @@ def configure_linear_filter(
     exposure: float = 0.0,
     neutral_cct: float | None = None,
 ) -> dict[str, Any]:
-    """Put the filter into Apple's linear scene-referred configuration.
+    """Request Apple's linear handoff and audit each control independently.
 
-    Not "zero everything": that rule came from the LibRaw path and produces a worse
-    decode here, not a purer one. Apple's own five settings for reaching linear data are
-    applied, adjustable look controls are neutralised where their API has a true neutral
-    value, and decode-time reconstruction/correction controls are enabled explicitly.
-
-    Returns a small dict describing what was applied (for reports/tests).
+    Getter readback confirms a parameter, not the physical absence of an internal
+    algorithm. RAW 9's joint demosaic/denoise remains active at zero legacy NR values.
+    Missing or unconfirmed required controls are reported, not declared verified.
     """
-    filt.setDecoderVersion_(version)
-    # Read the file/camera default after selecting the decoder version: defaults can be
-    # decoder-specific. Apple explicitly requires baselineExposure=0 for direct access to
-    # linear scene-referred values. raw_io restores this recorded intent later by changing
-    # the scale divisor, which preserves extended highlights and applies the gain once.
-    baseline_authored = _read_float(filt, "baselineExposure")
-    baseline_cleared = _set_amount(filt, "setBaselineExposure_", None, 0.0)
-    _set_amount(filt, "setBoostAmount_", None, 0.0)
-    # No effect while boostAmount is 0, cleared so the pair cannot drift apart.
-    _set_amount(filt, "setBoostShadowAmount_", None, 0.0)
-    # shadowBias subtracts from the shadows and defaults to 5.0, which is a black-level
-    # pedestal: a display-referred operation with no place in a scene-linear buffer.
-    # Leaving it at the default drove components to exactly zero on 1.4 % of an ISO 12800
-    # frame and 21.0 % of an ISO 25600 one, against 0.006 % and 0.18 % once zeroed — both
-    # below the LibRaw path's own 0.16 % and 1.9 % — and pushed the 1st percentile of
-    # luminance negative. Shadow detail that looked like it had been eaten by the CoreML
-    # denoiser was mostly this subtraction.
-    _set_amount(filt, "setShadowBias_", None, 0.0)
-    _set_amount(filt, "setExposure_", None, float(exposure))
-    # A declared fixed-Kelvin white reference goes through CIRAWFilter's native neutral
-    # interface: Apple's own calibration realises the declaration, which is the point of
-    # a declaration (each decoder uses its most accurate implementation). Tint is forced
-    # to zero because as-shot tint residue would otherwise survive the temperature set
-    # and the neutral would sit off the locus. As-shot (None) touches neither property.
-    if neutral_cct is not None:
-        _set_amount(filt, "setNeutralTemperature_", None, float(neutral_cct))
-        _set_amount(filt, "setNeutralTint_", None, 0.0)
-    # EDR is a display rendering choice, not part of the custom AgX scene input. Leaving a
-    # decoder-dependent default here could place Apple's HDR transform before dngscan's
-    # DRT. Older CIRAWFilter versions simply do not expose the setter.
-    _set_amount(filt, "setExtendedDynamicRangeAmount_", None, 0.0)
-    # 0 is the least-smoothed end of a calibrated range, not "denoising off": RAW 9 fuses
-    # denoise into the demosaic model, so it always runs. Nothing here can turn it off.
-    # Measured, zero is the right end to ask for — Apple's 0.043 default already costs
-    # 3.1 % of high-frequency energy and 1.0 costs 59.8 %.
-    _set_amount(filt, "setLuminanceNoiseReductionAmount_", "isLuminanceNoiseReductionSupported", 0.0)
-    color_nr_cleared = _set_amount(
-        filt, "setColorNoiseReductionAmount_", "isColorNoiseReductionSupported", 0.0
-    )
-    # RAW 9 is a tiled CoreML model that fuses demosaic WITH denoise (WWDC26 session
-    # 305), so denoising is architectural rather than a stage that can be switched off.
-    #
-    # An earlier revision of this comment claimed colorNoiseReductionAmount, detailAmount
-    # and moireReductionAmount act as aliases of one internal control, contradicting
-    # Apple's documentation. Re-measured on the current configuration at full resolution,
-    # that is wrong and the documentation is right for two of the three: sweeping colorNR
-    # or detail over 0 / 0.5 / 1.0 changes exactly 0.00 % of pixels. The unconditional
-    # clear below is therefore inert, and kept only so a future build that revives the
-    # control cannot reintroduce its 0.5 default unnoticed.
-    if not color_nr_cleared:
-        color_nr_cleared = _set_amount(filt, "setColorNoiseReductionAmount_", None, 0.0)
-    _set_amount(filt, "setDetailAmount_", "isDetailSupported", 0.0)
-    _set_amount(filt, "setContrastAmount_", "isContrastSupported", 0.0)
-    # Sharpening is a spatial operator, so leaving it on would make the buffer no longer a
-    # plain scene-linear decode. It is inert on decoder version 8 (measured: 0 vs 1 changed
-    # nothing) and live on version 9, so it only started mattering once this module began
-    # requesting RAW 9 — a fresh filter reports version 8, so 9 is never reached without
-    # asking. Its default is file- and version-dependent (0.485 and 0.954 seen), which is
-    # its own reason not to leave it alone. Clearing it costs 5.9 % of high-frequency
-    # energy against Apple's default, the price of keeping display-referred sharpening out
-    # of a scene-referred buffer.
-    sharpness_cleared = _set_amount(filt, "setSharpnessAmount_", "isSharpnessSupported", 0.0)
-    if not sharpness_cleared:
-        sharpness_cleared = _set_amount(filt, "setSharpnessAmount_", None, 0.0)
-    # Moire reduction is deliberately left alone — never cleared, never forced.
-    # isMoireReductionSupported returns False on version 9 today, so a capability-gated
-    # setter would skip anyway; an earlier accidental skip is what preserved detail.
-    # Forcing 0 would cost 59.8 % of high-frequency energy: the control's zero is its
-    # *smoothest* end, not "off", and 0.5 / 1.0 render identically on the plateau its
-    # ~0.55 default sits on. Do not "tidy" this into a zeroing call if an SDK later
-    # reports support — leave Apple's value.
-    _set_amount(filt, "setLocalToneMapAmount_", "isLocalToneMapSupported", 0.0)
-    # Gamut mapping is an output-referred clamp and belongs after the view transform, not
-    # before it. Enabling it collapses the buffer into the destination gamut: measured on
-    # a Sigma fp frame it cut p99.995 from 2.08 to 1.07, zeroed every negative component
-    # (real scene colours outside Rec.2020), and changed 14 % of pixels. AgX does its own
-    # gamut work downstream, so this stays off and the handoff stays scene-referred.
-    if hasattr(filt, "setGamutMappingEnabled_"):
-        filt.setGamutMappingEnabled_(False)
-    # Highlight recovery is reconstruction, not taste, so unlike the subjective controls
-    # above it is explicitly enabled. Disabling it does not yield a "purer"
-    # decode, it yields a wrong one: clipped highlights come back with green pinned far
-    # below red and blue (measured near-white mean R 1.933 / G 0.681 / B 1.816, green the
-    # largest channel in 0 % of them), which renders as magenta highlight cores. With
-    # recovery on the same pixels average 1.981 / 1.980 / 1.980 and the specular headroom
-    # survives intact (p99.995 2.08, max 2.22), so it is strictly better than the LibRaw
-    # path's clip-to-common-white, which buys neutral highlights by discarding roll-off.
-    _set_bool(
-        filt,
-        "setHighlightRecoveryEnabled_",
-        "isHighlightRecoverySupported",
-        True,
-    )
-    # RAW 9 executes the DNG opcode/lens model as part of the camera-calibrated decode.
-    # Keep this deterministic instead of relying on CIRAWFilter's current default.
-    _set_bool(
-        filt,
-        "setLensCorrectionEnabled_",
-        "isLensCorrectionSupported",
-        True,
-    )
-    highlight_recovery = None
-    if hasattr(filt, "isHighlightRecoveryEnabled"):
-        highlight_recovery = bool(filt.isHighlightRecoveryEnabled())
-    lens_correction = None
-    if hasattr(filt, "isLensCorrectionEnabled"):
-        lens_correction = bool(filt.isLensCorrectionEnabled())
-    filt.setScaleFactor_(float(scale_factor))
+    controls: dict[str, Any] = {}
 
-    color_nr = float(filt.colorNoiseReductionAmount()) if hasattr(filt, "colorNoiseReductionAmount") else None
-    baseline_applied = _read_float(filt, "baselineExposure")
+    def control(name: str, setter: str | None, getter: str, requested: Any, *,
+                predicate: str | None = None, kind: str = "float", semantics: str,
+                documented_inert: bool = False, force_legacy_parameter: bool = False):
+        result = _configure_control(filt, setter=setter, getter=getter, requested=requested,
+                                    predicate=predicate, kind=kind, semantics=semantics,
+                                    documented_inert=documented_inert,
+                                    force_legacy_parameter=force_legacy_parameter)
+        controls[name] = result
+        return result
+
+    selected = control("decoderVersion", "setDecoderVersion_", "decoderVersion", str(version),
+                       kind="str", semantics="exact-offered-token-selection")
+    if selected["setter"]["status"] != "applied":
+        raise RuntimeError("CIRAWFilter decoderVersion could not be set: " +
+                           str(selected["setter"].get("error", selected["setter"]["status"])))
+    actual_token = selected["effective"]["value"]
+    if actual_token is not None and str(actual_token) != str(version):
+        raise RuntimeError(f"CIRAWFilter selected {actual_token!r} instead of {version!r}")
+    raw9 = _normalize_version_token(str(actual_token or version)) == "9"
+
+    # WWDC21's code explicitly clears these five display-look controls. Read the
+    # decoder-specific authored baseline before clearing; raw_io restores it once.
+    control("baselineExposure", "setBaselineExposure_", "baselineExposure", 0.,
+            semantics="file-baseline-externalized-after-successful-clear")
+    control("boostAmount", "setBoostAmount_", "boostAmount", 0., semantics="disable-default-look-boost")
+    control("boostShadowAmount", "setBoostShadowAmount_", "boostShadowAmount", 0.,
+            semantics="inactive-when-boost-is-zero")
+    control("shadowBias", "setShadowBias_", "shadowBias", 0., semantics="disable-shadow-bias")
+    control("exposure", "setExposure_", "exposure", float(exposure), semantics="decoder-exposure-EV")
+    control("neutralTemperature", "setNeutralTemperature_", "neutralTemperature", neutral_cct,
+            semantics="as-shot-preserved" if neutral_cct is None else "native-fixed-Kelvin-neutral")
+    control("neutralTint", "setNeutralTint_", "neutralTint", None if neutral_cct is None else 0.,
+            semantics="as-shot-preserved" if neutral_cct is None else "native-fixed-Kelvin-zero-tint")
+    control("extendedDynamicRangeAmount", "setExtendedDynamicRangeAmount_", "extendedDynamicRangeAmount", 0.,
+            semantics="disable-Apple-display-EDR-transform")
+    control("luminanceNoiseReductionAmount", "setLuminanceNoiseReductionAmount_", "luminanceNoiseReductionAmount", 0.,
+            predicate="isLuminanceNoiseReductionSupported", semantics="minimum-exposed-luma-NR-parameter-not-internal-NR-off")
+    # Keep the historical compatibility write, but RAW 9 documents this property
+    # as inert. A zero getter does not mean its CoreML color denoise is disabled.
+    control("colorNoiseReductionAmount", "setColorNoiseReductionAmount_", "colorNoiseReductionAmount", 0.,
+            predicate="isColorNoiseReductionSupported", documented_inert=raw9, force_legacy_parameter=True,
+            semantics="legacy-parameter-zero-not-joint-demosaic-denoise-off" if raw9 else "legacy-color-NR-parameter-zero")
+    control("detailAmount", "setDetailAmount_", "detailAmount", 0., predicate="isDetailSupported",
+            documented_inert=raw9, semantics="unsupported-in-RAW9" if raw9 else "minimum-detail-parameter")
+    control("contrastAmount", "setContrastAmount_", "contrastAmount", 0.,
+            predicate="isContrastSupported", semantics="disable-additional-contrast-parameter")
+    # Spatial sharpening need not be nonlinear. It is disabled to keep this
+    # decoder's additional sharpening policy separate from the project formation.
+    control("sharpnessAmount", "setSharpnessAmount_", "sharpnessAmount", 0.,
+            predicate="isSharpnessSupported", force_legacy_parameter=True,
+            semantics="additional-sharpening-parameter-zero")
+    control("moireReductionAmount", None, "moireReductionAmount", None,
+            predicate="isMoireReductionSupported", documented_inert=raw9,
+            semantics="unsupported-in-RAW9-default-preserved" if raw9 else "decoder-default-preserved")
+    control("localToneMapAmount", "setLocalToneMapAmount_", "localToneMapAmount", 0.,
+            predicate="isLocalToneMapSupported", semantics="disable-local-display-tone-map")
+    control("gamutMappingEnabled", "setGamutMappingEnabled_", "isGamutMappingEnabled", False,
+            kind="bool", semantics="disable-output-gamut-map")
+    control("highlightRecoveryEnabled", "setHighlightRecoveryEnabled_", "isHighlightRecoveryEnabled", True,
+            predicate="isHighlightRecoverySupported", kind="bool", semantics="request-Apple-highlight-reconstruction")
+    control("lensCorrectionEnabled", "setLensCorrectionEnabled_", "isLensCorrectionEnabled", True,
+            predicate="isLensCorrectionSupported", kind="bool", semantics="request-Apple-lens-interpretation-not-opcode-proof")
+    control("scaleFactor", "setScaleFactor_", "scaleFactor", float(scale_factor), semantics="native-decode-scale")
+    control("draftModeEnabled", None, "isDraftModeEnabled", None, kind="bool", semantics="decoder-draft-default-preserved")
+
+    required = ("decoderVersion", "baselineExposure", "boostAmount", "shadowBias", "exposure",
+                "localToneMapAmount", "gamutMappingEnabled", "extendedDynamicRangeAmount", "scaleFactor")
+    if neutral_cct is not None:
+        required += ("neutralTemperature", "neutralTint")
+    unverified = [name for name in required if controls[name]["effective"]["status"]
+                  not in ("parameter-confirmed", "not-applicable")]
+    access = {"status": "parameter-state-unverified" if unverified else "parameter-state-verified",
+              "required_controls": list(required), "unverified_controls": unverified,
+              "scope": "API-parameter-state-only-not-empirical-linearity-or-noise-qualification"}
+
+    def current(name):
+        return controls[name]["effective"]["value"]
+
+    baseline_control = controls["baselineExposure"]
+    baseline_cleared = (baseline_control["setter"]["status"] == "applied" and
+                        baseline_control["effective"]["status"] == "parameter-confirmed")
+    color_nr = current("colorNoiseReductionAmount")
     return {
-        "version": str(filt.decoderVersion()) if hasattr(filt, "decoderVersion") else version,
-        "scale_factor": float(filt.scaleFactor()) if hasattr(filt, "scaleFactor") else float(scale_factor),
+        "version": str(actual_token or version), "actual_decoder_token": actual_token,
+        "scale_factor": current("scaleFactor") if current("scaleFactor") is not None else float(scale_factor),
         "color_noise_reduction_amount": color_nr,
         "color_noise_cleared": color_nr is not None and abs(float(color_nr)) <= 1e-6,
-        "sharpness_amount": (
-            float(filt.sharpnessAmount()) if hasattr(filt, "sharpnessAmount") else None
-        ),
-        "highlight_recovery": highlight_recovery,
-        "lens_correction": lens_correction,
-        "shadow_bias": float(filt.shadowBias()) if hasattr(filt, "shadowBias") else None,
-        "baseline_exposure_authored": baseline_authored,
-        "baseline_exposure_applied": baseline_applied,
-        "baseline_exposure_cleared": bool(
-            baseline_cleared
-            and baseline_applied is not None
-            and abs(float(baseline_applied)) <= 1e-6
-        ),
-        "extended_dynamic_range_amount": _read_float(
-            filt, "extendedDynamicRangeAmount"
-        ),
-        "neutral_temperature": _read_float(filt, "neutralTemperature"),
-        "neutral_tint": _read_float(filt, "neutralTint"),
+        "color_noise_cleared_semantics": "legacy-parameter-zero-only-not-internal-NR-off",
+        "sharpness_amount": current("sharpnessAmount"),
+        "highlight_recovery": current("highlightRecoveryEnabled"),
+        "lens_correction": current("lensCorrectionEnabled"), "shadow_bias": current("shadowBias"),
+        "baseline_exposure_authored": baseline_control["getter"]["before"]["value"],
+        "baseline_exposure_applied": current("baselineExposure"),
+        "baseline_exposure_cleared": bool(baseline_cleared),
+        "extended_dynamic_range_amount": current("extendedDynamicRangeAmount"),
+        "neutral_temperature": current("neutralTemperature"), "neutral_tint": current("neutralTint"),
+        "controls": controls, "linear_access": access,
+        "white_balance_implementation": "native-as-shot-preserved" if neutral_cct is None else "native-neutral-temperature-zero-tint",
+        "integrated_demosaic_denoise": "RAW9-joint-model-not-disabled" if raw9 else "decoder-internal-processing-not-qualified",
     }
 
 
@@ -545,25 +579,35 @@ def _render_context(Quartz: Any, *, interactive: bool) -> Any:
         cached = _CONTEXTS.get(bool(interactive))
         if cached is not None:
             return cached
-        options: dict[Any, Any] = {
-            Quartz.kCIContextCacheIntermediates: bool(interactive),
-        }
-        if not interactive and hasattr(Quartz, "kCIContextMemoryLimit"):
-            options[Quartz.kCIContextMemoryLimit] = COREIMAGE_EXPORT_MEMORY_LIMIT_MB
+        cache_key = getattr(Quartz, "kCIContextCacheIntermediates", None)
+        memory_key = getattr(Quartz, "kCIContextMemoryLimit", None)
+        options: dict[Any, Any] = {}
+        if cache_key is not None:
+            options[cache_key] = bool(interactive)
+        if not interactive and memory_key is not None:
+            options[memory_key] = COREIMAGE_EXPORT_MEMORY_LIMIT_MB
         ctx = Quartz.CIContext.contextWithOptions_(options)
         # Older Core Image builds can expose a newly added option constant before the
         # selected renderer accepts it. Keep the intended cache policy and retry without
         # the export-only memory hint rather than failing a valid RAW decode.
-        if ctx is None and Quartz.kCIContextMemoryLimit in options:
-            options.pop(Quartz.kCIContextMemoryLimit, None)
+        memory_retried = ctx is None and memory_key is not None and memory_key in options
+        if memory_retried:
+            options.pop(memory_key, None)
             ctx = Quartz.CIContext.contextWithOptions_(options)
         if ctx is None:
             raise RuntimeError("CIContext.contextWithOptions_ returned None")
         _CONTEXTS[bool(interactive)] = ctx
+        _CONTEXT_RECIPES[bool(interactive)] = {
+            "cache_intermediates": bool(interactive) if cache_key in options else None,
+            "memory_limit_mb": options.get(memory_key),
+            "memory_hint_rejected_then_retried": bool(memory_retried),
+            "scope": "CIContext-options-not-proof-of-execution-device",
+        }
         return ctx
 
 
-def _render_linear_rec2020(filt: Any, *, interactive: bool) -> np.ndarray:
+def _render_linear_rec2020(filt: Any, *, interactive: bool,
+                          metadata: dict[str, Any] | None = None) -> np.ndarray:
     """Render signed float16 HxWx3 extended-linear Rec.2020 (direct rect, no flip)."""
     Quartz = _require_quartz()
     image = filt.outputImage()
@@ -577,6 +621,11 @@ def _render_linear_rec2020(filt: Any, *, interactive: bool) -> np.ndarray:
 
     origin_x = float(extent.origin.x)
     origin_y = float(extent.origin.y)
+    if metadata is not None:
+        # Record the actual CIImage used below. A later outputImage() can return
+        # a different graph/extent, so it cannot testify to this bitmap render.
+        metadata["native_extent"] = {"status": "read", "xywh": [origin_x, origin_y,
+            float(extent.size.width), float(extent.size.height)]}
     ctx = _render_context(Quartz, interactive=interactive)
     color_space = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceExtendedLinearITUR_2020)
     if color_space is None:
@@ -585,8 +634,8 @@ def _render_linear_rec2020(filt: Any, *, interactive: bool) -> np.ndarray:
     row_bytes = width * 8  # RGBA float16
     buf = bytearray(height * row_bytes)
     bounds = Quartz.CGRectMake(origin_x, origin_y, width, height)
-    # Direct top-left sampling: do not vertically flip the bitmap. The intuitive
-    # y-flip silently destroys LibRaw alignment (correlation collapses toward ~0.3).
+    # Render the decoder's native rectangle without an extra flip. This alone does
+    # not establish correspondence with another decoder's sensor/output grid.
     ctx.render_toBitmap_rowBytes_bounds_format_colorSpace_(
         image,
         buf,
@@ -785,6 +834,94 @@ def read_dng_opcodes(path: Path) -> dict[str, Any]:
     return result
 
 
+def _file_stat_identity(stat: Any) -> tuple[int, ...]:
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+@cached_source_metadata(cacheable=lambda value: value["status"] == "hashed")
+def _recipe_source_identity(path: Path) -> dict[str, Any]:
+    """Hash the source bytes; never substitute a path/header digest for source identity."""
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            before = _file_stat_identity(os.fstat(source.fileno()))
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+            after = _file_stat_identity(os.fstat(source.fileno()))
+        if before != after or after != _file_stat_identity(path.stat()):
+            return {"status": "changed-during-hash", "sha256": None}
+        return {"status": "hashed", "sha256": digest.hexdigest(), "size_bytes": after[2], "_stat": after}
+    except (OSError, ValueError) as exc:
+        return {"status": "unavailable", "sha256": None, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _build_decode_recipe(*, cfg: dict[str, Any], requested: str, offered: tuple[str, ...],
+                         failures: list[str], half_size: bool, scale_compensation: float,
+                         native_extent: dict[str, Any], rendered_shape: tuple[int, int],
+                         output_shape: tuple[int, int], target_shape: tuple[int, int] | None,
+                         source: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    controls = cfg.get("controls", {})
+    runtime, hardware = decoder_runtime_id(), dict(decoder_hardware_id())
+    white_balance = cfg.get("white_balance_implementation", "unrecorded")
+    actual_token = cfg.get("actual_decoder_token")
+    configuration_controls = {}
+    for name, item in controls.items():
+        effective = item["effective"]
+        value = effective["value"]
+        # As-shot neutral is file evidence. Its implementation/state belongs to
+        # configuration identity, its continuously varying per-file value does not.
+        if ((name in ("neutralTemperature", "neutralTint") and item["requested"] is None)
+                or item["applicability"] == "documented-inert-raw9"):
+            value = None
+        configuration_controls[name] = {
+            "requested": item["requested"], "support_status": item["support"]["status"],
+            "supported": item["support"]["value"], "applicability": item["applicability"],
+            "setter_status": item["setter"]["status"], "getter_status": item["getter"]["after"]["status"],
+            "effective_status": effective["status"], "effective_value": value,
+            "semantics": effective["semantics"],
+        }
+    configuration = {
+        "schema": COREIMAGE_RECIPE_VERSION, "actual_decoder_token": actual_token,
+        "runtime": runtime, "hardware": hardware, "controls": configuration_controls,
+        "white_balance_implementation": white_balance,
+        "project_hot_wb_implementation": PROJECT_HOT_WB_IMPLEMENTATION,
+        "scale_factor": cfg.get("scale_factor"), "scale_compensation": float(scale_compensation),
+        "context": {key: context.get(key) for key in ("cache_intermediates", "memory_limit_mb", "scope")},
+        "output_dtype": "float16", "render_format": "RGBAh",
+        "color_space": "extendedLinearITUR_2020",
+        "post_resize": {"kernel": "bilinear" if target_shape is not None else "none",
+                        "target_shape": list(target_shape) if target_shape is not None else None},
+    }
+    # Request selection/fallback history, image content, source hash, native extent,
+    # authored BaselineExposure, and as-shot neutral numbers are deliberately absent.
+    identity = hashlib.sha256(json.dumps(configuration, sort_keys=True, separators=(",", ":"),
+                                         ensure_ascii=True, allow_nan=False).encode()).hexdigest()
+    return {
+        "schema": COREIMAGE_RECIPE_VERSION, "configuration_id": identity,
+        "configuration": configuration, "requested_decoder_token": str(requested),
+        "actual_decoder_token": actual_token, "offered_tokens": list(offered),
+        "fallback": {"used": bool(failures), "failed_attempts": list(failures)},
+        "runtime": runtime, "hardware": hardware, "source": source,
+        "controls": controls, "linear_access": cfg.get("linear_access", {"status": "unrecorded"}),
+        "white_balance_implementation": white_balance,
+        "project_hot_wb_implementation": PROJECT_HOT_WB_IMPLEMENTATION,
+        "integrated_demosaic_denoise": cfg.get("integrated_demosaic_denoise", "unrecorded"),
+        "geometry": {"native_extent": native_extent, "rendered_shape": list(rendered_shape),
+                     "output_shape": list(output_shape), "interactive": bool(half_size),
+                     "scale_factor": cfg.get("scale_factor")},
+        "output": {"dtype": "float16", "render_format": "RGBAh", "color_space": "extendedLinearITUR_2020",
+                   "signed_extended_range": True, "fixed_multiplier": float(scale_compensation),
+                   "post_resize": configuration["post_resize"]},
+        "context": context,
+        "camera_interpretation": {
+            "highlight_recovery": cfg.get("highlight_recovery"), "lens_correction": cfg.get("lens_correction"),
+            "scope": "API-state-not-per-opcode-execution-or-sensor-mask-correspondence-proof"},
+        "baseline_exposure": {"authored": cfg.get("baseline_exposure_authored"),
+                              "applied": cfg.get("baseline_exposure_applied"),
+                              "cleared": cfg.get("baseline_exposure_cleared")},
+    }
+
+
 def decode_scene_rec2020(
     path: Path,
     *,
@@ -806,6 +943,7 @@ def decode_scene_rec2020(
     """
     path = Path(path)
     offered = supported_versions(path)
+    source = dict(_recipe_source_identity(path))
     resolved = resolve_decoder_version(version, offered)
     candidates = [resolved]
     if version == "auto":
@@ -825,7 +963,8 @@ def decode_scene_rec2020(
                 filt, version=candidate, scale_factor=scale_factor,
                 exposure=float(exposure), neutral_cct=neutral_cct,
             )
-            rgb = _render_linear_rec2020(filt, interactive=bool(half_size))
+            render_metadata: dict[str, Any] = {}
+            rgb = _render_linear_rec2020(filt, interactive=bool(half_size), metadata=render_metadata)
             if (rgb.ndim != 3 or rgb.shape[2] != 3 or not rgb.size
                     or not np.isfinite(rgb).all()):
                 raise RuntimeError("decoder returned an empty, non-finite or invalid RGB buffer")
@@ -841,6 +980,22 @@ def decode_scene_rec2020(
     extent = (int(rgb.shape[0]), int(rgb.shape[1]))
     if target_shape is not None and tuple(target_shape) != extent:
         rgb = _resize_rgb(rgb, (int(target_shape[0]), int(target_shape[1])))
+    recorded_stat = source.pop("_stat", None)
+    if recorded_stat is not None:
+        try:
+            current = _file_stat_identity(path.stat()) == tuple(recorded_stat)
+        except OSError:
+            current = False
+        source["status"] = "verified-through-decode" if current else "changed-during-decode"
+        if not current:
+            source["sha256"] = None
+    recipe = _build_decode_recipe(
+        cfg=cfg, requested=version, offered=offered, failures=failures, half_size=half_size,
+        scale_compensation=scale_compensation,
+        native_extent=render_metadata.get("native_extent", {"status": "unavailable", "xywh": None}),
+        rendered_shape=extent, output_shape=tuple(rgb.shape[:2]), target_shape=target_shape,
+        source=source, context=dict(_CONTEXT_RECIPES.get(bool(half_size), {"status": "unrecorded"})),
+    )
     info = {
         "decoder": "coreimage",
         "version_requested": version,
@@ -855,6 +1010,7 @@ def decode_scene_rec2020(
         "scale_compensation_note": describe_scale_compensation(scale_compensation),
         "color_noise_reduction_amount": cfg["color_noise_reduction_amount"],
         "color_noise_cleared": cfg["color_noise_cleared"],
+        "color_noise_cleared_semantics": "legacy-parameter-zero-only-not-internal-NR-off",
         "sharpness_amount": cfg.get("sharpness_amount"),
         "highlight_recovery": cfg.get("highlight_recovery"),
         "lens_correction": cfg.get("lens_correction"),
@@ -869,6 +1025,7 @@ def decode_scene_rec2020(
         "neutral_temperature": cfg.get("neutral_temperature"),
         "neutral_tint": cfg.get("neutral_tint"),
         "decoder_runtime_id": decoder_runtime_id(),
+        "recipe": recipe,
     }
     return rgb.astype(np.float16, copy=False), info
 

@@ -382,8 +382,11 @@ class CaptureReadoutTests(unittest.TestCase):
         self.assertAlmostEqual(result.noise_model.coefficients("G1")[1], (1./3.) / 15359.**2)
 
     def test_collect_mosaic_conflict_rejected_and_partial_sizes_not_inferred(self):
-        with self.assertRaisesRegex(ValueError, "RawSize disagrees"):
+        # A content manifest now separates different RAW grids before fitting.
+        # The legacy single-profile entry point rejects without installing any.
+        with self.assertRaisesRegex(ValueError, "explicit group selection"):
             calibration.import_calibration(self.csv_directory(ptc_size="256x128"))
+        self.assertEqual(calibration.list_calibrations(), [])
         for missing in ("dark_size", "ptc_size"):
             with self.subTest(missing=missing):
                 directory = self.csv_directory(**{missing: None})
@@ -408,7 +411,7 @@ class CaptureReadoutTests(unittest.TestCase):
         self.assertNotEqual(pc._bundle_metadata(changed), metadata)
         rebuilt.capture_readout["raw_geometry"][0] = 42
         self.assertEqual(bundle.capture_readout["raw_geometry"], [128, 128])
-        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 31)
+        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 33)
 
 
 if __name__ == "__main__":

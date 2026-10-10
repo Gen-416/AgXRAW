@@ -11,13 +11,15 @@ pub const OUTPUT_GAMUT_TOLERANCE: f32 = 1e-4;
 /// stages, each a float64-accumulated product materialized to float32 —
 /// the NumPy graph's own operation order and rounding
 /// (apply_rgb_matrix3(rec2020_to_xyz(rgb), XYZ_TO_RGB[space])). The gamut
-/// fit's own matrices stay pre-merged float32: that path only runs on
-/// out-of-gamut pixels and is gated by its documented 1e-4 tolerance.
+/// forward Oklab matrices also preserve those stages, so its float32
+/// cancellation-precision zero convention agrees with the reference.
+/// Inverse fit matrices retain their existing approximate representation.
 #[derive(Clone, Debug)]
 pub struct NativeOutputPlan {
     pub rec2020_to_xyz: [f64; 9],
     pub xyz_to_output: [f64; 9],
-    pub output_to_lms: [f32; 9],
+    pub output_to_xyz: [f64; 9],
+    pub xyz_to_lms: [f64; 9],
     pub lms_to_output: [f32; 9],
     pub oklab_m2: [f32; 9],
     pub oklab_m2_inv: [f32; 9],
@@ -29,7 +31,8 @@ impl Default for NativeOutputPlan {
         NativeOutputPlan {
             rec2020_to_xyz: [0.0; 9],
             xyz_to_output: [0.0; 9],
-            output_to_lms: [0.0; 9],
+            output_to_xyz: [0.0; 9],
+            xyz_to_lms: [0.0; 9],
             lms_to_output: [0.0; 9],
             oklab_m2: [0.0; 9],
             oklab_m2_inv: [0.0; 9],
@@ -72,6 +75,37 @@ fn oklab_to_output(lab_l: f32, lab_a: f32, lab_b: f32, plan: &NativeOutputPlan) 
     mat3(&plan.lms_to_output, lms)
 }
 
+/// Symmetric zero convention within the forward float32 storage error bound.
+/// Significant negative LMS is retained; this is not positive-only clipping.
+fn precision_lms(rgb: Rgb, plan: &NativeOutputPlan) -> Rgb {
+    let xyz = mat3_exact_f64(&plan.output_to_xyz, rgb);
+    let mut lms = mat3_exact_f64(&plan.xyz_to_lms, xyz);
+    let source = [rgb.r as f64, rgb.g as f64, rgb.b as f64];
+    let materialized_xyz = [xyz.r as f64, xyz.g as f64, xyz.b as f64];
+    let mut magnitude_xyz = [0.0f64; 3];
+    for row in 0..3 {
+        for col in 0..3 {
+            magnitude_xyz[row] += plan.output_to_xyz[row * 3 + col].abs() * source[col].abs();
+        }
+    }
+    let unit = (f32::EPSILON as f64) * 0.5;
+    let double_unit = f64::EPSILON * 0.5;
+    let rounding = unit / (1.0 - unit) + 3.0 * double_unit / (1.0 - 3.0 * double_unit);
+    let values = [&mut lms.r, &mut lms.g, &mut lms.b];
+    for (row, value) in values.into_iter().enumerate() {
+        let mut magnitude = (*value as f64).abs();
+        for col in 0..3 {
+            magnitude += plan.xyz_to_lms[row * 3 + col].abs()
+                * (magnitude_xyz[col] + materialized_xyz[col].abs());
+        }
+        let bound = rounding * magnitude;
+        if value.is_finite() && bound.is_finite() && (*value as f64).abs() <= bound {
+            *value = 0.0;
+        }
+    }
+    lms
+}
+
 pub fn fit_output_pixel(input: Rgb, plan: &NativeOutputPlan) -> Rgb {
     let rgb = Rgb::new(sanitize(input.r), sanitize(input.g), sanitize(input.b));
     if in_unit_gamut(rgb) {
@@ -82,7 +116,7 @@ pub fn fit_output_pixel(input: Rgb, plan: &NativeOutputPlan) -> Rgb {
         );
     }
 
-    let mut lms = mat3(&plan.output_to_lms, rgb);
+    let mut lms = precision_lms(rgb, plan);
     lms.r = lms.r.cbrt();
     lms.g = lms.g.cbrt();
     lms.b = lms.b.cbrt();
@@ -231,4 +265,23 @@ pub fn fit_output_gamut_f32(input: &[f32], output: &mut [f32], plan: &NativeOutp
         }
         crate::budget::join_workers(handles);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn precision_zero_convention_does_not_hide_matrix_overflow() {
+        let mut plan = NativeOutputPlan::default();
+        for i in [0, 4, 8] {
+            plan.output_to_xyz[i] = 1.0;
+            plan.xyz_to_lms[i] = 1.0;
+        }
+        plan.xyz_to_lms[0] = 2.0;
+        let actual = precision_lms(Rgb::new(f32::MAX, 1.0, -1.0), &plan);
+        assert!(actual.r.is_infinite() && actual.r.is_sign_positive());
+        assert_eq!(actual.g, 1.0);
+        assert_eq!(actual.b, -1.0);
+    }
 }

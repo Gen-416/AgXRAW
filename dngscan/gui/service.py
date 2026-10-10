@@ -19,6 +19,7 @@ import dngscan as dg
 from dngscan.debug_util import maybe_print_exc
 from dngscan.grade import RENDER_MODE, resolve_grade_id, resolve_grade_params
 from dngscan.calibration import calibration_diagnostics, calibration_fingerprint
+from dngscan.chroma_policy import POLICY_VERSION, resolve_chroma_policy
 
 from .constants import (
     PROXY_LONG_EDGE,
@@ -447,6 +448,7 @@ def clip_overlay(params: dict) -> dict:
     cached = PREVIEW_STORE.get(
         inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic,
         coreimage_scale=coreimage_scale, margin=clip_margin,
+        capture_declaration=parse_capture_declaration(params),
     )
     masks = getattr(cached.bundle, "clip_masks", None)
     hard = _hard_clip_pct_by_colour(getattr(cached, "analysis", None))
@@ -608,7 +610,7 @@ def reject_gated_coreimage(tone_core: str, decoder: str) -> None:
     if str(decoder) == "coreimage" and str(tone_core) == "gated":
         raise ValueError(
             "toneCore=gated 需要逐像素 CFA 证据,而 decoder=coreimage 是独立"
-            "管线(Core Image 执行 DNG opcode,几何与 LibRaw 不可对齐);"
+            "管线(尚未验证 Apple 输出与 CFA 证据的逐像素对应);"
             "请改用 agx/lum/neutral 或切回 libraw"
         )
 
@@ -658,6 +660,7 @@ def _cached_render_plan(
     chroma_nr: float = 0.0,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
+    from dngscan.decoder_identity import decoder_output_identity
     key = (
         gamut,
         scene_transform,
@@ -669,6 +672,8 @@ def _cached_render_plan(
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
         _cache_float(chroma_nr),
+        POLICY_VERSION,
+        decoder_output_identity(bundle),
     )
     base = cached.get_or_build_plan(
         key,
@@ -711,6 +716,7 @@ def _preview_pixel_key(
     *,
     chroma_nr: float = 0.0,
 ) -> tuple[Any, ...]:
+    from dngscan.decoder_identity import decoder_output_identity
     return (
         gamut,
         _cache_float(ev),
@@ -727,12 +733,14 @@ def _preview_pixel_key(
         lens_filter,
         # review batch 23: the chroma-NR dial changes rendered bytes
         _cache_float(chroma_nr),
+        POLICY_VERSION,
         endpoint_mode,
         _adjustment_key(adjustments),
         # Exposure is represented by ``ev`` above; the scale contract guards against
         # accidentally sharing frames across decoder/cache versions.
         _cache_float(getattr(bundle, "scene_scale", 1.0)),
         str(getattr(bundle, "scene_decoder_runtime", "") or ""),
+        decoder_output_identity(bundle),
         (_spatial_budget_mib_for_fingerprint() if float(chroma_nr) > 0.0 else 0),
     )
 
@@ -781,9 +789,14 @@ def parse_lens_filter(params: dict) -> str:
 def parse_chroma_nr(params: dict, output_format: str) -> float:
     """Parse calibrated scene-stage chroma smoothing shared by SDR and HDR."""
     del output_format
+    from dngscan.chroma_policy import resolve_chroma_policy
     raw = params.get("chromaNr", params.get("chroma_nr", 0.0))
-    value = _finite_number(raw if raw not in (None, "") else 0.0, "色度降噪", 0.0, 1.0)
-    return float(value)
+    return resolve_chroma_policy(params.get("chromaCleanup"), custom_amount=raw if raw not in (None, "") else 0.).amount
+
+
+def parse_capture_declaration(params: dict) -> dict:
+    from dngscan.readout import normalize_capture_declaration
+    return normalize_capture_declaration(params.get("captureDeclaration"))
 
 
 def parse_decode_extras(params: dict, decoder: str) -> tuple[str, int]:
@@ -1104,6 +1117,7 @@ def run_preview(params: dict) -> dict:
             coreimage_scale=coreimage_scale,
             margin=clip_margin,
             _is_current=is_current,
+            capture_declaration=parse_capture_declaration(params),
         )
         if not is_current():
             raise PreviewSuperseded()
@@ -1209,7 +1223,11 @@ def chroma_nr_capability(
     )
     return {"available": reason is None,
             "status": "available" if reason is None else "unavailable",
-            "reason": reason, "approximate": True}
+            "reason": reason, "approximate": True,
+            "coarse_chroma": "conditional" if reason is None else "unavailable",
+            "fine_chroma": "experimental-unavailable",
+            "correlated_adaptive_decoder": "experimental-unavailable",
+            "validation": "synthetic-independent-noise; real-calibration-pending"}
 
 
 def detected_scene_params(
@@ -1263,15 +1281,23 @@ def detected_scene_params(
         "fallback_reason": getattr(noise_model, "fallback_reason", None),
         "evidence_status": getattr(analysis, "noise_evidence_status", None),
     }
+    # Candidate matching is not proof that a measurement supplied the final
+    # model, nor that an optional pixel operation ran. Quote the completed
+    # analysis and the renderer's status separately.
     calibration_status = calibration_diagnostics(
         getattr(bundle, "shot_make", None), getattr(bundle, "shot_model", None),
         shutter=getattr(bundle, "shot_shutter", None), iso=getattr(bundle, "shot_iso", None),
         readout=getattr(bundle, "capture_readout", None),
+        analysis=analysis,
+        chroma_nr={"status": getattr(bundle, "chroma_nr_status", "disabled"),
+                   "reason": getattr(bundle, "chroma_nr_reason", None)},
     )
     return {
         "data_support": getattr(bundle, "camera_data_support", None),
         "decoder_actual": f"{bundle.scene_decoder} {bundle.scene_decoder_version or ''}".strip(),
         "decoder_fallback": bundle.scene_decoder_fallback,
+        "decoder_recipe": getattr(bundle, "scene_decoder_recipe", {}),
+        "decoder_window_calibration": getattr(bundle, "scene_window_calibration", {}),
         "demosaic_actual": ((getattr(bundle, "noise_decode", None) or {}).get("demosaic_algorithm")
                             if bundle.scene_decoder == "libraw" else None),
         "capture_readout": dict(getattr(bundle, "capture_readout", None) or {}),
@@ -1294,6 +1320,7 @@ def detected_scene_params(
         "endpoint_mode": str(getattr(tone, "endpoint_mode", "adaptive")),
         "endpoint_note": getattr(tone, "endpoint_note", None),
         "hdr_earned_ev": earned,
+        "chroma_policy_version": POLICY_VERSION,
         "chroma_nr": {"status": getattr(bundle, "chroma_nr_status", "disabled"),
                       "reason": getattr(bundle, "chroma_nr_reason", None)},
         "chroma_nr_capability": chroma_nr_capability(
@@ -1353,6 +1380,7 @@ def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> di
         coreimage_scale=coreimage_scale,
         margin=clip_margin,
         _is_current=is_current,
+        capture_declaration=parse_capture_declaration(params),
     )
     if not is_current():
         raise PreviewSuperseded()
@@ -1494,6 +1522,7 @@ def _cached_full_analysis(
     margin: int = 4,
     decoded_bundle: Any | None = None,
     envelope: str | None = None,
+    capture_declaration: dict | None = None,
 ) -> Any | None:
     """The preview session's persisted full-resolution Analysis, or None.
 
@@ -1522,6 +1551,7 @@ def _cached_full_analysis(
         _, digest = pc._cache_identity(
             Path(inp), highlight, wb, decoder, coreimage_version, demosaic,
             coreimage_scale if decoder == "coreimage" else "aligned", int(margin),
+            capture_declaration=capture_declaration,
         )
         if envelope is not None and decoded_bundle is not None:
             from dngscan.fast_plan import NATIVE_ABI_VERSION
@@ -1530,7 +1560,8 @@ def _cached_full_analysis(
                 if (data.get("schema") == 1 and data.get("cache_version") == pc.PREVIEW_CACHE_VERSION
                         and data.get("native_abi") == NATIVE_ABI_VERSION
                         and data.get("digest") == digest
-                        and data.get("source_bundle") == pc._bundle_metadata(decoded_bundle)):
+                        and pc._analysis_bundle_identity(data.get("source_bundle") or {})
+                            == pc._analysis_bundle_identity(pc._bundle_metadata(decoded_bundle))):
                     return pc._analysis_from_json(data["analysis"])
             except (TypeError, ValueError, KeyError):
                 pass
@@ -1541,11 +1572,13 @@ def _cached_full_analysis(
             metadata = json.loads(str(payload["metadata"].item()))
         if int(metadata.get("version", -1)) != pc.PREVIEW_CACHE_VERSION:
             return None
+        if metadata.get("bundle", {}).get("scene_decoder_fallback"):
+            return None
         if decoded_bundle is not None:
             # Runtime fallback is per attempt. A cache requested as Apple auto
             # may contain pixels from RAW 8 or LibRaw, or lack sensor evidence.
             current = pc._bundle_metadata(decoded_bundle)
-            if metadata.get("source_bundle") != current:
+            if pc._analysis_bundle_identity(metadata.get("source_bundle") or {}) != pc._analysis_bundle_identity(current):
                 return None
         return pc._analysis_from_json(metadata["analysis"])
     except Exception:
@@ -1566,12 +1599,13 @@ def _preview_analysis_envelope(entry: PreviewEntry) -> str | None:
 
 def _preview_decode_contract(bundle):
     fields = ("scene_decoder", "scene_decoder_version", "evidence_provider",
-              "scene_reliability_source", "scene_scale", "scene_decoder_fallback")
+              "scene_reliability_source", "scene_scale", "scene_decoder_fallback",
+              "scene_decoder_runtime", "scene_decoder_recipe", "scene_window_calibration")
     return {field: getattr(bundle, field) for field in fields}
 
 
 def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, preview=None,
-                       analysis_luminance_only=False):
+                       analysis_luminance_only=False, capture_declaration=None):
     """Pin a displayed auto result; export must not silently switch algorithms."""
     chosen_decoder, chosen_version = decoder, version
     pinned = preview is not None and decoder == "coreimage" and version == "auto"
@@ -1582,12 +1616,20 @@ def _load_export_scene(inp, highlight, wb, decoder, version, demosaic, scale, pr
     bundle = dg.load_raw(inp, highlight, demosaic=demosaic, wb_mode=wb,
                          decoder=chosen_decoder, coreimage_version=chosen_version,
                          coreimage_scale=scale, _defer_clip_masks=True,
+                         **({"capture_declaration": capture_declaration} if capture_declaration else {}),
                          _analysis_luminance_only=analysis_luminance_only)
     if pinned:
         fields = ("scene_decoder", "scene_decoder_version", "evidence_provider",
-                  "scene_reliability_source", "scene_scale")
+                  "scene_reliability_source", "scene_scale", "scene_decoder_runtime",
+                  "scene_window_calibration")
         if any(getattr(preview, field) != getattr(bundle, field) for field in fields):
             raise RuntimeError("解码或证据能力与已显示预览不同，请刷新预览后再导出")
+        # Requested version differs (auto versus pinned actual token). Compare
+        # the effective configuration, not that request/fallback bookkeeping.
+        preview_recipe = getattr(preview, "scene_decoder_recipe", {}) or {}
+        current_recipe = getattr(bundle, "scene_decoder_recipe", {}) or {}
+        if preview_recipe.get("configuration_id") != current_recipe.get("configuration_id"):
+            raise RuntimeError("Apple 实际解码配方与预览不同，请刷新预览后再导出")
         bundle.scene_decoder_fallback = preview.scene_decoder_fallback
     return bundle
 
@@ -1673,6 +1715,7 @@ def run_export(params: dict) -> dict:
     preview_entry = PREVIEW_STORE.peek(
         inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic,
         coreimage_scale=coreimage_scale, margin=clip_margin,
+        capture_declaration=parse_capture_declaration(params),
     ) if hasattr(PREVIEW_STORE, "peek") else None
     preview_contract = preview_entry.bundle if preview_entry is not None else None
     if preview_contract is None and isinstance(params.get("_previewDecode"), dict):
@@ -1682,6 +1725,7 @@ def run_export(params: dict) -> dict:
         inp, highlight, wb, decoder, coreimage_version, demosaic, coreimage_scale,
         preview=preview_contract,
         analysis_luminance_only=not want_png,
+        capture_declaration=parse_capture_declaration(params),
     )
     bundle.lens_filter = lens_filter
 
@@ -1698,6 +1742,7 @@ def run_export(params: dict) -> dict:
             coreimage_scale, clip_margin,
             decoded_bundle=bundle,
             envelope=params.get("_previewAnalysis"),
+            capture_declaration=parse_capture_declaration(params),
         )
     if analysis is None:
         analysis, y, ev_img = dg.analyze(
@@ -1810,6 +1855,8 @@ def run_export(params: dict) -> dict:
         endpoint_mode=endpoint_mode,
         lens_filter=lens_filter,
         chroma_nr=float(chroma_nr),
+        chroma_policy_version=POLICY_VERSION,
+        capture_declaration=parse_capture_declaration(params),
         spatial_budget_mib=(_spatial_budget_mib_for_fingerprint() if float(chroma_nr) > 0.0 else 0),
         adjustments=dataclasses.astuple(adjustments),
         # Encode-affecting parameters (review batch 11): the HDR headroom and
@@ -1964,6 +2011,7 @@ def run_export(params: dict) -> dict:
         "preview": preview,
         "metrics": metrics,
         "metrics_kind": "full",
+        "chroma_policy_version": POLICY_VERSION,
         "chroma_nr": {"status": getattr(bundle, "chroma_nr_status", "disabled"),
                       "reason": getattr(bundle, "chroma_nr_reason", None)},
         "chroma_nr_capability": chroma_nr_capability(
@@ -2027,7 +2075,8 @@ def run_export_isolated(params: dict) -> dict:
         scale, margin = parse_decode_extras(params, decoder)
         core, _ = parse_tone_core(params)
         preview = PREVIEW_STORE.peek(inp, highlight, str(params.get("wb", "camera")),
-            core == "gated", decoder, version, demosaic, coreimage_scale=scale, margin=margin)
+            core == "gated", decoder, version, demosaic, coreimage_scale=scale, margin=margin,
+            capture_declaration=parse_capture_declaration(params))
         if preview is not None:
             params["_previewDecode"] = _preview_decode_contract(preview.bundle)
             if str(params.get("wb", "camera")) == "camera":

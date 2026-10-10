@@ -47,6 +47,15 @@ def digest(path):
     return result.hexdigest()
 
 
+def implementation_identity():
+    """Identify uncommitted processing code as well as the Git base."""
+    paths = list((ROOT / "dngscan").rglob("*.py")) + list((ROOT / "rust/src").rglob("*.rs"))
+    paths += [ROOT / "rust/Cargo.lock", ROOT / "dngscan/data/priors/collect_registry.json"]
+    hashes = {str(path.relative_to(ROOT)): digest(path) for path in sorted(paths) if path.is_file()}
+    from dngscan.fast_plan import NATIVE_ABI_VERSION
+    return {"native_abi": NATIVE_ABI_VERSION, "source_sha256": hashes}
+
+
 def finite_summary(array):
     flat = np.asarray(array).reshape(-1, array.shape[-1])
     low, high, finite = np.full(flat.shape[1], np.inf), np.full(flat.shape[1], -np.inf), 0
@@ -209,13 +218,14 @@ def main():
     args = parser.parse_args()
     report = {"schema":"agxraw-native-raw-acceptance-1", "created_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
               "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
-              "working_changes":True, "runtime":{"python":platform.python_version(),"platform":platform.platform(),
+              "working_changes":True, "implementation": implementation_identity(),
+              "runtime":{"python":platform.python_version(),"platform":platform.platform(),
                 "numpy":np.__version__,"rawpy":rawpy.__version__,"libraw_version":list(rawpy.libraw_version),
                 "libraw_commit":"e419de08001de28ae6988ecb22df47e52b9c5eaa"},
               "comparison_scope":"NumPy/native pipeline parity; not independent RAW decoder accuracy or compression fidelity",
               "qualification_contract":"measurement_qualified means matched external model; noise_model_usable also includes file-declared DNG variance",
               "missing_coverage":["Sony other codecs/APS-C/shutter/ISO modes", "Sony controlled dark/flat/near-saturation calibration pairs",
-                                  "Nikon native NEF, HE and HE*", "independent manufacturer/Adobe reference in equivalent units"], "samples":[]}
+                                  "Nikon modes beyond the individually listed NEF; HE and HE*", "independent manufacturer/Adobe reference in equivalent units"], "samples":[]}
     args.out.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="agxraw-native-acceptance-") as directory:
         for path in args.files:

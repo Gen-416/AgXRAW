@@ -186,6 +186,12 @@ class RawBundle:
     # OS/build identity matters for system-distributed RAW decoders even when the public
     # decoder version token is unchanged.
     scene_decoder_runtime: str | None = None
+    # Versioned, read-back decoder configuration and project handoff. A legacy
+    # control at zero is not evidence that Apple's built-in denoising vanished.
+    scene_decoder_recipe: dict[str, Any] = field(default_factory=dict)
+    # Exact output-window calibration identity; absent/unknown scopes stay
+    # unmeasured. Separate from the sensor noise calibration.
+    scene_window_calibration: dict[str, Any] = field(default_factory=dict)
     # Which Core Image scale policy produced the buffer: aligned (per-file decoded-green
     # comparison → calibration_confidence=relative), unity (Apple-native /
     # decoder-native), or measured (legacy fixed Sigma-fp fit, also relative).

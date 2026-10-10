@@ -115,17 +115,29 @@ PRIOR_TABLE = [SIGMA_FP] + _load_json_priors()
 #            decision live in that file's header and in NOTICE.md. Deleting
 #            the file removes the tier; everything degrades to None.
 _JPTC_CACHE: list[dict[str, Any]] | None = None
+_JPTC_LIBRARY_ID = None
 _BULK_CACHE: list[dict[str, Any]] | None = None
 
 
 def _jptc_entries() -> list[dict[str, Any]]:
-    global _JPTC_CACHE
-    if _JPTC_CACHE is not None:
+    global _JPTC_CACHE, _JPTC_LIBRARY_ID
+    from .calibration_registry import current_library, library_fingerprint, RETIRED_PACKAGED_COLLECT_SETS
+    try:
+        library = current_library()
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        identity = library_fingerprint()
+        if _JPTC_LIBRARY_ID != identity:
+            import warnings
+            warnings.warn(f"Public calibration library disabled: {error}", RuntimeWarning)
+        _JPTC_CACHE, _JPTC_LIBRARY_ID = [], identity
+        return _JPTC_CACHE
+    if _JPTC_CACHE is not None and _JPTC_LIBRARY_ID == library["version"]:
         return _JPTC_CACHE
     import json
     from pathlib import Path
 
     entries: list[dict[str, Any]] = []
+    catalog = {item["id"]: item for item in library["sets"]}
     for path in sorted((Path(__file__).parent / "data" / "priors" / "jptc").glob("*.json")):
         try:
             item = json.loads(path.read_text(encoding="utf-8"))
@@ -182,6 +194,12 @@ def _jptc_entries() -> list[dict[str, Any]]:
     # gain and read-noise CURVES (see tools/import_jptc_collect.py).
     shutter_map = {"机械快门": "mechanical", "电子快门": "electronic"}
     for path in sorted((Path(__file__).parent / "data" / "priors" / "jptc_collect").glob("*.json")):
+        if (path.stem not in catalog or path.stem in RETIRED_PACKAGED_COLLECT_SETS
+                or catalog[path.stem].get("calibrationOnly")):
+            # A selected release explicitly opts into each legacy asset. Its
+            # missing rows and edited retirement flags cannot reactivate a
+            # shipped dark measurement that has already been retired.
+            continue
         try:
             item = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -240,7 +258,17 @@ def _jptc_entries() -> list[dict[str, Any]]:
                 "estimator_spread": a.get("gain_estimator_spread_rel"),
                 "status": a.get("quality", "ok"),
             }
+        entry["public_registry"] = {"version": library["version"], "source": library["source"],
+            "set": catalog.get(path.stem, {}), "numeric_asset": "packaged-independent-fit"}
         entries.append(entry)
+    for record in library["profiles"]:
+        from .calibration import _validated_prior
+        prior = _validated_prior(record["payload"])
+        prior.update(source=f"Public calibration library {library['version']}: {record['set_id']}",
+                     public_registry={"version": library["version"], "set_id": record["set_id"],
+                                      "source_evidence": record["source_evidence"]},
+                     measured_iso=(record["payload"].get("ptc_anchor") or {}).get("iso", 10**9))
+        entries.insert(0, prior)
     # One model can have several measurements (shutter modes, ISOs). Order
     # decides which one find_priors returns: entries with a full gain curve
     # first (they encode extended-segment and conversion-gain structure the
@@ -253,6 +281,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
         0 if e.get("shutter") == "mechanical" else 1,
     ))
     _JPTC_CACHE = entries
+    _JPTC_LIBRARY_ID = library["version"]
     return entries
 
 
@@ -338,20 +367,27 @@ def find_priors(make: str | None, model: str | None,
     and bulk measurements. A failed higher-priority candidate can yield to a
     verified lower candidate, but never silently to an undeclared generic one.
     Preserve a failed candidate for diagnostics when no verified alternative
-    exists. No coefficients from different candidates/modes are combined.
+    exists. Missing dark noise may be supplied by another measurement only
+    after exact physical-domain compatibility; modes are never combined.
     Camera identity is exact after manufacturer/whitespace normalization and
     explicit model aliases; an unrecognized generation has no prior."""
     if not make or not model:
         return None
     # Explicitly imported measurements supersede packaged priors only when
     # exact camera/readout and measured ISO applicability are established.
-    from .calibration import matching_prior
+    from .calibration import matching_prior, matching_capability_priors
+    from .calibration_registry import compose_capabilities
+    def complete(entry):
+        if entry is None or not iso:
+            return entry
+        return compose_capabilities(entry, matching_capability_priors(make, model,
+            shutter=shutter, readout=readout), iso)
     options = {"readout": readout} if readout is not None else {}
     user = matching_prior(make, model, shutter=shutter, iso=iso, **options)
     if user is not None:
         user.update(with_readout(user, readout, shutter=shutter))
         if prior_usability(user)[0]:
-            return user
+            return complete(user)
     camera = _packaged_camera_key(make, model)
     # Tier 1: curated entries (hand-checked series, DCG annotations).
     # Tier 2: first-party JPTC measurements. Tier 3: P2P bulk table.
@@ -385,13 +421,13 @@ def find_priors(make: str | None, model: str | None,
         return None
     first = candidates[0]
     if prior_usability(first)[0]:
-        return first
+        return complete(first)
     for entry in candidates[1:]:
         if (prior_usability(entry)[0]
                 and (entry["readout_match_status"] == "matched"
                      or entry["shutter_match_status"] == "matched")):
-            return entry
-    return first
+            return complete(entry)
+    return complete(first)
 
 
 def _interp(curve: list[tuple[float, float]], x: float) -> float:
@@ -444,7 +480,7 @@ def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:
     from .calibration import read_noise_issue
     if read_noise_issue(priors, iso):
         return None
-    if priors.get("user_calibration"):
+    if priors.get("user_calibration") or priors.get("read_noise_composition_iso") is not None:
         from .calibration import curve_value
         value = curve_value(priors, "read_noise_log2iso_log2e", iso)
         return float(2.0 ** value) if value is not None else None
