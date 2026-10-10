@@ -67,9 +67,28 @@ def _prior_signal_scales(bundle, fullwell, prior, iso):
 def _prior_spectrum(prior, iso):
     """Independent measured constraints; read-noise resolution is irrelevant."""
     from .calibration import curve_value
+    from .noise_spectrum import validate_spectrum
 
     spectral_ratios = {}
+    measured = prior.get("noise_spectrum")
+    qualified_axes = set()
+    if measured is not None:
+        measured = validate_spectrum(measured)
+        mapping = measured.get("mapping", {})
+        if mapping.get("status") in ("bayer", "single-colour"):
+            for axis, record in measured.get("axes", {}).items():
+                qualified_axes.add(axis)
+                for phase, curve in record.get("ratios_log2iso", {}).items():
+                    colour = mapping.get("phases", {}).get(phase, {}).get("color")
+                    if colour not in "RGB" and mapping["status"] != "single-colour":
+                        continue
+                    ratio = curve_value({"curve": curve,
+                                         "gain_jump_isos": prior.get("gain_jump_isos", [])}, "curve", iso)
+                    if ratio is not None:
+                        spectral_ratios[f"{axis}:{phase}"] = float(ratio)
     for axis in ("h", "v"):
+        if axis in qualified_axes:
+            continue
         key = f"noise_whiteness_{axis}_log2iso"
         ratio = curve_value(prior, key, iso)
         if ratio is None:
@@ -108,7 +127,10 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
     # A failed read-noise fit does not invalidate a separate spectrum
     # measurement. Its camera/mode/ISO and DN-scale checks still apply.
     scales = _prior_signal_scales(bundle, fullwell, prior, iso)
-    correlation, spectral_ratios = _prior_spectrum(prior, iso) if scales else ("unknown", {})
+    try:
+        correlation, spectral_ratios = _prior_spectrum(prior, iso) if scales else ("unknown", {})
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return NoiseModel(status="rejected", source=source, reason="invalid-spectral-evidence")
     model = NoiseModel(source=source, correlation=correlation, spectral_ratios=spectral_ratios)
     from .calibration import read_noise_issue
     issue = read_noise_issue(prior, iso)

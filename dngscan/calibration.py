@@ -381,20 +381,16 @@ def read_dark(path: Path) -> tuple[dict, dict]:
     if not math.isfinite(adc_step) or adc_step < 0:
         raise ValueError("AdcStep must be nonnegative and finite")
     per_iso: dict[int, dict] = {}
+    phase_samples: dict[int, dict] = {}
     greens_present = any(int(r["ColorIndex"]) in GREEN_INDICES for r in rows)
     for r in rows:
-        # monochrome sensors (e.g. M11 Monochrom) use a single colour index;
-        # fall back to every plane when no green-indexed rows exist
-        if greens_present and int(r["ColorIndex"]) not in GREEN_INDICES:
-            continue
         iso = int(r["ISO"])
         if iso <= 0 or int(r["ColorIndex"]) not in range(4):
             raise ValueError("dark rows require positive ISO and CFA index 0..3")
         for key in ("BlackA", "BlackB", "StdDiffClipped"):
             if not math.isfinite(float(r[key])) or (key == "StdDiffClipped" and float(r[key]) < 0):
                 raise ValueError(f"invalid dark statistic: {key}")
-        d = per_iso.setdefault(iso, {"bl": [], "rn": [], "row": [], "col": [], "tot": [], "qfrac": []})
-        d["bl"].append(0.5 * (float(r["BlackA"]) + float(r["BlackB"])))
+        bl = 0.5 * (float(r["BlackA"]) + float(r["BlackB"]))
         # temporal read noise: undo the declared sigma clip, halve the
         # difference variance, and apply Sheppard's quantisation correction
         # (the collector leaves it recomputable by design; each frame adds
@@ -409,7 +405,25 @@ def read_dark(path: Path) -> tuple[dict, dict]:
             var_t -= q
         # a correction that floors the variance means the read noise is
         # UNRESOLVED at this aperture, not zero (external review 4.8)
-        d["rn"].append(math.sqrt(var_t) if var_t > 0 else None)
+        rn = math.sqrt(var_t) if var_t > 0 else None
+        key = r.get("Channel", "").strip() or f'index:{int(r["ColorIndex"])}'
+        phases = phase_samples.setdefault(iso, {})
+        phase = phases.setdefault(key, {"channel": r.get("Channel", "").strip() or None,
+            "color_index": int(r["ColorIndex"]), "bl": [], "rn_dn": [],
+            "total_var": [], "quant_frac": []})
+        if phase["color_index"] != int(r["ColorIndex"]):
+            raise ValueError("dark channel has contradictory colour indices")
+        phase["bl"].append(bl)
+        phase["rn_dn"].append(rn)
+        phase["total_var"].append(var_diff / 2.)
+        phase["quant_frac"].append(qfrac)
+        # Preserve every measured phase before forming the legacy green
+        # summary. Gain levels must subtract their own phase's black offset.
+        if greens_present and int(r["ColorIndex"]) not in GREEN_INDICES:
+            continue
+        d = per_iso.setdefault(iso, {"bl": [], "rn": [], "row": [], "col": [], "tot": [], "qfrac": []})
+        d["bl"].append(bl)
+        d["rn"].append(rn)
         d["qfrac"].append(qfrac)
         if r.get("WithinRowVarDiff", "").strip():
             d["row"].append(float(r["WithinRowVarDiff"]) / 2.0)
@@ -424,61 +438,190 @@ def read_dark(path: Path) -> tuple[dict, dict]:
                     "row_var": float(np.mean(d["row"])) if d["row"] else None,
                     "col_var": float(np.mean(d["col"])) if d["col"] else None,
                     "total_var": float(np.mean(d["tot"]))}
+        out[iso]["phases"] = {}
+        for key, phase in phase_samples[iso].items():
+            item = {"channel": phase["channel"], "color_index": phase["color_index"]}
+            for name in ("bl", "rn_dn", "total_var", "quant_frac"):
+                values = phase[name]
+                item[name] = None if any(v is None for v in values) else float(np.mean(values))
+            item["unresolved"] = item["rn_dn"] is None
+            out[iso]["phases"][key] = item
     return header, out
 
-def read_isogain(path: Path, dark: dict) -> dict:
-    """{iso: relative gain, normalised to the lowest usable ISO}."""
-    _, rows = _parse_rows(path)
-    per_iso: dict[int, list[float]] = {}
+def _phase_black(dark_iso, row):
+    """Match a measured phase, never substitute the other green's pedestal."""
+    phases = dark_iso.get("phases")
+    if not phases:  # Compatibility for callers supplying old scalar dark maps.
+        return dark_iso.get("bl")
+    channel = row.get("Channel", "").strip()
+    cid = int(row["ColorIndex"])
+    if channel and channel in phases:
+        phase = phases[channel]
+        return phase["bl"] if phase["color_index"] == cid else None
+    matches = [p for p in phases.values() if p["color_index"] == cid]
+    return matches[0]["bl"] if len(matches) == 1 else None
+
+
+def _solve_gain_edges(nodes, edges):
+    """Connected log-gain least squares; edge weights are explicitly relative."""
+    neighbours = {iso: set() for iso in nodes}
+    for edge in edges:
+        neighbours[edge["a"]].add(edge["b"])
+        neighbours[edge["b"]].add(edge["a"])
+    unseen, components = set(nodes), []
+    while unseen:
+        todo, connected = [min(unseen)], set()
+        while todo:
+            iso = todo.pop()
+            if iso in connected:
+                continue
+            connected.add(iso)
+            todo.extend(neighbours[iso] - connected)
+        unseen -= connected
+        isos = sorted(connected)
+        local = [e for e in edges if e["a"] in connected]
+        columns = {iso: i for i, iso in enumerate(isos[1:])}
+        design = np.zeros((len(local), max(0, len(isos)-1)))
+        values, weights = [], []
+        for i, edge in enumerate(local):
+            if edge["a"] in columns:
+                design[i, columns[edge["a"]]] = -1.
+            if edge["b"] in columns:
+                design[i, columns[edge["b"]]] = 1.
+            values.append(edge["log_ratio"])
+            weights.append(edge["weight"])
+        logs = np.zeros(len(isos))
+        if local:
+            w = np.sqrt(np.asarray(weights) / max(weights))
+            logs[1:] = np.linalg.lstsq(design * w[:, None], np.asarray(values) * w, rcond=None)[0]
+        residuals = design @ logs[1:] - np.asarray(values)
+        facts = []
+        for edge, residual in zip(local, residuals):
+            fact = dict(edge)
+            fact["observed_gain_ratio"] = math.exp(fact.pop("log_ratio"))
+            fact["residual_ev"] = float(residual / math.log(2.))
+            facts.append(fact)
+        components.append({"isos": isos, "relative_gain": {iso: float(math.exp(v)) for iso,v in zip(isos,logs)},
+            "edges": facts, "residual_rms_ev": float(np.sqrt(np.mean(residuals**2)) / math.log(2.)) if local else 0.,
+            "anchored": False})
+    return components
+
+
+def read_isogain(path: Path, dark: dict, *, return_diagnostics=False, anchor_iso=None) -> dict:
+    """Relative e-/DN within a connected ISO graph, with optional evidence.
+
+    Same-shutter edges cancel nominal time. Mixed ladders use only the
+    paired component; auto-shutter levels remain separately diagnosed. The
+    public scalar return remains compatible with the original importer.
+    """
+    header, rows = _parse_rows(path)
+    samples, rejected = [], []
     greens_present = any(int(r["ColorIndex"]) in GREEN_INDICES for r in rows)
-    for r in rows:
+    for index, r in enumerate(rows):
         if greens_present and int(r["ColorIndex"]) not in GREEN_INDICES:
             continue
         if (not all(math.isfinite(float(r[k])) for k in ("ClipFrac", "ShutterSec", "Mean"))
                 or not 0 <= float(r["ClipFrac"]) <= 1 or float(r["ShutterSec"]) <= 0):
             raise ValueError("invalid gain-ladder statistics")
         if float(r["ClipFrac"]) > CLIP_FRAC_MAX:
+            rejected.append({"row": index, "reason": "clipped"})
             continue
         iso = int(r["ISO"])
-        if iso not in dark:
+        if iso <= 0:
+            raise ValueError("gain rows require a positive ISO")
+        bl = _phase_black(dark.get(iso, {}), r)
+        if bl is None:
+            rejected.append({"row": index, "reason": "phase-black-unavailable"})
             continue
-        dn = float(r["Mean"]) - dark[iso]["bl"]
-        if dn <= 0:
+        dn = float(r["Mean"]) - bl
+        if dn < 200.:
+            rejected.append({"row": index, "reason": "signal-below-200-DN"})
             continue
-        per_iso.setdefault(iso, []).append(float(r["ShutterSec"]) / dn)
-    if not per_iso:
-        return {}
-    rel = {iso: float(np.mean(v)) for iso, v in per_iso.items()}
-    base = rel[min(rel)]
-    return {iso: v / base for iso, v in sorted(rel.items())}
+        samples.append({"iso": iso, "phase": r.get("Channel", "").strip() or f'index:{int(r["ColorIndex"])}',
+                        "time": float(r["ShutterSec"]), "group": r.get("ShutterGroup", "").strip(), "signal": dn})
+    groups = []
+    for sample in sorted(samples, key=lambda s: (s["time"], s["group"], s["phase"], s["iso"], s["signal"])):
+        found = next((g for g in groups if
+            (sample["group"] and g["label"] == sample["group"])
+            or (not sample["group"] and not g["label"] and
+                abs(g["time"] - sample["time"]) <= 1e-4 * max(g["time"], sample["time"]))), None)
+        if found is None:
+            found = {"label": sample["group"], "time": sample["time"], "samples": []}
+            groups.append(found)
+        if abs(found["time"] - sample["time"]) > 1e-4 * max(found["time"], sample["time"]):
+            raise ValueError("ShutterGroup contains different shutter settings")
+        found["samples"].append(sample)
+    paired = [g for g in groups if len({s["iso"] for s in g["samples"]}) >= 2]
+    inferred = "auto-shutter" if not paired else "paired-shutter" if len(paired) == len(groups) else "mixed"
+    protocol = header.get("Ladder", "").strip().lower() or inferred
+    if protocol not in ("paired-shutter", "auto-shutter", "mixed"):
+        raise ValueError("unsupported ISO gain Ladder protocol")
 
-def read_whiteness(path: Path, lo=(0.05, 0.20), hi=(0.35, 0.499)) -> dict:
-    """{iso: high/mid mean power ratio of the green diff spectra}."""
-    _, rows = _parse_rows(path)
+    def edges_for(group_samples, name, use_time):
+        buckets = {}
+        for sample in group_samples:
+            buckets.setdefault((sample["phase"], sample["iso"]), []).append(sample)
+        result = []
+        for phase in sorted({p for p, _ in buckets}):
+            isos = sorted(iso for p, iso in buckets if p == phase)
+            for a, b in zip(isos, isos[1:]):
+                first, second = buckets[phase, a], buckets[phase, b]
+                if use_time:
+                    va = float(np.mean([s["time"] / s["signal"] for s in first]))
+                    vb = float(np.mean([s["time"] / s["signal"] for s in second]))
+                    ratio = vb / va
+                else:
+                    ratio = np.mean([s["signal"] for s in first]) / np.mean([s["signal"] for s in second])
+                result.append({"a": a, "b": b, "phase": phase, "group": name,
+                    "log_ratio": math.log(float(ratio)), "weight": 2. / (1./len(first) + 1./len(second)),
+                    "repeat_counts": [len(first), len(second)]})
+        return result
+
+    paired_edges = [edge for index,g in enumerate(paired)
+                    for edge in edges_for(g["samples"], g["label"] or f"shutter-group-{index}", False)]
+    auto_edges = edges_for(samples, "nominal-shutter", True)
+    edges = auto_edges if protocol == "auto-shutter" else paired_edges
+    nodes = {s["iso"] for s in samples}
+    components = _solve_gain_edges(nodes, edges)
+    selected = next((c for c in components if (anchor_iso if anchor_iso is not None else min(nodes,default=0)) in c["isos"]), None)
+    rel = {} if selected is None or (not selected["edges"] and len(nodes) > 1) else selected["relative_gain"]
+    diagnostics = {"protocol": protocol, "inferred_protocol": inferred,
+        "policy": "nominal-time-dependent" if protocol == "auto-shutter" else "paired-edges-only",
+        "weight_semantics": "harmonic repeat counts; relative weights, not measurement confidence intervals",
+        "components": components, "selected_isos": sorted(rel), "rejected_rows": rejected,
+        "disconnected_isos": sorted(nodes - set(rel)),
+        "auto_shutter_components": _solve_gain_edges(nodes, auto_edges) if protocol != "auto-shutter" else [],
+        "black_scope": "per-phase" if any(d.get("phases") for d in dark.values()) else "legacy-scalar"}
+    return (rel, diagnostics) if return_diagnostics else rel
+
+def read_whiteness(path: Path, lo=(0.05, 0.20), hi=(0.35, 0.499), *,
+                   phase_mapping=None, return_details=False) -> dict:
+    """Measured per-position ratios, with colour selection only when mapped.
+
+    The scalar compatibility result selects the worst departure from one;
+    opposite anomalies must never cancel by averaging two green planes.
+    """
+    from .noise_spectrum import conservative_ratio, spectrum_curves
+    spectrum_header, rows = _parse_rows(path)
     if not rows:
-        return {}
-    cols = [c for c in rows[0] if c.endswith("_diff")]
+        return {"ratios_log2iso": {}, "summary": {}} if return_details else {}
     freqs = np.asarray([float(r["freq"]) for r in rows])
     if not np.all(np.isfinite(freqs)) or np.any(freqs < 0) or np.any(freqs > .5):
         raise ValueError("spectrum frequencies must be finite and within [0,.5]")
+    curves = spectrum_curves(rows, freqs, lo, hi)
     out: dict[int, list[float]] = {}
-    for c in cols:
-        # iso50_C01_diff -> iso 50, channel C01
-        stem = c.split("_")
-        iso = int(stem[0][3:])
-        ch = stem[1]
-        if ch not in ("C01", "C10") and any(
-                c2.split("_")[1] in ("C01", "C10") for c2 in cols):
-            continue
-        p = np.asarray([float(r[c]) for r in rows])
-        if not np.all(np.isfinite(p)) or np.any(p < 0):
-            raise ValueError("spectrum power must be finite and nonnegative")
-        m_lo = (freqs >= lo[0]) & (freqs <= lo[1])
-        m_hi = (freqs >= hi[0]) & (freqs <= hi[1])
-        if not (m_lo.any() and m_hi.any()):
-            continue
-        out.setdefault(iso, []).append(float(p[m_hi].mean() / max(p[m_lo].mean(), 1e-30)))
-    return {iso: float(np.mean(v)) for iso, v in sorted(out.items())}
+    mapping = phase_mapping or {}
+    if (spectrum_header.get("CfaPattern") and mapping.get("color_description") and
+            spectrum_header["CfaPattern"].upper() != mapping["color_description"]):
+        raise ValueError("spectrum colour description disagrees with dark CFA mapping")
+    if mapping.get("status") in ("bayer", "single-colour"):
+        for phase, record in mapping.get("phases", {}).items():
+            if record["color"] != "G" and mapping["status"] != "single-colour":
+                continue
+            for x, ratio in curves.get(phase, ()):
+                out.setdefault(round(2 ** x), []).append(ratio)
+    summary = {iso: float(conservative_ratio(v)) for iso, v in sorted(out.items())}
+    return {"ratios_log2iso": curves, "summary": summary} if return_details else summary
 
 def ptc_anchor(set_dir: Path, dark: dict) -> tuple[int, dict] | None:
     cands = sorted(p for p in set_dir.glob("*ptc-iso*.csv")
@@ -650,7 +793,27 @@ def build(set_dir: Path, meta: dict | None) -> dict:
     gain_path = _find(set_dir, "gain-levels.csv", "*gain-levels*.csv")
     if gain_path:
         input_hashes[gain_path.name] = _sha256(gain_path)
-    rel = read_isogain(gain_path, dark) if gain_path else {}
+    if gain_path:
+        rel, entry["gain_ladder_diagnostics"] = read_isogain(gain_path, dark, return_diagnostics=True)
+    else:
+        rel = {}
+    phase_products = {}
+    for iso, measurement in sorted(dark.items()):
+        for key, phase in measurement.get("phases", {}).items():
+            product = phase_products.setdefault(key, {"channel": phase["channel"],
+                "color_index": phase["color_index"], "black_dn_log2iso": [],
+                "read_noise_dn_log2iso": [], "stored_dark_variance_dn2_log2iso": [],
+                "read_noise_unresolved_isos": []})
+            if product["color_index"] != phase["color_index"]:
+                raise ValueError("dark CFA colour identity changes across ISO")
+            x = math.log2(iso)
+            product["black_dn_log2iso"].append([x, phase["bl"]])
+            product["stored_dark_variance_dn2_log2iso"].append([x, phase["total_var"]])
+            if phase["rn_dn"] is None:
+                product["read_noise_unresolved_isos"].append(iso)
+            else:
+                product["read_noise_dn_log2iso"].append([x, phase["rn_dn"]])
+    entry["phase_calibration"] = phase_products
     anchor = ptc_anchor(set_dir, dark)
     ptc_file = next((c for c in sorted(set_dir.glob("*ptc-iso*.csv"))
                      if "unusable" not in c.name), None)
@@ -722,15 +885,27 @@ def build(set_dir: Path, meta: dict | None) -> dict:
         entry["unity_gain_ev"] = round(math.log2(a_iso * fit["gain_e_per_dn"]), 4)
         entry["fwc_e"] = fit["fwc_e"]
         entry["fwc_model_spread_e"] = fit["fwc_model_spread_e"]
+    from .noise_spectrum import SCHEMA, dark_phase_mapping
+    mapping_header, mapping_rows = _parse_rows(dark_path)
+    spectrum = {"schema": SCHEMA, "mapping": dark_phase_mapping(mapping_header, mapping_rows), "axes": {}}
     for ax in ("h", "v"):
         sp = _find(set_dir, f"spectrum-{ax}.csv", f"*spectrum-{ax}.csv")
         if sp is not None:
             input_hashes[sp.name] = _sha256(sp)
-            w = read_whiteness(sp)
+            detail = read_whiteness(sp, phase_mapping=spectrum["mapping"], return_details=True)
+            spectrum["axes"][ax] = {
+                "ratios_log2iso": detail["ratios_log2iso"],
+                "frequency_unit": "cycles/channel-plane-pixel",
+                "ratio_bands": {"mid": [.05, .20], "high": [.35, .499]},
+                "source_file": sp.name, "source_sha256": input_hashes[sp.name],
+            }
+            w = detail["summary"]
             if w:
                 entry["source"]["formats"].append(f"JPTC-SPECTRUM/1 ({ax})")
                 entry[f"noise_whiteness_{ax}_log2iso"] = [
                     [math.log2(i), round(v, 4)] for i, v in w.items()]
+    if spectrum["axes"]:
+        entry["noise_spectrum"] = spectrum
     return entry
 
 
@@ -957,6 +1132,9 @@ def _validated_prior(item: dict) -> dict:
              "unverified_readout_fields": {k: item[k] for k in ("compression", "geometry")
                                            if item.get(k) not in (None, [], [None, None], ["", ""])}}
     entry.update(stored_dark_variance_fields(item))
+    if item.get("noise_spectrum") is not None:
+        from .noise_spectrum import validate_spectrum
+        entry["noise_spectrum"] = validate_spectrum(item["noise_spectrum"])
     from .readout import measurement_fields
     entry.update(measurement_fields(item))
     if single:
