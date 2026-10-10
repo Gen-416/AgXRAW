@@ -45,7 +45,9 @@
 
 2026-10 的 [导出专项记录](reports/performance/performance-export-reuse.zh-CN.md) 接续说明手动 HDR 重试的主图复用、Core Image 回读释放、每轮验收和 GUI 最终预览；测量按固定母版、手动重试与自动搜索分别登记。
 
-[2026-10-09 噪声与纹理研究](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) 保留 `738da0a` 基准上的源码研究与反例，并附本轮实施记录。当前导入与使用见[实测噪声标定](NOISE_CALIBRATION.zh-CN.md)和[色度降噪](CHROMA_NR.zh-CN.md)；SDR 10-bit HEIF、包内 bulk 机型匹配仍为后置待办。
+[2026-10-09 噪声与纹理研究](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) 保留 `738da0a` 基准上的源码研究与反例，并附后续实施记录。当前导入与使用见[实测噪声标定](NOISE_CALIBRATION.zh-CN.md)和[色度降噪](CHROMA_NR.zh-CN.md)。早期登记的 SDR 10-bit 浮点母版与机型精确匹配均已完成，详见该研究第 13 节；HDR HEIF 的浮点 SDR 底图见第 14 节。
+
+本轮完整任务书的状态、RAW 专项语料与验证范围见[标定与原生 RAW 任务记录](reviews/CALIBRATION_RAW_PLAN_2026-10-09.zh-CN.md)。[传感器精度研究](reviews/SENSOR_PRECISION_RESEARCH_2026-10-09.zh-CN.md) 单独说明个人黑位、signed CFA、固定偏置图及二维色度原型，明确区分已接入生产与保持实验状态的功能。
 
 同轮 `fb91815` 后续修复见研究记录第 10 节：[镜头与重建范围](ARCHITECTURE.zh-CN.md)、标定失败点、实际传感器采样与奇数裁剪，以及[局部亮度纹理和 HDR 声明回读](HDR_DELIVERY_VALIDATION.zh-CN.md#局部亮度纹理门禁2026-10-09)。原始数字保存在[管线验收记录](assets/delivery-quality/pipeline-repair-20261009.json)。
 
