@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Hashable
 
 import dngscan as dg
-from dngscan.guidance import raw_color_permission, raw_guidance_for_shape
+from dngscan.guidance import qualify_decoder_support, raw_color_permission, raw_guidance_for_shape
 from dngscan.models import Analysis, AutoEvResult, RawBundle, RawGuidanceMaps
 from dngscan.retreat import resize_clip_masks
 
@@ -53,7 +53,8 @@ from .scheduler import shared_flight_wait
 # Window geometry also uses JSON-stable metadata for exact analysis reuse.
 # v26: independently acquired capture readout and per-file calibration constraints.
 # v27: uncertified decoder support is separate from local clipping evidence.
-PREVIEW_CACHE_VERSION = 27
+# v28: source dependency exclusions survive scene proxies and exact tone samples.
+PREVIEW_CACHE_VERSION = 28
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -497,6 +498,7 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "scene_correction_note": bundle.scene_correction_note,
         "scene_processing_loss_pct": bundle.scene_processing_loss_pct,
         "scene_loss_support_untrusted": bool(getattr(bundle, "scene_loss_support_untrusted", False)),
+        "has_scene_reliability_exclusion": getattr(bundle, "scene_reliability_exclusion", None) is not None,
         "scene_reliable_reference_pct": bundle.scene_reliable_reference_pct,
         "scene_reliability_source": bundle.scene_reliability_source,
         "scene_reference_error": bundle.scene_reference_error,
@@ -562,6 +564,8 @@ def _bundle_from_cache(
     tone_sample: Any | None = None,
     tone_sample_masks: Any | None = None,
     reliable_reference: Any | None = None,
+    scene_exclusion: Any | None = None,
+    tone_sample_exclusion: Any | None = None,
 ) -> RawBundle:
     np = dg.np
     evidence_shape = metadata.get("evidence_shape")
@@ -585,6 +589,7 @@ def _bundle_from_cache(
         scene_highlight_mode=str(metadata["scene_highlight_mode"]),
         _tone_plan_sample=tone_sample,
         _tone_plan_sample_masks=tone_sample_masks,
+        _tone_plan_sample_exclusion=tone_sample_exclusion,
         orientation_flip=int(metadata["orientation_flip"]),
         wb_mode=str(metadata["wb_mode"]),
         applied_wb=metadata.get("applied_wb"),
@@ -604,6 +609,7 @@ def _bundle_from_cache(
         scene_correction_note=metadata.get("scene_correction_note"),
         scene_processing_loss_pct=metadata.get("scene_processing_loss_pct", 0.0),
         scene_loss_support_untrusted=bool(metadata.get("scene_loss_support_untrusted", False)),
+        scene_reliability_exclusion=scene_exclusion,
         scene_reliable_reference_rec2020=reliable_reference,
         scene_reliable_reference_pct=metadata.get("scene_reliable_reference_pct"),
         scene_reliability_source=metadata.get("scene_reliability_source", "sensor-spatial"),
@@ -683,6 +689,11 @@ def _copy_guidance(maps: RawGuidanceMaps | None) -> RawGuidanceMaps | None:
             else None
         ),
         raw_permission=permission,
+        scene_eligibility=(
+            np.asarray(maps.scene_eligibility).copy()
+            if getattr(maps, "scene_eligibility", None) is not None
+            else None
+        ),
     )
 
 
@@ -704,6 +715,11 @@ def build_proxy_entry(
     )
     _indices = sample_indices(_flat.shape[0])
     tone_sample = np.ascontiguousarray(_flat[_indices, :3])
+    from dngscan.reliability import scene_exclusion_for_shape, resize_exclusion
+
+    source_exclusion = scene_exclusion_for_shape(source, source.scene_rec2020_render.shape[:2])
+    tone_sample_exclusion = (None if source_exclusion is None else np.ascontiguousarray(
+        np.asarray(source_exclusion).reshape(-1)[_indices], dtype=np.uint8))
     tone_sample_masks = None
     if source.clip_masks is not None:
         from dngscan import retreat as _retreat
@@ -717,6 +733,11 @@ def build_proxy_entry(
     del _flat
     proxy_scene = downsample_mean(source.scene_rec2020_render, PROXY_LONG_EDGE)
     proxy_shape = proxy_scene.shape[:2]
+    # The proxy pixels use Lanczos, whose input support extends beyond the
+    # destination area footprint. Match that support when qualifying them.
+    proxy_exclusion = resize_exclusion(source_exclusion, proxy_shape, filter_radius=3)
+    if proxy_exclusion is not None:
+        proxy_exclusion = np.asarray(proxy_exclusion, dtype=np.uint8).copy()
     # Proxy masks are already in scene space after resize_clip_masks with the bundle crop.
     proxy_masks = resize_clip_masks(
         source.clip_masks,
@@ -751,7 +772,13 @@ def build_proxy_entry(
         tone_sample_masks=tone_sample_masks,
         reliable_reference=(None if source.scene_reliable_reference_rec2020 is None
                             else np.asarray(source.scene_reliable_reference_rec2020).copy()),
+        scene_exclusion=proxy_exclusion,
+        tone_sample_exclusion=tone_sample_exclusion,
     )
+    if bundle.raw_guidance is not None:
+        # These maps are already in proxy geometry. Apply the proxy image's
+        # Lanczos dependency exclusion without reinterpreting RAW crops.
+        bundle.raw_guidance = qualify_decoder_support(bundle, bundle.raw_guidance)
     bundle = replace(bundle, noise_model=getattr(analysis, "noise_model", None))
     return PreviewEntry(bundle=bundle, analysis=analysis, source_metadata=source_metadata)
 
@@ -779,18 +806,32 @@ def _read_disk_entry(
             masks = np.asarray(payload["masks"]).copy() if bool(metadata.get("has_masks", False)) else None
             guidance = None
             if bool(metadata.get("has_guidance", False)):
+                headroom = np.asarray(payload["guidance_headroom"]).copy()
+                has_eligibility = metadata["guidance_has_eligibility"]
+                if (not isinstance(has_eligibility, bool)
+                        or has_eligibility != ("guidance_scene_eligibility" in payload.files)):
+                    raise ValueError("guidance eligibility presence mismatch")
+                eligibility = None
+                if has_eligibility:
+                    eligibility = np.asarray(payload["guidance_scene_eligibility"]).copy()
+                    if (eligibility.shape != headroom.shape[:-1]
+                            or eligibility.dtype.kind not in "bifu"
+                            or not np.all(np.isfinite(eligibility))
+                            or np.any((eligibility < 0) | (eligibility > 1))):
+                        raise ValueError("guidance eligibility geometry or values mismatch")
                 snr = (
                     np.asarray(payload["guidance_snr"]).copy()
                     if bool(metadata.get("guidance_has_snr", False))
                     else None
                 )
                 guidance = RawGuidanceMaps(
-                    headroom=np.asarray(payload["guidance_headroom"]).copy(),
+                    headroom=headroom,
                     clip_class=np.asarray(payload["guidance_clip_class"]).copy(),
                     snr_confidence=snr,
                     raw_permission=np.asarray(
                         payload["guidance_raw_permission"]
                     ).copy(),
+                    scene_eligibility=eligibility,
                 )
             tone_sample = (
                 np.asarray(payload["tone_sample"]).copy()
@@ -800,17 +841,48 @@ def _read_disk_entry(
                 np.asarray(payload["tone_sample_masks"]).copy()
                 if "tone_sample_masks" in payload.files else None
             )
+            def exclusion_array(key, present, shape):
+                # A missing/malformed exclusion must invalidate the cache,
+                # never turn unknown sample dependencies into reliable ones.
+                if not isinstance(present, bool) or present != (key in payload.files):
+                    raise ValueError("dependency exclusion presence mismatch")
+                if not present:
+                    return None
+                values = np.asarray(payload[key]).copy()
+                if shape is None or values.shape != shape or values.dtype != np.uint8:
+                    raise ValueError("dependency exclusion geometry or dtype mismatch")
+                return values
+
+            scene_exclusion = exclusion_array(
+                "scene_reliability_exclusion", metadata["bundle"]["has_scene_reliability_exclusion"],
+                scene.shape[:2],
+            )
+            source_metadata = metadata.get("source_bundle")
+            if source_metadata is not None:
+                if (not isinstance(source_metadata, dict)
+                        or not isinstance(source_metadata.get("has_scene_reliability_exclusion"), bool)
+                        or source_metadata["has_scene_reliability_exclusion"]
+                        != metadata["bundle"]["has_scene_reliability_exclusion"]):
+                    raise ValueError("source dependency exclusion presence mismatch")
+            tone_sample_exclusion = exclusion_array(
+                "tone_sample_exclusion", metadata["has_tone_plan_sample_exclusion"],
+                (tone_sample.shape[0],) if tone_sample is not None and tone_sample.ndim == 2 else None,
+            )
+            if scene_exclusion is not None and tone_sample is not None and tone_sample_exclusion is None:
+                raise ValueError("source sample dependency exclusion missing")
             bundle = _bundle_from_cache(
                 source_path, metadata["bundle"], scene, masks, guidance,
                 tone_sample=tone_sample,
                 tone_sample_masks=tone_sample_masks,
                 reliable_reference=(np.asarray(payload["reliable_reference"]).copy()
                                     if "reliable_reference" in payload.files else None),
+                scene_exclusion=scene_exclusion,
+                tone_sample_exclusion=tone_sample_exclusion,
             )
             analysis = _analysis_from_json(metadata["analysis"])
             bundle = replace(bundle, noise_model=getattr(analysis, "noise_model", None))
             return PreviewEntry(bundle=bundle, analysis=analysis,
-                                source_metadata=metadata.get("source_bundle"))
+                                source_metadata=source_metadata)
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         try:
             cache_path.unlink(missing_ok=True)
@@ -849,6 +921,8 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
             "has_masks": bundle.clip_masks is not None,
             "has_guidance": maps is not None,
             "guidance_has_snr": maps is not None and maps.snr_confidence is not None,
+            "guidance_has_eligibility": maps is not None and getattr(maps, "scene_eligibility", None) is not None,
+            "has_tone_plan_sample_exclusion": getattr(bundle, "_tone_plan_sample_exclusion", None) is not None,
         }
         fd, temp_name = tempfile.mkstemp(prefix=".preview-", suffix=".npz", dir=cache_path.parent)
         try:
@@ -870,6 +944,10 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
                     values["tone_sample_masks"] = np.asarray(
                         bundle._tone_plan_sample_masks
                     )
+                if getattr(bundle, "scene_reliability_exclusion", None) is not None:
+                    values["scene_reliability_exclusion"] = np.asarray(bundle.scene_reliability_exclusion)
+                if getattr(bundle, "_tone_plan_sample_exclusion", None) is not None:
+                    values["tone_sample_exclusion"] = np.asarray(bundle._tone_plan_sample_exclusion)
                 if maps is not None:
                     values["guidance_headroom"] = np.asarray(maps.headroom)
                     values["guidance_clip_class"] = np.asarray(maps.clip_class)
@@ -883,6 +961,8 @@ def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
                     )
                     if maps.snr_confidence is not None:
                         values["guidance_snr"] = np.asarray(maps.snr_confidence)
+                    if getattr(maps, "scene_eligibility", None) is not None:
+                        values["guidance_scene_eligibility"] = np.asarray(maps.scene_eligibility)
                 np.savez(handle, **values)
             os.replace(temp_name, cache_path)
         finally:

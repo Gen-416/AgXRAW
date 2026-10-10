@@ -234,7 +234,14 @@ class ProductionLossSupportTests(unittest.TestCase):
                 bundle = raw_io.load_raw(path)
                 self.assertEqual(bundle.noise_decode["demosaic_algorithm"], expected.name)
                 self.assertIsNone(bundle.noise_decode["loss_support"])
-                self.assertIsNone(bundle.scene_correction_note)
+                if value == 4095:
+                    # Exact source white is physical saturation, not a new WB
+                    # overflow or reason to change automatic interpolation.
+                    self.assertTrue(bundle.scene_loss_support_untrusted)
+                    self.assertIn("source saturation", bundle.scene_correction_note)
+                else:
+                    self.assertFalse(bundle.scene_loss_support_untrusted)
+                    self.assertIsNone(bundle.scene_correction_note)
             write_sensor_dng(path, signal=red_point(), neutral=(.5, 1., 1.))
             automatic = raw_io.load_raw(path)
             explicit_ahd = raw_io.load_raw(path, demosaic="ahd")

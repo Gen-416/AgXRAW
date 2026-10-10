@@ -144,7 +144,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
         rn = float(item.get("read_noise_e") or 0.0)
         rn_curve = [(x, math.log2(rn))] if rn > 0 else []
         shutter = item.get("shutter")
-        entries.append({
+        entry = {
             "id": item["id"],
             "make_contains": item["brand"],
             "model_equals": {str(item["model"]).upper()},
@@ -165,7 +165,10 @@ def _jptc_entries() -> list[dict[str, Any]]:
                 "status": item.get("quality", "ok"),
             },
             "source": f"JPTC/2 first-party measurement ({path.name})",
-        })
+        }
+        from .readout import measurement_fields
+        entry.update(measurement_fields(item))
+        entries.append(entry)
     # Collect sets (data/priors/jptc_collect/): multi-instrument entries with
     # gain and read-noise CURVES (see tools/import_jptc_collect.py).
     shutter_map = {"机械快门": "mechanical", "电子快门": "electronic"}

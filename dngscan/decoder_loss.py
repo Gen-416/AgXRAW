@@ -14,6 +14,95 @@ from typing import Any
 from ._deps import np
 
 
+def sensor_saturation_sources(evidence: Any, fullwell: dict[int, int] | None = None) -> Any | None:
+    """Byte log of immutable RAW full-well sources, never processing losses.
+
+    Use the same per-plane resolved endpoints as physical RAW statistics.
+    Scan in row bands and only allocate a sensor-sized log after an event.
+    """
+    image = np.asarray(evidence.raw_image)
+    colors = np.asarray(evidence.raw_colors)
+    if fullwell is None:
+        from .sensor_summary import summarize_sensor
+
+        summary = summarize_sensor(image, colors, evidence.white_level,
+                                   evidence.camera_white_levels, evidence=evidence)
+        fullwell = dict(summary.channel_fullwell)
+    maximum_id = int(np.max(colors)) if colors.size else 0
+    levels = np.full(maximum_id + 1, int(evidence.white_level), dtype=np.float64)
+    for cid, value in fullwell.items():
+        if 0 <= int(cid) < levels.size:
+            levels[int(cid)] = float(value)
+    if not np.all(np.isfinite(levels) & (levels > 0)):
+        raise ValueError("invalid sensor full-well endpoints for reliability")
+    source = None
+    for y in range(0, image.shape[0], 128):
+        boundary = image[y:y + 128] >= levels[colors[y:y + 128]]
+        if image.ndim == 3:
+            boundary = np.any(boundary, axis=2)
+        if np.any(boundary):
+            if source is None:
+                source = np.zeros(image.shape[:2], dtype=np.uint8)
+            source[y:y + 128] = boundary
+    return source
+
+
+def source_reliability_exclusion(evidence: Any, geometry: dict[str, Any],
+                                 fullwell: dict[int, int] | None = None) -> tuple[Any | None, str | None]:
+    """Transport source saturation through the actual formation dependency graph.
+
+    The JSON-stable geometry records the decoder's real interpolation, stretch,
+    lens warps, retained sensor crop, orientation and final box reduction. The
+    result is a uint8 HxW exclusion map; it must not drive visual clip retreat.
+    Unknown support returns no map and a global-conservative reason instead.
+    """
+    source = sensor_saturation_sources(evidence, fullwell)
+    if source is None:
+        return None, None
+    if geometry.get("stage1_spatial"):
+        return None, "global-conservative: source saturation with unaudited stage-1 spatial repair"
+    if geometry["highlight"] == "reconstruct":
+        return None, "global-conservative: source saturation with spatial highlight reconstruction"
+    algorithm = str(geometry.get("demosaic") or "default").upper()
+    if np.ndim(evidence.raw_image) == 3:
+        mask, reason = source, "linear-planes: source saturation has no demosaic support"
+    elif geometry["half_size"] and np.asarray(evidence.raw_pattern).shape == (2, 2):
+        mask = source[::2, ::2].copy()
+        for row, col in ((0, 1), (1, 0), (1, 1)):
+            plane = source[row::2, col::2]
+            target = mask[:plane.shape[0], :plane.shape[1]]
+            np.maximum(target, plane, out=target)
+        reason = "bayer-half: exact source-saturation 2x2 support"
+    elif np.asarray(evidence.raw_pattern).shape == (2, 2) and algorithm == "AHD":
+        mask, reason = dilate_loss(source, 5), "bayer-AHD: source-saturation radius-5 support"
+    else:
+        return None, f"global-conservative: source saturation with uninstrumented {algorithm} support"
+    mask = transport_default_scale(mask, tuple(geometry["decoded_shape"]), geometry["pixel_aspect"])
+    from . import dng_opcodes as ops
+    from .raw_io import _orient_like_libraw
+
+    for payload in geometry.get("warp_ops", ()):
+        op = ops.Warp(**payload)
+        # A scalar exclusion applies to every colour; distinct TCA footprints
+        # are then joined. The RGB input is a zero-stride view, not a new raster.
+        rgb = np.broadcast_to(mask.astype(np.float16)[..., None], (*mask.shape, 3))
+        warped = ops.warp_image(rgb, op, loss=True)
+        mask = np.any(warped, axis=2).astype(np.uint8)
+        del warped, rgb
+    crop = geometry.get("crop")
+    mask = ops.crop_image(mask, tuple(crop) if crop is not None else None,
+                          evidence.raw_image.shape[:2])
+    mask = _orient_like_libraw(mask, int(geometry["orientation_flip"]))
+    reduction = int(geometry.get("reduction", 1))
+    if reduction == 2:
+        h, w = mask.shape
+        mask = mask[:2 * (h // 2), :2 * (w // 2)].reshape(h // 2, 2, w // 2, 2).max(axis=(1, 3))
+    elif reduction != 1:
+        raise ValueError("unsupported source-reliability reduction")
+    return (np.ascontiguousarray(mask, dtype=np.uint8) if np.any(mask) else None,
+            reason + "; actual DefaultScale/warp/crop/orientation/reduction support")
+
+
 def support_is_untrusted(reason: Any | None) -> bool:
     """Whether a loss event has an uncertified spatial influence range.
 

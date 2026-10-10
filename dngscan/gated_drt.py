@@ -112,6 +112,7 @@ def _apply_gated_core(
         raw_clip_class=getattr(raw_guidance, "clip_class", None),
         raw_snr_confidence=getattr(raw_guidance, "snr_confidence", None),
         raw_permission=getattr(raw_guidance, "raw_permission", None),
+        scene_eligibility=getattr(raw_guidance, "scene_eligibility", None),
         midtone_protect=midtone_protect,
         highlight_ev_lo=ev_lo,
         highlight_ev_hi=ev_hi,

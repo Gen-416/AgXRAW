@@ -108,6 +108,7 @@ def color_path_weight(
     raw_clip_class: Any | None = None,
     raw_snr_confidence: Any | None = None,
     raw_permission: Any | None = None,
+    scene_eligibility: Any | None = None,
     midtone_protect: float = 0.92,
     highlight_ev_lo: float = 0.25,
     highlight_ev_hi: float = 2.75,
@@ -132,6 +133,11 @@ def color_path_weight(
         nonraw_perm *= np.clip(np.asarray(raw_snr_confidence, dtype=np.float32), 0.0, 1.0)
     elif noise_ev_floor is not None:
         nonraw_perm *= snr_confidence_from_ev(ev, float(noise_ev_floor))
+    if scene_eligibility is not None:
+        eligibility = np.asarray(scene_eligibility)
+        if eligibility.shape != ev.shape:
+            raise ValueError("scene eligibility must match colour permission rows")
+        nonraw_perm *= np.clip(eligibility, 0, 1)
     if scene_rgb_rec2020 is not None and scene_rgb_rec2020.shape[0] == ev.shape[0]:
         # Hue policy is an aesthetic display choice. It may attenuate scene/gamut-driven
         # geometry, but must not override a measured loss of RAW channel information.
@@ -473,6 +479,7 @@ def build_raw_guidance_maps(
 def qualify_decoder_support(
     bundle: RawBundle, maps: RawGuidanceMaps | None,
     shape: tuple[int, ...] | None = None,
+    *, exclusion: Any | None = None,
 ) -> RawGuidanceMaps | None:
     """Withdraw scene-driven colour permission without inventing RAW clipping.
 
@@ -480,7 +487,27 @@ def qualify_decoder_support(
     every channel clipped. Keep measured headroom and RAW-loss permission; only
     close the non-RAW permission path. Broadcast constants need no image buffer.
     """
-    if not getattr(bundle, "scene_loss_support_untrusted", False):
+    untrusted = getattr(bundle, "scene_loss_support_untrusted", False)
+    if (not untrusted and exclusion is None
+            and getattr(bundle, "scene_reliability_exclusion", None) is None):
+        return maps
+    if exclusion is not None:
+        exclusion = np.asarray(exclusion) != 0
+    target = maps.headroom.shape[:-1] if maps is not None else shape
+    if not untrusted and exclusion is None and getattr(bundle, "scene_reliability_exclusion", None) is not None:
+        if target is not None and len(target) == 2:
+            from .reliability import scene_exclusion_for_shape
+            exclusion = scene_exclusion_for_shape(bundle, target) != 0
+        elif target is not None and len(target) == 1:
+            sample = getattr(bundle, "_tone_plan_sample_exclusion", None)
+            if sample is not None and np.shape(sample) == target:
+                exclusion = np.asarray(sample) != 0
+            else:
+                # Supplied sample rows have no certified pixel correspondence.
+                untrusted = True
+    if exclusion is not None and np.shape(exclusion) != target:
+        raise ValueError("dependency qualification does not match guidance geometry")
+    if not untrusted and (exclusion is None or not np.any(exclusion)):
         return maps
     if maps is None:
         if shape is None:
@@ -491,9 +518,12 @@ def qualify_decoder_support(
             snr_confidence=None,
             raw_permission=np.broadcast_to(np.float32(0), shape),
         )
-    return replace(maps, snr_confidence=np.broadcast_to(
-        np.float16(0), maps.headroom.shape[:-1],
-    ))
+    if untrusted:
+        return replace(maps, snr_confidence=np.broadcast_to(np.float16(0), maps.headroom.shape[:-1]))
+    eligibility = (np.ones(target, dtype=np.uint8) if maps.scene_eligibility is None
+                   else np.asarray(maps.scene_eligibility).copy())
+    eligibility[exclusion] = 0
+    return replace(maps, scene_eligibility=eligibility)
 
 
 def ensure_raw_guidance(bundle: RawBundle, analysis: Analysis | None = None) -> RawGuidanceMaps | None:
@@ -569,6 +599,7 @@ def raw_guidance_for_shape(
         if cached is not None:
             return qualify_decoder_support(bundle, cached)
     from .retreat import resize_clip_masks
+    from .reliability import resize_exclusion
 
     crop = getattr(bundle, "scene_geometry_crop", None)
     resized_headroom = resize_clip_masks(maps.headroom, shape, crop=crop).astype(
@@ -590,6 +621,10 @@ def raw_guidance_for_shape(
             else None
         ),
         raw_permission=resized_permission,
+        scene_eligibility=(
+            1 - resize_exclusion(1 - np.asarray(maps.scene_eligibility), shape)
+            if maps.scene_eligibility is not None else None
+        ),
     )
     resized = qualify_decoder_support(bundle, resized)
     bundle._raw_guidance_cache_shape = shape
@@ -613,6 +648,10 @@ def flatten_raw_guidance(
             np.asarray(maps.raw_permission).reshape(-1)[start:end:step]
             if maps.raw_permission is not None
             else None
+        ),
+        scene_eligibility=(
+            np.asarray(maps.scene_eligibility).reshape(-1)[start:end:step]
+            if maps.scene_eligibility is not None else None
         ),
     )
 

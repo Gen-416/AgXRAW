@@ -13,7 +13,9 @@ def reliable_reference_samples(evidence, scene, scale, processing_loss, recipe):
     """
     from .decoder_loss import support_is_untrusted
 
-    if support_is_untrusted(getattr(recipe, "loss_support", None)):
+    if (getattr(recipe, "loss_support_untrusted", False)
+            or support_is_untrusted(getattr(recipe, "loss_support", None))
+            or support_is_untrusted(getattr(recipe, "source_loss_support", None))):
         # An unknown decoder influence range has no spatial mask. Its absence
         # does not certify the reference: retain the explicit empty result.
         return np.empty((0, 3), dtype=np.float32), 0.0
@@ -41,6 +43,11 @@ def reliable_reference_samples(evidence, scene, scale, processing_loss, recipe):
     if masks is None:
         raise ValueError("reference has no spatial reliability mask")
     reliable = np.max(masks.reshape(-1, 3)[rows], axis=1) < 0.1
+    source_exclusion = getattr(recipe, "scene_reliability_exclusion", None)
+    if source_exclusion is not None:
+        if np.shape(source_exclusion) != scene.shape[:2]:
+            raise ValueError("reference source exclusion is not aligned to scene")
+        reliable &= ~np.asarray(source_exclusion, dtype=bool).reshape(-1)[rows]
     reliable &= np.isfinite(rgb).all(axis=1)
     pct = float(np.mean(reliable) * 100.0)
     if np.count_nonzero(reliable) < 256 or pct < 5.0:

@@ -303,6 +303,15 @@ def import_csv(
                 "from; pass --white explicitly"
             )
     fit = fit_ptc(g1_mean, g1_std, black_g1, white)
+    from .readout import collect_fields
+
+    header = parsed["header"]
+    readout_fields = collect_fields(header)
+    # JPTC/2 records the same LibRaw RawSize as Collect. Keep its scope
+    # through the single-point converter, without inheriting the paired-dark
+    # variance or quantisation semantics that only Collect can establish.
+    acquisition_contract = readout_fields.pop("acquisition_contract_fields")
+    geometry = [header.get("ImageWidth"), header.get("ImageHeight")]
     return {
         "format": "dngscan-jptc-prior-1",
         "id": f"{brand} {model} (JPTC)",
@@ -313,17 +322,20 @@ def import_csv(
         "white_level_used": white,
         "channel": "G1",
         "black_level_g1": black_g1,
+        "compression": header.get("Compression"),
+        "geometry": geometry,
+        "acquisition_contract": acquisition_contract,
+        **readout_fields,
         "noise_aperture": "single-frame spatial std (includes PRNU; fit "
                           "restricted to the shot-noise decades)",
         "source": {
             "kind": "JPTC/2 first-party measurement",
             "file": path.name,
             "input_sha256": __import__("hashlib").sha256(path.read_bytes()).hexdigest(),
-            "mode": parsed["header"].get("Mode"),
-            "geometry": [
-                parsed["header"].get("ImageWidth"),
-                parsed["header"].get("ImageHeight"),
-            ],
+            "mode": header.get("Mode"),
+            "geometry": geometry,
+            "raw_size": header.get("RawSize"),
+            "compression": header.get("Compression"),
         },
         **fit,
     }
