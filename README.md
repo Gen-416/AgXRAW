@@ -9,6 +9,12 @@ the sensor actually keep? How far can reconstructed highlights be trusted? How s
 become both a normal photo and an HDR photo? AgXRAW puts these questions into one measurable,
 reproducible pipeline.
 
+AgXRAW targets RAW files from multiple camera makers, including Bayer, X-Trans,
+and decoder-supported linear DNG. Personal PTC or dark-frame calibration is not
+required: without an applicable noise model, image statistics still drive exposure,
+AgX, and export. Reports identify this general rendering fallback. RAW decoding,
+lens correction, and physical noise-model support are separate capabilities.
+
 [简体中文](README.zh-CN.md) · [License](LICENSE) · [Third-party notices](NOTICE.md)
 
 **Tutorials and documentation**:

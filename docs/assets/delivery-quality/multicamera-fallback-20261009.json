@@ -1,0 +1,289 @@
+{
+  "baseline_commit": "39306ec8c55cd954a43367bb038056e7511b149d",
+  "runtime": {
+    "python": "3.14.4",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw": [
+      0,
+      22,
+      0
+    ],
+    "DNGSCAN_FAST": "0",
+    "DNGSCAN_FAST_scope": "First six actual-camera calls. Final synthetic smoke and full suite used DNGSCAN_FAST=1."
+  },
+  "method": "Original LibRaw CLI; wrappers only recorded returns. Default AgX, camera WB, clip, auto EV. Production delivery tolerances unchanged. camera_profiles lists actual corrections executed in its recorded calls.",
+  "cases": [
+    {
+      "sample": "DSC00225.ARW",
+      "source_phase": "baseline",
+      "camera": "SONY ILCE-7M5",
+      "iso": 1000,
+      "format": "sdr",
+      "profile": "share-hq",
+      "cli_exit_code": 0,
+      "production_encoding_and_readback_passed": true,
+      "dimensions_wh": [
+        7028,
+        4688
+      ],
+      "bytes": 14853931,
+      "sha256": "6119c757dc3c6b23ea7b5511c11ba370678611d96c50002029e06e1cf4f27fe6",
+      "codec": "JPEG",
+      "bit_depth": 8,
+      "chroma": "4:2:0",
+      "readback_precision": "uint8",
+      "noise": {
+        "status": "model-valid",
+        "prior_id": "Sony ILCE-7M5 (A7 V)",
+        "readout_scope": "sub-readout-not-declared",
+        "gain_e_per_dn": null,
+        "prior_quality_status": "unmatched-dn-scale",
+        "chroma_covariance_transfer": "noise-transfer-for-spatial-or-point-corrections-unavailable",
+        "hdr_tail_noise_gate": 1.0
+      },
+      "base_local_detail_loss": 0.4316030442714691
+    },
+    {
+      "sample": "DSC00225.ARW",
+      "source_phase": "baseline",
+      "camera": "SONY ILCE-7M5",
+      "iso": 1000,
+      "format": "ultrahdr-heic",
+      "profile": "archive",
+      "cli_exit_code": 0,
+      "production_encoding_and_readback_passed": true,
+      "dimensions_wh": [
+        7028,
+        4688
+      ],
+      "bytes": 53320957,
+      "sha256": "9e91afb949666fe2b56a78ce088f488329b40ad5b9b806e9ea2c9c535bd4548e",
+      "codec": "x265 HEVC encoder (4.2+1-e444744)",
+      "bit_depth": 10,
+      "chroma": "4:4:4",
+      "readback_precision": "float32",
+      "noise": {
+        "status": "model-valid",
+        "prior_id": "Sony ILCE-7M5 (A7 V)",
+        "readout_scope": "sub-readout-not-declared",
+        "gain_e_per_dn": null,
+        "prior_quality_status": "unmatched-dn-scale",
+        "chroma_covariance_transfer": "noise-transfer-for-spatial-or-point-corrections-unavailable",
+        "hdr_tail_noise_gate": 1.0
+      },
+      "base_local_detail_loss": 0.11698268353939056,
+      "hdr_local_detail_loss": 0.37795475125312805,
+      "hdr": {
+        "has_iso_gainmap": true,
+        "actual_headroom_ev": 0.2595757625046526,
+        "file_headroom_ev": 0.2597432636907815,
+        "headroom_error_ev": 0.0,
+        "sdr_master_precision": "float32",
+        "p99_relative_error": 0.03929273039102554
+      }
+    },
+    {
+      "sample": "DSCF0214.RAF",
+      "source_phase": "baseline",
+      "camera": "FUJIFILM X100VI",
+      "iso": 250,
+      "format": "sdr",
+      "profile": "share-hq",
+      "cli_exit_code": 0,
+      "production_encoding_and_readback_passed": true,
+      "dimensions_wh": [
+        7752,
+        5178
+      ],
+      "bytes": 11688618,
+      "sha256": "e111e259c31d4443c2c547f083b07cd2826c2aa655e6d6fb33403e976fabc9cb",
+      "codec": "JPEG",
+      "bit_depth": 8,
+      "chroma": "4:2:0",
+      "readback_precision": "uint8",
+      "noise": {
+        "status": "model-valid",
+        "prior_id": "Fujifilm X100VI",
+        "readout_scope": "sub-readout-not-declared",
+        "gain_e_per_dn": 0.7814447149878065,
+        "prior_quality_status": null,
+        "chroma_covariance_transfer": "non-Bayer-noise-transfer-unavailable",
+        "hdr_tail_noise_gate": 1.0
+      },
+      "base_local_detail_loss": 0.40422889590263367
+    },
+    {
+      "sample": "DSCF0214.RAF",
+      "source_phase": "baseline",
+      "camera": "FUJIFILM X100VI",
+      "iso": 250,
+      "format": "ultrahdr-heic",
+      "profile": "archive",
+      "cli_exit_code": 1,
+      "production_encoding_and_readback_passed": false,
+      "dimensions_wh": [
+        7752,
+        5178
+      ],
+      "noise": {
+        "status": "model-valid",
+        "prior_id": "Fujifilm X100VI",
+        "readout_scope": "sub-readout-not-declared",
+        "gain_e_per_dn": 0.7814447149878065,
+        "prior_quality_status": null,
+        "chroma_covariance_transfer": "non-Bayer-noise-transfer-unavailable",
+        "hdr_tail_noise_gate": 1.0
+      },
+      "rejection": "Reliable scene tail +0.89 EV supplies no usable extension above SDR white. Explicit HDR request rejected before encoding; calibration was valid."
+    },
+    {
+      "sample": "DSCF0214.RAF",
+      "source_phase": "development",
+      "camera": "FUJIFILM X100VI",
+      "iso": 250,
+      "format": "sdr-heic",
+      "profile": "archive",
+      "cli_exit_code": 0,
+      "production_encoding_and_readback_passed": true,
+      "dimensions_wh": [
+        7752,
+        5178
+      ],
+      "bytes": 39008866,
+      "sha256": "e70f87119f2f74f14d7691bd42ceaf4d15d2843f3f01746ccf313c4298b2e5dd",
+      "codec": "x265 HEVC encoder (4.2+1-e444744)",
+      "bit_depth": 10,
+      "chroma": "4:4:4",
+      "readback_precision": "float32",
+      "noise": {
+        "status": "model-valid",
+        "prior_id": "Fujifilm X100VI",
+        "readout_scope": "sub-readout-not-declared",
+        "gain_e_per_dn": 0.7814447149878065,
+        "prior_quality_status": null,
+        "chroma_covariance_transfer": "non-Bayer-noise-transfer-unavailable",
+        "hdr_tail_noise_gate": 1.0
+      },
+      "base_local_detail_loss": 0.10690834373235703
+    },
+    {
+      "sample": "DSC00225.ARW",
+      "source_phase": "coding_fix_report_transition",
+      "camera": "SONY ILCE-7M5",
+      "iso": 1000,
+      "format": "sdr",
+      "profile": "share-hq",
+      "cli_exit_code": 1,
+      "production_encoding_and_readback_passed": true,
+      "dimensions_wh": [
+        7028,
+        4688
+      ],
+      "bytes": 14853931,
+      "sha256": "6119c757dc3c6b23ea7b5511c11ba370678611d96c50002029e06e1cf4f27fe6",
+      "codec": "JPEG",
+      "bit_depth": 8,
+      "chroma": "4:2:0",
+      "readback_precision": "uint8",
+      "noise": {
+        "status": "model-valid",
+        "prior_id": "Sony ILCE-7M5 (A7 V)",
+        "readout_scope": "sub-readout-not-declared",
+        "gain_e_per_dn": 0.2167667999648069,
+        "prior_quality_status": null,
+        "chroma_covariance_transfer": "noise-transfer-for-spatial-or-point-corrections-unavailable",
+        "hdr_tail_noise_gate": 1.0
+      },
+      "base_local_detail_loss": 0.4316030442714691,
+      "post_export_report_error": "print_report() got an unexpected keyword argument export_info; export/readback succeeded before this development-stage report failure.",
+      "prior_pdr_ev": 9.167623853802283,
+      "comparison_to_baseline": {
+        "entire_file_byte_identical": true,
+        "noise_coefficients_identical": true
+      }
+    },
+    {
+      "sample": "synthetic unknown-camera DNG",
+      "source_phase": "final_smoke",
+      "camera": "Review Synthetic",
+      "format": "sdr-heic",
+      "profile": "archive",
+      "cli_exit_code": 0,
+      "production_encoding_and_readback_passed": true,
+      "dimensions_wh": [
+        128,
+        128
+      ],
+      "bytes": 3561,
+      "sha256": "15de386ebbba8edd8a861143e54a244453deb463d5eae629ddeaa0ba5d6642e6",
+      "bit_depth": 10,
+      "chroma": "4:4:4",
+      "output_profile": "sRGB IEC61966-2.1",
+      "processing_evidence_mode": "general-image",
+      "noise_status": "unavailable",
+      "noise_source": "none",
+      "noise_reason": "no-matched-calibration",
+      "snr_available": false,
+      "sensor_evidence": "available",
+      "hdr_reliability_source": "sensor-spatial",
+      "chroma_nr_status": "disabled",
+      "evidence": "Actual final CLI CSV and console: HEIF 10-bit, float SDR master, one 10-bit output quantization. No ISO/external prior/NoiseProfile; no image-derived noise estimate.",
+      "evidence_files": [
+        "unknown-final.csv",
+        "cli-final.log"
+      ]
+    }
+  ],
+  "scope_limits": [
+    "Two samples only; neither is iPhone RAW.",
+    "Both actual-camera samples have bundled approximate priors. A separate final real synthetic DNG CLI smoke and dedicated regressions exercise missing calibration.",
+    "Reduced JPEG previews showed no obvious decode/color/geometry defect; no reference color target was available.",
+    "Per-case source phases apply; first six calls were not all rerun on final frozen source. Final synthetic CLI smoke passed.",
+    "Elapsed times are not performance evidence.",
+    "Original RAWs untouched; full-size temporary exports removed; private reduced previews remain outside the repository."
+  ],
+  "source_phases": {
+    "baseline": "39306ec8c55cd954a43367bb038056e7511b149d, before this round of coding-range/report changes",
+    "development": "Working tree while coding-range/report changes were being implemented; not final frozen source",
+    "coding_fix_report_transition": "Working tree with coding-range fix; report caller/callee temporarily mismatched after successful export",
+    "final_smoke": "Final frozen tree after compiled scene report/CSV integration; unknown-camera CLI exit 0."
+  },
+  "validation": {
+    "full_native": {
+      "DNGSCAN_FAST": "1",
+      "discovered": 1747,
+      "passed": 1744,
+      "skipped": 3,
+      "failures": 0,
+      "seconds": 255.355
+    },
+    "focused_numpy": {
+      "DNGSCAN_FAST": "0",
+      "modules": 18,
+      "discovered": 223,
+      "passed": 222,
+      "skipped": 1,
+      "failures": 0,
+      "seconds": 1.815
+    },
+    "notes": "Frozen production source; groups overlap and are not added. Skips are not passes. Final unknown-camera CLI exited 0; GUI JavaScript syntax checked."
+  },
+  "camera_profiles": {
+    "SONY ILCE-7M5": {
+      "corrections_executed": [
+        "Sony embedded lens shading",
+        "Sony embedded lens distortion/TCA"
+      ],
+      "demosaic": "AHD"
+    },
+    "FUJIFILM X100VI": {
+      "corrections_executed": [
+        "Fujifilm embedded lens shading",
+        "Fujifilm embedded lens distortion/TCA"
+      ],
+      "demosaic": "default"
+    }
+  },
+  "preview_cache_version": 29
+}

@@ -254,6 +254,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
     </div>
     <div class="ctlFact" id="decodeTierFact" style="flex-basis:100%;margin-top:0"></div>
     <div class="ctlFact" id="decoderFact" style="flex-basis:100%;margin-top:0"></div>
+    <div class="ctlFact" id="processingSupportFact" style="flex-basis:100%;margin-top:0"></div>
     <div style="flex:1;min-width:170px">
       <label>白平衡</label>
       <select id="wb" title="拍摄值信相机测光；固定色温是声明的标准参考（经文件自身颜色标定求解），用于胶片模拟等需要整卷一致配平的场景，不是肉眼调整。">
@@ -1239,7 +1240,7 @@ function renderDetectedParams(d){
   DETECTED_READY=!!(d&&typeof d==="object");
   if(!DETECTED_READY){
     $("#noiseModelFact").title="";
-    ["#decoderFact","#wbFact","#clipFact","#evFact","#toneFact","#hdrSceneFact","#noiseModelFact","#calibrationMatchFact"].forEach(s=>setFact(s,""));
+    ["#decoderFact","#processingSupportFact","#wbFact","#clipFact","#evFact","#toneFact","#hdrSceneFact","#noiseModelFact","#calibrationMatchFact"].forEach(s=>setFact(s,""));
     return;
   }
   const ev=v=>(v>=0?"+":"")+(+v).toFixed(2)+" EV";
@@ -1248,6 +1249,8 @@ function renderDetectedParams(d){
   if(d.decoder_fallback)decoderBits.push("已回退："+d.decoder_fallback);
   if(d.data_support)decoderBits.push(d.data_support);
   setFact("#decoderFact",decoderBits.filter(Boolean).join(" · "),!!(d.decoder_fallback||d.evidence_error||d.data_support));
+  const support=d.processing_evidence||{};
+  setFact("#processingSupportFact",[support.label,support.detail].filter(Boolean).join(" · "));
   setFact("#wbFact",d.wb_degradation?"⚠ 白平衡："+d.wb_degradation:"",true);
   const noise=d.noise_model||{};
   const noiseStatus=noise.status==="valid"?"可用":noise.status==="unresolved"?"读噪未分辨":noise.status==="rejected"?"不适用":"不可用";

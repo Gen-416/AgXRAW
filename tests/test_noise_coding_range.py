@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import struct
 import tempfile
+from dataclasses import replace
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -133,6 +134,20 @@ class NoiseCodingRangeTests(unittest.TestCase):
         self.assertEqual(analysis.noise_model.reason, "unmatched-dn-scale")
         self.assertIsNone(variance)
         self.assertIsNone(correction)
+
+    def test_global_maximum_cannot_revoke_valid_per_plane_prior(self):
+        self.install()
+        bundle, expected, _, _ = self.decoded(.8)
+        # Sony ARW can publish a global LibRaw maximum unrelated to the
+        # per-plane coding endpoints. Isolate that metadata handoff on a
+        # real decoded DNG while keeping sensor samples and coding unchanged.
+        changed, _, _ = analyze(replace(bundle, white_level=6000), 4)
+        self.assertEqual(changed.noise_model.channel_variance,
+                         expected.noise_model.channel_variance)
+        self.assertEqual(changed.gain_e_per_dn, expected.gain_e_per_dn)
+        self.assertEqual(changed.gain_e_per_dn, 2.)
+        self.assertEqual(changed.prior_read_noise_e, 2.)
+        self.assertEqual(changed.prior_quality_status, expected.prior_quality_status)
 
 
 if __name__ == "__main__":

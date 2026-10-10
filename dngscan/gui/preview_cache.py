@@ -54,7 +54,8 @@ from .scheduler import shared_flight_wait
 # v26: independently acquired capture readout and per-file calibration constraints.
 # v27: uncertified decoder support is separate from local clipping evidence.
 # v28: source dependency exclusions survive scene proxies and exact tone samples.
-PREVIEW_CACHE_VERSION = 28
+# v29: absolute prior diagnostics use the same coding scale as the noise model.
+PREVIEW_CACHE_VERSION = 29
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
