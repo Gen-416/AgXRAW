@@ -55,7 +55,7 @@ from .scheduler import shared_flight_wait
 # v27: uncertified decoder support is separate from local clipping evidence.
 # v28: source dependency exclusions survive scene proxies and exact tone samples.
 # v29: absolute prior diagnostics use the same coding scale as the noise model.
-PREVIEW_CACHE_VERSION = 30
+PREVIEW_CACHE_VERSION = 31
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -452,6 +452,10 @@ def _analysis_from_json(data: dict[str, Any]) -> Analysis:
         model["channel_variance"] = {
             str(label): tuple(float(value) for value in coefficients)
             for label, coefficients in (model.get("channel_variance") or {}).items()
+        }
+        model["phase_variance"] = {
+            str(label): tuple(float(value) for value in coefficients)
+            for label, coefficients in (model.get("phase_variance") or {}).items()
         }
         restored["noise_model"] = NoiseModel(**model)
     return Analysis(**restored)

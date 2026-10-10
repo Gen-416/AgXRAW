@@ -302,7 +302,8 @@ def import_csv(
                 f"{path.name}: no saturated frames to infer the clip level "
                 "from; pass --white explicitly"
             )
-    fit = fit_ptc(g1_mean, g1_std, black_g1, white)
+    from .calibration_ptc import fit_channel
+    fit = fit_channel(parsed["header"], rows, "G1", black_g1, white)
     from .readout import collect_fields
 
     header = parsed["header"]
@@ -326,8 +327,10 @@ def import_csv(
         "geometry": geometry,
         "acquisition_contract": acquisition_contract,
         **readout_fields,
-        "noise_aperture": "single-frame spatial std (includes PRNU; fit "
-                          "restricted to the shot-noise decades)",
+        "noise_aperture": ("paired-frame stored temporal variance (difference variance / 2; "
+                           "declared sigma clipping undone; quantisation retained)"
+                           if fit.get("variance_domain") else
+                           "single-frame spatial std (includes PRNU; fit restricted to the shot-noise decades)"),
         "source": {
             "kind": "JPTC/2 first-party measurement",
             "file": path.name,
@@ -382,7 +385,9 @@ def read_dark(path: Path) -> tuple[dict, dict]:
         raise ValueError("AdcStep must be nonnegative and finite")
     per_iso: dict[int, dict] = {}
     phase_samples: dict[int, dict] = {}
-    greens_present = any(int(r["ColorIndex"]) in GREEN_INDICES for r in rows)
+    description = header.get("CfaPattern", "").strip().upper()
+    green_indices = {i for i, c in enumerate(description) if c == "G"} if description else GREEN_INDICES
+    greens_present = any(int(r["ColorIndex"]) in green_indices for r in rows)
     for r in rows:
         iso = int(r["ISO"])
         if iso <= 0 or int(r["ColorIndex"]) not in range(4):
@@ -419,7 +424,7 @@ def read_dark(path: Path) -> tuple[dict, dict]:
         phase["quant_frac"].append(qfrac)
         # Preserve every measured phase before forming the legacy green
         # summary. Gain levels must subtract their own phase's black offset.
-        if greens_present and int(r["ColorIndex"]) not in GREEN_INDICES:
+        if greens_present and int(r["ColorIndex"]) not in green_indices:
             continue
         d = per_iso.setdefault(iso, {"bl": [], "rn": [], "row": [], "col": [], "tot": [], "qfrac": []})
         d["bl"].append(bl)
@@ -433,7 +438,7 @@ def read_dark(path: Path) -> tuple[dict, dict]:
     for iso, d in per_iso.items():
         rns = [v for v in d["rn"] if v is not None]
         out[iso] = {"bl": float(np.mean(d["bl"])),
-                    "rn_dn": float(np.mean(rns)) if len(rns) == len(d["rn"]) else None,
+                    "rn_dn": float(np.sqrt(np.mean(np.square(rns)))) if len(rns) == len(d["rn"]) else None,
                     "quant_frac": float(np.mean(d["qfrac"])),
                     "row_var": float(np.mean(d["row"])) if d["row"] else None,
                     "col_var": float(np.mean(d["col"])) if d["col"] else None,
@@ -441,9 +446,14 @@ def read_dark(path: Path) -> tuple[dict, dict]:
         out[iso]["phases"] = {}
         for key, phase in phase_samples[iso].items():
             item = {"channel": phase["channel"], "color_index": phase["color_index"]}
+            if description:
+                if phase["color_index"] >= len(description):
+                    raise ValueError("dark ColorIndex is outside CfaPattern colour description")
+                item.update(color_desc=description, color=description[phase["color_index"]])
             for name in ("bl", "rn_dn", "total_var", "quant_frac"):
                 values = phase[name]
-                item[name] = None if any(v is None for v in values) else float(np.mean(values))
+                item[name] = None if any(v is None for v in values) else float(
+                    np.sqrt(np.mean(np.square(values))) if name == "rn_dn" else np.mean(values))
             item["unresolved"] = item["rn_dn"] is None
             out[iso]["phases"][key] = item
     return header, out
@@ -516,9 +526,11 @@ def read_isogain(path: Path, dark: dict, *, return_diagnostics=False, anchor_iso
     """
     header, rows = _parse_rows(path)
     samples, rejected = [], []
-    greens_present = any(int(r["ColorIndex"]) in GREEN_INDICES for r in rows)
+    description = header.get("CfaPattern", "").strip().upper()
+    green_indices = {i for i, c in enumerate(description) if c == "G"} if description else GREEN_INDICES
+    greens_present = any(int(r["ColorIndex"]) in green_indices for r in rows)
     for index, r in enumerate(rows):
-        if greens_present and int(r["ColorIndex"]) not in GREEN_INDICES:
+        if greens_present and int(r["ColorIndex"]) not in green_indices:
             continue
         if (not all(math.isfinite(float(r[k])) for k in ("ClipFrac", "ShutterSec", "Mean"))
                 or not 0 <= float(r["ClipFrac"]) <= 1 or float(r["ShutterSec"]) <= 0):
@@ -595,7 +607,7 @@ def read_isogain(path: Path, dark: dict, *, return_diagnostics=False, anchor_iso
     return (rel, diagnostics) if return_diagnostics else rel
 
 def read_whiteness(path: Path, lo=(0.05, 0.20), hi=(0.35, 0.499), *,
-                   phase_mapping=None, return_details=False) -> dict:
+                   phase_mapping=None, return_details=False, axis=None, scalar_rows=()) -> dict:
     """Measured per-position ratios, with colour selection only when mapped.
 
     The scalar compatibility result selects the worst departure from one;
@@ -621,34 +633,18 @@ def read_whiteness(path: Path, lo=(0.05, 0.20), hi=(0.35, 0.499), *,
             for x, ratio in curves.get(phase, ()):
                 out.setdefault(round(2 ** x), []).append(ratio)
     summary = {iso: float(conservative_ratio(v)) for iso, v in sorted(out.items())}
-    return {"ratios_log2iso": curves, "summary": summary} if return_details else summary
+    if not return_details:
+        return summary
+    result = {"ratios_log2iso": curves, "summary": summary}
+    if axis is not None:
+        from .noise_spectrum import complete_axis_spectrum
+        result["complete"] = complete_axis_spectrum(spectrum_header, rows, axis, scalar_rows=scalar_rows)
+    return result
 
 def ptc_anchor(set_dir: Path, dark: dict) -> tuple[int, dict] | None:
-    cands = sorted(p for p in set_dir.glob("*ptc-iso*.csv")
-                   if "unusable" not in p.name)
-    if not cands:
-        return None
-    path = cands[0]
-    iso = int("".join(ch for ch in path.stem.split("iso")[1] if ch.isdigit()))
-    header, rows = _parse_rows(path)
-    g1_mean = np.asarray([float(r["G1_Mean"]) for r in rows])
-    g1_std = np.asarray([float(r["G1_Std"]) for r in rows])
-    if not np.all(np.isfinite(g1_mean)) or not np.all(np.isfinite(g1_std)) or np.any(g1_std < 0):
-        raise ValueError("PTC statistics must be finite and standard deviations nonnegative")
-    black = None
-    raw_bl = header.get("BlackLevel", "")
-    vals = [v for v in raw_bl.split(",") if v.strip()]
-    if len(vals) >= 2:
-        black = float(vals[1])
-    elif iso in dark:
-        # the collect design keeps the black level in the dark set
-        black = dark[iso]["bl"]
-    if black is None:
-        return None
-    white = infer_white(g1_mean, g1_std)
-    if white is None:
-        return None
-    return iso, fit_ptc(g1_mean, g1_std, black, white)
+    from .calibration_ptc import read_anchors
+    record = next((r for r in read_anchors(set_dir, dark) if r["status"] == "usable"), None)
+    return (record["iso"], record["fit"]) if record else None
 
 def _anchor_evidence(a_iso: int, fit: dict) -> dict:
     """Complete estimator evidence for the anchor (review P2-2): all three
@@ -661,7 +657,11 @@ def _anchor_evidence(a_iso: int, fit: dict) -> dict:
             "fwc_model_spread_e", "fwc_semantics",
             "last_unsaturated_signal_e", "prnu", "prnu_quadratic_fit",
             "fit_relative_rms", "fit_relative_rms_alternatives",
-            "fit_points", "fit_points_excluded", "quality")
+            "fit_points", "fit_points_excluded", "quality", "variance_domain",
+            "difference_variance_divisor", "temporal_variance_source", "temporal_fallback_reason",
+            "pair_drift_limit_relative", "pair_drift_rejected", "gain_fit_standard_error",
+            "gain_fit_interval_95", "gain_fit_interval_status", "gain_fit_interval_semantics",
+            "fit_uncertainty_semantics", "spatial_crosscheck", "spatial_temporal_gain_disagreement_relative")
     out = {"iso": a_iso}
     out.update({k: fit.get(k) for k in keys})
     return out
@@ -804,6 +804,9 @@ def build(set_dir: Path, meta: dict | None) -> dict:
                 "color_index": phase["color_index"], "black_dn_log2iso": [],
                 "read_noise_dn_log2iso": [], "stored_dark_variance_dn2_log2iso": [],
                 "read_noise_unresolved_isos": []})
+            for identity in ("color_desc", "color"):
+                if identity in phase:
+                    product[identity] = phase[identity]
             if product["color_index"] != phase["color_index"]:
                 raise ValueError("dark CFA colour identity changes across ISO")
             x = math.log2(iso)
@@ -814,77 +817,64 @@ def build(set_dir: Path, meta: dict | None) -> dict:
             else:
                 product["read_noise_dn_log2iso"].append([x, phase["rn_dn"]])
     entry["phase_calibration"] = phase_products
-    anchor = ptc_anchor(set_dir, dark)
-    ptc_file = next((c for c in sorted(set_dir.glob("*ptc-iso*.csv"))
-                     if "unusable" not in c.name), None)
-    if ptc_file is not None:
-        input_hashes[ptc_file.name] = _sha256(ptc_file)
-    if anchor is not None and not rel:
-        a_iso, fit = anchor
-        entry["source"]["formats"].append("JPTC/2 (ptc anchor)")
+    from .calibration_ptc import read_anchors, anchor_gain_graph, gain_jumps
+    records = read_anchors(set_dir, dark)
+    for record in records:
+        input_hashes[record["file"]] = record["sha256"]
+    entry["ptc_anchors"] = records
+    components = entry.get("gain_ladder_diagnostics", {}).get("components", [])
+    primary, gain_curve, intervals, conflicts = anchor_gain_graph(records, components)
+    entry["gain_support_intervals"] = [list(i) for i in intervals]
+    entry["ptc_anchor_diagnostics"] = {
+        "weight_semantics": "equal independent anchor log-scale weights; fit uncertainty is conditional only",
+        "conflicts": conflicts,
+        "unanchored_components": [c["isos"] for c in components if not c.get("anchored")],
+    }
+    if gain_path:
+        entry["source"]["formats"].append("JPTC-ISOGAIN/1")
+    if primary is not None:
+        a_iso, fit = primary["iso"], primary["fit"]
+        entry["source"]["formats"].append("JPTC/2 (all qualified ptc anchors)")
         entry["ptc_anchor"] = _anchor_evidence(a_iso, fit)
-        entry["unity_gain_ev"] = round(math.log2(a_iso * fit["gain_e_per_dn"]), 4)
-        entry["fwc_e"] = fit["fwc_e"]
-        entry["fwc_model_spread_e"] = fit["fwc_model_spread_e"]
-        if a_iso in dark and dark[a_iso]["rn_dn"] is not None:
-            entry["read_noise_log2iso_log2e"] = [
-                [math.log2(a_iso),
-                 math.log2(max(dark[a_iso]["rn_dn"] * fit["gain_e_per_dn"], 1e-6))]]
-    if rel and anchor is not None:
-        entry["source"]["formats"] += ["JPTC-ISOGAIN/1", "JPTC/2 (ptc anchor)"]
-        a_iso, fit = anchor
-        if a_iso not in rel:
-            # anchor ISO missing from the gain ladder: monotone-cubic
-            # interpolation in log-log; INTERPOLATION ONLY — an anchor
-            # outside the ladder domain is rejected rather than silently
-            # extrapolated (external review 4.7)
-            if not (min(rel) <= a_iso <= max(rel)):
-                raise SystemExit(
-                    f"{set_dir.name}: PTC anchor ISO {a_iso} outside the "
-                    f"gain-ladder domain [{min(rel)}, {max(rel)}]")
-            xs = np.log2(np.asarray(sorted(rel)))
-            ys = np.log2(np.asarray([rel[i] for i in sorted(rel)]))
-            rel_at_anchor = float(2.0 ** _pchip(xs, ys, math.log2(a_iso)))
-        else:
-            rel_at_anchor = rel[a_iso]
-        scale = fit["gain_e_per_dn"] / rel_at_anchor
-        gain_curve = {iso: r * scale for iso, r in rel.items()}
-        entry["ptc_anchor"] = _anchor_evidence(a_iso, fit)
-        entry["gain_log2iso_log2epd"] = [
-            [math.log2(i), math.log2(g)] for i, g in gain_curve.items()]
+        if conflicts:
+            entry["ptc_anchor"]["quality"] = "conflicting-anchors"
+        entry["gain_log2iso_log2epd"] = [[math.log2(i), math.log2(g)] for i,g in gain_curve.items()]
         entry["read_noise_log2iso_log2e"] = [
             [math.log2(i), math.log2(dark[i]["rn_dn"] * gain_curve[i])]
-            for i in sorted(gain_curve)
-            if i in dark and dark[i]["rn_dn"] is not None
+            for i in sorted(gain_curve) if i in dark and dark[i]["rn_dn"] is not None
             and dark[i]["rn_dn"] * gain_curve[i] > 0]
-        # Gain-jump candidates: gain*iso is constant under the reciprocal
-        # law, so the ladder is expected to sit on flat plateaus.
-        # Extended-ISO segments make u rise from the very start (flat gain),
-        # so an upward jump (>15%) only counts when both neighbours are
-        # plateau-like (adjacent ratio < 1.08 on each side). A
-        # plateau-to-plateau jump is EITHER a conversion-gain switch OR the
-        # extended-to-native-base boundary; the ladder alone cannot tell
-        # them apart, so the field claims neither — it lists every jump and
-        # leaves the semantics to curation (声明失实才是缺陷).
-        isos = sorted(gain_curve)
-        u = [gain_curve[i] * i for i in isos]
-        if any(v <= 0 for v in u):
-            raise SystemExit(f"{set_dir.name}: non-positive gain*iso")
-
-        def _flat(a, b):
-            # symmetric plateau test (external review 4.6): a one-sided
-            # ratio<1.08 lets a 50% DROP count as flat
-            return abs(math.log(b / a)) < math.log(1.08)
-
-        jumps = []
-        for k in range(2, len(u) - 1):
-            if (_flat(u[k - 2], u[k - 1]) and _flat(u[k], u[k + 1])
-                    and u[k] / u[k - 1] > 1.15):
-                jumps.append(isos[k])
-        entry["gain_jump_isos"] = jumps
-        entry["unity_gain_ev"] = round(math.log2(a_iso * fit["gain_e_per_dn"]), 4)
+        entry["gain_jump_isos"] = sorted({j for c in components for j in gain_jumps(c["relative_gain"])})
+        entry["unity_gain_ev"] = math.log2(a_iso * fit["gain_e_per_dn"])
         entry["fwc_e"] = fit["fwc_e"]
         entry["fwc_model_spread_e"] = fit["fwc_model_spread_e"]
+        # Per-position gain is measured only where independently fitted PTC
+        # columns can be mapped to the actual collector CFA layout. Never
+        # clone the scalar green anchor into the other colour phases.
+        for key, product in phase_products.items():
+            measured = [(r["iso"], f) for r in records if r["status"] == "usable"
+                for f in r.get("phase_fits", {}).values()
+                if f.get("phase") == key and f.get("quality") == "ok"]
+            if not measured:
+                continue
+            ranges = [f["white_level_used"]-f["black_level_used"] for _,f in measured]
+            if max(ranges)/min(ranges)-1. > .05:
+                product["gain_unavailable_reason"] = "phase DN ranges differ across anchors"
+                continue
+            values = {}
+            for i,f in measured:
+                values.setdefault(i,[]).append(f["gain_e_per_dn"])
+            if any(max(v)/min(v)-1. > .05 for v in values.values()):
+                product["gain_unavailable_reason"] = "conflicting same-ISO phase PTC anchors"
+                continue
+            product.update(gain_log2iso_log2epd=[[math.log2(i),float(np.mean(np.log2(v)))]
+                    for i,v in sorted(values.items())],
+                reference_dn_range=float(np.mean(ranges)),
+                gain_provenance="independent-phase-ptc",
+                fit_quality="ok", uncertainty="conditional fit error only; see ptc_anchors phase_fits; acquisition uncertainty not quantified",
+                gain_support_intervals=[[i,i] for i in sorted(values)])
+            error = [(i,f["gain_fit_standard_error"]) for i,f in measured if f.get("gain_fit_standard_error") is not None]
+            if len(error) == len(values):
+                product["gain_standard_error_e_per_dn_log2iso"] = [[math.log2(i),e] for i,e in sorted(error)]
     from .noise_spectrum import SCHEMA, dark_phase_mapping
     mapping_header, mapping_rows = _parse_rows(dark_path)
     spectrum = {"schema": SCHEMA, "mapping": dark_phase_mapping(mapping_header, mapping_rows), "axes": {}}
@@ -892,12 +882,14 @@ def build(set_dir: Path, meta: dict | None) -> dict:
         sp = _find(set_dir, f"spectrum-{ax}.csv", f"*spectrum-{ax}.csv")
         if sp is not None:
             input_hashes[sp.name] = _sha256(sp)
-            detail = read_whiteness(sp, phase_mapping=spectrum["mapping"], return_details=True)
+            detail = read_whiteness(sp, phase_mapping=spectrum["mapping"], return_details=True,
+                                   axis=ax, scalar_rows=mapping_rows)
             spectrum["axes"][ax] = {
                 "ratios_log2iso": detail["ratios_log2iso"],
                 "frequency_unit": "cycles/channel-plane-pixel",
                 "ratio_bands": {"mid": [.05, .20], "high": [.35, .499]},
                 "source_file": sp.name, "source_sha256": input_hashes[sp.name],
+                **detail.get("complete", {}),
             }
             w = detail["summary"]
             if w:
@@ -1132,6 +1124,15 @@ def _validated_prior(item: dict) -> dict:
              "unverified_readout_fields": {k: item[k] for k in ("compression", "geometry")
                                            if item.get(k) not in (None, [], [None, None], ["", ""])}}
     entry.update(stored_dark_variance_fields(item))
+    entry.update(phase_calibration_fields(item))
+    products = entry.get("phase_calibration") or {}
+    mapped = [p for p in products.values() if p.get("channel") and p.get("color_desc")]
+    if mapped:
+        entry["noise_model_channels"] = ("partial-independent-phase-gain" if any(
+            p.get("gain_provenance") == "independent-phase-ptc" for p in mapped)
+            else "phase-temporal-variance/shared-gain")
+    elif products:
+        entry["noise_model_channels"] = "unmapped-phase-measurements/scalar-green"
     if item.get("noise_spectrum") is not None:
         from .noise_spectrum import validate_spectrum
         entry["noise_spectrum"] = validate_spectrum(item["noise_spectrum"])
@@ -1172,6 +1173,11 @@ def _validated_prior(item: dict) -> dict:
             if not gains:
                 gains = [[math.log2(iso), math.log2(gain)]]
         entry["gain_log2iso_log2epd"] = gains
+        if item.get("gain_support_intervals") is not None:
+            entry["gain_support_intervals"] = _support_intervals(item["gain_support_intervals"])
+        for provenance in ("ptc_anchors", "ptc_anchor_diagnostics", "gain_ladder_diagnostics"):
+            if item.get(provenance) is not None:
+                entry[provenance] = item[provenance]
         entry["read_noise_log2iso_log2e"] = _curve(item.get("read_noise_log2iso_log2e"), "read-noise curve")
         entry["read_noise_dn_log2iso"] = _curve(item.get("read_noise_dn_log2iso"), "DN read-noise curve", logarithmic=False)
         entry["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
@@ -1188,7 +1194,7 @@ def _validated_prior(item: dict) -> dict:
             entry["reference_dn_range"] = entry["fwc_e"] / gain
             entry["unity_gain_ev"] = math.log2(iso*gain)
             at_anchor = curve_value(entry, "gain_log2iso_log2epd", iso)
-            if at_anchor is None or abs(2**at_anchor/gain - 1) > .05:
+            if entry["quality"].get("status") != "conflicting-anchors" and (at_anchor is None or abs(2**at_anchor/gain - 1) > .05):
                 raise ValueError("PTC anchor disagrees with measured gain curve")
         for axis in ("h", "v"):
             key = f"noise_whiteness_{axis}_log2iso"
@@ -1225,6 +1231,82 @@ def _validated_prior(item: dict) -> dict:
     if item.get("fwc_model_spread_e") is not None:
         entry["fwc_model_spread_e"] = _number(item["fwc_model_spread_e"], "fwc model spread", positive=False)
     return entry
+
+
+def phase_calibration_fields(item: dict) -> dict:
+    """Validate measured phase identity and units before runtime use."""
+    products = item.get("phase_calibration")
+    if products is None:
+        return {}
+    if not isinstance(products, dict):
+        raise ValueError("phase_calibration must be an object")
+    out = {}
+    for key, record in products.items():
+        if not isinstance(record, dict) or not isinstance(key, str):
+            raise ValueError("phase calibration must contain named objects")
+        cid = record.get("color_index")
+        if type(cid) is not int or cid not in range(4):
+            raise ValueError("phase calibration ColorIndex must be an integer 0..3")
+        channel = record.get("channel")
+        if channel not in (None, "C00", "C01", "C10", "C11") or (channel and key != channel):
+            raise ValueError("phase calibration channel must match its Cxx position")
+        if channel is None and key != f"index:{cid}":
+            raise ValueError("legacy phase calibration key must match its ColorIndex")
+        clean = {"channel": channel, "color_index": cid}
+        description = record.get("color_desc")
+        if description is not None:
+            if (not isinstance(description, str) or not 1 <= len(description) <= 4
+                    or not description.isalpha() or cid >= len(description)
+                    or record.get("color") != description[cid]):
+                raise ValueError("phase calibration colour disagrees with color_desc")
+            clean.update(color_desc=description, color=record["color"])
+        elif record.get("color") is not None:
+            raise ValueError("phase calibration colour needs its original color_desc")
+        for curve in ("black_dn_log2iso", "read_noise_dn_log2iso", "stored_dark_variance_dn2_log2iso"):
+            clean[curve] = _curve(record.get(curve), f"phase {key} {curve}",
+                                  logarithmic=False, allow_zero=True)
+        clean["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
+            record.get("read_noise_unresolved_isos"), clean["read_noise_dn_log2iso"])
+        if record.get("gain_log2iso_log2epd") is not None:
+            clean["gain_log2iso_log2epd"] = _curve(record["gain_log2iso_log2epd"], f"phase {key} gain")
+            clean["reference_dn_range"] = _number(record.get("reference_dn_range"), f"phase {key} DN range")
+            if record.get("gain_provenance") != "independent-phase-ptc":
+                raise ValueError("phase gain must have independent-phase-ptc provenance")
+            clean["gain_provenance"] = "independent-phase-ptc"
+            if record.get("gain_support_intervals") is not None:
+                clean["gain_support_intervals"] = _support_intervals(record["gain_support_intervals"])
+        for evidence in ("uncertainty", "fit_quality", "gain_unavailable_reason"):
+            if record.get(evidence) is not None:
+                value = record[evidence]
+                if not isinstance(value, str) or not value or len(value) > 2048:
+                    raise ValueError(f"phase {evidence} must be bounded nonempty text")
+                clean[evidence] = value
+        if record.get("gain_standard_error_e_per_dn_log2iso") is not None:
+            clean["gain_standard_error_e_per_dn_log2iso"] = _curve(
+                record["gain_standard_error_e_per_dn_log2iso"], f"phase {key} gain standard error",
+                logarithmic=False, allow_zero=True)
+        for x, physical in clean["read_noise_dn_log2iso"]:
+            stored = next((v for px,v in clean["stored_dark_variance_dn2_log2iso"] if abs(px-x)<1e-7), None)
+            if stored is not None and physical*physical > stored*1.05 + 1e-12:
+                raise ValueError("phase stored variance is below physical read-noise variance")
+        out[key] = clean
+    return {"phase_calibration": out}
+
+
+def _support_intervals(value):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("gain_support_intervals must be a list")
+    result = []
+    for interval in value:
+        if not isinstance(interval, (list, tuple)) or len(interval) != 2:
+            raise ValueError("gain support interval must contain two ISO values")
+        lo, hi = (_number(v, "gain support ISO") for v in interval)
+        if lo > hi or hi > 2**24:
+            raise ValueError("invalid gain support ISO domain")
+        result.append([lo, hi])
+    return sorted(result)
 
 
 def stored_dark_variance_fields(item: dict) -> dict:
@@ -1335,6 +1417,9 @@ def curve_value(entry: dict, key: str, iso: float) -> float | None:
     curve = entry.get(key) or []
     if not curve or not iso or iso <= 0 or not math.isfinite(float(iso)):
         return None
+    if key in ("gain_log2iso_log2epd", "read_noise_log2iso_log2e") and "gain_support_intervals" in entry:
+        if not any(lo-1e-7 <= iso <= hi+1e-7 for lo,hi in entry["gain_support_intervals"]):
+            return None
     if key in ("read_noise_log2iso_log2e", "read_noise_dn_log2iso") and read_noise_issue(entry, iso, key):
         return None
     x = math.log2(iso)

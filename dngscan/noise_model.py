@@ -27,6 +27,8 @@ class NoiseModel:
     noise_reduction_status: str = "absent"
     fallback_source: str | None = None
     fallback_reason: str | None = None
+    phase_variance: dict[str, tuple[float, float]] = field(default_factory=dict)
+    phase_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def coefficients(self, label: str) -> tuple[float, float] | None:
         if self.status != "valid" or self.domain != "normalized-raw":
@@ -40,6 +42,92 @@ class NoiseModel:
 def _labels(bundle, ids):
     from .analysis import channel_labels
     return channel_labels(bundle.color_desc, ids)
+
+
+def _phase_coefficients(bundle, prior, iso, scales, fallback):
+    """Retain independently measured phase variance without inventing gain.
+
+    Collect's stored variance includes the declared ADC contribution. A
+    phase lacking an independently fitted gain keeps the scalar shot-noise
+    ruler, explicitly labelled; its independently measured temporal variance
+    can still replace the scalar constant term in the same reference DN.
+    """
+    from .calibration import curve_value, read_noise_issue
+    from . import priors
+    from .raw_units import normalized_raw_span
+
+    products = prior.get("phase_calibration") or {}
+    if not products:
+        return {}, {}, fallback
+    pattern = np.asarray(getattr(bundle, "raw_pattern", ()))
+    if pattern.shape != (2, 2):
+        return {}, {"scope": {"status": "unsupported-cfa"}}, fallback
+    labels = _labels(bundle, sorted(set(map(int, pattern.flat))))
+    phases, metadata, per_label = {}, {}, {}
+    shared_gain = priors.gain_e_per_dn(prior, iso)
+    for index, cid in enumerate(pattern.flat):
+        key = f"C{index // 2}{index % 2}"
+        cid = int(cid); label = labels[cid]
+        product = products.get(key)
+        if product is None:
+            matches = [p for p in products.values() if p.get("channel") is None and p.get("color_index") == cid]
+            product = matches[0] if len(matches) == 1 else None
+        status = {"color_index": cid, "label": label, "status": "scalar-fallback"}
+        metadata[key] = status
+        if not product:
+            status["reason"] = "phase-measurement-unavailable"
+            continue
+        if product.get("color_index") != cid or (product.get("color_desc") is not None
+                                                  and product["color_desc"] != bundle.color_desc):
+            status["reason"] = "phase-identity-mismatch"
+            continue
+        phase_prior = dict(product, gain_jump_isos=prior.get("gain_jump_isos", []))
+        issue = read_noise_issue(phase_prior, iso)
+        if issue:
+            status["reason"] = issue
+            continue
+        stored = curve_value(phase_prior, "stored_dark_variance_dn2_log2iso", iso)
+        if stored is None or not math.isfinite(stored) or stored < 0:
+            status["reason"] = "phase-stored-variance-unavailable"
+            continue
+        scale = scales[label]
+        a = fallback[label][0]
+        measured_gain = shared_gain
+        gain = curve_value(phase_prior, "gain_log2iso_log2epd", iso)
+        if gain is not None:
+            measured_gain = 2. ** gain
+            reference = product.get("reference_dn_range")
+            span = normalized_raw_span(bundle, cid)
+            if reference is None or not math.isfinite(reference) or reference <= 0:
+                status["reason"] = "phase-gain-dn-reference-unavailable"
+                continue
+            ratio = span / reference
+            power = round(math.log2(ratio))
+            if abs(math.log2(ratio) - power) > math.log2(1.05):
+                status["reason"] = "phase-gain-dn-scale-mismatch"
+                continue
+            scale = measured_gain * span / (2. ** power)
+            a = 1. / scale
+            status["gain_source"] = "independent-phase-fit"
+        else:
+            status["gain_source"] = "shared-scalar-approximation"
+        b = stored * (measured_gain / scale) ** 2
+        if not all(math.isfinite(x) and x >= 0 for x in (a, b)) or a == 0:
+            status["reason"] = "nonfinite-phase-model"
+            continue
+        phases[key] = (a, b)
+        status.update(status="measured-phase-temporal-variance", variance_domain="stored-reference-dn2",
+                      stored_variance_dn2=stored,
+                      uncertainty=product.get("uncertainty") or "not-quantified")
+        per_label.setdefault(label, []).append((a, b))
+    channels = dict(fallback)
+    # Multiple phases sharing a label describe the average physical sensel
+    # distribution here; the coarse renderer below uses separate squared
+    # averaging weights, rather than averaging their standard deviations.
+    for label, values in per_label.items():
+        if len(values) == sum(labels[int(cid)] == label for cid in pattern.flat):
+            channels[label] = tuple(map(float, np.mean(values, axis=0)))
+    return phases, metadata, channels
 
 
 def _prior_signal_scales(bundle, fullwell, prior, iso):
@@ -77,15 +165,15 @@ def _prior_spectrum(prior, iso):
         mapping = measured.get("mapping", {})
         if mapping.get("status") in ("bayer", "single-colour"):
             for axis, record in measured.get("axes", {}).items():
-                qualified_axes.add(axis)
                 for phase, curve in record.get("ratios_log2iso", {}).items():
                     colour = mapping.get("phases", {}).get(phase, {}).get("color")
-                    if colour not in "RGB" and mapping["status"] != "single-colour":
+                    if colour not in ("R", "G", "B") and mapping["status"] != "single-colour":
                         continue
                     ratio = curve_value({"curve": curve,
                                          "gain_jump_isos": prior.get("gain_jump_isos", [])}, "curve", iso)
                     if ratio is not None:
                         spectral_ratios[f"{axis}:{phase}"] = float(ratio)
+                        qualified_axes.add(axis)
     for axis in ("h", "v"):
         if axis in qualified_axes:
             continue
@@ -174,8 +262,15 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
                                for a, b in coefficients.values()):
         return replace(model, status="unresolved", reason="nonfinite-noise-model-coefficients",
                        approximation=approximation)
+    try:
+        phases, phase_metadata, coefficients = _phase_coefficients(bundle, prior, iso, scales, coefficients)
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return replace(model, status="unresolved", reason="invalid-phase-calibration")
+    if phases:
+        approximation += "; measured-phase-temporal-variance; phase-gain-source-declared-separately"
     return replace(model, status="valid", reason="matched-shot-read-model",
-                   channel_variance=coefficients, approximation=approximation)
+                   channel_variance=coefficients, approximation=approximation,
+                   phase_variance=phases, phase_metadata=phase_metadata)
 
 
 def _file_model(bundle) -> NoiseModel:
