@@ -467,3 +467,64 @@ Sony 实片同时暴露了一个旧尺度入口：LibRaw 全局 `white_level=390
 `DNGSCAN_FAST=0` 的 18 个定向模块另有 223 项：222 通过、1 跳过、0 失败，耗时
 1.815 秒。两组有重叠，不能相加为独立总数；跳过项不计为通过。最终未知相机完整
 CLI 编码／回读／报告退出码为 0，GUI JavaScript 语法检查通过。
+
+## 18. iPhone Bayer DNG 与 ideal-image 验收（基准 38f5bc7）
+
+本轮补充用户新提供的五张 iPhone RAW 和本地 `ideal-image` 合成样张，运行代码以
+`38f5bc7` 为基准，没有发现需要新增生产修复的问题，也没有放宽交付门禁。这里只
+扩展验收证据，不能用通过样张代替全部机型、解码模式或镜头校正的认证。
+已按实际 CFA 标签更正教程中的 standard RAW／ProRAW 分类及旧暗角指令说明。
+
+五张 iPhone 文件均为 Apple iPhone 16 Pro 的 BGGR CFA Bayer DNG，RAW IFD 为
+4224×3024，默认裁剪为 4032×3024；16-bit 存储中 BlackLevel 为 528、WhiteLevel 为
+4095，Compression 为 7。它们不是 Linear RGB ProRAW，不能仅由文件名认定捕获或
+机内处理完全未经干预。ISO 分别为 500、200、800、80、200，BaselineExposure 从
++0.02748 到 +1.85261 EV。全部具有合法 DNG NoiseProfile；`NoiseReductionApplied`
+的 0/0 正确保留为 unknown。因此，这批实片证明的是**无个人标定但有文件噪声声明**
+的成像，不是完全无噪声模型的回退。电子域增益、读噪与个人机身标定仍不声明。
+
+每张均实际执行 LibRaw 和 Apple RAW `9.dng` 的原尺寸默认 AgX、自动曝光与 JPEG
+97/420 导出。LibRaw 执行文件内 `FixVignetteRadial`，全尺寸解拜耳使用已验证截断
+支撑的 AHD。Apple 场景路径保留 LibRaw 证据，HDR 可靠性来源为 `sensor-reference`；
+没有发生旧版解码器或 LibRaw 场景回退，也没有落入无传感器证据的 1 EV 图像统计
+回退。两解码器的中位曝光分析接近，但这不能证明其纹理、噪声或成像结果相同；
+Apple 输出较小也不能单独说明压缩效率或画质更好。
+
+完整 CLI 实际编码／回读／报告共 16 次，退出码均为 0：五次 LibRaw JPEG、五次
+Apple JPEG、一次额外开启 NR 的 LibRaw JPEG、三次 SDR 10-bit/444 HEIF，以及两次
+HDR 10-bit/444 HEIF。JPEG 均低于 20,000,000 bytes；这只是本批文件的结果。三次 SDR
+HEIF 为 ISO 800 的 LibRaw/Apple 双路径和 ISO 80 的 LibRaw 路径，均保留 10-bit
+量化及 float32 回读。HDR 使用 ISO 200、BaselineExposure +1.85261 EV 的一张图：
+LibRaw 与 Apple 实际母版范围分别为 +1.86440768 和 +1.93872468 EV，文件声明与母版
+差各小于 0.0003 EV，SDR 主图与展开 HDR 均通过现有回读门禁。其文件分别为
+23,831,373 和 4,846,278 bytes，未将 archive 的高质量文件强行压到 20 MB。
+
+文件噪声模型 valid 不等于可选降噪已经适用。LibRaw 的暗角／点操作路径尚无对应
+噪声方差传播，Apple 解码传递也仍不透明；ISO 800 显式 NR=1 均跳过。额外 LibRaw
+NR=1 JPEG 与关闭 NR 的完整文件 SHA256 一致，验证了跳过没有静默修改像素。它是
+保护条件正确生效的证据，不能描述成 iPhone 降噪成功。
+
+`ideal-image` 的 A/B 是已知参数的合成 CFA，型号含 `ILCE-7RM2 synthetic ideal-sampled`
+后缀。两份原始文件均没有 ISO 或 NoiseProfile，没有误借真实 Sony 型号的先验；
+它们可直接覆盖通用无模型成像。真值工具在 NumPy 与严格 native 两路均为 7/7：
+黑电平和元数据白点正确，PTC 增益恢复 5.7134 e⁻/ADU，相对真值偏差约 0.20%；
+去量化读噪为 2.861 e⁻，相对 3 e⁻ 真值偏差约 4.6%。推导满阱检查与增益检查代数
+相关，不是另一份独立测量。原始 A/B 的完整和半尺寸 SDR/HDR 在两路均形成有限
+输出，模型降噪跳过，与关闭结果一致；成对 SDR 与独立 SDR 的差为 0。
+
+为了验收可用模型下的色度核，另在临时 B 副本声明真值 shot/read 方差和 ADC 量化
+方差，未改原始文件或场景样本。半尺寸近似传播下 NR 实际激活，两后端校正图最大
+绝对值约 0.001326。五组后端对照中 scene 严格一致，非线性 SDR 最大差不超过
+3.91×10⁻⁵，HDR 最大差不超过 1.65×10⁻⁵。使用同一曝光及 B 的 tone/color plan 与
+无噪声 A 比较，这一个固定噪声实现的全图色度 RMSE 从 0.002617232 变为 0.002612760，
+约改善 0.17%；天空渐变区域约改善 0.47%，人脸区域几乎不变。亮度 RMSE 基本不变。
+这是幅度很小、受这份合成信号与尺度约束的结果，不支持广泛降噪收益或全部纹理
+保真的结论。
+
+机器可读的源文件／输出哈希、逐项编码与 HDR 回读指标、真值和后端误差见
+[紧凑验收记录](../assets/delivery-quality/iphone-ideal-20261009.json)。本轮没有验证
+Linear RGB ProRAW、Apple 单独可读文件、其他 iPhone 机型或旧版本解码回退。原始
+RAW 与 ideal-image 文件未改，临时图片不提交仓库。本轮冻结回归计数保存在验收记录
+的 `validation` 字段：启用本地 ideal-image 资产、`DNGSCAN_FAST=1`
+运行 14 个定向模块共 135 项，134 通过、1 跳过、0 失败，耗时 42.776 秒。该组与
+上述真值及生产调用覆盖有重叠，不能相加为独立总数；跳过项不计为通过。
