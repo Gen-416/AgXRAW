@@ -1,0 +1,3059 @@
+{
+  "schema": "agxraw-sensor-precision-research-1",
+  "commit": "cbf9e4ca108d0c09b8f485f8116e8c8f1573f903",
+  "working_changes": [
+    " M dngscan/cbld.py",
+    " M dngscan/noise_spectrum.py",
+    " M docs/NOISE_CALIBRATION.zh-CN.md",
+    " M docs/README.md",
+    " M docs/reports/README.md",
+    " M tests/test_phase_noise_model.py",
+    " M tools/README.md",
+    "?? dngscan/sensor_research.py",
+    "?? dngscan/spectral_variance.py",
+    "?? docs/assets/delivery-quality/raw-failures-20261010.json",
+    "?? docs/assets/pipeline/sensor-precision-20261009.json",
+    "?? docs/reviews/CALIBRATION_RAW_PLAN_2026-10-09.zh-CN.md",
+    "?? docs/reviews/SENSOR_PRECISION_RESEARCH_2026-10-09.zh-CN.md",
+    "?? docs/reviews/SPECTRAL_VARIANCE_PROTOTYPE_2026-10-09.zh-CN.md",
+    "?? tests/test_complete_noise_spectrum.py",
+    "?? tests/test_sensor_research.py",
+    "?? tests/test_spectral_variance_prototype.py",
+    "?? tools/validate_raw_failures.py",
+    "?? tools/validate_sensor_precision.py"
+  ],
+  "research_source_sha256": {
+    "dngscan/sensor_research.py": "b8b6babff89f2ec42c5ec4f292268499aed84f894ecc22673a92d3f96e78b8ee",
+    "tools/validate_sensor_precision.py": "87f532a425bee29cbfccf36a2a2c1ecaa1e9dcc8ac68c039ec537333ed43bf05",
+    "dngscan/spatial_black.py": "1a7c54610d0fecc3b2b914ed5de2c2e250cb755f011254a082cf0fdbf47f8d58",
+    "dngscan/raw_io.py": "bad5d0b8b180d0e26cea33afac75dfdc25cb1945376d5fabc2e694dc4b110368"
+  },
+  "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.4",
+  "numpy": "2.5.0",
+  "command": "tools/validate_sensor_precision.py --size 512 --include-pipeline --output docs/assets/pipeline/sensor-precision-20261009.json",
+  "evidence_class": "synthetic and real-decoder synthetic DNG; no real personal calibration",
+  "C01_C02": {
+    "matrix": [
+      {
+        "black_fraction_dn": 0.0,
+        "signal_in_phase_sigmas": 0.0,
+        "signed_reference": {
+          "mean": -0.011363983154296875,
+          "variance": 21.519324612259,
+          "minimum": -26.154598825831727,
+          "negative_fraction": 0.5010566711425781,
+          "distinct_codes": 15636
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 1.78905132170008,
+          "variance": 7.491023328140413,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 64
+        },
+        "phase_mean_bias_dn": [
+          1.202520657244917,
+          1.6074041325598212,
+          1.9772408629056861,
+          2.4144955667070835
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.0,
+        "signal_in_phase_sigmas": 0.5,
+        "signed_reference": {
+          "mean": 2.2257957458496094,
+          "variance": 21.805332652110934,
+          "minimum": -24.071624266144795,
+          "negative_fraction": 0.3111305236816406,
+          "distinct_codes": 15635
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 3.11904998957415,
+          "variance": 12.493318813139599,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 73
+        },
+        "phase_mean_bias_dn": [
+          0.6007692348328708,
+          0.7799959291181666,
+          0.9930755602283088,
+          1.1991762507188173
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.0,
+        "signal_in_phase_sigmas": 1.0,
+        "signed_reference": {
+          "mean": 4.500194549560547,
+          "variance": 22.81056110576057,
+          "minimum": -19.863405088062677,
+          "negative_fraction": 0.159271240234375,
+          "distinct_codes": 15759
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 4.874792023694623,
+          "variance": 17.668630019773385,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 78
+        },
+        "phase_mean_bias_dn": [
+          0.2511497530126392,
+          0.32835546877851024,
+          0.41997114910436245,
+          0.4989135256407933
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.0,
+        "signal_in_phase_sigmas": 2.0,
+        "signed_reference": {
+          "mean": 9.001972198486328,
+          "variance": 26.680294331968998,
+          "minimum": -13.009784735812104,
+          "negative_fraction": 0.02394866943359375,
+          "distinct_codes": 16019
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 9.041512995817627,
+          "variance": 25.840017073093847,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 94
+        },
+        "phase_mean_bias_dn": [
+          0.02570149530906817,
+          0.035761469096431166,
+          0.04375924818302426,
+          0.05294097673667095
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.0,
+        "signal_in_phase_sigmas": 4.0,
+        "signed_reference": {
+          "mean": 18.004440307617188,
+          "variance": 41.59897488295273,
+          "minimum": -1.1326810176125264,
+          "negative_fraction": 4.1961669921875e-05,
+          "distinct_codes": 17263
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 18.004417624665294,
+          "variance": 41.59947439229639,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 126
+        },
+        "phase_mean_bias_dn": [
+          0.0001207612342563071,
+          -0.0002762346390790459,
+          0.00028429982937403067,
+          -0.00021955823212010115
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.25,
+        "signal_in_phase_sigmas": 0.0,
+        "signed_reference": {
+          "mean": 0.00614166259765625,
+          "variance": 21.460610486777203,
+          "minimum": -25.246477495107683,
+          "negative_fraction": 0.5221214294433594,
+          "distinct_codes": 14712
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 1.7983148231369557,
+          "variance": 7.513994748693243,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 65
+        },
+        "phase_mean_bias_dn": [
+          1.2065737303005388,
+          1.5959138577508347,
+          1.9782869885451233,
+          2.3879180655607004
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.25,
+        "signal_in_phase_sigmas": 0.5,
+        "signed_reference": {
+          "mean": 2.2493858337402344,
+          "variance": 21.845746927816965,
+          "minimum": -22.19168297455974,
+          "negative_fraction": 0.3306922912597656,
+          "distinct_codes": 14763
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 3.1426909589370906,
+          "variance": 12.52878833384752,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 71
+        },
+        "phase_mean_bias_dn": [
+          0.6052834827210458,
+          0.7798639471936255,
+          0.9940539069949644,
+          1.19401916387779
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.25,
+        "signal_in_phase_sigmas": 1.0,
+        "signed_reference": {
+          "mean": 4.509490966796875,
+          "variance": 22.831772152540687,
+          "minimum": -25.343542074363995,
+          "negative_fraction": 0.172698974609375,
+          "distinct_codes": 14820
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 4.887840884680095,
+          "variance": 17.636877332457363,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 76
+        },
+        "phase_mean_bias_dn": [
+          0.25174118566743403,
+          0.33762943411596186,
+          0.4248982687877706,
+          0.49913078296171515
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.25,
+        "signal_in_phase_sigmas": 2.0,
+        "signed_reference": {
+          "mean": 9.010540008544922,
+          "variance": 26.50676646444029,
+          "minimum": -13.388943248532314,
+          "negative_fraction": 0.02553558349609375,
+          "distinct_codes": 15089
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 9.048300519035038,
+          "variance": 25.697211985266005,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 94
+        },
+        "phase_mean_bias_dn": [
+          0.026398925918051392,
+          0.03290798507401665,
+          0.04034090576906418,
+          0.051394225199332004
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.25,
+        "signal_in_phase_sigmas": 4.0,
+        "signed_reference": {
+          "mean": 17.997982025146484,
+          "variance": 41.74966623834847,
+          "minimum": -3.248043052837602,
+          "negative_fraction": 5.340576171875e-05,
+          "distinct_codes": 16554
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 17.998084204611118,
+          "variance": 41.752580779494124,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 125
+        },
+        "phase_mean_bias_dn": [
+          -8.261030921752218e-05,
+          -7.725369661380279e-05,
+          0.0004321910584391208,
+          0.00013639080593194636
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.5,
+        "signal_in_phase_sigmas": 0.0,
+        "signed_reference": {
+          "mean": -0.007129669189453125,
+          "variance": 21.603540499702298,
+          "minimum": -27.400978473581176,
+          "negative_fraction": 0.4995079040527344,
+          "distinct_codes": 14788
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 1.801564390724271,
+          "variance": 7.511208254820913,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 66
+        },
+        "phase_mean_bias_dn": [
+          1.2144858305065285,
+          1.6102366588153225,
+          1.9906981401450146,
+          2.4193556101880316
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.5,
+        "signal_in_phase_sigmas": 0.5,
+        "signed_reference": {
+          "mean": 2.2502670288085938,
+          "variance": 21.777946839516442,
+          "minimum": -22.634246575342445,
+          "negative_fraction": 0.3088569641113281,
+          "distinct_codes": 14745
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 3.1441109120095447,
+          "variance": 12.480846910083354,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 72
+        },
+        "phase_mean_bias_dn": [
+          0.6128774103875079,
+          0.7974534558998736,
+          0.9947433369087234,
+          1.1703013296076996
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.5,
+        "signal_in_phase_sigmas": 1.0,
+        "signed_reference": {
+          "mean": 4.4864501953125,
+          "variance": 22.79501319100595,
+          "minimum": -19.593542074363995,
+          "negative_fraction": 0.15977859497070312,
+          "distinct_codes": 14787
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 4.86749889255907,
+          "variance": 17.608494247984577,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 79
+        },
+        "phase_mean_bias_dn": [
+          0.261334439821401,
+          0.3413730141204554,
+          0.42343211022306343,
+          0.49805522482135856
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.5,
+        "signal_in_phase_sigmas": 2.0,
+        "signed_reference": {
+          "mean": 9.016284942626953,
+          "variance": 26.670726637460223,
+          "minimum": -16.649902152641857,
+          "negative_fraction": 0.022396087646484375,
+          "distinct_codes": 15156
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 9.055334428423574,
+          "variance": 25.849209861393504,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 94
+        },
+        "phase_mean_bias_dn": [
+          0.024540771576937966,
+          0.035913718073599936,
+          0.043839385638834286,
+          0.0519040678971077
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.5,
+        "signal_in_phase_sigmas": 4.0,
+        "signed_reference": {
+          "mean": 18.00240707397461,
+          "variance": 41.51937668847502,
+          "minimum": -2.302348336594946,
+          "negative_fraction": 2.6702880859375e-05,
+          "distinct_codes": 16536
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 18.002253373055034,
+          "variance": 41.523869854651856,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 128
+        },
+        "phase_mean_bias_dn": [
+          -0.0007565011364665719,
+          0.0001938663114954519,
+          -0.00010599643202412,
+          5.3827578688201136e-05
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.75,
+        "signal_in_phase_sigmas": 0.0,
+        "signed_reference": {
+          "mean": -0.003681182861328125,
+          "variance": 21.573642344118433,
+          "minimum": -29.660371819960915,
+          "negative_fraction": 0.4750404357910156,
+          "distinct_codes": 14795
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 1.7970159174519744,
+          "variance": 7.513292104675855,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 61
+        },
+        "phase_mean_bias_dn": [
+          1.2016786735507425,
+          1.5928533167339434,
+          1.9938644329172157,
+          2.414391978051309
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.75,
+        "signal_in_phase_sigmas": 0.5,
+        "signed_reference": {
+          "mean": 2.2434463500976562,
+          "variance": 21.968232911618358,
+          "minimum": -24.733953033268108,
+          "negative_fraction": 0.2889404296875,
+          "distinct_codes": 14748
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 3.1431026797426673,
+          "variance": 12.549635159168584,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 72
+        },
+        "phase_mean_bias_dn": [
+          0.6023736481431301,
+          0.8022490443326111,
+          1.0018692463381396,
+          1.1921333797661646
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.75,
+        "signal_in_phase_sigmas": 1.0,
+        "signed_reference": {
+          "mean": 4.512981414794922,
+          "variance": 22.75672152979771,
+          "minimum": -18.901467710371776,
+          "negative_fraction": 0.14366531372070312,
+          "distinct_codes": 14802
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 4.886432618626997,
+          "variance": 17.64187461787825,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 78
+        },
+        "phase_mean_bias_dn": [
+          0.25403696276572096,
+          0.3267170258191072,
+          0.41923594333565134,
+          0.49381488340782176
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.75,
+        "signal_in_phase_sigmas": 2.0,
+        "signed_reference": {
+          "mean": 9.00457763671875,
+          "variance": 26.765814808833667,
+          "minimum": -14.898336594911939,
+          "negative_fraction": 0.019969940185546875,
+          "distinct_codes": 15183
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 9.043599677545359,
+          "variance": 25.940785975303044,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 95
+        },
+        "phase_mean_bias_dn": [
+          0.02560456453549918,
+          0.03679393365506182,
+          0.04154444583560118,
+          0.05214521928027696
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      },
+      {
+        "black_fraction_dn": 0.75,
+        "signal_in_phase_sigmas": 4.0,
+        "signed_reference": {
+          "mean": 18.010814666748047,
+          "variance": 41.62367232271929,
+          "minimum": -1.93747553816047,
+          "negative_fraction": 1.9073486328125e-05,
+          "distinct_codes": 16572
+        },
+        "production_spatial_black_dn_equivalent": {
+          "mean": 18.010647861850046,
+          "variance": 41.624195561534734,
+          "minimum": 0.0,
+          "negative_fraction": 0.0,
+          "distinct_codes": 127
+        },
+        "phase_mean_bias_dn": [
+          -0.0004423907387470324,
+          9.610343507527035e-05,
+          -4.872291012634595e-05,
+          -0.0002722093782082825
+        ],
+        "upper_loss_fraction": 0.0,
+        "signed_low_tail_is_not_a_bad_pixel_mask": true
+      }
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "signed_bilinear_performance": {
+      "seconds": 0.008433291979599744,
+      "tracemalloc_peak_bytes": 18953840,
+      "memory_scope": "tracked Python/NumPy allocations in this call; not total process RSS"
+    },
+    "float64_rgb_output_bytes": 6291456,
+    "personal_black_prototype": {
+      "corrected_weak_gray": {
+        "mean": 0.10000000000002274,
+        "variance": 0.0,
+        "minimum": 0.10000000000002274,
+        "negative_fraction": 0.0,
+        "distinct_codes": 1
+      },
+      "provenance": {
+        "status": "experimental-personal-black",
+        "identity": "a5d5825038e9d0e5106be5d8acc9d8bee92e77421fd7d0a631188930191d5997",
+        "domain": "linearized-raw-dn-before-stage2",
+        "mode": "absolute",
+        "source_hash": "synthetic-dark-hash",
+        "phase_uncertainty_dn": {
+          "C00": 0.05,
+          "C01": 0.05,
+          "C10": 0.05,
+          "C11": 0.05
+        },
+        "low_tail_fraction": 0.0,
+        "low_tail_is_not_a_bad_pixel_mask": true
+      }
+    },
+    "default_decision": "retain metadata/LibRaw compatibility path; signed reference remains opt-in research"
+  },
+  "C07": {
+    "train_frames": 64,
+    "heldout_frames": 32,
+    "shape": [
+      128,
+      128
+    ],
+    "before_mean_error_dn2": 5.031625319449018,
+    "after_mean_error_dn2": 0.18805654833715668,
+    "temporal_variance_before_dn2": 3.873523522501703,
+    "temporal_variance_after_dn2": 3.873523522501703,
+    "mean_calibration_variance_dn2": 0.06240577007019152,
+    "hot_candidate_detected": true,
+    "performance": {
+      "seconds": 0.0022659170208498836,
+      "tracemalloc_peak_bytes": 8783341,
+      "memory_scope": "tracked Python/NumPy allocations in this call; not total process RSS"
+    },
+    "default_decision": "no automatic correction; needs matched real stack plus heldout verification"
+  },
+  "C08": {
+    "matrix": [
+      {
+        "pattern": "fine-line",
+        "angle_radians": 0.0,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.852781991956838e-05,
+        "production_multiband_chroma_mse": 3.06171309132419e-05,
+        "joint_luma_change_max": 1.8079071226195786e-17,
+        "joint_chroma_amplitude_gain": 0.6702482946703849,
+        "joint_mean_chroma_angle_degrees": 74.93151088781643,
+        "production_chroma_amplitude_gain": 0.538781782293744,
+        "production_mean_chroma_angle_degrees": 75.68133067337095
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 0.0,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.943036566186146e-05,
+        "production_multiband_chroma_mse": 3.1937036142273984e-05,
+        "joint_luma_change_max": 1.8505975831611954e-17,
+        "joint_chroma_amplitude_gain": 0.7566880716478265,
+        "joint_mean_chroma_angle_degrees": 34.38576956860656,
+        "production_chroma_amplitude_gain": 0.7145834666928736,
+        "production_mean_chroma_angle_degrees": 32.01652472894914
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 0.0,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.3832598494639424e-05,
+        "production_multiband_chroma_mse": 3.643857094493388e-05,
+        "joint_luma_change_max": 2.7728470561316776e-17,
+        "joint_chroma_amplitude_gain": 0.9155642488089732,
+        "joint_mean_chroma_angle_degrees": 10.057912585309548,
+        "production_chroma_amplitude_gain": 0.9602130858029307,
+        "production_mean_chroma_angle_degrees": 10.213307798955217
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 0.0,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.8658280237234576e-05,
+        "production_multiband_chroma_mse": 3.0795552964440613e-05,
+        "joint_luma_change_max": 1.7076184216646695e-17,
+        "joint_chroma_amplitude_gain": 0.8324983213108708,
+        "joint_mean_chroma_angle_degrees": 78.46760649458054,
+        "production_chroma_amplitude_gain": 0.6060506310093455,
+        "production_mean_chroma_angle_degrees": 79.65931107170415
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 0.0,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.866892581539549e-05,
+        "production_multiband_chroma_mse": 3.253082542780847e-05,
+        "joint_luma_change_max": 1.723881454251952e-17,
+        "joint_chroma_amplitude_gain": 0.9353824862621649,
+        "joint_mean_chroma_angle_degrees": 44.54741575653416,
+        "production_chroma_amplitude_gain": 0.8738216401548541,
+        "production_mean_chroma_angle_degrees": 43.22862407533165
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 0.0,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.171062676104696e-05,
+        "production_multiband_chroma_mse": 3.792323518895495e-05,
+        "joint_luma_change_max": 1.8458541986565713e-17,
+        "joint_chroma_amplitude_gain": 0.9454803539902934,
+        "joint_mean_chroma_angle_degrees": 16.338014749976686,
+        "production_chroma_amplitude_gain": 0.9336261098423003,
+        "production_mean_chroma_angle_degrees": 15.456215390579565
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 0.0,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.7473040173213035e-05,
+        "production_multiband_chroma_mse": 2.9607119028145172e-05,
+        "joint_luma_change_max": 1.8106176280507924e-17,
+        "joint_chroma_amplitude_gain": 1.002944462767433,
+        "joint_mean_chroma_angle_degrees": 63.167937194116746,
+        "production_chroma_amplitude_gain": 0.9989131781414486,
+        "production_mean_chroma_angle_degrees": 56.498509850179545
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 0.0,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8108489411093413e-05,
+        "production_multiband_chroma_mse": 3.020234263239947e-05,
+        "joint_luma_change_max": 1.6154612370034016e-17,
+        "joint_chroma_amplitude_gain": 0.9887062919290536,
+        "joint_mean_chroma_angle_degrees": 23.773809824986177,
+        "production_chroma_amplitude_gain": 0.9824731351222181,
+        "production_mean_chroma_angle_degrees": 19.639202223814507
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 0.0,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.8807512206729006e-05,
+        "production_multiband_chroma_mse": 3.1153999010447403e-05,
+        "joint_luma_change_max": 2.0464316005663896e-17,
+        "joint_chroma_amplitude_gain": 0.9989695286179104,
+        "joint_mean_chroma_angle_degrees": 6.41264636881221,
+        "production_chroma_amplitude_gain": 0.9988344885909103,
+        "production_mean_chroma_angle_degrees": 5.2978325574707945
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 0.0,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.8559358383027906e-05,
+        "production_multiband_chroma_mse": 3.066404410707164e-05,
+        "joint_luma_change_max": 2.9219248548484344e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 0.0,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.919332496932274e-05,
+        "production_multiband_chroma_mse": 3.1204912615140076e-05,
+        "joint_luma_change_max": 2.946997030087162e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 0.0,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.767419571197233e-05,
+        "production_multiband_chroma_mse": 2.9665187850335054e-05,
+        "joint_luma_change_max": 3.004595270500454e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.870639206666037e-05,
+        "production_multiband_chroma_mse": 3.087380879840357e-05,
+        "joint_luma_change_max": 1.610040226140974e-17,
+        "joint_chroma_amplitude_gain": 0.6747644226413723,
+        "joint_mean_chroma_angle_degrees": 74.77157232610831,
+        "production_chroma_amplitude_gain": 0.572919345448817,
+        "production_mean_chroma_angle_degrees": 74.88899524226602
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.903567983719246e-05,
+        "production_multiband_chroma_mse": 3.174470358806321e-05,
+        "joint_luma_change_max": 1.6832238727837456e-17,
+        "joint_chroma_amplitude_gain": 0.785858698221973,
+        "joint_mean_chroma_angle_degrees": 30.577783325072964,
+        "production_chroma_amplitude_gain": 0.706149412197401,
+        "production_mean_chroma_angle_degrees": 33.40827883578472
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.490159367188059e-05,
+        "production_multiband_chroma_mse": 4.2322881445414344e-05,
+        "joint_luma_change_max": 2.2212592008796772e-17,
+        "joint_chroma_amplitude_gain": 0.8978833142457214,
+        "joint_mean_chroma_angle_degrees": 8.83528091496914,
+        "production_chroma_amplitude_gain": 0.928316606261606,
+        "production_mean_chroma_angle_degrees": 11.76104272625127
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.909345947487349e-05,
+        "production_multiband_chroma_mse": 3.145465486630138e-05,
+        "joint_luma_change_max": 1.704738509644005e-17,
+        "joint_chroma_amplitude_gain": 0.9700185648299737,
+        "joint_mean_chroma_angle_degrees": 76.82939017180367,
+        "production_chroma_amplitude_gain": 0.7113578078859818,
+        "production_mean_chroma_angle_degrees": 78.32246932295818
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8165241086956826e-05,
+        "production_multiband_chroma_mse": 3.28848946592951e-05,
+        "joint_luma_change_max": 1.6601845766184287e-17,
+        "joint_chroma_amplitude_gain": 0.928831097744442,
+        "joint_mean_chroma_angle_degrees": 45.702925110169026,
+        "production_chroma_amplitude_gain": 0.8301870399084583,
+        "production_mean_chroma_angle_degrees": 46.88989079548803
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.1865914980465404e-05,
+        "production_multiband_chroma_mse": 3.933357430566561e-05,
+        "joint_luma_change_max": 1.707110201896317e-17,
+        "joint_chroma_amplitude_gain": 0.936440152173017,
+        "joint_mean_chroma_angle_degrees": 15.252208512967922,
+        "production_chroma_amplitude_gain": 0.9243079390604884,
+        "production_mean_chroma_angle_degrees": 15.177701514406182
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.8536793650386436e-05,
+        "production_multiband_chroma_mse": 3.0780791915851654e-05,
+        "joint_luma_change_max": 1.6750923564901044e-17,
+        "joint_chroma_amplitude_gain": 0.9562075838130475,
+        "joint_mean_chroma_angle_degrees": 66.1411504075574,
+        "production_chroma_amplitude_gain": 0.947484077610774,
+        "production_mean_chroma_angle_degrees": 59.012781115591295
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.864020987140312e-05,
+        "production_multiband_chroma_mse": 3.107686739881474e-05,
+        "joint_luma_change_max": 1.6588293239028218e-17,
+        "joint_chroma_amplitude_gain": 0.9833905109707491,
+        "joint_mean_chroma_angle_degrees": 23.24103456545606,
+        "production_chroma_amplitude_gain": 0.9744585379407141,
+        "production_mean_chroma_angle_degrees": 19.59932576453491
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.900126039344306e-05,
+        "production_multiband_chroma_mse": 3.18218931893271e-05,
+        "joint_luma_change_max": 1.8648277366750676e-17,
+        "joint_chroma_amplitude_gain": 0.9968122074830252,
+        "joint_mean_chroma_angle_degrees": 5.4097367509525345,
+        "production_chroma_amplitude_gain": 0.9958085207960281,
+        "production_mean_chroma_angle_degrees": 4.716841845416205
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.822629042127886e-05,
+        "production_multiband_chroma_mse": 3.0181745230595534e-05,
+        "joint_luma_change_max": 2.949029909160572e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8473450755596086e-05,
+        "production_multiband_chroma_mse": 3.054356265940105e-05,
+        "joint_luma_change_max": 3.0357660829594124e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 0.7853981633974483,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.839273019334019e-05,
+        "production_multiband_chroma_mse": 3.0417684198708642e-05,
+        "joint_luma_change_max": 2.896175053251904e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.9228106269824894e-05,
+        "production_multiband_chroma_mse": 3.147670750766965e-05,
+        "joint_luma_change_max": 1.8539857149502126e-17,
+        "joint_chroma_amplitude_gain": 0.7568949207672121,
+        "joint_mean_chroma_angle_degrees": 75.67162438175421,
+        "production_chroma_amplitude_gain": 0.6114222151290183,
+        "production_mean_chroma_angle_degrees": 76.3932758704654
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.92302731330434e-05,
+        "production_multiband_chroma_mse": 3.1973353430224533e-05,
+        "joint_luma_change_max": 1.679158114636925e-17,
+        "joint_chroma_amplitude_gain": 0.7469909112855091,
+        "joint_mean_chroma_angle_degrees": 33.01366248616517,
+        "production_chroma_amplitude_gain": 0.6677662535012895,
+        "production_mean_chroma_angle_degrees": 32.108512972700076
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.553177262440572e-05,
+        "production_multiband_chroma_mse": 4.057866283658325e-05,
+        "joint_luma_change_max": 1.622237500581436e-17,
+        "joint_chroma_amplitude_gain": 0.8563954809217159,
+        "joint_mean_chroma_angle_degrees": 5.416234568302787,
+        "production_chroma_amplitude_gain": 0.935026990904815,
+        "production_mean_chroma_angle_degrees": 3.787296014921546
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.846466378444242e-05,
+        "production_multiband_chroma_mse": 3.082984818916458e-05,
+        "joint_luma_change_max": 1.634434775021898e-17,
+        "joint_chroma_amplitude_gain": 0.9636076605135975,
+        "joint_mean_chroma_angle_degrees": 78.61146686314902,
+        "production_chroma_amplitude_gain": 0.6778118461140491,
+        "production_mean_chroma_angle_degrees": 80.39546950654864
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.7204480652448356e-05,
+        "production_multiband_chroma_mse": 3.20732981578331e-05,
+        "joint_luma_change_max": 1.929879867024198e-17,
+        "joint_chroma_amplitude_gain": 0.9377932441764467,
+        "joint_mean_chroma_angle_degrees": 46.27073219530956,
+        "production_chroma_amplitude_gain": 0.8247268571511964,
+        "production_mean_chroma_angle_degrees": 46.920478591098565
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.152570736765094e-05,
+        "production_multiband_chroma_mse": 3.860332220873237e-05,
+        "joint_luma_change_max": 1.6493425548935736e-17,
+        "joint_chroma_amplitude_gain": 0.9379179730097126,
+        "joint_mean_chroma_angle_degrees": 13.621152173917153,
+        "production_chroma_amplitude_gain": 0.9225686870677445,
+        "production_mean_chroma_angle_degrees": 12.471828875659778
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.7838723076745864e-05,
+        "production_multiband_chroma_mse": 3.004192048086858e-05,
+        "joint_luma_change_max": 1.6615398293340355e-17,
+        "joint_chroma_amplitude_gain": 1.0697553041843741,
+        "joint_mean_chroma_angle_degrees": 65.30917319744472,
+        "production_chroma_amplitude_gain": 1.0581487427261806,
+        "production_mean_chroma_angle_degrees": 57.519358073302314
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.756154358611134e-05,
+        "production_multiband_chroma_mse": 2.9851474033877302e-05,
+        "joint_luma_change_max": 1.6425662913155392e-17,
+        "joint_chroma_amplitude_gain": 1.0140972607985548,
+        "joint_mean_chroma_angle_degrees": 21.834159642515978,
+        "production_chroma_amplitude_gain": 1.0054342087267345,
+        "production_mean_chroma_angle_degrees": 17.73843249234811
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.800730785168475e-05,
+        "production_multiband_chroma_mse": 3.07443657132873e-05,
+        "joint_luma_change_max": 1.7631837830045516e-17,
+        "joint_chroma_amplitude_gain": 0.9995616469486142,
+        "joint_mean_chroma_angle_degrees": 3.625183494272074,
+        "production_chroma_amplitude_gain": 0.9979805454891117,
+        "production_mean_chroma_angle_degrees": 2.9269648425690615
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.816074731183397e-05,
+        "production_multiband_chroma_mse": 3.0071605084422553e-05,
+        "joint_luma_change_max": 3.12792326762068e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.860259501600476e-05,
+        "production_multiband_chroma_mse": 3.077324179929626e-05,
+        "joint_luma_change_max": 3.0113715340784886e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 1.5707963267948966,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.850824727652383e-05,
+        "production_multiband_chroma_mse": 3.0694097582677413e-05,
+        "joint_luma_change_max": 2.9327668765732895e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.766541173537132e-05,
+        "production_multiband_chroma_mse": 2.9879172621836547e-05,
+        "joint_luma_change_max": 1.7581015853210258e-17,
+        "joint_chroma_amplitude_gain": 0.8296986070841059,
+        "joint_mean_chroma_angle_degrees": 75.29406131728103,
+        "production_chroma_amplitude_gain": 0.7121901613002768,
+        "production_mean_chroma_angle_degrees": 74.3887074354611
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.9254324694763495e-05,
+        "production_multiband_chroma_mse": 3.210316503668241e-05,
+        "joint_luma_change_max": 1.633079522306291e-17,
+        "joint_chroma_amplitude_gain": 0.768696629523281,
+        "joint_mean_chroma_angle_degrees": 31.383774171828843,
+        "production_chroma_amplitude_gain": 0.6713610902457836,
+        "production_mean_chroma_angle_degrees": 33.90694674927482
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.499017734987926e-05,
+        "production_multiband_chroma_mse": 4.254134809843372e-05,
+        "joint_luma_change_max": 1.9759584593548318e-17,
+        "joint_chroma_amplitude_gain": 0.8871704726971963,
+        "joint_mean_chroma_angle_degrees": 7.979363171360809,
+        "production_chroma_amplitude_gain": 0.9273395566015747,
+        "production_mean_chroma_angle_degrees": 9.934470962969343
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.850992796679964e-05,
+        "production_multiband_chroma_mse": 3.09485294668851e-05,
+        "joint_luma_change_max": 1.599198204416119e-17,
+        "joint_chroma_amplitude_gain": 1.0022364726511725,
+        "joint_mean_chroma_angle_degrees": 77.39516622938538,
+        "production_chroma_amplitude_gain": 0.7243946435892662,
+        "production_mean_chroma_angle_degrees": 78.7995750844737
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.867160959220021e-05,
+        "production_multiband_chroma_mse": 3.356510763234808e-05,
+        "joint_luma_change_max": 1.620882247865829e-17,
+        "joint_chroma_amplitude_gain": 0.9485483806501881,
+        "joint_mean_chroma_angle_degrees": 44.675457058916265,
+        "production_chroma_amplitude_gain": 0.8297674139643202,
+        "production_mean_chroma_angle_degrees": 46.33401790839791
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.0792996703489414e-05,
+        "production_multiband_chroma_mse": 3.8078927128896974e-05,
+        "joint_luma_change_max": 1.7076184216646695e-17,
+        "joint_chroma_amplitude_gain": 0.9423594449797099,
+        "joint_mean_chroma_angle_degrees": 14.478990953870683,
+        "production_chroma_amplitude_gain": 0.9301265932520687,
+        "production_mean_chroma_angle_degrees": 14.372603814145643
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.90667148927319e-05,
+        "production_multiband_chroma_mse": 3.115331213084562e-05,
+        "joint_luma_change_max": 1.6493425548935736e-17,
+        "joint_chroma_amplitude_gain": 0.9581838724097458,
+        "joint_mean_chroma_angle_degrees": 66.44269401825454,
+        "production_chroma_amplitude_gain": 0.9532654070150055,
+        "production_mean_chroma_angle_degrees": 58.84791607311696
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.885479353823556e-05,
+        "production_multiband_chroma_mse": 3.0711513918191014e-05,
+        "joint_luma_change_max": 1.6479873021779667e-17,
+        "joint_chroma_amplitude_gain": 0.9988759800616468,
+        "joint_mean_chroma_angle_degrees": 22.78074396074075,
+        "production_chroma_amplitude_gain": 0.9905756621555776,
+        "production_mean_chroma_angle_degrees": 19.198821381177044
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.838572414724428e-05,
+        "production_multiband_chroma_mse": 3.130713092309635e-05,
+        "joint_luma_change_max": 1.8214596497756474e-17,
+        "joint_chroma_amplitude_gain": 0.9970173082073008,
+        "joint_mean_chroma_angle_degrees": 4.958667892951863,
+        "production_chroma_amplitude_gain": 0.9961727527117683,
+        "production_mean_chroma_angle_degrees": 4.314550486037402
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.789455620899246e-05,
+        "production_multiband_chroma_mse": 2.988103455719349e-05,
+        "joint_luma_change_max": 3.118436498611432e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.816171785949958e-05,
+        "production_multiband_chroma_mse": 3.025828125524436e-05,
+        "joint_luma_change_max": 3.0249240612345574e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 2.356194490192345,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.835356301750542e-05,
+        "production_multiband_chroma_mse": 3.0518105851049735e-05,
+        "joint_luma_change_max": 3.2742905609062234e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.8189629355086305e-05,
+        "production_multiband_chroma_mse": 3.0384372636251987e-05,
+        "joint_luma_change_max": 1.5937771935536915e-17,
+        "joint_chroma_amplitude_gain": 0.6434464125237104,
+        "joint_mean_chroma_angle_degrees": 75.02971034485738,
+        "production_chroma_amplitude_gain": 0.5931323409754389,
+        "production_mean_chroma_angle_degrees": 74.12402309287103
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 4.0156127924670876e-05,
+        "production_multiband_chroma_mse": 3.258165266207224e-05,
+        "joint_luma_change_max": 1.6249480060126498e-17,
+        "joint_chroma_amplitude_gain": 0.7846724594068782,
+        "joint_mean_chroma_angle_degrees": 32.56438574835629,
+        "production_chroma_amplitude_gain": 0.7415845948387869,
+        "production_mean_chroma_angle_degrees": 30.6054678306477
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.458068401902548e-05,
+        "production_multiband_chroma_mse": 3.727018879386403e-05,
+        "joint_luma_change_max": 2.4990860075790877e-17,
+        "joint_chroma_amplitude_gain": 0.9240446872167234,
+        "joint_mean_chroma_angle_degrees": 9.839420535513415,
+        "production_chroma_amplitude_gain": 0.9676005507517549,
+        "production_mean_chroma_angle_degrees": 9.858320263795395
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.800091925619209e-05,
+        "production_multiband_chroma_mse": 3.0238959635287203e-05,
+        "joint_luma_change_max": 1.691355389077387e-17,
+        "joint_chroma_amplitude_gain": 0.9373533761870324,
+        "joint_mean_chroma_angle_degrees": 76.82077971054416,
+        "production_chroma_amplitude_gain": 0.7141861763194811,
+        "production_mean_chroma_angle_degrees": 78.0153742899079
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.9132688031337074e-05,
+        "production_multiband_chroma_mse": 3.294505303152298e-05,
+        "joint_luma_change_max": 1.6479873021779667e-17,
+        "joint_chroma_amplitude_gain": 0.9442086377800925,
+        "joint_mean_chroma_angle_degrees": 44.70520393012649,
+        "production_chroma_amplitude_gain": 0.8802106040934847,
+        "production_mean_chroma_angle_degrees": 43.817203622678825
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.136779604829024e-05,
+        "production_multiband_chroma_mse": 3.7569415184022266e-05,
+        "joint_luma_change_max": 1.929879867024198e-17,
+        "joint_chroma_amplitude_gain": 0.9401430935149134,
+        "joint_mean_chroma_angle_degrees": 16.307669218589584,
+        "production_chroma_amplitude_gain": 0.9282722556766098,
+        "production_mean_chroma_angle_degrees": 15.380853767191534
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.7993724997017445e-05,
+        "production_multiband_chroma_mse": 3.0009660839275873e-05,
+        "joint_luma_change_max": 1.7025362239811437e-17,
+        "joint_chroma_amplitude_gain": 0.9879598372109485,
+        "joint_mean_chroma_angle_degrees": 64.10972304264169,
+        "production_chroma_amplitude_gain": 0.9818466274340556,
+        "production_mean_chroma_angle_degrees": 57.52061274927162
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8021135505393826e-05,
+        "production_multiband_chroma_mse": 3.0231527910591004e-05,
+        "joint_luma_change_max": 1.6127507315721878e-17,
+        "joint_chroma_amplitude_gain": 0.9999140937442877,
+        "joint_mean_chroma_angle_degrees": 23.70813649449523,
+        "production_chroma_amplitude_gain": 0.9927068834566848,
+        "production_mean_chroma_angle_degrees": 19.4059468995292
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.848973796552984e-05,
+        "production_multiband_chroma_mse": 3.087224542572977e-05,
+        "joint_luma_change_max": 1.740822113197038e-17,
+        "joint_chroma_amplitude_gain": 0.9981425025195276,
+        "joint_mean_chroma_angle_degrees": 6.4226974390126745,
+        "production_chroma_amplitude_gain": 0.9974115954166155,
+        "production_mean_chroma_angle_degrees": 5.317246364205998
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.809101837749178e-05,
+        "production_multiband_chroma_mse": 3.0129848811507713e-05,
+        "joint_luma_change_max": 3.003240017784847e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.789793772857591e-05,
+        "production_multiband_chroma_mse": 3.016087355096336e-05,
+        "joint_luma_change_max": 2.9327668765732895e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 3.141592653589793,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.841353559396612e-05,
+        "production_multiband_chroma_mse": 3.052456122623693e-05,
+        "joint_luma_change_max": 2.9181979098805155e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.7567658703327595e-05,
+        "production_multiband_chroma_mse": 2.9604149069116842e-05,
+        "joint_luma_change_max": 1.7753810574450135e-17,
+        "joint_chroma_amplitude_gain": 0.8266616250158502,
+        "joint_mean_chroma_angle_degrees": 71.97712413271027,
+        "production_chroma_amplitude_gain": 0.7407161497178004,
+        "production_mean_chroma_angle_degrees": 73.8293079643566
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 4.024712307015858e-05,
+        "production_multiband_chroma_mse": 3.295517995642364e-05,
+        "joint_luma_change_max": 1.6263032587282567e-17,
+        "joint_chroma_amplitude_gain": 0.7609879526118583,
+        "joint_mean_chroma_angle_degrees": 32.60550904477,
+        "production_chroma_amplitude_gain": 0.6813987727362618,
+        "production_mean_chroma_angle_degrees": 34.59777710880526
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.4756181733125534e-05,
+        "production_multiband_chroma_mse": 4.178834061220948e-05,
+        "joint_luma_change_max": 2.1629833341085813e-17,
+        "joint_chroma_amplitude_gain": 0.8897976988953147,
+        "joint_mean_chroma_angle_degrees": 8.733571453391999,
+        "production_chroma_amplitude_gain": 0.921943868057311,
+        "production_mean_chroma_angle_degrees": 11.264637798232606
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.8294181984816325e-05,
+        "production_multiband_chroma_mse": 3.0815013119366584e-05,
+        "joint_luma_change_max": 1.6967763999398144e-17,
+        "joint_chroma_amplitude_gain": 0.9420727569136548,
+        "joint_mean_chroma_angle_degrees": 78.07481015657548,
+        "production_chroma_amplitude_gain": 0.7011601964285061,
+        "production_mean_chroma_angle_degrees": 79.41051024635375
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8425481776844986e-05,
+        "production_multiband_chroma_mse": 3.332093617907112e-05,
+        "joint_luma_change_max": 1.6771252355635147e-17,
+        "joint_chroma_amplitude_gain": 0.9446747222989615,
+        "joint_mean_chroma_angle_degrees": 45.668746224463504,
+        "production_chroma_amplitude_gain": 0.8437185814506104,
+        "production_mean_chroma_angle_degrees": 46.90033023387563
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.0515556295620694e-05,
+        "production_multiband_chroma_mse": 3.78788484452671e-05,
+        "joint_luma_change_max": 1.7055855425912592e-17,
+        "joint_chroma_amplitude_gain": 0.9433851479276153,
+        "joint_mean_chroma_angle_degrees": 14.8971579755384,
+        "production_chroma_amplitude_gain": 0.9307884026193243,
+        "production_mean_chroma_angle_degrees": 14.8911381049031
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.801848172072807e-05,
+        "production_multiband_chroma_mse": 3.031355309652524e-05,
+        "joint_luma_change_max": 1.6640809281757984e-17,
+        "joint_chroma_amplitude_gain": 1.0368805101536742,
+        "joint_mean_chroma_angle_degrees": 63.93275741694419,
+        "production_chroma_amplitude_gain": 1.026904480324354,
+        "production_mean_chroma_angle_degrees": 56.46563766262676
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.857501595247204e-05,
+        "production_multiband_chroma_mse": 3.079891490591788e-05,
+        "joint_luma_change_max": 1.6832238727837456e-17,
+        "joint_chroma_amplitude_gain": 1.0087930993574687,
+        "joint_mean_chroma_angle_degrees": 22.85092100734176,
+        "production_chroma_amplitude_gain": 1.000901439857315,
+        "production_mean_chroma_angle_degrees": 19.418698660099075
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.851918008387687e-05,
+        "production_multiband_chroma_mse": 3.170480400435864e-05,
+        "joint_luma_change_max": 1.7997756063259374e-17,
+        "joint_chroma_amplitude_gain": 0.996595029451948,
+        "joint_mean_chroma_angle_degrees": 5.417436311042452,
+        "production_chroma_amplitude_gain": 0.9954268777120372,
+        "production_mean_chroma_angle_degrees": 4.74257683501631
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.794011897716119e-05,
+        "production_multiband_chroma_mse": 3.014070929195592e-05,
+        "joint_luma_change_max": 3.095397202446115e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.7693859354620883e-05,
+        "production_multiband_chroma_mse": 2.989022180793187e-05,
+        "joint_luma_change_max": 2.878556767949014e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 3.9269908169872414,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.854234846078724e-05,
+        "production_multiband_chroma_mse": 3.057337094071906e-05,
+        "joint_luma_change_max": 2.9219248548484344e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.773973560563799e-05,
+        "production_multiband_chroma_mse": 2.9749339129259755e-05,
+        "joint_luma_change_max": 1.7509865085640897e-17,
+        "joint_chroma_amplitude_gain": 0.6549954314730402,
+        "joint_mean_chroma_angle_degrees": 75.29040115208844,
+        "production_chroma_amplitude_gain": 0.5339580554060823,
+        "production_mean_chroma_angle_degrees": 73.79427323867992
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8988568807218415e-05,
+        "production_multiband_chroma_mse": 3.175259635243338e-05,
+        "joint_luma_change_max": 1.713039432527097e-17,
+        "joint_chroma_amplitude_gain": 0.7070560014055329,
+        "joint_mean_chroma_angle_degrees": 32.67762241061624,
+        "production_chroma_amplitude_gain": 0.6262136491743844,
+        "production_mean_chroma_angle_degrees": 32.921087310659146
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.539118554561998e-05,
+        "production_multiband_chroma_mse": 4.0582001808314266e-05,
+        "joint_luma_change_max": 1.8919327909872052e-17,
+        "joint_chroma_amplitude_gain": 0.8494469452921233,
+        "joint_mean_chroma_angle_degrees": 5.535590970743245,
+        "production_chroma_amplitude_gain": 0.9261414794228232,
+        "production_mean_chroma_angle_degrees": 3.9107032071687695
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.9267436359638115e-05,
+        "production_multiband_chroma_mse": 3.163745334026666e-05,
+        "joint_luma_change_max": 1.7076184216646695e-17,
+        "joint_chroma_amplitude_gain": 0.7979108550062903,
+        "joint_mean_chroma_angle_degrees": 80.93908416857522,
+        "production_chroma_amplitude_gain": 0.5895375899889487,
+        "production_mean_chroma_angle_degrees": 82.1347269510636
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8033658021880785e-05,
+        "production_multiband_chroma_mse": 3.277169182943808e-05,
+        "joint_luma_change_max": 1.7049079162334557e-17,
+        "joint_chroma_amplitude_gain": 0.9478296058127622,
+        "joint_mean_chroma_angle_degrees": 47.151492328506116,
+        "production_chroma_amplitude_gain": 0.8358282599612508,
+        "production_mean_chroma_angle_degrees": 47.583624918774674
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.161049469023144e-05,
+        "production_multiband_chroma_mse": 3.895037529737301e-05,
+        "joint_luma_change_max": 1.680513367352532e-17,
+        "joint_chroma_amplitude_gain": 0.9303117375032159,
+        "joint_mean_chroma_angle_degrees": 13.295175098437245,
+        "production_chroma_amplitude_gain": 0.914462676748559,
+        "production_mean_chroma_angle_degrees": 12.35601539910918
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.851055588445434e-05,
+        "production_multiband_chroma_mse": 3.0526501028770676e-05,
+        "joint_luma_change_max": 1.666960840196463e-17,
+        "joint_chroma_amplitude_gain": 1.018089278496406,
+        "joint_mean_chroma_angle_degrees": 67.13167820252544,
+        "production_chroma_amplitude_gain": 1.00291741440313,
+        "production_mean_chroma_angle_degrees": 60.23102774225654
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8200027626916414e-05,
+        "production_multiband_chroma_mse": 3.042362625858774e-05,
+        "joint_luma_change_max": 1.7726705520137997e-17,
+        "joint_chroma_amplitude_gain": 1.0026642173476736,
+        "joint_mean_chroma_angle_degrees": 22.313165356575013,
+        "production_chroma_amplitude_gain": 0.9948534496569607,
+        "production_mean_chroma_angle_degrees": 18.103764927741675
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.9025199849598154e-05,
+        "production_multiband_chroma_mse": 3.1571754833814635e-05,
+        "joint_luma_change_max": 1.8126505071242027e-17,
+        "joint_chroma_amplitude_gain": 0.9990213607399494,
+        "joint_mean_chroma_angle_degrees": 3.7141730176457624,
+        "production_chroma_amplitude_gain": 0.9976374429207534,
+        "production_mean_chroma_angle_degrees": 2.9915197332246457
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.728555728912526e-05,
+        "production_multiband_chroma_mse": 2.9293920029071362e-05,
+        "joint_luma_change_max": 2.8514517136368767e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.872345776809462e-05,
+        "production_multiband_chroma_mse": 3.0649618529250934e-05,
+        "joint_luma_change_max": 3.278356319053044e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 4.71238898038469,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.8072045143592265e-05,
+        "production_multiband_chroma_mse": 3.0140791484690037e-05,
+        "joint_luma_change_max": 2.905661822261152e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.871378311588806e-05,
+        "production_multiband_chroma_mse": 3.0703346549985e-05,
+        "joint_luma_change_max": 1.713039432527097e-17,
+        "joint_chroma_amplitude_gain": 0.7173915236444723,
+        "joint_mean_chroma_angle_degrees": 77.44556854099191,
+        "production_chroma_amplitude_gain": 0.6179359812476508,
+        "production_mean_chroma_angle_degrees": 78.72888885138369
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.95747977013323e-05,
+        "production_multiband_chroma_mse": 3.210534414272651e-05,
+        "joint_luma_change_max": 1.6601845766184287e-17,
+        "joint_chroma_amplitude_gain": 0.7523528001249777,
+        "joint_mean_chroma_angle_degrees": 31.058735081983365,
+        "production_chroma_amplitude_gain": 0.6605058267644619,
+        "production_mean_chroma_angle_degrees": 33.7491395531642
+      },
+      {
+        "pattern": "fine-line",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.4689150697640176e-05,
+        "production_multiband_chroma_mse": 4.199573888887754e-05,
+        "joint_luma_change_max": 2.0816681711721685e-17,
+        "joint_chroma_amplitude_gain": 0.8834892354695106,
+        "joint_mean_chroma_angle_degrees": 8.04665882337227,
+        "production_chroma_amplitude_gain": 0.9234983945588716,
+        "production_mean_chroma_angle_degrees": 9.981156130567246
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.8635562480941055e-05,
+        "production_multiband_chroma_mse": 3.074720258957545e-05,
+        "joint_luma_change_max": 1.6750923564901044e-17,
+        "joint_chroma_amplitude_gain": 1.0037285272812093,
+        "joint_mean_chroma_angle_degrees": 78.02083156993771,
+        "production_chroma_amplitude_gain": 0.7165319392502955,
+        "production_mean_chroma_angle_degrees": 79.35005041713079
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8837091464106065e-05,
+        "production_multiband_chroma_mse": 3.380923692166792e-05,
+        "joint_luma_change_max": 1.6154612370034016e-17,
+        "joint_chroma_amplitude_gain": 0.9261036743988944,
+        "joint_mean_chroma_angle_degrees": 45.703748425789804,
+        "production_chroma_amplitude_gain": 0.8093721301480657,
+        "production_mean_chroma_angle_degrees": 47.52025253229078
+      },
+      {
+        "pattern": "woven",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 4.2079782916034095e-05,
+        "production_multiband_chroma_mse": 3.9275658637791434e-05,
+        "joint_luma_change_max": 1.6859343782149594e-17,
+        "joint_chroma_amplitude_gain": 0.9448784347746352,
+        "joint_mean_chroma_angle_degrees": 14.394746066629295,
+        "production_chroma_amplitude_gain": 0.9326657630081202,
+        "production_mean_chroma_angle_degrees": 14.383301090682426
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.820698714083355e-05,
+        "production_multiband_chroma_mse": 3.019879974441739e-05,
+        "joint_luma_change_max": 1.6263032587282567e-17,
+        "joint_chroma_amplitude_gain": 0.9650894152391546,
+        "joint_mean_chroma_angle_degrees": 66.23282003842436,
+        "production_chroma_amplitude_gain": 0.9517109903694548,
+        "production_mean_chroma_angle_degrees": 58.83981337679957
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8644379181130455e-05,
+        "production_multiband_chroma_mse": 3.109305949386498e-05,
+        "joint_luma_change_max": 1.6859343782149594e-17,
+        "joint_chroma_amplitude_gain": 0.999798430636741,
+        "joint_mean_chroma_angle_degrees": 22.658057545442354,
+        "production_chroma_amplitude_gain": 0.9901657172869559,
+        "production_mean_chroma_angle_degrees": 19.256097573973918
+      },
+      {
+        "pattern": "colour-edge",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.825616207083204e-05,
+        "production_multiband_chroma_mse": 3.1159345288164466e-05,
+        "joint_luma_change_max": 1.8973538018496328e-17,
+        "joint_chroma_amplitude_gain": 0.9953750231475816,
+        "joint_mean_chroma_angle_degrees": 4.940683587905735,
+        "production_chroma_amplitude_gain": 0.9943882735734623,
+        "production_mean_chroma_angle_degrees": 4.30308570662291
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.003,
+        "joint_one_band_chroma_mse": 3.775706516093817e-05,
+        "production_multiband_chroma_mse": 2.9547422764212042e-05,
+        "joint_luma_change_max": 2.8433201973432354e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.015,
+        "joint_one_band_chroma_mse": 3.8697578915091055e-05,
+        "production_multiband_chroma_mse": 3.081479912552263e-05,
+        "joint_luma_change_max": 3.381355525439167e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      },
+      {
+        "pattern": "luminance-edge",
+        "angle_radians": 5.497787143782138,
+        "amplitude": 0.06,
+        "joint_one_band_chroma_mse": 3.812515155495318e-05,
+        "production_multiband_chroma_mse": 3.028687489031659e-05,
+        "joint_luma_change_max": 2.9327668765732895e-17,
+        "joint_chroma_amplitude_gain": null,
+        "production_chroma_amplitude_gain": null
+      }
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "one_band_performance_last_call": {
+      "seconds": 0.000908499991055578,
+      "tracemalloc_peak_bytes": 2821564,
+      "memory_scope": "tracked Python/NumPy allocations in this call; not total process RSS"
+    },
+    "comparison_scope": "joint one-band prototype versus separately measured production multiband; not an equivalence or superiority claim",
+    "default_decision": "keep calibrated structure-protected production kernel; no automatic joint-shrink activation"
+  },
+  "C09": {
+    "matrix": [
+      {
+        "signal": "near-black",
+        "operations": 1,
+        "policy": "truncate",
+        "mean_error_original_dn": -0.49857226562499957,
+        "rms_error_original_dn": 0.5765470278271727,
+        "max_error_original_dn": 0.9999374847374844
+      },
+      {
+        "signal": "near-black",
+        "operations": 1,
+        "policy": "nearest",
+        "mean_error_original_dn": -3.710937499956657e-05,
+        "rms_error_original_dn": 0.28820893604870274,
+        "max_error_original_dn": 0.4997880341880343
+      },
+      {
+        "signal": "near-black",
+        "operations": 1,
+        "policy": "deferred",
+        "mean_error_original_dn": -3.710937499956657e-05,
+        "rms_error_original_dn": 0.28820893604870274,
+        "max_error_original_dn": 0.4997880341880343
+      },
+      {
+        "signal": "near-black",
+        "operations": 4,
+        "policy": "truncate",
+        "mean_error_original_dn": -2.112316829888999,
+        "rms_error_original_dn": 2.2407125962381875,
+        "max_error_original_dn": 2.9907911163373297
+      },
+      {
+        "signal": "near-black",
+        "operations": 4,
+        "policy": "nearest",
+        "mean_error_original_dn": 0.012194888861000891,
+        "rms_error_original_dn": 0.2889925811159591,
+        "max_error_original_dn": 0.5220454648339015
+      },
+      {
+        "signal": "near-black",
+        "operations": 4,
+        "policy": "deferred",
+        "mean_error_original_dn": 0.0002319982360008896,
+        "rms_error_original_dn": 0.2886481222621428,
+        "max_error_original_dn": 0.49990690673915317
+      },
+      {
+        "signal": "gradient",
+        "operations": 1,
+        "policy": "truncate",
+        "mean_error_original_dn": -0.500035156249796,
+        "rms_error_original_dn": 0.5773851269116007,
+        "max_error_original_dn": 0.9999999999995453
+      },
+      {
+        "signal": "gradient",
+        "operations": 1,
+        "policy": "nearest",
+        "mean_error_original_dn": -4.638671670916211e-06,
+        "rms_error_original_dn": 0.28867087232126404,
+        "max_error_original_dn": 0.49998959318804737
+      },
+      {
+        "signal": "gradient",
+        "operations": 1,
+        "policy": "deferred",
+        "mean_error_original_dn": -4.638671670916211e-06,
+        "rms_error_original_dn": 0.28867087232126404,
+        "max_error_original_dn": 0.49998959318804737
+      },
+      {
+        "signal": "gradient",
+        "operations": 4,
+        "policy": "truncate",
+        "mean_error_original_dn": -1.9957272533138204,
+        "rms_error_original_dn": 2.057637026455183,
+        "max_error_original_dn": 3.891919437698334
+      },
+      {
+        "signal": "gradient",
+        "operations": 4,
+        "policy": "nearest",
+        "mean_error_original_dn": 0.002350139264304633,
+        "rms_error_original_dn": 0.4977527950766918,
+        "max_error_original_dn": 1.9086209712139635
+      },
+      {
+        "signal": "gradient",
+        "operations": 4,
+        "policy": "deferred",
+        "mean_error_original_dn": -6.074940757036645e-05,
+        "rms_error_original_dn": 0.28867793896704347,
+        "max_error_original_dn": 0.49996412422842695
+      },
+      {
+        "signal": "near-white",
+        "operations": 1,
+        "policy": "truncate",
+        "mean_error_original_dn": -0.43567299822535244,
+        "rms_error_original_dn": 0.5390071245703173,
+        "max_error_original_dn": 0.9999999999995453
+      },
+      {
+        "signal": "near-white",
+        "operations": 1,
+        "policy": "nearest",
+        "mean_error_original_dn": 0.00011801739964756308,
+        "rms_error_original_dn": 0.26939234979048715,
+        "max_error_original_dn": 0.49993528693585176
+      },
+      {
+        "signal": "near-white",
+        "operations": 1,
+        "policy": "deferred",
+        "mean_error_original_dn": 0.00011801739964756308,
+        "rms_error_original_dn": 0.26939234979048715,
+        "max_error_original_dn": 0.49993528693585176
+      },
+      {
+        "signal": "near-white",
+        "operations": 4,
+        "policy": "truncate",
+        "mean_error_original_dn": -1.6526030220672523,
+        "rms_error_original_dn": 1.8763130336469747,
+        "max_error_original_dn": 3.7680017639991092
+      },
+      {
+        "signal": "near-white",
+        "operations": 4,
+        "policy": "nearest",
+        "mean_error_original_dn": -0.11158739706725229,
+        "rms_error_original_dn": 0.46941446542630044,
+        "max_error_original_dn": 1.1219614612155056
+      },
+      {
+        "signal": "near-white",
+        "operations": 4,
+        "policy": "deferred",
+        "mean_error_original_dn": -0.10060106894225229,
+        "rms_error_original_dn": 0.3027459292949598,
+        "max_error_original_dn": 0.4999249505958687
+      }
+    ],
+    "domain": "original 12-bit RAW DN, not normalized uint16",
+    "default_decision": "do not change compatibility rounding without matched real-calibration validation"
+  },
+  "C02_decoder_outputs": {
+    "matrix": [
+      {
+        "demosaic": "bilinear",
+        "as_shot_neutral": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "signal_dn": 0.0,
+        "production_scene_rgb_mean": [
+          0.0009642956169460927,
+          0.0007537307622482083,
+          0.0009734847902767173
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          -0.015655517578125,
+          -0.01094818115234375,
+          0.0370941162109375
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          -1.7810501958592795e-05,
+          -3.988855041825445e-06,
+          2.1376954464358278e-05
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.003852587891742587,
+            0.0030813829507678747,
+            0.0027257027104496956
+          ],
+          "hdr_display_linear_mean": [
+            0.00019745496683754027,
+            0.0002043049462372437,
+            0.0001778379373718053
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.0025019794702529907,
+            0.003165320958942175,
+            0.002115861512720585
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.00012043314200127497,
+            0.0002069518086500466,
+            0.00013640511315315962
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.018708694726228714,
+            0.015762219205498695,
+            0.016304273158311844
+          ],
+          "hdr_display_linear_mean": [
+            0.0013765603071078658,
+            0.0012521056924015284,
+            0.0012356109218671918
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.015562754124403,
+            0.018322832882404327,
+            0.014262240380048752
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0010448925895616412,
+            0.0013956467155367136,
+            0.0010410579852759838
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.05130647495388985,
+            0.04432331770658493,
+            0.05225561559200287
+          ],
+          "hdr_display_linear_mean": [
+            0.006084011867642403,
+            0.0051647634245455265,
+            0.005402219016104937
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.04656984657049179,
+            0.052477627992630005,
+            0.046857960522174835
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.004929268267005682,
+            0.005810727830976248,
+            0.0046011037193238735
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "bilinear",
+        "as_shot_neutral": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "signal_dn": 2.0,
+        "production_scene_rgb_mean": [
+          0.0018739130794620845,
+          0.0013993785768618959,
+          0.0016414372636140496
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          2.0203094482421875,
+          2.0497817993164062,
+          2.002777099609375
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.0011255083372816443,
+          0.0011551155475899577,
+          0.0011179113062098622
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.006828490644693375,
+            0.005211804062128067,
+            0.0048252493143081665
+          ],
+          "hdr_display_linear_mean": [
+            0.0003824017767328769,
+            0.00036440472467802465,
+            0.000324963650200516
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.005843613762408495,
+            0.005129258614033461,
+            0.004357011057436466
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0003018815768882632,
+            0.00034151069121435285,
+            0.000278466526651755
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.03130693361163139,
+            0.024691622704267502,
+            0.026254072785377502
+          ],
+          "hdr_display_linear_mean": [
+            0.0024476132821291685,
+            0.00206159520894289,
+            0.0020671356469392776
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.029532436281442642,
+            0.02669212408363819,
+            0.025454629212617874
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0022026614751666784,
+            0.002116733929142356,
+            0.001944417366757989
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.08240178972482681,
+            0.06568820774555206,
+            0.07704758644104004
+          ],
+          "hdr_display_linear_mean": [
+            0.010179538279771805,
+            0.008204888552427292,
+            0.008588813245296478
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.07666264474391937,
+            0.07322172820568085,
+            0.07488632947206497
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.009165231138467789,
+            0.008601220324635506,
+            0.008046326227486134
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "bilinear",
+        "as_shot_neutral": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "signal_dn": 8.0,
+        "production_scene_rgb_mean": [
+          0.004656806029736002,
+          0.0044963866473800435,
+          0.004639022097156719
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          8.008346557617188,
+          8.005416870117188,
+          8.035537719726562
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.004470334388315678,
+          0.004471548367291689,
+          0.004489576909691095
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.0058425478637218475,
+            0.004393097944557667,
+            0.004152700304985046
+          ],
+          "hdr_display_linear_mean": [
+            0.0003470985102467239,
+            0.00031752444920130074,
+            0.0002924832806456834
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.00578303262591362,
+            0.003717653453350067,
+            0.0038247061893343925
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0003161362838000059,
+            0.0002562991576269269,
+            0.00025388621725142
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.04667634889483452,
+            0.04405668377876282,
+            0.04613962396979332
+          ],
+          "hdr_display_linear_mean": [
+            0.004017512314021587,
+            0.0037689837627112865,
+            0.0038077766075730324
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.046962447464466095,
+            0.04349464178085327,
+            0.0457749105989933
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.003992727026343346,
+            0.003619164228439331,
+            0.003703561844304204
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.13193601369857788,
+            0.13326942920684814,
+            0.14171209931373596
+          ],
+          "hdr_display_linear_mean": [
+            0.02001221850514412,
+            0.01884377747774124,
+            0.019288649782538414
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.13005241751670837,
+            0.13501133024692535,
+            0.14059700071811676
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.019695712253451347,
+            0.018465325236320496,
+            0.018813904374837875
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "bilinear",
+        "as_shot_neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "signal_dn": 0.0,
+        "production_scene_rgb_mean": [
+          0.0024091691452814566,
+          0.00016844224999550003,
+          0.0012551441501319656
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          -0.097564697265625,
+          0.020355224609375,
+          -0.1599324591934419
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          -6.832268263678998e-05,
+          5.1386676204856485e-05,
+          -9.307233267463744e-05
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.00924293790012598,
+            0.0022608402650803328,
+            0.0037492557894438505
+          ],
+          "hdr_display_linear_mean": [
+            0.0005084057338535786,
+            0.00014386273687705398,
+            0.0002431315224384889
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.005976016633212566,
+            0.004957543220371008,
+            0.004176508169621229
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.00029402767540887,
+            0.00032692705281078815,
+            0.0002753751177806407
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.03470296785235405,
+            0.012663353234529495,
+            0.02088894322514534
+          ],
+          "hdr_display_linear_mean": [
+            0.003099322784692049,
+            0.000992993009276688,
+            0.0016458451282233
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.02764539234340191,
+            0.024589790031313896,
+            0.023406393826007843
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0021611691918224096,
+            0.0020014503970742226,
+            0.0018204846419394016
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.08304242044687271,
+            0.03755250945687294,
+            0.06345337629318237
+          ],
+          "hdr_display_linear_mean": [
+            0.012977061793208122,
+            0.004385564010590315,
+            0.007138281594961882
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.07086607813835144,
+            0.06563779711723328,
+            0.06816881150007248
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.009476227685809135,
+            0.00829008873552084,
+            0.007684170734137297
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "bilinear",
+        "as_shot_neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "signal_dn": 2.0,
+        "production_scene_rgb_mean": [
+          0.004237547363686441,
+          0.0004360811066203873,
+          0.0021814408920653515
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          3.82940673828125,
+          2.0399398803710938,
+          2.614868241991644
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.0026820404455065727,
+          0.0005116628599353135,
+          0.0014859370421618223
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.017692942172288895,
+            0.0034074776340276003,
+            0.007126235403120518
+          ],
+          "hdr_display_linear_mean": [
+            0.0010173876071348786,
+            0.00023032029275782406,
+            0.0004711163928732276
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.014086156152188778,
+            0.005220068618655205,
+            0.00700601190328598
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0007378436857834458,
+            0.0003415179962757975,
+            0.00044875481398776174
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.05912109836935997,
+            0.01764593832194805,
+            0.03503134101629257
+          ],
+          "hdr_display_linear_mean": [
+            0.0057079424150288105,
+            0.001475825672969222,
+            0.0028772151563316584
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.05362732335925102,
+            0.024611983448266983,
+            0.03609582036733627
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.004734604153782129,
+            0.0020544088911265135,
+            0.0028857600409537554
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.13164985179901123,
+            0.05002191662788391,
+            0.09484696388244629
+          ],
+          "hdr_display_linear_mean": [
+            0.02253539487719536,
+            0.006350647658109665,
+            0.011709719896316528
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.12294595688581467,
+            0.06588996946811676,
+            0.09715680032968521
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.018976053223013878,
+            0.008637978695333004,
+            0.011715997010469437
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "bilinear",
+        "as_shot_neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "signal_dn": 8.0,
+        "production_scene_rgb_mean": [
+          0.011910202466332323,
+          0.0015456005324383142,
+          0.006167342552674607
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          16.13079833984375,
+          8.011978149414062,
+          10.438782049381189
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.011501872912049294,
+          0.0016251270426437259,
+          0.005943059455603361
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.032050665467977524,
+            0.0011724825017154217,
+            0.010209256783127785
+          ],
+          "hdr_display_linear_mean": [
+            0.0017161194700747728,
+            8.903730486053973e-05,
+            0.0006309733144007623
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.030339259654283524,
+            0.0013691568747162819,
+            0.009507358074188232
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0015304810367524624,
+            9.05226479517296e-05,
+            0.0005649669328704476
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.12322778254747391,
+            0.01638418808579445,
+            0.0669461041688919
+          ],
+          "hdr_display_linear_mean": [
+            0.013246295042335987,
+            0.001536622759886086,
+            0.005726613570004702
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.12084885686635971,
+            0.017569273710250854,
+            0.06557151675224304
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0127343675121665,
+            0.0015803625574335456,
+            0.005509907379746437
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.2774738371372223,
+            0.06221994012594223,
+            0.176585391163826
+          ],
+          "hdr_display_linear_mean": [
+            0.06118135154247284,
+            0.008694637566804886,
+            0.027318919077515602
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.2716412842273712,
+            0.06535089015960693,
+            0.17379343509674072
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.058957260102033615,
+            0.008994879201054573,
+            0.02641076222062111
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "dht",
+        "as_shot_neutral": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "signal_dn": 0.0,
+        "production_scene_rgb_mean": [
+          0.0013556861623199516,
+          0.00060105574123664,
+          0.0009471501596760853
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          -0.014739990234375,
+          -0.00429534912109375,
+          -0.0747222900390625
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          -1.0660871794243576e-06,
+          6.222451816029206e-07,
+          -4.286535840947181e-05
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.0040447707287967205,
+            0.0027112518437206745,
+            0.0025335822720080614
+          ],
+          "hdr_display_linear_mean": [
+            0.00021160097094252706,
+            0.00017994690279010683,
+            0.0001658028195379302
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.0024899966083467007,
+            0.003048267913982272,
+            0.0020414525642991066
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0001208724279422313,
+            0.00019951805006712675,
+            0.00013211955956649035
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.021624596789479256,
+            0.014084086753427982,
+            0.015467572025954723
+          ],
+          "hdr_display_linear_mean": [
+            0.0015427388716489077,
+            0.001120078144595027,
+            0.0011566595640033484
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.015532737597823143,
+            0.018054872751235962,
+            0.013773944228887558
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0010485064703971148,
+            0.0013695667730644345,
+            0.0010090061696246266
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.0660940483212471,
+            0.03973548486828804,
+            0.05194220691919327
+          ],
+          "hdr_display_linear_mean": [
+            0.007195316720753908,
+            0.004633472301065922,
+            0.005269422195851803
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.046727538108825684,
+            0.05232430621981621,
+            0.045320961624383926
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.004934954922646284,
+            0.00572936562821269,
+            0.0044573647901415825
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "dht",
+        "as_shot_neutral": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "signal_dn": 2.0,
+        "production_scene_rgb_mean": [
+          0.001918994892630753,
+          0.0013448471987168858,
+          0.0016233133839755156
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          1.99774169921875,
+          1.9888153076171875,
+          1.9555206298828125
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.0011243349872529507,
+          0.001107590738683939,
+          0.001092072925530374
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.006050418131053448,
+            0.004261264577507973,
+            0.003972745966166258
+          ],
+          "hdr_display_linear_mean": [
+            0.0003323076816741377,
+            0.0002932710340246558,
+            0.00026396955945529044
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.005043645855039358,
+            0.004155009984970093,
+            0.0034713121131062508
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.00025155176990665495,
+            0.00027192250126972795,
+            0.00021867782925255597
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.029798751696944237,
+            0.022800486534833908,
+            0.024165431037545204
+          ],
+          "hdr_display_linear_mean": [
+            0.002318619517609477,
+            0.001869237283244729,
+            0.0018846978200599551
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.02804628014564514,
+            0.024613426998257637,
+            0.023326653987169266
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.002046458190307021,
+            0.0019209624733775854,
+            0.0017527315067127347
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.0810500755906105,
+            0.06354650855064392,
+            0.07476059347391129
+          ],
+          "hdr_display_linear_mean": [
+            0.010117421858012676,
+            0.00777010153979063,
+            0.00825883261859417
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.07561101764440536,
+            0.07059043645858765,
+            0.07269510626792908
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.009059381671249866,
+            0.008170743472874165,
+            0.007698840461671352
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "dht",
+        "as_shot_neutral": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "signal_dn": 8.0,
+        "production_scene_rgb_mean": [
+          0.004600377805994335,
+          0.004495254939145091,
+          0.0046880289599052615
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          7.94024658203125,
+          8.019828796386719,
+          8.018569946289062
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.004408001434057951,
+          0.004508503247052431,
+          0.00447889044880867
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.005788723472505808,
+            0.004381986800581217,
+            0.004279391840100288
+          ],
+          "hdr_display_linear_mean": [
+            0.00034287621383555233,
+            0.00031599291833117604,
+            0.0003014521789737046
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.0056080929934978485,
+            0.0037584928795695305,
+            0.0038172812201082706
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.000306147790979594,
+            0.00025850842939689755,
+            0.0002543689333833754
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.046099964529275894,
+            0.04399678111076355,
+            0.04684159532189369
+          ],
+          "hdr_display_linear_mean": [
+            0.003966543823480606,
+            0.0037615711335092783,
+            0.003869907930493355
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.04600941017270088,
+            0.04387269914150238,
+            0.04566429927945137
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.003921378869563341,
+            0.003645363263785839,
+            0.0036976721603423357
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.13028542697429657,
+            0.13327084481716156,
+            0.1426999568939209
+          ],
+          "hdr_display_linear_mean": [
+            0.01976722478866577,
+            0.01883004419505596,
+            0.01951044797897339
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.12807804346084595,
+            0.13589254021644592,
+            0.1402481496334076
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.01935754157602787,
+            0.018594570457935333,
+            0.018762940540909767
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "dht",
+        "as_shot_neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "signal_dn": 0.0,
+        "production_scene_rgb_mean": [
+          0.00321705721199694,
+          -0.0001254121508524775,
+          0.0012544228219098386
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          -0.002593994140625,
+          0.0133209228515625,
+          -0.24182129626933602
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          3.225514592486434e-05,
+          1.0628453310346231e-05,
+          -0.00013895171287003905
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.010102237574756145,
+            0.0018736016936600208,
+            0.0036708549596369267
+          ],
+          "hdr_display_linear_mean": [
+            0.0005528029287233949,
+            0.00011873147013830021,
+            0.0002347861009184271
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.006303972564637661,
+            0.004998581483960152,
+            0.004140496253967285
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.00031353681697510183,
+            0.00032950498280115426,
+            0.0002748456608969718
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.04355941712856293,
+            0.01052881870418787,
+            0.02154703624546528
+          ],
+          "hdr_display_linear_mean": [
+            0.0036275696475058794,
+            0.0008315805462189019,
+            0.0016582150710746646
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.0287488866597414,
+            0.024466706439852715,
+            0.02305673249065876
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.002268215175718069,
+            0.001999159110710025,
+            0.0017994788940995932
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.11424446851015091,
+            0.030969727784395218,
+            0.06735430657863617
+          ],
+          "hdr_display_linear_mean": [
+            0.015985842794179916,
+            0.00369444047100842,
+            0.007397076580673456
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.07321317493915558,
+            0.0648951530456543,
+            0.06709736585617065
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.00990354735404253,
+            0.00826025940477848,
+            0.007586842402815819
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "dht",
+        "as_shot_neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "signal_dn": 2.0,
+        "production_scene_rgb_mean": [
+          0.004070612305294463,
+          0.00052786525559969,
+          0.0022177347969047807
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          3.9134521484375,
+          2.1301116943359375,
+          2.6101278447149525
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.0027414527721703053,
+          0.0005632974207401276,
+          0.0014818559866398573
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.01866794563829899,
+            0.003981288056820631,
+            0.008166942745447159
+          ],
+          "hdr_display_linear_mean": [
+            0.0011147053446620703,
+            0.00027757944189943373,
+            0.0005530729540623724
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.015812484547495842,
+            0.005850736051797867,
+            0.0078032538294792175
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.0008666077628731728,
+            0.00038797830347903073,
+            0.0005097297835163772
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.059610992670059204,
+            0.01912688836455345,
+            0.03691917285323143
+          ],
+          "hdr_display_linear_mean": [
+            0.0057596140541136265,
+            0.001630689948797226,
+            0.0030768278520554304
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.05621081218123436,
+            0.02554270811378956,
+            0.03703916445374489
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.005049755796790123,
+            0.0021566536743193865,
+            0.0029952817130833864
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.13070861995220184,
+            0.052648331969976425,
+            0.09622656553983688
+          ],
+          "hdr_display_linear_mean": [
+            0.021893426775932312,
+            0.006710456218570471,
+            0.012010091915726662
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.1253071427345276,
+            0.06689653545618057,
+            0.09669391810894012
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.019249148666858673,
+            0.008765721693634987,
+            0.01168142445385456
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      },
+      {
+        "demosaic": "dht",
+        "as_shot_neutral": [
+          0.5,
+          1.0,
+          0.75
+        ],
+        "signal_dn": 8.0,
+        "production_scene_rgb_mean": [
+          0.011964535535974862,
+          0.0014471931873515818,
+          0.006283068458375172
+        ],
+        "signed_bilinear_camera_dn_mean": [
+          16.0087890625,
+          7.935699462890625,
+          10.664388338656863
+        ],
+        "signed_bilinear_scene_rgb_mean": [
+          0.011371021158993244,
+          0.0016015911241993308,
+          0.00607304135337472
+        ],
+        "comparison_scope": "same file matrix and declared normalization, fixed production plan; prototype linear interpolation differs from adaptive decoder",
+        "exposure_-2": {
+          "sdr_encoded_mean": [
+            0.03219735622406006,
+            0.0011329709086567163,
+            0.010616767220199108
+          ],
+          "hdr_display_linear_mean": [
+            0.001719729509204626,
+            8.649230585433543e-05,
+            0.0006534007261507213
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.029981806874275208,
+            0.0013342245947569609,
+            0.009813775308430195
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.001507531967945397,
+            8.759298361837864e-05,
+            0.0005812408053316176
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_0": {
+          "sdr_encoded_mean": [
+            0.12324421107769012,
+            0.016008852049708366,
+            0.06817125529050827
+          ],
+          "hdr_display_linear_mean": [
+            0.013281727209687233,
+            0.0014975385274738073,
+            0.005863009486347437
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.11981406807899475,
+            0.017453378066420555,
+            0.06674039363861084
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.012596562504768372,
+            0.0015667539555579424,
+            0.0056389495730400085
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        },
+        "exposure_2": {
+          "sdr_encoded_mean": [
+            0.277554988861084,
+            0.06084800139069557,
+            0.17866167426109314
+          ],
+          "hdr_display_linear_mean": [
+            0.0614081509411335,
+            0.008509735576808453,
+            0.02789570577442646
+          ],
+          "signed_reference_sdr_encoded_mean": [
+            0.26960253715515137,
+            0.06545661389827728,
+            0.1758348047733307
+          ],
+          "signed_reference_hdr_display_linear_mean": [
+            0.05834675207734108,
+            0.008954538963735104,
+            0.02695402130484581
+          ],
+          "sdr_finite": true,
+          "hdr_finite": true
+        }
+      }
+    ],
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw": [
+      0,
+      22,
+      0
+    ],
+    "scope": "synthetic real-decode shadow probe; not sensor-calibrated signed-path quality acceptance"
+  }
+}
