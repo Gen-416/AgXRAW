@@ -121,7 +121,7 @@ def match(entry: dict, capture: dict | None) -> tuple[str, str]:
     capture = capture or {}
     if capture.get("storage_lossless") is False:
         return "mismatch", "lossy-raw-storage-not-supported-by-external-prior"
-    if capture.get("source") == "dng-main-raw-ifd" and capture.get("storage_lossless") is None:
+    if capture.get("source") in ("dng-main-raw-ifd", "native-main-raw-ifd", "unavailable") and capture.get("storage_lossless") is None:
         return "unverified", "file-storage-lossless-unverified"
     issues = entry.get("readout_declaration_issues") or []
     if issues:
@@ -274,6 +274,98 @@ def _compression(path, tags):
     return code, None, "compression-process-unverified"
 
 
+def _native_cfa_tags(path):
+    """Read a native TIFF's main CFA IFD, independently of DNG semantics.
+
+    Preview fields cannot supply RAW geometry or codec declarations. Select the
+    a unique main CFA frame; multiple native RAW frames, unsupported containers,
+    LinearRAW and proprietary MakerNote readout modes stay unknown.
+    """
+    wanted = {254, 256, 257, 258, 259, 262, 273, 277, 279, 324, 325, 330, 50720}
+    with path.open("rb") as source:
+        head = source.read(8)
+        if len(head) != 8 or head[:2] not in (b"II", b"MM"):
+            return {}, None
+        endian = "<" if head[:2] == b"II" else ">"
+        if struct.unpack(endian+"H", head[2:4])[0] != 42:
+            return {}, None
+        first, = struct.unpack(endian+"L", head[4:])
+        root = md._read_ifd_entries(source, first, endian)
+        if any(tag == md.TAG_DNG_VERSION for tag, *_ in root):
+            return {}, None
+        make = next((values[0] for tag, typ, count, data in root
+                     if tag == md.TAG_MAKE and typ == 2 and 0 < count <= 128
+                     for values in [md._entry_values(source, typ, count, data, endian)]
+                     if values), "")
+        visited = set()
+        candidates = []
+
+        def visit(offset, entries=None):
+            if offset in visited or len(visited) >= 64:
+                return
+            visited.add(offset)
+            entries = entries if entries is not None else md._read_ifd_entries(source, offset, endian)
+            tags = {}
+            for tag, typ, count, data in entries:
+                if tag in wanted:
+                    if count * md._TYPE_SIZES.get(typ, 1) > 65536:
+                        raise ValueError("native readout metadata too large")
+                    tags[tag] = md._entry_values(source, typ, count, data, endian)
+            yield tags
+            for sub in tags.get(330, [])[:64]:
+                yield from visit(int(sub))
+
+        offset = first
+        while offset and offset not in visited and len(visited) < 64:
+            for tags in visit(offset, root if offset == first else None):
+                width, height = (tags.get(256) or [0])[0], (tags.get(257) or [0])[0]
+                if ((tags.get(254) or [0])[0] == 0 and (tags.get(262) or [0])[0] == 32803
+                        and (tags.get(277) or [1])[0] == 1
+                        and 0 < width < 65536 and 0 < height < 65536):
+                    candidates.append(tags)
+            source.seek(offset)
+            count_raw = source.read(2)
+            if len(count_raw) != 2:
+                break
+            count, = struct.unpack(endian+"H", count_raw)
+            if count > 4096:
+                break
+            source.seek(offset+2+12*count)
+            next_raw = source.read(4)
+            offset = struct.unpack(endian+"L", next_raw)[0] if len(next_raw) == 4 else 0
+    return (candidates[0], make) if len(candidates) == 1 else ({}, None)
+
+
+def _native_compression(path, tags, make):
+    """Codec identity is evidence about storage, never ADC/readout identity.
+
+    Dispatch predicates mirror the project's pinned LibRaw tiff.cpp. They do
+    not identify Sony's camera-menu Compressed/HQ option or Nikon HE/HE* mode.
+    """
+    code, lossless, process = _compression(path, tags)
+    brand = " ".join(str(make or "").upper().split())
+    codec = None
+    if brand in ("SONY", "SONY CORPORATION"):
+        if code == 32766 and (tags.get(258) or [None])[0] in (12, 14):
+            codec, lossless, process = "sony-arw6-llvc3", False, "sony-arw6-quantized-curve"
+        elif code == 32767:
+            counts = tags.get(279) or []
+            size = int(tags[256][0]) * int(tags[257][0])
+            if len(counts) == 1 and counts[0] == size:
+                codec, lossless, process = "sony-arw2", False, "sony-arw2-lossy"
+            elif len(counts) == 1 and counts[0] == 2*size:
+                codec, lossless, process = "sony-unpacked", True, "sony-unpacked"
+        elif code in (6, 7):
+            # Sony also uses Compression=6 for predictive lossless JPEG.
+            _, lossless, process = _compression(path, {**tags, 259: [7]})
+            codec = "sony-predictive-jpeg" if lossless is True else None
+    elif brand in ("NIKON", "NIKON CORPORATION") and code == 34713:
+        codec = "nikon-nef-compression-34713"
+        # This container code alone does not distinguish legacy lossless,
+        # lossy, packed or HE variants. Keep the model unqualified.
+    return code, lossless, process, codec
+
+
 def _fujifilm_shutter(path):
     """MakerNote 0x1050 is independent of the optional embedded lens profile."""
     with path.open("rb") as source:
@@ -310,8 +402,11 @@ def read(path: Path) -> dict:
     try:
         from .spatial_black import sensor_tags
         tags = sensor_tags(path, {258, 259, 273, 279, 324, 325, 50829, 50719, 50720})
+        native_make = None
+        if not tags:
+            tags, native_make = _native_cfa_tags(path)
         if tags:
-            capture["source"] = "dng-main-raw-ifd"
+            capture["source"] = "native-main-raw-ifd" if native_make is not None else "dng-main-raw-ifd"
             width, height = int(tags[256][0]), int(tags[257][0])
             capture["raw_geometry"] = _pair([width, height], "RAW IFD geometry")
             bits = tags.get(258) or []
@@ -325,7 +420,11 @@ def read(path: Path) -> dict:
                     capture["default_crop"] = _crop_pair(tags[50720], "DefaultCropSize")
                 except (ValueError, TypeError):
                     capture["default_crop_status"] = "invalid-default-crop"
-            code, lossless, process = _compression(path, tags)
+            if native_make is not None:
+                code, lossless, process, codec = _native_compression(path, tags, native_make)
+                capture.update(codec_id=codec, codec_source="main-raw-ifd+pinned-libraw-dispatch" if codec else None)
+            else:
+                code, lossless, process = _compression(path, tags)
             capture.update(compression_code=code, storage_lossless=lossless, compression_process=process)
     except (OSError, ValueError, TypeError, KeyError, IndexError, OverflowError, struct.error):
         capture["metadata_status"] = "readout-metadata-unreadable"

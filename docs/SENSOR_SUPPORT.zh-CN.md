@@ -55,8 +55,8 @@ HEIF 和两次 10-bit/444 HDR HEIF 通过浮点回读。LibRaw 执行文件内�
    尝试实际渲染，全部失败后才尝试 LibRaw，并报告实际版本与回退原因。
    显式指定版本保持严格，失败直接报错。
 
-LibRaw 主解码对未知新机型的可用性事实：ARW/RAF/NEF 等容器格式跨代稳定，
-文件几乎总能解包；缺的是**逐机型颜色矩阵**——这正是回退表补的洞。注意边界：
+ARW/RAF/NEF 的扩展名不能证明具体编码可解包。新机型可能同时缺解码器、逐机型
+颜色矩阵或统计标定，必须逐文件核对。回退矩阵只补颜色标定这一层。注意边界：
 回退矩阵服务于 Kelvin 求解与报告，无法注入 LibRaw 内部的色彩转换；对 LibRaw
 完全不认识的机型，Rec.2020 转换精度取决于 LibRaw 的内部回退，报告如实说明。
 
@@ -64,7 +64,7 @@ LibRaw 主解码对未知新机型的可用性事实：ARW/RAF/NEF 等容器格�
 
 | 机型 | 先验（P2P） | 颜色矩阵 | 备注 |
 |---|---|---|---|
-| Sony A7 V (ILCE-7M5) | ✓ unityEv 8.76 / FWC 71k | ✓ LibRaw master | unityEv 为 JPTC 一手实测锚定 |
+| Sony A7 V (ILCE-7M5) | 机械快门 unityEv 8.7983 / FWC 71k；电子快门另选 JPTC | ✓ LibRaw pin | gain、读噪、PDR 的快门来源分别记录；快门未知不能命中机械条目 |
 | Sony A7S III (ILCE-7SM3) | ✓ unityEv 10.15 / FWC 228k | ✓ LibRaw master | 大像素签名明显；unityEv 为 DxO 派生表锚定 |
 | Sony A7R VI (ILCE-7RM6) | ✓ unityEv 7.80 / FWC 36k | **无**（刻意缺席） | 未找到已发布系数；矩阵宁缺毋猜，降级路径覆盖；unityEv 为 JPTC 一手实测锚定 |
 | Ricoh GR IV | ✓ unityEv 7.37 / FWC 27k | 无需（DNG 自带 ColorMatrix） | |
@@ -120,8 +120,11 @@ X-E5 借 X100VI 矩阵、A7R VI 待上游、GR IV 走 DNG 自带标签）。0.22
   可补——A7 V、X-E5 这类属于此类。
 - **格式缺口**（LibRaw 根本打不开文件）：回退表无能为力，升级 LibRaw 也未必
   有用。**典型案例：尼康高效压缩（HE/HE\*）NEF**——Z9/Z8/Z6III/Z50II 世代的
-  HE 格式使用 intoPIX **TicoRAW** 编码，授权原因 LibRaw（连 master）与
-  darktable 的 rawspeed 都无法解码。同机身的『无损压缩』NEF 不受影响。
+  HE 格式使用 intoPIX **TicoRAW** 编码。本项目固定的 LibRaw `e419de08` 中，
+  JPEG XS 标记进入未实现分支，不能由机型矩阵或 `.NEF` 扩展名证明可读。
+  同机身的无损压缩 NEF 是另一编码类别，也需要实际文件验收。截至本次复核，
+  [LibRaw #826](https://github.com/LibRaw/LibRaw/pull/826) 仍开放；提案中的逆向
+  HE 解码器没有进入本项目 pin，不能当作已安装能力，HE 与 HE* 也不能合并宣称支持。
 
   **已关闭的格式缺口：Sony cRAW HQ（ARW6/LLVC3，ILCE-7M5 世代）**——
   y-g-jiang 的逆向解码器 `sony_arw6_load_raw()` 已于 2026-07-18 合并进
@@ -129,15 +132,18 @@ X-E5 借 X100VI 矩阵、A7R VI 待上游、GR IV 走 DNG 自带标签）。0.22
   上游随后调整了 ARW6 黑/白/线性上限点 e419de08）。本项目的 LibRaw pin
   （`tools/libraw-pin.env`）自 e419de08 起即包含该解码器（venv 构建内
   `libraw_r.dylib` 携带 `sony_arw6_load_raw` 已验证），Compression=32766
-  的 ARW6 IFD 自动分派——cRAW HQ 文件走完整管线（含 CFA 证据层与 HDR）。
-  逐位精度注记：逆向实现对官方解码 G 通道 0 差异、R/B 各 ~5 像素差 1 个
-  内部码值（作者实测），对证据统计无可见影响；本机尚无 cRAW HQ 样张，
-  首个真实文件到手时按惯例跑一遍全量对照。
+  的 ARW6 IFD 自动分派。当前本地 `DSC00225.ARW` 已确认这个 codec，完成完整／
+  半尺寸解码与 AgX SDR/HDR 的 NumPy／Rust 对照。作者对特定样本／版本与 Adobe
+  的接近一致不能外推为所有 RAW 的误差上界，也不能证明有损编码前的 ADC 样本被
+  恢复；LUT 展开后的一个内部码阶并不一定等于一个均匀 DN。
+  [Sony 官方](https://helpguide.sony.net/ilc/2540/v1/en/contents/251h_raw_file_type.html)
+  区分 Lossless Comp、Compressed(HQ)、Compressed。本项目当前只从该文件确定
+  ARW6/LLVC3，未获得可核实的菜单子模式和快门信息，不能把它标成无损或完整读出模式。
 
 格式缺口的处置（`raw_io._unsupported_format_guidance`，报错即引导）：
 
-1. **Adobe DNG Converter**（免费，持有 TicoRAW 授权）把 HE NEF 转 DNG——
-   转换后本工具全功能可用（含 CFA 证据层与 HDR）；
+1. 用支持该具体编码的 Adobe DNG Converter 转成 DNG 后再次逐文件探测；转换结果
+   是否保留 CFA、处理声明和合适的噪声模型，需要独立核对，不能承诺转换后全功能；
 2. 相机内改用**无损压缩** RAW；
 3. **尝试 Apple RAW 自动模式**：若系统能够解码该文件，可在 LibRaw 证据缺席时
    输出场景图像。传感器 CFA、剪切和 SNR 明确不可用；HDR 使用最多 1EV 的图像估计。
@@ -203,27 +209,46 @@ Apple RAW：✓ 提供 RAW 9（自动模式会在渲染失败后重试旧版）�
 
 ![iPhone 16 Pro 同帧双解码对照](assets/decoder-iphone-libraw-vs-raw9.jpg)
 
-## iPhone 主摄 CMOS（IMX903）检索纪要
+## 原生 RAW 的逐文件统计资格（2026-10-10）
 
-iPhone 16 Pro / Pro Max 主摄为索尼定制 IMX903：48MP quad-Bayer、1.22µm、
-**双层晶体管像素**（光电二极管与像素晶体管分层堆叠，放大管加大使饱和信号量
-约翻倍——这是它 FWC 的结构来源）、14-bit ADC、像素级 DCG（双转换增益）、
-22nm 制程、100% Focus Pixels。
+项目现在分别记录「实际完成解码」「实际完成成像」与「噪声标定适用」。原生 TIFF
+只读取唯一的主 CFA IFD；缩略图、增强图或多个候选 RAW 帧不能替代它。可读取的
+信息包括编码、存储位数、原始几何与默认裁剪；拿不到的 ADC 位数、固件、连拍、
+binning、快门和完整 readout ID 保持未知。Sony 32767 还需码流长度条件才能区分
+ARW2 与 unpacked，Nikon 34713 本身不能区分无损／有损／HE。
 
-**尺寸存在信源分歧**：多数英文信源与实拍规格链为 1/1.28"（与 15 Pro 光学
-连续），部分中文信源沿用早期 1/1.14" 传闻。判定：**1/1.28" 更可信**——
-1/1.14" 出自发布前的传闻链，未获拆解证实。
+已知有损或尚未确认无损的文件，当前不会直接套用来自其他读出／压缩模式的物理先验，
+但通用曝光、AgX、SDR/HDR 成像继续。以后若有相同 codec、LUT 域和采集模式的独立
+实测模型，可以在明确的噪声合同下扩展资格；当前拒绝的是未经验证的模型适用性，
+不是把有损 RAW 永久排除在项目之外。
 
-**为什么 iPhone 不进先验表**：①PhotonsToPhotos 无 iPhone 16 Pro 条目（最近
-的是 14 Pro Max/IMX803，同为 48MP 1/1.28" 前代架构，可作参照级但不可冒充
-本机数据）；②ProRAW DNG 是计算处理的产物，不能直接套用独立感光点的 shot/read
-模型。RAW 健康度中的绿色残差相关性和空码仅作线索，不能单独证明机内处理；文件
-噪声声明还须核对 Raw IFD、数据类型及处理状态，不因存在 tag 就视为已验证；
-③ProRAW DNG 自带完整双光源 ColorMatrix，
-颜色标定阶梯第一级直接命中，无需回退。
+编码白点与线性响应阈值分开：DNG 使用文件 WhiteLevel；非 DNG 使用 LibRaw 的
+展开后 maximum。当前 ARW6 pin 的 black=1024、maximum=39002、linear_max=32800，
+对应编码跨度 37978 与线性有效跨度 31776，TIFF 声明的 14-bit 不替代展开后的码域。
+标定 DN 尺度与解码方差传递共用编码跨度，原始剪切／非线性判断仍使用各自的有效
+阈值。依据见固定版本的 [TIFF 分派](https://github.com/LibRaw/LibRaw/blob/e419de08001de28ae6988ecb22df47e52b9c5eaa/src/metadata/tiff.cpp)
+与 [ARW6 端点修正](https://github.com/LibRaw/LibRaw/commit/e419de08001de28ae6988ecb22df47e52b9c5eaa)。
 
-来源：[GHOSTEK iPhone 16 相机规格](https://ghostek.com/blogs/ghostek-insider/the-iphone-16-camera-pros-cons-specs) ·
-[MacRumors 论坛 IMX903 讨论](https://forums.macrumors.com/threads/sony-imx903-sensor-on-16-pro.2438445/) ·
-[AppleInsider 规格泄露](https://forums.appleinsider.com/discussion/237374/exclusive-every-iphone-16-iphone-16-pro-camera-spec-capture-button-detail-revealed) ·
-[知乎：索尼主摄级传感器综述](https://zhuanlan.zhihu.com/p/15276408972) ·
-[EET-China IMX903 报道](https://www.eet-china.com/mp/a318363.html)
+实际样本的 SHA-256、运行时版本、CFA 四相位、电平、固定局部区域，以及全图和局部
+NumPy／Rust 差异保存在[机器可读记录](assets/delivery-quality/native-raw-20261010.json)。
+复跑方式（不保存用户照片或完整像素缓冲）：
+
+```sh
+python tools/validate_native_raw.py "$SAMPLES/DSC00225.ARW" --sizes half full \
+  --out /tmp/native-raw-acceptance.json
+```
+
+这份对照验证同一固定 LibRaw 下的实现一致性。当前缺少厂商／Adobe 的独立解码
+参考、Sony 其他编码与 APS-C／快门／ISO 组合、同模式暗场／平场／近饱和标定对；
+授权本地样本目录也没有 Nikon NEF，因此 Nikon 传统／HE／HE* 均未完成实片验收。
+这些缺口记录为未测，不计为通过。
+
+## iPhone 传感器声明的边界
+
+历史文档把网络传闻中的 IMX903、ADC 位数、工艺、DCG 和满阱结构解释写成了确定
+规格；本项目没有足够的一手证据支持这些具体断言，现撤回这些声明。DNG 的存储位数
+也不能证明传感器 ADC 位数，或替代这台设备与相应拍摄模式的电子域标定。
+
+iPhone standard Bayer DNG 与 Linear RGB ProRAW 按逐文件数据类型、ColorMatrix、
+NoiseProfile 和处理声明决定能力；不能把一个代际名称、网上推测的传感器型号，或
+另一代 iPhone 的测量借用为物理先验。当前五张 Bayer DNG 验收范围仍见本文开头。

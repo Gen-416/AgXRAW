@@ -1314,9 +1314,9 @@ def analyze(
     mean_black = float(np.mean([bundle.black_levels[c] for c in channel_ids if c < len(bundle.black_levels)] or [0.0]))
     from .raw_units import normalized_raw_span
     # The scalar electron-domain report uses the first green's file DN scale,
-    # matching the calibration ruler. LibRaw's global maximum can differ from
-    # its per-plane coding endpoints (for example Sony ARW), without any
-    # rescaling of the stored samples. Never validate against that other range.
+    # matching the calibration ruler. File coding endpoints are independent
+    # of linear-validity thresholds; native expanded codes use LibRaw's
+    # coding maximum, while DNG can declare per-plane coding white levels.
     prior_channel = next((cid for cid in channel_ids if labels[cid].startswith("G")), channel_ids[0])
     (prior_id, prior_quality_status, prior_model_spread, prior_mode_match,
      gain_e, prior_rn_e, prior_pdr, noise_e) = sensor_prior_evidence(

@@ -6,11 +6,13 @@ import math
 
 
 def coding_endpoints(path, white_level, camera_white_levels, black_levels, spatial_black=None):
-    """Capture the DNG encoding white and maximum black once, before rendering.
+    """Capture the unpacked coding white and maximum black before rendering.
 
     LibRaw's per-channel linear-validity white can include LinearResponseLimit.
     The file's WhiteLevel remains the DN coding endpoint after linearization.
-    Non-DNG files retain LibRaw's per-channel endpoint convention.
+    Native RAW uses LibRaw's unpacked maximum, after any codec LUT expansion;
+    its per-channel linear_max is a separate response-validity threshold. In
+    particular ARW6's declared 14-bit TIFF endpoint is not the expanded domain.
     """
     from .spatial_black import sensor_tags
 
@@ -18,7 +20,7 @@ def coding_endpoints(path, white_level, camera_white_levels, black_levels, spati
     if tags:
         whites = list(tags.get(50717, ())) or [white_level]
     else:
-        whites = list(camera_white_levels if camera_white_levels is not None else ()) or [white_level]
+        whites = [white_level]
     if any(not math.isfinite(float(v)) or float(v) <= 0 for v in whites):
         raise ValueError("invalid RAW coding white level")
     blacks = (list(spatial_black.max_black) if spatial_black is not None else list(black_levels))
