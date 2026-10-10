@@ -208,6 +208,16 @@ def _chroma_noise_support(bundle, model, coarse_shape=None, *,
         return "CFA colour identity unavailable", None, None
     if sorted(colours) != ["B", "G", "G", "R"]:
         return "only Bayer RGB coarse noise propagation is calibrated", None, None
+    if getattr(model, "phase_variance", None):
+        # The recorded decoder matrix has one green column. It cannot
+        # transport separately normalized green planes with different DN
+        # denominators without a validated four-input transform.
+        metadata = getattr(model, "phase_metadata", {})
+        green_spans = [(metadata.get(f"C{p // 2}{p % 2}") or {}).get("normalized_raw_span_dn")
+                       for p,colour in enumerate(colours) if colour == "G"]
+        if all(v is not None for v in green_spans) and not np.isclose(
+                green_spans[0], green_spans[1], rtol=1e-7, atol=0):
+            return "unequal-green-normalization-noise-transfer-unavailable", None, None
     if coarse_shape is not None:
         cells = raw_shape[0] * raw_shape[1] / (coarse_shape[0] * coarse_shape[1])
         if cells < 4:

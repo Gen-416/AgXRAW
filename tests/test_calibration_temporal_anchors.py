@@ -130,6 +130,16 @@ class AllAnchorTests(unittest.TestCase):
         self.assertEqual(calibration.ptc_anchor(self.root,{})[0],200)
         self.assertEqual(records[1]['sha256'],calibration._sha256(good))
 
+    def test_anchor_iso_and_cfa_identity_cannot_silently_disagree_with_dark(self):
+        self.dark()
+        _,dark = calibration.read_dark(self.root/'dark-scalars.csv')
+        path = self.ptc(100)
+        original = path.read_text()
+        path.write_text('#ISO: 200\n'+original)
+        self.assertIn('declared ISO',read_anchors(self.root,dark)[0]['reason'])
+        path.write_text('#CfaPattern: RGBG\n'+original)
+        self.assertIn('colour description',read_anchors(self.root,dark)[0]['reason'])
+
     def test_all_anchors_and_hashes_survive_collect_and_runtime_validation(self):
         self.dark()
         first,second = self.ptc(100,2.),self.ptc(400,.5)
@@ -202,6 +212,16 @@ class AllAnchorTests(unittest.TestCase):
         entry = {'gain_log2iso_log2epd':[[math.log2(i),math.log2(v)] for i,v in curve.items()],
                  'gain_support_intervals':intervals}
         self.assertIsNone(calibration.curve_value(entry,'gain_log2iso_log2epd',150))
+
+    def test_different_anchor_dn_ranges_cannot_inherit_a_single_denominator(self):
+        records = [{'iso':100,'file':'a','status':'usable','fit':{'gain_e_per_dn':2.,
+                    'white_level_used':4095.,'black_level_used':100.}},
+                   {'iso':200,'file':'b','status':'usable','fit':{'gain_e_per_dn':1.,
+                    'white_level_used':8190.,'black_level_used':200.}}]
+        _,_,_,conflicts = anchor_gain_graph(records,[])
+        self.assertEqual(len(conflicts),1)
+        self.assertIn('DN ranges',conflicts[0]['reason'])
+        self.assertEqual(conflicts[0]['reference_dn_ranges'],{'a':3995.,'b':7990.})
 
 
 class PhaseCalibrationContractTests(unittest.TestCase):

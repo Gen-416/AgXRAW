@@ -73,6 +73,7 @@ def _phase_coefficients(bundle, prior, iso, scales, fallback):
             matches = [p for p in products.values() if p.get("channel") is None and p.get("color_index") == cid]
             product = matches[0] if len(matches) == 1 else None
         status = {"color_index": cid, "label": label, "status": "scalar-fallback"}
+        status["normalized_raw_span_dn"] = normalized_raw_span(bundle, cid)
         metadata[key] = status
         if not product:
             status["reason"] = "phase-measurement-unavailable"
@@ -81,8 +82,21 @@ def _phase_coefficients(bundle, prior, iso, scales, fallback):
                                                   and product["color_desc"] != bundle.color_desc):
             status["reason"] = "phase-identity-mismatch"
             continue
+        if product.get("fit_quality") not in (None, "ok"):
+            status["reason"] = "phase-fit-quality-" + product["fit_quality"]
+            continue
         phase_prior = dict(product, gain_jump_isos=prior.get("gain_jump_isos", []))
-        issue = read_noise_issue(phase_prior, iso)
+        issue = read_noise_issue(phase_prior, iso, "read_noise_dn_log2iso")
+        # Stored total variance may still have a measured point where the
+        # physical read component was unresolved. Do not use that point as
+        # an interpolation endpoint while losing its explicit failure state.
+        variance_curve = phase_prior.get("stored_dark_variance_dn2_log2iso") or []
+        x = math.log2(iso)
+        if issue is None and not any(abs(x-px)<1e-7 for px,_ in variance_curve):
+            if any(x0 < x < x1 and any(x0 <= math.log2(failed) <= x1
+                    for failed in phase_prior.get("read_noise_unresolved_isos", []))
+                    for (x0,_),(x1,_) in zip(variance_curve,variance_curve[1:])):
+                issue = "read-noise-unresolved-interval"
         if issue:
             status["reason"] = issue
             continue

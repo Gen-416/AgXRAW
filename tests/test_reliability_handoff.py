@@ -142,7 +142,8 @@ class ReliabilityHandoffTests(unittest.TestCase):
         self.assertFalse(first["has_scene_reliability_exclusion"])
         self.assertTrue(second["has_scene_reliability_exclusion"])
         self.assertNotEqual(first, second)
-        self.assertEqual(cache.PREVIEW_CACHE_VERSION, 30)
+        # v31 also persists phase variance and native readout identity.
+        self.assertGreaterEqual(cache.PREVIEW_CACHE_VERSION, 31)
 
     def test_disk_rejects_missing_wrong_shape_dtype_and_inconsistent_presence(self):
         bundle = replace(_bundle(), scene_reliability_exclusion=np.eye(8, dtype=np.uint8))

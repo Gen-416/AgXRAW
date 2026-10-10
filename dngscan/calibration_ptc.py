@@ -166,6 +166,12 @@ def read_anchors(set_dir, dark):
             header, rows = _parse_rows(path)
             if not rows:
                 raise ValueError("empty PTC file")
+            if header.get("ISO") and float(header["ISO"]) != iso:
+                raise ValueError("PTC declared ISO disagrees with filename ISO")
+            descriptions = {p["color_desc"] for p in dark.get(iso,{}).get("phases",{}).values()
+                            if p.get("color_desc")}
+            if header.get("CfaPattern") and descriptions and descriptions != {header["CfaPattern"].strip().upper()}:
+                raise ValueError("PTC colour description disagrees with dark CFA mapping")
             black_values = [float(v) for v in header.get("BlackLevel","").split(",") if v.strip()]
             phase_fits = {}
             for channel,index in (("R",0),("G1",1),("G2",3),("B",2)):
@@ -212,6 +218,14 @@ def anchor_gain_graph(records, components):
     usable = sorted((r for r in records if r["status"]=="usable"),key=lambda r:(r["iso"],r["file"]))
     primary = usable[0] if usable else None
     curve, intervals, conflicts = {},[],[]
+    # The scalar runtime curve has one reference DN range. Different code
+    # scales cannot inherit the first anchor's denominator by coincidence.
+    spans = [(r, r['fit']['white_level_used']-r['fit']['black_level_used']) for r in usable
+             if 'white_level_used' in r['fit'] and 'black_level_used' in r['fit']]
+    if spans and max(v for _,v in spans)/min(v for _,v in spans)-1. > .05:
+        conflicts.append({'files':[r['file'] for r,_ in spans],
+            'reason':'PTC reference DN ranges disagree by more than existing 5% scale tolerance',
+            'reference_dn_ranges':{r['file']:v for r,v in spans}})
     used = set()
     assignments = {id(c): [] for c in components}
     for record in usable:
