@@ -98,7 +98,14 @@ class NoiseCodingRangeTests(unittest.TestCase):
                 self.assertEqual(analysis.noise_model.channel_variance, expected.noise_model.channel_variance)
                 self.assertEqual(analysis.noise_model.coefficients("G1"),
                                  (1 / 8190., (2 / 8190.) ** 2))
-                self.assertEqual(bundle.noise_decode, original.noise_decode)
+                # LRL changes the resolved sensor endpoint, not the DN encoding
+                # or covariance transfer. Keep its new reliability stamp separate.
+                self.assertEqual(
+                    {key: value for key, value in bundle.noise_decode.items() if key != "source_loss_fullwell"},
+                    {key: value for key, value in original.noise_decode.items() if key != "source_loss_fullwell"},
+                )
+                self.assertEqual(bundle.noise_decode["source_loss_fullwell"],
+                                 {str(cid): level for cid, level in analysis.channel_fullwell.items()})
                 np.testing.assert_array_equal(variance, expected_variance)
                 np.testing.assert_array_equal(correction, expected_correction)
                 self.assertEqual(bundle.chroma_nr_status, "active-approximate")

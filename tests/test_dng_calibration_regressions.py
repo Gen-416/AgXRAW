@@ -201,17 +201,21 @@ class DngCalibrationRegressionTests(unittest.TestCase):
                     with self.subTest(origin=(top,left),warp=bool(geometry)):
                         ops=geometry+[(6,struct.pack('>4l',top,left,120,116))]
                         write_sensor_dng(p,signal=pixels,opcodes={51022:ops})
-                        full=raw_io.load_raw(p)
-                        bundle=raw_io.load_raw(p,scene_half_size=True)
+                        # Audited local support keeps this geometric reference
+                        # nonempty; source-saturated DHT is globally unqualified.
+                        full=raw_io.load_raw(p,demosaic='ahd')
+                        bundle=raw_io.load_raw(p,scene_half_size=True,demosaic='ahd')
                         h,w=bundle.scene_rec2020_render.shape[:2]
                         np.testing.assert_array_equal(bundle.scene_rec2020_render,
                             full.scene_rec2020_render[:2*h,:2*w].reshape(h,2,w,2,3).mean(axis=(1,3)))
                         with rawpy.imread(str(p)) as raw:
                             scene,loss,recipe,_=raw_io._decode_corrected_libraw(
-                                raw,p,bundle.evidence,'clip',True,None)
+                                raw,p,bundle.evidence,'clip',True,rawpy.DemosaicAlgorithm.AHD)
                         samples,pct=reliable_reference_samples(bundle.evidence,scene,
                             bundle.scene_scale,loss,recipe)
                         reliable=np.max(bundle.clip_masks.reshape(-1,3),axis=1)<.1
+                        if bundle.scene_reliability_exclusion is not None:
+                            reliable &= bundle.scene_reliability_exclusion.reshape(-1)==0
                         expected=(scene.reshape(-1,3)/np.float32(bundle.scene_scale))[reliable]
                         np.testing.assert_array_equal(samples,expected)
                         self.assertAlmostEqual(pct,np.mean(reliable)*100)

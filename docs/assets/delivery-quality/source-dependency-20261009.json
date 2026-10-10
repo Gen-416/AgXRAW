@@ -1,0 +1,335 @@
+{
+  "schema": "agxraw-source-dependency-1",
+  "date": "2026-10-09",
+  "baseline_commit": "8db60a3e5f40294e7c3ec0235c99a0a5a3631944",
+  "runtime": {
+    "python": "3.14.4",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw": [
+      0,
+      22,
+      0
+    ],
+    "native_abi": 20,
+    "preview_cache": 28
+  },
+  "actual_dng_late_crop": [
+    {
+      "algorithm": "dht",
+      "half": false,
+      "radial_warp": false,
+      "changed_pixels": 5,
+      "changed_still_reliable": 0,
+      "exclusion_pixels": null,
+      "global_support_untrusted": true,
+      "reliable_pixels": 0,
+      "visual_clip_max": 0.0,
+      "processing_mask_present": false,
+      "raw_clip_pct": {
+        "0": 0.0248015873015873,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0
+      }
+    },
+    {
+      "algorithm": "ahd",
+      "half": false,
+      "radial_warp": false,
+      "changed_pixels": 3,
+      "changed_still_reliable": 0,
+      "exclusion_pixels": 35,
+      "global_support_untrusted": false,
+      "reliable_pixels": 15589,
+      "visual_clip_max": 0.0,
+      "processing_mask_present": false,
+      "raw_clip_pct": {
+        "0": 0.0248015873015873,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0
+      }
+    },
+    {
+      "algorithm": "ahd",
+      "half": true,
+      "radial_warp": false,
+      "changed_pixels": 0,
+      "changed_still_reliable": 0,
+      "exclusion_pixels": null,
+      "global_support_untrusted": false,
+      "reliable_pixels": 3906,
+      "visual_clip_max": 0.0,
+      "processing_mask_present": false,
+      "raw_clip_pct": {
+        "0": 0.0248015873015873,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0
+      }
+    },
+    {
+      "algorithm": "ahd",
+      "half": true,
+      "radial_warp": true,
+      "changed_pixels": 6,
+      "changed_still_reliable": 0,
+      "exclusion_pixels": 130,
+      "global_support_untrusted": false,
+      "reliable_pixels": 3520,
+      "visual_clip_max": 1.0,
+      "processing_mask_present": true,
+      "raw_clip_pct": {
+        "0": 0.0248015873015873,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0
+      }
+    },
+    {
+      "algorithm": "ahd",
+      "half": false,
+      "radial_warp": true,
+      "changed_pixels": 20,
+      "changed_still_reliable": 0,
+      "exclusion_pixels": 622,
+      "global_support_untrusted": false,
+      "reliable_pixels": 14622,
+      "visual_clip_max": 1.0,
+      "processing_mask_present": true,
+      "raw_clip_pct": {
+        "0": 0.0248015873015873,
+        "1": 0.0,
+        "2": 0.0,
+        "3": 0.0
+      }
+    }
+  ],
+  "limits": [
+    "AHD radius-5 and Bayer half-size are conservative dependency support, not exact noise covariance.",
+    "DHT and spatial reconstruction keep global qualification for saturated sources; no automatic algorithm change from source saturation alone.",
+    "Physical RAW saturation remains separate from processing loss and visual clipping.",
+    "Lanczos proxy support includes zero-weight endpoints conservatively.",
+    "Per-body dark/flat correction and new per-scale denoise controls remain deferred."
+  ],
+  "fp_delivery": {
+    "sample": "_SDI0150.DNG",
+    "baseline_commit": "8db60a3",
+    "sdr_cli": [
+      "--decoder",
+      "libraw",
+      "--output-format",
+      "sdr",
+      "--delivery-profile",
+      "share-hq",
+      "--jpeg",
+      "<temporary output>"
+    ],
+    "sdr_comparison": {
+      "baseline_bytes": 9228234,
+      "current_bytes": 9228234,
+      "byte_identical": true,
+      "baseline_sha256": "4d0c9b20a66094d824e815ce983749ecaa736de65200e3f328287b00f58352af",
+      "current_sha256": "4d0c9b20a66094d824e815ce983749ecaa736de65200e3f328287b00f58352af",
+      "pixel_identical": true,
+      "changed_pixels": 0,
+      "max_abs_pixel_error": 0
+    },
+    "baseline_plan": {
+      "decode": {
+        "demosaic": "AHD",
+        "loss_support": "bayer-AHD: conservative radius-5 source support; maximum DefaultScale support",
+        "source_loss_support": null,
+        "source_untrusted": false,
+        "source_exclusion_pixels": 0,
+        "shape": [
+          6000,
+          4000,
+          3
+        ],
+        "scene_processing_loss_pct": 1.9790208333333332,
+        "reliability_source": "sensor-spatial"
+      },
+      "auto_ev": 0.0703125,
+      "hdr": {
+        "requested_headroom_ev": 0.9431937983161474,
+        "rendered_headroom_ev": 0.9431937983161474,
+        "channel_separation": 0.45035798260742416,
+        "reliability_source": "sensor-spatial",
+        "peak_linear": 1.922780127939298
+      },
+      "reliable_sample_pct": 98.0305
+    },
+    "current_plan": {
+      "decode": {
+        "demosaic": "AHD",
+        "loss_support": "bayer-AHD: conservative radius-5 source support; maximum DefaultScale support",
+        "source_loss_support": "bayer-AHD: source-saturation radius-5 support; actual DefaultScale/warp/crop/orientation/reduction support",
+        "source_untrusted": false,
+        "source_exclusion_pixels": 429747,
+        "shape": [
+          6000,
+          4000,
+          3
+        ],
+        "scene_processing_loss_pct": 1.9790208333333332,
+        "reliability_source": "sensor-spatial"
+      },
+      "auto_ev": 0.0703125,
+      "hdr": {
+        "requested_headroom_ev": 0.9431937983161474,
+        "rendered_headroom_ev": 0.9431937983161474,
+        "channel_separation": 0.45035798260742416,
+        "reliability_source": "sensor-spatial",
+        "peak_linear": 1.922780127939298
+      },
+      "reliable_sample_pct": 98.0305
+    },
+    "hdr_heif": {
+      "status": "passed-production-gates",
+      "profile": "archive",
+      "bit_depth": 10,
+      "decoder": "libraw",
+      "numpy": true,
+      "cli_exit_code": 0,
+      "cli": [
+        "--decoder",
+        "libraw",
+        "--output-format",
+        "ultrahdr-heic",
+        "--delivery-profile",
+        "archive",
+        "--heif-bit-depth",
+        "10",
+        "--jpeg",
+        "<temporary output>"
+      ],
+      "inspection": {
+        "has_iso_gainmap": true,
+        "headroom": 1.9228515625,
+        "base_headroom": 1.0,
+        "headroom_source": "iso-derivation",
+        "headroom_status": "declared",
+        "profile": "Display P3",
+        "width": 4000,
+        "height": 6000,
+        "bit_depth": 10,
+        "chroma_subsampling": "4:4:4",
+        "gainmap_width": 4000,
+        "gainmap_height": 6000,
+        "gainmap_pixel_format": "444f"
+      },
+      "bytes": 36977511,
+      "sha256": "62ed294f72cd2c6bc20a8704d5f0b714d88386a69c79a9861c728b09b404d1e6",
+      "auto_ev": {
+        "ev": 0.078125,
+        "details": {
+          "ev": 0.078125,
+          "ev_median_target": 1.0488808155059814,
+          "ev_boost": 0.078125,
+          "highlight_limited": true,
+          "highlight_cap_ev": 0.078125,
+          "anchored_median_ev": -0.9707558155059814
+        }
+      },
+      "hdr_plan": {
+        "requested_headroom_ev": 0.9431937983161474,
+        "rendered_headroom_ev": 0.9431937983161474,
+        "channel_separation": 0.45035798260742416,
+        "reliability_source": "sensor-spatial",
+        "peak_linear": 1.922780127939298
+      }
+    },
+    "generated_images_cleaned": true,
+    "note": "One fp file; JPEG comparison does not imply unchanged HDR pixels or unchanged planning for saturated DHT files."
+  },
+  "official_single_point_pipeline": [
+    {
+      "case": "matched",
+      "readout_match_status": "matched",
+      "noise_model_status": "valid",
+      "noise_model_source": "User JPTC calibration (f38281ea3103afe369e236ea)",
+      "gain_e_per_dn": 4.000000000000001,
+      "read_noise_e": 3.000000000000061,
+      "readout_contract": {
+        "version": 1,
+        "libraw_raw_geometry": [
+          128,
+          128
+        ]
+      },
+      "compression": "lossless"
+    },
+    {
+      "case": "geometry-mismatch",
+      "readout_match_status": "mismatch",
+      "noise_model_status": "rejected",
+      "noise_model_source": "User JPTC calibration (d6a1c5b930e55c28240994d5)",
+      "gain_e_per_dn": null,
+      "read_noise_e": null,
+      "readout_contract": {
+        "version": 1,
+        "libraw_raw_geometry": [
+          256,
+          128
+        ]
+      },
+      "compression": "lossless"
+    },
+    {
+      "case": "unknown-compression",
+      "readout_match_status": "unverified",
+      "noise_model_status": "rejected",
+      "noise_model_source": "User JPTC calibration (e6169986c3d7bfaceb3df761)",
+      "gain_e_per_dn": null,
+      "read_noise_e": null,
+      "readout_contract": {
+        "version": 1,
+        "libraw_raw_geometry": [
+          128,
+          128
+        ]
+      },
+      "compression": "RAW HQ"
+    },
+    {
+      "case": "mismatch-independent-dng-fallback",
+      "readout_match_status": "mismatch",
+      "noise_model_status": "valid",
+      "noise_model_source": "DNG NoiseProfile",
+      "gain_e_per_dn": null,
+      "read_noise_e": null,
+      "readout_contract": {
+        "version": 1,
+        "libraw_raw_geometry": [
+          256,
+          128
+        ]
+      },
+      "compression": "lossless"
+    }
+  ],
+  "validation": {
+    "full_native": {
+      "command": "DNGSCAN_FAST=1 python -m unittest discover -s tests -q",
+      "discovered": 1729,
+      "passed": 1726,
+      "skipped": 3,
+      "failures": 0,
+      "errors": 0,
+      "wall_s": 250.722
+    },
+    "focused_numpy": {
+      "command": "DNGSCAN_FAST=0 python -m unittest <28 focused modules> -q",
+      "discovered": 243,
+      "passed": 241,
+      "skipped": 2,
+      "failures": 0,
+      "errors": 0,
+      "wall_s": 5.774
+    },
+    "note": "Groups overlap; skips are not passes. Originals untouched. No production acceptance budget overrides."
+  }
+}

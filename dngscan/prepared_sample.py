@@ -19,6 +19,7 @@ class PreparedSceneSample:
     rgb: Any
     masks: Any | None
     source_indices: Any | None
+    exclusion: Any | None = None
 
     @classmethod
     def from_bundle(cls, bundle):
@@ -27,7 +28,8 @@ class PreparedSceneSample:
             # GUI proxies already carry the full source population and matching
             # masks. Resampling the proxy would erase small source highlights.
             return cls(np.asarray(stored),
-                       getattr(bundle, "_tone_plan_sample_masks", None), None)
+                       getattr(bundle, "_tone_plan_sample_masks", None), None,
+                       getattr(bundle, "_tone_plan_sample_exclusion", None))
         scene = bundle.scene_rec2020_render
         flat = scene.reshape(-1, scene.shape[-1])
         indices = sample_indices(flat.shape[0])
@@ -40,9 +42,16 @@ class PreparedSceneSample:
             masks.flags.writeable = False
         rgb.flags.writeable = False
         indices.flags.writeable = False
-        return cls(rgb, masks, indices)
+        from .reliability import scene_exclusion_for_shape
+
+        exclusion = scene_exclusion_for_shape(bundle, scene.shape[:2])
+        if exclusion is not None:
+            exclusion = np.ascontiguousarray(np.asarray(exclusion).reshape(-1)[indices], dtype=np.uint8)
+            exclusion.flags.writeable = False
+        return cls(rgb, masks, indices, exclusion)
 
     def bind(self, bundle):
         """Borrow the source population on a private bundle, not the capture."""
         return replace(bundle, _tone_plan_sample=self.rgb,
-                       _tone_plan_sample_masks=self.masks)
+                       _tone_plan_sample_masks=self.masks,
+                       _tone_plan_sample_exclusion=self.exclusion)

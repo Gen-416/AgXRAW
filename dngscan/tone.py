@@ -292,6 +292,25 @@ def reliable_scene_ev_selection(
         masks = retreat_engine.clip_masks_for_render(bundle, bundle.scene_rec2020_render.shape[:2])
         reliable &= np.max(masks[indices], axis=1) < np.float32(0.10)
 
+    # A saturated source outside the final crop can still contribute to RGB
+    # inside it. Dependency authority follows image formation, independently
+    # of the visual, sensor-position clip masks above.
+    if stored_sample is not None:
+        exclusion = getattr(bundle, "_tone_plan_sample_exclusion", None)
+        if exclusion is not None:
+            exclusion = np.asarray(exclusion)
+            if exclusion.shape != (expected_rows,):
+                raise ValueError("prepared dependency exclusions do not match scene rows")
+            reliable &= exclusion == 0
+        elif getattr(bundle, "scene_reliability_exclusion", None) is not None:
+            # An unbound external sample has no location correspondence.
+            reliable[:] = False
+    else:
+        from .reliability import scene_exclusion_for_shape
+        exclusion = scene_exclusion_for_shape(bundle, bundle.scene_rec2020_render.shape[:2])
+        if exclusion is not None:
+            reliable &= np.asarray(exclusion).reshape(-1)[indices] == 0
+
     # Uncertified propagation withdraws evidence authority; it does not say
     # that each channel of every pixel clipped. Local masks remain local.
     if getattr(bundle, "scene_loss_support_untrusted", False):

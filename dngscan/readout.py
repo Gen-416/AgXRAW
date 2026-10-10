@@ -140,11 +140,12 @@ def match(entry: dict, capture: dict | None) -> tuple[str, str]:
 
 
 def collect_fields(header: dict) -> dict:
-    """JPTC-DARK/1 RawSize is LibRaw's full mosaic, not ImageWidth/Height.
+    """JPTC RawSize is LibRaw's full mosaic, not ImageWidth/Height.
 
-    Contract verified against JiangtherapeeTesterView 57567edf, darkCsv.mjs
-    lines 43-61 and binding.cc raw_width/raw_height. The JPEG dimensions are
-    operator declarations and remain informational.
+    JPTC/2 and JPTC-DARK/1 share this acquisition declaration. Contract
+    verified against JiangtherapeeTesterView 57567edf, entryCsv.mjs,
+    darkCsv.mjs and binding.cc raw_width/raw_height. The JPEG dimensions
+    are operator declarations and remain informational.
     """
     raw_size = header.get("RawSize")
     contract = {"geometry_domain": "camera-jpeg-output"}
@@ -152,7 +153,7 @@ def collect_fields(header: dict) -> dict:
         return {"acquisition_contract_fields": contract}
     found = re.fullmatch(r"\s*(\d+)\s*[x×]\s*(\d+)\s*", str(raw_size))
     if found is None:
-        raise ValueError("Collect RawSize must contain full mosaic width x height")
+        raise ValueError("JPTC RawSize must contain full mosaic width x height")
     size = _pair([int(found[1]), int(found[2])], "RawSize")
     return {"acquisition_contract_fields": contract,
             "readout_contract": {"version": READOUT_VERSION, "libraw_raw_geometry": size}}

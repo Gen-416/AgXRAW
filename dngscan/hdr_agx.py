@@ -278,6 +278,9 @@ def scene_render_to_hdr_display_linear(
     clip_masks = None
     if getattr(bundle, "clip_masks", None) is not None:
         clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
+    from .reliability import scene_exclusion_for_shape, separation_masks
+    exclusion = scene_exclusion_for_shape(bundle, (h, w))
+    exclusion = exclusion.reshape(-1) if exclusion is not None else None
 
     # The scene-authorized native curve endpoint. Display capacity is only the container's
     # outer ceiling; using it here would normalize every photograph to display peak.
@@ -325,7 +328,10 @@ def scene_render_to_hdr_display_linear(
             outset_matrix,
             formation_y,
             curve_tables,
-            clip_masks[start:end] if clip_masks is not None else None,
+            separation_masks(
+                clip_masks[start:end] if clip_masks is not None else None,
+                exclusion[start:end] if exclusion is not None else None,
+            ),
             peak,
             output_gamut,
             native_plan=native_hdr_plan,
@@ -445,6 +451,9 @@ def render_ultrahdr_agx_pair(
 
     clip_masks = None
     raw_guidance = None
+    from .reliability import scene_exclusion_for_shape, separation_masks
+    exclusion = scene_exclusion_for_shape(bundle, (h, w))
+    exclusion = exclusion.reshape(-1) if exclusion is not None else None
     if color_plan is not None and getattr(bundle, "clip_masks", None) is not None:
         clip_masks = retreat_engine.clip_masks_for_render(bundle, (h, w))
         if str(getattr(effective_tone, "tone_core", "agx")) == "gated":
@@ -524,7 +533,7 @@ def render_ultrahdr_agx_pair(
             outset_matrix,
             formation_y,
             curve_tables,
-            sample_masks,
+            separation_masks(sample_masks, exclusion[start:end] if exclusion is not None else None),
             peak,
             output_gamut,
             native_plan=native_hdr_plan,

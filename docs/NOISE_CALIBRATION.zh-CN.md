@@ -164,6 +164,12 @@ RawSize、另一份却缺少时，保留逐文件声明覆盖并报告不可核�
 为 `raw-ifd`、`active-area`、`default-crop` 或 `libraw-raw-mosaic`，不能通过猜尺寸解除限制。
 仅 JPEG 尺寸、缺少 RAW 尺寸依据的 Collect 也不宣称已经验证传感器栅格。
 
+单点 `tools/import_jptc.py` 也保留 JPTC/2 的 `RawSize` 与 `Compression`：前者约束
+LibRaw 完整 mosaic，后者由运行时核对，不能解释的文本保持不可核对。单点 PTC 的
+ImageWidth / ImageHeight 仍仅为 JPEG 输出信息；它不会因此取得 Collect 专属的
+成对暗场总方差语义。用户安装与包内单点记录使用同一读出约束。旧转换器已经删除的
+声明无法从 JPEG 尺寸或文件哈希恢复；已有单点 JSON 应从原 CSV 重新转换并导入。
+
 同机型、快门及 ISO 有多份记录时，优先选择实际读出约束匹配的记录，再按原策略处理
 未声明子模式的记录；同等适用范围内仍按导入时间选择。没有可用候选时，保留失败记录
 和明确原因，不静默回退到同样未核对的 curated/bulk 标定。增益、读噪、PDR 与噪声模型

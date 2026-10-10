@@ -1238,6 +1238,7 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         half_size=half_size and not reduce_after_ops, demosaic=demosaic, highlight=highlight,
         is_bayer=np.asarray(evidence.raw_pattern).shape == (2, 2),
         pixel_aspect=float(raw.sizes.pixel_aspect))
+    source_decoded_shape = list(scene.shape[:2])
     recipe.loss_support_untrusted = support_is_untrusted(recipe.loss_support)
     del loss
     if track_loss:
@@ -1350,6 +1351,33 @@ def _decode_corrected_libraw(raw: Any, path: Path, evidence: Any, highlight: str
         recipe.crop = tuple(retained)
         recipe.noise_geometry.update(decoded_crop=[kept_y, kept_x, kept_h, kept_w],
                                      effective_sensor_crop=retained)
+    from dataclasses import asdict
+    from .decoder_loss import source_reliability_exclusion
+
+    recipe.source_loss_geometry = {
+        "decoded_shape": source_decoded_shape,
+        "half_size": bool(half_size and not reduce_after_ops),
+        "demosaic": recipe.demosaic_algorithm,
+        "highlight": highlight,
+        "pixel_aspect": float(raw.sizes.pixel_aspect),
+        "warp_ops": [asdict(op) for op in recipe.post if isinstance(op, ops.Warp)],
+        "crop": list(recipe.crop) if recipe.crop is not None else None,
+        "orientation_flip": int(flip),
+        "reduction": 2 if reduce_after_ops else 1,
+        "stage1_spatial": any(isinstance(op, dng_point_ops.BadPixels) for op in recipe.stage1),
+    }
+    recipe.source_loss_fullwell = {}
+    if track_loss:
+        from .sensor_summary import summarize_sensor
+
+        recipe.source_loss_fullwell = dict(summarize_sensor(
+            evidence.raw_image, evidence.raw_colors, evidence.white_level,
+            evidence.camera_white_levels, evidence=evidence).channel_fullwell)
+    recipe.scene_reliability_exclusion, recipe.source_loss_support = (
+        source_reliability_exclusion(evidence, recipe.source_loss_geometry,
+                                     recipe.source_loss_fullwell)
+        if track_loss else (None, None))
+    recipe.loss_support_untrusted |= support_is_untrusted(recipe.source_loss_support)
     return scene, processing, recipe, "+".join(shading) or None
 
 
@@ -1722,6 +1750,50 @@ def release_analysis_buffers(bundle: RawBundle) -> RawBundle:
     return replace(bundle, xyz_render=None, _analysis_y_render=None)
 
 
+def _refresh_source_reliability_from_fullwell(bundle: RawBundle, fullwell: dict[int, int]) -> bool:
+    """Replay source dependencies only when their resolved endpoints change."""
+    descriptor = getattr(bundle, "noise_decode", None) or {}
+    geometry = descriptor.get("source_loss_geometry")
+    if geometry is None:
+        return False
+    previous = {int(cid): int(level) for cid, level in descriptor.get("source_loss_fullwell", {}).items()}
+    if previous == fullwell:
+        return False
+    from .decoder_loss import source_reliability_exclusion, support_is_untrusted
+
+    evidence = getattr(bundle, "evidence", None) or bundle
+    exclusion, reason = source_reliability_exclusion(evidence, geometry, fullwell)
+    untrusted = support_is_untrusted(descriptor.get("loss_support")) or support_is_untrusted(reason)
+    bundle.scene_reliability_exclusion = exclusion
+    bundle.scene_loss_support_untrusted = untrusted
+    bundle.scene_reliability_source = "decoder-support-untrusted" if untrusted else "sensor-spatial"
+    updated = dict(descriptor)
+    updated["source_loss_fullwell"] = {str(cid): int(level) for cid, level in fullwell.items()}
+    updated["source_loss_support"] = reason
+    updated["loss_support_untrusted"] = untrusted
+    old_support_note = updated.get("loss_support_note")
+    other_notes = str(getattr(bundle, "scene_correction_note", None) or "")
+    if old_support_note:
+        other_notes = other_notes.replace(old_support_note, "", 1).strip("; ")
+    reasons = [value for value in (updated.get("loss_support"), reason) if support_is_untrusted(value)]
+    support_note = ("前级损失支撑未完成局部标定，使用整帧保守置信度: " + "; ".join(reasons)
+                    if reasons else None)
+    updated["loss_support_note"] = support_note
+    bundle.scene_correction_note = "; ".join(value for value in (other_notes, support_note) if value) or None
+    bundle.noise_decode = updated
+    # Bound planning samples include evidence at their original endpoints.
+    # Full RAW and scene are present here, so resample all three together.
+    bundle._tone_plan_sample = None
+    bundle._tone_plan_sample_masks = None
+    bundle._tone_plan_sample_exclusion = None
+    bundle.raw_guidance = None
+    bundle._raw_guidance_cache_shape = None
+    bundle._raw_guidance_resized = None
+    bundle._raw_guidance_has_sensor_snr = False
+    bundle._raw_guidance_has_resolved_fullwell = False
+    return True
+
+
 def refresh_clip_masks_from_fullwell(
     bundle: RawBundle, channel_fullwell: dict[int, int]
 ) -> bool:
@@ -1737,7 +1809,7 @@ def refresh_clip_masks_from_fullwell(
     if getattr(bundle, "scene_decoder", "libraw") != "libraw":
         return False
     pending = getattr(bundle, "_clip_masks_pending", False)
-    if not pending and (getattr(bundle, "clip_masks", None) is None or not channel_fullwell):
+    if getattr(bundle, "raw_image", None) is None or getattr(bundle, "raw_colors", None) is None:
         return False
     channel_ids = [int(x) for x in sorted(np.unique(bundle.raw_colors).tolist())]
     metadata_levels = {
@@ -1752,9 +1824,12 @@ def refresh_clip_masks_from_fullwell(
     resolved = {
         cid: int(channel_fullwell.get(cid, metadata_levels[cid])) for cid in channel_ids
     }
+    source_refreshed = _refresh_source_reliability_from_fullwell(bundle, resolved)
+    if not pending and (getattr(bundle, "clip_masks", None) is None or not channel_fullwell):
+        return source_refreshed
     current = getattr(bundle, "_clip_mask_fullwell", None) or metadata_levels
     if not pending and resolved == current:
-        return False
+        return source_refreshed
     metadata_seed = pending and resolved == metadata_levels
     if metadata_seed:
         # The old load built with FLOAT metadata; a matching integer fullwell
@@ -1789,6 +1864,9 @@ def refresh_clip_masks_from_fullwell(
     bundle._clip_masks_cache_shape = None
     bundle._clip_masks_resized = None
     bundle._clip_mask_fullwell = stamp
+    bundle._tone_plan_sample = None
+    bundle._tone_plan_sample_masks = None
+    bundle._tone_plan_sample_exclusion = None
     bundle.raw_guidance = None
     bundle._raw_guidance_cache_shape = None
     bundle._raw_guidance_resized = None
@@ -1901,6 +1979,7 @@ def load_raw(
     lens_shading: str | None = None
     noise_decode = {"supported": False, "reason": "opaque-decoder-noise-transfer"}
     processing_clip_masks = None
+    scene_reliability_exclusion = None
     scene_loss_support_untrusted = False
     scene_geometry_ops = ()
     scene_crop_sensor = None
@@ -2025,6 +2104,11 @@ def load_raw(
                 )
                 noise_decode["demosaic_algorithm"] = recipe.demosaic_algorithm
                 noise_decode["loss_support"] = recipe.loss_support
+                noise_decode["source_loss_support"] = recipe.source_loss_support
+                noise_decode["source_loss_geometry"] = recipe.source_loss_geometry
+                noise_decode["source_loss_fullwell"] = {
+                    str(cid): int(level) for cid, level in recipe.source_loss_fullwell.items()}
+                scene_reliability_exclusion = recipe.scene_reliability_exclusion
                 scene_loss_support_untrusted = recipe.loss_support_untrusted
                 noise_decode["loss_support_untrusted"] = scene_loss_support_untrusted
                 if scene_loss_support_untrusted:
@@ -2040,7 +2124,13 @@ def load_raw(
                 if getattr(recipe, "demosaic_note", None):
                     notes.append(recipe.demosaic_note)
                 if scene_loss_support_untrusted:
-                    notes.append("前级损失支撑未完成局部标定，使用整帧保守置信度: " + recipe.loss_support)
+                    reasons = [reason for reason in (recipe.loss_support, recipe.source_loss_support)
+                               if reason and reason.startswith("global-conservative:")]
+                    support_note = "前级损失支撑未完成局部标定，使用整帧保守置信度: " + "; ".join(reasons)
+                    notes.append(support_note)
+                else:
+                    support_note = None
+                noise_decode["loss_support_note"] = support_note
                 if recipe.skipped:
                     notes.append("跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped))
                 scene_correction_note = "; ".join(notes) or None
@@ -2230,8 +2320,7 @@ def load_raw(
                     evidence_reference_status="unavailable",
                 )
                 if (effective_highlight_mode == "reconstruct"
-                        and str(getattr(reference_recipe, "loss_support", "")).startswith(
-                            "global-conservative")):
+                        and getattr(reference_recipe, "loss_support_untrusted", False)):
                     # Reconstruction's spatial support is not certified after
                     # a front-end loss. Keep its median for the existing scalar
                     # decoder alignment, but never credit reconstructed pixels
@@ -2262,6 +2351,7 @@ def load_raw(
                     evidence_reference_highlight_mode=evidence_reference_mode,
                     evidence_reference_demosaic_algorithm=getattr(reference_recipe, "demosaic_algorithm", None),
                     evidence_reference_loss_support=getattr(reference_recipe, "loss_support", None),
+                    evidence_reference_source_loss_support=getattr(reference_recipe, "source_loss_support", None),
                 )
                 from .scene_reference import reliable_reference_samples
                 reliable_reference, reliable_reference_pct = reliable_reference_samples(
@@ -2350,6 +2440,7 @@ def load_raw(
         lens_shading=lens_shading,
         noise_decode=noise_decode,
         processing_clip_masks=processing_clip_masks,
+        scene_reliability_exclusion=scene_reliability_exclusion,
         scene_loss_support_untrusted=scene_loss_support_untrusted,
         scene_geometry_ops=scene_geometry_ops,
         scene_crop_sensor=scene_crop_sensor,

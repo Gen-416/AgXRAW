@@ -172,6 +172,12 @@ class RawBundle:
     # these unset and sample their own scene.
     _tone_plan_sample: Any | None = None
     _tone_plan_sample_masks: Any | None = None
+    # Matching source dependency exclusions for the full-resolution sample.
+    _tone_plan_sample_exclusion: Any | None = None
+    # Final scene-aligned HxW uint8: a nonzero cell depends on saturated
+    # sensor evidence. This qualifies statistics/noise/colour permission;
+    # it is neither a visual clip mask nor newly introduced processing loss.
+    scene_reliability_exclusion: Any | None = None
     # Scene-linear RGB producer. Mosaic and levels are always LibRaw-derived; per-pixel
     # clip_masks are LibRaw-derived on the libraw path and absent (None) on the coreimage
     # one, whose frame geometry cannot carry them.
@@ -245,6 +251,9 @@ class RawGuidanceMaps:
     # WB/EV-independent RAW loss permission compiled once from headroom + clip class.
     # Float32 is intentional: reducing this to float16 changes the gated blend.
     raw_permission: Any | None = None
+    # Independent decoder/source eligibility for scene-driven colour only.
+    # Keep absent physical SNR absent so EV/noise-floor fallback still applies.
+    scene_eligibility: Any | None = None
 
 
 @dataclass

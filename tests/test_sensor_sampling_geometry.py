@@ -124,8 +124,10 @@ class SensorSamplingGeometryTests(unittest.TestCase):
                     else:
                         self.fail('fixture has no optional BaselineExposure tag')
                     path.write_bytes(content)
-                    full = raw_io.load_raw(path)
-                    bundle = raw_io.load_raw(path, scene_half_size=True)
+                    # Use the audited local demosaic for the nonempty reference
+                    # oracle. Source-saturated DHT now withdraws it globally.
+                    full = raw_io.load_raw(path, demosaic="ahd")
+                    bundle = raw_io.load_raw(path, scene_half_size=True, demosaic="ahd")
                     self.assertEqual(bundle.orientation_flip, flip)
                     h, w = bundle.scene_rec2020_render.shape[:2]
                     np.testing.assert_array_equal(bundle.scene_rec2020_render,
@@ -141,10 +143,12 @@ class SensorSamplingGeometryTests(unittest.TestCase):
                         bundle.raw_image, bundle.raw_colors, bundle.color_desc,
                         bundle.white_level, bundle.black_levels, bundle.camera_white_levels,
                         flip, (h, w), bundle.raw_pattern, crop_sensor=expected_crop)
+                    if bundle.processing_clip_masks is not None:
+                        expected_masks = np.maximum(expected_masks, bundle.processing_clip_masks)
                     np.testing.assert_array_equal(bundle.clip_masks, expected_masks)
                     with rawpy.imread(str(path)) as raw:
                         scene, loss, recipe, _ = raw_io._decode_corrected_libraw(
-                            raw, path, bundle.evidence, 'clip', True, None)
+                            raw, path, bundle.evidence, 'clip', True, rawpy.DemosaicAlgorithm.AHD)
                     self.assertEqual(recipe.crop, expected_crop)
                     self.assertEqual(tuple(recipe.noise_geometry['effective_sensor_crop']), expected_crop)
                     self.assertEqual(tuple(recipe.noise_geometry['decoded_crop']), expected_crop)
@@ -152,6 +156,8 @@ class SensorSamplingGeometryTests(unittest.TestCase):
                     samples, percent = reliable_reference_samples(
                         bundle.evidence, scene, bundle.scene_scale, loss, recipe)
                     reliable = np.max(bundle.clip_masks.reshape(-1, 3), axis=1) < .1
+                    if bundle.scene_reliability_exclusion is not None:
+                        reliable &= bundle.scene_reliability_exclusion.reshape(-1) == 0
                     expected = (scene.reshape(-1, 3)/np.float32(bundle.scene_scale))[reliable]
                     np.testing.assert_array_equal(samples, expected)
                     self.assertAlmostEqual(percent, np.mean(reliable)*100)

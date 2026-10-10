@@ -195,7 +195,10 @@ class OddRawClipPipelineTests(unittest.TestCase):
                         self.assertEqual(int(maps.clip_class[sample]), CLIP_CLASS_G)
                         self.assertGreater(float(maps.raw_permission[sample]), 0.)
 
-    def test_real_crop_excludes_partial_edge_from_headroom_and_clip_masks(self):
+    def test_real_crop_excludes_partial_edge_from_color_loss_evidence(self):
+        # These maps locate visible sensor colour loss, not demosaic
+        # dependencies. A cropped sensel can still affect retained RGB;
+        # test_sensor_dependency_crop checks its independent qualification.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "odd-cropped.dng"
             for half in (False, True):

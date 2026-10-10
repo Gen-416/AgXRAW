@@ -10,6 +10,11 @@ every derived quantity to the analysis side. This importer IS an analysis
 side: it fits gain / read noise / full well from the raw points and writes a
 dngscan priors entry with the aperture and fit residuals declared.
 
+RawSize is retained as a LibRaw full-mosaic readout constraint. Compression
+declarations are retained for runtime verification; unfamiliar text stays
+unverified. ImageWidth/ImageHeight describe the camera's JPEG output only.
+This single-frame PTC does not establish Collect's paired-dark total variance.
+
 Method (standard photon-transfer analysis, G1 channel):
   - black level: from the CSV header (collector-measured, per channel);
   - saturation S_sat: the clip plateau (max mean at the declared white);
@@ -129,7 +134,7 @@ def main() -> int:
     ap.add_argument("--brand", default="")
     ap.add_argument("--model", default="")
     ap.add_argument("--iso", type=int, default=0)
-    ap.add_argument("--shutter", default="", help="mechanical / electronic (for tier dedup preference)")
+    ap.add_argument("--shutter", default="", help="declared calibration shutter mode: mechanical / electronic / efcs")
     ap.add_argument("--white", type=float, default=None,
                     help="clip level in DN; default: inferred from zero-std saturated frames")
     ap.add_argument("--out", type=Path, default=None)

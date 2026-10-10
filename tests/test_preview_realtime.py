@@ -146,6 +146,9 @@ class PreviewPlanCacheTests(unittest.TestCase):
         # hand the sampler a truthy child mock instead.
         bundle._tone_plan_sample = None
         bundle._tone_plan_sample_masks = None
+        bundle._tone_plan_sample_exclusion = None
+        bundle.scene_reliability_exclusion = None
+        bundle.scene_loss_support_untrusted = False
         entry = PreviewEntry(bundle=bundle, analysis=MagicMock())
         pixels = dg.np.zeros((12, 18, 3), dtype=dg.np.uint8)
         with patch(

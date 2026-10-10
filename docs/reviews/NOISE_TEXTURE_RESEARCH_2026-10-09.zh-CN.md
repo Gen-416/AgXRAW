@@ -353,3 +353,55 @@ ISO gain map 和 headroom 声明存在。生成图片仅用于临时验收，原
 耗时 242.977 秒，包含本机实际 Core Image/ImageIO、10-bit HEIF 渐变和 Rust 核。
 本轮重点 `DNGSCAN_FAST=0` 回归另有 77 项全部通过（2.144 秒），包含独立 partial
 oracle 与旧问题的尺度/频谱/BE/缓存回归；这两组有重叠，不相加为独立总数。
+
+## 16. 裁切前的饱和依赖与单点 PTC 读出范围（基准 8db60a3）
+
+新增 `scene_reliability_exclusion`，以最终 scene 对齐的 H×W uint8 表达“这个输出依赖
+饱和来源”。它从不可变 RAW、与分析一致的 resolved fullwell 出发，先传播解拜耳支撑，
+再经过真实 DefaultScale、TCA/畸变 warp、保留窗口、orientation 和实际 box reduction。
+它不写入视觉 clip mask，不增加 processing-loss 覆盖率，也不因源饱和改变自动解拜耳
+选择。AHD 使用已审查的半径 5 保守支撑，Bayer half 使用 2×2 支撑；DHT、空间高光重建
+及尚未审查的前级空间坏点修复，在存在源饱和时仍使用全局资格限制。
+
+125×127、crop 126×124 的真实 LibRaw DNG 反例中，DHT 的 5 个、AHD 的 3 个保留输出
+仍随窗口外 R 感光点改变，但获准进入可靠统计的数量均降为 0。AHD 仅排除 35 个输出，
+其余 15,589 个仍可靠，视觉剪切仍全零，processing mask 仍不存在。无 warp 的 half
+对照没有输出变化、没有局部排除，3,906 个样本保持可靠。加入径向 warp 后，half 的
+6 个和 full AHD 的 20 个实际依赖输出也全部排除；warp 自身的边界处理损失单独保留。
+真实 TrimBounds、八种 orientation、DefaultScale 和后置 floor box 另有交叉回归。
+
+可靠尾部、独立 LibRaw reference、可选色度噪声传播和 HDR 逐像素颜色分离均消费新
+依赖资格，视觉 retreat 继续只用原掩码。gated 的 `scene_eligibility` 是独立乘数，放在
+原有 SNR／EV 噪声底门控之后；缺测 SNR 保持 None，不能用全 1 覆盖缺测回退，进而
+放宽未排除区域。方差粗单元使用 ANY 覆盖，可选色度核再按各尺度的实际滤波支撑
+扩张无效区域。它仍是低频近似，不宣称重建了解拜耳协方差。
+
+Prepared 和缓存规划样本保留完整源图的精确 sampling indices 及逐行排除；预览像素
+则按实际 Lanczos 半径 3 的完整输入支撑传播，不能仅做最近邻或面积投票。缓存升至
+28，独立保存场景／样本排除及 gated 资格，缺失、错形或无效数据直接失效。满阱端点
+更新时重算依赖，并使已绑定的旧样本一起失效；端点未变时不重复整帧传播。
+
+官方单点 `tools/import_jptc.py` 现复用读出字段解析，保留 typed RawSize 和原始
+Compression；JPEG 尺寸仍仅是输出信息。用户安装与包内单点加载均执行同一匹配，
+尺寸冲突拒用外部 gain/RN，未知压缩保持不可核对；独立 DNG NoiseProfile 仍可回退。
+单点空间 PTC 不继承 Collect 成对暗场的总方差语义。旧转换器已经删除的声明无法
+自动恢复，应从原 CSV 重新转换并导入。
+
+同一 fp 日光文件与基准使用相同 NumPy CLI，原尺寸 JPEG 97/420 的像素、字节和
+SHA256 完全相同（9,228,234 bytes），默认曝光及 HDR headroom 计划亦相同。该文件
+本来已选 AHD，新局部源排除与既有可靠性限制重叠，不能推断其他源饱和 DHT 文件也
+不会改变 HDR 分配。当前真实 HDR HEIF archive 输出通过未放宽的生产门禁，主图
+4000×6000、10-bit/444、Display P3，ISO gain map 与 headroom 声明均存在。
+
+数值与验证范围见[本轮验收记录](../assets/delivery-quality/source-dependency-20261009.json)。
+回归入口：[裁切外真实依赖](../../tests/test_sensor_dependency_crop.py)、
+[消费者](../../tests/test_reliability_consumers.py)、
+[缓存与采样交接](../../tests/test_reliability_handoff.py)、
+[单点正式导入](../../tests/test_jptc_single_readout.py)。分尺度降噪控制、early denoise、
+浮点 RAW 前端、Lensfun 扩展以及个人机身暗／平场修正仍为后续工作，本轮不扩展算法范围。
+
+最终冻结代码以 `DNGSCAN_FAST=1` 运行完整 1729 项：1726 通过、3 跳过、0 失败，
+耗时 250.722 秒，包含本机实际 Core Image/ImageIO、10-bit HEIF 与 Rust 核。
+`DNGSCAN_FAST=0` 的 28 个定向模块另有 243 项：241 通过、2 跳过、0 失败，耗时
+5.774 秒；覆盖源依赖、正式 PTC 导入、缺测 SNR 回退、缓存及上一轮尺度／频谱／BE。
+两组有重叠，不能相加为独立总数；跳过项不计为通过。

@@ -213,6 +213,10 @@ def calibrated_chroma_variance(bundle, model, scene_dec, *, return_validity=Fals
         # relation. It never measures the amplitude of image detail.
         camera_mean = np.clip(dec @ np.linalg.inv(matrix).T, 0, 1)
         gain_mean, gain_second, _area_ratio, valid = coarse_spatial_moments(descriptor, dec.shape[:2], colours)
+        from .reliability import scene_exclusion_for_shape
+        exclusion = scene_exclusion_for_shape(bundle, dec.shape[:2])
+        if exclusion is not None:
+            valid &= exclusion == 0
         camera_var = np.empty_like(camera_mean)
         for i, label in enumerate("RGB"):
             coefficients = model.coefficients(label)
@@ -233,6 +237,9 @@ def calibrated_chroma_variance(bundle, model, scene_dec, *, return_validity=Fals
         return None, f"decoder noise transform unavailable: {exc}"
     if not np.isfinite(chroma_var).all() or np.any(chroma_var < 0):
         return None, "propagated noise variance is invalid"
+    # Even callers not requesting the validity map must receive no noise
+    # authority at cells depending on unusable sensor sources.
+    chroma_var[~valid] = 0
     result = chroma_var.astype(np.float32), "approximate CFA coarse-cell shot/read covariance; lens quadrature and warp-area model"
     return (*result, valid) if return_validity else result
 
