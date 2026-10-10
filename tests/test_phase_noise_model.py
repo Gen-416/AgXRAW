@@ -86,6 +86,42 @@ class PhaseNoiseModelTests(unittest.TestCase):
         restored = _analysis_from_json(json.loads(json.dumps(_analysis_to_json(analysis))))
         self.assertEqual(restored.noise_model, model)
 
+    def test_phase_failed_read_noise_blocks_interpolation_and_explicit_bad_fit(self):
+        item = profile()
+        phase = item['phase_calibration']['C01']
+        phase['read_noise_dn_log2iso'] = [[math.log2(100),1.],[math.log2(800),1.]]
+        phase['stored_dark_variance_dn2_log2iso'] = [[math.log2(100),1.],[math.log2(800),1.]]
+        phase['read_noise_unresolved_isos'] = [200]
+        model = model_from_prior(frame(),{i:16383 for i in range(4)},_validated_prior(item))
+        self.assertNotIn('C01',model.phase_variance)
+        self.assertEqual(model.phase_metadata['C01']['reason'],'read-noise-unresolved-interval')
+        # Stored total variance can exist even when the physical component
+        # was unresolved; that failed point cannot silently become an endpoint.
+        phase['read_noise_dn_log2iso'] = []
+        phase['stored_dark_variance_dn2_log2iso'] = [[math.log2(200),1.],[math.log2(800),1.]]
+        model = model_from_prior(frame(),{i:16383 for i in range(4)},_validated_prior(item))
+        self.assertNotIn('C01',model.phase_variance)
+        self.assertEqual(model.phase_metadata['C01']['reason'],'read-noise-unresolved-interval')
+        phase['read_noise_unresolved_isos'] = []
+        phase['fit_quality'] = 'high-residual'
+        model = model_from_prior(frame(),{i:16383 for i in range(4)},_validated_prior(item))
+        self.assertNotIn('C01',model.phase_variance)
+        self.assertEqual(model.phase_metadata['C01']['reason'],'phase-fit-quality-high-residual')
+
+    def test_unequal_green_dn_normalization_retains_raw_model_but_blocks_three_input_transfer(self):
+        from dngscan.noise_propagation import chroma_nr_skip_reason
+        bundle = frame()
+        bundle = replace(bundle,camera_white_levels=[16383.,16383.,16383.,16000.])
+        model = model_from_prior(bundle,{i:bundle.camera_white_levels[i] for i in range(4)},_validated_prior(profile()))
+        self.assertEqual(model.status,'valid')
+        self.assertEqual(model.phase_metadata['C10']['normalized_raw_span_dn'],14976.)
+        propagation = SimpleNamespace(raw_image=np.zeros((512,512),np.uint16),
+            raw_pattern=bundle.raw_pattern,color_desc=bundle.color_desc,
+            scene_decoder='libraw',wb_mode='camera',noise_decode={'supported':True},
+            scene_geometry_ops=(),lens_shading=None)
+        self.assertEqual(chroma_nr_skip_reason(propagation,model),
+                         'unequal-green-normalization-noise-transfer-unavailable')
+
 
 class PhasePropagationTests(unittest.TestCase):
     def bundle(self):

@@ -80,6 +80,15 @@ class TestUserCalibration(unittest.TestCase):
             self.assertIsNone(priors.read_noise_e(e, iso))
         self.assertIsNone(priors.gain_for_file(e, 200, 15359))
 
+    def test_direct_matching_prior_keeps_explicit_shutter_context(self):
+        calibration.import_calibration(self.write_profile())
+        direct = calibration.matching_prior('SIGMA','fp',shutter='electronic',iso=100)
+        public = priors.find_priors('SIGMA','fp',shutter='electronic',iso=100)
+        self.assertEqual(direct['shutter_match_status'],'matched')
+        self.assertEqual(direct['readout_match_status'],public['readout_match_status'])
+        self.assertEqual(priors.prior_usability(direct),priors.prior_usability(public))
+        self.assertIsNone(calibration.matching_prior('SIGMA','fp',shutter='mechanical',iso=100))
+
     def test_exact_model_and_make(self):
         calibration.import_calibration(self.write_profile())
         self.assertIsNone(calibration.matching_prior("SIGMA", "fp L", shutter="electronic", iso=100))

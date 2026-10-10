@@ -1607,6 +1607,10 @@ def import_calibration(path: str | Path, *, active: bool = True,
     target = data_path() / (identity + ".json")
     record = {"format": _USER_FORMAT, "id": identity, "content_sha256": digest, "active": active,
               "imported_at": datetime.now(timezone.utc).isoformat(), "payload": payload}
+    encoder = json.JSONEncoder(ensure_ascii=False, allow_nan=False, indent=2)
+    size = sum(len(piece.encode("utf-8")) for piece in encoder.iterencode(record)) + 1
+    if size > _MAX_JSON_BYTES:
+        raise ValueError("combined calibration record is too large; split the measurement set before importing")
     _atomic_write(target, record)
     return _summary(record, target, prior)
 
@@ -1742,7 +1746,7 @@ def matching_prior(make: str, model: str, *, shutter: str | None = None,
         # Preserve the selected user calibration on a readout failure. Skipping
         # it would silently borrow an equally unverified curated/bulk model.
         from .priors import with_readout
-        entry = with_readout(entry, readout)
+        entry = with_readout(entry, readout, shutter=shutter)
         priority = {"matched": 2, "not-declared": 1}.get(entry["readout_match_status"], 0)
         candidates.append((priority, record.get("imported_at", ""), record["id"], entry))
     return max(candidates, key=lambda c: c[:3])[3] if candidates else None

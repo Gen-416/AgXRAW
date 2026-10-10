@@ -24,7 +24,8 @@ class _ContextRaw:
         self.black_level_per_channel = [512, 512, 512, 512]
         self.camera_whitebalance = [2.0, 1.0, 1.5, 1.0]
         self.daylight_whitebalance = [2.2, 1.0, 1.4, 1.0]
-        self.camera_white_level_per_channel = [4095, 4095, 4095, 4095]
+        # Response-validity limits must not replace the unpacked coding white.
+        self.camera_white_level_per_channel = [3900, 3900, 3900, 3900]
         self.color_desc = b"RGBG\x00"
         self.raw_pattern = np.asarray([[0, 1], [3, 2]], dtype=np.uint8)
         self.rgb_xyz_matrix = np.eye(4, 3, dtype=np.float32)
@@ -50,7 +51,8 @@ class EvidenceContractTests(unittest.TestCase):
         self.assertEqual(evidence.provider, "libraw")
         self.assertIn("LibRaw", evidence.provider_version or "")
         self.assertEqual(evidence.white_level, 4095)
-        self.assertEqual(evidence.coding_white_levels, [4095.] * 4)
+        self.assertEqual(evidence.coding_white_levels, [4095.])
+        self.assertEqual(evidence.camera_white_levels, [3900.] * 4)
         self.assertEqual(evidence.coding_black_levels, [512.] * 4)
         self.assertEqual(evidence.orientation_flip, 5)
         self.assertEqual(evidence.color_desc, "RGBG")
