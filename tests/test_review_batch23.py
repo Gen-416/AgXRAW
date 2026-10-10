@@ -160,7 +160,7 @@ class PageControl(unittest.TestCase):
         self.assertIn("for(const id of SETTINGS_IDS)", save)
         fmt = PAGE[PAGE.index("function updateFormatUi("):]
         fmt = fmt[: fmt.index("\n}")]
-        self.assertIn('$("#chromaNr").disabled=false;', fmt)
+        self.assertIn('updateChromaNrUi();', fmt)
         self.assertNotIn('$("#chromaNr").value=0;setChromaNrLabel();', fmt)
         reset = PAGE[PAGE.index("function resetToDefaults(){"):]
         reset = reset[: reset.index("\n}")]

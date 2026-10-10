@@ -1005,6 +1005,10 @@ def export_preview_jpeg(
         "display_histogram": display_hist,
         "hdr_earned_ev": hdr_earned_ev(render_plan),
         "chroma_nr": cached.get_pixel_report(pixel_key),
+        "chroma_nr_capability": chroma_nr_capability(
+            proxy_bundle, cached.analysis, scene_transform=scene_transform,
+            scene_transform_strength=scene_transform_strength,
+        ),
     }
     cached.put_frame(frame_key, payload)
     return payload
@@ -1180,10 +1184,41 @@ def _finite_or_none(value: object) -> float | None:
     return v if math.isfinite(v) else None
 
 
+def chroma_nr_capability(
+    bundle: dg.RawBundle,
+    analysis: dg.Analysis,
+    *,
+    scene_transform: str = "none",
+    scene_transform_strength: float = 0.0,
+) -> dict:
+    """Current render prerequisites, independent of the last NR request.
+
+    Passing this static check permits an approximate attempt. The eventual
+    render report still decides whether numerical/spatial propagation worked.
+    No image texture is measured and no noise/correction map is allocated.
+    """
+    from ..noise_propagation import chroma_nr_skip_reason
+    from ..spatial import spread_grid_shape
+
+    model = getattr(analysis, "noise_model", None) or getattr(bundle, "noise_model", None)
+    shape = getattr(getattr(bundle, "scene_rec2020_render", None), "shape", ())
+    coarse_shape = spread_grid_shape(*shape[:2]) if len(shape) >= 2 else None
+    reason = chroma_nr_skip_reason(
+        bundle, model, coarse_shape, scene_transform=scene_transform,
+        scene_transform_strength=scene_transform_strength,
+    )
+    return {"available": reason is None,
+            "status": "available" if reason is None else "unavailable",
+            "reason": reason, "approximate": True}
+
+
 def detected_scene_params(
     bundle: dg.RawBundle,
     analysis: dg.Analysis,
     plan: dg.RenderPlan | None = None,
+    *,
+    scene_transform: str = "none",
+    scene_transform_strength: float = 0.0,
 ) -> dict:
     """Measured scene facts that inform the user's later adjustments.
 
@@ -1237,6 +1272,9 @@ def detected_scene_params(
         "data_support": getattr(bundle, "camera_data_support", None),
         "decoder_actual": f"{bundle.scene_decoder} {bundle.scene_decoder_version or ''}".strip(),
         "decoder_fallback": bundle.scene_decoder_fallback,
+        "demosaic_actual": ((getattr(bundle, "noise_decode", None) or {}).get("demosaic_algorithm")
+                            if bundle.scene_decoder == "libraw" else None),
+        "capture_readout": dict(getattr(bundle, "capture_readout", None) or {}),
         "evidence_provider": bundle.evidence_provider,
         "evidence_error": bundle.evidence_error,
         "reliability_source": scene.reliability_source,
@@ -1258,6 +1296,10 @@ def detected_scene_params(
         "hdr_earned_ev": earned,
         "chroma_nr": {"status": getattr(bundle, "chroma_nr_status", "disabled"),
                       "reason": getattr(bundle, "chroma_nr_reason", None)},
+        "chroma_nr_capability": chroma_nr_capability(
+            bundle, analysis, scene_transform=scene_transform,
+            scene_transform_strength=scene_transform_strength,
+        ),
         "noise_model": noise,
         "processing_evidence": processing_evidence_summary(bundle, analysis, scene),
         "calibrations": calibration_status,
@@ -1339,7 +1381,11 @@ def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> di
         raise PreviewSuperseded()
     height, width = entry.bundle.scene_rec2020_render.shape[:2]
     try:
-        detected = detected_scene_params(entry.bundle, entry.analysis, detected_plan)
+        detected = detected_scene_params(
+            proxy_bundle, entry.analysis, detected_plan,
+            scene_transform=scene_transform,
+            scene_transform_strength=scene_transform_strength,
+        )
     except Exception:
         # Detection is guidance, not a gate: a plan-compile failure here must not
         # block the preview session it decorates.
@@ -1920,6 +1966,10 @@ def run_export(params: dict) -> dict:
         "metrics_kind": "full",
         "chroma_nr": {"status": getattr(bundle, "chroma_nr_status", "disabled"),
                       "reason": getattr(bundle, "chroma_nr_reason", None)},
+        "chroma_nr_capability": chroma_nr_capability(
+            bundle, analysis, scene_transform=scene_transform,
+            scene_transform_strength=scene_transform_strength,
+        ),
         "gain": bundle.exposure_gain,
         "ev": ev,
         "ev_auto": auto_ev_payload(auto_ev_result),

@@ -6,9 +6,8 @@ pipeline internals and technical detail, see the
 [architecture notes](ARCHITECTURE.md).
 [中文版使用说明在这里](USER_GUIDE.zh-CN.md).
 
-dngscan does one thing: it turns RAW photos into faithful JPEGs — ordinary JPEGs, or HDR
-photos that genuinely light up on capable screens (iPhone / Mac / recent Android photo
-apps all display them natively).
+dngscan turns RAW photos into faithful JPEG or HEIF files for saving and sharing,
+with SDR and HDR output. HDR highlights light up on compatible screens and viewers.
 
 ---
 
@@ -26,10 +25,10 @@ including but not limited to:
 | Panasonic / OM System / Leica / Pentax | RW2 / ORF / DNG / PEF and others |
 | Sigma, iPhone (ProRAW), and anything that writes DNG | DNG |
 
-It works out of the box — no per-camera plugins. Development and calibration happened
-primarily on Sigma fp DNGs and iPhone ProRAW, so those are the most thoroughly
-validated; other mainstream cameras decode and convert normally, and sample files for
-anything misbehaving are welcome.
+No per-camera plugin or personal noise calibration is required. Local acceptance
+covers Sigma fp DNG, Sony ARW, Fujifilm X-Trans RAF and iPhone 16 Pro single-frame
+Bayer DNG. These iPhone samples are not Linear RGB ProRAW; see the
+[support and fallback scope](SENSOR_SUPPORT.zh-CN.md) for the actual boundaries.
 
 **Brand-new bodies work too**: cameras so recent that built-in data tables haven't
 caught up (the A7 V / GR IV / X-E5 generation) are not refused — the tool degrades
@@ -87,11 +86,23 @@ skip this optional stage with a reason. Where applicable, SDR and both legs of a
 pair use the same corrected scene. A nonzero value names the file `cnr{x}`. See the
 [current algorithm and limits](CHROMA_NR.zh-CN.md).
 
-Use **实测噪声标定** on the RAW decode card to import JPTC Collect directories or
-calibration JSON, then enable, disable or remove local profiles. Successful installation
-does not establish applicability to the current photo; the noise-model readout shows
-its source and any rejection reason. [Calibration instructions](NOISE_CALIBRATION.zh-CN.md)
-include CLI commands and camera, shutter, ISO and DN-scale requirements.
+Use **个人标定 · 可选** on the RAW decode card to import JPTC Collect directories or
+calibration JSON, then enable, disable or remove local profiles. Per-file matching
+checks declared shutter, ISO, DN scale, RAW geometry and storage constraints, and
+distinguishes unknown conditions from mismatches. Stored bit depth is not ADC precision.
+The GUI shows noise-model availability separately from optional chroma-NR capability:
+Apple, non-Bayer or unsupported correction transfers can disable the slider even with
+a valid file noise model. Its value is preserved, and preview/export report actual
+application separately. Ordinary missing calibration is a normal fallback, while
+rejected or unresolved evidence remains visible. Auto exposure, AgX and export continue;
+HDR latitude depends on the current photo's reliable highlights. See the
+[calibration instructions](NOISE_CALIBRATION.zh-CN.md).
+
+For 10-bit HEIF, the output dialog and delivery report identify the floating SDR
+master (including the SDR base of HDR HEIF), final encoding depth and float readback.
+Apple HDR allows either 8-bit or 10-bit. Explicit Apple SDR requires manual, 8-bit,
+4:2:0 settings; incompatible combinations are explained before export. The preview
+and its display histogram remain 8-bit SDR and do not establish file precision.
 
 ---
 

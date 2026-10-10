@@ -149,6 +149,81 @@ def coarse_spatial_moments(descriptor, output_shape, colours):
     return tuple(_orient_like_libraw(value, flip) for value in (means, seconds, areas, valid))
 
 
+def _chroma_noise_support(bundle, model, coarse_shape=None, *,
+                          scene_transform=None, scene_transform_strength=0.):
+    """Static prerequisites shared by rendering, propagation and GUI facts.
+
+    Supplying a scene transform selects the renderer's original preflight
+    ordering. No pixels, covariance maps or correction maps are generated.
+    A successful check permits an attempt; numerical propagation and spatial
+    validity remain authoritative at render time.
+    """
+    descriptor = getattr(bundle, "noise_decode", None) or {}
+    if scene_transform is not None:
+        if getattr(bundle, "scene_loss_support_untrusted", False):
+            return "decoder loss propagation support is uncertified", None, None
+        if model is None or getattr(model, "status", None) != "valid":
+            return "independent noise calibration unavailable", None, None
+        if scene_transform != "none" and scene_transform_strength != 0:
+            return "nonlinear scene-transform noise propagation unavailable", None, None
+        if not descriptor.get("supported", False):
+            return descriptor.get("reason") or "decoder noise propagation unavailable", None, None
+    if (getattr(bundle, "scene_loss_support_untrusted", False)
+            or descriptor.get("loss_support_untrusted", False)):
+        return "decoder loss propagation support is uncertified", None, None
+    if model is None or getattr(model, "status", None) != "valid":
+        return "independent noise calibration unavailable", None, None
+    if getattr(model, "domain", None) != "normalized-raw":
+        return "noise calibration is not in normalized RAW units", None, None
+    if getattr(model, "correlation", None) == "measured-spectral-imbalance":
+        return "measured spectral imbalance requires correlated-noise propagation", None, None
+    if not descriptor.get("supported", False):
+        return descriptor.get("reason") or "decoder has no calibrated linear noise handoff", None, None
+    if str(getattr(bundle, "scene_decoder", "libraw")) != "libraw":
+        return "Apple decoder covariance is not calibrated", None, None
+    if getattr(bundle, "scene_geometry_ops", ()) and not descriptor.get("warp_ops"):
+        return "spatial warp covariance is not propagated", None, None
+    if getattr(bundle, "lens_shading", None) and not descriptor.get("gain_maps"):
+        return "lens shading covariance is not propagated", None, None
+    if str(getattr(bundle, "wb_mode", "camera")) != str(descriptor.get("wb_mode", "camera")):
+        return "hot white-balance covariance is not recorded", None, None
+    raw = getattr(bundle, "raw_image", None)
+    raw_shape = descriptor.get("sensor_window_shape")
+    if raw_shape is None and raw is not None and np.ndim(raw) == 2:
+        raw_shape = np.shape(raw)
+    if raw_shape is None or len(raw_shape) != 2 or min(raw_shape) <= 0:
+        return "noise calibration requires CFA sensor evidence", None, None
+    pattern = np.asarray(getattr(bundle, "raw_pattern", ()))
+    if pattern.shape != (2, 2):
+        return "only Bayer CFA coarse noise propagation is calibrated", None, None
+    labels = str(getattr(bundle, "color_desc", ""))
+    try:
+        colours = [labels[int(cid)].upper() for cid in pattern.flat]
+    except (IndexError, ValueError):
+        return "CFA colour identity unavailable", None, None
+    if sorted(colours) != ["B", "G", "G", "R"]:
+        return "only Bayer RGB coarse noise propagation is calibrated", None, None
+    if coarse_shape is not None:
+        cells = raw_shape[0] * raw_shape[1] / (coarse_shape[0] * coarse_shape[1])
+        if cells < 4:
+            return "coarse noise approximation requires at least four sensels per cell", None, None
+    return None, raw_shape, colours
+
+
+def chroma_nr_skip_reason(bundle, model, coarse_shape=None, *,
+                          scene_transform="none", scene_transform_strength=0.):
+    """Return the current render's static NR exclusion, or ``None``.
+
+    This remains independent of the requested NR strength and the previous
+    render's status, including when strength is zero. It also works with a
+    compact preview whose immutable CFA facts outlive the raw pixel buffer.
+    """
+    return _chroma_noise_support(
+        bundle, model, coarse_shape, scene_transform=scene_transform,
+        scene_transform_strength=scene_transform_strength,
+    )[0]
+
+
 def calibrated_chroma_variance(bundle, model, scene_dec, *, return_validity=False):
     """Approximate low-frequency covariance from a calibrated CFA model.
 
@@ -158,42 +233,10 @@ def calibrated_chroma_variance(bundle, model, scene_dec, *, return_validity=Fals
     model. Unknown spatial gains, warps and unrecorded decoder transforms
     fail closed. Returns ``(projected_variance, reason)``.
     """
-    if (getattr(bundle, "scene_loss_support_untrusted", False)
-            or (getattr(bundle, "noise_decode", None) or {}).get("loss_support_untrusted", False)):
-        return None, "decoder loss propagation support is uncertified"
-    if model is None or getattr(model, "status", None) != "valid":
-        return None, "independent noise calibration unavailable"
-    if getattr(model, "domain", None) != "normalized-raw":
-        return None, "noise calibration is not in normalized RAW units"
-    if getattr(model, "correlation", None) == "measured-spectral-imbalance":
-        return None, "measured spectral imbalance requires correlated-noise propagation"
+    reason, raw_shape, colours = _chroma_noise_support(bundle, model)
+    if reason is not None:
+        return None, reason
     descriptor = getattr(bundle, "noise_decode", None) or {}
-    if not descriptor.get("supported", False):
-        return None, descriptor.get("reason") or "decoder has no calibrated linear noise handoff"
-    if str(getattr(bundle, "scene_decoder", "libraw")) != "libraw":
-        return None, "Apple decoder covariance is not calibrated"
-    if getattr(bundle, "scene_geometry_ops", ()) and not descriptor.get("warp_ops"):
-        return None, "spatial warp covariance is not propagated"
-    if getattr(bundle, "lens_shading", None) and not descriptor.get("gain_maps"):
-        return None, "lens shading covariance is not propagated"
-    if str(getattr(bundle, "wb_mode", "camera")) != str(descriptor.get("wb_mode", "camera")):
-        return None, "hot white-balance covariance is not recorded"
-    raw = getattr(bundle, "raw_image", None)
-    raw_shape = descriptor.get("sensor_window_shape")
-    if raw_shape is None and raw is not None and np.ndim(raw) == 2:
-        raw_shape = np.shape(raw)
-    if raw_shape is None or len(raw_shape) != 2 or min(raw_shape) <= 0:
-        return None, "noise calibration requires CFA sensor evidence"
-    pattern = np.asarray(getattr(bundle, "raw_pattern", ()))
-    if pattern.shape != (2, 2):
-        return None, "only Bayer CFA coarse noise propagation is calibrated"
-    labels = str(getattr(bundle, "color_desc", ""))
-    try:
-        colours = [labels[int(cid)].upper() for cid in pattern.flat]
-    except (IndexError, ValueError):
-        return None, "CFA colour identity unavailable"
-    if sorted(colours) != ["B", "G", "G", "R"]:
-        return None, "only Bayer RGB coarse noise propagation is calibrated"
     dec = np.asarray(scene_dec, dtype=np.float64)
     cells = raw_shape[0] * raw_shape[1] / (dec.shape[0] * dec.shape[1])
     if cells < 4:
