@@ -156,6 +156,7 @@ class ImportedNoisePipelineTests(unittest.TestCase):
         bundle = frame(True)
         bundle.shot_iso = 100
         bundle.shot_shutter = "electronic"
+        bundle.capture_readout = {"shutter": "electronic"}
         bundle.noise_decode = {"supported": True, "normalized_raw_to_scene": np.eye(3),
                                "sensor_window_shape": [512, 512]}
         return bundle
@@ -326,6 +327,8 @@ class ImportedNoisePipelineTests(unittest.TestCase):
                 bundle.shot_iso = 200
                 for key, value in changes.items():
                     setattr(bundle, key, value)
+                if "shot_shutter" in changes:
+                    bundle.capture_readout = {"shutter": changes["shot_shutter"]}
                 with patch("dngscan.spatial_black.sensor_tags", return_value={
                         262: [32803], 51041: [1e-4, 1e-8]}):
                     analysis, _, _ = analyze(bundle, 4)
