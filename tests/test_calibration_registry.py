@@ -201,5 +201,30 @@ class CalibrationRegistryTests(unittest.TestCase):
         contradictory = dict(dark,stored_dark_variance_dn2_log2iso=[[x0,.1],[x1,.2]])
         self.assertNotIn("capability_sources",registry.compose_capabilities(base,[contradictory],200))
 
+    def test_composed_variance_keeps_its_own_statistical_contract(self):
+        x = math.log2(100)
+        base = {"make_equals": "TEST", "model_equals": ["BODY"], "shutter": "mechanical",
+            "readout_match_status": "matched", "readout_contract": {"version": 1,
+                "storage_lossless": True, "libraw_raw_geometry": [4000, 3000]},
+            "reference_dn_range": 3995., "acquisition_contract": {"linearisation_curve": "identity"},
+            "gain_log2iso_log2epd": [[x, 1.]], "source": "gain-only"}
+        dark = {**base, "source": "paired dark", "source_format": "dngscan-jptc-collect-1",
+            "gain_log2iso_log2epd": [], "read_noise_dn_log2iso": [[x, 1.5]],
+            "stored_dark_variance_dn2_log2iso": [[x, 3.]], "acquisition_contract": {
+                "linearisation_curve": "identity", "stored_dark_variance_measurement": "paired-frame-pre-sheppard",
+                "stored_dark_variance_domain": "linearized-raw-dn", "sigma_clip_correction": "applied",
+                "clip_variance_factor": .97}}
+        joined = registry.compose_capabilities(base, [dark], 100)
+        self.assertEqual(calibration.stored_dark_variance(joined, 100), (3., "measured-stored-dark-variance"))
+        self.assertEqual(joined["acquisition_contract"]["clip_variance_factor"], .97)
+        self.assertEqual(base["acquisition_contract"], {"linearisation_curve": "identity"})
+        own = copy.deepcopy(base)
+        own.update(source_format="dngscan-jptc-collect-1", stored_dark_variance_dn2_log2iso=[[x, 4.]],
+                   acquisition_contract={**dark["acquisition_contract"], "clip_variance_factor": .99})
+        kept = registry.compose_capabilities(own, [dark], 100)
+        self.assertEqual(calibration.stored_dark_variance(kept, 100), (4., "measured-stored-dark-variance"))
+        self.assertEqual(kept["acquisition_contract"]["clip_variance_factor"], .99)
+        self.assertEqual(kept["capability_sources"]["stored_dark_variance"], "gain-only")
+
 
 if __name__=="__main__":unittest.main()

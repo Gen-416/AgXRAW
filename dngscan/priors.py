@@ -180,6 +180,20 @@ def _jptc_entries() -> list[dict[str, Any]]:
         }
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
+        if item.get("measurement_acquisition") is not None:
+            from .collect_manifest import ACQUISITION_SCHEMA, acquisition_qualification
+            try:
+                acquisition = item["measurement_acquisition"]
+                if not isinstance(acquisition, dict) or acquisition.get("schema") != ACQUISITION_SCHEMA:
+                    raise ValueError("unsupported measurement acquisition schema")
+                checked = acquisition_qualification(acquisition.get("measurements"))
+            except (ValueError, TypeError, KeyError, OverflowError):
+                continue
+            entry["measurement_acquisition"] = checked
+            entry["readout_declaration_issues"].extend(checked["issues"])
+        elif (isinstance(item.get("source"), dict)
+              and item["source"].get("kind") == "user-imported JPTC Collect measurements"):
+            entry["readout_declaration_issues"].append("measurement-acquisition-reimport-required")
         from .calibration import phase_calibration_fields
         try:
             entry.update(phase_calibration_fields(item))

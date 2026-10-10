@@ -437,6 +437,9 @@ def _native_compression(path, tags, make):
         codec = "nikon-nef-compression-34713"
         # This container code alone does not distinguish legacy lossless,
         # lossy, packed or HE variants. Keep the model unqualified.
+        from .capture_identity import read as read_identity
+        if read_identity(path).get("nikon_nef_compression") == 3:
+            codec, lossless, process = "nikon-nef-lossless", True, "nikon-maker-declared-lossless"
     return code, lossless, process, codec
 
 
@@ -516,4 +519,6 @@ def read(path: Path) -> dict:
                            shutter_source_url=_FP_SHUTTER_SOURCE)
     except (OSError, ValueError, TypeError, KeyError, IndexError, OverflowError, struct.error):
         capture["shutter_status"] = "shutter-metadata-unreadable"
+    from .capture_identity import read as read_identity
+    capture.update(read_identity(path))
     return capture

@@ -353,7 +353,7 @@ class CaptureReadoutTests(unittest.TestCase):
         (directory / "dark-scalars.csv").write_text(
             "#Format: JPTC-DARK/1\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
             "#Compression: lossless\n#ImageWidth: 64\n#ImageHeight: 64\n" + raw_header +
-            "#AdcStep: 1\n#LinearisationCurve: identity\n#ClipVarianceFactor: 1\n"
+            "#CfaPattern: RGBG\n#AdcStep: 1\n#LinearisationCurve: identity\n#ClipVarianceFactor: 1\n"
             "ISO,ColorIndex,BlackA,BlackB,StdDiffClipped\n" +
             "".join(f"100,{ch},1024,1024,{math.sqrt(2./3.):.17g}\n" for ch in (1, 3)))
         rows = []
@@ -363,7 +363,9 @@ class CaptureReadoutTests(unittest.TestCase):
             rows.append(f"{mean},{std}")
         raw_header = f"#RawSize: {ptc_size}\n" if ptc_size is not None else ""
         (directory / "ptc-iso100.csv").write_text(
-            "#Format: JPTC/2\n#BlackLevel: 1024,1024,1024,1024\n" + raw_header +
+            "#Format: JPTC/2\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
+            "#Compression: lossless\n#CfaPattern: RGBG\n#AdcStep: 1\n#LinearisationCurve: identity\n"
+            "#BlackLevel: 1024,1024,1024,1024\n" + raw_header +
             "G1_Mean,G1_Std\n" + "\n".join(rows))
         return directory
 
@@ -411,7 +413,7 @@ class CaptureReadoutTests(unittest.TestCase):
         self.assertNotEqual(pc._bundle_metadata(changed), metadata)
         rebuilt.capture_readout["raw_geometry"][0] = 42
         self.assertEqual(bundle.capture_readout["raw_geometry"], [128, 128])
-        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 33)
+        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 34)
 
 
 if __name__ == "__main__":

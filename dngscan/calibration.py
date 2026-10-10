@@ -689,9 +689,19 @@ def _collect_raw_geometry_coverage(set_dir: Path, dark_path: Path | None, *, fil
     paths = sorted({p for paths in files.values() for p in paths}) if files is not None else sorted(
         {p for p in (dark_path, *set_dir.glob("*gain-levels*.csv"), *set_dir.glob("*spectrum-*.csv"),
          *(p for p in set_dir.glob("*ptc-iso*.csv") if "unusable" not in p.name)) if p is not None})
-    coverage, declared, constraints = {}, None, {}
+    from .collect_manifest import _contract, acquisition_qualification, FORMATS
+    coverage, declared, constraints, measurements = {}, None, {}, {}
     for path in paths:
         header, _ = _parse_rows(path)
+        kind = FORMATS.get(header.get("Format"))
+        if kind == "spectrum":
+            axis = {"horizontal": "h", "vertical": "v", "h": "h", "v": "v"}.get(header.get("Axis"))
+            # This is the explicitly labelled legacy parser boundary. Modern
+            # imports have already identified the direction from table content.
+            axis = axis or ("h" if "spectrum-h" in path.name else "v" if "spectrum-v" in path.name else None)
+            kind = "spectrum_" + axis if axis else None
+        if kind is not None:
+            measurements[_sha256(path)] = {"kind": kind, "declared": _contract(header)}
         contract = collect_fields(header).get("readout_contract") or {}
         for key, value in contract.items():
             if key in constraints and constraints[key] != value:
@@ -709,6 +719,8 @@ def _collect_raw_geometry_coverage(set_dir: Path, dark_path: Path | None, *, fil
     result = {"raw_geometry_measurements": coverage, "readout_contract": constraints}
     if declared is not None:
         result["raw_geometry_complete"] = all(size is not None for size in coverage.values())
+    if measurements:
+        result["measurement_acquisition"] = acquisition_qualification(measurements)
     return result
 
 def build(set_dir: Path, meta: dict | None, *, files: dict | None = None) -> dict:
@@ -772,6 +784,20 @@ def build(set_dir: Path, meta: dict | None, *, files: dict | None = None) -> dic
     combined_readout = coverage.pop("readout_contract")
     if combined_readout:
         readout_fields["readout_contract"] = combined_readout
+    acquisition = coverage.pop("measurement_acquisition", None)
+    if acquisition is not None:
+        entry["measurement_acquisition"] = acquisition
+        # Values identify the conditional profile scope, not proof that every
+        # measurement satisfied it. Missing per-file declarations are retained
+        # below and gate runtime use in _validated_prior().
+        associated = acquisition["association_contract"]
+        entry["shutter"] = associated.get("shutter")
+        entry["compression"] = associated.get("compression", "").lower() or None
+        for field, source in (("linearisation_curve", "linearisation"), ("adc_step", "adc_step"),
+                              ("cfa_pattern", "cfa"), ("decoder_identity", "decoder_identity"),
+                              ("dn_domain", "dn_domain"), ("variance_domain", "variance_domain")):
+            value = associated.get(source)
+            entry["acquisition_contract"][field] = value.lower() if isinstance(value, str) else value
     entry["acquisition_contract"].update(coverage)
     entry.update(readout_fields)
     # The formed RAW contains quantisation as well as physical read noise.
@@ -791,6 +817,17 @@ def build(set_dir: Path, meta: dict | None, *, files: dict | None = None) -> dic
                    for iso, d in sorted(dark.items()) if d["rn_dn"] is not None]
     entry_unresolved = sorted(iso for iso, d in dark.items() if d["rn_dn"] is None)
     entry["read_noise_dn_log2iso"] = rn_dn_curve
+    # A standalone dark measurement has no PTC from which to recover its DN
+    # endpoint. Only an explicitly supplied white endpoint can authorize
+    # composition with a separately imported absolute-gain measurement.
+    try:
+        measured_white = float(header["SensorMaximum"])
+        spans = [measured_white - d["bl"] for d in dark.values()]
+    except (KeyError, TypeError, ValueError, OverflowError):
+        spans = []
+    if spans and all(math.isfinite(span) and span > 0 for span in spans) and max(spans)/min(spans) <= 1.05:
+        entry["reference_dn_range"] = float(np.mean(spans))
+        entry["reference_dn_range_source"] = "dark-declared-SensorMaximum-minus-measured-green-black"
     if entry_unresolved:
         entry["read_noise_unresolved_isos"] = entry_unresolved
     entry["quantization_fraction_log2iso"] = [
@@ -1158,6 +1195,23 @@ def _validated_prior(item: dict) -> dict:
         entry["noise_spectrum"] = validate_spectrum(item["noise_spectrum"])
     from .readout import measurement_fields
     entry.update(measurement_fields(item))
+    acquisition = item.get("measurement_acquisition")
+    if acquisition is not None:
+        from .collect_manifest import ACQUISITION_SCHEMA, acquisition_qualification
+        if not isinstance(acquisition, dict) or acquisition.get("schema") != ACQUISITION_SCHEMA:
+            raise ValueError("unsupported measurement acquisition schema")
+        checked = acquisition_qualification(acquisition.get("measurements"))
+        # Recompute qualification on every JSON read: editing a cached summary
+        # to "qualified" cannot erase a missing condition from its CSV record.
+        entry["measurement_acquisition"] = checked
+        entry["readout_declaration_issues"].extend(checked["issues"])
+    elif (isinstance(item.get("source"), dict)
+          and item["source"].get("kind") == "user-imported JPTC Collect measurements"):
+        # PR177 installed manifest packages before per-table declarations were
+        # persisted. Hashes alone cannot recover which CSV omitted a condition.
+        # Leave those records installed for inspection, but require reimport
+        # rather than silently qualifying them under the new file adapters.
+        entry["readout_declaration_issues"].append("measurement-acquisition-reimport-required")
     if single:
         iso = _number(item.get("iso"), "iso")
         gain = _number(item.get("gain_e_per_dn"), "gain_e_per_dn")
@@ -1504,6 +1558,7 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         warnings.append("estimator-spread")
     if not prior.get("shutter"):
         warnings.append("readout-mode-unavailable")
+    warnings.extend(prior.get("readout_declaration_issues", []))
     if prior.get("unverified_readout_fields"):
         warnings.append("sub-readout-mode-not-verified")
     contract = prior.get("acquisition_contract") or {}
@@ -1528,8 +1583,15 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         "stored_dark_variance": bool(prior.get("stored_dark_variance_dn2_log2iso")),
         "spectrum_h": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("h")),
         "spectrum_v": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("v")), "spectrum_2d": False}
+    qualification = (prior.get("measurement_acquisition") or {}).get("capability_qualification", {})
+    if "measurement-acquisition-reimport-required" in prior.get("readout_declaration_issues", []):
+        qualification = {key: {"status": "unverified", "source_ids": [],
+            "reasons": ["measurement-acquisition-reimport-required"]} for key in capabilities if key != "spectrum_2d"}
+    capabilities = {key: value and qualification.get(key, {}).get("status", "qualified") == "qualified"
+                    for key, value in capabilities.items()}
     return {"id": record["id"], "label": prior["id"], "active": bool(record.get("active", True)),
-            "capabilities": capabilities, "import_status": "imported", "match_status": "not-evaluated", "apply_status": "not-applied",
+            "capabilities": capabilities, "capability_qualification": qualification,
+            "import_status": "imported", "match_status": "not-evaluated", "apply_status": "not-applied",
             "make": prior["make_contains"], "models": prior["model_labels"],
             "shutter": prior.get("shutter"), "source_shutter": prior.get("source_shutter"),
             "user_applicability": prior.get("user_applicability", {}), "iso_min": 2**domain[0][0] if domain else None,
@@ -1840,6 +1902,7 @@ def _calibration_application(record, match_reason, *, analysis=None, chroma_nr=N
 def calibration_diagnostics(make: str | None, model: str | None, shutter: str | None = None,
                             iso: float | None = None, readout: dict | None = None, *,
                             analysis=None, chroma_nr=None) -> list[dict]:
+    from .capture_identity import public_capture
     out = []
     for path, record, prior, error in _records():
         if error is not None:
@@ -1869,8 +1932,8 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                     "stored_dark_variance_status": stored_status,
                     "stored_dark_variance_dn2": stored_variance,
                     "readout_match_status": readout_status, "readout_match_reason": readout_reason,
-                    "readout_contract": prior.get("readout_contract"),
-                    "capture_readout": readout,
+                    "readout_contract": public_capture(prior.get("readout_contract")),
+                    "capture_readout": public_capture(readout),
                     "has_read_noise_at_iso": iso is not None and curve_value(prior, "read_noise_log2iso_log2e", iso) is not None,
                     "mode_scope": prior["mode_scope"],
                     "unverified_readout_fields": ({} if readout_status == "matched" else prior.get("unverified_readout_fields", {})),

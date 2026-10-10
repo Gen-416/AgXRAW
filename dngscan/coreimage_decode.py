@@ -42,7 +42,8 @@ from pathlib import Path
 from typing import Any
 
 from ._deps import np
-from .source_metadata import cached_source_metadata
+from .source_metadata import (SourceChangedError, SourceReadTransactionError,
+                              SourceVerificationError, cached_source_metadata)
 from .constants import (
     COREIMAGE_SCALE_DEFAULT_MODE,
     COREIMAGE_SCALE_MEASURED_RATIO,
@@ -61,12 +62,55 @@ COREIMAGE_SCALE_COMPENSATION = COREIMAGE_SCALE_MODES[COREIMAGE_SCALE_DEFAULT_MOD
 COREIMAGE_PREVIEW_LONG_EDGE = 1280
 COREIMAGE_EXPORT_MEMORY_LIMIT_MB = 1024
 COREIMAGE_RUNTIME_FAILURE_TTL_SECONDS = 60.
-COREIMAGE_RECIPE_VERSION = "coreimage-decode-recipe-1"
+COREIMAGE_RECIPE_VERSION = "coreimage-decode-recipe-2"
+SCENE_INPUT_POLICY = "required-parameter-readback-v1"
 PROJECT_HOT_WB_IMPLEMENTATION = "rec2020-conjugate-camera-matrix-approx-v1"
 
 _CONTEXTS: dict[bool, Any] = {}
 _CONTEXT_RECIPES: dict[bool, dict[str, Any]] = {}
 _CONTEXT_LOCK = threading.Lock()
+
+
+class SceneInputContractError(RuntimeError):
+    """The filter can be diagnosed but cannot supply the requested scene input."""
+
+    def __init__(self, cfg: dict[str, Any]):
+        self.qualification = _scene_input_qualification(cfg)
+        self.controls = cfg.get("controls", {})
+        self.actual_decoder_token = cfg.get("actual_decoder_token")
+        controls = ", ".join(self.qualification["unverified_controls"]) or "unrecorded required state"
+        super().__init__(f"CIRAWFilter scene input contract failed for RAW "
+                         f"{self.actual_decoder_token!r}: {controls}")
+
+
+def _scene_input_qualification(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed on unknown required controls; optional RAW9 legacy NR stays inert.
+
+    This is an API-state contract, not a claim of empirical linearity or absence
+    of Apple's internal processing. A failed write is safe only when readback
+    independently confirms the required target state.
+    """
+    access = cfg.get("linear_access", {})
+    required = list(access.get("required_controls", ()))
+    controls = cfg.get("controls", {})
+    unverified = []
+    for name in required:
+        item = controls.get(name, {})
+        state = item.get("effective", {}).get("status")
+        support = item.get("support", {})
+        inert = (state == "not-applicable" and
+                 (item.get("applicability") == "documented-inert-raw9" or
+                  (support.get("status") == "read" and support.get("value") is False)))
+        if state != "parameter-confirmed" and not inert:
+            unverified.append(name)
+    qualified = (bool(required) and not unverified and
+                 access.get("status") == "parameter-state-verified" and
+                 isinstance(cfg.get("actual_decoder_token"), str) and
+                 bool(cfg["actual_decoder_token"]))
+    return {"policy": SCENE_INPUT_POLICY, "status": "qualified" if qualified else "rejected",
+            "required_controls": required, "unverified_controls": unverified,
+            "unknown_required_control_policy": "reject-candidate",
+            "scope": "required-API-state-not-empirical-linearity-or-noise-qualification"}
 
 
 def decoder_runtime_id() -> str:
@@ -550,8 +594,9 @@ def configure_linear_filter(
         return controls[name]["effective"]["value"]
 
     baseline_control = controls["baselineExposure"]
-    baseline_cleared = (baseline_control["setter"]["status"] == "applied" and
-                        baseline_control["effective"]["status"] == "parameter-confirmed")
+    # A setter may change the value and then report an error. The observed zero
+    # is authoritative for externalizing the authored baseline exactly once.
+    baseline_cleared = baseline_control["effective"]["status"] == "parameter-confirmed"
     color_nr = current("colorNoiseReductionAmount")
     return {
         "version": str(actual_token or version), "actual_decoder_token": actual_token,
@@ -841,6 +886,7 @@ def _file_stat_identity(stat: Any) -> tuple[int, ...]:
 @cached_source_metadata(cacheable=lambda value: value["status"] == "hashed")
 def _recipe_source_identity(path: Path) -> dict[str, Any]:
     """Hash the source bytes; never substitute a path/header digest for source identity."""
+    before = None
     try:
         digest = hashlib.sha256()
         with path.open("rb") as source:
@@ -849,10 +895,27 @@ def _recipe_source_identity(path: Path) -> dict[str, Any]:
                 digest.update(chunk)
             after = _file_stat_identity(os.fstat(source.fileno()))
         if before != after or after != _file_stat_identity(path.stat()):
-            return {"status": "changed-during-hash", "sha256": None}
+            raise SourceChangedError(path, phase="hash", reason="source changed while computing SHA-256")
         return {"status": "hashed", "sha256": digest.hexdigest(), "size_bytes": after[2], "_stat": after}
     except (OSError, ValueError) as exc:
+        if before is not None:
+            raise SourceVerificationError(path, phase="hash", reason=f"{type(exc).__name__}: {exc}") from exc
         return {"status": "unavailable", "sha256": None, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _assert_recipe_source_current(path: Path, source: dict[str, Any], *, phase: str) -> None:
+    """Unknown initial identity is distinct from a proven change or lost verification."""
+    if source.get("status") in ("changed-during-hash", "changed-during-decode"):
+        raise SourceChangedError(path, phase=phase, reason=str(source["status"]))
+    recorded = source.get("_stat")
+    if recorded is None:
+        return
+    try:
+        current = _file_stat_identity(path.stat())
+    except OSError as exc:
+        raise SourceVerificationError(path, phase=phase, reason=f"{type(exc).__name__}: {exc}") from exc
+    if current != tuple(recorded):
+        raise SourceChangedError(path, phase=phase, reason="source changed since its SHA-256 was recorded")
 
 
 def _build_decode_recipe(*, cfg: dict[str, Any], requested: str, offered: tuple[str, ...],
@@ -882,6 +945,7 @@ def _build_decode_recipe(*, cfg: dict[str, Any], requested: str, offered: tuple[
         }
     configuration = {
         "schema": COREIMAGE_RECIPE_VERSION, "actual_decoder_token": actual_token,
+        "scene_input_policy": SCENE_INPUT_POLICY,
         "runtime": runtime, "hardware": hardware, "controls": configuration_controls,
         "white_balance_implementation": white_balance,
         "project_hot_wb_implementation": PROJECT_HOT_WB_IMPLEMENTATION,
@@ -903,6 +967,7 @@ def _build_decode_recipe(*, cfg: dict[str, Any], requested: str, offered: tuple[
         "fallback": {"used": bool(failures), "failed_attempts": list(failures)},
         "runtime": runtime, "hardware": hardware, "source": source,
         "controls": controls, "linear_access": cfg.get("linear_access", {"status": "unrecorded"}),
+        "scene_input_qualification": _scene_input_qualification(cfg),
         "white_balance_implementation": white_balance,
         "project_hot_wb_implementation": PROJECT_HOT_WB_IMPLEMENTATION,
         "integrated_demosaic_denoise": cfg.get("integrated_demosaic_denoise", "unrecorded"),
@@ -944,6 +1009,7 @@ def decode_scene_rec2020(
     path = Path(path)
     offered = supported_versions(path)
     source = dict(_recipe_source_identity(path))
+    _assert_recipe_source_current(path, source, phase="decode-start")
     resolved = resolve_decoder_version(version, offered)
     candidates = [resolved]
     if version == "auto":
@@ -955,6 +1021,7 @@ def decode_scene_rec2020(
     failures = []
     for candidate in candidates:
         try:
+            _assert_recipe_source_current(path, source, phase="candidate-start")
             # A failed render can leave a filter in an unusable state. Retry each
             # advertised decoder with a fresh object, including all linear controls.
             filt = _open_filter(path)
@@ -963,13 +1030,22 @@ def decode_scene_rec2020(
                 filt, version=candidate, scale_factor=scale_factor,
                 exposure=float(exposure), neutral_cct=neutral_cct,
             )
+            _assert_recipe_source_current(path, source, phase="filter-configuration")
+            if _scene_input_qualification(cfg)["status"] != "qualified":
+                raise SceneInputContractError(cfg)
             render_metadata: dict[str, Any] = {}
             rgb = _render_linear_rec2020(filt, interactive=bool(half_size), metadata=render_metadata)
+            _assert_recipe_source_current(path, source, phase="render")
             if (rgb.ndim != 3 or rgb.shape[2] != 3 or not rgb.size
                     or not np.isfinite(rgb).all()):
                 raise RuntimeError("decoder returned an empty, non-finite or invalid RGB buffer")
             break
+        except SourceReadTransactionError:
+            # A different decoder must never consume evidence from another
+            # generation of the source. The whole outer load must fail/restart.
+            raise
         except Exception as exc:
+            _assert_recipe_source_current(path, source, phase="candidate-failure")
             failures.append(f"RAW {candidate}: {type(exc).__name__}: {exc}")
             if version != "auto":
                 raise
@@ -980,15 +1056,9 @@ def decode_scene_rec2020(
     extent = (int(rgb.shape[0]), int(rgb.shape[1]))
     if target_shape is not None and tuple(target_shape) != extent:
         rgb = _resize_rgb(rgb, (int(target_shape[0]), int(target_shape[1])))
-    recorded_stat = source.pop("_stat", None)
-    if recorded_stat is not None:
-        try:
-            current = _file_stat_identity(path.stat()) == tuple(recorded_stat)
-        except OSError:
-            current = False
-        source["status"] = "verified-through-decode" if current else "changed-during-decode"
-        if not current:
-            source["sha256"] = None
+    _assert_recipe_source_current(path, source, phase="decode-commit")
+    if source.pop("_stat", None) is not None:
+        source["status"] = "verified-through-decode"
     recipe = _build_decode_recipe(
         cfg=cfg, requested=version, offered=offered, failures=failures, half_size=half_size,
         scale_compensation=scale_compensation,

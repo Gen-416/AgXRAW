@@ -120,6 +120,164 @@ class ControlEvidenceTests(unittest.TestCase):
         self.assertIsNone(cfg["actual_decoder_token"])
         self.assertIn("decoderVersion", cfg["linear_access"]["unverified_controls"])
 
+    def test_baseline_write_error_after_confirmed_zero_still_externalizes_authored_value(self):
+        filt = Filter(baseline=1.25)
+        def apply_then_fail(value):
+            filt.values["baselineExposure"] = value
+            raise RuntimeError("bridge error after write")
+        filt.setBaselineExposure_ = apply_then_fail
+        cfg = configure(filt)
+        self.assertEqual(cfg["controls"]["baselineExposure"]["setter"]["status"], "error")
+        self.assertTrue(cfg["baseline_exposure_cleared"])
+        self.assertEqual(cfg["baseline_exposure_authored"], 1.25)
+        self.assertEqual(ci._scene_input_qualification(cfg)["status"], "qualified")
+
+
+class SceneInputGateTests(unittest.TestCase):
+    """Exercise the real configuration and decoder ladder, not only the recipe report."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.path = Path(temporary.name) / "fixture.raw"
+        self.path.write_bytes(b"one immutable captured generation")
+
+    def decode(self, filters, *, version="auto", offered=("9", "8"), renderer=None):
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ci, "supported_versions", return_value=offered))
+            self.opened = stack.enter_context(patch.object(ci, "_open_filter", side_effect=filters))
+            self.rendered = stack.enter_context(patch.object(ci, "_render_linear_rec2020",
+                side_effect=renderer, return_value=np.ones((8, 8, 3), np.float16)))
+            stack.enter_context(patch.object(ci, "decoder_runtime_id", return_value="test-runtime"))
+            stack.enter_context(patch.object(ci, "decoder_hardware_id", return_value={"model": "fixture"}))
+            return ci.decode_scene_rec2020(self.path, half_size=False, version=version)
+
+    def test_auto_rejects_failed_or_ignored_required_write_and_renders_RAW8(self):
+        for failure in ("broken", "ignored"):
+            with self.subTest(failure=failure):
+                bad, good = Filter(), Filter()
+                getattr(bad, failure).add("setBoostAmount_")
+                pixels, info = self.decode([bad, good])
+                self.assertEqual(self.opened.call_count, 2)
+                self.assertEqual(self.rendered.call_count, 1)
+                self.assertIs(self.rendered.call_args.args[0], good)
+                self.assertEqual(info["recipe"]["actual_decoder_token"], "8")
+                self.assertEqual(info["recipe"]["scene_input_qualification"]["status"], "qualified")
+                self.assertIn("boostAmount", info["fallback_errors"][0])
+                self.assertEqual(pixels.shape, (8, 8, 3))
+
+    def test_fixed_bare_or_DNG_token_cannot_change_version_after_contract_failure(self):
+        for token in ("9", "9.dng"):
+            with self.subTest(token=token):
+                bad = Filter()
+                bad.ignored.add("setBoostAmount_")
+                with self.assertRaisesRegex(ci.SceneInputContractError, "boostAmount") as error:
+                    self.decode([bad, Filter()], version=token, offered=(token, "8"))
+                self.assertEqual(error.exception.actual_decoder_token, token)
+                self.assertEqual(error.exception.qualification["status"], "rejected")
+                self.assertEqual(self.opened.call_count, 1)
+                self.rendered.assert_not_called()
+
+    def test_all_candidates_fail_without_rendering_unqualified_pixels(self):
+        filters = [Filter(), Filter()]
+        for filt in filters:
+            filt.ignored.add("setShadowBias_")
+        with self.assertRaisesRegex(RuntimeError, "All offered Apple RAW decoders failed") as error:
+            self.decode(filters)
+        self.assertIn("RAW 9", str(error.exception))
+        self.assertIn("RAW 8", str(error.exception))
+        self.assertEqual(self.opened.call_count, 2)
+        self.rendered.assert_not_called()
+
+    def test_load_raw_auto_uses_existing_LibRaw_fallback_after_all_contracts_fail(self):
+        from dngscan import raw_io
+        from tests.test_pipeline_corrections import write_sensor_dng
+        path = self.path.with_suffix(".dng")
+        write_sensor_dng(path, signal=1000)
+        filters = [Filter(), Filter()]
+        for filt in filters:
+            filt.ignored.add("setBoostAmount_")
+        with patch.object(ci, "runtime_available", return_value=True), \
+             patch.object(ci, "supported_versions", return_value=("9", "8")), \
+             patch.object(ci, "_open_filter", side_effect=filters) as opened, \
+             patch.object(ci, "_render_linear_rec2020") as rendered:
+            bundle = raw_io.load_raw(path, decoder="coreimage", coreimage_version="auto",
+                                    scene_half_size=True, _defer_clip_masks=True,
+                                    _analysis_luminance_only=True)
+        self.assertEqual(opened.call_count, 2)
+        rendered.assert_not_called()
+        self.assertEqual(bundle.scene_decoder, "libraw")
+        self.assertEqual(bundle.scene_decoder_recipe["status"], "apple-attempt-failed")
+        self.assertIn("scene input contract failed", bundle.scene_decoder_fallback)
+        self.assertTrue(np.isfinite(bundle.scene_rec2020_render).all())
+
+    def test_missing_required_getter_is_unknown_and_uses_next_offered_token(self):
+        for getter in ("boostAmount", "decoderVersion"):
+            with self.subTest(getter=getter):
+                bad, good = Filter(), Filter()
+                bad.missing.add(getter)
+                _, info = self.decode([bad, good])
+                self.assertEqual(info["recipe"]["actual_decoder_token"], "8")
+                self.assertIn(getter, info["fallback_errors"][0])
+                self.assertEqual(self.rendered.call_count, 1)
+
+    def test_known_inert_RAW9_legacy_NR_and_unsupported_local_map_do_not_fail(self):
+        filt = Filter()
+        filt.broken.update(("setColorNoiseReductionAmount_", "setDetailAmount_"))
+        filt.missing.add("moireReductionAmount")
+        filt.support["isLocalToneMapSupported"] = False
+        _, info = self.decode([filt, Filter()])
+        self.assertEqual(info["recipe"]["actual_decoder_token"], "9")
+        self.assertEqual(info["fallback_errors"], [])
+        self.assertEqual(self.opened.call_count, 1)
+
+    def test_failed_write_with_confirmed_target_is_accepted_and_retained_in_audit(self):
+        filt = Filter()
+        filt.values["boostAmount"] = 0.
+        filt.broken.add("setBoostAmount_")
+        _, info = self.decode([filt])
+        control = info["recipe"]["controls"]["boostAmount"]
+        self.assertEqual(control["setter"]["status"], "error")
+        self.assertEqual(control["effective"]["status"], "parameter-confirmed")
+        self.assertEqual(info["recipe"]["scene_input_qualification"]["status"], "qualified")
+
+    def test_source_change_during_render_aborts_whole_ladder(self):
+        def changed(*args, **kwargs):
+            self.path.write_bytes(b"another captured generation")
+            return np.ones((8, 8, 3), np.float16)
+        with self.assertRaises(ci.SourceChangedError):
+            self.decode([Filter(), Filter()], renderer=changed)
+        self.assertEqual(self.opened.call_count, 1)
+        self.assertEqual(self.rendered.call_count, 1)
+
+    def test_source_change_with_render_failure_cannot_retry_another_token(self):
+        def changed_failure(*args, **kwargs):
+            self.path.write_bytes(b"another captured generation")
+            raise RuntimeError("render also failed")
+        with self.assertRaises(ci.SourceChangedError):
+            self.decode([Filter(), Filter()], renderer=changed_failure)
+        self.assertEqual(self.opened.call_count, 1)
+
+    def test_explicit_source_verification_error_cannot_be_swallowed_by_ladder(self):
+        failure = ci.SourceVerificationError(self.path, phase="render", reason="injected I/O failure")
+        with self.assertRaises(ci.SourceVerificationError):
+            self.decode([Filter(), Filter()], renderer=Mock(side_effect=failure))
+        self.assertEqual(self.opened.call_count, 1)
+
+    def test_hash_detected_change_never_opens_a_decoder(self):
+        with patch.object(ci, "_file_stat_identity", side_effect=[(1, 2, 3, 4, 5), (1, 2, 3, 4, 6)]):
+            with self.assertRaises(ci.SourceChangedError):
+                self.decode([Filter(), Filter()])
+        self.opened.assert_not_called()
+
+    def test_disappeared_source_after_known_hash_is_unverifiable_not_claimed_changed(self):
+        def disappeared(*args, **kwargs):
+            self.path.unlink()
+            return np.ones((8, 8, 3), np.float16)
+        with self.assertRaises(ci.SourceVerificationError):
+            self.decode([Filter(), Filter()], renderer=disappeared)
+        self.assertEqual(self.opened.call_count, 1)
+
 
 class ConfigurationIdentityTests(unittest.TestCase):
     def test_identity_ignores_request_history_content_extent_and_file_neutral_baseline(self):

@@ -248,9 +248,21 @@ def compose_capabilities(base, candidates, iso):
     contract = base.get("readout_contract") or {}
     reference = base.get("reference_dn_range")
     domain = base.get("acquisition_contract") or {}
+    # File lists, coverage and fitting metadata are provenance, not the
+    # physical DN domain. Actual CSV packages necessarily have different
+    # source files; comparing their whole acquisition dictionaries prevented
+    # any separately measured capabilities from composing.
+    domain_fields = ("linearisation_curve", "adc_step", "cfa_pattern", "dn_domain", "variance_domain", "decoder_identity")
+    def physical_domain(entry):
+        values = entry.get("acquisition_contract") or {}
+        return {key: values[key] for key in domain_fields if key in values}
+    def qualified(entry, capability):
+        acquisition = entry.get("measurement_acquisition")
+        return (acquisition is None or not acquisition.get("issues") and
+                acquisition.get("capability_qualification", {}).get(capability, {}).get("status") == "qualified")
     if (base.get("readout_match_status") != "matched" or not required <= contract.keys()
             or domain.get("linearisation_curve") != "identity"
-            or not reference or not iso): return result
+            or not qualified(base, "absolute_gain") or not reference or not iso): return result
     gain = curve_value(base, "gain_log2iso_log2epd", iso)
     if gain is None: return result
     compatible = []
@@ -261,7 +273,8 @@ def compose_capabilities(base, candidates, iso):
                 or candidate.get("reference_dn_range") != reference
                 or candidate.get("make_equals") != base.get("make_equals")
                 or set(candidate.get("model_equals", ())) != set(base.get("model_equals", ()))
-                or candidate.get("acquisition_contract") != base.get("acquisition_contract")):
+                or physical_domain(candidate) != physical_domain(base)
+                or (candidate.get("measurement_acquisition") or {}).get("issues")):
             continue
         compatible.append(candidate)
     if compatible:
@@ -270,6 +283,7 @@ def compose_capabilities(base, candidates, iso):
     if read_noise_issue(base, iso): return result  # Keep independent constraints even when RN is unresolved.
     for candidate in compatible:
         if curve_value(result, "read_noise_log2iso_log2e", iso) is not None: break
+        if not qualified(candidate, "read_noise"): continue
         if read_noise_issue(candidate, iso, "read_noise_dn_log2iso"): continue
         read = curve_value(candidate, "read_noise_dn_log2iso", iso)
         if read is None: continue
@@ -284,11 +298,25 @@ def compose_capabilities(base, candidates, iso):
         result["read_noise_dn_log2iso"] = [[math.log2(iso), read]]
         result["read_noise_composition_iso"] = iso
         result["phase_calibration"] = {}  # No invented cross-source phase gain.
+        stored_supplier = None
+        if result.get("stored_dark_variance_dn2_log2iso") and stored_dark_variance(result, iso)[0] is not None:
+            stored_supplier = base
+            sources["stored_dark_variance"] = base.get("source")
         if stored is not None and not result.get("stored_dark_variance_dn2_log2iso"):
             # Keep the original measured curve and its measured/interpolated
             # status. The composed RN curve authorizes only this selected ISO;
             # retaining source samples does not create a new runtime ISO span.
             result["source_format"] = candidate["source_format"]
+            # These describe the dark estimator, not the shared physical DN
+            # domain. Keep the supplier's contract with its copied variance;
+            # a gain-only profile cannot authorize or relabel that estimator.
+            statistics = ("stored_dark_variance_measurement", "stored_dark_variance_domain",
+                          "sigma_clip_correction", "clip_variance_factor", "sheppard_assumption")
+            result["acquisition_contract"] = dict(result.get("acquisition_contract") or {})
+            for key in statistics:
+                result["acquisition_contract"].pop(key, None)
+                if key in (candidate.get("acquisition_contract") or {}):
+                    result["acquisition_contract"][key] = copy.deepcopy(candidate["acquisition_contract"][key])
             if candidate_stored:
                 result["stored_dark_variance_dn2_log2iso"] = copy.deepcopy(candidate_stored)
             else:
@@ -296,10 +324,15 @@ def compose_capabilities(base, candidates, iso):
                 # relabel a reconstructed variance as a direct measurement.
                 result["noise_aperture"] = candidate.get("noise_aperture")
             sources["stored_dark_variance"] = candidate.get("source")
+            stored_supplier = candidate
             result["stored_dark_variance_composition"] = {"source": candidate.get("source"),
                 "iso": iso, "status": stored_status, "variance_dn2": stored}
         sources["read_noise"] = candidate.get("source")
         result["source"] = "Compatible capability composition"
         result["capability_sources"] = sources
+        result["capability_measurements"] = {
+            "gain": copy.deepcopy(base.get("measurement_acquisition")),
+            "read_noise": copy.deepcopy(candidate.get("measurement_acquisition")),
+            "stored_dark_variance": copy.deepcopy(stored_supplier.get("measurement_acquisition")) if stored_supplier is not None else None}
         break
     return result

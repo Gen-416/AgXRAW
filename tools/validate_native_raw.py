@@ -30,6 +30,7 @@ import rawpy
 
 from dngscan import _fast
 from dngscan.analysis import analyze
+from dngscan.capture_identity import public_capture
 from dngscan.auto_ev import compute_auto_ev
 from dngscan.hdr_agx import render_ultrahdr_agx_pair
 from dngscan.hdr_agx_plan import compile_hdr_agx_plan, compile_tail_snr_gate
@@ -147,7 +148,7 @@ def run_file(path, half, scratch):
                "noise_model_usable": analysis.noise_model.status == "valid",
                "measurement_qualified": (analysis.noise_model.status == "valid"
                                           and analysis.noise_model.source != "DNG NoiseProfile"),
-               "capture_readout": bundle.capture_readout, "raw_shape": list(bundle.raw_image.shape),
+               "capture_readout": public_capture(bundle.capture_readout), "raw_shape": list(bundle.raw_image.shape),
                "coding_white_levels": bundle.coding_white_levels, "coding_black_levels": bundle.coding_black_levels,
                "linear_validity_white_levels": bundle.camera_white_levels,
                "scene_scale": bundle.scene_scale, "scene_decoder": bundle.scene_decoder,

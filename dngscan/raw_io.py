@@ -26,6 +26,7 @@ D65_XYZ = tuple(float(sum(row)) for row in _RGB_TO_XYZ["Rec2020"])
 XYZ_TO_RGB_REC2020 = tuple(tuple(float(v) for v in row) for row in _XYZ_TO_RGB["Rec2020"])
 from .models import RawBundle
 from .evidence import EvidenceAcquisitionError, acquire_raw_evidence
+from .source_metadata import SourceReadTransactionError
 
 def rawpy_highlight_mode(name: str) -> Any:
     modes = getattr(rawpy, "HighlightMode", object)
@@ -1963,23 +1964,16 @@ def _unsupported_format_guidance(path: Path, shot: Any, exc: Exception) -> str:
     lines = [
         f"LibRaw 无法打开此文件（机型 {ident}，{path.suffix or '无后缀'}）：{exc}",
     ]
-    if path.suffix.lower() == ".nef":
-        lines += [
-            "若这是较新的尼康机身（Z9/Z8/Z6III/Z50II 世代）且拍摄时选择了"
-            "高效压缩（HE/HE*），需分别核对 intoPIX TicoRAW 编码与当前解码构建的支持。"
-            "本次构建未能打开此文件；不能据此断言所有 LibRaw 分支都不支持。可尝试：",
-            "  1. 用 Adobe DNG Converter（免费，支持 HE）把 NEF 转成 DNG，"
-            "转换后重新核对显影与标定资格，转换成功不保证原始测量域不变；",
-            "  2. 相机内改用『无损压缩』RAW（同世代机身的无损 NEF 可正常解码）；",
-            "  3. 可尝试 --decoder coreimage --coreimage-version auto；若 Apple 支持该文件，"
-            "可导出场景图像，但无 LibRaw 传感器证据时不会声明 RAW 剪切/SNR 测量。",
-        ]
-    else:
-        lines += [
-            "若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 "
-            "LibRaw master 快照；仍失败请反馈样张（机型支持策略见 "
-            "docs/SENSOR_SUPPORT.zh-CN.md）。",
-        ]
+    lines += [
+        "这是当前构建对该文件的拒绝；后缀不能证明具体压缩模式，"
+        "也不能据此断言其他解码构建均不支持。",
+        "若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级解码构建；"
+        "仍失败请反馈机型、拍摄模式和样张（见 docs/SENSOR_SUPPORT.zh-CN.md）。",
+        "可尝试 --decoder coreimage --coreimage-version auto；若 Apple 能生成场景图像，"
+        "缺失的 LibRaw 传感器证据仍不会被声明为可用。",
+        "若使用兼容的 DNG 转换器，转换后需重新核对显影与标定资格；"
+        "转换成功不保证原始测量域不变。",
+    ]
     lines.append("用 `--support` 可查看此文件在两条解码线上的逐档支持报告。")
     return "\n".join(lines)
 
@@ -1992,7 +1986,16 @@ def _metadata_load_scope(loader):
         from .source_metadata import source_metadata_session
         with source_metadata_session(path) as session:
             kwargs["_source_session"] = session
-            return loader(path, *args, **kwargs)
+            session.assert_consistent(phase="load-start")
+            try:
+                bundle = loader(path, *args, **kwargs)
+            except Exception:
+                # Preserve source failures even if a decoder wrapped the original
+                # error. Every fallback belongs to this same capture transaction.
+                session.assert_consistent(phase="load-error")
+                raise
+            session.assert_consistent(phase="load-commit")
+            return bundle
     return scoped
 
 
@@ -2034,6 +2037,7 @@ def load_raw(
         "reconstruct" if decoder == "coreimage" else scene_highlight_mode
     )
     shot = dng_metadata.read_dng_shot_info(path)
+    _source_session.assert_consistent(phase="shot-metadata")
 
     scene_decoder = "libraw"
     scene_decoder_version: str | None = None
@@ -2089,15 +2093,17 @@ def load_raw(
             "Linear DNG：颜色平面剪切可测；不声明 CFA 独立噪声或电子域校准"
             if evidence.sample_kind == "linear-camera-rgb" else None)
     except EvidenceAcquisitionError as exc:
-        if exc.unsupported_format or "unsupported file format" in str(exc).lower():
+        if exc.unsupported_format:
             message = _unsupported_format_guidance(path, shot, exc)
         else:
-            message = f"Cannot acquire RAW evidence with rawpy/libraw: {exc}"
+            message = f"Cannot acquire RAW evidence with rawpy/libraw ({exc.failure_kind}): {exc}"
         if decoder == "libraw":
             raise RuntimeError(message) from exc
         evidence = None
         evidence_stage1_note = "传感器证据不可用；仅使用解码图像统计，不声明 RAW 剪切或传感器 SNR"
         evidence_error = message
+
+    _source_session.assert_consistent(phase="evidence")
 
     raw_image = getattr(evidence, "raw_image", None)
     raw_colors = getattr(evidence, "raw_colors", None)
@@ -2212,6 +2218,8 @@ def load_raw(
                 if recipe.skipped:
                     notes.append("跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped))
                 scene_correction_note = "; ".join(notes) or None
+        except SourceReadTransactionError:
+            raise
         except Exception as exc:
             raise RuntimeError(
                 f"Cannot decode RAW scene with rawpy/libraw: {exc}"
@@ -2289,6 +2297,9 @@ def load_raw(
         except Exception as exc:
             # Auto is a capability ladder; an explicitly selected Apple version
             # stays strict so failed experiments cannot silently use another decoder.
+            if isinstance(exc, SourceReadTransactionError):
+                raise
+            _source_session.assert_consistent(phase="apple-fallback")
             if coreimage_version != "auto" or evidence is None:
                 raise RuntimeError(f"Cannot decode Apple RAW scene: {exc}; evidence: {evidence_error or 'available'}") from exc
             fallback = load_raw(
@@ -2317,6 +2328,7 @@ def load_raw(
                                        {"decoder": "libraw", "status": "rendered"}],
                     "apple_controls": "unavailable-after-failed-attempt",
                 })
+        _source_session.assert_consistent(phase="apple-scene")
         failures = info.get("fallback_errors") or []
         scene_decoder_fallback = "; ".join(failures) if failures else None
         reliability_source = "decoded-image-estimate"
@@ -2447,6 +2459,8 @@ def load_raw(
                 reliable_reference *= np.float32(scene_align_factor / raw_factor)
                 reliability_source = "sensor-reference"
                 noise_decode["evidence_reference_status"] = "measured" if len(reliable_reference) else "measured-empty"
+            except SourceReadTransactionError:
+                raise
             except Exception as exc:  # noqa: BLE001 - a render must not fail over a metric
                 error = f"{type(exc).__name__}: {exc}"
                 scene_reference_error = error

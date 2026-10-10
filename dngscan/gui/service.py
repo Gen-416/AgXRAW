@@ -1284,6 +1284,7 @@ def detected_scene_params(
     # Candidate matching is not proof that a measurement supplied the final
     # model, nor that an optional pixel operation ran. Quote the completed
     # analysis and the renderer's status separately.
+    from dngscan.capture_identity import public_capture
     calibration_status = calibration_diagnostics(
         getattr(bundle, "shot_make", None), getattr(bundle, "shot_model", None),
         shutter=getattr(bundle, "shot_shutter", None), iso=getattr(bundle, "shot_iso", None),
@@ -1300,7 +1301,7 @@ def detected_scene_params(
         "decoder_window_calibration": getattr(bundle, "scene_window_calibration", {}),
         "demosaic_actual": ((getattr(bundle, "noise_decode", None) or {}).get("demosaic_algorithm")
                             if bundle.scene_decoder == "libraw" else None),
-        "capture_readout": dict(getattr(bundle, "capture_readout", None) or {}),
+        "capture_readout": public_capture(getattr(bundle, "capture_readout", None)),
         "evidence_provider": bundle.evidence_provider,
         "evidence_error": bundle.evidence_error,
         "reliability_source": scene.reliability_source,

@@ -27,6 +27,7 @@ MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_TOTAL_BYTES = 256 * 1024 * 1024
 FORMATS = {"JPTC-DARK/1": "dark", "JPTC-ISOGAIN/1": "gain",
            "JPTC-SPECTRUM/1": "spectrum", "JPTC/2": "ptc"}
+ACQUISITION_SCHEMA = "dngscan-collect-acquisition-1"
 JSON_FORMATS = {"dngscan-jptc-collect-1", "dngscan-jptc-prior-1", "dngscan-user-calibration-1"}
 
 
@@ -211,7 +212,9 @@ def _contract(header):
         "readout": ("ReadoutMode", "Readout"), "capture_kind": ("DriveMode",), "compression": ("Compression",),
         "raw_geometry": ("RawSize",), "cfa": ("CfaPattern",),
         "linearisation": ("LinearisationCurve",), "adc_step": ("AdcStep",),
-        "dn_maximum": ("SensorMaximum",), "dn_domain": ("DNDomain", "VarianceDomain")}
+        "dn_maximum": ("SensorMaximum",), "dn_domain": ("DNDomain",),
+        "variance_domain": ("VarianceDomain",),
+        "decoder_identity": ("Decoder",)}
     for key, aliases in fields.items():
         values = {" ".join(header[a].split()).upper() for a in aliases if header.get(a)}
         if len(values) > 1:
@@ -238,6 +241,94 @@ def _contract(header):
 
 def _compatible(a, b):
     return all(a[key] == b[key] for key in a.keys() & b.keys())
+
+
+def acquisition_qualification(measurements):
+    """Separate a unique association from proof of a shared acquisition domain.
+
+    Every value remains attached to the CSV that declared it. No other file's
+    shutter, LUT or ADC declaration fills a measurement's missing metadata.
+    In particular, a single compatible group is not a shared batch statement.
+    """
+    if not isinstance(measurements, dict) or not measurements:
+        raise ValueError("measurement acquisition requires explicit source records")
+    valid_kinds = {"dark", "gain", "ptc", "spectrum_h", "spectrum_v"}
+    allowed = {"camera", "body", "firmware", "shutter", "readout", "capture_kind", "compression",
+               "raw_geometry", "cfa", "linearisation", "adc_step", "dn_maximum", "dn_domain",
+               "variance_domain", "decoder_identity"}
+    fields = set()
+    for identity, record in measurements.items():
+        if (not isinstance(identity, str) or re.fullmatch(r"[a-f0-9]{64}", identity) is None
+                or not isinstance(record, dict) or set(record) != {"kind", "declared"}
+                or record["kind"] not in valid_kinds or not isinstance(record["declared"], dict)):
+            raise ValueError("invalid measurement acquisition source record")
+        if set(record["declared"]) - allowed:
+            raise ValueError("unsupported measurement acquisition field")
+        for field, value in record["declared"].items():
+            if field == "raw_geometry":
+                if (not isinstance(value, list) or len(value) != 2
+                        or any(type(v) is not int or v <= 0 for v in value)):
+                    raise ValueError("invalid measurement acquisition geometry")
+            elif field in ("adc_step", "dn_maximum"):
+                if (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)
+                        or value < 0 or field == "dn_maximum" and value == 0):
+                    raise ValueError("invalid measurement acquisition DN scale")
+            elif not isinstance(value, str) or not value.strip():
+                raise ValueError("invalid measurement acquisition text")
+        fields.update(record["declared"])
+    coverage, common, associated = {}, {}, {}
+    for field in sorted(fields):
+        supplied = {identity: record["declared"][field] for identity, record in measurements.items()
+                    if field in record["declared"]}
+        values = list(supplied.values())
+        if any(value != values[0] for value in values[1:]):
+            raise ValueError(f"conflicting acquisition declarations: {field}")
+        missing = sorted(set(measurements) - supplied.keys())
+        coverage[field] = {"status": "incomplete" if missing else "complete",
+                           "declared_by": supplied, "missing_sources": missing}
+        associated[field] = values[0]
+        if not missing:
+            common[field] = values[0]
+    # DN maximum is a separate endpoint measurement: dark exports do not
+    # necessarily declare one. It is never inferred from ADC/storage bits.
+    physical = {"camera", "shutter", "compression", "raw_geometry", "cfa",
+                "linearisation", "adc_step"}
+    conditional = {"body", "firmware", "readout", "capture_kind", "dn_domain", "variance_domain", "decoder_identity"} & fields
+    required = physical | conditional
+    issues = ["measurement-" + field.replace("_", "-") + "-incomplete"
+              for field in sorted(required) if field not in common]
+    if common.get("linearisation") not in (None, "IDENTITY"):
+        issues.append("measurement-linearisation-unsupported")
+    if common.get("adc_step") == 0:
+        issues.append("measurement-adc-step-unresolved")
+    if common.get("compression") not in (None, "LOSSLESS", "LOSSLESS COMPRESSION", "UNCOMPRESSED", "NONE", "无损压缩", "无压缩"):
+        issues.append("measurement-compression-unverified")
+    capability_files = {
+        "absolute_gain": {i for i, r in measurements.items() if r["kind"] in ("dark", "gain", "ptc")},
+        "read_noise": {i for i, r in measurements.items() if r["kind"] == "dark"},
+        "stored_dark_variance": {i for i, r in measurements.items() if r["kind"] == "dark"},
+        "spectrum_h": {i for i, r in measurements.items() if r["kind"] in ("dark", "spectrum_h")},
+        "spectrum_v": {i for i, r in measurements.items() if r["kind"] in ("dark", "spectrum_v")},
+    }
+    products = {}
+    for name, sources in capability_files.items():
+        needed_kind = {"absolute_gain": "ptc", "read_noise": "dark",
+                       "stored_dark_variance": "dark", "spectrum_h": "spectrum_h",
+                       "spectrum_v": "spectrum_v"}[name]
+        present = any(measurements[i]["kind"] == needed_kind for i in sources)
+        missing = {field: sorted(i for i in sources if field not in measurements[i]["declared"])
+                   for field in sorted(required)} if present else {}
+        missing = {field: ids for field, ids in missing.items() if ids}
+        # Runtime currently consumes a profile-wide domain. Conservatively
+        # refuse the profile if any contributing table's domain is unproven;
+        # do not advertise independently qualified products as active there.
+        products[name] = {"status": "unmeasured" if not present else "unverified" if issues else "qualified",
+                          "source_ids": sorted(sources), "missing_fields": missing,
+                          "reasons": list(issues) if present else ["measurement-not-supplied"]}
+    return {"schema": ACQUISITION_SCHEMA, "measurements": measurements,
+            "association_contract": associated, "common_contract": common,
+            "field_coverage": coverage, "capability_qualification": products,
+            "issues": issues, "inheritance": "none; each measurement declares its own physical conditions"}
 
 
 def _classify(entry):
@@ -423,12 +514,25 @@ def _prepare(entries):
             payload = _build_group(group, records, contents)
             from .calibration import _validated_prior
             prior = _validated_prior(payload)
+            acquisition = prior.get("measurement_acquisition") or {}
+            qualification = acquisition.get("capability_qualification", {})
+            group["measurement_acquisition"] = acquisition
+            group["capability_qualification"] = qualification
+            group["runtime_contract"] = {"shutter": prior.get("shutter"),
+                "compression": payload.get("compression"),
+                "readout_contract": prior.get("readout_contract"),
+                "issues": prior.get("readout_declaration_issues", [])}
+            group.update(shutter=prior.get("shutter"), compression=payload.get("compression"))
             cap = group["capabilities"]
             cap.update(absolute_gain=bool(prior.get("gain_log2iso_log2epd")),
                 read_noise=bool(prior.get("read_noise_dn_log2iso") or prior.get("read_noise_log2iso_log2e")),
                 stored_dark_variance=bool(prior.get("stored_dark_variance_dn2_log2iso")))
             for axis in ("h", "v"):
                 cap["spectrum_"+axis] = bool(prior.get("noise_spectrum", {}).get("axes", {}).get(axis))
+            for capability, item in qualification.items():
+                if item["status"] != "qualified":
+                    cap[capability] = False
+            group["diagnostics"].extend(acquisition.get("issues", []))
             group["status"] = "ready" if cap["absolute_gain"] and cap["read_noise"] else "partial"
             if not cap["absolute_gain"]:
                 group["diagnostics"].append("no qualified PTC anchor: absolute electron gain is unavailable")

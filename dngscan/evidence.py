@@ -7,14 +7,20 @@ from typing import Any
 
 from ._deps import np, rawpy
 from .models import RawEvidence
+from .source_metadata import SourceReadTransactionError
 
 
 class EvidenceAcquisitionError(RuntimeError):
     """LibRaw could not provide the evidence contract for a RAW file."""
 
-    def __init__(self, message: str, *, unsupported_format: bool = False) -> None:
+    def __init__(self, message: str, *, unsupported_format: bool = False,
+                 failure: dict | None = None) -> None:
         super().__init__(message)
-        self.unsupported_format = bool(unsupported_format)
+        self.failure = dict(failure or {})
+        self.unsupported_format = bool(unsupported_format or
+                                      self.failure.get("status") == "unsupported_format")
+        self.failure_kind = self.failure.get("failure_kind", "unsupported-codec" if
+                                             self.unsupported_format else "runtime")
 
 
 def libraw_runtime_id() -> str | None:
@@ -162,11 +168,10 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
             )
     except FileNotFoundError:
         raise
-    except rawpy.LibRawFileUnsupportedError as exc:
-        raise EvidenceAcquisitionError(
-            str(exc), unsupported_format=True
-        ) from exc
+    except SourceReadTransactionError:
+        raise
     except EvidenceAcquisitionError:
         raise
     except Exception as exc:
-        raise EvidenceAcquisitionError(str(exc)) from exc
+        from .decode_errors import classify_libraw_error
+        raise EvidenceAcquisitionError(str(exc), failure=classify_libraw_error(exc)) from exc

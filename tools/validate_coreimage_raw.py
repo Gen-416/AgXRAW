@@ -34,6 +34,7 @@ import rawpy
 
 from dngscan import coreimage_decode
 from dngscan.analysis import analyze
+from dngscan.capture_identity import public_capture
 from dngscan.auto_ev import compute_auto_ev
 from dngscan.decoder_residual_research import CHROMA_BASIS, LUMA
 from dngscan.calibration import calibration_diagnostics, calibration_fingerprint
@@ -271,8 +272,8 @@ def run_case(path, case):
         scene_scale_mode=bundle.scene_scale_mode, scene_align_factor=bundle.scene_align_factor,
         scene_align_error=bundle.scene_align_error, scene_scale=bundle.scene_scale,
         camera={"make": bundle.shot_make, "model": bundle.shot_model, "iso": bundle.shot_iso,
-                "shutter": bundle.shot_shutter}, capture_readout=bundle.capture_readout,
-        source_codec={"suffix": path.suffix.lower(), "capture_descriptor": bundle.capture_readout},
+                "shutter": bundle.shot_shutter}, capture_readout=public_capture(bundle.capture_readout),
+        source_codec={"suffix": path.suffix.lower(), "capture_descriptor": public_capture(bundle.capture_readout)},
         evidence={"provider": bundle.evidence_provider, "provider_version": bundle.evidence_provider_version,
             "status": getattr(bundle.evidence, "status", None), "raw_shape": list(bundle.raw_image.shape),
             "evidence_shape": bundle.evidence_shape, "scene_reliability_source": bundle.scene_reliability_source,

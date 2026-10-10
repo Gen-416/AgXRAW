@@ -30,6 +30,7 @@ from dngscan import _fast
 from dngscan.analysis import analyze
 from dngscan.auto_ev import compute_auto_ev
 from dngscan.calibration import calibration_diagnostics, calibration_fingerprint
+from dngscan.capture_identity import public_capture
 from dngscan.calibration_registry import library_status
 from dngscan.chroma_policy import resolve_chroma_policy
 from dngscan.hdr_agx import render_ultrahdr_agx_pair
@@ -53,7 +54,7 @@ def run_file(path, *, half, pictures, scratch):
     bundle = with_intent_exposure(bundle, user_ev=auto.ev)
     row = {"file": path.name, "sha256": digest(path), "half_size": half,
         "camera": {"make": bundle.shot_make, "model": bundle.shot_model, "iso": bundle.shot_iso},
-        "scene_decoder": bundle.scene_decoder, "capture_readout": bundle.capture_readout,
+        "scene_decoder": bundle.scene_decoder, "capture_readout": public_capture(bundle.capture_readout),
         "noise_decode": bundle.noise_decode, "noise_model": dataclasses.asdict(analysis.noise_model),
         "calibrations": calibration_diagnostics(bundle.shot_make, bundle.shot_model,
             bundle.shot_shutter, bundle.shot_iso, bundle.capture_readout, analysis=analysis),
