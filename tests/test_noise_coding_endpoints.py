@@ -80,17 +80,56 @@ class CodingEndpointTests(unittest.TestCase):
             self.assertEqual(white, [65535.])
             self.assertEqual(black, [100.] * 4)
 
-    def test_non_dng_preserves_per_channel_libraw_endpoint_convention(self):
+    def test_non_dng_coding_maximum_is_independent_of_linear_validity(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "sensor.raw"
             path.write_bytes(b"not a TIFF container")
             whites = [4000., 4010., 4020., 4010.]
             blacks = [100., 110., 120., 110.]
             actual = coding_endpoints(path, 4095, whites, blacks)
-            self.assertEqual(actual, (whites, blacks))
+            self.assertEqual(actual, ([4095.], blacks))
             self.assertIsNot(actual[0], whites)
             self.assertIsNot(actual[1], blacks)
             self.assertEqual(coding_endpoints(path, 4095, None, blacks), ([4095.], blacks))
+
+    def test_arw6_expanded_coding_domain_does_not_use_tiff_bits_or_linear_max(self):
+        from dngscan.priors import gain_for_file
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "coding.arw"
+            path.write_bytes(b"non-DNG codec fixture")
+            coding_white, coding_black = coding_endpoints(path, 39002, [32800.]*4, [1024.]*4)
+            bundle = SimpleNamespace(coding_white_levels=coding_white, coding_black_levels=coding_black)
+            self.assertEqual(normalized_raw_span(bundle, 0), 37978.)
+            measured = {"gain_log2iso_log2epd": [[math.log2(100), 1.]],
+                        "reference_dn_range": 37978., "fwc_e": 75956., "measured_iso": 100}
+            self.assertEqual(gain_for_file(measured, 100, normalized_raw_span(bundle, 0)), 2.)
+            self.assertIsNone(gain_for_file(measured, 100, 32800.-1024.))
+
+    def test_native_decoder_transfer_uses_same_expanded_span_as_model(self):
+        # Isolate the native unpacked-domain unit contract. This does not
+        # qualify an ARW6 lossy codec's independent-noise approximation.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "units.raw"
+            path.write_bytes(b"native-unit-control")
+            srgb_xyz = np.asarray(((.4124564,.3575761,.1804375),
+                                   (.2126729,.7151522,.0721750),(.0193339,.1191920,.9503041)))
+            raw = SimpleNamespace(color_matrix=np.eye(3,4),
+                                  rgb_xyz_matrix=np.vstack([np.linalg.inv(srgb_xyz),np.zeros((1,3))]))
+            evidence = SimpleNamespace(path=path, raw_image=np.zeros((128,128),np.uint16),
+                raw_pattern=[[0,1],[3,2]], camera_wb=[2.,1.,1.5,1.], spatial_black=None,
+                black_levels=[1024.]*4, white_level=39002., coding_white_levels=[39002.],
+                coding_black_levels=[1024.]*4, camera_white_levels=[32800.]*4,
+                color_desc="RGBG", shot_iso=100, orientation_flip=0)
+            recipe = OpcodePlan(crop=(0.,0.,128.,128.))
+            first = _libraw_noise_decode(raw,evidence,recipe,"clip",65535.,True)
+            evidence.camera_white_levels = [30000.]*4
+            changed = _libraw_noise_decode(raw,evidence,recipe,"clip",65535.,True)
+            self.assertTrue(first["supported"])
+            self.assertTrue(changed["supported"])
+            np.testing.assert_array_equal(first["normalized_raw_to_scene"],changed["normalized_raw_to_scene"])
+            expected = np.asarray(((.627452,.329249,.043299),(.069109,.919531,.011360),
+                                   (.016398,.088030,.895572))) @ np.diag([2.,1.,1.5])
+            np.testing.assert_allclose(first["normalized_raw_to_scene"],expected,rtol=1e-7,atol=1e-7)
 
     def test_unequal_pedestals_keep_decoder_and_normalized_scales_distinct(self):
         with tempfile.TemporaryDirectory() as directory:

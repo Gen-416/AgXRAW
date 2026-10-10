@@ -168,7 +168,13 @@ def _jptc_entries() -> list[dict[str, Any]]:
         }
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
-        for key in ("phase_calibration", "noise_spectrum"):
+        from .calibration import phase_calibration_fields
+        try:
+            entry.update(phase_calibration_fields(item))
+        except (ValueError, TypeError, KeyError, OverflowError):
+            continue
+        for key in ("noise_spectrum", "reference_dn_range", "gain_support_intervals",
+                    "ptc_anchors", "ptc_anchor_diagnostics", "gain_ladder_diagnostics"):
             if key in item:
                 entry[key] = item[key]
         entries.append(entry)
@@ -207,7 +213,13 @@ def _jptc_entries() -> list[dict[str, Any]]:
         entry.update(stored_dark_variance_fields(item))
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
-        for key in ("phase_calibration", "noise_spectrum"):
+        from .calibration import phase_calibration_fields
+        try:
+            entry.update(phase_calibration_fields(item))
+        except (ValueError, TypeError, KeyError, OverflowError):
+            continue
+        for key in ("noise_spectrum", "reference_dn_range", "gain_support_intervals",
+                    "ptc_anchors", "ptc_anchor_diagnostics", "gain_ladder_diagnostics"):
             if key in item:
                 entry[key] = item[key]
         entry["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
@@ -406,6 +418,10 @@ def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
         return float(2.0 ** value) if value is not None else None
     curve = priors.get("gain_log2iso_log2epd")
     if curve:
+        if "gain_support_intervals" in priors:
+            from .calibration import curve_value
+            value = curve_value(priors, "gain_log2iso_log2epd", iso)
+            return float(2.0 ** value) if value is not None else None
         return float(2.0 ** _interp(curve, math.log2(iso)))
     if "unity_gain_ev" not in priors:
         return None
