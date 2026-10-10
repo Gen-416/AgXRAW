@@ -13,8 +13,9 @@ import numpy as np
 from dngscan.calibration import _validated_prior
 from dngscan.noise_model import NoiseModel, model_from_prior
 from dngscan.noise_propagation import calibrated_chroma_variance
-from dngscan.sensor_research import LUMA
 from tests.test_noise_model import frame
+
+LUMA = np.asarray([.2627, .6780, .0593], dtype=np.float64)
 
 
 def profile():

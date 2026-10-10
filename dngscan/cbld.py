@@ -17,8 +17,10 @@ Without a local import the module is silent — no line, no warning.
 Doctrine: metadata black levels stay AUTHORITATIVE (A9 — the same rule
 as WhiteLevel); CBLD is an advisory measured reference surfaced in the
 report so a fractional-DN mismatch (the classic deep-shadow colour-cast
-cause) is visible instead of silent. The sanctioned override path
-remains the user's own dark frame.
+cause) is visible instead of silent. Production does not currently override
+pixels using personal dark frames. The opt-in sensor_research prototype
+defines body/readout-matched absolute/residual black correction; it is not
+enabled by importing CBLD or an ordinary noise calibration.
 
 Channel order contract: CBLD publishes R, G1, B, G2.
 """
