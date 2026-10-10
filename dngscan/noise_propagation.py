@@ -63,7 +63,7 @@ def _sample_gain(op, y, x, shape, phase):
     return np.where((y >= top) & (y < bottom) & (x >= left) & (x < right), gain, 1.)
 
 
-def coarse_spatial_moments(descriptor, output_shape, colours):
+def coarse_spatial_moments(descriptor, output_shape, colours, *, per_phase=False):
     """Gain moments and source-area ratios for the coarse noise model.
 
     Four-point Gaussian quadrature approximates slowly varying lens gains.
@@ -78,7 +78,7 @@ def coarse_spatial_moments(descriptor, output_shape, colours):
     dh, dw = output_shape
     maps, warps = descriptor.get("gain_maps", ()), descriptor.get("warp_ops", ())
     if not maps and not warps:
-        ones = np.ones((dh, dw, 3), np.float64)
+        ones = np.ones((dh, dw, 4 if per_phase else 3), np.float64)
         return ones, ones, ones, np.ones((dh, dw), bool)
     from .dng_opcodes import Warp
     from .raw_io import _orient_like_libraw
@@ -98,14 +98,15 @@ def coarse_spatial_moments(descriptor, output_shape, colours):
         cy, ch, cx, cw = cy * ph / h, ch * ph / h, cx * pw / w, cw * pw / w
     else:
         cy, cx, ch, cw = map(float, crop)
-    means = np.zeros((uh, uw, 3), np.float64)
+    means = np.zeros((uh, uw, 4 if per_phase else 3), np.float64)
     seconds = np.zeros_like(means)
     areas = np.ones_like(means)
     valid = np.ones((uh, uw), bool)
     nodes = (.5 - 1 / np.sqrt(12), .5 + 1 / np.sqrt(12))
     for phase_index, label in enumerate(colours):
         channel = "RGB".index(label)
-        weight = 1 / (4 * colours.count(label))
+        target = phase_index if per_phase else channel
+        weight = 1 / (4 * (1 if per_phase else colours.count(label)))
         if op is not None:
             # Internal quadrature points alone do not cover the cell's
             # cubic footprint: require all four cell corners to be valid.
@@ -142,14 +143,14 @@ def coarse_spatial_moments(descriptor, output_shape, colours):
                 for gain_map in maps:
                     gain *= _sample_gain(gain_map, sy + oy, sx + ox, gain_shape,
                                          (phase_y + oy, phase_x + ox))
-                means[..., channel] += weight * gain
-                seconds[..., channel] += weight * np.square(gain) / np.clip(area, 1e-6, 1.)
+                means[..., target] += weight * gain
+                seconds[..., target] += weight * np.square(gain) / np.clip(area, 1e-6, 1.)
                 # Cubic sampling does not antialias expansion in source
                 # coordinates. Do not invent additional independent samples
                 # when det(J)>1; retain the conservative destination count.
                 # Use the smallest sampled area in the cell, rather than
                 # E[g²]/E[J], which can underestimate varying gain/J noise.
-                np.minimum(areas[..., channel], np.clip(area, 1e-6, 1.), out=areas[..., channel])
+                np.minimum(areas[..., target], np.clip(area, 1e-6, 1.), out=areas[..., target])
     return tuple(_orient_like_libraw(value, flip) for value in (means, seconds, areas, valid))
 
 
@@ -259,13 +260,37 @@ def calibrated_chroma_variance(bundle, model, scene_dec, *, return_validity=Fals
         # Local average signal is only used in the known a*x+b shot-noise
         # relation. It never measures the amplitude of image detail.
         camera_mean = np.clip(dec @ np.linalg.inv(matrix).T, 0, 1)
-        gain_mean, gain_second, _area_ratio, valid = coarse_spatial_moments(descriptor, dec.shape[:2], colours)
+        use_phases = bool(getattr(model, "phase_variance", None))
+        gain_mean, gain_second, _area_ratio, valid = coarse_spatial_moments(
+            descriptor, dec.shape[:2], colours, per_phase=use_phases)
         from .reliability import scene_exclusion_for_shape
         exclusion = scene_exclusion_for_shape(bundle, dec.shape[:2])
         if exclusion is not None:
             valid &= exclusion == 0
         camera_var = np.empty_like(camera_mean)
         for i, label in enumerate("RGB"):
+            if use_phases:
+                camera_var[..., i] = 0.
+                matching = [p for p, c in enumerate(colours) if c == label]
+                # Reconstruct a common low-frequency colour mean from the
+                # merged decoder plane. Its signal gain is the mean of the
+                # phase gains, not each individual phase gain. Adaptive
+                # demosaicing covariance remains outside this approximation.
+                phase_mean = camera_mean[..., i] / np.mean(gain_mean[..., matching], axis=-1)
+                for p in matching:
+                    key = f"C{p // 2}{p % 2}"
+                    coefficients = model.phase_variance.get(key)
+                    if coefficients is None:
+                        # A missing measured phase remains a labelled scalar
+                        # approximation, never a fabricated phase measurement.
+                        name = (getattr(model, "phase_metadata", {}).get(key) or {}).get("label", label)
+                        coefficients = model.coefficients(name)
+                    if coefficients is None:
+                        return None, f"{key} noise coefficients unavailable"
+                    a, b = coefficients
+                    variance = (float(a) * phase_mean + float(b)) * gain_second[..., p] / (cells / 4)
+                    camera_var[..., i] += variance / len(matching) ** 2
+                continue
             coefficients = model.coefficients(label)
             if coefficients is None and label == "G":
                 greens = [model.coefficients(name) for name in ("G1", "G2")]
