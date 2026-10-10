@@ -27,6 +27,17 @@ GUI、文本报告和 CSV 共享同一份只读处理依据摘要。预览为节
 已取得的传感器分析不会因此变成“无证据”。缺少噪声标定属于正常兼容路径，拒绝或
 未分辨的测量仍保留原状态；不会用真实纹理的幅度填补噪声模型。
 
+2026-10-09 新增五张 iPhone 16 Pro **Bayer DNG** 实片验收，ISO 80–800，
+不是 Linear RGB ProRAW。文件均有合法 NoiseProfile，`NoiseReductionApplied=0/0`
+保留为未知；无需个人黑场即可使用文件方差模型，电子域增益仍不声明。LibRaw 与
+本机 Apple RAW `9.dng` 均完成原尺寸 JPEG 97/420 编码回读，另有三次 10-bit/444 SDR
+HEIF 和两次 10-bit/444 HDR HEIF 通过浮点回读。LibRaw 执行文件内暗角校正；其校正
+路径与 Apple 解码器的噪声传递均未建立，显式开启项目色度降噪仍跳过。Apple 路径
+保留独立 LibRaw 传感器参考，未落入无证据的 1 EV 回退。这些结果仅覆盖本批文件与
+本机版本，未覆盖其他 iPhone、Linear RGB ProRAW、Apple 单独可读或旧解码器回退。
+尺寸、哈希与验收范围见[紧凑记录](assets/delivery-quality/iphone-ideal-20261009.json)
+及[研究记录第 18 节](reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md#18-iphone-bayer-dng-与-ideal-image-验收基准-38f5bc7)。
+
 ## 策略：三级降级，永不静默
 
 1. **颜色标定阶梯**（固定 Kelvin 白平衡求解，`raw_io.solve_wb_for_mode`）：
@@ -186,8 +197,9 @@ Apple RAW：✓ 提供 RAW 9（自动模式会在渲染失败后重试旧版）�
 
 ## iPhone 双解码对照
 
-同一 iPhone 16 Pro ProRAW 帧、同一 AgX plan：LibRaw 施加文件内的 DNG `GainMap`，
-RAW 9 施加 `FixVignetteRadial`——两条路径的角部暗场矫正相互印证：
+以下为历史 iPhone 16 Pro 同帧双解码示例。该系列 standard RAW 样张为 Bayer DNG，
+文件内暗角指令为 `FixVignetteRadial`；LibRaw 执行该指令，Apple RAW 交由系统处理。
+当前逐文件实测范围见上文，不能由这张对照图推定 ProRAW 支持或暗角校正的定量精度。
 
 ![iPhone 16 Pro 同帧双解码对照](assets/decoder-iphone-libraw-vs-raw9.jpg)
 

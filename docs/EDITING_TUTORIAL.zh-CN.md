@@ -342,4 +342,4 @@ RAW 过曝标记的颜色正好把这种区别标了出来：红、绿、蓝的�
 
 两张曲线图由 `tools/plot_tone_curve_doc.py` 用样张自己的渲染参数画出，每条线都是 dngscan 实际使用的曲线。
 
-样张出处：大逆光桥 `DSCF0214.RAF`（X100VI）、航机厨房与手办灯为 iPhone 16 Pro 的 ProRAW DNG、舞台灯 `_SDI0199.DNG`（SIGMA fp）。
+样张出处：大逆光桥 `DSCF0214.RAF`（X100VI）、航机厨房与手办灯为 iPhone 16 Pro 的 standard RAW（Bayer DNG）、舞台灯 `_SDI0199.DNG`（SIGMA fp）。

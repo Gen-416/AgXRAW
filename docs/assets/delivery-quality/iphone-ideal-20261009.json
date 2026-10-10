@@ -1,0 +1,200 @@
+{
+  "schema": "agxraw-iphone-ideal-acceptance-1",
+  "date": "2026-10-09",
+  "production_source_commit": "38f5bc7de7dedeccbcb1f2ed4533fce67bda6322",
+  "purpose": "Extend real iPhone Bayer DNG and ideal-image acceptance; no production pipeline change or relaxed quality gate.",
+  "validation": {
+    "native_focused": {
+      "DNGSCAN_FAST": "1",
+      "ideal_image_assets": "local ideal-image samples enabled",
+      "modules": ["ideal_image_validation","noise_model","noise_coding_range","noise_coding_endpoints","noise_scene_ev","spectral_fallback_pipeline","general_raw_fallback","processing_evidence_summary","chroma_nr","coreimage_decode","coreimage_sensor_reference","sdr_heif","sdr_heif_precision","hdr_heif_precision_live"],
+      "discovered": 135,
+      "passed": 134,
+      "skipped": 1,
+      "failed": 0,
+      "seconds": 42.776
+    },
+    "counts_note": "Focused modules, ideal-image truth checks and CLI probes overlap in pipeline coverage; do not add them as independent unit-test totals."
+  },
+  "limits": ["Five iPhone 16 Pro CFA Bayer DNG files; not a Linear RGB ProRAW acceptance.","Every iPhone file declares a valid NoiseProfile, so these files do not test the no-noise-model fallback.","Both iPhone scene decoders retain LibRaw sensor evidence. Apple-only decoding and older-version fallback were not exercised.","File-declared white-noise variance does not prove spatial independence, absent in-camera processing, or a calibrated decoder covariance.","Passing encoding gates is not a complete lens, color accuracy, texture preservation, or broad denoising certification.","Original RAW and ideal-image files remained unchanged; temporary truth-profile injection used a separate B copy.","Output sizes and noise improvements apply only to these files, parameters and one synthetic noise realization."],
+  "iphone": {
+    "common_raw_ifd": {
+      "Width": [4224],
+      "Height": [3024],
+      "BitsPerSample": [16],
+      "Compression": [7],
+      "PhotometricInterpretation": [32803],
+      "SamplesPerPixel": [1],
+      "CFARepeatPatternDim": [2,2],
+      "CFAPattern": [2,1,1,0],
+      "DNGVersion": [1,3,0,0],
+      "CFAPlaneColor": [0,1,2],
+      "BlackLevel": [528],
+      "WhiteLevel": [4095],
+      "DefaultCropOrigin": [0,0],
+      "DefaultCropSize": [4032,3024],
+      "NoiseReductionApplied": [{"numerator":0,"denominator":0}]
+    },
+    "common_pipeline": {
+      "camera": "Apple iPhone 16 Pro",
+      "noise_model_status": "valid",
+      "noise_model_source": "DNG NoiseProfile",
+      "noise_correlation": "unknown",
+      "noise_reduction_status": "unknown",
+      "external_prior": null,
+      "gain_e_per_dn": null,
+      "evidence_provider": "libraw",
+      "baseline_exposure_baked_in": false,
+      "correction_opcode": "FixVignetteRadial",
+      "libraw_full_demosaic": "AHD",
+      "libraw_reliability_source": "sensor-spatial",
+      "apple_decoder_version": "9.dng",
+      "apple_runtime": "版本27.2（版号26B5101f）",
+      "apple_reliability_source": "sensor-reference",
+      "apple_decoder_fallback": null,
+      "jpeg_settings": {
+        "delivery_profile": "share-hq",
+        "quality": 97,
+        "chroma": "4:2:0"
+      },
+      "heif_settings": {
+        "delivery_profile": "archive",
+        "quality": 100,
+        "bit_depth": 10,
+        "chroma": "4:4:4",
+        "quantization_dither": "TPDF-10bit-seed0",
+        "readback_precision": "float32"
+      },
+      "production_encoding_and_readback_passed": true,
+      "cli_exit_code": 0,
+      "source_shape_hwc": [3024,4032,3],
+      "hdr_tail_noise_gate": 1.0,
+      "default_chroma_nr_status": "disabled when chroma_nr_requested=0"
+    },
+    "sources": [
+      {"id":1,"file":"Original RAW 26-05-11 193738485.dng","bytes":11671173,"sha256":"947c0b0af2d607c898d2d81de0eecb92b368354f1280d672e73a9aa3557d75de","iso":500,"baseline_exposure_ev":0.0703892633318901,"noise_profile_ab":[0.000534232,1.31462e-06],"half_size_shape":[1512,2016,3],"half_size_formed_finite":true,"half_size_hdr_headroom_ev":0.4894653608924413,"half_size_nr_status":"skipped","half_size_nr_reason":"noise-transfer-for-spatial-or-point-corrections-unavailable"},
+      {"id":2,"file":"Original RAW 26-05-12 210128342.dng","bytes":11454849,"sha256":"fff4228aa4b8f9da290e2a540a9203973eb730e208094de78f3140011413e3f8","iso":200,"baseline_exposure_ev":0.02748067118227482,"noise_profile_ab":[0.000257996,6.53727e-07],"half_size_shape":[1512,2016,3],"half_size_formed_finite":true,"half_size_hdr_headroom_ev":0.48318541551890615,"half_size_nr_status":"skipped","half_size_nr_reason":"noise-transfer-for-spatial-or-point-corrections-unavailable"},
+      {"id":3,"file":"Original RAW 26-06-17 222639798.dng","bytes":11085577,"sha256":"6cb5c080c65a832c7e14f63a7a8421ebf904a440371ddae9b4e98883b5b56c13","iso":800,"baseline_exposure_ev":0.899473071922261,"noise_profile_ab":[0.000539313,1.31132e-06],"half_size_shape":[1512,2016,3],"half_size_formed_finite":true,"half_size_hdr_headroom_ev":0.36866558100047353,"half_size_nr_status":"skipped","half_size_nr_reason":"noise-transfer-for-spatial-or-point-corrections-unavailable"},
+      {"id":4,"file":"Original RAW 26-07-05 115326540.dng","bytes":10598090,"sha256":"eecf0c293cc394613ade4ce9864340ee72551c8244883e4dc0e4b01acaec740e","iso":80,"baseline_exposure_ev":0.4972684679345914,"noise_profile_ab":[0.000112891,9.42495e-07],"half_size_shape":[1512,2016,3],"half_size_formed_finite":true,"half_size_hdr_headroom_ev":0.9557274630195165,"half_size_nr_status":"skipped","half_size_nr_reason":"noise-transfer-for-spatial-or-point-corrections-unavailable"},
+      {"id":5,"file":"Original RAW 26-07-11 202403093.dng","bytes":9840536,"sha256":"9d53f9a850f7935d1751a2f6f75e21fc93e27a8acf3a610819da852962b05dde","iso":200,"baseline_exposure_ev":1.8526135689095289,"noise_profile_ab":[0.000257996,6.53727e-07],"half_size_shape":[1512,2016,3],"half_size_formed_finite":true,"half_size_hdr_headroom_ev":1.9398280432349706,"half_size_nr_status":"skipped","half_size_nr_reason":"noise-transfer-for-spatial-or-point-corrections-unavailable"}
+    ],
+    "exports": [
+      {"case_id":"iphone-1-apple-sdr","source_id":1,"scene_decoder":"coreimage","output":{"filename":"iphone-1-apple-sdr.jpg","bytes":2291373,"sha256":"1bf9be751176a7c8288355cc10664c027e1f9fd329a8d2d6afd23e752598b956","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.006758104476358444,"processing_loss_pct":1.0205065822625345,"earned_headroom_ev":0.4885028650886083,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":5.0,"base_local_detail_loss":0.4366280138492584}},
+      {"case_id":"iphone-1-libraw-sdr","source_id":1,"scene_decoder":"libraw","output":{"filename":"iphone-1-libraw-sdr.jpg","bytes":7194750,"sha256":"79026c2ece0f6e786976a115966cfb602e8d69872043dbe0b52e2a0852475d34","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.006758104476358444,"processing_loss_pct":1.2280066347526664,"earned_headroom_ev":0.4583820154792333,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":29.0,"base_local_detail_loss":0.48460280895233154}},
+      {"case_id":"iphone-2-apple-sdr","source_id":2,"scene_decoder":"coreimage","output":{"filename":"iphone-2-apple-sdr.jpg","bytes":2766057,"sha256":"79edb1c702d22766ba61106c28181460483422cbb692eeaf61ed8ff9aa58119b","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.48947047954984463,"processing_loss_pct":1.6372656315612664,"earned_headroom_ev":0.4764486601478124,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":6.0,"base_local_detail_loss":0.42870277166366577}},
+      {"case_id":"iphone-2-libraw-sdr","source_id":2,"scene_decoder":"libraw","output":{"filename":"iphone-2-libraw-sdr.jpg","bytes":6728903,"sha256":"0c0590eff795745665a89b4c1aca3f6cc72fbf21e38c13a2e395bb8577eec604","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.48947047954984463,"processing_loss_pct":1.8855439552364155,"earned_headroom_ev":0.4662264635688329,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":25.0,"base_local_detail_loss":0.46604177355766296}},
+      {"case_id":"iphone-3-apple-sdr","source_id":3,"scene_decoder":"coreimage","output":{"filename":"iphone-3-apple-sdr.jpg","bytes":2643240,"sha256":"f1f289c8a62269205ebf9eee674f4110d1395fa20f2393cdfa9b7ed3d7ce8e42","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.0012794469639707735,"processing_loss_pct":0.007611069119005627,"earned_headroom_ev":0.4399827768928075,"chroma_nr_requested":1.0,"chroma_nr_status":"skipped","chroma_nr_reason":"opaque-decoder-noise-transfer","quality_metrics":{"base_p99_code_error":10.0,"base_local_detail_loss":0.3421008884906769}},
+      {"case_id":"iphone-3-apple-sdr10","source_id":3,"scene_decoder":"coreimage","output":{"filename":"iphone-3-apple-sdr10.heic","bytes":3382663,"sha256":"1ad0931cb83a0474c4439e03b254881dead318d16ba929bfd8f8b0bb745dba93"},"output_format":"heic","auto_ev":0.0,"raw_cell_union_pct":0.0012794469639707735,"processing_loss_pct":0.007611069119005627,"earned_headroom_ev":0.4399827768928075,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":1.794429063796997,"base_local_detail_loss":0.12089627981185913},"color_metadata":{"profile":"sRGB IEC61966-2.1","icc_embedded":true,"nclx_verified":false}},
+      {"case_id":"iphone-3-libraw-nr-sdr","source_id":3,"scene_decoder":"libraw","output":{"filename":"iphone-3-libraw-nr-sdr.jpg","bytes":8197323,"sha256":"c1c01c6f36b6c410a66b1fea39db2e2896e39e23d2108271323d428ee4769e42","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.0012794469639707735,"processing_loss_pct":0.01796146699420509,"earned_headroom_ev":0.27319133783641103,"chroma_nr_requested":1.0,"chroma_nr_status":"skipped","chroma_nr_reason":"noise-transfer-for-spatial-or-point-corrections-unavailable","quality_metrics":{"base_p99_code_error":44.0,"base_local_detail_loss":0.4846150279045105}},
+      {"case_id":"iphone-3-libraw-sdr","source_id":3,"scene_decoder":"libraw","output":{"filename":"iphone-3-libraw-sdr.jpg","bytes":8197323,"sha256":"c1c01c6f36b6c410a66b1fea39db2e2896e39e23d2108271323d428ee4769e42","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.0012794469639707735,"processing_loss_pct":0.01796146699420509,"earned_headroom_ev":0.27319133783641103,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":44.0,"base_local_detail_loss":0.4846150279045105}},
+      {"case_id":"iphone-3-libraw-sdr10","source_id":3,"scene_decoder":"libraw","output":{"filename":"iphone-3-libraw-sdr10.heic","bytes":19430975,"sha256":"20db0978ec74c1ef43be3f8b932057765e3b8344e237ab84addca6776bf0275a"},"output_format":"heic","auto_ev":0.0,"raw_cell_union_pct":0.0012794469639707735,"processing_loss_pct":0.01796146699420509,"earned_headroom_ev":0.27319133783641103,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":2.4239652156829834,"base_local_detail_loss":0.11294454336166382},"color_metadata":{"profile":"sRGB IEC61966-2.1","icc_embedded":true,"nclx_verified":false}},
+      {"case_id":"iphone-4-apple-sdr","source_id":4,"scene_decoder":"coreimage","output":{"filename":"iphone-4-apple-sdr.jpg","bytes":2440959,"sha256":"fb0524f83788d60c7fca6f5d857637d3428cdd232d507e67475b90dbb0c309ed","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.008201583102376753,"processing_loss_pct":0.10422571806500379,"earned_headroom_ev":0.9543658545142675,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":7.0,"base_local_detail_loss":0.414218544960022}},
+      {"case_id":"iphone-4-libraw-sdr","source_id":4,"scene_decoder":"libraw","output":{"filename":"iphone-4-libraw-sdr.jpg","bytes":5397334,"sha256":"c945f5bf2c87430688ee93cd6aa9ad14f6c7ebb38168f28a2f257febef360307","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":0.008201583102376753,"processing_loss_pct":0.1469805707776938,"earned_headroom_ev":0.956179266226914,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":17.0,"base_local_detail_loss":0.4532354474067688}},
+      {"case_id":"iphone-4-libraw-sdr10","source_id":4,"scene_decoder":"libraw","output":{"filename":"iphone-4-libraw-sdr10.heic","bytes":13308855,"sha256":"30fd08bfbda9b944b69086ce882af4b717cb975c1115c79d825631e28596d9ef"},"output_format":"heic","auto_ev":0.0,"raw_cell_union_pct":0.008201583102376753,"processing_loss_pct":0.1469805707776938,"earned_headroom_ev":0.956179266226914,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":2.258554697036743,"base_local_detail_loss":0.10859215259552002},"color_metadata":{"profile":"sRGB IEC61966-2.1","icc_embedded":true,"nclx_verified":false}},
+      {"case_id":"iphone-5-apple-hdr10","source_id":5,"scene_decoder":"coreimage","output":{"filename":"iphone-5-apple-hdr10.heic","bytes":4846278,"sha256":"0688a7a1f332035947d9f983cf526defe740718ba18f215f02a4308e4d8f4502"},"output_format":"hdr-heic","auto_ev":0.0,"raw_cell_union_pct":4.037081653649114,"processing_loss_pct":5.390506897203326,"earned_headroom_ev":1.9387246420508886,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":1.0507322549819946,"base_local_detail_loss":0.10031086206436157,"p99_relative_error":0.020264681428670883,"block_p99_relative_error":0.008155020885169506,"highlight_max_luma_error":0.010357941500842571,"local_detail_loss":0.11790844798088074},"hdr":{"profile":"Display P3","has_iso_gainmap":true,"gainmap_width":4032,"gainmap_height":3024,"gainmap_pixel_format":"444f","sdr_master_precision":"float32","readback_precision":"float32","requested_headroom_ev":1.9387246420508886,"rendered_headroom_ev":1.9387246420508886,"actual_headroom_ev":1.9387246831805822,"file_headroom_ev":1.938844457466171}},
+      {"case_id":"iphone-5-apple-sdr","source_id":5,"scene_decoder":"coreimage","output":{"filename":"iphone-5-apple-sdr.jpg","bytes":1765706,"sha256":"c0f813e80272364e2ea33bcc3d817085d1f04e50f2f391d276f3ed8f905b5c3f","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":4.037081653649114,"processing_loss_pct":5.390506897203326,"earned_headroom_ev":1.9387246420508886,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":4.0,"base_local_detail_loss":0.2761627733707428}},
+      {"case_id":"iphone-5-libraw-hdr10","source_id":5,"scene_decoder":"libraw","output":{"filename":"iphone-5-libraw-hdr10.heic","bytes":23831373,"sha256":"96f185db787c74148fa5af4bc276b70e403214c7ec81b020a06d00bf88462906"},"output_format":"hdr-heic","auto_ev":0.0,"raw_cell_union_pct":4.037081653649114,"processing_loss_pct":5.542063951352145,"earned_headroom_ev":1.8644076635962987,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":2.1885735988616943,"base_local_detail_loss":0.10667163878679276,"p99_relative_error":0.04638671875,"block_p99_relative_error":0.00772505858913064,"highlight_max_luma_error":0.012653365731239319,"local_detail_loss":0.5391663312911987},"hdr":{"profile":"Display P3","has_iso_gainmap":true,"gainmap_width":4032,"gainmap_height":3024,"gainmap_pixel_format":"444f","sdr_master_precision":"float32","readback_precision":"float32","requested_headroom_ev":1.8644076635962987,"rendered_headroom_ev":1.8644076635962987,"actual_headroom_ev":1.8644076826330953,"file_headroom_ev":1.8641861446542802}},
+      {"case_id":"iphone-5-libraw-sdr","source_id":5,"scene_decoder":"libraw","output":{"filename":"iphone-5-libraw-sdr.jpg","bytes":5704924,"sha256":"66684418e2ddc514c654126a37ba4dfffc161d68d5ecf858674dd75c93c21964","dimensions_wh":[4032,3024]},"output_format":"jpeg","auto_ev":0.0,"raw_cell_union_pct":4.037081653649114,"processing_loss_pct":5.542063951352145,"earned_headroom_ev":1.8644076635962987,"chroma_nr_requested":0.0,"quality_metrics":{"base_p99_code_error":30.0,"base_local_detail_loss":0.48716431856155396}}
+    ],
+    "libraw_nr_skip_matches_off_sha256": true
+  },
+  "ideal_image": {
+    "ground_truth_checks": [
+      {"name":"ideal_A_none.dng: metadata black level","passed":true,"detail":"read (512.0, 512.0, 512.0, 512.0), truth 512.0"},
+      {"name":"ideal_A_none.dng: resolved full-well from metadata white_level","passed":true,"detail":"fullwell 16383 (no ceiling pile; fullwell from metadata white_level)"},
+      {"name":"ideal_B_ptc.dng: metadata black level","passed":true,"detail":"read (512.0, 512.0, 512.0, 512.0), truth 512.0"},
+      {"name":"ideal_B_ptc.dng: resolved full-well from metadata white_level","passed":true,"detail":"fullwell 16383 (no ceiling pile; fullwell from metadata white_level)"},
+      {"name":"PTC gain kadc","passed":true,"detail":"5.7134 e-/ADU, truth 5.7022 (0.20%)"},
+      {"name":"PTC derived full-well consistency (kadc x (WL-BL), not independent of the gain check)","passed":true,"detail":"90677 e-, truth 90500 (0.20%)"},
+      {"name":"PTC read noise (dequantised)","passed":true,"detail":"2.861 e-, truth 3.0 (4.6%)"}
+    ],
+    "ground_truth_backends": ["numpy","native-strict"],
+    "ground_truth_passed_per_backend": "7/7",
+    "truth_profile": {
+      "a": 1.1049723756906077e-05,
+      "b": 1.4297015824421219e-09,
+      "stored_quantization_variance_adu2": 0.08333333333333333
+    },
+    "native_abi": 20,
+    "source_sha256": {
+      "ideal_A_none.dng": "d50af1b1952bb3c4256717ee6cbbd270deb75008ece34668a40d2839439f729c",
+      "ideal_B_ptc.dng": "c2e11964c1cee8e523af4a18ad67b9693cc7ab28f9cdea024e1212560a4247eb",
+      "ideal_A_metadata.json": "6c728690f68c936e6b76074559f7ab34579e15f9e281f8b8a328869534a10192"
+    },
+    "source_model": "ILCE-7RM2 synthetic ideal-sampled",
+    "source_iso": null,
+    "source_noise_profile": null,
+    "external_prior": null,
+    "original_case_behavior": "Both original A and B have unavailable physical noise models, HDR SNR factor 1, optional NR skipped and identical to off; full/half SDR/HDR formation remains finite.",
+    "truth_profile_copy": "ideal_B_truth_noise_profile.dng, a temporary B copy with known shot/read plus ADC quantization variance declared in NoiseProfile; original scene samples unchanged.",
+    "case_parameters": {
+      "highlight": "clip",
+      "scene_half_size": [false,true],
+      "analysis_histogram_step": 4,
+      "output_gamut": "p3",
+      "tone_core": "agx",
+      "endpoint_mode": "adaptive",
+      "scene_transform": "none",
+      "look": "none",
+      "chroma_nr": [0.0,1.0],
+      "auto_ev": true,
+      "sdr_float": true,
+      "container_encoding": false
+    },
+    "backend_comparison": [
+      {"case":"ideal_A_none.dng:half=False","scene_max_abs":0.0,"scene_rmse":0.0,"sdr_max_abs":7.599592208862305e-06,"sdr_rmse":1.9736337754181745e-08,"hdr_max_abs":1.33514404296875e-05,"hdr_rmse":7.423478759576904e-08},
+      {"case":"ideal_A_none.dng:half=True","scene_max_abs":0.0,"scene_rmse":0.0,"sdr_max_abs":8.612871170043945e-06,"sdr_rmse":4.129068093682933e-08,"hdr_max_abs":3.0994415283203125e-06,"hdr_rmse":1.663920219481308e-08},
+      {"case":"ideal_B_ptc.dng:half=False","scene_max_abs":0.0,"scene_rmse":0.0,"sdr_max_abs":2.0461156964302063e-05,"sdr_rmse":7.678127105451877e-08,"hdr_max_abs":1.621246337890625e-05,"hdr_rmse":1.1978441735375303e-07},
+      {"case":"ideal_B_ptc.dng:half=True","scene_max_abs":0.0,"scene_rmse":0.0,"sdr_max_abs":8.881092071533203e-06,"sdr_rmse":6.244831039367717e-08,"hdr_max_abs":1.6391277313232422e-05,"hdr_rmse":8.297294070613834e-08},
+      {"case":"ideal_B_truth_noise_profile.dng:half=True","scene_max_abs":0.0,"scene_rmse":0.0,"sdr_max_abs":3.908638609573245e-05,"sdr_rmse":8.283572046028482e-08,"hdr_max_abs":1.6450881958007812e-05,"hdr_rmse":8.716568044738379e-08}
+    ],
+    "nr_reference": {
+      "scene_equal_after_noise_profile_injection": true,
+      "reference_contract": "Identical exposure and B tone/color plan; A is noiseless quantized CFA, B carries one fixed PTC noise realization. RMSE measures this one pair, not broad image quality. Scene corrections include identical intended clip retreat operators.",
+      "regions": {
+        "full": {
+          "pixels": 240000,
+          "chroma_rmse_before": 0.0026172319975202745,
+          "chroma_rmse_after": 0.0026127602368225,
+          "chroma_rmse_after_before_ratio": 0.9982914160066774,
+          "scene_luma_rmse_before": 0.0015623344903726057,
+          "scene_luma_rmse_after": 0.0015623344288263994
+        },
+        "sky_gradient": {
+          "pixels": 15648,
+          "chroma_rmse_before": 0.0054058580457519555,
+          "chroma_rmse_after": 0.005380269543015448,
+          "chroma_rmse_after_before_ratio": 0.9952665233678092,
+          "scene_luma_rmse_before": 0.003190396105915987,
+          "scene_luma_rmse_after": 0.003190395711897533
+        },
+        "face_top": {
+          "pixels": 26000,
+          "chroma_rmse_before": 0.0034701298713819308,
+          "chroma_rmse_after": 0.0034701229787544004,
+          "chroma_rmse_after_before_ratio": 0.9999980137263486,
+          "scene_luma_rmse_before": 0.0021895048361357423,
+          "scene_luma_rmse_after": 0.002189504836149671
+        }
+      },
+      "correction_luma_max_abs": 5.737638275604695e-08
+    },
+    "original_formation_numpy": [
+      {"file":"ideal_A_none.dng","half_size":false,"shape":[800,1200,3],"demosaic":"AHD","scene_min":-26025.30078125,"scene_max":90277.234375,"auto_ev":0.0,"tone_black_ev":-9.42271614074707,"tone_white_ev":3.3174441337585447,"hdr_min":0.0,"hdr_max":1.4575172662734985},
+      {"file":"ideal_B_ptc.dng","half_size":false,"shape":[800,1200,3],"demosaic":"AHD","scene_min":-26208.123046875,"scene_max":90376.9609375,"auto_ev":0.0,"tone_black_ev":-9.6650390625,"tone_white_ev":3.2773082733154295,"hdr_min":0.0,"hdr_max":1.4175279140472412},
+      {"file":"ideal_A_none.dng","half_size":true,"shape":[400,600,3],"demosaic":"half-size","scene_min":-27359.787109375,"scene_max":91293.1875,"auto_ev":0.0,"tone_black_ev":-9.340258598327637,"tone_white_ev":3.468027400970459,"hdr_min":0.0,"hdr_max":1.617870569229126},
+      {"file":"ideal_B_ptc.dng","half_size":true,"shape":[400,600,3],"demosaic":"half-size","scene_min":-27451.466796875,"scene_max":91145.4609375,"auto_ev":0.0,"tone_black_ev":-9.589661598205566,"tone_white_ev":3.470271873474121,"hdr_min":0.0,"hdr_max":1.6203895807266235}
+    ],
+    "all_10_formation_probes": {
+      "backends": ["numpy","native-strict"],
+      "originals_per_backend": 4,
+      "temporary_truth_profile_copy_per_backend": 1,
+      "all_formed_finite": true,
+      "paired_sdr_max_difference": 0.0
+    },
+    "truth_profile_copy_probe": [
+      {"backend":"numpy","chroma_nr_status":"active-approximate","chroma_nr_reason":"approximate CFA coarse-cell shot/read covariance; lens quadrature and warp-area model","nr_vs_off_max_nonlinear":0.0035638511180877686,"correction_map_max":0.0013257042737677693,"correction_luma_max_abs":4.3655745685100555e-11},
+      {"backend":"native-strict","chroma_nr_status":"active-approximate","chroma_nr_reason":"approximate CFA coarse-cell shot/read covariance; lens quadrature and warp-area model","nr_vs_off_max_nonlinear":0.003563791513442993,"correction_map_max":0.0013257042737677693,"correction_luma_max_abs":4.3655745685100555e-11}
+    ]
+  }
+}
