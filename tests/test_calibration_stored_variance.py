@@ -44,6 +44,7 @@ class StoredDarkVarianceTests(unittest.TestCase):
     def bundle(self, *, iso=100, span_scale=1.):
         bundle = frame()
         return replace(bundle, shot_iso=iso, shot_shutter="electronic",
+                       capture_readout={"shutter": "electronic"},
                        white_level=int(16383 * span_scale),
                        black_levels=[1024. * span_scale] * 4,
                        camera_white_levels=[16383. * span_scale] * 4)

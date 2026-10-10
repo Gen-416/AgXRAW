@@ -168,6 +168,9 @@ def _jptc_entries() -> list[dict[str, Any]]:
         }
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
+        for key in ("phase_calibration", "noise_spectrum"):
+            if key in item:
+                entry[key] = item[key]
         entries.append(entry)
     # Collect sets (data/priors/jptc_collect/): multi-instrument entries with
     # gain and read-noise CURVES (see tools/import_jptc_collect.py).
@@ -204,6 +207,9 @@ def _jptc_entries() -> list[dict[str, Any]]:
         entry.update(stored_dark_variance_fields(item))
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
+        for key in ("phase_calibration", "noise_spectrum"):
+            if key in item:
+                entry[key] = item[key]
         entry["read_noise_unresolved_isos"] = _read_noise_unresolved_isos(
             item.get("read_noise_unresolved_isos"), entry["read_noise_log2iso_log2e"],
             entry["read_noise_dn_log2iso"])
@@ -287,24 +293,40 @@ def _packaged_entry_matches(entry: dict[str, Any], camera: tuple[str, str]) -> b
                for model in entry["model_equals"])
 
 
-def with_readout(entry: dict[str, Any], readout: dict | None) -> dict[str, Any]:
+def with_readout(entry: dict[str, Any], readout: dict | None,
+                 *, shutter: str | None = None) -> dict[str, Any]:
     """Bind the same capture constraints for model and electron-domain consumers."""
     from .readout import match
     entry = dict(entry)
     status, reason = match(entry, readout)
     entry["readout_match_status"], entry["readout_match_reason"] = status, reason
+    # Shutter scope is orthogonal to container geometry/encoding constraints.
+    # Bind it here for *every* source, including curated and bulk tables; the
+    # model's later rebind to file evidence cannot inherit a caller's old match.
+    actual = (readout or {}).get("shutter") or shutter
+    expected = entry.get("shutter")
+    if expected in (None, "any"):
+        mode_status, mode_reason = "not-declared", "shutter-scope-not-declared"
+    elif actual is None:
+        mode_status, mode_reason = "unverified", "file-shutter-unavailable"
+    elif actual != expected:
+        mode_status, mode_reason = "mismatch", "file-shutter-mismatch"
+    else:
+        mode_status, mode_reason = "matched", "declared-shutter-matched"
+    entry["shutter_match_status"], entry["shutter_match_reason"] = mode_status, mode_reason
     return entry
 
 
 def find_priors(make: str | None, model: str | None,
                 shutter: str | None = None, iso: float | None = None,
                 readout: dict | None = None) -> dict[str, Any] | None:
-    """Resolve a sensor prior. `shutter` ("mechanical"/"electronic"), when
-    the caller knows it, prefers a same-shutter tier-2 entry — gain and
-    especially read noise differ materially between readout modes (review
-    4.2: a mode-mismatched precise prior is worse than a vague one). The
-    returned entry carries `mode_match`: "exact-shutter", "model-only", or
-    "curated" so consumers can degrade confidence on inexact readout matches.
+    """Check capture applicability before selecting by source priority.
+
+    Known shutter restrictions apply equally to imported, curated, packaged
+    and bulk measurements. A failed higher-priority candidate can yield to a
+    verified lower candidate, but never silently to an undeclared generic one.
+    Preserve a failed candidate for diagnostics when no verified alternative
+    exists. No coefficients from different candidates/modes are combined.
     Camera identity is exact after manufacturer/whitespace normalization and
     explicit model aliases; an unrecognized generation has no prior."""
     if not make or not model:
@@ -315,45 +337,49 @@ def find_priors(make: str | None, model: str | None,
     options = {"readout": readout} if readout is not None else {}
     user = matching_prior(make, model, shutter=shutter, iso=iso, **options)
     if user is not None:
-        return user
+        user.update(with_readout(user, readout, shutter=shutter))
+        if prior_usability(user)[0]:
+            return user
     camera = _packaged_camera_key(make, model)
     # Tier 1: curated entries (hand-checked series, DCG annotations).
     # Tier 2: first-party JPTC measurements. Tier 3: P2P bulk table.
+    candidates = [user] if user is not None else []
     for entry in PRIOR_TABLE:
         if _packaged_entry_matches(entry, camera):
             entry = dict(entry)
             entry["mode_match"] = "curated"
-            return with_readout(entry, readout)
-    tier2 = [with_readout(e, readout) for e in _jptc_entries() if _packaged_entry_matches(e, camera)]
+            candidates.append(with_readout(entry, readout, shutter=shutter))
+    tier2 = [with_readout(e, readout, shutter=shutter) for e in _jptc_entries()
+             if _packaged_entry_matches(e, camera)]
     if tier2:
-        tier2.sort(key=lambda e: {"matched": 0, "not-declared": 1}.get(e["readout_match_status"], 2))
-        if shutter:
-            exact = [e for e in tier2 if e.get("shutter") == shutter]
-            if exact:
-                applicable = [e for e in exact if e["readout_match_status"] not in ("unverified", "mismatch")]
-                entry = dict((applicable or exact)[0])
-                entry["mode_match"] = "exact-shutter"
-                return entry
+        effective_shutter = (readout or {}).get("shutter") or shutter
         shutters = {e.get("shutter") for e in tier2 if e.get("shutter")}
-        entry = dict(tier2[0])
-        if shutter:
-            entry["mode_match"] = "model-only"
-        elif len(shutters) > 1:
-            # The model was measured in MORE THAN ONE readout mode with
-            # materially different noise (R10 item 1: S1M2 mech rn is
-            # unresolved while elec is 12.6 e-); picking one blind is worse
-            # than no prior — prior_usability() rejects this state.
-            entry["mode_match"] = "model-only-ambiguous-shutter"
-        else:
-            entry["mode_match"] = "model-only-single-mode"
-        return entry
+        for entry in tier2:
+            entry["mode_match"] = ("exact-shutter" if entry["shutter_match_status"] == "matched"
+                else "model-only" if effective_shutter
+                else "model-only-ambiguous-shutter" if len(shutters) > 1
+                else "model-only-single-mode")
+        tier2.sort(key=lambda e: (
+            not prior_usability(e)[0],
+            {"matched": 0, "not-declared": 1}.get(e["readout_match_status"], 2)))
+        candidates.extend(tier2)
     for entry in _bulk_entries():
         name = str(entry["make_model"]).split(maxsplit=1)
         if len(name) == 2 and _packaged_camera_key(*name) == camera:
             entry = dict(entry)
             entry["mode_match"] = "bulk-model-only"
-            return with_readout(entry, readout)
-    return None
+            candidates.append(with_readout(entry, readout, shutter=shutter))
+    if not candidates:
+        return None
+    first = candidates[0]
+    if prior_usability(first)[0]:
+        return first
+    for entry in candidates[1:]:
+        if (prior_usability(entry)[0]
+                and (entry["readout_match_status"] == "matched"
+                     or entry["shutter_match_status"] == "matched")):
+            return entry
+    return first
 
 
 def _interp(curve: list[tuple[float, float]], x: float) -> float:
@@ -461,6 +487,8 @@ def prior_usability(entry: dict[str, Any] | None) -> tuple[bool, str]:
         return False, "estimator-spread"
     if entry.get("readout_match_status") in ("unverified", "mismatch"):
         return False, entry.get("readout_match_reason") or "readout-unverified"
+    if entry.get("shutter_match_status") in ("unverified", "mismatch"):
+        return False, entry.get("shutter_match_reason") or "shutter-unverified"
     if entry.get("mode_match") in ("model-only-ambiguous-shutter", "model-only"):
         return False, "ambiguous-shutter"
     return True, entry.get("mode_match") or "ok"

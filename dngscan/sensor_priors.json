@@ -7,7 +7,8 @@
    "model_equals": [
     "ILCE-7M5"
    ],
-   "unity_gain_ev": 8.76,
+   "unity_gain_ev": 8.79830062921129,
+   "base_iso": 100,
    "fwc_e": 71138,
    "pdr_log2iso_ev": [
     [
@@ -237,8 +238,27 @@
      0.04
     ]
    ],
-   "source": "PhotonsToPhotos PDR.htm / RN_e.htm (series Sony ILCE-7M5_14, mechanical shutter; retrieved 2026-07-30). 2026-08-24 axis audit: the 2026-07-30 extraction decoded the chart x-axis as log2(ISO); P2P's PDR/RN_e x-axis is actually ISO = 3.125*2^x (verified against the chart's rendered tick labels and eight cameras' native ISO ranges). All curve x values shifted +1.6439 (curves now start at the native base ISO setting) and suspect_iso_min multiplied by 3.125. unity_gain_ev 8.76 = log2(432) from a first-party JPTC PTC fit (gain 4.32 e-/DN @ISO100, e-shutter, data/priors/jptc/), cross-checked vs P2P DxOMark-derived ILCE-7M4 unity ISO 427.8 (same 33MP sensor family) and vs the axis fix (7.16+1.6439=8.80, delta 0.04). The 2026-08-24 '3x fwc contradiction' first flagged on this entry was this same axis offset. suspect_iso_min 20595->64359 (= the ISO 64000 extended setting). Read-noise curve is MECHANICAL shutter; e-shutter read noise is ~5x higher (P2P ILCE-7M5(ES)_14, and the JPTC entry in data/priors/jptc/).",
-   "suspect_iso_min": 64359
+   "source": "PhotonsToPhotos PDR.htm / RN_e.htm (series Sony ILCE-7M5_14, mechanical shutter; retrieved 2026-07-30). 2026-08-24 axis audit: the 2026-07-30 extraction decoded the chart x-axis as log2(ISO); P2P's PDR/RN_e x-axis is actually ISO = 3.125*2^x (verified against the chart's rendered tick labels and eight cameras' native ISO ranges). All curve x values shifted +1.6439 (curves now start at the native base ISO setting) and suspect_iso_min multiplied by 3.125. unity_gain_ev 8.76 = log2(432) from a first-party JPTC PTC fit (gain 4.32 e-/DN @ISO100, e-shutter, data/priors/jptc/), cross-checked vs P2P DxOMark-derived ILCE-7M4 unity ISO 427.8 (same 33MP sensor family) and vs the axis fix (7.16+1.6439=8.80, delta 0.04). The 2026-08-24 '3x fwc contradiction' first flagged on this entry was this same axis offset. suspect_iso_min 20595->64359 (= the ISO 64000 extended setting). Read-noise curve is MECHANICAL shutter; e-shutter read noise is ~5x higher (P2P ILCE-7M5(ES)_14, and the JPTC entry in data/priors/jptc/). 2026-10-10 applicability correction: structured mechanical scope for this combined entry; gain anchor replaced with packaged mechanical JPTC ISO100 gain 4.451971754176194 e-/DN, explicit reference span 15870.744766235352 DN. Earlier electronic gain anchor is historical provenance only; component_sources records the active sources.",
+   "suspect_iso_min": 64359,
+   "shutter": "mechanical",
+   "reference_dn_range": 15870.744766235352,
+   "component_sources": {
+    "gain": {
+     "shutter": "mechanical",
+     "source": "data/priors/jptc/sony_ilce7m5_iso100_mechanical.json",
+     "measured_iso": 100,
+     "gain_e_per_dn": 4.451971754176194,
+     "input_sha256": "fd83a775a8f7ee4a03a463c1869809de580e9be38ff802dcefef7d66babf536a"
+    },
+    "read_noise": {
+     "shutter": "mechanical",
+     "source": "PhotonsToPhotos RN_e Sony ILCE-7M5_14"
+    },
+    "pdr": {
+     "shutter": "mechanical",
+     "source": "PhotonsToPhotos PDR Sony ILCE-7M5_14"
+    }
+   }
   },
   {
    "id": "Sony ILCE-7SM3 (A7S III)",
