@@ -62,6 +62,60 @@ def load_camera(path, **kwargs):
 
 
 class Stage3PointDomainTests(unittest.TestCase):
+    def test_real_bayer_nonlinear_and_additive_opcodes_use_unbalanced_camera_domain(self):
+        """Stage equivalence is restricted to this spatially constant fixture."""
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'bayer-point.dng'
+            table = np.rint((np.arange(65536, dtype=np.float64) / 65535.) ** 2 * 65535.).astype('>u2')
+            opcodes = [polynomial((0., 0., 1.), area=(0, 0, 128, 128, 0, 1, 1, 1)),
+                       (7, struct.pack('>4l5L', 0, 0, 128, 128, 0, 1, 1, 1, table.size) + table.tobytes())]
+            for kind in (10, 11, 12, 13):
+                values = [.125 if kind in (10, 11) else 1.25] * 128
+                opcodes.append((kind, struct.pack('>4l5L', 0, 0, 128, 128, 0, 1, 1, 1, 128)
+                                + struct.pack('>128f', *values)))
+            for neutral in ((1., 1., 1.), (.5, 1., 1.), (1., .5, .75)):
+                for half in (False, True):
+                    for opcode in opcodes:
+                        with self.subTest(neutral=neutral, half=half, kind=opcode[0]):
+                            write_sensor_dng(path, signal=1000, neutral=neutral,
+                                             opcodes={51009: [opcode]})
+                            _, camera2 = load_camera(path, scene_half_size=half)
+                            # List3 RGB has three planes; List2 mosaic has one.
+                            payload = bytearray(opcode[1]); struct.pack_into('>L', payload, 20, 3)
+                            write_sensor_dng(path, signal=1000, neutral=neutral,
+                                             opcodes={51022: [(opcode[0], bytes(payload))]})
+                            result, camera3 = load_camera(path, scene_half_size=half)
+                            # List3 executes at native coordinates before the
+                            # project half-size box; List2 reaches LibRaw's
+                            # half-size path. Compare the constant interiors.
+                            expected = camera2[camera2.shape[0] // 2, camera2.shape[1] // 2]
+                            np.testing.assert_allclose(camera3[8:-8, 8:-8],
+                                                       np.broadcast_to(expected, camera3[8:-8, 8:-8].shape),
+                                                       rtol=0., atol=34.)
+                            self.assertEqual(result.scene_rec2020_render.shape[:2],
+                                             (64, 64) if half else (128, 128))
+                            self.assertFalse(np.any(result.processing_clip_masks))
+                            np.testing.assert_array_equal(result.raw_image, 1000)
+
+    def test_stage3_delta_row_column_analytic_wb_and_spatial_index(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'delta.dng'
+            for linear in (False, True):
+                write_sensor_dng(path, signal=1000, linear=linear, neutral=(.5, 1., .75))
+                reference, before = load_camera(path)
+                wb = np.asarray(reference.camera_wb[:3]); logical_white = 65535. * wb / wb.min()
+                for kind in (10, 11):
+                    values = np.linspace(.01, .1, 128).astype(np.float32)
+                    op = (kind, struct.pack('>4l5L', 0, 0, 128, 128, 0, 3, 1, 1, 128)
+                          + struct.pack('>128f', *values))
+                    write_sensor_dng(path, signal=1000, linear=linear, neutral=(.5, 1., .75),
+                                     opcodes={51022: [op]})
+                    result, camera = load_camera(path)
+                    delta = values[:, None, None] if kind == 10 else values[None, :, None]
+                    np.testing.assert_allclose(camera, before + delta * logical_white,
+                                               rtol=0., atol=.002)
+                    self.assertFalse(np.any(result.processing_clip_masks))
+
     def test_real_linear_raw_square_undoes_wb_before_opcode(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / 'square.dng'
