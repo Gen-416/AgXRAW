@@ -1197,6 +1197,7 @@ def detected_scene_params(
     tone = plan.tone
     reliable_tail = _finite_or_none(getattr(scene, "reliable_tail_ev_p9999", None))
     from ..hdr_agx_plan import scene_headroom_ev
+    from ..report import processing_evidence_summary
     earned = scene_headroom_ev(scene)
     # Compiled transition facts: the toe-end near-black crossing and the
     # shoulder-white near-white crossing, after every clamp — the two numbers the
@@ -1258,6 +1259,7 @@ def detected_scene_params(
         "chroma_nr": {"status": getattr(bundle, "chroma_nr_status", "disabled"),
                       "reason": getattr(bundle, "chroma_nr_reason", None)},
         "noise_model": noise,
+        "processing_evidence": processing_evidence_summary(bundle, analysis, scene),
         "calibrations": calibration_status,
     }
 

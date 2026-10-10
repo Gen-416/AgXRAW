@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,71 @@ from .scene_transform import scene_transform_label
 from .models import Analysis, AutoEvResult, RawBundle, ToneCompressionPlan
 from .raw_io import highlight_mode_cn
 from .tone import plan_for_mode
+
+
+def processing_evidence_summary(
+    bundle: RawBundle, analysis: Analysis, scene: Any | None = None,
+) -> dict[str, Any]:
+    """Describe existing evidence without selecting a different rendering path.
+
+    This is a derived report, not a noise model or cached processing state.
+    In particular, missing noise calibration does not withdraw independent
+    sensor highlight evidence, and a valid model does not certify the
+    decoder covariance needed by optional chroma denoising.
+    """
+    model = getattr(analysis, "noise_model", None)
+    status = getattr(model, "status", "unavailable")
+    source = getattr(model, "source", "none")
+    # Cache proxies may release the mosaic after analysis. Its measured
+    # channel identities and provider survive that memory optimisation;
+    # resident pixels must not decide whether sensor evidence ever existed.
+    channel_ids = getattr(analysis, "channel_ids", None)
+    provider = getattr(bundle, "evidence_provider", "unavailable")
+    sensor_available = (
+        bool(channel_ids) and provider != "unavailable" if channel_ids is not None
+        else getattr(bundle, "raw_image", None) is not None and provider != "unavailable"
+    )
+    reason = (getattr(model, "reason", None)
+              or ("no-matched-calibration" if sensor_available else "sensor-evidence-unavailable"))
+    correlation = getattr(model, "correlation", "unknown")
+    mode = "noise-model-assisted" if status == "valid" else "general-image"
+    if not sensor_available:
+        label = "图像统计回退"
+        detail = "使用解码图像统计完成曝光、色调与导出；不声明传感器剪切、电子域噪声或 SNR。"
+    elif status == "valid":
+        label = ("文件噪声声明辅助成像" if str(source).startswith("DNG ")
+                 else "匹配噪声模型辅助成像")
+        detail = "曝光和色调可使用独立噪声模型；色度降噪仍取决于解码传递与适用范围。"
+    elif status in ("rejected", "unresolved"):
+        label = "通用成像（噪声模型受限）"
+        detail = "曝光、色调与导出继续；保留模型受限原因，不采用该模型的噪声量或色度降噪。"
+    else:
+        label = "通用成像（噪声未标定）"
+        detail = "曝光、色调与导出继续使用图像统计；不从纹理推定噪声量，跳过模型色度降噪。"
+    if correlation == "measured-spectral-imbalance":
+        detail += " 实测频谱不均衡：保留 HDR 噪声限制，并跳过当前独立噪声近似的色度降噪。"
+    return {
+        "mode": mode,
+        "label": label,
+        "detail": detail,
+        "noise_status": status,
+        "noise_source": source,
+        "noise_reason": reason,
+        "noise_correlation": correlation,
+        "spectral_ratios": dict(getattr(model, "spectral_ratios", None) or {}),
+        "noise_reduction_status": getattr(model, "noise_reduction_status", "absent"),
+        "noise_fallback_source": getattr(model, "fallback_source", None),
+        "noise_fallback_reason": getattr(model, "fallback_reason", None),
+        "noise_evidence_status": getattr(analysis, "noise_evidence_status", "unavailable"),
+        "sensor_evidence": "available" if sensor_available else "unavailable",
+        "sensor_provider": provider,
+        "hdr_reliability_source": (
+            getattr(scene, "reliability_source", None)
+            or getattr(bundle, "scene_reliability_source", "sensor-spatial")
+        ),
+        "chroma_nr_status": getattr(bundle, "chroma_nr_status", "disabled"),
+        "chroma_nr_reason": getattr(bundle, "chroma_nr_reason", None),
+    }
 
 
 
@@ -238,9 +304,10 @@ def wb_line_cn(bundle: RawBundle) -> str:
     return line
 
 
-def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
+def summary_lines(bundle: RawBundle, analysis: Analysis, scene: Any | None = None) -> list[str]:
     from .policy import policy_line
 
+    processing = processing_evidence_summary(bundle, analysis, scene)
     black = padded_channel_values(bundle.black_levels, analysis.channel_ids)
     wb = padded_channel_values(bundle.camera_wb, analysis.channel_ids)
     spike_flags = {
@@ -265,10 +332,11 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
         "",
         "关键 RAW 指标:",
         f"文件: {bundle.path.name}",
+        f"处理依据: {processing['label']}；{processing['detail']}",
         (f"可见传感器: {bundle.raw_image.shape[1]} x {bundle.raw_image.shape[0]}"
          if bundle.raw_image is not None else "可见传感器: 不可用（解码场景可用）"),
         f"实际解码: {bundle.scene_decoder} {bundle.scene_decoder_version or ''}；传感器证据: {bundle.evidence_provider}",
-        f"HDR 证据来源: {bundle.scene_reliability_source}",
+        f"HDR 证据来源: {processing['hdr_reliability_source']}",
         f"解码损失传播支撑: {'未认证（限制证据资格，不代表整帧剪切）' if bundle.scene_loss_support_untrusted else '无全局未认证标记'}",
         *([f"解码回退: {bundle.scene_decoder_fallback}"] if bundle.scene_decoder_fallback else []),
         *([f"证据不可用: {bundle.evidence_error}"] if bundle.evidence_error else []),
@@ -316,6 +384,58 @@ def summary_lines(bundle: RawBundle, analysis: Analysis) -> list[str]:
     ]
 
 
+def _output_report_facts(
+    path: Path, export_info: dict[str, Any] | None, chroma: str,
+    quality: int | None, output_gamut: str, icc_embedded: bool,
+) -> dict[str, Any]:
+    """Prefer verified export facts; never infer HEIF depth from its suffix."""
+    info = export_info if isinstance(export_info, dict) else {}
+    actual_path = Path(info.get("output_path") or path)
+    container = str(info.get("delivery_container") or info.get("container") or "").lower()
+    if not container:
+        container = "heic" if actual_path.suffix.lower() in (".heic", ".heif") else "jpeg"
+    if container in ("heif", "heic"):
+        container, label = "heic", "HEIF"
+    elif container in ("jpg", "jpeg"):
+        container, label = "jpeg", "JPEG"
+    else:
+        label = container.upper()
+    depth = info.get("bit_depth")
+    try:
+        depth = int(depth) if not isinstance(depth, bool) else None
+        if depth is not None and depth <= 0:
+            depth = None
+    except (ValueError, TypeError, OverflowError):
+        depth = None
+    if depth is None and container == "jpeg":
+        depth = 8
+    sampling = str(info.get("chroma_subsampling") or "")
+    if not sampling and container == "jpeg":
+        sampling = str(info.get("delivery_chroma_requested") or chroma)
+    sampling = {"444": "4:4:4", "422": "4:2:2", "420": "4:2:0"}.get(sampling, sampling)
+    dither = str(info.get("quantization_dither") or "")
+    floating_master = info.get("sdr_master_precision") == "float32" or dither.startswith("TPDF-10bit")
+    if container == "jpeg":
+        quantization = "TPDF 抖动" if depth == 8 else "编码出口量化"
+    elif depth == 10 and floating_master:
+        quantization = "浮点 SDR 母版，编码出口一次 10-bit 量化"
+        if dither.startswith("TPDF-10bit"):
+            quantization += "，TPDF 抖动"
+    elif depth is None:
+        quantization = "位深未报告"
+    else:
+        quantization = "编码出口量化；母版精度未报告"
+    return {
+        "path": actual_path, "container": container, "label": label,
+        "bit_depth": depth, "chroma_subsampling": sampling,
+        "profile": str(info.get("profile") or output_gamut_label(output_gamut)),
+        "quality": info.get("delivery_quality", quality),
+        "icc_embedded": info.get("icc_embedded", icc_embedded),
+        "quantization": quantization,
+        "is_hdr": bool(info.get("has_iso_gainmap", False)),
+    }
+
+
 def print_report(
     bundle: RawBundle,
     analysis: Analysis,
@@ -334,15 +454,23 @@ def print_report(
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
     chroma: str = "444",
+    export_info: dict[str, Any] | None = None,
+    scene: Any | None = None,
 ) -> None:
-    for line in summary_lines(bundle, analysis):
+    for line in summary_lines(bundle, analysis, scene):
         print(line)
     if out_path is not None:
         print(f"PNG 图像: {out_path}")
     if csv_path is not None:
         print(f"CSV 指标: {csv_path}")
     if jpeg_path is not None:
-        print(f"JPEG 图像: {jpeg_path}")
+        delivered = _output_report_facts(jpeg_path, export_info, chroma, jpeg_quality,
+                                         output_gamut, jpeg_icc_embedded)
+        output_label = delivered["label"]
+        depth_label = f"{delivered['bit_depth']}-bit" if delivered["bit_depth"] is not None else "位深未报告"
+        base_label = "SDR base=" if delivered["is_hdr"] else ""
+        sampling_note = f"；色度采样={delivered['chroma_subsampling']}" if delivered["chroma_subsampling"] else ""
+        print(f"{output_label} 图像: {delivered['path']}")
         reported_mode = (
             str(getattr(tone_plan, "tone_core", jpeg_mode))
             if jpeg_mode in ("agx", "gated")
@@ -410,16 +538,16 @@ def print_report(
             else ""
         )
         print(
-            f"JPEG 设置: scene-linear Rec.2020 起点（解码={decoder_label}）；"
-            f"8-bit {output_gamut_label(output_gamut)}（TPDF 抖动）；"
+            f"{output_label} 设置: scene-linear Rec.2020 起点（解码={decoder_label}）；"
+            f"{base_label}{depth_label} {delivered['profile']}（{delivered['quantization']}）{sampling_note}；"
             f"{wb_label}；{brighten_note}；"
             f"曝光锚定增益={bundle.exposure_gain:.3f}（{ev_note}）；"
             f"{baseline_exposure_note}"
             f"模式={reported_mode}；{highlight_note}；"
             f"AgX 前馈={scene_transform_label(scene_transform)}（强度={scene_transform_strength:.2f}）；"
             f"成片风格={grade_label(jpeg_grade)}（强度={jpeg_grade_strength:.2f}）；"
-            f"质量={jpeg_quality}；"
-            f"ICC={'已嵌入' if jpeg_icc_embedded else '未嵌入'}"
+            f"质量={delivered['quality']}；"
+            f"ICC={'已嵌入' if delivered['icc_embedded'] else '未嵌入'}"
         )
         if auto_ev is not None:
             anchored = auto_ev.anchored_median_ev
@@ -440,7 +568,8 @@ def print_report(
                 f"全图自动曝光：提升 {auto_ev.ev_boost:+.2f} EV（相对 EV 0）"
                 f"{limit_note}；应用 EV={auto_ev.ev:+.2f}"
             )
-        print(f"JPEG 策略: {jpeg_policy_cn(reported_mode, output_gamut, chroma)}")
+        policy_chroma = delivered["chroma_subsampling"].replace(":", "") or chroma
+        print(f"{output_label} 策略: {jpeg_policy_cn(reported_mode, output_gamut, policy_chroma)}")
         plan_line = jpeg_tone_plan_cn(
             bundle,
             analysis,
@@ -451,7 +580,7 @@ def print_report(
             scene_transform_strength,
         )
         if plan_line:
-            print(f"JPEG 自动计划: {plan_line}")
+            print(f"{output_label} 自动计划: {plan_line}")
 
 
 def jpeg_policy_cn(
@@ -549,7 +678,13 @@ def csv_row(
     scene_transform: str = "none",
     scene_transform_strength: float = 1.0,
     chroma: str = "444",
+    export_info: dict[str, Any] | None = None,
+    scene: Any | None = None,
 ) -> dict[str, Any]:
+    processing = processing_evidence_summary(bundle, analysis, scene)
+    delivered = (_output_report_facts(jpeg_path, export_info, chroma, jpeg_quality,
+                                      output_gamut, jpeg_icc_embedded)
+                 if jpeg_path is not None else None)
     reported_mode = (
         str(getattr(tone_plan, "tone_core", jpeg_mode))
         if jpeg_mode in ("agx", "gated")
@@ -558,6 +693,19 @@ def csv_row(
     row: dict[str, Any] = {
         "file": str(bundle.path),
         "filename": bundle.path.name,
+        "processing_evidence_mode": processing["mode"],
+        "processing_evidence_label": processing["label"],
+        "processing_evidence_detail": processing["detail"],
+        "processing_sensor_evidence": processing["sensor_evidence"],
+        "processing_hdr_reliability_source": processing["hdr_reliability_source"],
+        "chroma_nr_status": processing["chroma_nr_status"],
+        "chroma_nr_reason": processing["chroma_nr_reason"] or "",
+        "output_path": str(delivered["path"]) if delivered is not None else "",
+        "output_container": delivered["container"] if delivered is not None else "",
+        "output_bit_depth": (delivered["bit_depth"] if delivered is not None
+                             and delivered["bit_depth"] is not None else ""),
+        "output_chroma_subsampling": delivered["chroma_subsampling"] if delivered is not None else "",
+        "output_profile": delivered["profile"] if delivered is not None else "",
         "width": int(bundle.raw_image.shape[1]) if bundle.raw_image is not None else "",
         "height": int(bundle.raw_image.shape[0]) if bundle.raw_image is not None else "",
         "orientation_flip": int(bundle.orientation_flip),
@@ -585,8 +733,11 @@ def csv_row(
         # the current calibrated model as a single-frame measurement.
         "raw_noise_floor_single_frame": (analysis.noise_floor if analysis.noise_model is None else ""),
         "raw_noise_floor_normalized": analysis.noise_floor,
+        "noise_model_status": processing["noise_status"],
         "noise_model_source": getattr(analysis.noise_model, "source", ""),
         "noise_model_reason": getattr(analysis.noise_model, "reason", ""),
+        "noise_model_correlation": processing["noise_correlation"],
+        "noise_model_spectral_ratios": json.dumps(processing["spectral_ratios"], sort_keys=True),
         "noise_reduction_declaration": getattr(analysis.noise_model, "noise_reduction_status", ""),
         "noise_model_fallback_source": getattr(analysis.noise_model, "fallback_source", "") or "",
         "noise_model_fallback_reason": getattr(analysis.noise_model, "fallback_reason", "") or "",
@@ -602,7 +753,7 @@ def csv_row(
         "scene_decoder_runtime": getattr(bundle, "scene_decoder_runtime", None) or "",
         "evidence_provider": bundle.evidence_provider,
         "evidence_error": bundle.evidence_error or "",
-        "scene_reliability_source": bundle.scene_reliability_source,
+        "scene_reliability_source": processing["hdr_reliability_source"],
         "scene_loss_support_untrusted": bundle.scene_loss_support_untrusted,
         "scene_reference_error": bundle.scene_reference_error or "",
         "scene_decoder_fallback": bundle.scene_decoder_fallback or "",

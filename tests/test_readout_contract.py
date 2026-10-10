@@ -408,7 +408,7 @@ class CaptureReadoutTests(unittest.TestCase):
         self.assertNotEqual(pc._bundle_metadata(changed), metadata)
         rebuilt.capture_readout["raw_geometry"][0] = 42
         self.assertEqual(bundle.capture_readout["raw_geometry"], [128, 128])
-        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 28)
+        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 29)
 
 
 if __name__ == "__main__":

@@ -1312,11 +1312,17 @@ def analyze(
     # (best-effort). Extracted into sensor_prior_evidence() so the whole
     # analyze-level prior behaviour is testable at its real seam (R11 item 2).
     mean_black = float(np.mean([bundle.black_levels[c] for c in channel_ids if c < len(bundle.black_levels)] or [0.0]))
+    from .raw_units import normalized_raw_span
+    # The scalar electron-domain report uses the first green's file DN scale,
+    # matching the calibration ruler. LibRaw's global maximum can differ from
+    # its per-plane coding endpoints (for example Sony ARW), without any
+    # rescaling of the stored samples. Never validate against that other range.
+    prior_channel = next((cid for cid in channel_ids if labels[cid].startswith("G")), channel_ids[0])
     (prior_id, prior_quality_status, prior_model_spread, prior_mode_match,
      gain_e, prior_rn_e, prior_pdr, noise_e) = sensor_prior_evidence(
         bundle.shot_make, bundle.shot_model, bundle.shot_iso,
         nf=nf, fullwell=fullwell, mean_black=mean_black,
-        coding_range=float(bundle.white_level) - mean_black,
+        coding_range=normalized_raw_span(bundle, prior_channel),
         shutter=getattr(bundle, "shot_shutter", None),
         readout=getattr(bundle, "capture_readout", None),
         noise_status="independent" if noise_model.status == "valid" else noise_status)

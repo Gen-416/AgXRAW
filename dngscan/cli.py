@@ -705,6 +705,7 @@ def main(argv: list[str]) -> int:
             if jpeg_path.suffix.lower() in {".jpg", ".jpeg", ""}:
                 jpeg_path = jpeg_path.with_suffix(".heic")
         jpeg_icc_embedded = False
+        export_result = None
         render_plan = (
             auto_ev_plan[0] if auto_ev_plan and jpeg_path is not None else
             build_render_plan(
@@ -805,6 +806,8 @@ def main(argv: list[str]) -> int:
                 args.scene_transform,
                 args.scene_transform_strength,
                 chroma=args.chroma if jpeg_path is not None else "444",
+                export_info=export_result if isinstance(export_result, dict) else None,
+                scene=render_plan.scene if render_plan is not None else None,
             )
             write_csv(args.csv, row)
         # The report is a standalone deliverable (owner 2026-08-27): a plain
@@ -830,6 +833,8 @@ def main(argv: list[str]) -> int:
                 args.scene_transform,
                 args.scene_transform_strength,
                 chroma=args.chroma if jpeg_path is not None else "444",
+                export_info=export_result if isinstance(export_result, dict) else None,
+                scene=render_plan.scene if render_plan is not None else None,
             )
         else:
             output_label = "HEIF 图像" if container_for_output_format(args.output_format) == "heic" else "JPEG 图像"
