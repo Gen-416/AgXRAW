@@ -33,6 +33,7 @@
 | 记录 | 口径 |
 | --- | --- |
 | [2026-10-09 噪声与纹理研究](../reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) | 固定源码与基准反例；附实测接口、模型驱动色度核实施记录及暂缓待办 |
+| [2026-10-09 完整频谱与带域方差原型](../reviews/SPECTRAL_VARIANCE_PROTOTYPE_2026-10-09.zh-CN.md) | 逐相位 PSD 保存、单边归一化、固定 B3 方差传播及显式近似边界 |
 | [工程决策记录](../ENGINEERING_NOTES.zh-CN.md) | 2026-07 集中开发期的证据、推理与教训 |
 | [2026-09-02 审查交接](../reviews/CODE_REVIEW_HANDOFF_2026-09-02.zh-CN.md) | 指定 commit 的问题状态与集成接缝清单 |
 | [更早的 HDR 审查](../archived/REVIEW_FINDINGS.md) | HDR v2 之前的历史合同 |
