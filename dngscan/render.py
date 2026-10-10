@@ -347,11 +347,11 @@ def _prepare_chroma_nr_map(
         bundle.chroma_nr_reason = None
         return None
     from .chroma_nr import chroma_correction_map
-    from .spatial import area_decimate_rows, spread_grid_shape, spatial_band_rows
+    from .spatial import area_decimate_rows, chroma_nr_grid_shape, spatial_band_rows
     from .noise_propagation import calibrated_chroma_variance, chroma_nr_skip_reason
 
     model = getattr(analysis, "noise_model", None) or getattr(bundle, "noise_model", None)
-    dh, dw = spread_grid_shape(h, w)
+    dh, dw = chroma_nr_grid_shape(bundle, h, w)
     reason = chroma_nr_skip_reason(
         bundle, model, (dh, dw), scene_transform=scene_transform,
         scene_transform_strength=scene_transform_strength,

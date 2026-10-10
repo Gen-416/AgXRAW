@@ -41,7 +41,8 @@ use std::sync::atomic::Ordering;
 /// v19 separates film kernels into the AgXFilm research repository.
 /// v20 preserves floating HDR camera planes, fuses warp processing-loss transport,
 /// and adds a bounded multiscale local luminance-detail scan.
-pub const NATIVE_ABI_VERSION: i32 = 20;
+/// v21 carries ActiveArea origin/extent into mosaic GainMap interpolation.
+pub const NATIVE_ABI_VERSION: i32 = 21;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -942,7 +943,7 @@ fn feather_masks_f16<'py>(py: Python<'py>, mask: &Bound<'py, PyAny>) -> PyResult
 /// visible mosaic view. `op` carries the DNG GainMap attributes (top, left,
 /// bottom, right, row_pitch, col_pitch, origin_v/h, spacing_v/h, points_v/h,
 /// gains); `colors` is the uint8 CFA index view of the same window.
-#[pyfunction(signature = (img, colors, op, blacks, whites, loss=None))]
+#[pyfunction(signature = (img, colors, op, blacks, whites, loss=None, image_origin=(0, 0), image_shape=None))]
 fn apply_gain_map_mosaic<'py>(
     py: Python<'py>,
     mut img: PyReadwriteArray2<'py, u16>,
@@ -951,6 +952,8 @@ fn apply_gain_map_mosaic<'py>(
     blacks: Vec<f32>,
     whites: Vec<f32>,
     mut loss: Option<PyReadwriteArray2<'py, u8>>,
+    image_origin: (i64, i64),
+    image_shape: Option<(i64, i64)>,
 ) -> PyResult<()> {
     let gains_obj = as_f64_array(py, &op.getattr("gains")?)?;
     let gshape = gains_obj.shape().to_vec();
@@ -988,6 +991,11 @@ fn apply_gain_map_mosaic<'py>(
     let img_view = img.as_array_mut();
     let colors_view = colors.as_array();
     let (h, w) = (img_view.shape()[0], img_view.shape()[1]);
+    let extent = image_shape.unwrap_or((h as i64, w as i64));
+    if image_origin.0 < 0 || image_origin.1 < 0 || extent.0 <= 0 || extent.1 <= 0
+        || image_origin.0 + h as i64 > extent.0 || image_origin.1 + w as i64 > extent.1 {
+        return Err(PyValueError::new_err("GainMap ActiveArea must cover visible pixels"));
+    }
     if colors_view.shape() != [h, w] {
         return Err(PyValueError::new_err("colors must match img shape"));
     }
@@ -997,7 +1005,7 @@ fn apply_gain_map_mosaic<'py>(
     if loss_view.as_ref().is_some_and(|m| m.shape() != [h, w]) {
         return Err(PyValueError::new_err("loss must match img shape"));
     }
-    py.detach(move || evidence::apply_gain_map_mosaic(img_view, colors_view, &gop, &blacks, &whites, loss_view));
+    py.detach(move || evidence::apply_gain_map_mosaic(img_view, colors_view, &gop, &blacks, &whites, loss_view, image_origin, extent));
     Ok(())
 }
 

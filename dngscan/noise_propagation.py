@@ -136,8 +136,12 @@ def coarse_spatial_moments(descriptor, output_shape, colours):
                 sy = (sy + .5) * h / ph - .5
                 sx = (sx + .5) * w / pw - .5
                 gain = np.ones((uh, uw), np.float64)
+                oy, ox = descriptor.get("gain_map_origin", (0, 0))
+                gain_shape = descriptor.get("gain_map_shape", (h, w))
+                phase_y, phase_x = divmod(phase_index, 2)
                 for gain_map in maps:
-                    gain *= _sample_gain(gain_map, sy, sx, (h, w), divmod(phase_index, 2))
+                    gain *= _sample_gain(gain_map, sy + oy, sx + ox, gain_shape,
+                                         (phase_y + oy, phase_x + ox))
                 means[..., channel] += weight * gain
                 seconds[..., channel] += weight * np.square(gain) / np.clip(area, 1e-6, 1.)
                 # Cubic sampling does not antialias expansion in source

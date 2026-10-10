@@ -56,11 +56,23 @@ def parse(kind,payload,stage):
     return PointOp(kind,area,tuple(values),stage)
 
 
-def apply(image,op,*,black=0.,white=65535.,colors=None,loss=None):
-    """Apply per-band to integer camera codes; stage 2/3 values are normalized."""
+def apply(image,op,*,black=0.,white=65535.,colors=None,loss=None,image_origin=(0,0)):
+    """Apply in the declared camera-code domain, normalizing stage 2/3.
+
+    Floating camera buffers retain fractional values and an uncapped logical
+    white. This lets stage 3 undo LibRaw's fixed WB for the normalized opcode,
+    then restore that WB without another uint16 boundary.
+    """
     t,l,b,r,first,planes,rp,cp=op.area
     h,w=image.shape[:2]
-    if b<=t or r<=l:t,l,b,r=0,0,h,w
+    if b<=t or r<=l:
+        t,l,b,r=0,0,h,w
+    else:
+        oy,ox=image_origin
+        t,b,l,r=t-oy,b-oy,l-ox,r-ox
+    authored_t,authored_l=t,l
+    t+=max(0,(-t+rp-1)//rp)*rp
+    l+=max(0,(-l+cp-1)//cp)*cp
     if t>=h or l>=w:return
     b,r=min(b,h),min(r,w)
     channels=1 if image.ndim==2 else image.shape[2]
@@ -86,8 +98,8 @@ def apply(image,op,*,black=0.,white=65535.,colors=None,loss=None):
             else:
                 # Row/column table indexes are relative to the declared area,
                 # including pitch; clipping the overlap never shifts the table.
-                v=(values[(np.arange(start,stop,rp)-t)//rp,None] if op.kind in (10,12)
-                   else values[None,(np.arange(l,r,cp)-l)//cp])
+                v=(values[(np.arange(start,stop,rp)-authored_t)//rp,None] if op.kind in (10,12)
+                   else values[None,(np.arange(l,r,cp)-authored_l)//cp])
                 out=x+v if op.kind in (10,11) else x*v
             ceiling=65535. if op.stage==1 else 1.
             if loss is not None:
@@ -95,7 +107,11 @@ def apply(image,op,*,black=0.,white=65535.,colors=None,loss=None):
                 np.maximum(dest,(x<ceiling)&(out>=ceiling),out=dest)
             out=np.clip(out,0,ceiling)
             if op.stage!=1:out=out*span+bl
-            src[:]=np.rint(out).astype(image.dtype)
+            if np.issubdtype(image.dtype,np.integer):
+                bounds=np.iinfo(image.dtype)
+                src[:]=np.clip(np.rint(out),bounds.min,bounds.max).astype(image.dtype)
+            else:
+                src[:]=out.astype(image.dtype)
 
 
 def repair_bad_pixels(raw,op,loss=None):

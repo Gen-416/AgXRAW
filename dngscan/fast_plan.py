@@ -44,7 +44,8 @@ from .models import ToneCompressionPlan
 # v19 removes film-only kernels from the AgXRAW extension.
 # v20 preserves floating HDR camera planes, fuses warp processing-loss transport,
 # and adds the bounded local luminance-detail delivery check.
-NATIVE_ABI_VERSION = 20
+# v21 carries ActiveArea origin/extent into mosaic GainMap interpolation.
+NATIVE_ABI_VERSION = 21
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 

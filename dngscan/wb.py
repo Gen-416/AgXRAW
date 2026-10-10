@@ -125,28 +125,37 @@ def kelvin_camera_multipliers(cct: float, xyz_to_cam: Any) -> list[float]:
 
 
 def interpolated_color_matrix(calibration: Any, cct: float) -> Any:
-    """Adobe-style dual-illuminant interpolation of the DNG colour matrices.
+    """DNG interpolation of ColorMatrix and CameraCalibration, then composition.
 
     Weights are linear in reciprocal CCT between the two calibration illuminants,
     clamped at the ends. Because the target CCT here is *declared* rather than solved
     from an as-shot neutral, the DNG SDK's fixed-point iteration is unnecessary — the
-    forward interpolation is exact for this use.
+    forward interpolation is exact for this use. Both illuminant-dependent
+    matrices use the same weight: AB @ interp(CC) @ interp(CM). Multiplying
+    the endpoints first would add an erroneous cross term between the two
+    varying calibrations. A missing or signature-inapplicable CC is identity.
     """
     # R6 item 3: generalized to the DNG 1.6 third illuminant — collect every
     # (cct, matrix) pair the file declares, sort by reciprocal CCT, clamp
     # outside the span, and interpolate linearly between the BRACKETING pair
     # (the spec's dual-illuminant rule applied piecewise).
-    pairs = [(float(calibration.cct1), np.asarray(calibration.matrix1, dtype=np.float64))]
-    if calibration.matrix2 is not None and calibration.cct2 is not None:
-        pairs.append(
-            (float(calibration.cct2), np.asarray(calibration.matrix2, dtype=np.float64))
-        )
-    if getattr(calibration, "matrix3", None) is not None and getattr(
-        calibration, "cct3", None
-    ) is not None:
-        pairs.append(
-            (float(calibration.cct3), np.asarray(calibration.matrix3, dtype=np.float64))
-        )
+    pairs = []
+    separate_components = getattr(calibration, "color_matrix1", None) is not None
+    signatures_match = getattr(calibration, "calibration_signatures_match", True)
+    for index in (1, 2, 3):
+        endpoint = getattr(calibration, f"matrix{index}", None)
+        temperature = getattr(calibration, f"cct{index}", None)
+        if endpoint is None or temperature is None:
+            continue
+        endpoint = np.asarray(endpoint, dtype=np.float64)
+        cm = getattr(calibration, f"color_matrix{index}", None)
+        cc = getattr(calibration, f"camera_calibration{index}", None)
+        pairs.append((
+            float(temperature), endpoint,
+            endpoint if cm is None else np.asarray(cm, dtype=np.float64),
+            np.eye(3) if cc is None or not signatures_match
+            else np.asarray(cc, dtype=np.float64),
+        ))
     if len(pairs) == 1:
         return pairs[0][1]
     pairs.sort(key=lambda p: 1.0 / p[0])
@@ -155,13 +164,21 @@ def interpolated_color_matrix(calibration: Any, cct: float) -> Any:
         return pairs[0][1]
     if inv >= 1.0 / pairs[-1][0]:
         return pairs[-1][1]
-    for (cct_a, m_a), (cct_b, m_b) in zip(pairs, pairs[1:]):
+    for (cct_a, m_a, cm_a, cc_a), (cct_b, m_b, cm_b, cc_b) in zip(pairs, pairs[1:]):
         inv_a, inv_b = 1.0 / cct_a, 1.0 / cct_b
         if inv_a <= inv <= inv_b:
             if abs(inv_b - inv_a) < 1e-12:
                 return m_a
             w = (inv_b - inv) / (inv_b - inv_a)
-            return w * m_a + (1.0 - w) * m_b
+            if not separate_components:
+                return w * m_a + (1.0 - w) * m_b
+            cm = w * cm_a + (1.0 - w) * cm_b
+            cc = w * cc_a + (1.0 - w) * cc_b
+            result = cc @ cm
+            ab = getattr(calibration, "analog_balance", None)
+            if ab is not None:
+                result = np.asarray(ab, dtype=np.float64)[:, None] * result
+            return result
     return pairs[-1][1]
 
 

@@ -47,6 +47,10 @@ class OpcodePlan:
     skipped: list[str] = field(default_factory=list)
     crop: tuple[float, float, float, float] | None = None  # y,x,h,w, active-area pixels
     white_levels: tuple[float, ...] = ()
+    # Stage-2 opcode coordinates are relative to the file's ActiveArea, which
+    # need not have the same origin/extent as LibRaw's rounded visible window.
+    active_area: tuple[int, int, int, int] | None = None
+    visible_origin: tuple[int, int] = (0, 0)
     # Actual LibRaw geometry, recorded after its DefaultScale/half-size step.
     # Small metadata only; never retain a second scene raster in the recipe.
     noise_geometry: dict = field(default_factory=dict)
@@ -67,9 +71,16 @@ def read_plan(path: Path) -> OpcodePlan:
     """
     plan = OpcodePlan()
     from .spatial_black import sensor_tags
-    tags = sensor_tags(path, {50717, 50718, 50719, 50720, 51008, 51009, 51022})
+    tags = sensor_tags(path, {50717, 50718, 50719, 50720, 50829, 51008, 51009, 51022})
     if not tags:
         return plan
+    height, width = int(tags[257][0]), int(tags[256][0])
+    area = tags.get(50829, [0, 0, height, width])
+    if (len(area) != 4 or any(not math.isfinite(v) or v != int(v) for v in area)
+            or min(area[:2]) < 0 or area[2] <= area[0] or area[3] <= area[1]
+            or area[2] > height or area[3] > width):
+        raise ValueError("invalid DNG ActiveArea")
+    plan.active_area = tuple(map(int, area))
     plan.white_levels = tuple(float(v) for v in tags.get(50717, ()))
     if any(not math.isfinite(v) or v <= 0 for v in plan.white_levels):
         raise ValueError("invalid DNG WhiteLevel")
@@ -108,9 +119,10 @@ def read_plan(path: Path) -> OpcodePlan:
             payload = blob[pos:pos + length]
             pos += length
             name = NAMES.get(oid, f"Opcode{oid}")
-            if previous_optional_warp2 and oid in (1,2):
-                continue  # DNG 1.6 fallback warp skip rule.
+            skip_fallback = previous_optional_warp2 and oid in (1,2)
             previous_optional_warp2 = False
+            if skip_fallback:
+                continue  # DNG 1.6 fallback warp skip rule.
             supported = version <= 0x01060000 and (
                 (stage == 1 and oid in (4,5,7,8,10,11,12,13)) or
                 (stage == 2 and oid in (7,8,9,10,11,12,13)) or
@@ -306,19 +318,22 @@ def crop_image(image: Any, crop: tuple | None, sensor_shape: tuple[int, int]) ->
     return image[y0:y1, x0:x1]
 
 
-def terminal_trim_crop(trims, shape, crop=None):
+def terminal_trim_crop(trims, shape, crop=None, *, image_origin=(0,0), image_shape=None):
     """Resolve terminal trims without losing their original image coordinates.
 
     A terminal stage-3 trim commutes with only the colour matrix and final
     DefaultCrop. Earlier trims cannot be folded here: they change the coordinate
     contract seen by later spatial operations or demosaic.
     """
-    t,l,b,r=0,0,int(shape[0]),int(shape[1])
+    ah,aw=shape if image_shape is None else image_shape
+    t,l,b,r=0,0,int(ah),int(aw)
     for op in trims:
         nt,nl,nb,nr=op.bounds
         if nt<t or nl<l or nb>b or nr>r:
             raise ValueError("DNG TrimBounds is outside the current image bounds")
         t,l,b,r=nt,nl,nb,nr
+    oy,ox=image_origin
+    t,l,b,r=max(0,t-oy),max(0,l-ox),min(shape[0],b-oy),min(shape[1],r-ox)
     if crop is not None:
         y,x,h,w=crop
         t,l,b,r=max(t,y),max(l,x),min(b,y+h),min(r,x+w)
