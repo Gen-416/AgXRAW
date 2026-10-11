@@ -11,6 +11,7 @@ from dngscan import priors
 from dngscan.analysis import sensor_prior_evidence
 from dngscan.noise_model import model_from_prior
 from tests.test_noise_model import frame
+from tests.test_measurement_domain import sample_domain_fixture
 
 
 def entry(name, shutter="mechanical"):
@@ -70,9 +71,17 @@ class PriorApplicabilityTests(unittest.TestCase):
             self.assertEqual(model.reason, reason)
 
     def test_sony_mechanical_components_and_electronic_selection_are_distinct(self):
+        # A pure matching fixture, not a claim of real Sony sensor acceptance:
+        # the historical PTC is usable only after independent unpacked-domain
+        # evidence establishes the actual LUT and coding scale.
+        domain = sample_domain_fixture()
+        domain["coding_spans_dn"] = [15871.]
+        electronic_capture = {"shutter": "electronic", "sample_domain": domain}
         with patch("dngscan.calibration.matching_prior", return_value=None):
             mechanical = priors.find_priors("SONY", "ILCE-7M5", shutter="mechanical", iso=100)
-            electronic = priors.find_priors("SONY", "ILCE-7M5", shutter="electronic", iso=100)
+            electronic = priors.find_priors("SONY", "ILCE-7M5", shutter="electronic", iso=100,
+                                           readout=electronic_capture)
+            blind_electronic = priors.find_priors("SONY", "ILCE-7M5", shutter="electronic", iso=100)
             unknown = priors.find_priors("SONY", "ILCE-7M5", iso=100)
         self.assertEqual(mechanical["mode_match"], "curated")
         self.assertEqual({record["shutter"] for record in mechanical["component_sources"].values()},
@@ -81,6 +90,14 @@ class PriorApplicabilityTests(unittest.TestCase):
         self.assertNotEqual(electronic["id"], mechanical["id"])
         self.assertEqual(electronic["shutter"], "electronic")
         self.assertAlmostEqual(priors.read_noise_e(electronic, 100), 8.80349828059152)
+        self.assertTrue(priors.prior_usability(electronic)[0])
+        self.assertEqual(electronic["measurement_domain_match"]["status"], "matched")
+        self.assertFalse(priors.prior_usability(blind_electronic)[0])
+        packaged_electronic = next(item for item in priors._jptc_entries()
+            if item.get("shutter") == "electronic" and "ILCE-7M5" in item["model_equals"])
+        blind_source = priors.with_readout(packaged_electronic, {"shutter": "electronic"})
+        self.assertEqual(priors.prior_usability(blind_source),
+                         (False, "file-sample-domain-unavailable"))
         self.assertFalse(priors.prior_usability(unknown)[0])
         for shutter in (None, "other"):
             evidence = sensor_prior_evidence("SONY", "ILCE-7M5", 100, nf=.001,

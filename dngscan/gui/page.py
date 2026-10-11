@@ -265,6 +265,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
     <div class="ctlFact" id="decodeTierFact" style="flex-basis:100%;margin-top:0"></div>
     <div class="ctlFact" id="decoderFact" style="flex-basis:100%;margin-top:0"></div>
     <div class="ctlFact" id="readoutFact" style="flex-basis:100%;margin-top:0"></div>
+    <div class="ctlFact" id="captureFactsFact" style="flex-basis:100%;margin-top:0"></div>
     <div class="ctlFact" id="processingSupportFact" style="flex-basis:100%;margin-top:0"></div>
     <div style="flex:1;min-width:170px">
       <label>白平衡</label>
@@ -302,6 +303,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
     <div style="flex-basis:100%;min-width:0">
       <div class="ctlFact" id="noiseModelFact"></div>
       <div class="ctlFact" id="calibrationMatchFact"></div>
+      <details><summary>标定能力与实际采用</summary><pre id="calibrationCapabilityEvidence" style="white-space:pre-wrap"></pre></details>
     </div>
   </div>
 </div>
@@ -1087,7 +1089,8 @@ function calibrationReason(reason){
   if(noiseStates[reason])return noiseStates[reason];
   const known={usable:"匹配可用",inactive:"已停用","readout-mode-unavailable":"测量未声明快门模式","file-readout-mode-unavailable":"RAW 未记录快门模式","readout-mode-mismatch":"快门模式不匹配","iso-out-of-domain-or-gain-jump":"ISO 超出测量范围或跨越增益跳变","no-absolute-gain":"缺少绝对增益标定","no-electron-read-noise":"缺少可用电子读噪标定","quality-high-residual":"测量拟合残差过高","quality-unconverged":"测量拟合未收敛","estimator-spread":"增益估计分歧过大","invalid-record":"标定记录损坏","sub-readout-mode-not-verified":"子读出条件尚未验证","declared-readout-constraints-matched":"已声明的逐文件读出条件匹配","sub-readout-not-declared":"未声明子读出条件，保留未验证状态","lossy-raw-storage-not-supported-by-external-prior":"有损 RAW 存储不适用外部噪声标定","file-storage-lossless-unverified":"无法确认 RAW 存储是否无损","measurement-raw-geometry-incomplete":"测量未记录完整 RAW 尺寸","measurement-raw-geometry-unavailable":"测量缺少 RAW 尺寸","measurement-geometry-domain-unavailable":"测量尺寸所属的数据域不明确","measurement-compression-declaration-unverified":"测量的压缩声明无法验证"};
   if(known[reason])return known[reason];
-  const fields={"raw-geometry":"RAW 尺寸","active-geometry":"有效感光区尺寸","default-crop":"默认裁切","libraw-raw-geometry":"完整 RAW 马赛克尺寸","sensor-binning":"像素合并","sample-bits":"存储位深","sensor-bits":"传感器位深","readout-id":"读出标识","capture-kind":"拍摄类型","body-serial":"机身序列号","firmware":"固件版本","storage-lossless":"无损存储属性"};
+  const fields={"raw-geometry":"RAW 尺寸","active-geometry":"有效感光区尺寸","default-crop":"默认裁切","libraw-raw-geometry":"完整 RAW 马赛克尺寸","sensor-binning":"像素合并","sample-bits":"存储位深","sensor-bits":"传感器位深","readout-id":"读出标识","capture-kind":"拍摄类型","body-serial":"机身序列号","firmware":"固件版本","storage-lossless":"无损存储属性","exposure-seconds":"曝光时间","aperture-fnumber":"光圈","focal-length-mm":"焦距","lens-identity":"镜头身份"};
+  if(reason==="single-point-domain-reimport-required")return "旧单点标定缺少输入单位记录，请从原 CSV 重新导入";
   const match=/^file-(.+)-(unavailable|mismatch)$/.exec(reason||"");
   if(match&&fields[match[1]])return fields[match[1]]+(match[2]==="mismatch"?"与标定不匹配":"未记录，无法核对标定");
   return reason||"";
@@ -1391,8 +1394,9 @@ function renderDetectedParams(d){
   // is in view while the hand is on the slider — never a scroll away.
   DETECTED_READY=!!(d&&typeof d==="object");
   if(!DETECTED_READY){
-    ["#noiseModelFact","#processingSupportFact","#readoutFact"].forEach(s=>{$(s).title="";});
-    ["#decoderFact","#readoutFact","#processingSupportFact","#wbFact","#clipFact","#evFact","#toneFact","#hdrSceneFact","#noiseModelFact","#calibrationMatchFact"].forEach(s=>setFact(s,""));
+    ["#noiseModelFact","#processingSupportFact","#readoutFact","#captureFactsFact"].forEach(s=>{$(s).title="";});
+    ["#decoderFact","#readoutFact","#captureFactsFact","#processingSupportFact","#wbFact","#clipFact","#evFact","#toneFact","#hdrSceneFact","#noiseModelFact","#calibrationMatchFact"].forEach(s=>setFact(s,""));
+    $("#calibrationCapabilityEvidence").textContent="";
     renderChromaNrCapability(null);
     HDR_SCENE_FACTS=null;
     return;
@@ -1416,6 +1420,18 @@ function renderDetectedParams(d){
   if(capture.storage_lossless===false)readout.push("有损 RAW 存储");
   setFact("#readoutFact",readout.join(" · "));
   $("#readoutFact").title="文件记录的 RAW 条件；存储位深不代表传感器 ADC 位深。";
+  const facts=(support.capture_facts||{}).fields||{};
+  const factValue=name=>facts[name]&&facts[name].status==="verified"?facts[name].value:null;
+  const captureText=[];
+  const seconds=factValue("exposure_seconds"),aperture=factValue("aperture_fnumber"),focal=factValue("focal_length_mm"),lens=factValue("lens_model");
+  if(Number.isFinite(seconds)&&seconds>0)captureText.push(seconds<1?"1/"+(1/seconds).toLocaleString(undefined,{maximumFractionDigits:2})+" 秒":seconds.toLocaleString(undefined,{maximumFractionDigits:4})+" 秒");
+  if(Number.isFinite(aperture))captureText.push("f/"+aperture.toLocaleString(undefined,{maximumFractionDigits:2}));
+  if(Number.isFinite(focal))captureText.push(focal.toLocaleString(undefined,{maximumFractionDigits:2})+" mm");
+  if(lens)captureText.push(lens);
+  const factNames={exposure_seconds:"曝光时间",aperture_fnumber:"光圈",focal_length_mm:"焦距",lens_model:"镜头型号"};
+  const factWarnings=Object.entries(factNames).filter(([name])=>facts[name]&&["invalid","conflict"].includes(facts[name].status)).map(([,label])=>label+"信息无效或冲突");
+  setFact("#captureFactsFact",captureText.concat(factWarnings).join(" · "),factWarnings.length>0);
+  $("#captureFactsFact").title="来自当前文件的拍摄信息；缺失项保持未知。机身和镜头序列号不会在这里显示。";
   setFact("#wbFact",d.wb_degradation?"⚠ 白平衡："+d.wb_degradation:"",true);
   const noise=d.noise_model||{};
   const noiseStatus=noise.status==="valid"?"可用":noise.status==="unresolved"?"读噪未分辨":noise.status==="rejected"?"不适用":"未提供 · 使用通用成像";
@@ -1444,6 +1460,19 @@ function renderDetectedParams(d){
   });
   setFact("#calibrationMatchFact",calibrationRows.join("\\n"),(d.calibrations||[]).some(profile=>profile.analysis_status==="rejected"||(profile.match_status!=="matched"&&profile.reason!=="inactive")));
   $("#calibrationMatchFact").title="导入、条件匹配和分析采用分别报告。可选色度清理是否实际应用，见当前预览的色度清理状态；统计标定不代表已执行个体黑场或平场像素校正。";
+  const capabilityNames={ptc_gain:"PTC 增益",relative_gain:"ISO 相对增益",absolute_gain:"绝对增益",read_noise_dn:"DN 读噪",read_noise_e:"电子读噪",stored_dark_variance:"存储 RAW 暗场方差",spectrum_h:"水平频谱",spectrum_v:"垂直频谱"};
+  const capabilityLines=[];
+  for(const profile of d.calibrations||[]){
+    capabilityLines.push(profile.label||profile.id||"用户实测");
+    for(const [name,state] of Object.entries(profile.capability_states||{})){
+      const stage=(label,value)=>label+"："+(value===true?"是":value===false?"否":"未评估");
+      capabilityLines.push((capabilityNames[name]||name)+" · "+[stage("已发现",state.found),stage("测量合格",state.qualified),stage("条件匹配",state.matched),stage("当前 ISO 有效",state.valid),stage("可供处理采用",state.applicable),stage("像素校正已应用",state.applied)].join(" · "));
+      if((state.reasons||[]).length)capabilityLines.push("  "+state.reasons.map(calibrationReason).join("；"));
+    }
+    const chroma=profile.chroma_application||{};
+    capabilityLines.push("附加色度清理："+(chroma.status==="applied"?"已应用":chroma.pipeline_status==="not-evaluated"||!chroma.status?"等待当前渲染验证":"未应用")+(chroma.reason?"（"+calibrationReason(chroma.reason)+"）":""));
+  }
+  $("#calibrationCapabilityEvidence").textContent=capabilityLines.length?capabilityLines.join("\\n"):"没有用户实测能力记录；基本成像可继续使用文件信息与可用回退。";
   setFact("#clipFact",d.raw_clip_union_pct!==null?"实测 RAW 过曝 "+(+d.raw_clip_union_pct).toFixed(2)+"%（≥1 通道）":"");
   const evBits=[];
   if(d.body_median_ev!==null)evBits.push("实测主体中位 "+ev(d.body_median_ev));

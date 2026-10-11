@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .constants import DEFAULT_HDR_PEAK_NITS, HDR_REFERENCE_WHITE_NITS
+from .capture_facts import CaptureFacts
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class RawEvidence:
     xyz_to_cam: Any | None
     shot_shutter: str | None = None
     capture_readout: dict[str, Any] | None = None
+    capture_facts: CaptureFacts | None = None
     spatial_black: Any | None = None
     sample_kind: str = "cfa"  # cfa or linear-camera-rgb; never sensor SNR for the latter
     provider: str = "libraw"
@@ -86,6 +88,7 @@ class RawBundle:
     shot_iso: int | None = None
     shot_shutter: str | None = None
     capture_readout: dict[str, Any] | None = None
+    capture_facts: CaptureFacts | None = None
     # DNG BaselineExposure as written by the camera, or None when the file omits it. This
     # is file-authored baseline rendering compensation, not shutter/aperture/ISO or an
     # auto-gray target. Both decoders honour it before dngscan's explicit EV adjustment.

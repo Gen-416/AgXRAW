@@ -216,6 +216,90 @@ def _rss_bytes():
     return int(peak if sys.platform == "darwin" else peak*1024)
 
 
+def delivery_paths(path, case, folder, *, source_hash=None):
+    """Stable private artifact names; input identities remain separately protected."""
+    prefix = (source_hash or digest(path))[:12]+"-"+case["id"].replace("/","-")
+    root = Path(folder)
+    return {mode: root/(prefix+"-"+mode+".heic") for mode in ("sdr","hdr")}
+
+
+def verify_deliveries(path, bundle, analysis, plan, case, *, sdr_master=None,
+                      protected_sources=None):
+    """Use production exporters/gates; compare finished files to their own masters."""
+    from dngscan.export import export_srgb_jpeg, export_ultrahdr_jpeg
+    from dngscan.delivery import resolve_delivery_profile
+    from dngscan.color import output_icc_profile_bytes
+    from dngscan import gainmap, heif_gainmap
+    from PIL import Image
+    import Quartz
+    from Foundation import NSURL
+    config = case['delivery']
+    paths = delivery_paths(path,case,config['folder'])
+    protection = ProtectedSources(protected_sources,path).check(*paths.values())
+    results = {}
+    profile = resolve_delivery_profile('share',quality=config['quality'],chroma=config['chroma'],container='heic')
+    def public_info(value):
+        if isinstance(value,dict):
+            return {key:public_info(item) for key,item in value.items() if key not in ('output_path','_decoded_rgb')}
+        if isinstance(value,(list,tuple)):return [public_info(item) for item in value]
+        if isinstance(value,np.generic):return value.item()
+        return value
+    for mode,output in paths.items():
+        start=time.monotonic()
+        try:
+            if output.exists():raise FileExistsError('refusing to overwrite an existing validation delivery')
+            if mode=='sdr':
+                info=export_srgb_jpeg(path,output,config['quality'],bundle,analysis,tone_plan=plan,
+                    output_gamut='p3',subsampling={'444':0,'422':1,'420':2}[config['chroma']],delivery=profile,
+                    protected_sources=protection)
+            else:
+                info=export_ultrahdr_jpeg(path,output,config['quality'],bundle,analysis,tone_plan=plan,
+                    delivery=profile,protected_sources=protection)
+            inspection=gainmap.inspect_gainmap_file(output)
+            base=gainmap.read_primary_rgb_float(output,'p3')
+            icc=heif_gainmap.primary_icc(output)
+            source=Quartz.CGImageSourceCreateWithURL(NSURL.fileURLWithPath_(str(output)),None)
+            properties=Quartz.CGImageSourceCopyPropertiesAtIndex(source,0,None) or {}
+            orientation=int(properties.get(Quartz.kCGImagePropertyOrientation,1))
+            check={'shape':list(base.shape),'finite':bool(np.isfinite(base).all()),
+                'bit_depth':inspection['bit_depth'],'icc_exact':icc==output_icc_profile_bytes('p3'),
+                'effective_orientation':orientation,'container_uti':str(Quartz.CGImageSourceGetType(source))}
+            if (not check['finite'] or base.shape[:2]!=bundle.scene_rec2020_render.shape[:2]
+                    or inspection['bit_depth']!=10 or not check['icc_exact'] or orientation!=1
+                    or check['container_uti']!='public.heic'):
+                raise RuntimeError('independent base readback invariant failed')
+            if mode=='hdr':
+                expanded=gainmap._read_expanded_hdr_rgba_half(output)
+                check.update(expanded_shape=list(expanded.shape),expanded_finite=bool(np.isfinite(expanded).all()),
+                    expanded_min=float(expanded[...,:3].min()),expanded_max=float(expanded[...,:3].max()))
+                if (not inspection['has_iso_gainmap'] or inspection['headroom']<=1 or not check['expanded_finite']
+                        or expanded.shape[:2]!=base.shape[:2]):raise RuntimeError('independent HDR readback invariant failed')
+                del expanded
+            elif inspection['has_iso_gainmap'] or inspection['headroom']>1.001:
+                raise RuntimeError('SDR delivery unexpectedly declares HDR')
+            crops=[]
+            if mode=='sdr' and config.get('crops') and sdr_master is not None:
+                for region,(y0,x0,y1,x1) in region_bounds(sdr_master).items():
+                    for label,array in (('master',sdr_master),('decoded',base)):
+                        crop=output.with_name(output.stem+'-'+region+'-'+label+'.png')
+                        protection.check(crop)
+                        pixels=np.rint(np.clip(array[y0:y1,x0:x1],0,1)*255).astype(np.uint8)
+                        with DeliveryTransaction(crop,protected_sources=protection) as transaction:
+                            Image.fromarray(pixels).save(transaction.path,format='PNG',icc_profile=icc)
+                            transaction.commit()
+                        crops.append({'file':crop.name,'sha256':digest(crop),'roi_yxxy':[y0,x0,y1,x1],
+                            'kind':label,'scope':'8-bit inspection crop, not high-precision validation reference'})
+            results[mode]={'status':'passed','file':output.name,'file_sha256':digest(output),
+                'file_size_bytes':output.stat().st_size,'seconds':time.monotonic()-start,
+                'profile':dataclasses.asdict(profile),'production':public_info(info),
+                'inspection':inspection,'independent_readback':check,'inspection_crops':crops}
+            del base
+        except Exception as exc:
+            results[mode]={'status':'failed','seconds':time.monotonic()-start,
+                'reason':type(exc).__name__,'error':str(exc)}
+    return results
+
+
 def _preflight(path, case):
     if case["decoder"] == "libraw": return {"status": "attempt", "versions_offered": []}
     if sys.platform != "darwin" or not coreimage_decode.available():
@@ -236,7 +320,7 @@ def _preflight(path, case):
     return {"status": "attempt", "versions_offered": list(offered)}
 
 
-def run_case(path, case):
+def run_case(path, case, *, protected_sources=None):
     started = time.monotonic()
     row = {"case": case, "file": path.name, "sha256": digest(path),
         "working_implementation_sha256": _implementation_digest(),
@@ -322,6 +406,11 @@ def run_case(path, case):
             "scene_transform": "none", "look": "none", "cfa_gated_colour": "not-requested",
             "decoder_controls": (recipe or {}).get("controls"),
             "personal_pixel_correction": "not-applied"})
+    if case.get('delivery') and row['status']=='passed':
+        row['deliveries']=verify_deliveries(path,bundle,analysis,plan,case,sdr_master=sdr,
+            protected_sources=protected_sources)
+        if any(item['status']=='failed' for item in row['deliveries'].values()):
+            row.update(status='failed',reason='production-delivery-failed')
     if not all(row[name]["finite_fraction"] == 1. for name in ("decoder_output_scene", "normalized_scene", "output_scene", "sdr", "hdr")):
         row.update(status="failed", reason="non-finite-output")
     row["source_sha256_after"] = digest(path)
@@ -354,14 +443,18 @@ def main(argv=None):
                         help="only resized-full area preview maximum edge; Apple native preview independently targets 1280")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--timeout", type=float, default=600.)
+    parser.add_argument('--deliver-to',type=Path,help='optional private production SDR/HDR HEIF outputs')
+    parser.add_argument('--delivery-quality',type=int,default=99)
+    parser.add_argument('--delivery-chroma',choices=('420','422','444'),default='420')
+    parser.add_argument('--inspection-crops',action='store_true',help='private 8-bit master/readback crops; requires --deliver-to')
     parser.add_argument("--worker-config", help=argparse.SUPPRESS)
     parser.add_argument("--worker-result", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if args.worker_config:
         request = json.loads(args.worker_config)
-        protection = ProtectedSources(request["path"]).check(args.worker_result)
+        protection = ProtectedSources(request.get('protected_sources'),request["path"]).check(args.worker_result)
         started = time.monotonic()
-        try: result = run_case(Path(request["path"]), request["case"])
+        try: result = run_case(Path(request["path"]), request["case"],protected_sources=protection)
         except Exception as exc:
             result = {"case": request["case"], "file": Path(request["path"]).name,
                 "status": "failed", "error": f"{type(exc).__name__}: {exc}",
@@ -372,10 +465,19 @@ def main(argv=None):
     protection = ProtectedSources(args.files).check(args.out)
     if args.preview_max_edge < 8 or not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("preview edge must be >=8 and timeout finite/positive")
+    if not 1<=args.delivery_quality<=100:parser.error('delivery quality must be 1..100')
+    if args.inspection_crops and args.deliver_to is None:parser.error('--inspection-crops requires --deliver-to')
     if args.out.exists(): parser.error("refusing to overwrite an existing report")
     for path in args.files:
         if not path.is_file(): parser.error(f"not a file: {path}")
     cases = build_cases(args.matrix, args.sizes, args.scales, args.preview_max_edge)
+    if args.deliver_to:
+        if sys.platform!='darwin':parser.error('production Apple HDR delivery validation requires macOS')
+        for case in cases:
+            case['delivery']={'folder':str(args.deliver_to.resolve()),'quality':args.delivery_quality,
+                'chroma':args.delivery_chroma,'crops':bool(args.inspection_crops)}
+        for path in args.files:
+            for case in cases:protection.check(*delivery_paths(path,case,args.deliver_to).values())
     report = {"schema": "agxraw-coreimage-raw-matrix-1", "created_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "working_changes": True, "implementation": implementation_identity(),
@@ -388,7 +490,8 @@ def main(argv=None):
         "calibration_fingerprint": calibration_fingerprint(), "public_library": library_status(),
         "comparison_scope": "actual decoder/configuration execution and finite SDR/HDR; no independent decoder accuracy or noise qualification",
         "missing_coverage": ["Nikon HE/HE* actual files", "independent body dark/flat/PTC repeated captures",
-            "output residual/PSD calibration of adaptive Apple decoding", "full Apple gain-map container encoding matrix"],
+            "output residual/PSD calibration of adaptive Apple decoding",
+            "held-out weak-texture quality references and codec/readout modes beyond these actual inputs"],
         "rss_scope": "fresh worker process peak RSS includes imports/decode/analysis/render; no subtraction",
         "cases": cases, "samples": []}
     with tempfile.TemporaryDirectory(prefix="agxraw-coreimage-matrix-") as folder:
@@ -397,7 +500,8 @@ def main(argv=None):
             for index, case in enumerate(cases):
                 result_path = Path(folder)/f"result-{index}.json"
                 command = [sys.executable, str(Path(__file__).resolve()), "--worker-config",
-                    json.dumps({"path": str(path.resolve()), "case": case}), "--worker-result", str(result_path)]
+                    json.dumps({"path": str(path.resolve()), "case": case,
+                        "protected_sources":[str(item.resolve()) for item in args.files]}), "--worker-result", str(result_path)]
                 print(f"Checking {path.name}: {case['id']}", flush=True)
                 started = time.monotonic()
                 try:
