@@ -554,7 +554,9 @@ def _prepare(entries):
             from .calibration import _validated_prior
             prior = _validated_prior(payload)
             acquisition = prior.get("measurement_acquisition") or {}
-            qualification = acquisition.get("capability_qualification", {})
+            from .calibration_capabilities import qualification as product_qualification
+            qualification = {name: product_qualification(prior, name)
+                             for name in acquisition.get("capability_qualification", {})}
             group["measurement_acquisition"] = acquisition
             group["capability_qualification"] = qualification
             group["runtime_contract"] = {"shutter": prior.get("shutter"),

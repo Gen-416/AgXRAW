@@ -298,11 +298,10 @@ def compose_capabilities(base, candidates, iso):
                        for name in ("read_noise_dn", "stored_dark_variance", "spectrum_h", "spectrum_v")}
         if any(permissions.values()):
             candidate = copy.deepcopy(candidate)
-            if candidate.get("measurement_acquisition") is not None:
-                matches = candidate.setdefault("capability_matches", {})
-                for name, permitted in permissions.items():
-                    if not permitted:
-                        matches[name] = {"status": "mismatch", "reason": "cross-source-physical-domain-mismatch"}
+            matches = candidate.setdefault("capability_matches", {})
+            for name, permitted in permissions.items():
+                if not permitted:
+                    matches[name] = {"status": "mismatch", "reason": "cross-source-physical-domain-mismatch"}
             compatible.append(candidate)
     if compatible:
         result = copy.deepcopy(base)
@@ -356,25 +355,34 @@ def compose_capabilities(base, candidates, iso):
                 "iso": iso, "status": stored_status, "variance_dn2": stored}
         sources["read_noise"] = candidate.get("source")
         result["source"] = "Compatible capability composition"
-        if result.get("measurement_acquisition") is not None:
-            composed = result.setdefault("composed_capabilities", {})
-            dark_view = capability_prior(candidate, "read_noise_dn")
-            dark_q = qualification(candidate, "read_noise_dn")
-            gain_q = qualification(base, gain_product)
-            for name in ("read_noise_dn", "read_noise_e"):
-                q = copy.deepcopy(dark_q)
-                if name == "read_noise_e":
-                    q["source_ids"] = sorted(set(q["source_ids"]) | set((gain_q or {}).get("source_ids", [])))
-                composed[name] = {"qualification": q, "supplier": copy.deepcopy(dark_view),
-                    "additional_dependencies": [copy.deepcopy(gain_view)] if name == "read_noise_e" else [],
-                    "iso": iso, "source": candidate.get("source")}
-                result.setdefault("capability_matches", {})[name] = {"status": "matched", "reason": "compatible-capability-suppliers-matched"}
-            if stored_supplier is not None:
-                composed["stored_dark_variance"] = {
-                    "qualification": copy.deepcopy(qualification(stored_supplier, "stored_dark_variance")),
-                    "supplier": copy.deepcopy(capability_prior(stored_supplier, "stored_dark_variance")),
-                    "iso": iso, "source": stored_supplier.get("source")}
-                result["capability_matches"]["stored_dark_variance"] = {"status": "matched", "reason": "compatible-capability-suppliers-matched"}
+        # Every composition retains its suppliers, including a legacy base.
+        # None means an explicit legacy contract, not a qualified CSV record.
+        # Electron RN depends on both suppliers: one legacy dependency keeps
+        # that distinction even when the other has a measured qualification.
+        composed = result.setdefault("composed_capabilities", {})
+        dark_view = capability_prior(candidate, "read_noise_dn")
+        dark_q = qualification(candidate, "read_noise_dn")
+        gain_q = qualification(base, gain_product)
+        for name in ("read_noise_dn", "read_noise_e"):
+            q = copy.deepcopy(dark_q)
+            if name == "read_noise_e":
+                if q is not None and gain_q is not None:
+                    q["source_ids"] = sorted(set(q["source_ids"]) | set(gain_q.get("source_ids", [])))
+                else:
+                    q = None
+            composed[name] = {"qualification": q, "supplier": copy.deepcopy(dark_view),
+                "qualification_semantics": "legacy-explicit-contract" if q is None else "measured-dependency-qualification",
+                "additional_dependencies": [copy.deepcopy(gain_view)] if name == "read_noise_e" else [],
+                "iso": iso, "source": candidate.get("source")}
+            result.setdefault("capability_matches", {})[name] = {"status": "matched", "reason": "compatible-capability-suppliers-matched"}
+        if stored_supplier is not None:
+            stored_q = qualification(stored_supplier, "stored_dark_variance")
+            composed["stored_dark_variance"] = {
+                "qualification": copy.deepcopy(stored_q),
+                "qualification_semantics": "legacy-explicit-contract" if stored_q is None else "measured-dependency-qualification",
+                "supplier": copy.deepcopy(capability_prior(stored_supplier, "stored_dark_variance")),
+                "iso": iso, "source": stored_supplier.get("source")}
+            result["capability_matches"]["stored_dark_variance"] = {"status": "matched", "reason": "compatible-capability-suppliers-matched"}
         result["capability_sources"] = sources
         result["capability_measurements"] = {
             "gain": copy.deepcopy(base.get("measurement_acquisition")),
