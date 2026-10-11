@@ -82,6 +82,8 @@ class PreviewPlanCacheTests(unittest.TestCase):
     def test_base_plan_is_reused_across_interactive_adjustments(self) -> None:
         bundle = MagicMock()
         bundle.lens_filter = "none"
+        bundle.scene_decoder_recipe = {}
+        bundle.scene_window_calibration = {}
         entry = PreviewEntry(bundle=bundle, analysis=MagicMock())
         base_plan = object()
         adjusted_plan = object()
@@ -133,6 +135,8 @@ class PreviewPlanCacheTests(unittest.TestCase):
         bundle.scene_scale = 1.0
         bundle.scene_decoder = "libraw"
         bundle.scene_decoder_runtime = "test"
+        bundle.scene_decoder_recipe = {}
+        bundle.scene_window_calibration = {}
         bundle.scene_rec2020_render = dg.np.zeros((12, 18, 3), dtype=dg.np.uint16)
         # The realtime histograms run the real reliable-sample selection on this
         # bundle; give it honest scalar decode facts instead of MagicMock attrs.

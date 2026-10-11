@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import copy
 import json
 import math
 from pathlib import Path
@@ -84,7 +85,22 @@ def processing_evidence_summary(
         ),
         "chroma_nr_status": getattr(bundle, "chroma_nr_status", "disabled"),
         "chroma_nr_reason": getattr(bundle, "chroma_nr_reason", None),
+        "decoder_recipe": copy.deepcopy(getattr(bundle, "scene_decoder_recipe", {}) or {}),
+        "decoder_window_calibration": copy.deepcopy(getattr(bundle, "scene_window_calibration", {}) or {}),
     }
+
+
+def _decoder_recipe_lines(bundle: RawBundle) -> list[str]:
+    if getattr(bundle, "scene_decoder", None) != "coreimage":
+        return []
+    recipe = getattr(bundle, "scene_decoder_recipe", {}) or {}
+    lines = ["Apple 配方参数状态: " + str((recipe.get("linear_access") or {}).get("status", "unrecorded"))]
+    if str(getattr(bundle, "scene_decoder_version", "")).split(".", 1)[0] == "9":
+        lines.append("RAW9 内建联合去马赛克／降噪仍有效；旧降噪参数归零不表示关闭内建处理。")
+    window = getattr(bundle, "scene_window_calibration", {}) or {}
+    lines.append("材质窗口标定: " + ("精确匹配" if window.get("status") == "qualified"
+                                  else "未测量，保持未校正窗口"))
+    return lines
 
 
 
@@ -336,6 +352,7 @@ def summary_lines(bundle: RawBundle, analysis: Analysis, scene: Any | None = Non
         (f"可见传感器: {bundle.raw_image.shape[1]} x {bundle.raw_image.shape[0]}"
          if bundle.raw_image is not None else "可见传感器: 不可用（解码场景可用）"),
         f"实际解码: {bundle.scene_decoder} {bundle.scene_decoder_version or ''}；传感器证据: {bundle.evidence_provider}",
+        *_decoder_recipe_lines(bundle),
         f"HDR 证据来源: {processing['hdr_reliability_source']}",
         f"解码损失传播支撑: {'未认证（限制证据资格，不代表整帧剪切）' if bundle.scene_loss_support_untrusted else '无全局未认证标记'}",
         *([f"解码回退: {bundle.scene_decoder_fallback}"] if bundle.scene_decoder_fallback else []),
@@ -751,6 +768,8 @@ def csv_row(
         "scene_decoder": getattr(bundle, "scene_decoder", "libraw") or "libraw",
         "scene_decoder_version": getattr(bundle, "scene_decoder_version", None) or "",
         "scene_decoder_runtime": getattr(bundle, "scene_decoder_runtime", None) or "",
+        "scene_decoder_recipe": json.dumps(processing["decoder_recipe"], sort_keys=True, ensure_ascii=False),
+        "scene_window_calibration": json.dumps(processing["decoder_window_calibration"], sort_keys=True, ensure_ascii=False),
         "evidence_provider": bundle.evidence_provider,
         "evidence_error": bundle.evidence_error or "",
         "scene_reliability_source": processing["hdr_reliability_source"],
@@ -844,9 +863,18 @@ def csv_row(
     return row
 
 
-def write_csv(path: Path, row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
-        writer.writeheader()
-        writer.writerow(row)
+def write_csv(path: Path, row: dict[str, Any], *, protected_sources=None) -> None:
+    """Write a report atomically; csv_row's file field identifies its RAW input.
+
+    Generic rows without that field require explicit protected_sources when
+    their caller needs to preserve input files.
+    """
+    from .protected_output import ProtectedSources
+    from .delivery_transaction import DeliveryTransaction
+    protection = ProtectedSources(protected_sources, row.get("file")).check(path)
+    with DeliveryTransaction(path, protected_sources=protection) as transaction:
+        with transaction.path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
+            writer.writeheader()
+            writer.writerow(row)
+        transaction.commit()

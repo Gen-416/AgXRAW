@@ -18,6 +18,9 @@
 | 验证原生 RAW 与 Rust/NumPy 成像 | [validate_native_raw.py](validate_native_raw.py) | 样本 hash、codec／读出、逐相位和局部区域指标；不冒充独立解码器准确度 |
 | 检查 RAW 损坏／截断的明确失败行为 | [validate_raw_failures.py](validate_raw_failures.py) | 仅修改临时副本，记录正常解码控制、损坏类型、原件 hash、失败状态；不输出照片 |
 | 复现近黑、固定偏置、二维色度与重复量化研究 | [validate_sensor_precision.py](validate_sensor_precision.py) | 无需个人文件的合成矩阵，可选真实 LibRaw 合成 DNG 到 SDR/HDR |
+| 预检、导入或管理实测噪声数据 | `python -m dngscan calibration`、[实测标定说明](../docs/NOISE_CALIBRATION.zh-CN.md) | 官方 ZIP／目录内容识别与分组、本机 profile、逐文件适用性诊断 |
+| 比较克制色度清理的噪声收益与纹理偏差 | [validate_chroma_policy.py](validate_chroma_policy.py) | 独立重复的时域方差、二维色度协方差／频谱和信号偏差；不作为真实相机验收 |
+| 研究个人暗场／平场像素产品 | [build_personal_calibration.py](build_personal_calibration.py) | 明确输入合同、独立 held-out 检查；实验产品尚无生产应用 hook |
 | 更新测试基准、标定或数据来源 | [数据与资产维护](#数据与资产维护) | 明确写入的资产、清单或测试夹具 |
 
 大图报告和 RAW 派生图片放在仓库外。以下示例共用一个新的输出目录；长期保留结果时换成自己的目录：
@@ -151,6 +154,9 @@ python tools/hdr_ab.py /path/to/photo.DNG --out "$AGXRAW_RUN_DIR/hdr"
 | [pipeline_impact.py](pipeline_impact.py) | 一张 RAW 上的单项处理影响矩阵；包括 native / NumPy、解码、曝光与颜色几何 |
 | [scan_drt_geometry.py](scan_drt_geometry.py) | 合成 EV × 色相 × 色度的 DRT 扫描，输出 `--csv` |
 | [validate_ideal_image.py](validate_ideal_image.py) | `python tools/validate_ideal_image.py /path/to/ideal-image-pair`；有已知黑白电平、增益、噪声的合成 DNG 对照 |
+| [validate_calibrated_pipeline.py](validate_calibrated_pipeline.py) | 固定曝光与成像计划的真实 RAW 三组 SDR/HDR 对照；记录能力、应用／跳过及局部差异，未具备合格个人暗平场时明确记为未应用 |
+| [validate_chroma_policy.py](validate_chroma_policy.py) | 合成重复组中分别测时域噪声、二维色度协方差／频带功率、幅度与颜色偏差；研究候选使用独立训练／验证重复，不能从单图推断真实噪声改善 |
+| [validate_spectral_color.py](validate_spectral_color.py) | 离线镜头／SSF 实验及色彩协方差；默认用实测相对镜头曲线与合成相机、光源、材质，不安装生产 profile，不证明 fp 色彩改善 |
 
 ## 数据与资产维护
 
@@ -166,14 +172,37 @@ python tools/hdr_ab.py /path/to/photo.DNG --out "$AGXRAW_RUN_DIR/hdr"
 | [regen_sdr_freeze.py](regen_sdr_freeze.py) | 重写 SDR 冻结；没有 `--check`，核验用 `python -m unittest tests.test_sdr_freeze` |
 | [regen_golden.py](regen_golden.py) | 用 NumPy 参考路径重写 golden；可从 DNG 生成裁切夹具 |
 
+### 实测标定与离线公共库
+
+用户导入与 GUI 共用同一内容识别入口，官方长文件名不必改名。先预检并检查未使用、歧义和拒绝原因，再按返回的分组 ID 导入：
+
+```sh
+python -m dngscan calibration inspect /path/to/dark.zip /path/to/gain.zip /path/to/ptc.zip
+python -m dngscan calibration import /path/to/dark.zip /path/to/gain.zip /path/to/ptc.zip --group GROUP_ID
+python -m dngscan calibration list
+python -m dngscan calibration library
+python -m dngscan calibration library-install /path/to/reviewed-library.json
+python -m dngscan calibration library-select packaged
+```
+
+ZIP 按展开后的大小和项数限制读取，拒绝危险路径、链接和冲突项；目录、ZIP 和多 ZIP 使用同一 manifest。不同机身、固件、模式、几何或 DN 域分别成组，独立重复测量不任意平均。已导入／启用、当前 RAW 匹配、实际应用是不同状态。当前批次声明只能补充未知快门／读出标识／拍摄类型（CLI `--capture-shutter`、`--capture-readout-id`、`--capture-kind`），不能覆盖文件中的机身序列号、固件、压缩或尺寸事实；缺少文件依据仍为未验证。
+
+随包的 13 组 Collect 登记是离线来源目录，不是 13 个新增合格数值模型；目录自身的新增 profile 列表为空。编译器保留跨组依赖、显式缩放及退役声明，但不逐组重拟合 CSV，也不自动执行借用增益等规则。合格数值 profile 须经单独审核；退役暗场不得恢复为正常噪声来源。部分能力组合仍受精确读出、DN、当前 ISO、增益跳变和读噪未分辨点约束，保留各自来源、已存 RAW 总方差和独立频谱限制。
+
+色度清理默认 `off`；`conservative` 的 0.10 是显式选择，`custom` 保留数值强度。当前只有粗色斑核，细粒彩噪不可用，导入不自动开启清理。个人像素产品也未接入生产解码；目前缺少自己的真实暗场、平场和 PTC 重复组验收，平场完整误差预算仍为 `incomplete`。完整格式、限制和命令见[实测标定说明](../docs/NOISE_CALIBRATION.zh-CN.md)。
+
 ### 可复现构建与导入
 
 | 工具 | 输入 → 输出 |
 |---|---|
 | [calibrate_skin_matrix.py](calibrate_skin_matrix.py) / [fit_skin_window.py](fit_skin_window.py) | 光谱 / 真实照片 → 前馈矩阵 / 窗口；窗口拟合默认只打印，`--write` 才写回 |
 | [regenerate_material_presets.py](regenerate_material_presets.py) | 各预设记录的目标 SSF → 材质前馈预设；可用 `--out` 指定新文件 |
-| [calibrate_raw9_anchors.py](calibrate_raw9_anchors.py) | 声明的本地相机样张集 → 解码器窗口锚点；会更新 `decoder_anchor_transport.json` |
-| [import_jptc.py](import_jptc.py) / [import_jptc_collect.py](import_jptc_collect.py) | 一手 JPTC 测量 → 传感器 priors；前者有 `--self-test` |
+| [calibrate_raw9_anchors.py](calibrate_raw9_anchors.py) | 核验过的平坦颜色目标清单 → 独立训练／留出候选报告；显式 `--install-candidate` 才更新资产，拒绝回退和混合配置；见 [RAW9 锚点合同](../docs/reviews/RAW9_ANCHOR_SCOPE_2026-10-10.zh-CN.md) |
+| [validate_coreimage_raw.py](validate_coreimage_raw.py) | 实际 RAW → 固定 RAW9／RAW8／LibRaw／auto、full／native-preview／resized-full 矩阵和完整配方报告；不可用组合单列，不借回退计为通过；见 [验证与残差研究](../docs/reviews/COREIMAGE_RAW_RESEARCH_2026-10-10.zh-CN.md) |
+| [import_jptc.py](import_jptc.py) / [import_jptc_collect.py](import_jptc_collect.py) | 单 PTC／官方 Collect ZIP 或目录 → 离线兼容 priors JSON；Collect 按内容识别，多个分组用 `--group` 选择；前者有 `--self-test`。需要安装个人标定时用 `calibration inspect/import` |
+| [compile_calibration_registry.py](compile_calibration_registry.py) | 固定版本本地 `sets.json` → 离线来源目录；须显式 `--source-commit`、`--out`。`--profile-record` 只接收另行审核的数值记录，不自动授予跨模式资格 |
+| [generate_collect_fixture.py](generate_collect_fixture.py) | 本地固定上游 `57567ed` 的实际 writer 与 `buildFileStem` → 合成统计 ZIP／来源哈希夹具；需 Node，不安装 Electron 或原生依赖，不包含真实相机测量。会写入 `tests/fixtures/collect-writer`，没有 `--help` 参数解析 |
+| [build_personal_calibration.py](build_personal_calibration.py) | 明确准备的有符号 DN NPZ、采集／黑位／照明合同与 held-out 帧 → 实验暗场或平场产品；`inspect` 只检查，构建不取得生产应用资格 |
 | [import_cbld.py](import_cbld.py) / [import_p2p_pdr.py](import_p2p_pdr.py) | 本地 CBLD / P2P 表 → priors；来源与分发状态见 [NOTICE](../NOTICE.md) |
 | [import_lens_transmittance.py](import_lens_transmittance.py) | 一手镜头 / 滤镜光谱 → 镜头透过率库 |
 | [make_evidence_shell.py](make_evidence_shell.py) / [import_dngshell.py](import_dngshell.py) | RAW / 上游壳 → 无像素的容器元数据测试语料；不用于解码测试 |

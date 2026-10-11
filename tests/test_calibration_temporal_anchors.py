@@ -136,7 +136,12 @@ class AllAnchorTests(unittest.TestCase):
         path = self.ptc(100)
         original = path.read_text()
         path.write_text('#ISO: 200\n'+original)
-        self.assertIn('declared ISO',read_anchors(self.root,dark)[0]['reason'])
+        # A filename is editable provenance; an authoritative ISO header wins.
+        self.assertEqual(read_anchors(self.root,dark)[0]['iso'], 200)
+        rows = ptc_rows()
+        write_csv(path, ['ISO', *rows[0]], [[100, *r.values()] for r in rows],
+                  ISO=200, BlackLevel='100,100,100,100', ClipVarianceFactor=.8)
+        self.assertIn('declared ISO', read_anchors(self.root,dark)[0]['reason'])
         path.write_text('#CfaPattern: RGBG\n'+original)
         self.assertIn('colour description',read_anchors(self.root,dark)[0]['reason'])
 

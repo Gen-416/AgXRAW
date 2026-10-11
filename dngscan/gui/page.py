@@ -239,10 +239,17 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
       <input type="number" id="clipMargin" min="0" max="64" step="1" value="4" title="每通道满阱剪切阈值向下回退的 DN 数（CLI --margin，默认 4）；改它会重新解码并分析这张 RAW（数秒）。">
     </div>
     <div class="sliderField" id="chromaNrBlock" style="flex:1;min-width:150px">
-      <div class="labelRow"><label title="基于独立噪声标定的可选色度平滑（CLI --chroma-nr，0–1，默认 0=关闭）。需要可用的噪声模型及解码传播；不能处理时会说明原因。强度越高，真实颜色细节损失风险越大。">色度降噪</label><span class="val" id="chromaNrVal">0.00</span></div>
+      <div class="labelRow"><label title="仅处理有模型支持的粗尺度色斑；保留亮度颗粒。细粒彩噪暂不可用，真实颜色细节仍可能损失。">色度清理</label><span class="val" id="chromaNrVal">0.00</span></div>
+      <select id="chromaCleanup" aria-label="色度清理模式"><option value="off">关闭 · 默认</option><option value="conservative">保守自动 · 粗色斑 0.10</option><option value="custom">自定义强度</option></select>
       <input type="range" id="chromaNr" min="0" max="1" step="0.05" value="0">
       <div class="ctlFact" id="chromaNrFact"></div>
     </div>
+    <details style="flex-basis:100%"><summary>当前批次的拍摄模式声明</summary>
+      <label for="captureShutter">RAW 未记录快门时补充</label><select id="captureShutter"><option value="">遵循文件 · 不补充</option><option value="electronic">电子快门</option><option value="mechanical">机械快门</option><option value="efcs">电子前帘</option></select>
+      <label for="captureReadoutId">读出标识（可选，需与测量一致）</label><input id="captureReadoutId" type="text" maxlength="160" value="">
+      <label for="captureKind">拍摄类型（可选，需与测量 DriveMode 一致）</label><input id="captureKind" type="text" maxlength="160" value="">
+      <p class="muted">仅作用于当前批次，不保存到下次启动。声明与已知文件信息冲突会报错，不改变压缩属性或标定适用范围。</p>
+    </details>
     <div style="flex:1;min-width:170px">
       <label>解拜耳</label>
       <select id="demosaic" title="仅 LibRaw；自动根据文件和前级处理选择算法。Apple RAW 使用系统解码。">
@@ -583,9 +590,10 @@ GRADE_OPTIONS
   <div class="dialogPanel">
     <div class="dialogHeader"><h2 class="dialogTitle" id="calibrationDialogTitle">实测噪声标定</h2></div>
     <p class="muted">个人标定不是成像的前提。未导入时，仍可使用自动曝光、AgX 和 SDR/HDR 导出；有适用的 DNG 噪声声明时会自动采用。</p>
-    <p class="muted">导入 Jiangtherapee / JPTC 的标定 JSON，或选择一套 Collect CSV 测量目录。程序逐文件核对相机、快门、ISO、RAW 码值范围，以及标定声明的 RAW 尺寸、存储属性等条件。缺少信息时保持未验证，不把不同读出条件视为相同；无需每张照片重复标定。</p>
+    <p class="muted">选择官方 Collect ZIP、CSV 测量目录或标定 JSON，先检查识别到的相机、模式和能力，再导入。导入成功不代表当前照片匹配，也不代表已经修改像素；缺少的测量会单独说明。</p>
     <div class="row">
       <div><label for="calibrationJsonPicker">标定 JSON</label><input type="file" id="calibrationJsonPicker" accept=".json,application/json"></div>
+      <div><label for="calibrationZipPicker">官方 Collect 测量包</label><input type="file" id="calibrationZipPicker" accept=".zip,application/zip" multiple></div>
       <div><label for="calibrationDirectoryPicker">Collect 测量目录</label><input type="file" id="calibrationDirectoryPicker" webkitdirectory directory multiple></div>
     </div>
     <div style="margin-top:12px"><label for="calibrationShutterMode">本次导入的读出模式声明</label>
@@ -593,7 +601,16 @@ GRADE_OPTIONS
       <p class="muted">仅在确认测量适用范围时覆盖文件声明。RAW 未记录读出模式时，特定模式的标定不会自动套用；“全部模式”是你的明确声明。</p>
     </div>
     <div class="ctlFact" id="calibrationStatus" role="status" aria-live="polite"></div>
+    <div id="calibrationManifest"></div>
+    <button class="go" id="calibrationImportConfirm" type="button" disabled>导入所选分组</button>
     <div id="calibrationList"></div>
+    <details style="margin-top:16px"><summary>公共标定库 · 离线版本与来源</summary>
+      <p class="muted">显影时不联网。可导入维护者发布的标定库 JSON，并回到内置版或之前安装的版本。目录记录不等于已获得适用的成像标定。</p>
+      <div class="ctlFact" id="calibrationLibraryStatus"></div>
+      <div class="row"><div><label for="calibrationLibraryPicker">更新标定库</label><input type="file" id="calibrationLibraryPicker" accept=".json,application/json"></div>
+      <div><label for="calibrationLibraryVersion">切换／回滚</label><select id="calibrationLibraryVersion"></select><button class="ghost" id="calibrationLibrarySelect" type="button">使用此版本</button></div></div>
+      <details><summary>来源及测量能力</summary><pre id="calibrationLibraryEvidence" style="white-space:pre-wrap"></pre></details>
+    </details>
     <div class="dialogActions"><button class="ghost" id="calibrationClose" type="button">关闭</button></div>
   </div>
 </dialog>
@@ -683,7 +700,8 @@ let HDR_SCENE_FACTS=null;
 function setGradeStrengthLabel(){const v=+$("#gradeStrength").value;$("#gradeStrengthVal").textContent=v.toFixed(2);}
 function updateGradeUi(){$("#gradeStrengthBlock").style.display=$("#grade").value!=="none"?"block":"none";}
 function setPunchLabel(){const v=+$("#punch").value;$("#punchVal").textContent=v.toFixed(2);}
-function setChromaNrLabel(){$("#chromaNrVal").textContent=(+$("#chromaNr").value).toFixed(2);}
+function effectiveChromaNrAmount(){return $("#chromaCleanup").value==="off"?0:$("#chromaCleanup").value==="conservative"?.10:+$("#chromaNr").value;}
+function setChromaNrLabel(){$("#chromaNrVal").textContent=effectiveChromaNrAmount().toFixed(2);}
 function fmtBias(v){return Math.abs(v)<0.001?"自动":(v>0?"+":"")+v.toFixed(2);}
 function fmtEvBias(v){return Math.abs(v)<0.001?"自动":(v>0?"+":"")+v.toFixed(2)+" EV";}
 function setAdjustmentLabels(){
@@ -932,7 +950,7 @@ const SETTINGS_IDS=["autoExposure","ev","quality","highlight","gamut","wb","demo
   "grade","gradeStrength","sceneTransform","sceneTransformStrength","punch",
   "midtoneBrightness","midtoneContrast","shadowTransition","highlightTransition","highlightFade",
   "endpointMode","toeEndOffset","shoulderWhiteOffset","hdrHeadroom","outdir","png",
-  "hdrRho","hdrWhiteMargin","hdrShoulderStart","clipOverlayToggle","coreimageScale","clipMargin","chromaNr"];
+  "hdrRho","hdrWhiteMargin","hdrShoulderStart","clipOverlayToggle","coreimageScale","clipMargin","chromaNr","chromaCleanup"];
 function saveSettings(){
   const state={};
   for(const id of SETTINGS_IDS){const el=$("#"+id);if(el)state[id]=el.type==="checkbox"?el.checked:(el.dataset.librawValue||el.value);}
@@ -952,6 +970,7 @@ function restoreSettings(){
   if(legacy&&s.agxPrimaries==="smooth")s.agxPrimaries="base";
   if(legacy&&s.deliveryProfile==="archive")s.deliveryProfile="auto";
   if(s.clipOverlayToggle===undefined&&s.clipOverlay!==undefined)s.clipOverlayToggle=s.clipOverlay;
+  if(s.chromaCleanup===undefined)s.chromaCleanup=Number(s.chromaNr)>0?"custom":"off";
   for(const id of SETTINGS_IDS){
     const el=$("#"+id);const value=s[id];if(!el||value===undefined||value===null)continue;
     if(el.type==="checkbox")el.checked=!!value;
@@ -1003,6 +1022,8 @@ $("#hdrHeadroom").oninput=()=>{setHdrLabel();saveSettings();};
 $("#gradeStrength").oninput=()=>{setGradeStrengthLabel();saveSettings();scheduleLivePreview();};
 $("#punch").oninput=()=>{setPunchLabel();saveSettings();scheduleLivePreview();};
 $("#chromaNr").oninput=()=>{setChromaNrLabel();CHROMA_NR_REPORT=null;updateChromaNrUi();saveSettings();scheduleLivePreview();};
+$("#chromaCleanup").onchange=()=>{setChromaNrLabel();CHROMA_NR_REPORT=null;updateChromaNrUi();saveSettings();scheduleLivePreview();};
+for(const id of ["captureShutter","captureReadoutId","captureKind"])$("#"+id).onchange=()=>{beginPreviewSession();preparePreview();};
 [
   "midtoneBrightness","midtoneContrast","shadowTransition","highlightTransition","highlightFade"
 ].forEach(id=>$("#"+id).oninput=()=>{setAdjustmentLabels();saveSettings();scheduleLivePreview();});
@@ -1066,7 +1087,7 @@ function calibrationReason(reason){
   if(noiseStates[reason])return noiseStates[reason];
   const known={usable:"匹配可用",inactive:"已停用","readout-mode-unavailable":"测量未声明快门模式","file-readout-mode-unavailable":"RAW 未记录快门模式","readout-mode-mismatch":"快门模式不匹配","iso-out-of-domain-or-gain-jump":"ISO 超出测量范围或跨越增益跳变","no-absolute-gain":"缺少绝对增益标定","no-electron-read-noise":"缺少可用电子读噪标定","quality-high-residual":"测量拟合残差过高","quality-unconverged":"测量拟合未收敛","estimator-spread":"增益估计分歧过大","invalid-record":"标定记录损坏","sub-readout-mode-not-verified":"子读出条件尚未验证","declared-readout-constraints-matched":"已声明的逐文件读出条件匹配","sub-readout-not-declared":"未声明子读出条件，保留未验证状态","lossy-raw-storage-not-supported-by-external-prior":"有损 RAW 存储不适用外部噪声标定","file-storage-lossless-unverified":"无法确认 RAW 存储是否无损","measurement-raw-geometry-incomplete":"测量未记录完整 RAW 尺寸","measurement-raw-geometry-unavailable":"测量缺少 RAW 尺寸","measurement-geometry-domain-unavailable":"测量尺寸所属的数据域不明确","measurement-compression-declaration-unverified":"测量的压缩声明无法验证"};
   if(known[reason])return known[reason];
-  const fields={"raw-geometry":"RAW 尺寸","active-geometry":"有效感光区尺寸","default-crop":"默认裁切","libraw-raw-geometry":"完整 RAW 马赛克尺寸","sensor-binning":"像素合并","sample-bits":"存储位深","sensor-bits":"传感器位深","readout-id":"读出标识","capture-kind":"拍摄模式","storage-lossless":"无损存储属性"};
+  const fields={"raw-geometry":"RAW 尺寸","active-geometry":"有效感光区尺寸","default-crop":"默认裁切","libraw-raw-geometry":"完整 RAW 马赛克尺寸","sensor-binning":"像素合并","sample-bits":"存储位深","sensor-bits":"传感器位深","readout-id":"读出标识","capture-kind":"拍摄类型","body-serial":"机身序列号","firmware":"固件版本","storage-lossless":"无损存储属性"};
   const match=/^file-(.+)-(unavailable|mismatch)$/.exec(reason||"");
   if(match&&fields[match[1]])return fields[match[1]]+(match[2]==="mismatch"?"与标定不匹配":"未记录，无法核对标定");
   return reason||"";
@@ -1082,6 +1103,8 @@ function renderCalibrations(profiles){
     const iso=profile.iso_min!=null&&profile.iso_max!=null?"ISO "+(+profile.iso_min.toFixed(2))+"–"+(+profile.iso_max.toFixed(2)):"ISO 范围未声明";
     const mode=({any:"用户声明全部模式",electronic:"电子快门",mechanical:"机械快门",efcs:"电子前帘"})[profile.shutter]||profile.shutter||"读出模式未声明";
     detail.textContent=[profile.make,models,mode,iso,profile.active?"已启用":"已停用"].filter(Boolean).join(" · ");row.appendChild(detail);
+    const capabilities=document.createElement("div");capabilities.className="ctlFact";
+    capabilities.textContent="已导入 · "+calibrationCapabilityText(profile.capabilities||{absolute_gain:profile.has_gain,read_noise:profile.has_read_noise,stored_dark_variance:profile.has_stored_dark_variance})+"。当前照片的匹配与实际应用请查看分析结果。";row.appendChild(capabilities);
     if(profile.warnings&&profile.warnings.length){const warning=document.createElement("div");warning.className="ctlFact warn";warning.textContent=profile.warnings.map(calibrationReason).concat(profile.error?[profile.error]:[]).join("；");row.appendChild(warning);}
     const actions=document.createElement("div");actions.className="actions";actions.style.marginTop="8px";
     for(const [label,route,body] of [[profile.active?"停用":"启用","/calibration/active",{id:profile.id,active:!profile.active}],["删除","/calibration/remove",{id:profile.id}]]){
@@ -1106,23 +1129,79 @@ async function changeCalibration(route,body){
     beginPreviewSession();lastSavedPath="";$("#revealBtn").style.display="none";
     setCalibrationStatus("标定已更新。当前照片将重新分析。");
     if($("#input").value.trim()){RAW9_PROBES.clear();RAW9_PROBE_REQUESTS.clear();fetchDecodeSupport($("#input").value.trim());await preparePreview();}
-  }catch(error){setCalibrationStatus("标定更新失败："+error,true);}
+    return true;
+  }catch(error){setCalibrationStatus("标定更新失败："+error,true);return false;}
 }
 async function importCalibrationSelection(picker){
-  const chosen=Array.from(picker.files||[]).filter(file=>/[.](json|csv|txt)$/i.test(file.name));
-  if(!chosen.length){setCalibrationStatus("请选择标定 JSON 或包含 CSV 的 Collect 目录。",true);return;}
-  if(chosen.length>128||chosen.reduce((sum,file)=>sum+file.size,0)>8*1024*1024){setCalibrationStatus("请选择单套标定（最多 128 个文本文件、8 MiB）。",true);picker.value="";return;}
+  const chosen=Array.from(picker.files||[]).filter(file=>/[.](zip|json|csv|txt)$/i.test(file.name));
+  if(!chosen.length){setCalibrationStatus("请选择官方 ZIP、标定 JSON 或包含 CSV 的 Collect 目录。",true);return;}
+  if(chosen.length>512||chosen.reduce((sum,file)=>sum+file.size,0)>64*1024*1024){setCalibrationStatus("每批最多 512 个文件、64 MiB；频谱不会被截断，请分批导入。",true);picker.value="";return;}
+  PENDING_CALIBRATION_FILES=null;$("#calibrationImportConfirm").disabled=true;
   picker.disabled=true;
   try{
+    setCalibrationStatus("正在识别测量包…");
     const files=[];
-    for(const file of chosen)files.push({name:file.webkitRelativePath||file.name,text:await file.text()});
-    await changeCalibration("/calibration/import",{files,shutterMode:$("#calibrationShutterMode").value||null});
+    for(const file of chosen){
+      if(/[.]zip$/i.test(file.name)){
+        const bytes=new Uint8Array(await file.arrayBuffer());let binary="";
+        for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
+        files.push({name:file.webkitRelativePath||file.name,base64:btoa(binary)});
+      }else files.push({name:file.webkitRelativePath||file.name,text:await file.text()});
+    }
+    const result=await postJob("/calibration/inspect",{files});if(!result.ok)throw new Error(result.error);
+    PENDING_CALIBRATION_FILES=files;renderCalibrationManifest(result.manifest);
+    setCalibrationStatus("识别完成。核对分组及缺测能力后，点击导入。");
   }catch(error){setCalibrationStatus("读取标定失败："+error,true);}
   finally{picker.value="";picker.disabled=false;}
 }
-$("#calibrationOpen").onclick=()=>{const dialog=$("#calibrationDialog");if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");setCalibrationStatus("");reloadCalibrations();};
+let PENDING_CALIBRATION_FILES=null;
+function calibrationCapabilityText(capabilities){
+  const names={absolute_gain:"绝对增益",read_noise:"读噪",stored_dark_variance:"存储域暗场方差",spectrum_h:"水平频谱",spectrum_v:"垂直频谱"};
+  const present=Object.entries(names).filter(([key])=>capabilities[key]).map(([,label])=>label);
+  const absent=Object.entries(names).filter(([key])=>!capabilities[key]).map(([,label])=>label);
+  return (present.length?"可提供："+present.join("、"):"尚无可用噪声能力")+(absent.length?"；缺测："+absent.join("、"):"")+"；不包含逐像素黑位／坏点修复";
+}
+function renderCalibrationManifest(manifest){
+  const host=$("#calibrationManifest");host.replaceChildren();
+  for(const group of manifest.groups||[]){
+    const row=document.createElement("div");row.className="card";row.style.marginTop="10px";
+    const label=document.createElement("label"),check=document.createElement("input");check.type="checkbox";check.value=group.id;check.dataset.calibrationGroup="true";
+    check.disabled=!["ready","partial"].includes(group.status);check.checked=!check.disabled;
+    label.appendChild(check);label.appendChild(document.createTextNode(" "+(group.camera||group.models?.join(" / ")||group.id)+" · "+(group.shutter||"模式未声明")+" · "+(group.status||"未知状态")));row.appendChild(label);
+    const info=document.createElement("p");info.className="muted";info.textContent=calibrationCapabilityText(group.capabilities||{});row.appendChild(info);
+    if(group.diagnostics?.length){const details=document.createElement("details"),summary=document.createElement("summary"),body=document.createElement("pre");summary.textContent="测量诊断";body.style.whiteSpace="pre-wrap";body.textContent=JSON.stringify(group.diagnostics,null,2);details.append(summary,body);row.appendChild(details);}
+    host.appendChild(row);
+  }
+  const details=document.createElement("details"),summary=document.createElement("summary"),body=document.createElement("pre");summary.textContent="全部文件、未使用项及来源";body.style.whiteSpace="pre-wrap";body.textContent=JSON.stringify(manifest,null,2);details.append(summary,body);host.appendChild(details);
+  const update=()=>{$("#calibrationImportConfirm").disabled=!host.querySelector('input[data-calibration-group]:checked');};host.onchange=update;update();
+}
+$("#calibrationImportConfirm").onclick=async()=>{
+  if(!PENDING_CALIBRATION_FILES)return;
+  const groupIds=Array.from($("#calibrationManifest").querySelectorAll('input[data-calibration-group]:checked')).map(item=>item.value);
+  if(!groupIds.length)return;
+  $("#calibrationImportConfirm").disabled=true;
+  const success=await changeCalibration("/calibration/import",{files:PENDING_CALIBRATION_FILES,groupIds,shutterMode:$("#calibrationShutterMode").value||null});
+  if(success){PENDING_CALIBRATION_FILES=null;$("#calibrationManifest").replaceChildren();}
+  else $("#calibrationImportConfirm").disabled=false;
+};
+function renderCalibrationLibrary(library){
+  $("#calibrationLibraryStatus").textContent=library.error?"公共标定库不可用："+library.error:"当前版本 "+library.version+" · "+library.sets.length+" 组来源 · "+library.profiles+" 个新增已验证模型";
+  const select=$("#calibrationLibraryVersion");select.replaceChildren();
+  for(const version of library.versions||["packaged"]){const option=document.createElement("option");option.value=version;option.textContent=version==="packaged"?"内置版本":version;select.appendChild(option);}
+  select.value=library.selection||"packaged";
+  $("#calibrationLibraryEvidence").textContent=JSON.stringify(library,null,2);
+}
+async function reloadCalibrationLibrary(){try{const result=await postJob("/calibration/library",{});if(!result.ok)throw new Error(result.error);renderCalibrationLibrary(result.library);}catch(error){$("#calibrationLibraryStatus").textContent="读取失败："+error;}}
+async function changeCalibrationLibrary(route,body){
+  try{const result=await postJob(route,body);if(!result.ok)throw new Error(result.error);renderCalibrationLibrary(result.library);beginPreviewSession();lastSavedPath="";$("#revealBtn").style.display="none";if($("#input").value.trim())await preparePreview();}
+  catch(error){$("#calibrationLibraryStatus").textContent="更新失败："+error;}
+}
+$("#calibrationLibraryPicker").addEventListener("change",async()=>{const picker=$("#calibrationLibraryPicker"),file=picker.files?.[0];if(!file)return;if(file.size>64*1024*1024){$("#calibrationLibraryStatus").textContent="标定库超过界面导入的 64 MiB 限制，请使用 CLI。";picker.value="";return;}picker.disabled=true;try{await changeCalibrationLibrary("/calibration/library-install",{files:[{name:file.name,text:await file.text()}]});}finally{picker.value="";picker.disabled=false;}});
+$("#calibrationLibrarySelect").onclick=()=>changeCalibrationLibrary("/calibration/library-select",{version:$("#calibrationLibraryVersion").value});
+$("#calibrationOpen").onclick=()=>{const dialog=$("#calibrationDialog");if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");setCalibrationStatus("");reloadCalibrations();reloadCalibrationLibrary();};
 $("#calibrationClose").onclick=()=>{const dialog=$("#calibrationDialog");if(typeof dialog.close==="function")dialog.close();else dialog.removeAttribute("open");};
 $("#calibrationJsonPicker").addEventListener("change",()=>importCalibrationSelection($("#calibrationJsonPicker")));
+$("#calibrationZipPicker").addEventListener("change",()=>importCalibrationSelection($("#calibrationZipPicker")));
 $("#calibrationDirectoryPicker").addEventListener("change",()=>importCalibrationSelection($("#calibrationDirectoryPicker")));
 let curDir=INIT_DIR;
 $("#filePicker").addEventListener("change",async()=>{
@@ -1181,6 +1260,8 @@ function payload(){
     lensFilter:$("#lensFilter").value,
     coreimageScale:$("#coreimageScale").value,clipMargin:+$("#clipMargin").value,
     chromaNr:+$("#chromaNr").value,
+    chromaCleanup:$("#chromaCleanup").value,
+    captureDeclaration:{version:1,shutter:$("#captureShutter").value||null,readout_id:$("#captureReadoutId").value.trim()||null,capture_kind:$("#captureKind").value.trim()||null},
     chroma:$("#chroma").value,format:$("#format").value,
     deliveryProfile:$("#deliveryProfile").value,
     heifEncoder:$("#heifEncoder").value,heifBitDepth:+$("#heifBitDepth").value,heifPreset:$("#heifPreset").value,heifTune:$("#heifTune").value,
@@ -1285,8 +1366,8 @@ function chromaNrReason(reason){
 function updateChromaNrUi(){
   const capability=CHROMA_NR_CAPABILITY;
   const report=CHROMA_NR_REPORT;
-  const requested=+$("#chromaNr").value>0;
-  $("#chromaNr").disabled=!capability||!capability.available;
+  const requested=effectiveChromaNrAmount()>0;
+  $("#chromaNr").disabled=!capability||!capability.available||$("#chromaCleanup").value!=="custom";
   let text="选择 RAW 后确认降噪是否可用";
   let warn=false;
   if(capability&&!capability.available){
@@ -1294,7 +1375,7 @@ function updateChromaNrUi(){
     warn=capability.reason==="measured spectral imbalance requires correlated-noise propagation";
   }else if(capability){
     text=requested?"可尝试 · 等待当前预览验证":"可选 · 默认关闭";
-    if(report&&report.status==="active-approximate")text="已应用 · 模型近似；仍需观察真实颜色细节";
+    if(report&&report.status==="active-approximate")text="已应用粗色斑处理 · 模型近似；细粒彩噪未处理";
     else if(report&&report.status==="skipped"){text="已跳过 · "+chromaNrReason(report.reason);warn=true;}
   }
   $("#chromaNrBlock").title=capability?chromaNrReason(capability.reason):"";
@@ -1344,8 +1425,25 @@ function renderDetectedParams(d){
   const spectral=Object.entries(noise.spectral_ratios||{}).filter(([,value])=>Number.isFinite(value)).map(([axis,value])=>axis+" 高频/中频 "+value.toFixed(3)).join("，");
   setFact("#noiseModelFact",["噪声模型："+noiseStatus,noiseSource,correlation,spectral].filter(Boolean).join(" · "),["unresolved","rejected"].includes(noise.status)||noise.correlation==="measured-spectral-imbalance");
   $("#noiseModelFact").title=[noiseReason,noise.source,noise.domain,noise.approximation,noise.correlation,noise.noise_reduction_status==="unknown"?"文件降噪状态未知":"",noise.fallback_source,calibrationReason(noise.fallback_reason)].filter(Boolean).join(" · ");
-  const calibrationRows=(d.calibrations||[]).map(profile=>(profile.label||profile.id||"用户实测")+"："+[calibrationReason(profile.reason||profile.status),calibrationReason(profile.readout_match_reason)].filter(Boolean).join(" · "));
-  setFact("#calibrationMatchFact",calibrationRows.join("\\n"),(d.calibrations||[]).some(profile=>!["usable","inactive"].includes(profile.status)&&profile.reason!=="inactive"));
+  const calibrationRows=(d.calibrations||[]).map(profile=>{
+    const states=[];
+    if(profile.import_status==="imported")states.push("已导入");
+    states.push(profile.match_status==="matched"?"候选条件匹配":calibrationReason(profile.match_reason||profile.reason||profile.status));
+    const capabilities=profile.analysis_capabilities||{};
+    const used=[];
+    if(capabilities.variance_coefficients==="used")used.push("噪声系数");
+    if(capabilities.gain_evidence==="used")used.push("增益证据");
+    if(capabilities.spectral_constraints==="used")used.push("独立频谱约束");
+    if(used.length)states.push("分析采用："+used.join("、"));
+    else if(profile.analysis_status==="rejected")states.push("分析未采用："+calibrationReason(profile.analysis_reason));
+    else if(profile.analysis_status==="not-selected")states.push("当前分析未采用");
+    else if(profile.analysis_status==="not-evaluated")states.push("等待分析");
+    if(profile.actual_model&&profile.actual_model.source==="DNG NoiseProfile")states.push("噪声系数来自 DNG 声明");
+    if(profile.apply_status==="not-applied")states.push("个体黑场／平场像素校正未应用");
+    return (profile.label||profile.id||"用户实测")+"："+states.filter(Boolean).join(" · ");
+  });
+  setFact("#calibrationMatchFact",calibrationRows.join("\\n"),(d.calibrations||[]).some(profile=>profile.analysis_status==="rejected"||(profile.match_status!=="matched"&&profile.reason!=="inactive")));
+  $("#calibrationMatchFact").title="导入、条件匹配和分析采用分别报告。可选色度清理是否实际应用，见当前预览的色度清理状态；统计标定不代表已执行个体黑场或平场像素校正。";
   setFact("#clipFact",d.raw_clip_union_pct!==null?"实测 RAW 过曝 "+(+d.raw_clip_union_pct).toFixed(2)+"%（≥1 通道）":"");
   const evBits=[];
   if(d.body_median_ev!==null)evBits.push("实测主体中位 "+ev(d.body_median_ev));

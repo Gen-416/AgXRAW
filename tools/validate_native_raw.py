@@ -30,6 +30,7 @@ import rawpy
 
 from dngscan import _fast
 from dngscan.analysis import analyze
+from dngscan.capture_identity import public_capture
 from dngscan.auto_ev import compute_auto_ev
 from dngscan.hdr_agx import render_ultrahdr_agx_pair
 from dngscan.hdr_agx_plan import compile_hdr_agx_plan, compile_tail_snr_gate
@@ -37,6 +38,8 @@ from dngscan.models import HdrDisplayTarget
 from dngscan.raw_io import load_raw, release_analysis_buffers
 from dngscan.scene_scale import with_intent_exposure
 from dngscan.tone import build_render_plan
+from dngscan.protected_output import ProtectedSources
+from dngscan.delivery_transaction import DeliveryTransaction
 
 
 def digest(path):
@@ -45,6 +48,15 @@ def digest(path):
         for block in iter(lambda: source.read(1048576), b""):
             result.update(block)
     return result.hexdigest()
+
+
+def implementation_identity():
+    """Identify uncommitted processing code as well as the Git base."""
+    paths = list((ROOT / "dngscan").rglob("*.py")) + list((ROOT / "rust/src").rglob("*.rs"))
+    paths += [ROOT / "rust/Cargo.lock", ROOT / "dngscan/data/priors/collect_registry.json"]
+    hashes = {str(path.relative_to(ROOT)): digest(path) for path in sorted(paths) if path.is_file()}
+    from dngscan.fast_plan import NATIVE_ABI_VERSION
+    return {"native_abi": NATIVE_ABI_VERSION, "source_sha256": hashes}
 
 
 def finite_summary(array):
@@ -138,7 +150,7 @@ def run_file(path, half, scratch):
                "noise_model_usable": analysis.noise_model.status == "valid",
                "measurement_qualified": (analysis.noise_model.status == "valid"
                                           and analysis.noise_model.source != "DNG NoiseProfile"),
-               "capture_readout": bundle.capture_readout, "raw_shape": list(bundle.raw_image.shape),
+               "capture_readout": public_capture(bundle.capture_readout), "raw_shape": list(bundle.raw_image.shape),
                "coding_white_levels": bundle.coding_white_levels, "coding_black_levels": bundle.coding_black_levels,
                "linear_validity_white_levels": bundle.camera_white_levels,
                "scene_scale": bundle.scene_scale, "scene_decoder": bundle.scene_decoder,
@@ -201,21 +213,23 @@ def parity_checks(row):
     return checks
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files",type=Path,nargs="+")
     parser.add_argument("--sizes",choices=("full","half"),nargs="+",default=["half"])
     parser.add_argument("--out",type=Path,required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    protection = ProtectedSources(args.files).check(args.out)
     report = {"schema":"agxraw-native-raw-acceptance-1", "created_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
               "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
-              "working_changes":True, "runtime":{"python":platform.python_version(),"platform":platform.platform(),
+              "working_changes":True, "implementation": implementation_identity(),
+              "runtime":{"python":platform.python_version(),"platform":platform.platform(),
                 "numpy":np.__version__,"rawpy":rawpy.__version__,"libraw_version":list(rawpy.libraw_version),
                 "libraw_commit":"e419de08001de28ae6988ecb22df47e52b9c5eaa"},
               "comparison_scope":"NumPy/native pipeline parity; not independent RAW decoder accuracy or compression fidelity",
               "qualification_contract":"measurement_qualified means matched external model; noise_model_usable also includes file-declared DNG variance",
               "missing_coverage":["Sony other codecs/APS-C/shutter/ISO modes", "Sony controlled dark/flat/near-saturation calibration pairs",
-                                  "Nikon native NEF, HE and HE*", "independent manufacturer/Adobe reference in equivalent units"], "samples":[]}
+                                  "Nikon modes beyond the individually listed NEF; HE and HE*", "independent manufacturer/Adobe reference in equivalent units"], "samples":[]}
     args.out.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="agxraw-native-acceptance-") as directory:
         for path in args.files:
@@ -226,7 +240,9 @@ def main():
                 except Exception as exc:
                     row = {"file":path.name,"half_size":size=="half","error":str(exc)}
                 report["samples"].append(row)
-                args.out.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
+                with DeliveryTransaction(args.out, protected_sources=protection) as transaction:
+                    transaction.path.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
+                    transaction.commit()
                 print(f"{'FAILED' if 'error' in row else 'Completed'} {path.name} ({size})",flush=True)
     return 1 if any("error" in row or not all(row.get("parity_checks",{}).values())
                     for row in report["samples"]) else 0

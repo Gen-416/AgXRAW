@@ -133,7 +133,10 @@ class CompleteNoiseSpectrumTests(unittest.TestCase):
                 for name, (header, rows) in axes.items():
                     record = spectrum["axes"][name]
                     self.assertEqual(record["source_headers"], header)
-                    self.assertEqual(record["source_sha256"], stored["source"]["inputs"][f"spectrum-{name}.csv"])
+                    self.assertIn(record["source_sha256"], stored["source"]["inputs"].values())
+                    # Inputs are content IDs so renaming an official table
+                    # cannot change its numerical calibration identity.
+                    self.assertTrue(all(len(key) == 64 for key in stored["source"]["inputs"]))
                     np.testing.assert_array_equal(record["measurements"][0]["phases"]["C00"]["diff_power"],
                                                   [float(row["iso200_C00_diff"]) for row in rows])
                 # Runtime conversion is independent of whether a gain anchor exists.

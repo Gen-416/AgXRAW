@@ -26,6 +26,7 @@ D65_XYZ = tuple(float(sum(row)) for row in _RGB_TO_XYZ["Rec2020"])
 XYZ_TO_RGB_REC2020 = tuple(tuple(float(v) for v in row) for row in _XYZ_TO_RGB["Rec2020"])
 from .models import RawBundle
 from .evidence import EvidenceAcquisitionError, acquire_raw_evidence
+from .source_metadata import SourceReadTransactionError
 
 def rawpy_highlight_mode(name: str) -> Any:
     modes = getattr(rawpy, "HighlightMode", object)
@@ -926,6 +927,24 @@ def wb_window_transport_matrix_rec2020(bundle: RawBundle) -> Any | None:
         return None
 
 
+def _record_project_balance(bundle: RawBundle, requested_mode: str, transform=None) -> RawBundle:
+    """Record image-dependent WB without changing the reusable decoder profile ID."""
+    if bundle.scene_decoder != "coreimage":
+        return bundle
+    import copy
+    recipe = copy.deepcopy(bundle.scene_decoder_recipe or {})
+    handoff = recipe.setdefault("project_handoff", {})
+    handoff["project_balance"] = {
+        "requested_mode": requested_mode, "effective_mode": bundle.wb_mode,
+        "decode_multipliers": [float(v) for v in (bundle.decode_wb or bundle.camera_wb)],
+        "target_multipliers": [float(v) for v in (bundle.applied_wb or bundle.camera_wb)],
+        "matrix_rec2020": np.asarray(np.eye(3) if transform is None else transform,
+                                     dtype=np.float64).tolist(),
+        "degradation": bundle.wb_degradation,
+    }
+    return replace(bundle, scene_decoder_recipe=recipe)
+
+
 def rebalance_raw_bundle(
     bundle: RawBundle, wb_mode: str, *, _analysis_luminance_only: bool = False,
 ) -> RawBundle:
@@ -937,6 +956,8 @@ def rebalance_raw_bundle(
     """
     if wb_mode not in WB_CHOICES:
         raise ValueError(f"unknown wb mode: {wb_mode}")
+    def finish(result, transform=None):
+        return _record_project_balance(result, wb_mode, transform)
     if wb_mode == "camera":
         # Preserve the fixed decoder codes exactly.  Compact disk entries intentionally
         # omit XYZ, which is fine because the camera BalanceContext also keeps its
@@ -945,12 +966,12 @@ def rebalance_raw_bundle(
         # previous non-camera balance: the user chose AsShot, nothing degraded.  (The
         # degraded fallbacks below are different: they return camera pixels WITH their
         # note, because there the camera result is a truthfully-declared downgrade.)
-        return replace(
+        return finish(replace(
             bundle,
             wb_mode="camera",
             applied_wb=list(bundle.camera_wb),
             wb_degradation=None,
-        )
+        ))
     decode_wb = list(bundle.decode_wb or bundle.camera_wb)
     if wb_mode == "daylight":
         target_wb = list(bundle.daylight_wb or [])
@@ -965,12 +986,12 @@ def rebalance_raw_bundle(
         )
         target_wb = list(target_wb or [])
     if not target_wb:
-        return replace(
+        return finish(replace(
             bundle,
             wb_mode="camera",
             applied_wb=list(bundle.camera_wb),
             wb_degradation=note,
-        )
+        ))
     try:
         decode_xyz_to_cam, target_xyz_to_cam, _c0_source = resolve_hot_wb_c0(
             bundle, kelvin_mode_cct(wb_mode)
@@ -983,12 +1004,12 @@ def rebalance_raw_bundle(
         )
     except ValueError as exc:
         degradation = f"声明 {wb_mode} 白平衡不可用（{exc}）；已退化为相机 AsShot"
-        return replace(
+        return finish(replace(
             bundle,
             wb_mode="camera",
             applied_wb=list(bundle.camera_wb),
             wb_degradation=degradation,
-        )
+        ))
 
     scene = apply_hot_wb_rec2020(bundle.scene_rec2020_render, transform)
     noise_decode = getattr(bundle, "noise_decode", None)
@@ -1016,7 +1037,7 @@ def rebalance_raw_bundle(
         reference = apply_hot_wb_rec2020(
             np.asarray(reference)[None, :, :], transform
         )[0]
-    return replace(
+    return finish(replace(
         bundle,
         scene_rec2020_render=scene,
         xyz_render=xyz,
@@ -1032,7 +1053,7 @@ def rebalance_raw_bundle(
         _raw_guidance_cache_shape=None,
         _raw_guidance_resized=None,
         noise_decode=noise_decode,
-    )
+    ), transform)
 
 
 def resolve_demosaic_algorithm(raw: Any, requested: str) -> Any:
@@ -1936,32 +1957,23 @@ def _unsupported_format_guidance(path: Path, shot: Any, exc: Exception) -> str:
 
     New-body decode failures split into two classes. Colour-table gaps degrade
     gracefully elsewhere (SENSOR_SUPPORT ladder); FORMAT gaps stop the decoder
-    cold, and the honest response is a precise diagnosis instead of a generic
-    "unsupported". The canonical case: Nikon High Efficiency (HE/HE*) NEFs use
-    intoPIX TicoRAW, which LibRaw (and darktable's rawspeed) cannot licence —
-    even LibRaw master fails on them, so the fallback matrix table cannot help.
+    cold. Report this build's failure and possible format-specific workarounds;
+    neither a suffix nor another build's capabilities prove support here.
     """
     ident = f"{shot.make or '?'} {shot.model or '?'}".strip()
     lines = [
         f"LibRaw 无法打开此文件（机型 {ident}，{path.suffix or '无后缀'}）：{exc}",
     ]
-    if path.suffix.lower() == ".nef":
-        lines += [
-            "若这是较新的尼康机身（Z9/Z8/Z6III/Z50II 世代）且拍摄时选择了"
-            "高效压缩（HE/HE*），则该格式使用 intoPIX TicoRAW 编码，LibRaw "
-            "因授权无法解码——升级 LibRaw 也无济于事。可用的出路：",
-            "  1. 用 Adobe DNG Converter（免费，支持 HE）把 NEF 转成 DNG，"
-            "转换后本工具全功能可用；",
-            "  2. 相机内改用『无损压缩』RAW（同世代机身的无损 NEF 可正常解码）；",
-            "  3. 可尝试 --decoder coreimage --coreimage-version auto；若 Apple 支持该文件，"
-            "可导出场景图像，但无 LibRaw 传感器证据时不会声明 RAW 剪切/SNR 测量。",
-        ]
-    else:
-        lines += [
-            "若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级到 "
-            "LibRaw master 快照；仍失败请反馈样张（机型支持策略见 "
-            "docs/SENSOR_SUPPORT.zh-CN.md）。",
-        ]
+    lines += [
+        "这是当前构建对该文件的拒绝；后缀不能证明具体压缩模式，"
+        "也不能据此断言其他解码构建均不支持。",
+        "若这是较新的机型，可尝试 tools/build_libraw_master.sh 升级解码构建；"
+        "仍失败请反馈机型、拍摄模式和样张（见 docs/SENSOR_SUPPORT.zh-CN.md）。",
+        "可尝试 --decoder coreimage --coreimage-version auto；若 Apple 能生成场景图像，"
+        "缺失的 LibRaw 传感器证据仍不会被声明为可用。",
+        "若使用兼容的 DNG 转换器，转换后需重新核对显影与标定资格；"
+        "转换成功不保证原始测量域不变。",
+    ]
     lines.append("用 `--support` 可查看此文件在两条解码线上的逐档支持报告。")
     return "\n".join(lines)
 
@@ -1974,7 +1986,16 @@ def _metadata_load_scope(loader):
         from .source_metadata import source_metadata_session
         with source_metadata_session(path) as session:
             kwargs["_source_session"] = session
-            return loader(path, *args, **kwargs)
+            session.assert_consistent(phase="load-start")
+            try:
+                bundle = loader(path, *args, **kwargs)
+            except Exception:
+                # Preserve source failures even if a decoder wrapped the original
+                # error. Every fallback belongs to this same capture transaction.
+                session.assert_consistent(phase="load-error")
+                raise
+            session.assert_consistent(phase="load-commit")
+            return bundle
     return scoped
 
 
@@ -1990,6 +2011,7 @@ def load_raw(
     coreimage_version: str = "auto",
     coreimage_scale: str = COREIMAGE_SCALE_DEFAULT_MODE,
     *,
+    capture_declaration: dict | None = None,
     _defer_clip_masks: bool = False,
     _analysis_luminance_only: bool = False,
     _source_session: Any = None,
@@ -2015,10 +2037,12 @@ def load_raw(
         "reconstruct" if decoder == "coreimage" else scene_highlight_mode
     )
     shot = dng_metadata.read_dng_shot_info(path)
+    _source_session.assert_consistent(phase="shot-metadata")
 
     scene_decoder = "libraw"
     scene_decoder_version: str | None = None
     scene_decoder_runtime: str | None = None
+    scene_decoder_recipe: dict = {}
     scene_scale_mode: str | None = None
     scene_align_factor: float = 1.0
     scene_align_error: str | None = None
@@ -2069,15 +2093,17 @@ def load_raw(
             "Linear DNG：颜色平面剪切可测；不声明 CFA 独立噪声或电子域校准"
             if evidence.sample_kind == "linear-camera-rgb" else None)
     except EvidenceAcquisitionError as exc:
-        if exc.unsupported_format or "unsupported file format" in str(exc).lower():
+        if exc.unsupported_format:
             message = _unsupported_format_guidance(path, shot, exc)
         else:
-            message = f"Cannot acquire RAW evidence with rawpy/libraw: {exc}"
+            message = f"Cannot acquire RAW evidence with rawpy/libraw ({exc.failure_kind}): {exc}"
         if decoder == "libraw":
             raise RuntimeError(message) from exc
         evidence = None
         evidence_stage1_note = "传感器证据不可用；仅使用解码图像统计，不声明 RAW 剪切或传感器 SNR"
         evidence_error = message
+
+    _source_session.assert_consistent(phase="evidence")
 
     raw_image = getattr(evidence, "raw_image", None)
     raw_colors = getattr(evidence, "raw_colors", None)
@@ -2095,6 +2121,8 @@ def load_raw(
         # cannot supply the sensor raster and Apple provides the scene.
         from .readout import read as read_capture_readout
         capture_readout = read_capture_readout(path)
+    from .readout import with_capture_declaration
+    capture_readout = with_capture_declaration(capture_readout, capture_declaration)
 
     # Fixed-Kelvin WB is a scene recipe derived from evidence calibration. It is not
     # evidence itself, and therefore remains free to degrade per scene decoder.
@@ -2190,6 +2218,8 @@ def load_raw(
                 if recipe.skipped:
                     notes.append("跳过不支持的可选 DNG 校正: " + ", ".join(recipe.skipped))
                 scene_correction_note = "; ".join(notes) or None
+        except SourceReadTransactionError:
+            raise
         except Exception as exc:
             raise RuntimeError(
                 f"Cannot decode RAW scene with rawpy/libraw: {exc}"
@@ -2244,11 +2274,9 @@ def load_raw(
         # for the same file and target — composed onto Apple's fixed AsShot
         # decode. It is not Apple's neutralTemperature and does not claim to
         # reproduce it: Apple's colour transform is opaque, so the conjugate
-        # matrix is exact for a linear decode and approximate here. Measured
-        # against the same RAW 9 decoder's neutralTemperature (fp _SDI0150 /
-        # _SDI0199, 3200 K / 5500 K): median xy difference 0.015-0.044, median
-        # RGB direction angle 2.5-8.0 degrees. What IS pinned, at pixel level,
-        # is the declared property — one hot-WB matrix across decoders
+        # matrix is exact for a known camera-linear colour transform and only
+        # an approximation to Apple's opaque formation. The invariant is one
+        # declared project hot-WB matrix across decoders
         # (tests/test_coreimage_decode.py) and a neutral render of the
         # declared white on the LibRaw path (tests/test_wb.py).
         neutral_cct = None
@@ -2269,19 +2297,38 @@ def load_raw(
         except Exception as exc:
             # Auto is a capability ladder; an explicitly selected Apple version
             # stays strict so failed experiments cannot silently use another decoder.
+            if isinstance(exc, SourceReadTransactionError):
+                raise
+            _source_session.assert_consistent(phase="apple-fallback")
             if coreimage_version != "auto" or evidence is None:
                 raise RuntimeError(f"Cannot decode Apple RAW scene: {exc}; evidence: {evidence_error or 'available'}") from exc
             fallback = load_raw(
                 path, scene_highlight_mode=effective_highlight_mode,
                 scene_half_size=scene_half_size, demosaic=demosaic,
                 wb_mode=requested_wb_mode, decoder="libraw",
+                capture_declaration=capture_declaration,
                 _defer_clip_masks=_defer_clip_masks,
                 _analysis_luminance_only=_analysis_luminance_only,
                 _fallback_evidence=((evidence_identity, evidence)
                                     if evidence_identity is not None and _source_session.is_current(path)
                                     else None),
             )
-            return replace(fallback, scene_decoder_fallback=f"Apple RAW auto → LibRaw: {exc}")
+            from .coreimage_decode import COREIMAGE_RECIPE_VERSION, decoder_runtime_id
+            return replace(fallback,
+                scene_decoder_fallback=f"Apple RAW auto → LibRaw: {exc}",
+                scene_decoder_recipe={
+                    "schema": COREIMAGE_RECIPE_VERSION,
+                    "requested_decoder": "coreimage", "requested_version": "auto",
+                    "actual_decoder": "libraw", "actual_decoder_token": None,
+                    "runtime": decoder_runtime_id(),
+                    "configuration_id": None,
+                    "status": "apple-attempt-failed",
+                    "fallback_chain": [{"decoder": "coreimage", "requested_version": "auto",
+                                        "error": f"{type(exc).__name__}: {exc}"},
+                                       {"decoder": "libraw", "status": "rendered"}],
+                    "apple_controls": "unavailable-after-failed-attempt",
+                })
+        _source_session.assert_consistent(phase="apple-scene")
         failures = info.get("fallback_errors") or []
         scene_decoder_fallback = "; ".join(failures) if failures else None
         reliability_source = "decoded-image-estimate"
@@ -2335,10 +2382,8 @@ def load_raw(
                     # The reference must be the PRODUCTION LibRaw decode, not a
                     # bare one: the DNG's dark-field corrections (pre-demosaic
                     # GainMap, post-render FixVignetteRadial) are part of what
-                    # both decoders render, and skipping them here read lens
-                    # shading as a decoder exposure difference — measured up to
-                    # +0.88 EV on iPhone Standard RAW, pulling aligned-mode
-                    # RAW 9 toward the uncorrected dark reference.
+                    # both decoders render. Otherwise lens shading is mixed
+                    # into the estimated decoder exposure difference.
                     reference_scene, reference_loss, reference_recipe, _ = _decode_corrected_libraw(
                         reference_raw, path, evidence, effective_highlight_mode,
                         True, None,
@@ -2348,13 +2393,9 @@ def load_raw(
                 # Decode the reference with the same storage-scale contract as the main
                 # LibRaw path. Normalising reconstruct by 65535 would lose its reserved
                 # WB headroom and can shift this statistic by more than one EV.
-                # Self-review 2026-08-27 (P1): the reference render above was
-                # decoded with camera_wb, so the storage-scale contract must
-                # use camera_wb's headroom too. The previous helper returned
-                # the requested Kelvin multipliers whenever any were present,
-                # which re-exposed every Core Image + Kelvin export by up to
-                # ~0.4 EV as a function of the WB choice alone (measured
-                # +0.053 EV at 3200K, -0.234 EV at 5500K on _SDI0150).
+                # The reference uses camera_wb, so its storage scale must use
+                # the same headroom. User Kelvin adjustments belong after
+                # alignment and must not alter this reference exposure.
                 reference_scale = libraw_scene_scale(
                     65535.0, effective_highlight_mode, camera_wb,
                     baseline_exposure=effective_baseline_exposure,
@@ -2418,6 +2459,8 @@ def load_raw(
                 reliable_reference *= np.float32(scene_align_factor / raw_factor)
                 reliability_source = "sensor-reference"
                 noise_decode["evidence_reference_status"] = "measured" if len(reliable_reference) else "measured-empty"
+            except SourceReadTransactionError:
+                raise
             except Exception as exc:  # noqa: BLE001 - a render must not fail over a metric
                 error = f"{type(exc).__name__}: {exc}"
                 scene_reference_error = error
@@ -2442,16 +2485,40 @@ def load_raw(
         scene_decoder = "coreimage"
         scene_decoder_version = str(info.get("version") or coreimage_version)
         scene_decoder_runtime = str(info.get("decoder_runtime_id") or "") or None
+        import copy
+        scene_decoder_recipe = copy.deepcopy(info.get("recipe") or {})
+        scene_decoder_recipe["project_handoff"] = {
+            "scale_policy": coreimage_scale,
+            "scene_scale": float(scene_scale),
+            "alignment_factor": float(scene_align_factor),
+            "alignment_error": scene_align_error,
+            "alignment_reference": {
+                "decoder": "libraw", "version": getattr(evidence, "provider_version", None),
+                "highlight_mode": noise_decode.get("alignment_reference_highlight_mode"),
+                "error": scene_reference_error,
+                "status": "measured" if evidence is not None and scene_reference_error is None else "unavailable-or-partial",
+            },
+            "baseline_exposure": effective_baseline_exposure,
+            "baseline_exposure_baked_in": bool(baseline_exposure_baked_in),
+            "baseline_restoration": ("scene-scale-once" if info.get("baseline_exposure_cleared")
+                                     else "decoder-applied-or-unverified"),
+            "hot_wb_implementation": "rec2020-conjugate-camera-matrix-approx-v1",
+            "decode_wb": "as-shot",
+            "post_chroma_noise_transfer": "opaque-decoder-noise-transfer",
+            "personal_sensor_pixel_correction": "not-applied-to-apple-cfa",
+            "spatial_sensor_mapping": "unverified-no-cfa-mask-transfer",
+            "processing_loss_source": "libraw-reference-not-apple-loss-measurement",
+        }
+        from .decoder_identity import bind_project_handoff
+        scene_decoder_recipe = bind_project_handoff(
+            scene_decoder_recipe, scene_decoder_recipe["project_handoff"])
         scene_scale_mode = coreimage_scale
         scene_opcode_names = tuple(coreimage_decode.read_dng_opcodes(path)["names"])
-        # Strict Core Image pipeline: this is a SEPARATE path, not a LibRaw back end.
-        # Core Image executes the file's DNG opcodes (measured on Sigma fp: per-plane
-        # WarpRectilinear plus a lens-shading GainMap), so its frame is a nonlinear warp
-        # of LibRaw's — corners move by tens of pixels. Per-pixel CFA evidence therefore
-        # cannot be carried across, and pretending otherwise would put clip retreat on
-        # the wrong pixels. Masks are dropped rather than re-mapped; the aggregate RAW
-        # facts (levels, clip %, SNR, noise floor, WB testimony) stay valid because they
-        # are distributions, not pixel positions, and continue to come from LibRaw.
+        # Apple and LibRaw own independent formation chains. Their exact pixel
+        # correspondence (including correction support and interpolation) is
+        # unverified, even where both process the same file's lens opcodes.
+        # Do not resize CFA masks onto Apple pixels. Aggregate RAW facts remain
+        # sensor-domain evidence; they do not measure Apple's output noise.
         clip_masks = None
         evidence_shape = None
         scene_geometry_crop = None
@@ -2513,6 +2580,7 @@ def load_raw(
         scene_decoder=scene_decoder,
         scene_decoder_version=scene_decoder_version,
         scene_decoder_runtime=scene_decoder_runtime,
+        scene_decoder_recipe=scene_decoder_recipe,
         scene_scale_mode=scene_scale_mode,
         scene_align_factor=scene_align_factor,
         scene_align_error=scene_align_error,
@@ -2536,6 +2604,9 @@ def load_raw(
             else np.asarray(evidence.color_matrix, dtype=np.float64).copy()
         ),
     )
+    base_bundle = _record_project_balance(base_bundle, "camera")
+    from .scene_transform import decoder_window_calibration
+    base_bundle.scene_window_calibration = decoder_window_calibration(base_bundle)
     if effective_wb_mode == "camera":
         return base_bundle
     balanced = rebalance_raw_bundle(

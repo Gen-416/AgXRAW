@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Import a JPTC collect set (y-g-jiang first-party bench measurements).
+"""Convert a content-selected Collect ZIP/directory without installing it.
 
 A collect set directory (https://y-g-jiang.github.io/data/collect/<id>/)
 holds up to four instruments for one camera+mode:
@@ -54,13 +54,28 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--sets-json", type=Path, default=None,
                     help="sets.json for tester/measuredAt metadata")
+    ap.add_argument("--group", default=None, help="manifest group ID when the package contains multiple modes")
     args = ap.parse_args()
     meta = None
     if args.sets_json and args.sets_json.exists():
         for s in json.loads(args.sets_json.read_text()).get("sets", []):
             if s.get("id") == args.set_dir.name:
                 meta = s
-    entry = build(args.set_dir, meta)
+    from dngscan.collect_manifest import prepare_sources
+    manifest, payloads = prepare_sources(args.set_dir)
+    if args.group is not None:
+        if args.group not in payloads:
+            ap.error("selected group is unavailable; inspect with python -m dngscan calibration inspect")
+        entry = payloads[args.group]
+    elif len(payloads) == 1:
+        entry = next(iter(payloads.values()))
+    else:
+        ap.error("expected one usable group; inspect and select --group explicitly")
+    entry["id"] = f"{entry['camera']} (JPTC Collect)"
+    entry["source"]["kind"] = "JPTC Collect measurements (content-selected offline conversion)"
+    if meta:
+        entry["source"].update(tester=meta.get("tester"), measured_at=meta.get("measuredAt"))
+    entry["collect_manifest"] = manifest
     entry = sanitize_json(entry)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(entry, ensure_ascii=False, indent=1,

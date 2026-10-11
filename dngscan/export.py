@@ -28,6 +28,8 @@ from .models import Analysis, RawBundle, RenderPlan, ToneCompressionPlan
 from .render import render_output_u8, render_output_encoded_float
 from .delivery_integrity import encoded_content_signature
 from .delivery_transaction import DeliveryTransaction
+from .protected_output import (ProtectedSources, SourceOutputConflictError,
+                               raw_protection, final_image_destination)
 
 _ICC_PROFILE_AUTO = object()
 
@@ -39,8 +41,10 @@ def chroma_to_subsampling(name: str) -> int:
 
 def save_jpeg_array(
     rgb_u8: Any, out_path: Path, quality: int, output_gamut: str = "srgb", subsampling: int = 0,
-    *, icc_profile: Any = _ICC_PROFILE_AUTO,
+    *, icc_profile: Any = _ICC_PROFILE_AUTO, protected_sources=None,
 ) -> bool:
+    """Write rendered pixels; file-derived callers must supply protected sources."""
+    protection = ProtectedSources(protected_sources).check(out_path)
     try:
         from PIL import Image
     except Exception as exc:
@@ -58,17 +62,11 @@ def save_jpeg_array(
     # R4: temp-write + atomic replace, matching the HDR writer — a direct
     # write destroyed a pre-existing good file the moment an interrupted run
     # left a truncated JPEG behind.
-    tmp_path = out_path.with_name(f"{out_path.name}.{os.getpid()}.tmp")
-    try:
+    with DeliveryTransaction(out_path, protected_sources=protection) as transaction:
         Image.fromarray(rgb_u8, mode="RGB").save(
-            str(tmp_path), format="JPEG", **pil_kwargs
+            str(transaction.path), format="JPEG", **pil_kwargs
         )
-        os.replace(tmp_path, out_path)
-    finally:
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        transaction.commit()
     return icc_profile is not None
 
 
@@ -196,6 +194,7 @@ def carry_capture_metadata(src_raw: Path, out_jpeg: Path, container: str = "jpeg
     ImageIO or the source metadata is unavailable (non-macOS hosts keep the
     previous pixels-only behaviour).
     """
+    protection = raw_protection(src_raw).check(out_jpeg)
     tmp_path = out_jpeg.with_name(f"{out_jpeg.name}.meta.{uuid.uuid4().hex}.tmp")
     try:
         meta = _scrubbed_capture_metadata(src_raw, out_jpeg)
@@ -217,8 +216,10 @@ def carry_capture_metadata(src_raw: Path, out_jpeg: Path, container: str = "jpeg
                 embed_primary_icc(tmp_path, icc)
         if encoded_content_signature(tmp_path, container) != signature:
             return False
-        tmp_path.replace(out_jpeg)
+        protection.replace(tmp_path, out_jpeg)
         return True
+    except SourceOutputConflictError:
+        raise
     except Exception:
         return False
     finally:
@@ -241,6 +242,7 @@ def carry_capture_metadata_hdr(
     file. Any mismatch discards the tmp and keeps the un-carried delivery —
     metadata is best-effort, the gates are not.
     """
+    protection = raw_protection(src_raw).check(out_path)
     from .gainmap import inspect_gainmap_file
 
     uti = "public.heic" if str(container) == "heic" else "public.jpeg"
@@ -282,8 +284,10 @@ def carry_capture_metadata_hdr(
             return False
         if encoded_content_signature(tmp_path, container) != signature:
             return False
-        tmp_path.replace(out_path)
+        protection.replace(tmp_path, out_path)
         return True
+    except SourceOutputConflictError:
+        raise
     except Exception:
         return False
     finally:
@@ -318,19 +322,18 @@ def export_ultrahdr_jpeg(
     delivery: DeliveryProfile | None = None,
     chroma: str | None = None,
     return_rgb: bool = False,
+    *, protected_sources=None,
 ) -> dict[str, Any]:
     """Write Display P3 Ultrahdr (JPEG or HEIC) carrying an ISO 21496-1 gain map."""
+    protection = raw_protection(path, bundle, protected_sources).check(out_path)
     output_gamut = "p3"
     profile = delivery or hdr_profile_from_encode_settings(int(quality), chroma)
     profile = resolve_hdr_chroma(profile, explicit_chroma=profile.chroma)
     container_label = "HEIC" if profile.container == "heic" else "JPEG"
     # A .jpg that actually holds HEIC bytes (or the reverse) misleads every downstream
     # consumer; the container decides the suffix, and the rewrite is reported in info.
-    suffix = out_path.suffix.lower()
-    if profile.container == "heic" and suffix not in (".heic", ".heif"):
-        out_path = out_path.with_suffix(".heic")
-    elif profile.container == "jpeg" and suffix in (".heic", ".heif"):
-        out_path = out_path.with_suffix(".jpg")
+    out_path = final_image_destination(out_path, "ultrahdr-heic" if profile.container == "heic" else "ultrahdr")
+    protection.check(out_path)
     if str(hdr_drt) not in HDR_DRT_CHOICES:
         raise RuntimeError(f"未知 HDR DRT：{hdr_drt}（可选：{'/'.join(HDR_DRT_CHOICES)}）")
     if look != "none" or display_filter != "none":
@@ -400,7 +403,7 @@ def export_ultrahdr_jpeg(
             output_gamut=output_gamut,
             sdr_rgb_float=base if float_base else None,
         )
-        with DeliveryTransaction(out_path) as transaction:
+        with DeliveryTransaction(out_path, protected_sources=protection) as transaction:
             info = encode_finished_pair(pair, transaction.path, profile)
             # Metadata keeps its best-effort, unchanged-content gate. The
             # verified original remains private until the final read succeeds.
@@ -472,7 +475,9 @@ def export_srgb_jpeg(
     agx_primaries: str = "base",
     return_rgb: bool = False,
     delivery: DeliveryProfile | None = None,
+    *, protected_sources=None,
 ) -> Any:
+    protection = raw_protection(path, bundle, protected_sources).check(out_path)
     try:
         if delivery is not None and delivery.name == "share-hq":
             quality = delivery.quality
@@ -490,7 +495,8 @@ def export_srgb_jpeg(
             from .heif_delivery import save_sdr_heif
 
             return save_sdr_heif(rgb, out_path, delivery, output_gamut,
-                                 source_raw=path, return_rgb=return_rgb)
+                                 source_raw=path, return_rgb=return_rgb,
+                                 protected_sources=protection)
         # A generated sRGB ICC includes its creation timestamp. Resolve once
         # for this complete export/search, then compare the actual embedded
         # bytes to that same reference rather than generating another profile.
@@ -521,7 +527,7 @@ def export_srgb_jpeg(
                         "delivery_chroma_requested": "422" if subsampling == 1 else "420",
                         "chroma_subsampling": "4:2:2" if subsampling == 1 else "4:2:0"}
 
-            with DeliveryTransaction(out_path) as transaction:
+            with DeliveryTransaction(out_path, protected_sources=protection) as transaction:
                 info = select_encoding(transaction.path, encode, encode_420=lambda q, p: encode(q, p, 2))
                 info["exif_carried"] = carry_capture_metadata(path, transaction.path)
                 info["file_size_bytes"] = transaction.path.stat().st_size
@@ -569,7 +575,7 @@ def export_srgb_jpeg(
                 }
                 if return_rgb:
                     info["_decoded_rgb"] = decoded
-            os.replace(candidate,out_path)
+            protection.replace(candidate,out_path)
         if delivery is not None and delivery.name == "share-hq":
             return info
         return (embedded, decoded) if return_rgb else embedded
@@ -606,7 +612,10 @@ def export_jpeg(
     hdr_drt: str = DEFAULT_HDR_DRT,
     delivery: DeliveryProfile | None = None,
     chroma: str | None = None,
+    *, protected_sources=None,
 ) -> Any:
+    protection = raw_protection(path, bundle, protected_sources)
+    protection.check(out_path, final_image_destination(out_path, output_format))
     if is_hdr_output_format(output_format):
         cont = container_for_output_format(output_format)
         profile = delivery
@@ -644,6 +653,7 @@ def export_jpeg(
             delivery=profile,
             chroma=chroma,
             return_rgb=return_rgb,
+            protected_sources=protection,
         )
     if output_format == "sdr-heic":
         from .delivery import profile_from_encode_settings
@@ -651,8 +661,7 @@ def export_jpeg(
         delivery = (reprofile_for_container(delivery, "heic") if delivery is not None
                     else profile_from_encode_settings(quality, chroma or
                          {0: "444", 1: "422", 2: "420"}[subsampling], "heic"))
-        if out_path.suffix.lower() not in (".heic", ".heif"):
-            out_path = out_path.with_suffix(".heic")
+        out_path = final_image_destination(out_path, output_format)
     elif output_format != "sdr":
         raise ValueError(f"unknown output format: {output_format}")
     elif delivery is not None and delivery.container != "jpeg":
@@ -662,4 +671,5 @@ def export_jpeg(
         look, look_strength, display_filter, filter_strength,
         scene_transform, scene_transform_strength,
         tone_core, lum_norm, agx_primaries, return_rgb, delivery,
+        protected_sources=protection,
     )

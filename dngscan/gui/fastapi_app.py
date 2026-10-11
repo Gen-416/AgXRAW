@@ -271,8 +271,10 @@ def create_app(
         return await legacy_call(request, calibration_service.list_calibrations)
 
     @protected.post("/calibration/import")
+    @protected.post("/calibration/inspect")
+    @protected.post("/calibration/library-install")
     async def calibration_import(request: Request) -> JSONResponse:
-        # Unlike RAW streaming uploads this is a small selected text package.
+        # Selected text/archive packages are bounded before JSON decoding.
         # Bound the body while reading it, including when Content-Length is
         # absent, so parsing JSON cannot allocate an unbounded import payload.
         try:
@@ -280,11 +282,14 @@ def create_app(
             async for chunk in request.stream():
                 body.extend(chunk)
                 if len(body) > calibration_service.MAX_CALIBRATION_REQUEST_BYTES:
-                    raise ValueError("标定请求超过 16 MiB，请选择单个标定集")
+                    raise ValueError("标定请求超过 96 MiB，请分批选择测量包")
             params = json.loads(body or b"{}")
             if not isinstance(params, dict):
                 raise ValueError("JSON 请求必须是对象")
-            result = await _run_service_call(calibration_service.import_calibration, params)
+            handler = {"inspect": calibration_service.inspect_calibration,
+                       "import": calibration_service.import_calibration,
+                       "library-install": calibration_service.install_public_library}[request.url.path.rsplit("/", 1)[-1]]
+            result = await _run_service_call(handler, params)
             return JSONResponse(result)
         except Exception as exc:
             maybe_print_exc()
@@ -297,6 +302,14 @@ def create_app(
     @protected.post("/calibration/active")
     async def calibration_active(request: Request) -> JSONResponse:
         return await legacy_call(request, calibration_service.set_calibration_active)
+
+    @protected.post("/calibration/library")
+    async def calibration_library(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.public_library_status)
+
+    @protected.post("/calibration/library-select")
+    async def calibration_library_select(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.select_public_library)
 
     app.include_router(protected)
     return app

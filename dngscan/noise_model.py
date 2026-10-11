@@ -29,6 +29,13 @@ class NoiseModel:
     fallback_reason: str | None = None
     phase_variance: dict[str, tuple[float, float]] = field(default_factory=dict)
     phase_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Provenance belongs to the model that was actually analyzed, rather than
+    # a later catalogue lookup (especially for composed or DNG fallback models).
+    prior_id: str | None = None
+    prior_source: str | None = None
+    prior_calibration_id: str | None = None
+    capability_sources: dict[str, str] = field(default_factory=dict)
+    spectral_sources: dict[str, str] = field(default_factory=dict)
 
     def coefficients(self, label: str) -> tuple[float, float] | None:
         if self.status != "valid" or self.domain != "normalized-raw":
@@ -202,6 +209,12 @@ def _prior_spectrum(prior, iso):
                           if abs(x - px) <= 5.1e-5), None)
         if ratio is not None and math.isfinite(ratio) and ratio >= 0:
             spectral_ratios[axis] = float(ratio)
+    for index, constraint in enumerate(prior.get("independent_constraint_priors") or []):
+        # Composition can change the variance ruler, never erase an applicable
+        # independent spectrum. Names retain each source rather than averaging.
+        _, values = _prior_spectrum({k: v for k, v in constraint.items()
+                                    if k != "independent_constraint_priors"}, iso)
+        spectral_ratios.update({f"source{index}:{key}": value for key, value in values.items()})
     # This is only a conservative incompatibility guard for the independent
     # coarse approximation. A high/mid PSD ratio near one does not prove white
     # noise or exclude narrow peaks. Never derive this flag from scene texture.
@@ -219,21 +232,38 @@ def model_from_prior(bundle, fullwell: dict[int, float], prior) -> NoiseModel:
     prior = priors.with_readout(prior, getattr(bundle, "capture_readout", None))
     usable, reason = priors.prior_usability(prior)
     source = str(prior.get("source") or prior.get("id") or "sensor-prior")
+    base_source = (f"User JPTC calibration ({prior['calibration_id']})"
+                   if prior.get("calibration_id") else source)
+    sources = {"gain": base_source, "read_noise": base_source,
+               **dict(prior.get("capability_sources") or {})}
+    model = NoiseModel(source=source, prior_id=prior.get("id"), prior_source=source,
+                       prior_calibration_id=prior.get("calibration_id"), capability_sources=sources)
     if not usable:
-        return NoiseModel(status="rejected", source=source, reason=reason)
+        return replace(model, status="rejected", reason=reason)
     iso = getattr(bundle, "shot_iso", None)
     if not iso or iso <= 0:
-        return NoiseModel(source=source, reason="iso-unavailable")
+        return replace(model, reason="iso-unavailable")
     if prior.get("suspect_iso_min") and iso >= prior["suspect_iso_min"]:
-        return NoiseModel(status="rejected", source=source, reason="suspect-iso")
+        return replace(model, status="rejected", reason="suspect-iso")
     # A failed read-noise fit does not invalidate a separate spectrum
     # measurement. Its camera/mode/ISO and DN-scale checks still apply.
     scales = _prior_signal_scales(bundle, fullwell, prior, iso)
     try:
         correlation, spectral_ratios = _prior_spectrum(prior, iso) if scales else ("unknown", {})
     except (ValueError, TypeError, KeyError, OverflowError):
-        return NoiseModel(status="rejected", source=source, reason="invalid-spectral-evidence")
-    model = NoiseModel(source=source, correlation=correlation, spectral_ratios=spectral_ratios)
+        return replace(model, status="rejected", reason="invalid-spectral-evidence")
+    spectral_sources = {}
+    for key in spectral_ratios:
+        owner_source = sources["gain"]
+        if key.startswith("source") and ":" in key:
+            index = key.split(":", 1)[0][6:]
+            constraints = prior.get("independent_constraint_priors") or []
+            owner = (constraints[int(index)] if index.isdigit() and int(index) < len(constraints) else {})
+            owner_source = owner.get("source")
+        if owner_source:
+            spectral_sources[key] = owner_source
+    model = replace(model, correlation=correlation, spectral_ratios=spectral_ratios,
+                    spectral_sources=spectral_sources)
     from .calibration import read_noise_issue
     issue = read_noise_issue(prior, iso)
     if issue:
@@ -366,7 +396,9 @@ def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> Noise
                             iso=getattr(bundle, "shot_iso", None),
                             readout=getattr(bundle, "capture_readout", None))
     model = model_from_prior(bundle, fullwell, prior)
-    file_model = _file_model(bundle)
+    file_model = replace(_file_model(bundle), prior_id=model.prior_id,
+                         prior_source=model.prior_source, prior_calibration_id=model.prior_calibration_id,
+                         capability_sources=dict(model.capability_sources))
     # A profile's variance values are an alternative source. The RAW's
     # declaration that processing was applied is a compatibility constraint
     # on every white-noise source, including a matched external calibration.
@@ -383,7 +415,8 @@ def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> Noise
                                    if model.status == "unresolved" else file_model.reason),
                            fallback_source=model.source, fallback_reason=model.reason,
                            correlation=model.correlation,
-                           spectral_ratios=dict(model.spectral_ratios))
+                           spectral_ratios=dict(model.spectral_ratios),
+                           spectral_sources=dict(model.spectral_sources))
     if model.spectral_ratios and file_model.status == "unavailable":
         # An unusable file profile cannot erase independent negative evidence
         # either (for example, a profile attached to an enhanced RGB IFD).
@@ -396,8 +429,10 @@ def resolve_noise_model(bundle, fullwell: dict[int, float], prior=None) -> Noise
         return replace(model, noise_reduction_status=file_model.noise_reduction_status)
     if model.status == "rejected" and file_model.status == "valid":
         return replace(file_model, fallback_source=model.source, fallback_reason=model.reason)
-    return (file_model if file_model.source != "none" else
-            replace(model, noise_reduction_status=file_model.noise_reduction_status))
+    if file_model.source != "none":
+        return (replace(file_model, fallback_source=model.source, fallback_reason=model.reason)
+                if model.source != "none" else file_model)
+    return replace(model, noise_reduction_status=file_model.noise_reduction_status)
 
 
 def model_snr_curves(model: NoiseModel, channel_ids, labels):

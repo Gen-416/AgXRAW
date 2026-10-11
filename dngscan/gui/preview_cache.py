@@ -55,7 +55,14 @@ from .scheduler import shared_flight_wait
 # v27: uncertified decoder support is separate from local clipping evidence.
 # v28: source dependency exclusions survive scene proxies and exact tone samples.
 # v29: absolute prior diagnostics use the same coding scale as the noise model.
-PREVIEW_CACHE_VERSION = 31
+# v32: content-grouped Collect constraints, capability composition and the
+# signed Oklab roundoff convention. Discard older Analysis and rendered proxies.
+# v33: actual Apple recipe/output-window identities; transient auto fallbacks
+# are retried after a bounded memory lifetime and never reused from disk.
+# v35: Collect unit/unpack-domain qualification is bound to immutable RAW
+# evidence. Older Analysis entries may license unsupported measurement units.
+PREVIEW_CACHE_VERSION = 35
+AUTO_FALLBACK_RETRY_SECONDS = 60.0
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
 MAX_DISK_CACHE_BYTES = 768 * 1024 * 1024
@@ -94,6 +101,7 @@ class PreviewEntry:
     analysis: Analysis
     source_metadata: dict[str, Any] | None = field(default=None, repr=False)
     cache_digest: str | None = field(default=None, repr=False)
+    created_monotonic: float = field(default_factory=time.monotonic, repr=False)
     _auto_ev_cache: OrderedDict[str, AutoEvResult] = field(default_factory=OrderedDict, init=False, repr=False)
     _plan_cache: OrderedDict[Hashable, Any] = field(
         default_factory=OrderedDict, init=False, repr=False
@@ -371,8 +379,10 @@ def _cache_identity(
     demosaic: str = "auto",
     coreimage_scale: str = "aligned",
     margin: int = 4,
+    capture_declaration: dict | None = None,
 ) -> tuple[tuple, str]:
     from dngscan.calibration import calibration_fingerprint
+    from dngscan.scene_transform import decoder_anchor_fingerprint
 
     evidence_key = _evidence_cache_identity(path)
     # GUI-exposed decode dials (owner 2026-08-28): the Core Image scale
@@ -380,6 +390,14 @@ def _cache_identity(
     # analysis — both are identity. Defaults add NOTHING to the key so
     # every existing cache entry keeps its digest.
     extras: list[str] = []
+    extras.append("decoder-window=" + decoder_anchor_fingerprint())
+    if str(decoder) == "coreimage":
+        from dngscan.coreimage_decode import COREIMAGE_RECIPE_VERSION
+        extras.append("decoder-recipe=" + COREIMAGE_RECIPE_VERSION)
+    from dngscan.readout import capture_declaration_identity
+    declaration_id = capture_declaration_identity(capture_declaration)
+    if declaration_id:
+        extras.append("capture-declaration=" + declaration_id)
     if str(decoder) == "coreimage" and str(coreimage_scale) != "aligned":
         extras.append(f"ciscale={coreimage_scale}")
     if int(margin) != 4:
@@ -532,6 +550,8 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "scene_decoder": str(getattr(bundle, "scene_decoder", "libraw") or "libraw"),
         "scene_decoder_version": getattr(bundle, "scene_decoder_version", None),
         "scene_decoder_runtime": getattr(bundle, "scene_decoder_runtime", None),
+        "scene_decoder_recipe": copy.deepcopy(getattr(bundle, "scene_decoder_recipe", {}) or {}),
+        "scene_window_calibration": copy.deepcopy(getattr(bundle, "scene_window_calibration", {}) or {}),
         "scene_scale_mode": getattr(bundle, "scene_scale_mode", None),
         "scene_align_factor": float(getattr(bundle, "scene_align_factor", 1.0)),
         "proxy_scale": float(getattr(bundle, "proxy_scale", 1.0)),
@@ -645,6 +665,8 @@ def _bundle_from_cache(
         scene_decoder=str(metadata.get("scene_decoder", "libraw") or "libraw"),
         scene_decoder_version=metadata.get("scene_decoder_version"),
         scene_decoder_runtime=metadata.get("scene_decoder_runtime"),
+        scene_decoder_recipe=copy.deepcopy(metadata.get("scene_decoder_recipe") or {}),
+        scene_window_calibration=copy.deepcopy(metadata.get("scene_window_calibration") or {}),
         scene_scale_mode=metadata.get("scene_scale_mode"),
         scene_align_factor=float(metadata.get("scene_align_factor", 1.0)),
         proxy_scale=float(metadata.get("proxy_scale", 1.0)),
@@ -800,6 +822,9 @@ def _read_disk_entry(
             metadata = json.loads(str(payload["metadata"].item()))
             if int(metadata.get("version", -1)) != PREVIEW_CACHE_VERSION:
                 return None
+            if metadata.get("bundle", {}).get("scene_decoder_fallback"):
+                # A failed Apple attempt is not a durable capability decision.
+                return None
             if require_guidance and not bool(metadata.get("has_guidance", False)):
                 return None
             if expected_runtime:
@@ -913,6 +938,8 @@ def _trim_disk_cache(directory: Path) -> None:
 
 
 def _write_disk_entry(cache_path: Path, entry: PreviewEntry) -> None:
+    if getattr(entry.bundle, "scene_decoder_fallback", None):
+        return
     np = dg.np
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1103,6 +1130,26 @@ def _owned_bytes(value: Any, seen: set[int] | None = None) -> int:
 DISK_WRITER = DiskWriter()
 
 
+def _analysis_bundle_identity(metadata: dict) -> dict:
+    """Compare the same formed pixels across auto and pinned export requests.
+
+    Keep all effective controls, source, geometry and project handoff. Selection
+    bookkeeping alone does not alter an already selected actual decoder.
+    """
+    identity = copy.deepcopy(metadata)
+    recipe = identity.get("scene_decoder_recipe")
+    if isinstance(recipe, dict):
+        for name in ("requested_decoder_token", "requested_version", "offered_tokens", "fallback"):
+            recipe.pop(name, None)
+    return identity
+
+
+def _auto_fallback_expired(entry: PreviewEntry, decoder: str, version: str) -> bool:
+    return (decoder == "coreimage" and version == "auto"
+            and bool(getattr(entry.bundle, "scene_decoder_fallback", None))
+            and time.monotonic() - entry.created_monotonic >= AUTO_FALLBACK_RETRY_SECONDS)
+
+
 class PreviewCache:
     """A small in-memory proxy LRU plus a bounded, validated on-disk cache."""
 
@@ -1156,6 +1203,7 @@ class PreviewCache:
         demosaic: str = "auto",
         coreimage_scale: str = "aligned",
         margin: int = 4,
+        capture_declaration: dict | None = None,
     ) -> PreviewEntry | None:
         """Return the loaded entry using the same decode identity as get()."""
         if decoder == "coreimage":
@@ -1166,6 +1214,7 @@ class PreviewCache:
         key, _ = _cache_identity(
             path, highlight, wb, decoder, coreimage_version, demosaic,
             coreimage_scale, int(margin),
+            capture_declaration=capture_declaration,
         )
         with self.lock:
             return self.entries.get(key)
@@ -1182,6 +1231,7 @@ class PreviewCache:
         coreimage_scale: str = "aligned",
         margin: int = 4,
         _is_current: Callable[[], bool] | None = None,
+        capture_declaration: dict | None = None,
     ) -> PreviewEntry:
         current = _is_current or (lambda: True)
         if not current():
@@ -1194,10 +1244,14 @@ class PreviewCache:
         key, digest = _cache_identity(
             path, highlight, wb, decoder, coreimage_version, demosaic,
             coreimage_scale, int(margin),
+            capture_declaration=capture_declaration,
         )
         cached: PreviewEntry | None = None
         with self.lock:
             cached = self.entries.get(key)
+            if cached is not None and _auto_fallback_expired(cached, decoder, coreimage_version):
+                self.entries.pop(key, None)
+                cached = None
             if cached is not None and (not require_guidance or cached.bundle.raw_guidance is not None):
                 self.entries.move_to_end(key)
             else:
@@ -1218,6 +1272,9 @@ class PreviewCache:
         while True:
             with self.lock:
                 cached = self.entries.get(key)
+                if cached is not None and _auto_fallback_expired(cached, decoder, coreimage_version):
+                    self.entries.pop(key, None)
+                    cached = None
                 if cached is not None and (
                     not require_guidance or cached.bundle.raw_guidance is not None
                 ):
@@ -1272,6 +1329,7 @@ class PreviewCache:
                             coreimage_scale=coreimage_scale,
                             _defer_clip_masks=True,
                             _analysis_luminance_only=True,
+                            **({"capture_declaration": capture_declaration} if capture_declaration else {}),
                         )
                         self._check_flight_interest(key, waiter)
                         analysis, _, _ = dg.analyze(source, int(margin), diagnostics=False,

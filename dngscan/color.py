@@ -136,10 +136,41 @@ def luminance_from_rgb_space(rgb: Any, output_gamut: str) -> Any:
     return np.clip(np.nan_to_num(y, nan=0.0, posinf=1e6, neginf=0.0), 0.0, None)
 
 
-def rgb_to_oklab(rgb: Any, output_gamut: str) -> tuple[Any, Any, Any]:
+def _oklab_lms_with_roundoff_bound(rgb: Any, output_gamut: str) -> tuple[Any, Any]:
+    """LMS with a symmetric zero convention at float32 cancellation precision.
+
+    RGB storage and each of the two matrix stages materialize float32. A
+    component indistinguishable from zero within their forward roundoff bound
+    must not turn a last-bit sign change into a large signed cube-root change.
+    This is a numerical precision convention, not a sensor noise estimate or
+    clipping of meaningful negative LMS. Values outside the bound keep their
+    original sign and magnitude. The bound scales with signal magnitude.
+
+    With A=RGB->XYZ, B=XYZ->LMS, u=eps32/2, a first-order storage bound is
+    u*(|B||A||rgb| + |B||xyz| + |lms|). u/(1-u) bounds rounding relative to
+    materialized values. Float64 matrix accumulation error is much smaller
+    than this float32 storage bound; it is included via gamma_3 below.
+    """
     space = output_gamut_space(output_gamut)
-    xyz = apply_rgb_matrix3(rgb, RGB_TO_XYZ[space])
+    source = np.asarray(rgb)
+    matrix = RGB_TO_XYZ[space]
+    xyz = apply_rgb_matrix3(source, matrix)
     lms = apply_rgb_matrix3(xyz, OKLAB_M1)
+    unit = np.finfo(np.float32).eps / 2.
+    double_unit = np.finfo(np.float64).eps / 2.
+    rounding = unit / (1. - unit) + 3. * double_unit / (1. - 3. * double_unit)
+    abs_matrix = np.abs(matrix)
+    abs_lms_matrix = np.abs(OKLAB_M1)
+    magnitude_xyz = np.abs(source.astype(np.float64)) @ abs_matrix.T
+    bound = rounding * (magnitude_xyz @ abs_lms_matrix.T
+                        + np.abs(xyz.astype(np.float64)) @ abs_lms_matrix.T
+                        + np.abs(lms.astype(np.float64)))
+    cancellation = np.isfinite(lms) & np.isfinite(bound) & (np.abs(lms) <= bound)
+    return np.where(cancellation, np.float32(0), lms), bound
+
+
+def rgb_to_oklab(rgb: Any, output_gamut: str) -> tuple[Any, Any, Any]:
+    lms, _ = _oklab_lms_with_roundoff_bound(rgb, output_gamut)
     lab = apply_rgb_matrix3(np.cbrt(lms), OKLAB_M2)
     return lab[:, 0], lab[:, 1], lab[:, 2]
 

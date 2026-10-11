@@ -245,21 +245,20 @@ class DecoderTransportTests(unittest.TestCase):
 
         self.assertIsNone(decoder_window_ratios("libraw", "skin"))
 
-    def test_coreimage_transport_is_measured_and_bounded(self) -> None:
+    def test_unscoped_coreimage_transport_is_unmeasured(self) -> None:
         from dngscan.scene_transform import decoder_window_ratios
 
         for name in ("skin", "foliage", "neutral", "unknown"):
             ratios = decoder_window_ratios("coreimage", name)
-            self.assertIsNotNone(ratios)
-            for r in ratios:
-                self.assertGreater(r, 0.6)
-                self.assertLess(r, 1.4)
+            self.assertIsNone(ratios)
 
     def test_composition_multiplies_wb_and_decoder(self) -> None:
         from dngscan.scene_transform import _compose_transport, decoder_window_ratios
 
-        dec = decoder_window_ratios("coreimage", "skin")
-        combined = _compose_transport((1.1, 0.9, "coreimage"), "skin")
+        from unittest.mock import patch
+        dec = (.9, 1.1)
+        with patch("dngscan.scene_transform.decoder_window_ratios", return_value=dec):
+            combined = _compose_transport((1.1, 0.9, "qualified-test-token"), "skin")
         self.assertAlmostEqual(combined[0], 1.1 * dec[0], places=9)
         self.assertAlmostEqual(combined[1], 0.9 * dec[1], places=9)
         self.assertEqual(_compose_transport((1.1, 0.9), "skin"), (1.1, 0.9))
@@ -276,7 +275,7 @@ class DecoderTransportTests(unittest.TestCase):
 
 
 class PerCameraTransportTests(unittest.TestCase):
-    """Composite decoder|model tokens resolve per-camera scopes with honest fallback."""
+    """Legacy decoder|model strings cannot prove exact recipe applicability."""
 
     def test_transport_tag_composition(self) -> None:
         from types import SimpleNamespace
@@ -286,38 +285,28 @@ class PerCameraTransportTests(unittest.TestCase):
             window_transport_tag(SimpleNamespace(scene_decoder="libraw", shot_model="fp")),
             "libraw",
         )
-        self.assertEqual(
-            window_transport_tag(
-                SimpleNamespace(scene_decoder="coreimage", shot_model="Apple iPhone 16 Pro")
-            ),
-            "coreimage|Apple iPhone 16 Pro",
-        )
-        self.assertEqual(
-            window_transport_tag(SimpleNamespace(scene_decoder="coreimage", shot_model="")),
-            "coreimage",
-        )
+        import json
+        for model in ("Apple iPhone 16 Pro", ""):
+            token = window_transport_tag(SimpleNamespace(scene_decoder="coreimage", shot_model=model))
+            self.assertIsNone(json.loads(token)["scope"])
 
-    def test_per_camera_scope_wins_and_unknown_falls_back(self) -> None:
+    def test_legacy_camera_scope_and_default_are_not_qualified(self) -> None:
         from dngscan.scene_transform import decoder_window_ratios
 
         iphone = decoder_window_ratios("coreimage|Apple iPhone 16 Pro", "skin")
         default = decoder_window_ratios("coreimage", "skin")
         unknown = decoder_window_ratios("coreimage|Some Future Camera", "skin")
-        self.assertIsNotNone(iphone)
-        self.assertIsNotNone(default)
-        self.assertNotEqual(iphone, default)
-        self.assertEqual(unknown, default)
+        self.assertIsNone(iphone)
+        self.assertIsNone(default)
+        self.assertIsNone(unknown)
 
-    def test_measured_scopes_are_bounded_and_distinct(self) -> None:
+    def test_historical_scopes_remain_unmeasured(self) -> None:
         from dngscan.scene_transform import decoder_window_ratios
 
         for token in ("coreimage", "coreimage|Apple iPhone 16 Pro"):
             for cls in ("skin", "foliage", "magenta", "unknown"):
                 ratios = decoder_window_ratios(token, cls)
-                self.assertIsNotNone(ratios)
-                for r in ratios:
-                    self.assertGreater(r, 0.6)
-                    self.assertLess(r, 1.35)
+                self.assertIsNone(ratios)
 
 
 class MaterialWindowSanityTests(unittest.TestCase):

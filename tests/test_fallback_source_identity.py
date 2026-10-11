@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 
 from dngscan import raw_io
+from dngscan.source_metadata import SourceChangedError
 from tests.test_pipeline_corrections import write_sensor_dng
 
 
@@ -39,7 +40,7 @@ class FallbackSourceIdentityTests(unittest.TestCase):
         self.assertEqual(decode.call_count, 1)
         self.check(bundle, 1000)
 
-    def test_change_during_evidence_acquisition_disables_fallback_reuse(self):
+    def test_change_during_evidence_acquisition_aborts_whole_attempt(self):
         acquire_original = raw_io.acquire_raw_evidence
         captured = []
 
@@ -52,21 +53,20 @@ class FallbackSourceIdentityTests(unittest.TestCase):
 
         with patch("dngscan.coreimage_decode.runtime_available", return_value=False), \
              patch.object(raw_io, "acquire_raw_evidence", side_effect=acquire):
-            bundle = self.load()
-        self.assertEqual(len(captured), 2)
-        self.assertIs(bundle.evidence, captured[1])
-        self.check(bundle, 1200)
+            with self.assertRaises(SourceChangedError):
+                self.load()
+        self.assertEqual(len(captured), 1)
 
-    def test_change_during_apple_failure_reacquires_current_evidence(self):
+    def test_change_during_apple_failure_cannot_start_decoder_fallback(self):
         def fail_apple(**_):
             write_sensor_dng(self.path, signal=1400)
             return False
 
         with patch("dngscan.coreimage_decode.runtime_available", side_effect=fail_apple), \
              patch.object(raw_io, "acquire_raw_evidence", wraps=raw_io.acquire_raw_evidence) as acquire:
-            bundle = self.load()
-        self.assertEqual(acquire.call_count, 2)
-        self.check(bundle, 1400)
+            with self.assertRaises(SourceChangedError):
+                self.load()
+        self.assertEqual(acquire.call_count, 1)
 
     def test_change_at_recursive_entry_rejects_previously_verified_evidence(self):
         original_load = raw_io.load_raw
@@ -80,12 +80,12 @@ class FallbackSourceIdentityTests(unittest.TestCase):
         with patch("dngscan.coreimage_decode.runtime_available", return_value=False), \
              patch.object(raw_io, "acquire_raw_evidence", wraps=raw_io.acquire_raw_evidence) as acquire, \
              patch.object(raw_io, "load_raw", side_effect=recursive):
-            bundle = original_load(self.path, decoder="coreimage", scene_half_size=True,
-                                   _defer_clip_masks=True, _analysis_luminance_only=True)
+            with self.assertRaises(SourceChangedError):
+                original_load(self.path, decoder="coreimage", scene_half_size=True,
+                              _defer_clip_masks=True, _analysis_luminance_only=True)
         self.assertEqual(len(passed), 1)
         self.assertIsNotNone(passed[0])
-        self.assertEqual(acquire.call_count, 2)
-        self.check(bundle, 1600)
+        self.assertEqual(acquire.call_count, 1)
 
 
 if __name__ == "__main__":

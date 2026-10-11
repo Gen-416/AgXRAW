@@ -43,8 +43,12 @@ class StoredDarkVarianceTests(unittest.TestCase):
 
     def bundle(self, *, iso=100, span_scale=1.):
         bundle = frame()
+        from tests.test_measurement_domain import sample_domain_fixture
+        domain = sample_domain_fixture()
+        domain["coding_spans_dn"] = [15359. * span_scale]
         return replace(bundle, shot_iso=iso, shot_shutter="electronic",
-                       capture_readout={"shutter": "electronic"},
+                       capture_readout={"shutter": "electronic", "storage_lossless": True,
+                                        "libraw_raw_geometry": [512, 512], "sample_domain": domain},
                        white_level=int(16383 * span_scale),
                        black_levels=[1024. * span_scale] * 4,
                        camera_white_levels=[16383. * span_scale] * 4)
@@ -60,9 +64,11 @@ class StoredDarkVarianceTests(unittest.TestCase):
         directory.mkdir()
         black, white, gain = 1024., 16383., 4.
         total = analog_dn * analog_dn + step * step / 12.
+        acquisition = ("#Camera: SIGMA fp\n#ShutterType: 电子快门\n#Compression: lossless\n"
+                       "#RawSize: 512x512\n#CfaPattern: RGBG\n"
+                       f"#AdcStep: {step}\n#LinearisationCurve: identity\n")
         (directory / "dark-scalars.csv").write_text(
-            "#Format: JPTC-DARK/1\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
-            f"#AdcStep: {step}\n#LinearisationCurve: identity\n#ClipVarianceFactor: 1\n"
+            "#Format: JPTC-DARK/1\n" + acquisition + "#ClipVarianceFactor: 1\n"
             "ISO,ColorIndex,BlackA,BlackB,StdDiffClipped\n" +
             "".join(f"100,{ch},{black},{black},{math.sqrt(2 * total):.17g}\n" for ch in (1, 3)))
         rows = []
@@ -71,7 +77,7 @@ class StoredDarkVarianceTests(unittest.TestCase):
             std = math.sqrt(signal/gain + total) if mean < white else 0.
             rows.append(f"{mean},{std}")
         (directory / "ptc-iso100.csv").write_text(
-            "#Format: JPTC/2\n#BlackLevel: 1024,1024,1024,1024\nG1_Mean,G1_Std\n" + "\n".join(rows))
+            "#Format: JPTC/2\n" + acquisition + "#BlackLevel: 1024,1024,1024,1024\nG1_Mean,G1_Std\n" + "\n".join(rows))
         return directory, total
 
     def test_read_dark_preserves_pre_sheppard_variance(self):
@@ -88,7 +94,7 @@ class StoredDarkVarianceTests(unittest.TestCase):
         directory, total = self.csv_directory()
         summary = calibration.import_calibration(directory)
         self.assertTrue(summary["has_stored_dark_variance"])
-        prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100)
+        prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100, readout=self.bundle().capture_readout)
         self.assertEqual(prior["calibration_id"], summary["id"])
         self.assertAlmostEqual(prior[VARIANCE_KEY][0][1], total)
         result, _, _ = analyze(self.bundle(), 4)
@@ -143,7 +149,7 @@ class StoredDarkVarianceTests(unittest.TestCase):
         directory, total = self.csv_directory(analog_dn=0.)
         summary = calibration.import_calibration(directory)
         self.assertTrue(summary["has_stored_dark_variance"])
-        prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100)
+        prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100, readout=self.bundle().capture_readout)
         self.assertIn(100, prior["read_noise_unresolved_isos"])
         self.assertAlmostEqual(calibration.stored_dark_variance(prior, 100)[0], total)
         result, _, _ = analyze(self.bundle(), 4)

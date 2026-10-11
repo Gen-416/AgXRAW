@@ -399,7 +399,11 @@ def plot_dashboard(
     ev: Any,
     out_path: Path,
     auto_ev: AutoEvResult | None = None,
+    *, protected_sources=None,
 ) -> None:
+    from .protected_output import raw_protection
+    from .delivery_transaction import DeliveryTransaction
+    protection = raw_protection(bundle=bundle, protected_sources=protected_sources).check(out_path)
     plt, _, ListedColormap, Patch = _matplotlib()
     configure_plot_fonts()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -492,8 +496,12 @@ def plot_dashboard(
             color="#1a1a1a",
             bbox={"facecolor": "#f3c04d", "alpha": 0.92, "edgecolor": "none", "pad": 4},
         )
-    fig.savefig(out_path)
-    plt.close(fig)
+    try:
+        with DeliveryTransaction(out_path, protected_sources=protection) as transaction:
+            fig.savefig(transaction.path)
+            transaction.commit()
+    finally:
+        plt.close(fig)
 
 
 def default_png_path(path: Path) -> Path:

@@ -11,6 +11,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 import json
+import hashlib
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -145,55 +147,186 @@ def _load_decoder_transport() -> dict:
 
 
 _DECODER_TRANSPORT = _load_decoder_transport()
+DECODER_ANCHOR_SCHEMA = "decoder-anchor-transport-3"
+RAW9_SCOPE_SCHEMA = "raw9-anchor-scope-1"
+RAW9_TAG_SCHEMA = "raw9-window-tag-1"
+ANCHOR_RATIO_BOUNDS = (.65, 1.30)
+ANCHOR_MAX_HOLDOUT_MEDIAN_ERROR = .03
+ANCHOR_MAX_HOLDOUT_P95_ERROR = .06
+
+
+def decoder_anchor_fingerprint() -> str:
+    """Content identity of the currently installed anchor asset, including absence."""
+    try:
+        payload = DECODER_ANCHOR_TRANSPORT_JSON.read_bytes()
+    except OSError:
+        payload = b""
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _decoder_transport_snapshot() -> tuple[str, dict]:
+    try:
+        payload = DECODER_ANCHOR_TRANSPORT_JSON.read_bytes()
+    except OSError:
+        payload = b""
+    fingerprint = hashlib.sha256(payload).hexdigest()
+    try:
+        asset = json.loads(payload)
+    except (ValueError, UnicodeError):
+        asset = {}
+    return fingerprint, asset if isinstance(asset, dict) else {}
+
+
+def _validated_anchor_scope(raw: Any) -> dict | None:
+    if not isinstance(raw, dict) or raw.get("schema") != RAW9_SCOPE_SCHEMA:
+        return None
+    keys = ("make", "model", "actual_decoder_token", "runtime", "configuration_id")
+    if any(not isinstance(raw.get(key), str) or not raw[key].strip() for key in keys):
+        return None
+    if raw["actual_decoder_token"].split(".", 1)[0] != "9":
+        return None
+    identity = raw["configuration_id"]
+    if len(identity) != 64 or any(character not in "0123456789abcdef" for character in identity):
+        return None
+    return {"schema": RAW9_SCOPE_SCHEMA, **{key: raw[key] for key in keys}}
+
+
+def decoder_anchor_scope(bundle: Any) -> dict | None:
+    """Exact camera and actual RAW9 processing identity; missing proof is unmeasured."""
+    if getattr(bundle, "scene_decoder", None) != "coreimage" or getattr(bundle, "scene_decoder_fallback", None):
+        return None
+    recipe = getattr(bundle, "scene_decoder_recipe", None)
+    if not isinstance(recipe, dict) or recipe.get("schema") != "coreimage-decode-recipe-1":
+        return None
+    access = recipe.get("linear_access")
+    fallback = recipe.get("fallback")
+    if (not isinstance(access, dict) or access.get("status") != "parameter-state-verified"
+            or not isinstance(fallback, dict) or fallback.get("used") is not False
+            or getattr(bundle, "scene_decoder_version", None) != recipe.get("actual_decoder_token")
+            or getattr(bundle, "scene_decoder_runtime", None) != recipe.get("runtime")):
+        return None
+    return _validated_anchor_scope({"schema": RAW9_SCOPE_SCHEMA,
+        "make": getattr(bundle, "shot_make", None), "model": getattr(bundle, "shot_model", None),
+        **{key: recipe.get(key) for key in ("actual_decoder_token", "runtime", "configuration_id")}})
+
+
+def _qualified_anchor_entry(entry: Any) -> bool:
+    if (not isinstance(entry, dict) or entry.get("status") != "qualified"
+            or not isinstance(entry.get("id"), str) or not entry["id"]):
+        return False
+    validation = entry.get("validation") or {}
+    source = entry.get("source") or {}
+    if (not isinstance(validation, dict) or validation.get("status") != "passed"
+            or validation.get("independent_holdout") is not True
+            or validation.get("spatial_support") not in ("flat-target-rois", "validated-registration")):
+        return False
+    inputs = source.get("inputs") if isinstance(source, dict) else None
+    if not isinstance(inputs, list) or len(inputs) < 4:
+        return False
+    hashes_valid = all(isinstance(row, dict) and isinstance(row.get("sha256"), str)
+               and len(row["sha256"]) == 64
+               and all(c in "0123456789abcdef" for c in row["sha256"]) for row in inputs)
+    if not hashes_valid or len({row["sha256"] for row in inputs}) != len(inputs):
+        return False
+    if any(sum(row.get("split") == split for row in inputs) < 2 for split in ("train", "holdout")):
+        return False
+    transport = entry.get("transport")
+    if not isinstance(transport, dict):
+        return False
+    classes = transport.get("per_class") or {}
+    candidates = [transport.get("global"), *(classes.values() if isinstance(classes, dict) else ())]
+    return any(_anchor_ratio(candidate) is not None for candidate in candidates)
+
+
+def _anchor_ratio(record: Any) -> tuple[float, float] | None:
+    if not isinstance(record, dict) or record.get("status") != "qualified":
+        return None
+    ratio = record.get("ratio_rg_bg")
+    if not isinstance(ratio, (list, tuple)) or len(ratio) != 2:
+        return None
+    counts = record.get("independent_frames")
+    if (not isinstance(counts, dict) or any(type(counts.get(split)) is not int or counts[split] < 2
+                                          for split in ("train", "holdout"))):
+        return None
+    try:
+        values = tuple(float(value) for value in ratio)
+        for key, maximum in (("holdout_median_relative_error", ANCHOR_MAX_HOLDOUT_MEDIAN_ERROR),
+                             ("holdout_p95_relative_error", ANCHOR_MAX_HOLDOUT_P95_ERROR)):
+            errors = record.get(key)
+            if not isinstance(errors, (list, tuple)) or len(errors) != 2:
+                return None
+            if any(not math.isfinite(float(error)) or not 0 <= float(error) <= maximum for error in errors):
+                return None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return values if all(math.isfinite(value) and ANCHOR_RATIO_BOUNDS[0] <= value <= ANCHOR_RATIO_BOUNDS[1]
+                         for value in values) else None
+
+
+def _select_decoder_anchor(scope: dict | None, asset: dict) -> tuple[dict | None, str]:
+    if scope is None:
+        return None, "camera-or-actual-raw9-recipe-unmeasured"
+    if asset.get("schema") != DECODER_ANCHOR_SCHEMA or asset.get("version") != 3:
+        return None, "legacy-or-invalid-anchor-asset"
+    profiles = asset.get("profiles")
+    if not isinstance(profiles, list):
+        return None, "invalid-anchor-profiles"
+    matched = [entry for entry in profiles if isinstance(entry, dict)
+               and _validated_anchor_scope(entry.get("scope")) == scope and _qualified_anchor_entry(entry)]
+    if len(matched) != 1:
+        return None, "ambiguous-anchor-scope" if len(matched) > 1 else "exact-anchor-scope-unmeasured"
+    return matched[0], "exact-qualified-anchor-scope"
+
+
+def decoder_window_calibration(bundle: Any) -> dict:
+    """Describe anchor qualification without changing pixels or blocking decoding."""
+    fingerprint, asset = _decoder_transport_snapshot()
+    scope = decoder_anchor_scope(bundle)
+    entry, reason = _select_decoder_anchor(scope, asset)
+    reference = getattr(bundle, "scene_decoder", None) == "libraw"
+    profile_hash = (hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(",", ":"),
+                                            ensure_ascii=False).encode()).hexdigest() if entry else None)
+    return {"status": "identity" if reference else "qualified" if entry else "unmeasured",
+            "reason": "libraw-reference-windows" if reference else reason,
+            "profile_id": entry.get("id") if entry else None,
+            "profile_sha256": profile_hash, "asset_sha256": fingerprint, "scope": scope}
 
 
 def window_transport_tag(bundle: Any) -> str:
-    """Opaque decoder+camera token for the window transport ('libraw' = identity)."""
+    """Bind window transport to exact decoder/camera scope and asset contents."""
     decoder = str(getattr(bundle, "scene_decoder", "libraw") or "libraw")
     if decoder == "libraw":
         return "libraw"
-    model = str(getattr(bundle, "shot_model", "") or "").strip()
-    return f"{decoder}|{model}" if model else decoder
+    scope = decoder_anchor_scope(bundle)
+    return json.dumps({"schema": RAW9_TAG_SCHEMA, "scope": scope,
+                       "asset_sha256": decoder_anchor_fingerprint()}, sort_keys=True, separators=(",", ":"))
 
 
 def decoder_window_ratios(scene_decoder: str, region_name: str) -> tuple[float, float] | None:
-    """Measured chromaticity transport moving a calibration window into the given
-    decoder's reference frame (see tools/calibrate_raw9_anchors.py). None = identity.
-
-    The prefeed windows are calibrated against LibRaw-decoded responses; RAW 9
-    interprets hue regions differently through Apple's opaque colour transform. Both
-    paths realise a declared balance with the same project hot-WB matrix since
-    2026-08-27, so the residual transport is small (2026-09-16 recalibration on the
-    fp corpus: global R/G x1.05, B/G x0.98; skin B/G x0.88 shifts hardest — the
-    2026-08-04 values measured against CIRAWFilter's own neutralTemperature put B/G at
-    x0.85 and were stale once the migration landed). Windows follow the pixels;
-    matrices and pixels are untouched.
-    """
-    token = str(scene_decoder)
-    decoder, _, model = token.partition("|")
-    scopes = _DECODER_TRANSPORT.get(decoder)
-    if not isinstance(scopes, dict):
+    """Qualified exact-scope window transport. Legacy/default tokens are identity."""
+    try:
+        tag = json.loads(scene_decoder)
+    except (TypeError, ValueError):
         return None
-    # v2 layout: decoder -> camera scope -> transport; per-camera wins, else default.
-    if "global_ratio_rg_bg" in scopes:
-        entry = scopes  # v1 flat layout
-    else:
-        entry = scopes.get(model) if model else None
-        if not isinstance(entry, dict):
-            entry = scopes.get("default")
-    if not isinstance(entry, dict):
+    if not isinstance(tag, dict) or tag.get("schema") != RAW9_TAG_SCHEMA:
         return None
-    per_class = entry.get("per_class", {})
-    ratio = None
-    if isinstance(per_class, dict):
-        cls = per_class.get(str(region_name))
-        if isinstance(cls, dict):
-            ratio = cls.get("ratio_rg_bg")
-    if ratio is None:
-        ratio = entry.get("global_ratio_rg_bg")
-    if not ratio:
+    fingerprint, asset = _decoder_transport_snapshot()
+    if tag.get("asset_sha256") != fingerprint:
         return None
-    r = (float(ratio[0]), float(ratio[1]))
+    entry, _ = _select_decoder_anchor(_validated_anchor_scope(tag.get("scope")), asset)
+    if entry is None:
+        return None
+    transport = entry.get("transport") or {}
+    if not isinstance(transport, dict):
+        return None
+    per_class = transport.get("per_class") or {}
+    record = per_class.get(str(region_name)) if isinstance(per_class, dict) else None
+    r = _anchor_ratio(record)
+    if r is None:
+        record = transport.get("global")
+        r = _anchor_ratio(record)
+    if r is None:
+        return None
     return None if abs(r[0] - 1.0) < 1e-4 and abs(r[1] - 1.0) < 1e-4 else r
 SCENE_TRANSFORM_CHOICES = ("none",) + tuple(SCENE_TRANSFORMS)
 
