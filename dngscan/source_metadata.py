@@ -141,6 +141,14 @@ class SourceMetadataSession:
 _SESSION: ContextVar[SourceMetadataSession | None] = ContextVar("agxraw_source_metadata", default=None)
 
 
+def current_source_session(path: Path | None = None) -> SourceMetadataSession | None:
+    """Read the active scope; never create or repair a transaction identity."""
+    session = _SESSION.get()
+    if session is not None and (path is None or _path_key(path) == _path_key(session.path)):
+        return session
+    return None
+
+
 @contextmanager
 def source_metadata_session(path: Path):
     existing = _SESSION.get()

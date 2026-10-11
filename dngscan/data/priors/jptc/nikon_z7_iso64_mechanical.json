@@ -17,7 +17,10 @@
   "geometry": [
    null,
    "5504"
-  ]
+  ],
+  "numeric_contract_recovery": "hash-matched original CSV headers; historical fit retained without refitting",
+  "upstream_url": "https://raw.githubusercontent.com/y-g-jiang/y-g-jiang.github.io/504e119bcfb9ff2b58fc9e47c204ddb77eee5879/data/nikon-z7-iso64-mech.csv",
+  "upstream_commit": "504e119bcfb9ff2b58fc9e47c204ddb77eee5879"
  },
  "gain_e_per_dn": 3.904795514249238,
  "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
@@ -48,5 +51,16 @@
  "fit_points": 32,
  "fit_points_excluded": 7,
  "sat_plateau_dn": 15375.2127,
- "quality": "ok"
+ "quality": "ok",
+ "single_point_measurement": {
+  "schema": "dngscan-jptc-single-measurement-1",
+  "format": null,
+  "input_sha256": "d1c7cb8c8e38146c93d410390f88ced8cd321776bd06a64a5011ff2b343e9733",
+  "declared": {}
+ },
+ "acquisition_contract": {
+  "dn_domain": "libraw-unpacked-dn",
+  "variance_domain": "libraw-unpacked-dn2",
+  "decoder_identity": "LibRaw"
+ }
 }

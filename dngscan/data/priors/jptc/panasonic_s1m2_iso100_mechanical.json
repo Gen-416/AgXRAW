@@ -17,7 +17,10 @@
   "geometry": [
    null,
    "4000,,,,,,,,,,"
-  ]
+  ],
+  "numeric_contract_recovery": "hash-matched original CSV headers; historical fit retained without refitting",
+  "upstream_url": "https://raw.githubusercontent.com/y-g-jiang/y-g-jiang.github.io/504e119bcfb9ff2b58fc9e47c204ddb77eee5879/data/panasonic-s1m2-iso100-mech.csv",
+  "upstream_commit": "504e119bcfb9ff2b58fc9e47c204ddb77eee5879"
  },
  "gain_e_per_dn": 4.994973802733398,
  "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
@@ -48,5 +51,16 @@
  "fit_points": 14,
  "fit_points_excluded": 0,
  "sat_plateau_dn": 15871.3929,
- "quality": "ok"
+ "quality": "ok",
+ "single_point_measurement": {
+  "schema": "dngscan-jptc-single-measurement-1",
+  "format": null,
+  "input_sha256": "8fa0fb0dbe57b278b217467fbee6e5ea92f2f80efeada1e6dfba0a6faea606cc",
+  "declared": {}
+ },
+ "acquisition_contract": {
+  "dn_domain": "libraw-unpacked-dn",
+  "variance_domain": "libraw-unpacked-dn2",
+  "decoder_identity": "LibRaw"
+ }
 }

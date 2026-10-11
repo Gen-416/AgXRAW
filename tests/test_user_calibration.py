@@ -274,9 +274,9 @@ class TestUserCalibration(unittest.TestCase):
         black, white, gain, rn = 1024, 16383, 4, 3
         (directory / "dark-scalars.csv").write_text(
             "#Format: JPTC-DARK/1\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
-            "#AdcStep: 0\n#ClipVarianceFactor: 1\n"
+            "#AdcStep: 1\n#ClipVarianceFactor: 1\n"
             "ISO,ColorIndex,BlackA,BlackB,StdDiffClipped\n" +
-            "".join(f"{iso},{ch},{black},{black},{math.sqrt(2)*rn/gain}\n" for iso in (100,200) for ch in (1,3)))
+            "".join(f"{iso},{ch},{black},{black},{math.sqrt(2)*math.sqrt((rn/gain)**2+1/12)}\n" for iso in (100,200) for ch in (1,3)))
         values = np.geomspace(2, (white-black)*1.15, 80)
         rows = []
         for signal in values:
@@ -288,11 +288,12 @@ class TestUserCalibration(unittest.TestCase):
         (directory / "gain-levels.csv").write_text(
             "#Format: JPTC-ISOGAIN/1\nISO,ColorIndex,ClipFrac,Mean,ShutterSec\n"
             "100,1,0,2024,1\n200,1,0,3024,1\n")
+        capture = self._qualify_collect_fixture(directory)
         s = calibration.import_calibration(directory)
         copied = self.root / "different-upload-directory"
         shutil.copytree(directory, copied)
         self.assertEqual(calibration.import_calibration(copied)["id"], s["id"])
-        e = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100)
+        e = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100, readout=capture)
         self.assertEqual(e["calibration_id"], s["id"])
         self.assertAlmostEqual(priors.gain_e_per_dn(e,100), gain, delta=.02)
         self.assertAlmostEqual(priors.read_noise_e(e,100), rn, delta=.02)
@@ -305,7 +306,7 @@ class TestUserCalibration(unittest.TestCase):
         black, white, gain = 1024, 16383, 4
         (directory / "dark-scalars.csv").write_text(
             "#Format: JPTC-DARK/1\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
-            "#AdcStep: 0\n#ClipVarianceFactor: 1\n"
+            "#AdcStep: 1\n#ClipVarianceFactor: 1\n"
             "ISO,ColorIndex,BlackA,BlackB,StdDiffClipped\n" +
             "".join(f"{iso},{ch},{black},{black},{math.sqrt(2)*rn_dn}\n"
                     for iso, rn_dn in ((100, .75), (200, 0), (400, 1.5)) for ch in (1, 3)))
@@ -319,13 +320,28 @@ class TestUserCalibration(unittest.TestCase):
         (directory / "gain-levels.csv").write_text(
             "#Format: JPTC-ISOGAIN/1\nISO,ColorIndex,ClipFrac,Mean,ShutterSec\n"
             "100,1,0,2024,1\n200,1,0,3024,1\n400,1,0,5024,1\n")
+        capture = self._qualify_collect_fixture(directory)
         summary = calibration.import_calibration(directory)
-        prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=200)
+        prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=200, readout=capture)
         self.assertEqual(prior["calibration_id"], summary["id"])
         self.assertEqual(prior["read_noise_unresolved_isos"], [200])
         self.assertAlmostEqual(priors.gain_e_per_dn(prior, 200), 2, delta=.02)
         self.assertIsNone(priors.read_noise_e(prior, 200))
         self.assertEqual(calibration.read_noise_status(prior, 200), "read-noise-unresolved")
+
+    def _qualify_collect_fixture(self, directory):
+        # These tests check arithmetic and conversion, not a missing-condition
+        # fallback. Make every arithmetic input's physical scope explicit.
+        from tests.test_measurement_domain import sample_domain_fixture
+        common = {"Camera": "SIGMA fp", "ShutterType": "电子快门", "Compression": "lossless",
+                  "RawSize": "128x128", "CfaPattern": "RGBG", "LinearisationCurve": "identity", "AdcStep": "1"}
+        for path in directory.glob("*.csv"):
+            text = path.read_text()
+            text += "\n" + "".join(f"#{key}: {value}\n" for key, value in common.items() if f"#{key}:" not in text)
+            path.write_text(text)
+        domain = sample_domain_fixture(); domain["coding_spans_dn"] = [15359.]*4
+        return {"shutter": "electronic", "libraw_raw_geometry": [128, 128],
+                "storage_lossless": True, "sample_domain": domain}
 
     def test_collect_boundary_validation_and_partial_profile_diagnostics(self):
         for jumps in ([100], [900], [float("inf")], [-1]):

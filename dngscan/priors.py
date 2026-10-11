@@ -183,6 +183,17 @@ def _jptc_entries() -> list[dict[str, Any]]:
         from .measurement_domain import declaration_issues
         entry["acquisition_contract"] = dict(item.get("acquisition_contract") or {})
         entry["readout_declaration_issues"].extend(declaration_issues(entry["acquisition_contract"]))
+        from .measurement_domain import single_measurement_fields
+        try:
+            metadata, fields, issues = single_measurement_fields(item)
+        except (ValueError, TypeError, KeyError):
+            continue
+        entry.update(metadata)
+        entry["acquisition_contract"].update(fields)
+        if "single-point-domain-reimport-required" in issues:
+            entry["readout_declaration_issues"] = issues + entry["readout_declaration_issues"]
+        else:
+            entry["readout_declaration_issues"].extend(issues)
         if item.get("measurement_acquisition") is not None:
             from .collect_manifest import ACQUISITION_SCHEMA, acquisition_qualification
             try:
@@ -277,6 +288,17 @@ def _jptc_entries() -> list[dict[str, Any]]:
                 "estimator_spread": a.get("gain_estimator_spread_rel"),
                 "status": a.get("quality", "ok"),
             }
+        if item.get("measurement_acquisition") is not None:
+            # New packaged Collect assets use the same per-product contract
+            # as interactive imports and offline release profiles.
+            from .calibration import _validated_prior
+            try:
+                checked = _validated_prior(item)
+            except (ValueError, TypeError, KeyError, OverflowError):
+                continue
+            for key in ("measurement_acquisition", "capability_contract_issues", "capability_bound_contract",
+                        "ptc_gain_log2iso_log2epd", "reference_dn_range", "acquisition_contract", "readout_contract", "readout_declaration_issues", "shutter"):
+                entry[key] = checked.get(key)
         entry["public_registry"] = {"version": library["version"], "source": library["source"],
             "set": catalog.get(path.stem, {}), "numeric_asset": "packaged-independent-fit"}
         entries.append(entry)
@@ -358,10 +380,42 @@ def with_readout(entry: dict[str, Any], readout: dict | None,
     """Bind the same capture constraints for model and electron-domain consumers."""
     from .readout import match
     entry = dict(entry)
-    status, reason = match(entry, readout)
+    if entry.get("independent_constraint_priors"):
+        entry["independent_constraint_priors"] = [with_readout(
+            {key: value for key, value in prior.items() if key != "independent_constraint_priors"},
+            readout, shutter=shutter) for prior in entry["independent_constraint_priors"]]
+    primary = entry
+    if entry.get("measurement_acquisition") is not None:
+        from .calibration_capabilities import PRODUCTS, dependency_views, primary_product, capability_prior, current_contract_conflicts
+        from .measurement_domain import match as match_domain
+        # A prior can be rebound to another file; stale permissions must never
+        # select a different primary or survive a changed capture condition.
+        entry.pop("capability_matches", None)
+        entry["capability_contract_issues"] = sorted(set(entry.get("capability_contract_issues", []) + current_contract_conflicts(entry)))
+        matches = {}
+        actual_shutter = (readout or {}).get("shutter") or shutter
+        for name in PRODUCTS:
+            failures = []
+            for view in dependency_views(entry, name):
+                status, reason = match(view, readout)
+                domain_match = match_domain(view, readout)
+                expected = view.get("shutter")
+                if expected not in (None, "any") and actual_shutter != expected:
+                    status, reason = ("unverified", "file-shutter-unavailable") if actual_shutter is None else ("mismatch", "file-shutter-mismatch")
+                if status in ("unverified", "mismatch"):
+                    failures.append({"status": status, "reason": reason, "domain": domain_match})
+                elif domain_match["status"] in ("unverified", "mismatch"):
+                    failures.append({**domain_match, "domain": domain_match})
+            matches[name] = failures[0] if failures else {"status": "matched", "reason": "capability-dependencies-matched"}
+        entry["capability_matches"] = matches
+        primary = capability_prior(entry, primary_product(entry))
+        for field in ("acquisition_contract", "readout_contract", "readout_declaration_issues", "shutter"):
+            entry[field] = primary[field]
+        entry["capability_bound_contract"] = dict(entry["acquisition_contract"])
+    status, reason = match(primary, readout)
     entry["readout_match_status"], entry["readout_match_reason"] = status, reason
     from .measurement_domain import match as match_domain
-    entry["measurement_domain_match"] = match_domain(entry, readout)
+    entry["measurement_domain_match"] = match_domain(primary, readout)
     # Shutter scope is orthogonal to container geometry/encoding constraints.
     # Bind it here for *every* source, including curated and bulk tables; the
     # model's later rebind to file evidence cannot inherit a caller's old match.
@@ -466,6 +520,18 @@ def _interp(curve: list[tuple[float, float]], x: float) -> float:
 def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
     if not iso or iso <= 0:
         return None
+    if priors.get("measurement_acquisition") is not None:
+        from .calibration_capabilities import usable
+        from .calibration import curve_value
+        if usable(priors, "absolute_gain"):
+            value = curve_value(priors, "gain_log2iso_log2epd", iso)
+        elif usable(priors, "ptc_gain"):
+            # Independent anchors do not prove a connected gain ladder.
+            value = next((float(y) for x, y in priors.get("ptc_gain_log2iso_log2epd", [])
+                          if abs(x - math.log2(iso)) < 1e-7), None)
+        else:
+            value = None
+        return 2. ** value if value is not None else None
     # A measured gain curve (JPTC collect tier) wins over the reciprocal
     # law: extended-ISO segments and conversion-gain switches break the
     # unity-gain extrapolation, and the curve encodes both.
@@ -501,6 +567,16 @@ def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:
     from .calibration import read_noise_issue
     if read_noise_issue(priors, iso):
         return None
+    if priors.get("measurement_acquisition") is not None:
+        from .calibration_capabilities import usable
+        from .calibration import curve_value
+        if not usable(priors, "read_noise_e") or not usable(priors, "read_noise_dn"):
+            return None
+        if priors.get("read_noise_composition_iso") not in (None, iso):
+            return None
+        read = curve_value(priors, "read_noise_dn_log2iso", iso)
+        gain = gain_e_per_dn(priors, iso)
+        return read * gain if read is not None and gain is not None else None
     if priors.get("user_calibration") or priors.get("read_noise_composition_iso") is not None:
         from .calibration import curve_value
         value = curve_value(priors, "read_noise_log2iso_log2e", iso)

@@ -173,6 +173,36 @@ class PageCapabilityRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_capture_facts_and_capability_stages_keep_unknown_and_application_separate(self) -> None:
+        self._run(r"""
+context.renderDetectedParams(detected({
+  processing_evidence:{capture_facts:{fields:{
+    exposure_seconds:{status:'verified',value:0.0125},
+    aperture_fnumber:{status:'verified',value:2.8},
+    focal_length_mm:{status:'invalid',value:0},
+    lens_model:{status:'verified',value:'28–70 mm'},
+    body_serial:{status:'verified',value:'private-serial'},
+  }}},
+  calibrations:[{id:'partial',match_status:'matched',analysis_status:'used',
+    analysis_capabilities:{gain_evidence:'used'},
+    capability_states:{absolute_gain:{found:true,qualified:true,matched:true,
+      valid:true,applicable:true,applied:false},spectrum_h:{found:true,qualified:false,
+      matched:false,valid:false,applicable:false,applied:false}},
+    chroma_application:{status:'not-applied',pipeline_status:'disabled'},
+  }],
+}));
+assert.match($('#captureFactsFact').textContent,/1\/80 秒.*f\/2.8.*28–70 mm/);
+assert.ok(!$('#captureFactsFact').textContent.includes('private-serial'));
+assert.equal($('#captureFactsFact').classList.contains('warn'),true);
+assert.match($('#calibrationMatchFact').textContent,/分析采用：增益证据/);
+assert.match($('#calibrationCapabilityEvidence').textContent,/绝对增益.*测量合格：是.*像素校正已应用：否/);
+assert.match($('#calibrationCapabilityEvidence').textContent,/水平频谱.*测量合格：否/);
+assert.match($('#calibrationCapabilityEvidence').textContent,/附加色度清理：未应用/);
+context.renderDetectedParams(null);
+assert.equal($('#captureFactsFact').textContent,'');
+assert.equal($('#calibrationCapabilityEvidence').textContent,'');
+""")
+
     def test_missing_calibration_is_a_normal_general_imaging_state(self) -> None:
         self._run(r"""
 context.renderDetectedParams(detected());

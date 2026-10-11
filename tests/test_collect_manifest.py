@@ -36,6 +36,7 @@ class CollectManifestTests(unittest.TestCase):
         self.assertEqual(len(zipped["profiles"]), 1)
         profile = zipped["profiles"][0]
         self.assertEqual(profile["capabilities"], {"absolute_gain": True, "read_noise": True,
+            "ptc_gain": True, "relative_gain": True, "read_noise_dn": True, "read_noise_e": True,
             "stored_dark_variance": True, "spectrum_h": True, "spectrum_v": True, "spectrum_2d": False})
         folder = self.root / "unrelated-directory-name"; folder.mkdir()
         for index, item in enumerate(self.entries):
@@ -85,7 +86,7 @@ class CollectManifestTests(unittest.TestCase):
             diagnostics = calibration.calibration_diagnostics("NIKON", "TestCamera", "mechanical", 100, incomplete)
             self.assertTrue(all(row["readout_match_status"] != "matched" for row in diagnostics))
         _, prior = calibration._read_record(Path(result["profiles"][0]["path"]))
-        self.assertEqual(prior["readout_contract"]["capture_kind"], "still")
+        self.assertEqual(prior["readout_contract"]["capture_kind"].casefold(), "still")
 
     def test_constraints_only_in_gain_table_are_not_dropped_and_alias_conflict_rejects(self):
         entries = [dict(item) for item in self.entries]
@@ -96,8 +97,17 @@ class CollectManifestTests(unittest.TestCase):
             (folder / f"table-{index}.csv").write_bytes(item["content"])
         result = calibration.import_calibrations(folder)
         _, prior = calibration._read_record(Path(result["profiles"][0]["path"]))
-        self.assertEqual(prior["readout_contract"]["readout_id"], "single-shot")
-        self.assertEqual(prior["readout_contract"]["capture_kind"], "still")
+        acquisition = prior["measurement_acquisition"]
+        gain = next(record for record in acquisition["measurements"].values() if record["kind"] == "gain")
+        self.assertEqual(gain["declared"]["readout"].casefold(), "single-shot")
+        self.assertEqual(gain["declared"]["capture_kind"].casefold(), "still")
+        # The declaration survives on its source; a gain CSV cannot silently
+        # fill missing conditions on the dark/PTC inputs of that gain ladder.
+        for name in ("absolute_gain", "relative_gain"):
+            self.assertEqual(acquisition["capability_qualification"][name]["status"], "unverified")
+            self.assertIn("measurement-readout-incomplete", acquisition["capability_qualification"][name]["reasons"])
+        self.assertEqual(acquisition["capability_qualification"]["ptc_gain"]["status"], "qualified")
+        self.assertNotIn("readout_id", prior["readout_contract"])
         with self.assertRaisesRegex(ValueError, "conflicting"):
             readout.collect_fields({"Readout": "A", "ReadoutMode": "B"})
         with self.assertRaises(ValueError):

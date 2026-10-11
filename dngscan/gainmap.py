@@ -1325,6 +1325,7 @@ def _write_gainmap_prepared(prepared, out_path, *, delivery, use_heif,
                     _collect_coding_metrics=True,
                     _sdr_precheck=sdr_precheck,
                     _hdr_metrics_workspace=_hdr_metrics_workspace,
+                    _allow_decoded_primary_reference=auxiliary == 100,
                 )
                 info["gainmap_encoding_quality"] = auxiliary
                 info["gainmap_encoder"] = "Apple ImageIO" if auxiliary == 100 else "x265"
@@ -1407,8 +1408,15 @@ def _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_
                              delivery, _prepared_master, _use_heif,
                              _template_path=None, _gainmap_quality=None, _primary_session=None,
                              _collect_coding_metrics=False, _sdr_precheck=None,
-                             _jpeg_primary_session=None, _hdr_metrics_workspace=None):
-    """One candidate plus the established manual auxiliary precision ladder."""
+                             _jpeg_primary_session=None, _hdr_metrics_workspace=None,
+                             _allow_decoded_primary_reference=True):
+    """Keep the precision ladder, then try at most one exact-primary reference.
+
+    A lossy primary can change the RGB denominator of the gain map. Only after
+    HDR verification rejects the original-master reference do we regenerate
+    the auxiliary against that candidate's decoded primary. SDR verification
+    and the immutable formation masters remain unchanged.
+    """
     args = (base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev)
     common = dict(delivery=delivery, _prepared_master=_prepared_master, _use_heif=_use_heif,
                   _hdr_metrics_workspace=_hdr_metrics_workspace,
@@ -1417,26 +1425,106 @@ def _write_gainmap_candidate(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_
     try:
         return _write_gainmap_once(*args, **common, _template_path=_template_path,
             _gainmap_quality=_gainmap_quality)
-    except HdrRoundtripError:
-        profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
-        if _gainmap_quality is not None or profile.is_archive or not (_use_heif or profile.container == "jpeg"):
-            raise
+    except HdrRoundtripError as error:
+        last_failure = error
+    profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
+    if (_gainmap_quality is None and not profile.is_archive
+            and (_use_heif or profile.container == "jpeg")):
         for auxiliary in ((97, 98, 99, 100) if _use_heif else (100,)):
             try:
                 # As before, a manual retry builds a fresh higher precision
                 # auxiliary, while all attempts borrow this one prepared pair.
                 return _write_gainmap_once(*args, **common, _gainmap_quality=auxiliary)
-            except HdrRoundtripError:
-                if auxiliary == 100:
-                    raise
-        raise
+            except HdrRoundtripError as error:
+                last_failure = error
+    if _decoded_primary_reference_eligible(
+            _prepared_master, profile, _use_heif, _primary_session,
+            _allow_decoded_primary_reference):
+        donor, encoder_info = _primary_session.primary(_prepared_master.base, profile)
+        if "x265" in str(encoder_info.get("encoder", "")).lower():
+            # Never reuse or overwrite the search-wide original-master template.
+            # An explicit auxiliary request retains its quality; the completed
+            # manual ladder has already reached 100.
+            info = _write_gainmap_once(*args, **common,
+                _gainmap_quality=100 if _gainmap_quality is None else _gainmap_quality,
+                _reference_path=donor)
+            info["gainmap_reference_reason"] = str(last_failure)
+            return info
+    raise last_failure
+
+
+def _decoded_primary_reference_eligible(prepared, profile, use_heif, primary_session, allow):
+    """Bound the retry to the measured 10-bit floating-master x265 path."""
+    return bool(allow and use_heif and primary_session is not None
+                and not profile.is_archive and profile.container == "heic"
+                and profile.heif_bit_depth == 10 and prepared.base.dtype == np.float32)
+
+
+def _heif_primary_reference_identity(path: Path) -> str:
+    """Identify the coded SDR primary and its decoding properties, not its tmap.
+
+    Item IDs, auxiliary payloads and ISO gain-map parameters are deliberately
+    excluded: regenerating the auxiliary changes those without changing the
+    exact primary used as its denominator. Geometry and colour properties are
+    included together with the HEVC payload and decoder configuration.
+    """
+    from hashlib import sha256
+    from .heif_gainmap import _parse
+
+    _, _, primary, infos, refs, props, assocs, payloads = _parse(Path(path).read_bytes())
+    if infos[primary][8:12] != b"hvc1" or any(source == primary for _, source, _ in refs):
+        raise RuntimeError("decoded-primary 参考需要独立 HEVC 主图")
+    decoding_kinds = {b"hvcC", b"ispe", b"pixi", b"colr", b"clap", b"pasp", b"irot", b"imir"}
+    descriptions = [(essential, *props[index - 1]) for essential, index in assocs.get(primary, [])
+                    if props[index - 1][0] in decoding_kinds]
+    kinds = [kind for _, kind, _ in descriptions]
+    if not payloads[primary] or kinds.count(b"hvcC") != 1 or kinds.count(b"ispe") != 1:
+        raise RuntimeError("decoded-primary 参考缺少唯一的 HEVC 解码配置或尺寸")
+    digest = sha256()
+
+    def add(value):
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+
+    add(b"agxraw-decoded-primary-reference-v1")
+    add(infos[primary][8:12])
+    add(payloads[primary])
+    for essential, kind, value in descriptions:
+        add(bytes((bool(essential),)) + kind)
+        add(value)
+    return digest.hexdigest()
+
+
+def _decoded_primary_reference_image(path: Path, expected_shape):
+    """Borrow the exact donor's SDR CIImage without a bitmap quantization step."""
+    import Quartz  # type: ignore
+    from Foundation import NSDictionary, NSURL  # type: ignore
+
+    expand = getattr(Quartz, "kCIImageExpandToHDR", None)
+    if expand is None:
+        raise RuntimeError("当前 Core Image 无法明确关闭 decoded-primary 参考的 HDR 展开")
+    options = NSDictionary.dictionaryWithDictionary_({expand: _nsnumber_bool(False)})
+    image = Quartz.CIImage.imageWithContentsOfURL_options_(
+        NSURL.fileURLWithPath_(str(path)), options)
+    if image is None:
+        raise RuntimeError("Core Image 无法读取 decoded-primary SDR 参考")
+    extent = image.extent()
+    height, width = expected_shape[:2]
+    if (float(extent.origin.x), float(extent.origin.y), float(extent.size.width),
+            float(extent.size.height)) != (0., 0., float(width), float(height)):
+        raise RuntimeError("decoded-primary SDR 参考的尺寸或原点与母版不一致")
+    image = image.imageBySettingContentHeadroom_(1.0)
+    if image is None:
+        raise RuntimeError("Core Image 无法设置 decoded-primary SDR 参考余量")
+    return image
 
 
 def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *,
                         delivery, _prepared_master, _use_heif,
                         _template_path=None, _gainmap_quality=None, _primary_session=None,
                         _collect_coding_metrics=False, _sdr_precheck=None,
-                        _jpeg_primary_session=None, _hdr_metrics_workspace=None):
+                        _jpeg_primary_session=None, _hdr_metrics_workspace=None,
+                        _reference_path=None):
     """Write and validate a manual candidate using the export's fixed CI owners."""
     profile = resolve_hdr_chroma(delivery, explicit_chroma=delivery.chroma)
     quality = int(profile.quality)
@@ -1460,6 +1548,14 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
     from . import heif_encoder
     import Quartz  # type: ignore
     from Foundation import NSNumber, NSURL  # type: ignore
+
+    reference_identity = None
+    if _reference_path is not None:
+        if (_template_path is not None or not _decoded_primary_reference_eligible(
+                prepared, profile, use_heif, _primary_session, True)):
+            raise ValueError("decoded-primary 回退不能复用模板，且仅支持浮点 10-bit x265 HEIF")
+        reference_identity = _heif_primary_reference_identity(_reference_path)
+        base_image = _decoded_primary_reference_image(_reference_path, base.shape)
 
     encode_request_options: dict[str, Any] = {
         Quartz.kCGImageDestinationEncodeBaseIsSDR: _nsnumber_bool(True),
@@ -1552,7 +1648,14 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
             from .heif_gainmap import replace_primary
             if _primary_session is not None:
                 donor, encoder_info = _primary_session.primary(base, profile)
+                if reference_identity is not None:
+                    if ("x265" not in str(encoder_info.get("encoder", "")).lower()
+                            or _heif_primary_reference_identity(donor) != reference_identity):
+                        raise RuntimeError("decoded-primary 回退的实际编码器或主图参考已改变")
                 replace_primary(temp_path, donor)
+                if (reference_identity is not None
+                        and _heif_primary_reference_identity(temp_path) != reference_identity):
+                    raise RuntimeError("decoded-primary 回退未逐字节保留参考主图及解码属性")
             else:
                 donor = temp_path.with_name(temp_path.name + ".base.heic")
                 try:
@@ -1654,6 +1757,9 @@ def _write_gainmap_once(base_rgb_u8, hdr_rgba_half, out_path, hdr_headroom_ev, *
         info["gainmap_encoding_quality"] = gainmap_quality if use_heif or container == "jpeg" else quality
         info["sdr_master_precision"] = "float32" if float_base else "uint8"
         info["readback_precision"] = "float32" if float_base else "uint8"
+        if reference_identity is not None:
+            info["gainmap_reference"] = "decoded-primary"
+            info["gainmap_reference_identity"] = reference_identity
         return info
     finally:
         try:

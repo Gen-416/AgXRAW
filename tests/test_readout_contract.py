@@ -400,7 +400,14 @@ class CaptureReadoutTests(unittest.TestCase):
                 prior = priors.find_priors("SIGMA", "fp", shutter="electronic", iso=100,
                                           readout={"libraw_raw_geometry": [128, 128], "storage_lossless": True})
                 self.assertEqual(prior["readout_match_status"], "unverified")
-                self.assertEqual(priors.prior_usability(prior)[1], "measurement-raw-geometry-incomplete")
+                # A PTC with its own pedestal remains an independent anchor
+                # when only the dark's geometry is missing. It still needs
+                # actual unpack-domain evidence before runtime permission.
+                self.assertEqual(priors.prior_usability(prior)[1],
+                    "file-sample-domain-unavailable" if missing == "dark_size"
+                    else "measurement-raw-geometry-incomplete")
+                self.assertEqual(prior["measurement_acquisition"]["capability_qualification"]["ptc_gain"]["status"],
+                                 "qualified" if missing == "dark_size" else "unverified")
 
     def test_capture_contract_round_trips_and_binds_full_source_cache(self):
         from dngscan.gui import preview_cache as pc
@@ -422,7 +429,7 @@ class CaptureReadoutTests(unittest.TestCase):
         self.assertNotEqual(pc._bundle_metadata(changed), metadata)
         rebuilt.capture_readout["raw_geometry"][0] = 42
         self.assertEqual(bundle.capture_readout["raw_geometry"], [128, 128])
-        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 35)
+        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 36)
 
 
 if __name__ == "__main__":
