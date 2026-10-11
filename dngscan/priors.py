@@ -297,7 +297,8 @@ def _jptc_entries() -> list[dict[str, Any]]:
             except (ValueError, TypeError, KeyError, OverflowError):
                 continue
             for key in ("measurement_acquisition", "capability_contract_issues", "capability_bound_contract",
-                        "ptc_gain_log2iso_log2epd", "reference_dn_range", "acquisition_contract", "readout_contract", "readout_declaration_issues", "shutter"):
+                        "ptc_gain_log2iso_log2epd", "reference_dn_range", "acquisition_contract", "readout_contract", "readout_declaration_issues", "shutter",
+                        "readout_scope", "capability_bound_readout_contract", "capability_bound_shutter"):
                 entry[key] = checked.get(key)
         entry["public_registry"] = {"version": library["version"], "source": library["source"],
             "set": catalog.get(path.stem, {}), "numeric_asset": "packaged-independent-fit"}
@@ -385,7 +386,8 @@ def with_readout(entry: dict[str, Any], readout: dict | None,
             {key: value for key, value in prior.items() if key != "independent_constraint_priors"},
             readout, shutter=shutter) for prior in entry["independent_constraint_priors"]]
     primary = entry
-    if entry.get("measurement_acquisition") is not None:
+    if (entry.get("measurement_acquisition") is not None or entry.get("composed_capabilities")
+            or "capability_matches" in entry):
         from .calibration_capabilities import PRODUCTS, dependency_views, primary_product, capability_prior, current_contract_conflicts
         from .measurement_domain import match as match_domain
         # A prior can be rebound to another file; stale permissions must never
@@ -411,6 +413,10 @@ def with_readout(entry: dict[str, Any], readout: dict | None,
         primary = capability_prior(entry, primary_product(entry))
         for field in ("acquisition_contract", "readout_contract", "readout_declaration_issues", "shutter"):
             entry[field] = primary[field]
+        if primary.get("readout_scope") is not None:
+            entry["readout_scope"] = primary["readout_scope"]
+        entry["capability_bound_readout_contract"] = dict(entry.get("readout_contract") or {})
+        entry["capability_bound_shutter"] = entry.get("shutter")
         entry["capability_bound_contract"] = dict(entry["acquisition_contract"])
     status, reason = match(primary, readout)
     entry["readout_match_status"], entry["readout_match_reason"] = status, reason
@@ -520,6 +526,10 @@ def _interp(curve: list[tuple[float, float]], x: float) -> float:
 def gain_e_per_dn(priors: dict[str, Any], iso: int) -> float | None:
     if not iso or iso <= 0:
         return None
+    if priors.get("composed_capabilities"):
+        from .calibration_capabilities import usable
+        if not usable(priors, "absolute_gain") and not usable(priors, "ptc_gain"):
+            return None
     if priors.get("measurement_acquisition") is not None:
         from .calibration_capabilities import usable
         from .calibration import curve_value
@@ -567,7 +577,7 @@ def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:
     from .calibration import read_noise_issue
     if read_noise_issue(priors, iso):
         return None
-    if priors.get("measurement_acquisition") is not None:
+    if priors.get("measurement_acquisition") is not None or priors.get("composed_capabilities"):
         from .calibration_capabilities import usable
         from .calibration import curve_value
         if not usable(priors, "read_noise_e") or not usable(priors, "read_noise_dn"):

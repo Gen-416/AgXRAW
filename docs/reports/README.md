@@ -32,6 +32,7 @@
 
 | 记录 | 口径 |
 | --- | --- |
+| [2026-10-11 标定作用域与 legacy 组合](../reviews/CALIBRATION_SCOPE_LEGACY_2026-10-11.zh-CN.md) | 显式条件保留、旧记录歧义迁移、新旧供应者组合及实际解码交付验证 |
 | [2026-10-11 Core Image half/float 读回](../reviews/COREIMAGE_HALF_READBACK_2026-10-11.zh-CN.md) | 同一 CIImage 的舍入模式、冻结计划成像对照与内存取舍；默认 half 不变 |
 | [2026-10-11 fp HDR 主图参考](../reviews/FP_HDR_PRIMARY_REFERENCE_2026-10-11.zh-CN.md) | 最终编码 SDR 与 gain map 的组合错误、有界重建及原门限回读验收 |
 | [2026-10-09 噪声与纹理研究](../reviews/NOISE_TEXTURE_RESEARCH_2026-10-09.zh-CN.md) | 固定源码与基准反例；附实测接口、模型驱动色度核实施记录及暂缓待办 |
