@@ -1640,6 +1640,8 @@ def run_export(params: dict) -> dict:
     inp, highlight, gamut, output_format, ev, hdr_headroom, quality, want_png, outdir_arg, ev_auto = parse_job_params(
         params
     )
+    from ..protected_output import raw_protection
+    output_protection = raw_protection(inp)
     # The dashboard PNG needs matplotlib (an optional extra): gate it HERE,
     # before the full-resolution analysis, instead of failing inside
     # plot_dashboard after the JPEG's work was already done and lost.
@@ -1883,6 +1885,10 @@ def run_export(params: dict) -> dict:
     )
     out_ext = ".heic" if dg.container_for_output_format(output_format) == "heic" else ".jpg"
     out_path = outdir / f"{inp.stem}_{suffix}_p{fingerprint}{out_ext}"
+    output_protection = raw_protection(inp, bundle, output_protection)
+    output_protection.check(out_path)
+    if want_png:
+        output_protection.check(outdir / f"{inp.stem}_{suffix}_p{fingerprint}_scan.png")
     # Staged ownership (plan S4; GUI in batch 18, unconditional in batch 19):
     # the diagnostic dashboard is the LAST consumer of the analysis buffers,
     # so it runs FIRST and they are released for every path — previously a
@@ -1895,6 +1901,7 @@ def run_export(params: dict) -> dict:
         png_temp = png_path.with_name(
             f"{png_path.stem}.part{os.getpid()}{png_path.suffix}"
         )
+        output_protection.check(png_temp)
         with SCHEDULER.slot("export"):
             dg.plot_dashboard(
                 bundle, analysis, y, ev_img, png_temp, auto_ev=auto_ev_result
@@ -1933,6 +1940,7 @@ def run_export(params: dict) -> dict:
                 return_rgb=True,
                 delivery=delivery,
                 chroma=chroma,
+                protected_sources=output_protection,
             )
             hdr_export_info = export_result if isinstance(export_result, dict) else None
             if hdr_export_info is not None and hdr_export_info.get("output_path"):
@@ -1996,7 +2004,7 @@ def run_export(params: dict) -> dict:
             saved = [str(out_path)]
             if png_temp is not None:
                 # the main output is written: the dashboard may take its name
-                os.replace(png_temp, png_path)
+                output_protection.replace(png_temp, png_path)
                 png_temp = None
                 saved.append(str(png_path))
     finally:

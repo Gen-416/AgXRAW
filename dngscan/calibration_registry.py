@@ -254,9 +254,19 @@ def compose_capabilities(base, candidates, iso):
     # any separately measured capabilities from composing.
     domain_fields = ("linearisation_curve", "adc_step", "cfa_pattern", "dn_domain", "variance_domain", "decoder_identity")
     def physical_domain(entry):
+        from .measurement_domain import canonical_unit, decoder_family
         values = entry.get("acquisition_contract") or {}
-        return {key: values[key] for key in domain_fields if key in values}
+        result = {key: values[key] for key in domain_fields if key in values}
+        for key in ("dn_domain", "variance_domain"):
+            if key in result:
+                result[key] = canonical_unit(result[key], variance=key == "variance_domain")
+        if "decoder_identity" in result:
+            result["decoder_identity"] = decoder_family(result["decoder_identity"])
+        return result
     def qualified(entry, capability):
+        from .measurement_domain import declaration_issues
+        if declaration_issues(entry.get("acquisition_contract") or {}):
+            return False
         acquisition = entry.get("measurement_acquisition")
         return (acquisition is None or not acquisition.get("issues") and
                 acquisition.get("capability_qualification", {}).get(capability, {}).get("status") == "qualified")
@@ -274,6 +284,7 @@ def compose_capabilities(base, candidates, iso):
                 or candidate.get("make_equals") != base.get("make_equals")
                 or set(candidate.get("model_equals", ())) != set(base.get("model_equals", ()))
                 or physical_domain(candidate) != physical_domain(base)
+                or not qualified(candidate, "read_noise") and not qualified(candidate, "spectrum_h") and not qualified(candidate, "spectrum_v")
                 or (candidate.get("measurement_acquisition") or {}).get("issues")):
             continue
         compatible.append(candidate)

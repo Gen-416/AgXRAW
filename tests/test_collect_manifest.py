@@ -75,6 +75,8 @@ class CollectManifestTests(unittest.TestCase):
         capture = {"storage_lossless": True, "libraw_raw_geometry": [6000, 4000],
                    "readout_id": "a", "capture_kind": "still", "body_serial": "test-serial",
                    "firmware": "1.00"}
+        from tests.test_measurement_domain import sample_domain_fixture
+        capture["sample_domain"] = sample_domain_fixture()
         selected = calibration.matching_prior("NIKON", "TestCamera", shutter="mechanical", iso=100, readout=capture)
         self.assertEqual(selected["readout_match_status"], "matched")
         self.assertEqual(selected["readout_contract"]["readout_id"], "A")

@@ -43,9 +43,12 @@ class StoredDarkVarianceTests(unittest.TestCase):
 
     def bundle(self, *, iso=100, span_scale=1.):
         bundle = frame()
+        from tests.test_measurement_domain import sample_domain_fixture
+        domain = sample_domain_fixture()
+        domain["coding_spans_dn"] = [15359. * span_scale]
         return replace(bundle, shot_iso=iso, shot_shutter="electronic",
                        capture_readout={"shutter": "electronic", "storage_lossless": True,
-                                        "libraw_raw_geometry": [512, 512]},
+                                        "libraw_raw_geometry": [512, 512], "sample_domain": domain},
                        white_level=int(16383 * span_scale),
                        black_levels=[1024. * span_scale] * 4,
                        camera_white_levels=[16383. * span_scale] * 4)

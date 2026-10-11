@@ -26,6 +26,8 @@ from dngscan.scene_transform import (  # noqa: E402
     _qualified_anchor_entry, _validated_anchor_scope, decoder_anchor_scope,
 )
 from dngscan.tone import scene_intent_rec2020  # noqa: E402
+from dngscan.protected_output import ProtectedSources  # noqa: E402
+from dngscan.delivery_transaction import DeliveryTransaction  # noqa: E402
 
 MANIFEST_SCHEMA = "raw9-anchor-manifest-1"
 CANDIDATE_SCHEMA = "raw9-anchor-candidate-1"
@@ -49,6 +51,16 @@ def _sha256(path):
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _frame_paths(document, directory):
+    """Discover declared inputs for preflight; measurement validates their contract."""
+    frames = document.get("frames", []) if isinstance(document, dict) else []
+    if not isinstance(frames, list):
+        return []
+    return [Path(directory) / frame["path"] for frame in frames
+            if isinstance(frame, dict) and isinstance(frame.get("path"), str)
+            and frame["path"]]
 
 
 def _roi_pixels(bundle, bounds):
@@ -236,7 +248,8 @@ def measure_candidate(manifest, directory, *, loader=load_raw, analyzer=analyze)
     return report
 
 
-def install_candidate(report, destination):
+def install_candidate(report, destination, *, protected_sources=None):
+    protection = ProtectedSources(protected_sources, _frame_paths(report, Path.cwd())).check(destination)
     if (not isinstance(report, dict) or report.get("schema") != CANDIDATE_SCHEMA
             or report.get("status") != "qualified-candidate" or report.get("failures")):
         raise ValueError("only-qualified-candidate-reports-can-be-installed")
@@ -264,9 +277,9 @@ def install_candidate(report, destination):
     if not isinstance(asset, dict) or asset.get("schema") != DECODER_ANCHOR_SCHEMA or asset.get("version") != 3 or not isinstance(asset.get("profiles"), list):
         raise ValueError("refuse-implicit-legacy-asset-migration")
     asset["profiles"] = [row for row in asset["profiles"] if isinstance(row, dict) and row.get("scope") != profile["scope"]] + [profile]
-    temporary = destination.with_name(destination.name + ".tmp")
-    temporary.write_text(json.dumps(asset, ensure_ascii=False, indent=1, allow_nan=False) + "\n")
-    temporary.replace(destination)
+    with DeliveryTransaction(destination, protected_sources=protection) as transaction:
+        transaction.path.write_text(json.dumps(asset, ensure_ascii=False, indent=1, allow_nan=False) + "\n")
+        transaction.commit()
     return {"status": "installed", "profile_id": profile["id"], "asset": str(destination)}
 
 
@@ -281,18 +294,27 @@ def main(argv=None):
         if args.manifest is not None or args.report is not None:
             parser.error("installation is separate from measurement")
         try:
-            result = install_candidate(json.loads(args.install_candidate.read_text()), args.asset)
+            candidate = json.loads(args.install_candidate.read_text())
+            protection = ProtectedSources(args.install_candidate,
+                _frame_paths(candidate, Path.cwd())).check(args.asset)
+            result = install_candidate(candidate, args.asset, protected_sources=protection)
         except (OSError, ValueError, KeyError, TypeError) as error:
             parser.exit(2, f"candidate not installed: {error}\n")
         print(json.dumps(result, ensure_ascii=False))
         return 0
     if args.manifest is None or args.report is None:
         parser.error("measurement needs a manifest and --report; no implicit image-folder corpus")
+    protection = ProtectedSources(args.manifest).check(args.report)
     try:
-        report = measure_candidate(json.loads(args.manifest.read_text()), args.manifest.parent)
+        manifest = json.loads(args.manifest.read_text())
+        protection = ProtectedSources(protection,
+            _frame_paths(manifest, args.manifest.parent)).check(args.report)
+        report = measure_candidate(manifest, args.manifest.parent)
     except (OSError, ValueError, TypeError) as error:
         report = {"schema": CANDIDATE_SCHEMA, "status": "unmeasured", "profile": None, "failures": [str(error)]}
-    args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+    with DeliveryTransaction(args.report, protected_sources=protection) as transaction:
+        transaction.path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
+        transaction.commit()
     print(json.dumps({"status": report["status"], "report": str(args.report), "failures": report["failures"]}, ensure_ascii=False))
     return 0 if report["status"] == "qualified-candidate" else 2
 

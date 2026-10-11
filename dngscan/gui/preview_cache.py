@@ -59,7 +59,9 @@ from .scheduler import shared_flight_wait
 # signed Oklab roundoff convention. Discard older Analysis and rendered proxies.
 # v33: actual Apple recipe/output-window identities; transient auto fallbacks
 # are retried after a bounded memory lifetime and never reused from disk.
-PREVIEW_CACHE_VERSION = 34
+# v35: Collect unit/unpack-domain qualification is bound to immutable RAW
+# evidence. Older Analysis entries may license unsupported measurement units.
+PREVIEW_CACHE_VERSION = 35
 AUTO_FALLBACK_RETRY_SECONDS = 60.0
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24

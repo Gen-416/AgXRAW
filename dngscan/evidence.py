@@ -128,6 +128,10 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
             full_size = [getattr(sizes, "raw_width", 0), getattr(sizes, "raw_height", 0)]
             if all(isinstance(value, int) and value > 0 for value in full_size):
                 capture_readout["libraw_raw_geometry"] = full_size
+            from .measurement_domain import capture_domain
+            capture_readout["sample_domain"] = capture_domain(
+                raw, raw_image, raw_pattern, _decode_color_desc(getattr(raw, "color_desc", "")),
+                coding_white, coding_black, libraw_runtime_id())
             return RawEvidence(
                 path=path,
                 raw_image=raw_image,

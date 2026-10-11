@@ -235,6 +235,9 @@ def _contract(header):
                 raise ValueError(f"invalid acquisition {key}")
         else:
             value = value.upper()
+            if key in ("dn_domain", "variance_domain"):
+                from .measurement_domain import canonical_unit
+                value = (canonical_unit(value, variance=key == "variance_domain") or value).upper()
         result[key] = value
     return result
 
@@ -303,6 +306,9 @@ def acquisition_qualification(measurements):
         issues.append("measurement-adc-step-unresolved")
     if common.get("compression") not in (None, "LOSSLESS", "LOSSLESS COMPRESSION", "UNCOMPRESSED", "NONE", "无损压缩", "无压缩"):
         issues.append("measurement-compression-unverified")
+    from .measurement_domain import format_domains
+    numeric_domains, domain_issues = format_domains(measurements)
+    issues.extend(domain_issues)
     capability_files = {
         "absolute_gain": {i for i, r in measurements.items() if r["kind"] in ("dark", "gain", "ptc")},
         "read_noise": {i for i, r in measurements.items() if r["kind"] == "dark"},
@@ -328,6 +334,7 @@ def acquisition_qualification(measurements):
     return {"schema": ACQUISITION_SCHEMA, "measurements": measurements,
             "association_contract": associated, "common_contract": common,
             "field_coverage": coverage, "capability_qualification": products,
+            "numeric_domains": numeric_domains,
             "issues": issues, "inheritance": "none; each measurement declares its own physical conditions"}
 
 

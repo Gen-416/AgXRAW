@@ -17,7 +17,6 @@ import gc
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import platform
 import resource
@@ -46,6 +45,8 @@ from dngscan.raw_io import load_raw, release_analysis_buffers
 from dngscan.scene_scale import with_intent_exposure
 from dngscan.scene_transform import decoder_anchor_fingerprint
 from dngscan.tone import build_render_plan
+from dngscan.protected_output import ProtectedSources
+from dngscan.delivery_transaction import DeliveryTransaction
 from validate_native_raw import digest, finite_summary, implementation_identity, region_bounds
 
 MATRIX = ("raw9", "raw8", "libraw", "auto")
@@ -336,12 +337,11 @@ def run_case(path, case):
     return row
 
 
-def _atomic_json(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _atomic_json(path, value, *, protected_sources=None):
     data = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)+"\n"
-    temporary = path.with_name(path.name+".tmp")
-    temporary.write_text(data, encoding="utf-8")
-    os.replace(temporary, path)
+    with DeliveryTransaction(path, protected_sources=protected_sources) as transaction:
+        transaction.path.write_text(data, encoding="utf-8")
+        transaction.commit()
 
 
 def main(argv=None):
@@ -359,15 +359,17 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.worker_config:
         request = json.loads(args.worker_config)
+        protection = ProtectedSources(request["path"]).check(args.worker_result)
         started = time.monotonic()
         try: result = run_case(Path(request["path"]), request["case"])
         except Exception as exc:
             result = {"case": request["case"], "file": Path(request["path"]).name,
                 "status": "failed", "error": f"{type(exc).__name__}: {exc}",
                 "elapsed_seconds": time.monotonic()-started, "peak_process_rss_bytes": _rss_bytes()}
-        _atomic_json(args.worker_result, result)
+        _atomic_json(args.worker_result, result, protected_sources=protection)
         return 0
     if not args.files or args.out is None: parser.error("--files and --out are required")
+    protection = ProtectedSources(args.files).check(args.out)
     if args.preview_max_edge < 8 or not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("preview edge must be >=8 and timeout finite/positive")
     if args.out.exists(): parser.error("refusing to overwrite an existing report")
@@ -419,7 +421,7 @@ def main(argv=None):
                 report["summary"] = {state: sum(r["status"] == state for r in report["samples"])
                                      for state in ("passed", "unavailable", "failed")}
                 report["case_distribution_comparisons"]=case_comparisons(report["samples"])
-                _atomic_json(args.out, report)
+                _atomic_json(args.out, report, protected_sources=protection)
                 print(f"{row['status']}: {row.get('reason', row.get('error', ''))}", flush=True)
                 result_path.unlink(missing_ok=True)
     return int(any(row["status"] == "failed" for row in report["samples"]))

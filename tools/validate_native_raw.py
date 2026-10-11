@@ -38,6 +38,8 @@ from dngscan.models import HdrDisplayTarget
 from dngscan.raw_io import load_raw, release_analysis_buffers
 from dngscan.scene_scale import with_intent_exposure
 from dngscan.tone import build_render_plan
+from dngscan.protected_output import ProtectedSources
+from dngscan.delivery_transaction import DeliveryTransaction
 
 
 def digest(path):
@@ -211,12 +213,13 @@ def parity_checks(row):
     return checks
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files",type=Path,nargs="+")
     parser.add_argument("--sizes",choices=("full","half"),nargs="+",default=["half"])
     parser.add_argument("--out",type=Path,required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    protection = ProtectedSources(args.files).check(args.out)
     report = {"schema":"agxraw-native-raw-acceptance-1", "created_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
               "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
               "working_changes":True, "implementation": implementation_identity(),
@@ -237,7 +240,9 @@ def main():
                 except Exception as exc:
                     row = {"file":path.name,"half_size":size=="half","error":str(exc)}
                 report["samples"].append(row)
-                args.out.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
+                with DeliveryTransaction(args.out, protected_sources=protection) as transaction:
+                    transaction.path.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+"\n",encoding="utf-8")
+                    transaction.commit()
                 print(f"{'FAILED' if 'error' in row else 'Completed'} {path.name} ({size})",flush=True)
     return 1 if any("error" in row or not all(row.get("parity_checks",{}).values())
                     for row in report["samples"]) else 0

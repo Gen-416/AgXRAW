@@ -409,11 +409,20 @@ class CaptureReadoutTests(unittest.TestCase):
         rebuilt = pc._bundle_from_cache(bundle.path, json.loads(json.dumps(metadata)),
                                         bundle.scene_rec2020_render, None, None)
         self.assertEqual(rebuilt.capture_readout, bundle.capture_readout)
+        domain = rebuilt.capture_readout["sample_domain"]
+        self.assertEqual(domain["signal_unit"], "libraw-unpacked-dn")
+        self.assertEqual(domain["variance_unit"], "libraw-unpacked-dn2")
+        self.assertEqual(domain["stage"], "unpack-before-project-corrections")
+        changed_domain = replace(bundle, capture_readout={
+            **bundle.capture_readout,
+            "sample_domain": {**domain, "linearisation": "companded"},
+        })
+        self.assertNotEqual(pc._bundle_metadata(changed_domain), metadata)
         changed = replace(bundle, capture_readout={**bundle.capture_readout, "sample_bits": 12})
         self.assertNotEqual(pc._bundle_metadata(changed), metadata)
         rebuilt.capture_readout["raw_geometry"][0] = 42
         self.assertEqual(bundle.capture_readout["raw_geometry"], [128, 128])
-        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 34)
+        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 35)
 
 
 if __name__ == "__main__":

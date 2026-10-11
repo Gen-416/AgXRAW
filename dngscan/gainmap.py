@@ -1230,6 +1230,7 @@ def write_apple_gainmap_file(
     _sdr_precheck: Any = None,
     _jpeg_primary_session: Any = None,
     _hdr_metrics_workspace: Any = None,
+    protected_sources=None,
 ) -> dict[str, Any]:
     """Prepare one immutable pair, then encode/verify its delivery candidates.
 
@@ -1237,6 +1238,9 @@ def write_apple_gainmap_file(
     10-bit HEIF. Both its Apple gain-map template and primary donor consume that
     same high-precision master; JPEG and 8-bit retain their uint8 contract.
     """
+    from .protected_output import ProtectedSources
+    from .delivery_transaction import DeliveryTransaction
+    protection = ProtectedSources(protected_sources).check(out_path)
     from . import heif_encoder
     use_heif = delivery.container == "heic" and (
         delivery.heif_encoder == "x265" or
@@ -1255,6 +1259,15 @@ def write_apple_gainmap_file(
     prepared = _PreparedGainmapMaster(base_rgb_u8, hdr_rgba_half, hdr_headroom_ev,
         verify_capability=_verify_roundtrip_capability, metrics_workspace=_hdr_metrics_workspace)
     try:
+        if protection:
+            with DeliveryTransaction(out_path, protected_sources=protection) as transaction:
+                info = _write_gainmap_prepared(prepared, transaction.path, delivery=delivery, use_heif=use_heif,
+                    _template_path=_template_path, _gainmap_quality=_gainmap_quality,
+                    _primary_session=_primary_session, _collect_coding_metrics=_collect_coding_metrics,
+                    _sdr_precheck=_sdr_precheck, _jpeg_primary_session=_jpeg_primary_session)
+                transaction.commit()
+                info["output_path"] = str(out_path)
+                return info
         return _write_gainmap_prepared(prepared, out_path, delivery=delivery, use_heif=use_heif,
             _template_path=_template_path, _gainmap_quality=_gainmap_quality,
             _primary_session=_primary_session, _collect_coding_metrics=_collect_coding_metrics,
@@ -1653,14 +1666,18 @@ def encode_finished_pair(
     pair: FinishedPair,
     out_path: Path,
     delivery: DeliveryProfile,
+    *, protected_sources=None,
 ) -> dict[str, Any]:
     """Encode formation masters with a delivery profile. No re-formation."""
+    from .protected_output import ProtectedSources
+    protection = ProtectedSources(protected_sources).check(out_path)
     return write_apple_gainmap_file(
         pair.sdr_rgb,
         pair.hdr_rgba_f16,
         out_path,
         pair.display_headroom_ev,
         delivery=delivery,
+        **({"protected_sources": protection} if protected_sources is not None else {}),
     )
 
 
@@ -1668,8 +1685,11 @@ def encode_finished_pair_jpeg(
     pair: FinishedPair,
     out_path: Path,
     delivery: DeliveryProfile,
+    *, protected_sources=None,
 ) -> dict[str, Any]:
     """JPEG-only alias kept for callers that predate HEIC delivery."""
+    from .protected_output import ProtectedSources
+    protection = ProtectedSources(protected_sources).check(out_path)
     jpeg_delivery = delivery
     if delivery.container != "jpeg":
         jpeg_delivery = DeliveryProfile(
@@ -1679,4 +1699,5 @@ def encode_finished_pair_jpeg(
             container="jpeg",
             tolerances=delivery.tolerances,
         )
-    return encode_finished_pair(pair, out_path, jpeg_delivery)
+    return encode_finished_pair(pair, out_path, jpeg_delivery,
+                                **({"protected_sources": protection} if protected_sources is not None else {}))

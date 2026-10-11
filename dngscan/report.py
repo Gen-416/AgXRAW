@@ -863,9 +863,18 @@ def csv_row(
     return row
 
 
-def write_csv(path: Path, row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
-        writer.writeheader()
-        writer.writerow(row)
+def write_csv(path: Path, row: dict[str, Any], *, protected_sources=None) -> None:
+    """Write a report atomically; csv_row's file field identifies its RAW input.
+
+    Generic rows without that field require explicit protected_sources when
+    their caller needs to preserve input files.
+    """
+    from .protected_output import ProtectedSources
+    from .delivery_transaction import DeliveryTransaction
+    protection = ProtectedSources(protected_sources, row.get("file")).check(path)
+    with DeliveryTransaction(path, protected_sources=protection) as transaction:
+        with transaction.path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
+            writer.writeheader()
+            writer.writerow(row)
+        transaction.commit()

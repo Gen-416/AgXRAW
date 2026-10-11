@@ -180,6 +180,9 @@ def _jptc_entries() -> list[dict[str, Any]]:
         }
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
+        from .measurement_domain import declaration_issues
+        entry["acquisition_contract"] = dict(item.get("acquisition_contract") or {})
+        entry["readout_declaration_issues"].extend(declaration_issues(entry["acquisition_contract"]))
         if item.get("measurement_acquisition") is not None:
             from .collect_manifest import ACQUISITION_SCHEMA, acquisition_qualification
             try:
@@ -245,6 +248,8 @@ def _jptc_entries() -> list[dict[str, Any]]:
         entry.update(stored_dark_variance_fields(item))
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
+        from .measurement_domain import declaration_issues
+        entry["readout_declaration_issues"].extend(declaration_issues(entry.get("acquisition_contract") or {}))
         from .calibration import phase_calibration_fields
         try:
             entry.update(phase_calibration_fields(item))
@@ -355,6 +360,8 @@ def with_readout(entry: dict[str, Any], readout: dict | None,
     entry = dict(entry)
     status, reason = match(entry, readout)
     entry["readout_match_status"], entry["readout_match_reason"] = status, reason
+    from .measurement_domain import match as match_domain
+    entry["measurement_domain_match"] = match_domain(entry, readout)
     # Shutter scope is orthogonal to container geometry/encoding constraints.
     # Bind it here for *every* source, including curated and bulk tables; the
     # model's later rebind to file evidence cannot inherit a caller's old match.
@@ -513,6 +520,23 @@ def pdr_ev(priors: dict[str, Any], iso: int) -> float | None:
     return float(_interp(curve, math.log2(iso)))
 
 
+def reference_dn_range(prior: dict[str, Any]) -> float | None:
+    """Use the declared DN span, or the existing measured FWC/gain anchor."""
+    if prior.get("reference_dn_range") is not None:
+        reference = float(prior["reference_dn_range"])
+        return reference if math.isfinite(reference) and reference > 0 else None
+    anchor = prior.get("measured_iso") or prior.get("base_iso")
+    if not anchor:
+        curve = prior.get("read_noise_log2iso_log2e") or []
+        anchor = 2 ** min((p[0] for p in curve), default=float("nan"))
+    fwc = float(prior.get("fwc_e") or 0)
+    base_gain = gain_e_per_dn(prior, anchor) if anchor and math.isfinite(anchor) else None
+    if not base_gain or fwc <= 0:
+        return None
+    reference = fwc / base_gain
+    return reference if math.isfinite(reference) and reference > 0 else None
+
+
 def gain_for_file(prior: dict[str, Any], iso: int, code_range: float) -> float | None:
     """Transport measured e-/DN to this file's linear DN storage scale.
 
@@ -521,15 +545,18 @@ def gain_for_file(prior: dict[str, Any], iso: int, code_range: float) -> float |
     convention/readout is not silently interpreted as a storage shift.
     """
     gain = gain_e_per_dn(prior, iso)
+    # Physical gain availability retains the existing FWC/anchor requirement;
+    # an independent dark or spectrum can still qualify an explicit DN span.
     anchor = prior.get("measured_iso") or prior.get("base_iso")
     if not anchor:
         curve = prior.get("read_noise_log2iso_log2e") or []
         anchor = 2 ** min((p[0] for p in curve), default=float("nan"))
-    fwc = float(prior.get("fwc_e") or 0)
-    base_gain = gain_e_per_dn(prior, anchor) if anchor and math.isfinite(anchor) else None
-    if gain is None or not base_gain or fwc <= 0 or code_range <= 0:
+    if (float(prior.get("fwc_e") or 0) <= 0 or not anchor or not math.isfinite(anchor)
+            or not gain_e_per_dn(prior, anchor)):
         return None
-    reference = float(prior.get("reference_dn_range") or fwc / base_gain)
+    reference = reference_dn_range(prior)
+    if gain is None or reference is None or code_range <= 0:
+        return None
     ratio = code_range / reference
     power = round(math.log2(ratio))
     if abs(math.log2(ratio) - power) > math.log2(1.05):

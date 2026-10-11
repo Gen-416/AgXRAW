@@ -665,6 +665,10 @@ def main(argv: list[str]) -> int:
                 )
         scan_requested = bool(args.scan or args.out is not None or (args.jpeg is None and args.csv is None))
         out_path = args.out if args.out is not None else (default_png_path(args.path) if scan_requested else None)
+        from .protected_output import raw_protection, final_image_destination
+        output_protection = raw_protection(args.path)
+        output_protection.check(out_path, args.csv, args.jpeg,
+            final_image_destination(args.jpeg, args.output_format) if args.jpeg is not None else None)
 
         bundle = load_raw(
             args.path,
@@ -740,7 +744,8 @@ def main(argv: list[str]) -> int:
             bundle, user_ev=resolved_ev, tone_core=args.tone_core
         )
         if out_path is not None:
-            plot_dashboard(bundle, analysis, y, ev, out_path, auto_ev=auto_ev_result)
+            plot_dashboard(bundle, analysis, y, ev, out_path, auto_ev=auto_ev_result,
+                           protected_sources=output_protection)
 
         jpeg_path = args.jpeg
         if jpeg_path is not None and container_for_output_format(args.output_format) == "heic":
@@ -801,6 +806,7 @@ def main(argv: list[str]) -> int:
                 punch_scale=args.punch,
                 delivery=args.delivery,
                 chroma=args.chroma,
+                protected_sources=output_protection,
             )
             jpeg_icc_embedded = (
                 bool(export_result.get("icc_embedded", str(export_result.get("profile", "")) == "Display P3"))
@@ -851,7 +857,7 @@ def main(argv: list[str]) -> int:
                 export_info=export_result if isinstance(export_result, dict) else None,
                 scene=render_plan.scene if render_plan is not None else None,
             )
-            write_csv(args.csv, row)
+            write_csv(args.csv, row, protected_sources=output_protection)
         # The report is a standalone deliverable (owner 2026-08-27): a plain
         # conversion prints the files it wrote and nothing else; the full
         # analysis report comes with --report or with a diagnostic run

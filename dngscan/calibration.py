@@ -798,6 +798,10 @@ def build(set_dir: Path, meta: dict | None, *, files: dict | None = None) -> dic
                               ("dn_domain", "dn_domain"), ("variance_domain", "variance_domain")):
             value = associated.get(source)
             entry["acquisition_contract"][field] = value.lower() if isinstance(value, str) else value
+        from .measurement_domain import DN, DN2
+        for field, default in (("dn_domain", DN), ("variance_domain", DN2), ("decoder_identity", "LibRaw")):
+            if entry["acquisition_contract"].get(field) is None:
+                entry["acquisition_contract"][field] = default
     entry["acquisition_contract"].update(coverage)
     entry.update(readout_fields)
     # The formed RAW contains quantisation as well as physical read noise.
@@ -1157,6 +1161,7 @@ def _validated_prior(item: dict) -> dict:
     contract = item.get("acquisition_contract") or {}
     if not isinstance(contract, dict):
         raise ValueError("acquisition_contract must be an object")
+    contract = dict(contract)
     if item.get("compression") is not None and not isinstance(item["compression"], str):
         raise ValueError("compression must be text")
     geometry = item.get("geometry")
@@ -1195,6 +1200,7 @@ def _validated_prior(item: dict) -> dict:
         entry["noise_spectrum"] = validate_spectrum(item["noise_spectrum"])
     from .readout import measurement_fields
     entry.update(measurement_fields(item))
+    contract = entry["acquisition_contract"]
     acquisition = item.get("measurement_acquisition")
     if acquisition is not None:
         from .collect_manifest import ACQUISITION_SCHEMA, acquisition_qualification
@@ -1205,6 +1211,12 @@ def _validated_prior(item: dict) -> dict:
         # to "qualified" cannot erase a missing condition from its CSV record.
         entry["measurement_acquisition"] = checked
         entry["readout_declaration_issues"].extend(checked["issues"])
+        # Known #Format semantics supply units, never missing acquisition
+        # conditions. Preserve each table's explicit/default authority above.
+        from .measurement_domain import DN, DN2
+        for field, default in (("dn_domain", DN), ("variance_domain", DN2), ("decoder_identity", "LibRaw")):
+            if contract.get(field) is None:
+                contract[field] = default
     elif (isinstance(item.get("source"), dict)
           and item["source"].get("kind") == "user-imported JPTC Collect measurements"):
         # PR177 installed manifest packages before per-table declarations were
@@ -1212,6 +1224,8 @@ def _validated_prior(item: dict) -> dict:
         # Leave those records installed for inspection, but require reimport
         # rather than silently qualifying them under the new file adapters.
         entry["readout_declaration_issues"].append("measurement-acquisition-reimport-required")
+    from .measurement_domain import declaration_issues
+    entry["readout_declaration_issues"].extend(declaration_issues(contract))
     if single:
         iso = _number(item.get("iso"), "iso")
         gain = _number(item.get("gain_e_per_dn"), "gain_e_per_dn")
@@ -1446,6 +1460,9 @@ def stored_dark_variance(entry: dict, iso: float | None) -> tuple[float | None, 
     if entry.get("source_format") != "dngscan-jptc-collect-1":
         return None, "read-variance-semantics-unspecified"
     contract = entry.get("acquisition_contract") or {}
+    from .measurement_domain import declaration_issues
+    if declaration_issues(contract):
+        return None, "stored-dark-variance-domain-unverified"
     curve = entry.get("stored_dark_variance_dn2_log2iso") or []
     if curve:
         if (contract.get("stored_dark_variance_measurement") != "paired-frame-pre-sheppard"
@@ -1584,6 +1601,11 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         "spectrum_h": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("h")),
         "spectrum_v": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("v")), "spectrum_2d": False}
     qualification = (prior.get("measurement_acquisition") or {}).get("capability_qualification", {})
+    from .measurement_domain import declaration_issues
+    domain_issues = declaration_issues(contract)
+    if domain_issues:
+        qualification = {key: {"status": "unverified", "source_ids": [], "reasons": domain_issues}
+                         for key in capabilities if key != "spectrum_2d"}
     if "measurement-acquisition-reimport-required" in prior.get("readout_declaration_issues", []):
         qualification = {key: {"status": "unverified", "source_ids": [],
             "reasons": ["measurement-acquisition-reimport-required"]} for key in capabilities if key != "spectrum_2d"}
@@ -1919,6 +1941,7 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
         stored_variance, stored_status = stored_dark_variance(prior, iso)
         from .readout import match
         readout_status, readout_reason = match(prior, readout)
+        from .measurement_domain import match as match_domain
         warnings = _summary(record, path, prior)["warnings"]
         if readout_status == "matched":
             warnings = [warning for warning in warnings if warning != "sub-readout-mode-not-verified"]
@@ -1932,6 +1955,7 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                     "stored_dark_variance_status": stored_status,
                     "stored_dark_variance_dn2": stored_variance,
                     "readout_match_status": readout_status, "readout_match_reason": readout_reason,
+                    "measurement_domain_match": match_domain(prior, readout),
                     "readout_contract": public_capture(prior.get("readout_contract")),
                     "capture_readout": public_capture(readout),
                     "has_read_noise_at_iso": iso is not None and curve_value(prior, "read_noise_log2iso_log2e", iso) is not None,

@@ -8,12 +8,12 @@ HDR candidates additionally pass the existing SDR/HDR round-trip gates.
 from __future__ import annotations
 
 import math
-import os
 import tempfile
 from pathlib import Path
 
 from ._deps import np
 from .local_detail import local_detail_loss
+from .protected_output import ProtectedSources, SourceOutputConflictError
 
 HEIF_AUTO_QUALITIES = (95, 92, 90, 85, 80, 70)
 HEIF_AUTO_GAINMAP_QUALITIES = (95, 90, 85, 80)
@@ -173,7 +173,8 @@ def _attempt_metrics(metrics):
             or k in ("chroma_error", "block_p95_luma_error", "highlight_max_luma_error", "local_detail_loss")}
 
 
-def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98,97,96,95)):
+def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98,97,96,95),
+                    protected_sources=None):
     """encode(quality, private_path) returns verified metrics for one candidate.
 
     The first verified quality in the supplied descending list is the reference
@@ -183,6 +184,7 @@ def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98
     selected reference sampling. No automatic q100 escalation, resizing or
     re-render; the destination is untouched until a verified result exists.
     """
+    protection = ProtectedSources(protected_sources).check(out_path)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".agxraw-encode-", dir=out_path.parent) as td:
@@ -206,6 +208,8 @@ def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98
                                              if k.startswith("coding_")}})
                 if accepted and size < selected.stat().st_size:
                     selected, info = path, candidate
+            except SourceOutputConflictError:
+                raise
             except (RuntimeError, ValueError) as exc:
                 # A failed candidate cannot destroy the existing destination.
                 attempts.append({"quality": quality, "accepted": False, "reason": str(exc)})
@@ -223,10 +227,12 @@ def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98
                                  "metrics": {k: v for k, v in candidate.items() if k.startswith("coding_")}})
                 if accepted:
                     selected, info = path, candidate
+            except SourceOutputConflictError:
+                raise
             except (RuntimeError, ValueError) as exc:
                 attempts.append({"quality": quality, "chroma": "420", "accepted": False, "reason": str(exc)})
         size = selected.stat().st_size
-        os.replace(selected, out_path)
+        protection.replace(selected, out_path)
         return {
             **info, "delivery_profile": "auto", "file_size_bytes": size,
             "output_path": str(out_path), "auto_reference_quality": reference["delivery_quality"],
@@ -238,7 +244,7 @@ def select_encoding(out_path: Path, encode, *, encode_420=None, qualities=(99,98
 
 
 def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False,
-                         staged_sdr: bool = False, on_selected=None):
+                         staged_sdr: bool = False, on_selected=None, protected_sources=None):
     """Bounded coordinate search over HEVC quality, sampling and auxiliary precision.
 
     ``encode(q, chroma, auxiliary_quality, path)`` must verify the completed file.
@@ -254,6 +260,7 @@ def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False,
     ``on_selected(info)`` runs when the reference or a strictly smaller winner is
     selected, allowing a caller to retain that winner's private reusable resources.
     """
+    protection = ProtectedSources(protected_sources).check(out_path)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".agxraw-heif-search-", dir=out_path.parent) as td:
@@ -307,6 +314,8 @@ def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False,
                 if accepted and size < selected.stat().st_size:
                     selected, info = path, candidate
                     winner_changed = True
+            except SourceOutputConflictError:
+                raise
             except (RuntimeError, ValueError) as exc:
                 record["reason"] = str(exc)
                 if isinstance(exc, EncodingStageRejected):
@@ -338,7 +347,7 @@ def select_heif_encoding(out_path: Path, encode, *, gainmap: bool = False,
             for auxiliary in HEIF_AUTO_GAINMAP_QUALITIES:
                 attempt(quality, chroma, auxiliary)
         size = selected.stat().st_size
-        os.replace(selected, out_path)
+        protection.replace(selected, out_path)
         return {**info, "delivery_profile": "auto", "output_path": str(out_path),
                 "file_size_bytes": size, "auto_reference_quality": reference["delivery_quality"],
                 "auto_reference_chroma": "444", "auto_reference_bytes": reference_bytes,

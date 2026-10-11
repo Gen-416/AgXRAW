@@ -98,6 +98,8 @@ class CollectAcquisitionContractTests(unittest.TestCase):
         self.assertIn("measurement-acquisition-reimport-required", installed["warnings"])
         self.assertFalse(any(installed["capabilities"].values()))
         capture = {"storage_lossless": True, "libraw_raw_geometry": [6000, 4000], "firmware": "1.00"}
+        from tests.test_measurement_domain import sample_domain_fixture
+        capture["sample_domain"] = sample_domain_fixture()
         prior = calibration.matching_prior("NIKON", "TestCamera", shutter="mechanical", iso=100, readout=capture)
         self.assertEqual(prior["readout_match_status"], "unverified")
         self.assertEqual(prior["readout_match_reason"], "measurement-acquisition-reimport-required")

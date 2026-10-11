@@ -190,8 +190,6 @@ def match(entry: dict, capture: dict | None) -> tuple[str, str]:
         return "unverified", issues[0]
     constraints = entry.get("readout_contract") or {}
     fields = [(key, value) for key, value in constraints.items() if key != "version"]
-    if not fields:
-        return "not-declared", "sub-readout-not-declared"
     for key, expected in fields:
         actual = capture.get(key)
         if actual is None:
@@ -199,6 +197,12 @@ def match(entry: dict, capture: dict | None) -> tuple[str, str]:
         if (" ".join(str(actual).split()).casefold() != " ".join(str(expected).split()).casefold()
                 if key in _TEXT_FIELDS else actual != expected):
             return "mismatch", f"file-{key.replace('_', '-')}-mismatch"
+    from .measurement_domain import match as match_domain
+    domain = match_domain(entry, capture)
+    if domain["status"] in ("unverified", "mismatch"):
+        return domain["status"], domain["reason"]
+    if not fields:
+        return "not-declared", "sub-readout-not-declared"
     return "matched", "declared-readout-constraints-matched"
 
 
