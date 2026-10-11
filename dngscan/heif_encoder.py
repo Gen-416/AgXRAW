@@ -123,7 +123,8 @@ def _quantized_band(rgb, bit_depth, *, rng=None):
 def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
            bit_depth: int = 10, preset: str = 'slow', tune: str = 'ssim',
            output_gamut: str = 'p3', auxiliary: bool = False,
-           dither_quantization: bool = False, icc_profile: bytes | None = None) -> dict:
+           dither_quantization: bool = False, icc_profile: bytes | None = None,
+           protected_sources=None) -> dict:
     """Encode finished nonlinear RGB, uint8 or float [0,1], as HEVC.
 
     Float input preserves master precision; increasing bit depth on uint8 input
@@ -132,6 +133,9 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
     domain. Existing uint8, auxiliary and HDR callers keep their quantization.
     """
     from .color import output_icc_profile_bytes
+    from .protected_output import ProtectedSources
+    from .delivery_transaction import DeliveryTransaction
+    protection = ProtectedSources(protected_sources).check(path)
     if not 1 <= quality <= 100 or chroma not in ('420','422','444'):
         raise ValueError('invalid HEIF quality/chroma')
     if bit_depth not in (8,10) or preset not in ('fast','medium','slow','slower'):
@@ -184,7 +188,9 @@ def encode(rgb, path: Path, quality: int, chroma: str = '420', *,
                 raise RuntimeError('missing HEIF output ICC')
             check(lib.heif_image_set_raw_color_profile(img,b'prof',icc,len(icc)))
         check(lib.heif_context_encode_image(ctx,img,enc,None,C.byref(handle)))
-        check(lib.heif_context_write_to_file(ctx,str(path).encode()))
+        with DeliveryTransaction(path, protected_sources=protection) as transaction:
+            check(lib.heif_context_write_to_file(ctx,str(transaction.path).encode()))
+            transaction.commit()
         return {'encoder':name,'bit_depth':bit_depth,'preset':preset,'tune':tune,
                 'quantization_dither': 'TPDF-10bit-seed0' if dither_quantization else 'none',
                 'delivery_quality':quality,'delivery_chroma_requested':chroma,
@@ -229,12 +235,15 @@ def read_rgb_item(path: Path, item: int):
 
 def encode_apple(rgb, path: Path, quality: int, chroma: str = "420", *,
                  bit_depth: int = 10, preset="slow", tune="ssim", output_gamut="p3",
-                 icc_profile: bytes | None = None):
+                 icc_profile: bytes | None = None, protected_sources=None):
     """System SDR writer. The caller verifies every requested property after writing.
 
     Apple does not expose x265 preset/tune; those controls apply only to x265.
     Unsupported depth/sampling requests must fail the caller's readback gate.
     """
+    from .protected_output import ProtectedSources
+    from .delivery_transaction import DeliveryTransaction
+    protection = ProtectedSources(protected_sources).check(path)
     import Quartz
     from Foundation import NSData, NSNumber, NSURL
     from .gainmap import _ciimage_from_rgba
@@ -265,14 +274,16 @@ def encode_apple(rgb, path: Path, quality: int, chroma: str = "420", *,
         request[key] = NSNumber.numberWithUnsignedInt_(int.from_bytes((chroma + "f").encode(), "big"))
     options = {Quartz.kCGImageDestinationLossyCompressionQuality: quality / 100.,
                Quartz.kCGImageDestinationEncodeRequestOptions: request}
-    result = context.writeHEIFRepresentationOfImage_toURL_format_colorSpace_options_error_(
-        image, NSURL.fileURLWithPath_(str(path)),
-        Quartz.kCIFormatRGB10 if bit_depth == 10 else Quartz.kCIFormatRGBA8,
-        color, options, None)
-    success, error = result if isinstance(result, tuple) else (bool(result), None)
-    if not success:
-        raise RuntimeError(f"Apple SDR HEIF 编码失败：{error}")
-    from .heif_gainmap import embed_primary_icc
-    embed_primary_icc(path, icc)
+    with DeliveryTransaction(path, protected_sources=protection) as transaction:
+        result = context.writeHEIFRepresentationOfImage_toURL_format_colorSpace_options_error_(
+            image, NSURL.fileURLWithPath_(str(transaction.path)),
+            Quartz.kCIFormatRGB10 if bit_depth == 10 else Quartz.kCIFormatRGBA8,
+            color, options, None)
+        success, error = result if isinstance(result, tuple) else (bool(result), None)
+        if not success:
+            raise RuntimeError(f"Apple SDR HEIF 编码失败：{error}")
+        from .heif_gainmap import embed_primary_icc
+        embed_primary_icc(transaction.path, icc)
+        transaction.commit()
     return {"encoder": "Apple ImageIO", "delivery_quality": quality,
             "delivery_chroma_requested": chroma, "delivery_container": "heic"}

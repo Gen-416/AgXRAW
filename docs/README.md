@@ -49,6 +49,12 @@
 
 本轮完整任务书的状态、RAW 专项语料与验证范围见[标定与原生 RAW 任务记录](reviews/CALIBRATION_RAW_PLAN_2026-10-09.zh-CN.md)。[传感器精度研究](reviews/SENSOR_PRECISION_RESEARCH_2026-10-09.zh-CN.md) 单独说明个人黑位、signed CFA、固定偏置图及二维色度原型，明确区分已接入生产与保持实验状态的功能。
 
+后续实测校正任务的实际交付与缺测边界见[2026-10-10 实施记录](reviews/MEASURED_CORRECTIONS_2026-10-10.zh-CN.md)。配套研究分别见[克制色度清理](reviews/RESTRAINED_CHROMA_2026-10-09.zh-CN.md)、[镜头相对光谱接入](reviews/LENS_SPECTRAL_INTEGRATION_2026-10-09.zh-CN.md)和[Oklab 数值边界](reviews/OKLAB_ROUNDOFF_2026-10-10.zh-CN.md)。实拍实现一致性与真实相机画质标定分开验收；没有个人暗场／平场时不声称完成了个体像素校正。
+
+RAW9 后续适配见[窗口锚点范围](reviews/RAW9_ANCHOR_SCOPE_2026-10-10.zh-CN.md)、[解码配方状态](reviews/COREIMAGE_DECODE_RECIPE_2026-10-10.zh-CN.md)和[实机矩阵／输出残差研究](reviews/COREIMAGE_RAW_RESEARCH_2026-10-10.zh-CN.md)。历史 LibRaw NumPy／Rust 对照不算 Apple RAW9 验收；旧 fp 窗口数值已归档，未知机型／版本／配置不继承。
+
+本轮修复、缓存迁移、实机结果和缺测清单汇总于[RAW9 实施记录](reviews/COREIMAGE_RAW9_IMPLEMENTATION_2026-10-10.zh-CN.md)。
+
 同轮 `fb91815` 后续修复见研究记录第 10 节：[镜头与重建范围](ARCHITECTURE.zh-CN.md)、标定失败点、实际传感器采样与奇数裁剪，以及[局部亮度纹理和 HDR 声明回读](HDR_DELIVERY_VALIDATION.zh-CN.md#局部亮度纹理门禁2026-10-09)。原始数字保存在[管线验收记录](assets/delivery-quality/pipeline-repair-20261009.json)。
 
 当前 RAW/HDR 文档图片与机器可读测量保留在 [assets/](assets)。胶片教程、设计、基线、光谱和示例已迁入 AgXFilm，详见[胶片拆分记录](FILM_SPLIT.zh-CN.md)。原始 RAW 和个人导出不属于公共文档资产。

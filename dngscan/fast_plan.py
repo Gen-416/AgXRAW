@@ -45,7 +45,9 @@ from .models import ToneCompressionPlan
 # v20 preserves floating HDR camera planes, fuses warp processing-loss transport,
 # and adds the bounded local luminance-detail delivery check.
 # v21 carries ActiveArea origin/extent into mosaic GainMap interpolation.
-NATIVE_ABI_VERSION = 21
+# v22 gives the SDR Oklab forward path two exact matrix stages and the
+# same float32 cancellation-precision zero convention as the reference.
+NATIVE_ABI_VERSION = 22
 NATIVE_OUTPUT_GAMUT_FIT_ITERS = 16
 NATIVE_OUTPUT_GAMUT_TOLERANCE = 1e-4
 
@@ -143,16 +145,15 @@ def _build_output_plan(output_gamut: str, alpha: float) -> Any:
     # R2 item 6: NO pre-merge on the Rec.2020 -> output conversion — the
     # kernel applies the two stages exactly as the NumPy graph does (float64
     # accumulate, float32 materialization per stage), so in-gamut pixels are
-    # bit-exact against the NumPy path. The gamut fit's own matrices below
-    # REMAIN pre-merged: that path only runs on out-of-gamut pixels and is
-    # gated by its documented 1e-4 float tolerance, not the exact contract;
-    # unmerging it belongs to the full reference-mode program.
-    output_to_lms = OKLAB_M1 @ RGB_TO_XYZ[space]
+    # bit-exact against the NumPy path. The forward Oklab path likewise needs
+    # the two original stages for its cancellation-precision contract.
+    # Inverse gamut-fit matrices retain their existing approximate form.
     lms_to_output = XYZ_TO_RGB[space] @ OKLAB_M1_INV
     return SimpleNamespace(
         rec2020_to_xyz=_flat_matrix(RGB_TO_XYZ["Rec2020"]),
         xyz_to_output=_flat_matrix(XYZ_TO_RGB[space]),
-        output_to_lms=_flat_matrix(output_to_lms),
+        output_to_xyz=_flat_matrix(RGB_TO_XYZ[space]),
+        xyz_to_lms=_flat_matrix(OKLAB_M1),
         lms_to_output=_flat_matrix(lms_to_output),
         oklab_m2=_flat_matrix(OKLAB_M2),
         oklab_m2_inv=_flat_matrix(OKLAB_M2_INV),

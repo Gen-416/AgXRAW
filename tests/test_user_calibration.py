@@ -184,6 +184,7 @@ class TestUserCalibration(unittest.TestCase):
 
     def test_packaged_collect_runtime_also_retains_failure_barriers(self):
         path = self.write_profile(unresolved_collect_profile())
+        path = path.rename(path.with_name("s5m2-mech-20260812.json"))
         def collect_only(directory, pattern):
             return iter([path]) if directory.name == "jptc_collect" else iter(())
         with patch.object(priors, "_JPTC_CACHE", None), patch.object(Path, "glob", collect_only):

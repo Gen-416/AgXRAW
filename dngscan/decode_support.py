@@ -5,8 +5,10 @@
 degrees each. This module makes it one deterministic report per file:
 
 LibRaw tiers (colour-table ladder, worst first):
-    unsupported_format   the file cannot be opened at all (format gap — e.g.
-                         Nikon HE/HE* TicoRAW NEFs; the fallback table cannot help)
+    unsupported_format   this build explicitly rejected the input format/codec
+    corrupt_data         LibRaw reported damaged data
+    io_error             the input could not be read
+    runtime_failure      another decoder/runtime operation failed
     no_color_calibration decodes, but no DNG tags, no LibRaw matrix, no fallback
                          entry: usable with unpredictable colour deviation
     fallback_matrix      decodes; Kelvin WB rescued by camera_matrices.py, but
@@ -31,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from ._deps import np
+from .decode_errors import LIBRAW_USABLE_STATUSES, classify_libraw_error
 
 
 def _libraw_tier(path: Path, make: str | None, model: str | None) -> dict[str, Any]:
@@ -49,10 +52,7 @@ def _libraw_tier(path: Path, make: str | None, model: str | None) -> dict[str, A
     except FileNotFoundError:
         raise
     except Exception as exc:
-        detail = str(exc)
-        if path.suffix.lower() == ".nef":
-            detail += "（若为 HE/HE* 高效压缩：TicoRAW 编码，LibRaw 因授权无法解码）"
-        return {"status": "unsupported_format", "detail": detail}
+        return classify_libraw_error(exc)
     if has_matrix:
         return {"status": "full", "detail": "机型颜色矩阵在 LibRaw 表内"}
     if dng_metadata.read_dng_color_calibration(path) is not None:
@@ -96,6 +96,9 @@ _LIBRAW_LABELS = {
     "fallback_matrix": "△ 可用（{detail}）",
     "no_color_calibration": "△ 可用但色彩无锚（{detail}）",
     "unsupported_format": "✗ 不可用（格式缺口：{detail}）",
+    "corrupt_data": "✗ 不可用（数据损坏：{detail}）",
+    "io_error": "✗ 不可用（读取失败：{detail}）",
+    "runtime_failure": "✗ 不可用（解码运行失败：{detail}）",
 }
 
 
@@ -111,14 +114,14 @@ def probe_decode_support(path: Path) -> dict[str, Any]:
     libraw = _libraw_tier(path, shot.make, shot.model)
     libraw["render_verified"] = False
     correction_error = None
-    if libraw["status"] != "unsupported_format":
+    if libraw["status"] in LIBRAW_USABLE_STATUSES:
         try:
             from .dng_opcodes import read_plan
             read_plan(path)
         except (ValueError, OSError, RuntimeError) as exc:
             correction_error = str(exc)
     libraw["correction_preflight_error"] = correction_error
-    blocked = libraw["status"] == "unsupported_format"
+    blocked = libraw["status"] not in LIBRAW_USABLE_STATUSES
     coreimage = _coreimage_tier(path, blocked)
     priors = find_priors(shot.make, shot.model) is not None
     from .evidence import libraw_runtime_id
@@ -128,6 +131,8 @@ def probe_decode_support(path: Path) -> dict[str, Any]:
         "provider_version": libraw_runtime_id(),
         "status": libraw["status"],
         "detail": libraw["detail"],
+        "failure_kind": libraw.get("failure_kind"),
+        "exception_type": libraw.get("exception_type"),
     }
 
     ident = f"{shot.make or '?'} {shot.model or '?'}".strip()

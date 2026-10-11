@@ -654,16 +654,13 @@ class DecoderGuardTests(unittest.TestCase):
 class SubjectiveControlTests(unittest.TestCase):
     """Where the line falls between a look control and reconstruction.
 
-    Spatial and subjective controls must be off for a scene-linear decode; the controls
-    that reconstruct clipped data must not be, which is why this class asserts both
-    directions rather than just "everything is zero".
+    Additional look and sharpening controls are requested neutral, while camera
+    reconstruction is requested enabled. A spatial operator is not necessarily
+    nonlinear, and these checks do not prove RAW 9's internal denoise is off.
     """
 
     def test_sharpening_is_cleared(self) -> None:
-        """sharpnessAmount defaults to 0.485 and is a spatial operator. It was inert on
-        decoder version 8 but is live on version 9, so it silently started altering the
-        buffer once this decoder began requesting RAW 9 — a fresh filter reports 8, so
-        version 9 is only ever reached by asking for it."""
+        """Check the explicit additional-sharpening parameter, not its pixel effect."""
         _skip_unless_available()
         if not SIGMA_DNG.is_file():
             raise unittest.SkipTest(f"missing {SIGMA_DNG}")
@@ -675,15 +672,10 @@ class SubjectiveControlTests(unittest.TestCase):
         self.assertTrue(info["color_noise_cleared"])
 
     def test_moire_reduction_is_left_at_apples_default(self) -> None:
-        """The one look-adjacent control deliberately not cleared.
+        """Preserve the default; Apple documents moire as unsupported in RAW 9.
 
-        moireReductionAmount reads like something to zero. On version 9,
-        isMoireReductionSupported is False, so a gated setter would skip — and that
-        accidental skip is what kept detail. Forcing 0 is actively harmful: measured at
-        full resolution it costs 59.8 % of high-frequency energy, because zero is the
-        control's smoothest end rather than "off", while 0.5 and 1.0 render identically
-        on the plateau its default sits on. configure_linear_filter must not touch it
-        at all, even if a future SDK reports the control as supported.
+        This checks a write policy, without attaching unhashed historical pixel
+        percentages to the current runtime's actual behavior.
         """
         _skip_unless_available()
         if not SIGMA_DNG.is_file():

@@ -2,27 +2,41 @@
 
 [返回文档索引](README.md) · [色度降噪与纹理保护](CHROMA_NR.zh-CN.md)
 
-AgXRAW 可以把 Jiangtherapee / JPTC 的实测结果保存为本机标定，匹配照片后用于噪声尺度、SNR、暗部及 HDR 分析，并为可选色度降噪提供输入。测量在前期完成，普通照片仍按单张 RAW 处理。默认 `--chroma-nr 0` 保持关闭；导入标定不会自动开启降噪。
+AgXRAW 可以把 Jiangtherapee / JPTC 的实测结果保存为本机标定，匹配照片后用于噪声尺度、SNR、暗部及 HDR 分析，并为可选色度清理提供输入。普通照片仍按单张 RAW 处理，不需要先做个人标定。默认关闭色度清理；导入标定不会自动开启它。
 
-当前接口接收测量统计及派生 JSON，不直接接收黑场 DNG，也不据此生成坏点图或减去固定图样。尚无自己的 Sigma fp 测量时可以先使用接口；其他相机的标定只能验证导入操作，不会因此套用到 fp。fp 照片仍使用适用的包内先验或文件内模型，实际来源见界面和分析报告。
+当前生产接口接收测量统计及派生 JSON，不直接接收黑场 DNG，也不自动减去个人暗场或套用平场图。尚无自己的 Sigma fp 测量时，其他相机的数据只能验证导入操作，不能因此套用到 fp。照片仍使用适用的包内先验或文件内模型；实际来源、拒用或缺测原因见分析结果。
 
-## GUI 导入
+## GUI 预检与导入
 
-在「基础」页的「RAW 解码」卡片右上角打开「实测噪声标定」。选择一个标定 JSON，或选择包含 Collect CSV 的测量目录。导入后可以查看相机、快门模式、ISO 范围、数据警示，并执行启用、停用或删除。
+在「基础」页的「RAW 解码」卡片右上角打开「个人标定 · 可选」。可以选择一个标定 JSON、一个或多个官方 Collect ZIP，或包含测量 CSV 的目录。选择后先预检，界面列出各组的相机、ISO、能力及未使用或有歧义的文件；勾选需要的组，再点「导入所选分组」。预检不会安装记录。
 
-「本次导入的读出模式声明」默认遵循文件。电子快门、机械快门、电子前帘和适用全部模式均为显式覆盖；只在确认测量适用范围时使用。特定快门模式的标定不会自动应用到未记录快门模式的 RAW。「适用全部模式」表示用户明确作出这个声明，不是程序推断相机各模式等价。
+导入使用文件内容中的 `#Format`、版本、列及测量声明识别测量表，不要求先把官方长文件名改成 `dark-scalars.csv`。不同机身、固件、快门、读出或驱动模式、压缩、RAW 尺寸、CFA 与 DN 域分组处理；缺字段且同时适配多组的文件保留歧义，不随意归入首组。独立重复的暗场、增益表、同 ISO PTC 或同方向频谱要求先明确选择，不任意平均；完全相同的字节只记录重复来源。
 
-导入成功默认启用。当前照片会重新分析，旧预览和分析缓存失效。管理页的「已启用」只表示允许参与选择；是否实际应用，以 RAW 解码卡下的「噪声模型」来源与当前照片的匹配结果为准。导入失败不会安装该记录。
+「本次导入的读出模式声明」默认遵循测量文件。`electronic`、`mechanical`、`efcs` 和 `any` 是用户显式作出的**标定快门适用范围**声明，原始声明一并保留；`any` 不证明所有位深、裁切、读出、固件及机身等价，也不绕过其他约束。
 
-浏览器只提交文件选择器选中的 JSON/CSV/TXT 文本，最多 128 个文件、合计 8 MiB；请选择单套测量目录。RAW 本体和其他二进制文件不进入标定包。
+导入成功默认启用，可以停用或删除。请区分以下状态：
+
+| 状态 | 含义 |
+| --- | --- |
+| 已导入 / 已启用 | 记录已保存在本机，允许参与选择。 |
+| 候选条件匹配 | 相机、快门、ISO 和已声明的读出约束已匹配；实际 DN 尺度等最终资格仍由分析阶段确认。 |
+| 分析采用 | 最终模型实际采用了该来源的方差系数、增益证据或独立频谱约束；各项分别记录。 |
+| 实际色度清理 | 成像步骤使用了相应系数，且通过解码与传播检查；关闭或跳过时单独说明。 |
+| 个体像素校正 | 黑场／平场像素图尚未接入生产解码，始终报告未应用，不能由统计标定的采用代替。 |
+
+预检中的 `ready` 表示能形成统计能力，不是对当前照片的匹配承诺。导入、匹配、应用分别报告；失败或不可导入组保留原因。变更标定会使旧预览和分析缓存失效，进行中的导出也会检查标定身份是否改变。
+
+GUI 只提交选择器选中的 JSON/CSV/TXT/ZIP，最多 512 项、合计 64 MiB；ZIP 无需手工解压。共用导入层限制展开后最多 2048 项、每项 64 MiB、合计 256 MiB，并拒绝路径穿越、绝对路径、符号链接和冲突的重复 ZIP 路径。大频谱不会静默截断，超过输入或保存上限会明确报错。CLI 与 GUI 共用内容识别和 ZIP 安全检查。
 
 ## CLI 管理
 
-以下命令在项目根目录、已安装项目依赖的 Python 环境中执行。把 `/path/to/...` 换成自己的测量路径，把 `CALIBRATION_ID` 换成 `list` 输出中的 `id`。这里的 ID 是安装记录的内容 ID，不是相机名称。
+以下命令在项目根目录、已安装依赖的 Python 环境中执行。把示例路径换成自己的文件；`GROUP_ID` 来自 `inspect`，`CALIBRATION_ID` 来自 `list`，二者不是相机名。
 
 ```bash
 python -m dngscan calibration --help
-python -m dngscan calibration import /path/to/fp-measurements
+python -m dngscan calibration inspect /path/to/dark.zip /path/to/gain.zip /path/to/ptc.zip
+python -m dngscan calibration import /path/to/dark.zip /path/to/gain.zip /path/to/ptc.zip --group GROUP_ID
+python -m dngscan calibration inspect /path/to/fp-measurements
 python -m dngscan calibration import /path/to/fp-profile.json
 python -m dngscan calibration list
 python -m dngscan calibration disable CALIBRATION_ID
@@ -30,54 +44,89 @@ python -m dngscan calibration enable CALIBRATION_ID
 python -m dngscan calibration remove CALIBRATION_ID
 ```
 
-先安装但不启用时加 `--inactive`。需要明确覆盖适用快门模式时加 `--shutter-mode electronic`、`mechanical`、`efcs` 或 `any`，例如：
+`inspect` 返回稳定 JSON 摘要，不安装、不启用。`import` 可同时接收多个 ZIP、目录或 JSON，默认处理其中所有可导入组；`--group` 可重复以选择多个组。预检和导入重新解析所选内容，不信任客户端传回的能力报告。权威 ISO 和方向信息完整时，改名或移动目录不改变数值和数据身份。
+
+先安装但不启用用 `--inactive`。确需声明测量的快门适用范围时用 `--shutter-mode`：
 
 ```bash
 python -m dngscan calibration import /path/to/fp-profile.json --inactive
 python -m dngscan calibration import /path/to/fp-profile.json --shutter-mode electronic
 ```
 
-`--shutter-mode any` 明确声明标定适用于全部快门模式；它不会验证这种声明是否符合相机实际行为。覆盖声明和原始文件的快门信息都会保留。不同声明产生不同安装 ID，旧记录可单独停用或删除。
+支持的值为 `electronic`、`mechanical`、`efcs`、`any`；它与下面的**当前批次拍摄声明**用途不同。不同覆盖声明产生不同安装 ID，旧记录可单独管理。
 
-管理命令返回 JSON，不需要提供待显影的 RAW。标定默认保存在 `~/.config/dngscan/calibrations`；设置 `XDG_CONFIG_HOME` 时使用其下的 `dngscan/calibrations`，`DNGSCAN_CALIBRATION_DIR` 可覆盖目录。它们是本机用户数据，无需修改包内 `dngscan/data/priors`。
+管理命令不需要待显影 RAW。标定默认保存在 `~/.config/dngscan/calibrations`；`XDG_CONFIG_HOME` 和 `DNGSCAN_CALIBRATION_DIR` 可指定位置。它们是本机用户数据，不写入包内 `dngscan/data/priors`。
 
-导入后照常转换照片；以下为手动开启色度降噪的例子，不代表建议所有照片都使用这个强度：
+## 接受的测量格式与缺项
 
-```bash
-python -m dngscan /path/to/photo.DNG --jpeg /path/to/photo.jpg --chroma-nr 0.25 --report
-```
-
-## 接受的测量格式
-
-| 输入 | 必要内容与适用范围 |
+| 输入 | 内容识别与能力 |
 | --- | --- |
-| Collect CSV 目录 | `dark-scalars.csv`（`JPTC-DARK/1`）；绝对增益需要 `ptc-iso*.csv`（`JPTC/2`）锚点。可附 `gain-levels.csv`（`JPTC-ISOGAIN/1`）及 `spectrum-h.csv` / `spectrum-v.csv`（`JPTC-SPECTRUM/1`）。相机、快门、压缩及尺寸声明冲突会拒绝导入。 |
-| `dngscan-jptc-collect-1` JSON | Collect 的派生结果，包含明确机型、PTC 锚点或增益曲线、读噪曲线及测量来源。可记录多个 ISO 和增益跳变。 |
-| `dngscan-jptc-prior-1` JSON | 单个 ISO 的 PTC 派生结果，包含增益、读噪、满阱及 DN 范围依据。用户导入的单点标定只适用于该 ISO，不向其他 ISO 外推。 |
+| 官方 Collect ZIP、多个 ZIP、CSV 目录 | `JPTC-DARK/1` 暗场，`JPTC-ISOGAIN/1` 相对增益，`JPTC/2` PTC，`JPTC-SPECTRUM/1` 频谱。按格式和列识别，保留逐文件来源与拒绝原因。 |
+| `dngscan-jptc-collect-1` JSON | Collect 派生结果，可含多个 ISO、增益跳变、逐相位暗场及频谱；按所声明合同验证。 |
+| `dngscan-jptc-prior-1` JSON | 单 ISO PTC 派生结果。只适用于该测量 ISO，不向其他 ISO 外推；其读噪估计来源与独立暗场不同。 |
 
-一个完整目录通常如下：
+官方文件通常以相机、固件、ISO 和模式组成的 `stem` 开头：暗场 `stem_scalars.csv`，频谱 `stem_spectrum-h.csv` / `stem_spectrum-v.csv`，增益 `stem_levels.csv`，单 ISO PTC 为 `stem_ptc.csv`，多 ISO 为 `stem_ptc_iso100.csv` 等。旧名 `dark-scalars.csv`、`gain-levels.csv`、`ptc-iso100.csv` 仍兼容。文件名不覆盖头部或行内 ISO；头部与行内冲突会拒绝该表。仅旧表完全缺少权威 ISO 时才允许明确标为降级的旧文件名回退，此时任意改名可能使它不可解释。
 
-```text
-fp-measurements/
-  dark-scalars.csv
-  ptc-iso100.csv
-  gain-levels.csv
-  spectrum-h.csv
-  spectrum-v.csv
-```
+没有合格 PTC 就没有绝对电子增益；只有暗场统计仍可保存为部分能力。没有暗场就没有独立暗场读噪；官方 PTC 若也缺少自己可核对的黑位，不能凭 `SensorBlackTag` 冒充实测黑位来完成拟合。单向频谱只提供该方向的信息；即使同时有 h/v，也不冒充完整二维空间协方差。未知版本、损坏列、缺少频率单位和归属不明的文件会显示原因。
 
-只有黑场统计、没有绝对增益锚点时仍可保存供检查，但不能构成完整的 shot/read 成像噪声模型。增益和读噪的有效 ISO 范围都要覆盖当前照片；未解析的读噪不是零读噪。
+`read_noise_unresolved_isos` 表示测过但未能分辨，不是零噪声，也不是普通未采样间隔。DN 与电子读噪均不在失败点求值或跨失败点插值；失败列表非法或与有效点冲突时拒绝导入。增益覆盖不代表读噪覆盖，单点 PTC 的零读噪也按未分辨处理。
 
-Collect 的 `read_noise_unresolved_isos` 保存「测过但未能分辨」的 ISO。该列表随导入记录和包内 Collect 数据进入运行时；不能把它当成普通未采样间隔。DN 与电子读噪曲线都不在失败点求值，也不跨失败点插值或外推。失败列表包含非法 ISO，或与同一 ISO 的有效读噪点冲突时，导入会拒绝。单点 PTC 的零读噪同样表示未分辨，不是可用的零噪声模型。
-
-现有离线工具也可生成上述两类 JSON，再由 GUI 或 CLI 安装。单个 `JPTC/2` CSV 不直接作为 GUI 标定文件输入：
+离线派生工具仍可生成兼容 JSON。`tools/import_jptc_collect.py` 同样使用内容识别，接受官方 ZIP 或目录，不安装到个人库；多个组时须用 `--group` 明确选择。单个 PTC 的旧工具命令为：
 
 ```bash
-python tools/import_jptc_collect.py /path/to/fp-measurements --out /path/to/fp-collect.json
+python tools/import_jptc_collect.py /path/to/official.zip --out /path/to/fp-collect.json
 python tools/import_jptc.py /path/to/ptc-iso100.csv --brand SIGMA --model fp --iso 100 --shutter electronic --out /path/to/fp-iso100.json
 ```
 
-第二条命令使用 CSV 的 G1 空间统计进行带 PRNU 处理的 PTC 拟合，不能因此把它称为完整的跨帧随机噪声测量。Collect 黑场对可提供独立的时域读噪。来源、拟合状态和修正假设应随测量保留，尤其不能把增益估计方法间的分歧当成完整的统计置信区间。
+PTC 有合格成对差分字段时优先拟合时域增益；否则保留空间 PRNU 拟合及回退原因。单帧空间统计不升级为完整跨帧随机噪声测量，拟合条件区间也不代表完整采集误差预算。
+
+## 当前批次声明与色度清理
+
+RAW 解码卡中的「当前批次的拍摄模式声明」只补充本批照片中未知的快门、读出标识和拍摄类型，退出后不保留到下次启动。它不改写原文件，不改变标定范围；与已知文件信息冲突时报错。不能借此覆盖机身序列号、固件、压缩、RAW 尺寸或 ADC 位深等事实。CLI 对应：
+
+```bash
+python -m dngscan /path/to/photo.DNG --jpeg /path/to/photo.jpg --capture-shutter electronic --capture-readout-id my-measured-mode --report
+```
+
+这些值必须符合自己的拍摄条件和测量声明，不能照抄示例来解除不匹配。`ReadoutMode` / `Readout` 对应 `readout_id`，`DriveMode` 对应 `capture_kind`；机身序列号和 `Firmware` 也作为明确约束保留。缺少可读取的文件依据时为 `unverified`，不能声称所有厂商的私有快门、固件或读出字段均已支持。
+
+拍摄类型可另用 `--capture-kind` 声明，值须与测量的 `DriveMode` 一致。它也只补充未知值；序列号和固件没有批次覆盖入口。
+
+| 色度清理模式 | 行为 |
+| --- | --- |
+| `off` | 默认关闭，强度 0，不处理。 |
+| `conservative` | 显式选择后以 0.10 尝试现有粗尺度色斑核，保留亮度颗粒；仍须通过模型、解码和传播检查。 |
+| `custom` | 使用显式的 0–1 强度。旧 `--chroma-nr` 数值配方保持自定义语义，不自动换档。 |
+
+```bash
+python -m dngscan /path/to/photo.DNG --jpeg /path/to/photo.jpg --chroma-cleanup conservative --report
+python -m dngscan /path/to/photo.DNG --jpeg /path/to/photo.jpg --chroma-cleanup custom --chroma-nr 0.10 --report
+```
+
+0.10 是可选保守预设，不是默认自动降噪，也不保证真实颜色细节无损。当前生产核处理粗尺度色斑；细粒彩噪和自适应解拜耳后的完整相关噪声传播仍不可用。界面分别显示噪声模型可用、清理能力可用与实际应用，缺证据时跳过而不从照片纹理重新估计噪声标尺。
+
+## 离线公共库与能力组合
+
+「实测噪声标定」中可查看公共库来源、版本、退役项与能力，安装维护者发布的本地 JSON，或切换、回滚已安装版本。显影时不联网：
+
+```bash
+python -m dngscan calibration library
+python -m dngscan calibration library-install /path/to/reviewed-library.json
+python -m dngscan calibration library-select VERSION_ID
+python -m dngscan calibration library-select packaged
+```
+
+随包目录登记固定来源的 13 组 Collect 测量，**目录中的组数不是新增合格成像模型数**。目录保留 `gainLinks`、跨组增益/PTC 来源、显式缩放、标称 ISO 推导、人工推荐及退役声明；目录编译器不会自动逐组重建这些测量事实，也不把它们升级为本机像素校正。数值模型须另有合格 profile、来源哈希、单位和可核对读出依据；随包目录自身的新增 profile 列表为空，已有数值资产仍受各自适用性检查。
+
+退役暗场留作来源审计或研究依赖，不作为正常运行时噪声来源。切换到缺少相应 ID 的目录不隐式加载旧 Collect 资产，修改目录的退休标志也不会复活已退休的随包暗场。损坏公共库会禁用该公共来源并报告原因，基础显影仍可使用其他适用来源；更新、回滚和启停改变缓存身份。
+
+独立的部分暗场能力只在相机、快门、读出合同、identity 线性化和参考 DN 范围明确一致，且当前 ISO 有效时，才能补足另一份增益模型的缺项。组合不扩展 ISO 域，不跨增益跳变或读噪未分辨点，不覆盖明确失败证据；来源分别保留。有效的已存 RAW 总方差随读噪能力一起保留，不丢成纯物理读噪常数项，独立频谱约束也不会因组合或 DNG 系数回退而消失。
+
+## 个人暗场／平场产品仍属实验
+
+[build_personal_calibration.py](../tools/build_personal_calibration.py) 可对明确准备的有符号 DN 数组构建和检查实验产品；`python -m dngscan calibration pixel-inspect /path/to/product.npz` 只检查，不安装到生产显影。现有生产 RAW 解码尚无自动应用 hook。本轮没有自己的真实暗场、平场与 PTC 重复组可完成实测验收，合成 held-out 结果不能替代它们。
+
+实验暗场要求独立训练／验证帧和明确黑位参考。实验平场要求规定的黑位扣除输入域与照明声明，其完整误差预算仍为 `incomplete`：归一化中位数误差、归一化量与像素协方差、复用暗场的空间协方差及照明系统误差尚未覆盖。因此不宣称获得完整平场不确定性或 SNR 收益，也不自动取得生产应用资格。
 
 ## 何时参与成像
 
@@ -144,7 +193,9 @@ ADC 有效位数。`raw_geometry` 也只限定文件 RAW 栅格，不独自证�
 | `default_crop` | DNG 明确声明的 DefaultCropSize，可含合法分数；与 RAW 栅格分开。 |
 | `sample_bits` | 主 RAW IFD 的 BitsPerSample。 |
 | `storage_lossless` | 当前编码过程是否保留存储码值；无压缩和 Deflate 可确认，JPEG 7 在各 tile/strip 的声明 bytecount 范围内检查 SOF3、完整分量覆盖及 SOS point transform 为 0。缺少块长度、不完整或未支持过程保持未知。 |
-| `sensor_bits`、`sensor_binning`、`capture_kind`、`readout_id` | 可以显式声明，但当前没有足够的通用文件字段映射；未知不会当作匹配。 |
+| `readout_id`、`capture_kind` | Collect 的 `ReadoutMode` / `Readout` 与 `DriveMode` 分别形成约束；当前文件未知时，可用本批显式模式声明（CLI `--capture-readout-id` / `--capture-kind`）补充，不能覆盖已知值。 |
+| `body_serial`、`firmware` | 测量中明确声明即保留约束；当前文件无相应依据时为不可核对，批次声明不能补造或覆盖。私有字段未全覆盖。 |
+| `sensor_bits`、`sensor_binning` | 可显式声明，但没有足够通用的逐文件依据；未知不会当作匹配。 |
 
 每个明确声明的约束都必须有对应证据并相符。声明为 lossless、无损压缩、uncompressed
 或无压缩的旧 `compression` 文本接受同一保码值约束；无损 JPEG 与无压缩容器不同，
@@ -156,7 +207,7 @@ ADC 有效位数。`raw_geometry` 也只限定文件 RAW 栅格，不独自证�
 Collect 的 ImageWidth / ImageHeight 是操作者声明的相机 JPEG 输出尺寸，`RawSize`
 才是 LibRaw 完整马赛克尺寸，二者的层位由[固定版本输出合同](https://github.com/y-g-jiang/JiangtherapeeTesterView/blob/57567edfa0ec16ee0b00c6b4a1a325c8da40bf1c/src/output/darkCsv.mjs#L43)确认。
 新 CSV 导入用 `RawSize` 形成 `libraw_raw_geometry` 约束，JPEG 尺寸作为信息保留；
-Dark/PTC 等文件已声明的 RawSize 相互矛盾时拒绝导入。任何一份参与测量的 CSV 声明了
+Dark/PTC 等文件已声明的 RawSize 不同会形成不同组，不在同一组里混用；旧单套目录构建仍拒绝矛盾输入。任何一份参与测量的 CSV 声明了
 RawSize、另一份却缺少时，保留逐文件声明覆盖并报告不可核对；不拿暗场尺寸补齐 PTC，
 也不反向补齐暗场，更不从 JPEG 尺寸推断。此规则同时用于离线 Collect 构建与用户导入。
 旧 JSON 若只剩无数据域声明的 `geometry`，报告不可核对；
@@ -246,6 +297,8 @@ Collect 构建拟合全部 PTC 文件，保存逐文件 hash、质量、拒绝�
 
 ## 色度降噪的适用边界
 
+`off`、`conservative` 和 `custom` 只决定是否尝试现有粗尺度核；细粒彩噪仍不可用。保守模式的 0.10 必须显式选择，导入数据或获得匹配模型均不会自动开启清理。
+
 色度核需要把 RAW 模型传播到自己的处理层位，不能直接使用 e− 或 RAW DN 阈值。目前通过 LibRaw 记录的线性变换和 CFA 粗网格采样作低频近似，计入曝光、白平衡及支持的镜头修正；不宣称精确重现解拜耳和几何插值的全部空间协方差。
 
 Apple RAW 的降噪、解拜耳和其他内部变换没有可用的协方差标定，因此项目自己的可选色度核会跳过并报告原因。这不关闭 Apple 引擎内部处理，也不妨碍可用的独立传感器证据参与其他分析。未知或不支持的变换、缺失模型以及无效区域同样不会退回旧的全图 MAD 阈值。
@@ -254,9 +307,9 @@ Apple RAW 的降噪、解拜耳和其他内部变换没有可用的协方差标�
 
 ## 代码与验证入口
 
-导入、校验及用户存储在 [calibration.py](../dngscan/calibration.py)，模型选择在 [noise_model.py](../dngscan/noise_model.py)，处理域传播在 [noise_propagation.py](../dngscan/noise_propagation.py)。GUI 及 CLI 使用同一公共导入接口，标定变动会改变预览、磁盘分析和导出配方指纹；导出分析期间变动则在写图前要求重试。
+内容识别、分组与 ZIP 限制在 [collect_manifest.py](../dngscan/collect_manifest.py)，离线公共目录及能力组合在 [calibration_registry.py](../dngscan/calibration_registry.py)，导入、校验及用户存储在 [calibration.py](../dngscan/calibration.py)，模型选择在 [noise_model.py](../dngscan/noise_model.py)，处理域传播在 [noise_propagation.py](../dngscan/noise_propagation.py)。GUI 及 CLI 使用同一公共导入接口，标定变动会改变预览、磁盘分析和导出配方指纹；导出分析期间变动则在写图前要求重试。当前缓存版本为 32，本轮约束、能力组合和颜色数值修正前的结果不会复用。
 
-接口与缓存回归见 [test_user_calibration.py](../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../tests/test_calibration_gui_cli.py)；模型和滤波见 [test_noise_model.py](../tests/test_noise_model.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py)。[test_rational_metadata_state.py](../tests/test_rational_metadata_state.py) 通过大小端真实 TIFF 标签检查未知、非法及有效声明；Collect 合成 CSV 和导入后的分析测试覆盖失败点不被重新插值、增益保留及 HDR/色度核行为。[test_spectral_fallback_pipeline.py](../tests/test_spectral_fallback_pipeline.py) 用带真实 ISO / NoiseProfile 标签的合成 DNG，实际执行导入、LibRaw 解码、分析和色度核入口，验证方差回退保留独立异常频谱，并用频谱域外输入验证正常启用的对照路径。合成测试和其他相机数据不能替代自己的 fp PTC、黑场及实拍纹理验收。
+真实固定版本 writer 输出到 ZIP／改名目录的回归见 [test_collect_manifest.py](../tests/test_collect_manifest.py)，公共库／退役数据／能力组合见 [test_calibration_registry.py](../tests/test_calibration_registry.py)。接口与缓存回归见 [test_user_calibration.py](../tests/test_user_calibration.py)、[test_calibration_gui_cli.py](../tests/test_calibration_gui_cli.py)；模型和滤波见 [test_noise_model.py](../tests/test_noise_model.py)、[test_calibrated_chroma.py](../tests/test_calibrated_chroma.py)。[test_rational_metadata_state.py](../tests/test_rational_metadata_state.py) 通过大小端真实 TIFF 标签检查未知、非法及有效声明；Collect 合成 CSV 和导入后的分析测试覆盖失败点不被重新插值、增益保留及 HDR/色度核行为。[test_spectral_fallback_pipeline.py](../tests/test_spectral_fallback_pipeline.py) 用带真实 ISO / NoiseProfile 标签的合成 DNG，实际执行导入、LibRaw 解码、分析和色度核入口，验证方差回退保留独立异常频谱，并用频谱域外输入验证正常启用的对照路径。合成测试和其他相机数据不能替代自己的 fp PTC、黑场及实拍纹理验收。
 
 编码范围与频谱约束组合见 [test_noise_coding_range.py](../tests/test_noise_coding_range.py)，
 黑位／线性化端点见 [test_noise_coding_endpoints.py](../tests/test_noise_coding_endpoints.py)，

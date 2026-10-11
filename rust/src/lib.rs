@@ -42,7 +42,8 @@ use std::sync::atomic::Ordering;
 /// v20 preserves floating HDR camera planes, fuses warp processing-loss transport,
 /// and adds a bounded multiscale local luminance-detail scan.
 /// v21 carries ActiveArea origin/extent into mosaic GainMap interpolation.
-pub const NATIVE_ABI_VERSION: i32 = 21;
+/// v22 stabilizes signed Oklab LMS at its float32 matrix roundoff boundary.
+pub const NATIVE_ABI_VERSION: i32 = 22;
 
 fn read_f32(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<f32> {
     obj.getattr(name)?.extract::<f32>()
@@ -187,7 +188,8 @@ fn output_plan_from_py(obj: &Bound<'_, PyAny>) -> PyResult<output::NativeOutputP
     Ok(output::NativeOutputPlan {
         rec2020_to_xyz: read_mat9_f64(obj, "rec2020_to_xyz")?,
         xyz_to_output: read_mat9_f64(obj, "xyz_to_output")?,
-        output_to_lms: read_mat9_f32(obj, "output_to_lms")?,
+        output_to_xyz: read_mat9_f64(obj, "output_to_xyz")?,
+        xyz_to_lms: read_mat9_f64(obj, "xyz_to_lms")?,
         lms_to_output: read_mat9_f32(obj, "lms_to_output")?,
         oklab_m2: read_mat9_f32(obj, "oklab_m2")?,
         oklab_m2_inv: read_mat9_f32(obj, "oklab_m2_inv")?,
@@ -430,7 +432,8 @@ fn self_test() -> bool {
     for i in [0, 4, 8] {
         output_plan.rec2020_to_xyz[i] = 1.0;
         output_plan.xyz_to_output[i] = 1.0;
-        output_plan.output_to_lms[i] = 1.0;
+        output_plan.output_to_xyz[i] = 1.0;
+        output_plan.xyz_to_lms[i] = 1.0;
         output_plan.lms_to_output[i] = 1.0;
         output_plan.oklab_m2[i] = 1.0;
         output_plan.oklab_m2_inv[i] = 1.0;

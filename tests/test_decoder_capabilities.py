@@ -19,38 +19,42 @@ from dngscan.gui import preview_cache as pc
 
 class RuntimeLadderTests(unittest.TestCase):
     def _decode(self, version, failures):
+        # Rendering failures are the variable under test. Use the complete
+        # control fixture and real configuration so the scene-input gate is
+        # genuinely satisfied before an injected renderer failure occurs.
+        from tests.test_coreimage_recipe import Filter
         opened = []
         def open_filter(path):
-            obj = {}
+            obj = Filter()
             opened.append(obj)
             return obj
-        def configure(obj, **kw):
-            obj.update(kw)
-            return dict(kw, color_noise_reduction_amount=0, color_noise_cleared=True)
         def render(obj, **kw):
-            if obj['version'] in failures:
+            if obj.values['decoderVersion'] in failures:
                 raise RuntimeError('injected render failure')
             return np.ones((24, 32, 3), dtype=np.float16)
         with ExitStack() as stack:
             stack.enter_context(patch.object(ci, 'supported_versions', return_value=('9', '8', '7')))
             stack.enter_context(patch.object(ci, '_open_filter', side_effect=open_filter))
-            stack.enter_context(patch.object(ci, 'configure_linear_filter', side_effect=configure))
-            stack.enter_context(patch.object(ci, '_render_linear_rec2020', side_effect=render))
+            self.rendered = stack.enter_context(patch.object(ci, '_render_linear_rec2020', side_effect=render))
             stack.enter_context(patch.object(ci, 'decoder_runtime_id', return_value='test'))
             rgb, info = ci.decode_scene_rec2020(Path('test.dng'), half_size=False, version=version)
         return opened, rgb, info
 
     def test_render_failure_retries_fresh_older_decoder(self):
         opened, rgb, info = self._decode('auto', {'9'})
-        self.assertEqual([o['version'] for o in opened], ['9', '8'])
+        self.assertEqual([o.values['decoderVersion'] for o in opened], ['9', '8'])
         self.assertIsNot(opened[0], opened[1])
+        self.assertEqual(self.rendered.call_count, 2)
         self.assertEqual(info['version'], '8')
         self.assertIn('RAW 9', info['fallback_errors'][0])
+        self.assertIn('injected render failure', info['fallback_errors'][0])
+        self.assertEqual(info['recipe']['scene_input_qualification']['status'], 'qualified')
         self.assertEqual(rgb.shape, (24, 32, 3))
 
     def test_explicit_version_does_not_fallback(self):
         with self.assertRaisesRegex(RuntimeError, 'injected render failure'):
             self._decode('9', {'9'})
+        self.assertEqual(self.rendered.call_count, 1)
 
     def test_exact_internal_token_is_not_reselected_as_bare_version(self):
         self.assertEqual(ci.resolve_decoder_version('9.dng', ('9', '9.dng', '8')), '9.dng')
@@ -58,8 +62,10 @@ class RuntimeLadderTests(unittest.TestCase):
             ci.resolve_decoder_version('9.dng', ('9', '8'))
 
     def test_all_versions_fail_with_attempt_details(self):
-        with self.assertRaisesRegex(RuntimeError, 'RAW 9.*RAW 8.*RAW 7'):
+        with self.assertRaisesRegex(RuntimeError, 'RAW 9.*RAW 8.*RAW 7') as error:
             self._decode('auto', {'9', '8', '7'})
+        self.assertEqual(self.rendered.call_count, 3)
+        self.assertEqual(str(error.exception).count('injected render failure'), 3)
 
 
 class AppleOnlyContractTests(unittest.TestCase):

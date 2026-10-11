@@ -115,17 +115,29 @@ PRIOR_TABLE = [SIGMA_FP] + _load_json_priors()
 #            decision live in that file's header and in NOTICE.md. Deleting
 #            the file removes the tier; everything degrades to None.
 _JPTC_CACHE: list[dict[str, Any]] | None = None
+_JPTC_LIBRARY_ID = None
 _BULK_CACHE: list[dict[str, Any]] | None = None
 
 
 def _jptc_entries() -> list[dict[str, Any]]:
-    global _JPTC_CACHE
-    if _JPTC_CACHE is not None:
+    global _JPTC_CACHE, _JPTC_LIBRARY_ID
+    from .calibration_registry import current_library, library_fingerprint, RETIRED_PACKAGED_COLLECT_SETS
+    try:
+        library = current_library()
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        identity = library_fingerprint()
+        if _JPTC_LIBRARY_ID != identity:
+            import warnings
+            warnings.warn(f"Public calibration library disabled: {error}", RuntimeWarning)
+        _JPTC_CACHE, _JPTC_LIBRARY_ID = [], identity
+        return _JPTC_CACHE
+    if _JPTC_CACHE is not None and _JPTC_LIBRARY_ID == library["version"]:
         return _JPTC_CACHE
     import json
     from pathlib import Path
 
     entries: list[dict[str, Any]] = []
+    catalog = {item["id"]: item for item in library["sets"]}
     for path in sorted((Path(__file__).parent / "data" / "priors" / "jptc").glob("*.json")):
         try:
             item = json.loads(path.read_text(encoding="utf-8"))
@@ -168,6 +180,23 @@ def _jptc_entries() -> list[dict[str, Any]]:
         }
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
+        from .measurement_domain import declaration_issues
+        entry["acquisition_contract"] = dict(item.get("acquisition_contract") or {})
+        entry["readout_declaration_issues"].extend(declaration_issues(entry["acquisition_contract"]))
+        if item.get("measurement_acquisition") is not None:
+            from .collect_manifest import ACQUISITION_SCHEMA, acquisition_qualification
+            try:
+                acquisition = item["measurement_acquisition"]
+                if not isinstance(acquisition, dict) or acquisition.get("schema") != ACQUISITION_SCHEMA:
+                    raise ValueError("unsupported measurement acquisition schema")
+                checked = acquisition_qualification(acquisition.get("measurements"))
+            except (ValueError, TypeError, KeyError, OverflowError):
+                continue
+            entry["measurement_acquisition"] = checked
+            entry["readout_declaration_issues"].extend(checked["issues"])
+        elif (isinstance(item.get("source"), dict)
+              and item["source"].get("kind") == "user-imported JPTC Collect measurements"):
+            entry["readout_declaration_issues"].append("measurement-acquisition-reimport-required")
         from .calibration import phase_calibration_fields
         try:
             entry.update(phase_calibration_fields(item))
@@ -182,6 +211,12 @@ def _jptc_entries() -> list[dict[str, Any]]:
     # gain and read-noise CURVES (see tools/import_jptc_collect.py).
     shutter_map = {"机械快门": "mechanical", "电子快门": "electronic"}
     for path in sorted((Path(__file__).parent / "data" / "priors" / "jptc_collect").glob("*.json")):
+        if (path.stem not in catalog or path.stem in RETIRED_PACKAGED_COLLECT_SETS
+                or catalog[path.stem].get("calibrationOnly")):
+            # A selected release explicitly opts into each legacy asset. Its
+            # missing rows and edited retirement flags cannot reactivate a
+            # shipped dark measurement that has already been retired.
+            continue
         try:
             item = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -213,6 +248,8 @@ def _jptc_entries() -> list[dict[str, Any]]:
         entry.update(stored_dark_variance_fields(item))
         from .readout import measurement_fields
         entry.update(measurement_fields(item))
+        from .measurement_domain import declaration_issues
+        entry["readout_declaration_issues"].extend(declaration_issues(entry.get("acquisition_contract") or {}))
         from .calibration import phase_calibration_fields
         try:
             entry.update(phase_calibration_fields(item))
@@ -240,7 +277,17 @@ def _jptc_entries() -> list[dict[str, Any]]:
                 "estimator_spread": a.get("gain_estimator_spread_rel"),
                 "status": a.get("quality", "ok"),
             }
+        entry["public_registry"] = {"version": library["version"], "source": library["source"],
+            "set": catalog.get(path.stem, {}), "numeric_asset": "packaged-independent-fit"}
         entries.append(entry)
+    for record in library["profiles"]:
+        from .calibration import _validated_prior
+        prior = _validated_prior(record["payload"])
+        prior.update(source=f"Public calibration library {library['version']}: {record['set_id']}",
+                     public_registry={"version": library["version"], "set_id": record["set_id"],
+                                      "source_evidence": record["source_evidence"]},
+                     measured_iso=(record["payload"].get("ptc_anchor") or {}).get("iso", 10**9))
+        entries.insert(0, prior)
     # One model can have several measurements (shutter modes, ISOs). Order
     # decides which one find_priors returns: entries with a full gain curve
     # first (they encode extended-segment and conversion-gain structure the
@@ -253,6 +300,7 @@ def _jptc_entries() -> list[dict[str, Any]]:
         0 if e.get("shutter") == "mechanical" else 1,
     ))
     _JPTC_CACHE = entries
+    _JPTC_LIBRARY_ID = library["version"]
     return entries
 
 
@@ -312,6 +360,8 @@ def with_readout(entry: dict[str, Any], readout: dict | None,
     entry = dict(entry)
     status, reason = match(entry, readout)
     entry["readout_match_status"], entry["readout_match_reason"] = status, reason
+    from .measurement_domain import match as match_domain
+    entry["measurement_domain_match"] = match_domain(entry, readout)
     # Shutter scope is orthogonal to container geometry/encoding constraints.
     # Bind it here for *every* source, including curated and bulk tables; the
     # model's later rebind to file evidence cannot inherit a caller's old match.
@@ -338,20 +388,27 @@ def find_priors(make: str | None, model: str | None,
     and bulk measurements. A failed higher-priority candidate can yield to a
     verified lower candidate, but never silently to an undeclared generic one.
     Preserve a failed candidate for diagnostics when no verified alternative
-    exists. No coefficients from different candidates/modes are combined.
+    exists. Missing dark noise may be supplied by another measurement only
+    after exact physical-domain compatibility; modes are never combined.
     Camera identity is exact after manufacturer/whitespace normalization and
     explicit model aliases; an unrecognized generation has no prior."""
     if not make or not model:
         return None
     # Explicitly imported measurements supersede packaged priors only when
     # exact camera/readout and measured ISO applicability are established.
-    from .calibration import matching_prior
+    from .calibration import matching_prior, matching_capability_priors
+    from .calibration_registry import compose_capabilities
+    def complete(entry):
+        if entry is None or not iso:
+            return entry
+        return compose_capabilities(entry, matching_capability_priors(make, model,
+            shutter=shutter, readout=readout), iso)
     options = {"readout": readout} if readout is not None else {}
     user = matching_prior(make, model, shutter=shutter, iso=iso, **options)
     if user is not None:
         user.update(with_readout(user, readout, shutter=shutter))
         if prior_usability(user)[0]:
-            return user
+            return complete(user)
     camera = _packaged_camera_key(make, model)
     # Tier 1: curated entries (hand-checked series, DCG annotations).
     # Tier 2: first-party JPTC measurements. Tier 3: P2P bulk table.
@@ -385,13 +442,13 @@ def find_priors(make: str | None, model: str | None,
         return None
     first = candidates[0]
     if prior_usability(first)[0]:
-        return first
+        return complete(first)
     for entry in candidates[1:]:
         if (prior_usability(entry)[0]
                 and (entry["readout_match_status"] == "matched"
                      or entry["shutter_match_status"] == "matched")):
-            return entry
-    return first
+            return complete(entry)
+    return complete(first)
 
 
 def _interp(curve: list[tuple[float, float]], x: float) -> float:
@@ -444,7 +501,7 @@ def read_noise_e(priors: dict[str, Any], iso: int) -> float | None:
     from .calibration import read_noise_issue
     if read_noise_issue(priors, iso):
         return None
-    if priors.get("user_calibration"):
+    if priors.get("user_calibration") or priors.get("read_noise_composition_iso") is not None:
         from .calibration import curve_value
         value = curve_value(priors, "read_noise_log2iso_log2e", iso)
         return float(2.0 ** value) if value is not None else None
@@ -463,6 +520,23 @@ def pdr_ev(priors: dict[str, Any], iso: int) -> float | None:
     return float(_interp(curve, math.log2(iso)))
 
 
+def reference_dn_range(prior: dict[str, Any]) -> float | None:
+    """Use the declared DN span, or the existing measured FWC/gain anchor."""
+    if prior.get("reference_dn_range") is not None:
+        reference = float(prior["reference_dn_range"])
+        return reference if math.isfinite(reference) and reference > 0 else None
+    anchor = prior.get("measured_iso") or prior.get("base_iso")
+    if not anchor:
+        curve = prior.get("read_noise_log2iso_log2e") or []
+        anchor = 2 ** min((p[0] for p in curve), default=float("nan"))
+    fwc = float(prior.get("fwc_e") or 0)
+    base_gain = gain_e_per_dn(prior, anchor) if anchor and math.isfinite(anchor) else None
+    if not base_gain or fwc <= 0:
+        return None
+    reference = fwc / base_gain
+    return reference if math.isfinite(reference) and reference > 0 else None
+
+
 def gain_for_file(prior: dict[str, Any], iso: int, code_range: float) -> float | None:
     """Transport measured e-/DN to this file's linear DN storage scale.
 
@@ -471,15 +545,18 @@ def gain_for_file(prior: dict[str, Any], iso: int, code_range: float) -> float |
     convention/readout is not silently interpreted as a storage shift.
     """
     gain = gain_e_per_dn(prior, iso)
+    # Physical gain availability retains the existing FWC/anchor requirement;
+    # an independent dark or spectrum can still qualify an explicit DN span.
     anchor = prior.get("measured_iso") or prior.get("base_iso")
     if not anchor:
         curve = prior.get("read_noise_log2iso_log2e") or []
         anchor = 2 ** min((p[0] for p in curve), default=float("nan"))
-    fwc = float(prior.get("fwc_e") or 0)
-    base_gain = gain_e_per_dn(prior, anchor) if anchor and math.isfinite(anchor) else None
-    if gain is None or not base_gain or fwc <= 0 or code_range <= 0:
+    if (float(prior.get("fwc_e") or 0) <= 0 or not anchor or not math.isfinite(anchor)
+            or not gain_e_per_dn(prior, anchor)):
         return None
-    reference = float(prior.get("reference_dn_range") or fwc / base_gain)
+    reference = reference_dn_range(prior)
+    if gain is None or reference is None or code_range <= 0:
+        return None
     ratio = code_range / reference
     power = round(math.log2(ratio))
     if abs(math.log2(ratio) - power) > math.log2(1.05):

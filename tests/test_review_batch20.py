@@ -79,7 +79,7 @@ class ExportAtomicityTests(unittest.TestCase):
         from dngscan.gui import service
 
         src = inspect.getsource(service.run_export)
-        self.assertIn("os.replace(png_temp, png_path)", src)
+        self.assertIn("output_protection.replace(png_temp, png_path)", src)
         self.assertIn("finally:", src)
         self.assertIn("png_temp.unlink(missing_ok=True)", src)
 

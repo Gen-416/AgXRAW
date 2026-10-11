@@ -12,6 +12,7 @@ from unittest.mock import patch
 import numpy as np
 
 from dngscan.analysis import analyze
+from dngscan.capture_identity import public_capture
 from dngscan.gui.preview_cache import build_proxy_entry, _read_disk_entry, _write_disk_entry
 from dngscan.gui.service import chroma_nr_capability, detected_scene_params
 from dngscan.noise_propagation import chroma_nr_skip_reason, calibrated_chroma_variance
@@ -57,7 +58,10 @@ class GuiNoiseCapabilityTests(unittest.TestCase):
         detected = detected_scene_params(bundle, analysis, plan)
         self.assertEqual(detected["chroma_nr_capability"], capability)
         self.assertEqual(detected["demosaic_actual"], bundle.noise_decode["demosaic_algorithm"])
-        self.assertEqual(detected["capture_readout"], bundle.capture_readout or {})
+        self.assertEqual(detected["capture_readout"], public_capture(bundle.capture_readout or {}))
+        self.assertNotIn("body_serial", detected["capture_readout"])
+        # Public diagnostics redact identity without changing matcher input.
+        self.assertIn("body_serial", bundle.capture_readout)
 
     def test_normal_missing_model_does_not_claim_optional_nr_available(self):
         bundle, analysis = self.decoded(profile=False)

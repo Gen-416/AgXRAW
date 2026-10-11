@@ -340,6 +340,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "支持 SDR/HDR，强度越高真实颜色细节损失风险越大"
         ),
     )
+    parser.add_argument("--chroma-cleanup", choices=("off", "conservative", "custom"), default=None,
+                        help="色度清理策略；默认保留旧数值配方，保守预设仅处理粗色斑，细粒彩噪尚未开放")
+    parser.add_argument("--capture-shutter", choices=("electronic", "mechanical", "efcs"), default=None,
+                        help="仅对本次照片声明未知快门模式；与文件已知信息冲突时报错，不改变标定适用范围")
+    parser.add_argument("--capture-readout-id", default=None, help="本次照片的显式读出标识，参与匹配与缓存")
+    parser.add_argument("--capture-kind", default=None, help="本次照片的拍摄类型，须与测量 DriveMode 一致；仅补充未知值")
     parser.add_argument(
         "--demosaic",
         choices=DEMOSAIC_CHOICES,
@@ -380,6 +386,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    from .chroma_policy import resolve_chroma_policy
+    from .readout import normalize_capture_declaration
+    try:
+        args.chroma_policy = resolve_chroma_policy(args.chroma_cleanup, custom_amount=args.chroma_nr)
+        args.chroma_nr = args.chroma_policy.amount
+        args.capture_declaration = normalize_capture_declaration(
+            {"version": 1, "shutter": args.capture_shutter, "readout_id": args.capture_readout_id,
+             "capture_kind": args.capture_kind})
+    except ValueError as error:
+        parser.error(str(error))
     if args.coreimage_scale is not None and args.decoder != "coreimage":
         parser.error(
             f"--coreimage-scale {args.coreimage_scale} 仅作用于 --decoder coreimage，"
@@ -514,7 +530,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         # rather than merely degraded.
         parser.error(
             "--tone-core gated 需要逐像素 CFA 证据，而 --decoder coreimage 是独立管线"
-            "（Core Image 执行 DNG opcode，几何与 LibRaw 不可对齐）。"
+            "（尚未验证 Apple 输出与 CFA 证据的逐像素对应）。"
             "请改用 --tone-core agx/lum/neutral，或改回 --decoder libraw"
         )
     if args.decoder == "coreimage":
@@ -543,20 +559,45 @@ def calibration_main(argv: list[str]) -> int:
         description="导入并管理 JPTC 实测标定；匹配相机、RAW 读出模式和 ISO 后自动用于成像分析。",
     )
     commands = parser.add_subparsers(dest="command", required=True)
-    install = commands.add_parser("import", help="导入 JPTC JSON 或 Collect CSV 目录")
-    install.add_argument("path", type=Path)
+    inspect = commands.add_parser("inspect", help="预览 ZIP、CSV 目录或 JSON 的分组与能力，不安装")
+    inspect.add_argument("path", type=Path, nargs="+")
+    install = commands.add_parser("import", help="导入一个或多个官方 Collect ZIP、CSV 目录或 JSON")
+    install.add_argument("path", type=Path, nargs="+")
+    install.add_argument("--group", action="append", default=None, help="仅导入 inspect 列出的分组 ID，可重复")
     install.add_argument("--inactive", action="store_true", help="导入后先停用")
     install.add_argument("--shutter-mode", choices=("any", "electronic", "mechanical", "efcs"),
                          default=None, help="明确覆盖测量适用的读出模式；any 声明适用全部模式，默认遵循文件")
     commands.add_parser("list", help="列出已安装标定及有效 ISO 范围")
+    commands.add_parser("library", help="查看离线公共库版本、来源、能力及退役项")
+    pixel = commands.add_parser("pixel-inspect", help="检查本机实验暗场／平场产品，不自动应用")
+    pixel.add_argument("path", type=Path)
+    update = commands.add_parser("library-install", help="安装维护者发布的本地公共库 JSON")
+    update.add_argument("path", type=Path)
+    rollback = commands.add_parser("library-select", help="切换已安装版本或回滚到 packaged")
+    rollback.add_argument("version")
     for command, description in (("remove", "删除标定"), ("enable", "启用标定"),
                                  ("disable", "停用标定")):
         subparser = commands.add_parser(command, help=description)
         subparser.add_argument("id", help="list 输出的标定 ID")
     args = parser.parse_args(argv)
-    if args.command == "import":
-        result = calibration.import_calibration(args.path.expanduser(), active=not args.inactive,
-                                                shutter_override=args.shutter_mode)
+    if args.command == "inspect":
+        from .collect_manifest import inspect_sources
+        result = inspect_sources([path.expanduser() for path in args.path])
+    elif args.command == "import":
+        sources = [path.expanduser() for path in args.path]
+        result = calibration.import_calibrations(sources, active=not args.inactive,
+                                                 shutter_override=args.shutter_mode, group_ids=args.group)
+        # Retain the single-profile CLI contract while exposing its manifest.
+        if len(result["profiles"]) == 1:
+            result = {**result["profiles"][0], "manifest": result["manifest"]}
+    elif args.command == "pixel-inspect":
+        from .pixel_calibration import load_product
+        result = load_product(args.path.expanduser())["manifest"]
+    elif args.command.startswith("library"):
+        from . import calibration_registry as registry
+        result = (registry.install_library(args.path.expanduser()) if args.command == "library-install"
+                  else registry.select_version(args.version) if args.command == "library-select"
+                  else registry.library_status())
     elif args.command == "list":
         result = calibration.list_calibrations()
     elif args.command == "remove":
@@ -624,6 +665,10 @@ def main(argv: list[str]) -> int:
                 )
         scan_requested = bool(args.scan or args.out is not None or (args.jpeg is None and args.csv is None))
         out_path = args.out if args.out is not None else (default_png_path(args.path) if scan_requested else None)
+        from .protected_output import raw_protection, final_image_destination
+        output_protection = raw_protection(args.path)
+        output_protection.check(out_path, args.csv, args.jpeg,
+            final_image_destination(args.jpeg, args.output_format) if args.jpeg is not None else None)
 
         bundle = load_raw(
             args.path,
@@ -633,6 +678,7 @@ def main(argv: list[str]) -> int:
             decoder=args.decoder,
             coreimage_version=args.coreimage_version,
             coreimage_scale=args.coreimage_scale,
+            **({"capture_declaration": args.capture_declaration} if args.capture_declaration else {}),
             _defer_clip_masks=True,
             _analysis_luminance_only=not scan_requested,
         )
@@ -698,7 +744,8 @@ def main(argv: list[str]) -> int:
             bundle, user_ev=resolved_ev, tone_core=args.tone_core
         )
         if out_path is not None:
-            plot_dashboard(bundle, analysis, y, ev, out_path, auto_ev=auto_ev_result)
+            plot_dashboard(bundle, analysis, y, ev, out_path, auto_ev=auto_ev_result,
+                           protected_sources=output_protection)
 
         jpeg_path = args.jpeg
         if jpeg_path is not None and container_for_output_format(args.output_format) == "heic":
@@ -759,6 +806,7 @@ def main(argv: list[str]) -> int:
                 punch_scale=args.punch,
                 delivery=args.delivery,
                 chroma=args.chroma,
+                protected_sources=output_protection,
             )
             jpeg_icc_embedded = (
                 bool(export_result.get("icc_embedded", str(export_result.get("profile", "")) == "Display P3"))
@@ -809,7 +857,7 @@ def main(argv: list[str]) -> int:
                 export_info=export_result if isinstance(export_result, dict) else None,
                 scene=render_plan.scene if render_plan is not None else None,
             )
-            write_csv(args.csv, row)
+            write_csv(args.csv, row, protected_sources=output_protection)
         # The report is a standalone deliverable (owner 2026-08-27): a plain
         # conversion prints the files it wrote and nothing else; the full
         # analysis report comes with --report or with a diagnostic run

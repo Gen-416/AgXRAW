@@ -25,11 +25,12 @@ LUMA_W = np.asarray([0.2627, 0.6780, 0.0593], dtype=np.float32)
 
 # The shrunk band, declared in FULL-RESOLUTION SENSOR PIXELS — the
 # sensor coordinate, so the scale follows capture pixels rather than the
-# output size. Structure finer than
-# BAND_LO_PX is the kept texture — pixel speckle and the film-like fine
-# coloured graininess; structure coarser than BAND_HI_PX is treated as
-# real colour and passes through in the residual. Both bounds are
-# modelled choices, not measurements.
+# output size. Structure finer than BAND_LO_PX is outside this coarse
+# colour-mottle capability. This intentionally preserves those coefficients,
+# but is not a product claim that fine coloured speckle should be retained.
+# A separate fine-chroma capability needs a validated decoder noise model.
+# Structure coarser than BAND_HI_PX passes through in the residual. Both
+# bounds are modelled choices, not measurements or hard frequency cutoffs.
 BAND_LO_PX = 8.0
 BAND_HI_PX = 128.0
 _SQRT2 = 2.0 ** 0.5

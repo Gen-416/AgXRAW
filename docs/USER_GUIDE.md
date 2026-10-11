@@ -39,12 +39,14 @@ measured sensor data, plus colour matrices where published coefficients exist �
 the A7R VI's matrix is deliberately absent rather than guessed (the declared
 degradation path covers it), and the GR IV's DNG carries its own calibration.
 
-**One known exception: Nikon High Efficiency (HE/HE\*) NEFs.** If a Z9/Z8/Z6III/
-Z50II-generation body shot with "High Efficiency" compression, that format cannot be
-decoded by LibRaw for codec-licensing reasons (true of all open-source tools); the
-error message gives specific guidance. Fixes: convert to DNG with the free Adobe DNG
-Converter (full functionality after conversion), or switch the camera to "Lossless
-Compression" RAW. Lossless NEFs from the same bodies work normally.
+**Nikon High Efficiency (HE/HE\*) NEF support boundary.** This project's pinned
+LibRaw build has not been verified to support these files from bodies such as the
+Z9/Z8/Z6III/Z50II. Decoder support in other branches does not mean it is integrated
+here. Decode failures are reported explicitly, with advice to convert using Adobe
+DNG Converter or choose "Lossless Compression" RAW in the camera. Conversion can
+change metadata and the data domain, so detailed analysis capabilities are checked
+again against the converted file rather than guaranteed. Lossless NEFs continue
+through the normal camera-support path.
 
 **The Apple RAW decoder (optional — set "解码器 / Decoder" to Apple RAW)** uses the RAW
 engine built into macOS. Its coverage follows Apple's official camera RAW compatibility
@@ -59,10 +61,22 @@ The two decoders have slightly different color personalities (Apple's denoising 
 highlight reconstruction feel more "camera-manufacturer"); both produce SDR and HDR
 normally. When in doubt, use the default LibRaw.
 
-This setting changes scene reconstruction only. Sensor Evidence is always acquired by
-the same LibRaw provider, so switching between LibRaw and Apple RAW cannot change the
-analysis inputs. A file that LibRaw cannot open therefore cannot bypass the Evidence
-requirement by selecting Apple RAW.
+RAW9 includes joint demosaicing and denoising. A zero legacy colour-noise parameter
+does not disable that model or guarantee unchanged luminance grain. AgXRAW's additional
+chroma cleanup remains unavailable on the Apple path. Material-window calibration
+requires an exact camera, actual decoder token, runtime and configuration match;
+unmeasured combinations keep uncorrected windows and can still render normally.
+The effective recipe and calibration status are retained in diagnostics and cache.
+Transient auto fallbacks are retried on the next preparation after 60 seconds and are
+not persisted to disk. Export pins the currently displayed decoder and checks its
+configuration. Cache version 33 rebuilds older entries automatically.
+
+This setting changes scene reconstruction only. Sensor Evidence is acquired by the
+same LibRaw provider, so switching decoders does not replace the analysis inputs.
+If Apple can decode a file for which LibRaw cannot provide evidence, export remains
+available, but RAW clipping, noise and full-well measurements are unavailable. HDR
+then uses decoded-image estimates with at most 1 EV of expansion; this is not measured
+sensor latitude.
 
 Two more decode-level settings sit on the RAW decode card and rarely need touching;
 they differ in kind. **Apple RAW 亮度基准 — CI scale** (CLI `--coreimage-scale`, shown only when
@@ -77,26 +91,47 @@ criterion — the RAW clipping share, the hard-clip numbers next to the RAW 过�
 and the whole Detected Parameters card are recomputed against it, so changing it
 re-decodes and re-analyses this RAW (a few seconds) in the current implementation. Neither needs attention day to day; exported filenames carry
 `ciscale-unity` / `ciscale-measured` or `margin{n}` only when the value is not the
-default. The **色度降噪 — chroma NR** slider on the same row (CLI `--chroma-nr`, 0–1,
-default 0 = strict identity) uses an independent noise model to smooth chroma at
-roughly 8–128 sensor pixels (octave-aligned, with boundaries accurate to about √2).
-It preserves luminance at this scene-linear stage, but can still attenuate real colour
-structure. Missing calibration, Apple RAW or unsupported noise-transfer operations
-skip this optional stage with a reason. Where applicable, SDR and both legs of an HDR
-pair use the same corrected scene. A nonzero value names the file `cnr{x}`. See the
+default. **色度清理 — chroma cleanup** (CLI `--chroma-cleanup off|conservative|custom`)
+defaults to off. Explicitly choosing conservative tries the existing coarse-colour
+cleanup at strength 0.10; custom uses `--chroma-nr` from 0 to 1, and old numeric recipes
+retain their custom meaning. An independent noise model supplies the noise scale for
+roughly 8–128 sensor pixels. Luminance grain is preserved at this scene-linear stage,
+but real colour structure can still be attenuated; fine chroma-noise cleanup is not
+available. Missing evidence, Apple RAW or unsupported noise-transfer operations skip
+this optional stage with a reason. Where applicable, SDR and both legs of an HDR pair
+use the same corrected scene. A nonzero value names the file `cnr{x}`. See the
 [current algorithm and limits](CHROMA_NR.zh-CN.md).
 
-Use **个人标定 · 可选** on the RAW decode card to import JPTC Collect directories or
-calibration JSON, then enable, disable or remove local profiles. Per-file matching
-checks declared shutter, ISO, DN scale, RAW geometry and storage constraints, and
-distinguishes unknown conditions from mismatches. Stored bit depth is not ADC precision.
-The GUI shows noise-model availability separately from optional chroma-NR capability:
-Apple, non-Bayer or unsupported correction transfers can disable the slider even with
-a valid file noise model. Its value is preserved, and preview/export report actual
-application separately. Ordinary missing calibration is a normal fallback, while
-rejected or unresolved evidence remains visible. Auto exposure, AgX and export continue;
-HDR latitude depends on the current photo's reliable highlights. See the
-[calibration instructions](NOISE_CALIBRATION.zh-CN.md).
+Use **个人标定 · 可选** on the RAW decode card to select one or more official Collect
+ZIPs, a measurement directory or calibration JSON. A content-based preview lists
+camera/mode groups, ISO coverage, capabilities and ambiguous files before you select
+groups to import; official filenames need no renaming. Imported and enabled does not
+mean matched to this photo, or actually applied by every stage. Per-file matching
+checks shutter, ISO, DN scale, geometry and declared readout, body and firmware
+constraints, and distinguishes unknown conditions from mismatches. Stored bit depth
+is not ADC precision. Importing a profile does not turn cleanup on.
+
+The **当前批次的拍摄模式声明** control can fill unknown shutter, readout and capture-kind
+values for the current batch (CLI `--capture-shutter`, `--capture-readout-id` and
+`--capture-kind`). Capture kind must agree with the measurement's `DriveMode`.
+Conflicts with known file metadata fail; declarations cannot
+replace body serial, firmware, compression or geometry facts. This does not establish
+support for every proprietary metadata field, and the declaration is not retained for
+the next launch.
+
+The GUI shows noise-model availability separately from cleanup capability: Apple,
+non-Bayer or unsupported correction transfers can disable the controls even with a
+valid file noise model. The chosen strength is preserved, and preview/export report
+actual application separately. Ordinary missing calibration is a normal fallback,
+while rejected or unresolved evidence remains visible. Auto exposure, AgX and export
+continue; HDR latitude depends on the current photo's reliable highlights.
+
+The calibration window also manages offline public-library versions. Its 13 registered
+measurement sets form a source catalogue, not 13 newly qualified image-processing
+models; retired dark data is excluded from normal noise sources. Partial capabilities
+combine only with explicitly compatible readout, DN and current-ISO conditions.
+Personal dark/flat pixel correction remains experimental and has no production hook.
+See the [calibration instructions](NOISE_CALIBRATION.zh-CN.md) for commands and limits.
 
 For 10-bit HEIF, the output dialog and delivery report identify the floating SDR
 master (including the SDR base of HDR HEIF), final encoding depth and float readback.

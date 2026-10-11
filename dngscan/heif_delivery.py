@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import replace
-import os
 from pathlib import Path
 import struct
 import tempfile
 
 from .delivery import DeliveryProfile
+from .protected_output import raw_protection
 
 
 def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="srgb",
-                  *, source_raw: Path | None = None, return_rgb=False):
+                  *, source_raw: Path | None = None, return_rgb=False, protected_sources=None):
+    protection = raw_protection(source_raw, protected_sources=protected_sources).check(out_path)
     from . import heif_encoder
     from ._deps import np
     from .auto_encode import select_heif_encoding
@@ -124,6 +125,6 @@ def save_sdr_heif(rgb, out_path: Path, delivery: DeliveryProfile, output_gamut="
                 info["_decoded_rgb"] = np.ascontiguousarray(decoded)
         del decoded
         info["file_size_bytes"] = candidate.stat().st_size
-        os.replace(candidate, out_path)
+        protection.replace(candidate, out_path)
     info["output_path"] = str(out_path)
     return info

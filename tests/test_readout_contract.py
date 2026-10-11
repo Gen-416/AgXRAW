@@ -353,7 +353,7 @@ class CaptureReadoutTests(unittest.TestCase):
         (directory / "dark-scalars.csv").write_text(
             "#Format: JPTC-DARK/1\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
             "#Compression: lossless\n#ImageWidth: 64\n#ImageHeight: 64\n" + raw_header +
-            "#AdcStep: 1\n#LinearisationCurve: identity\n#ClipVarianceFactor: 1\n"
+            "#CfaPattern: RGBG\n#AdcStep: 1\n#LinearisationCurve: identity\n#ClipVarianceFactor: 1\n"
             "ISO,ColorIndex,BlackA,BlackB,StdDiffClipped\n" +
             "".join(f"100,{ch},1024,1024,{math.sqrt(2./3.):.17g}\n" for ch in (1, 3)))
         rows = []
@@ -363,7 +363,9 @@ class CaptureReadoutTests(unittest.TestCase):
             rows.append(f"{mean},{std}")
         raw_header = f"#RawSize: {ptc_size}\n" if ptc_size is not None else ""
         (directory / "ptc-iso100.csv").write_text(
-            "#Format: JPTC/2\n#BlackLevel: 1024,1024,1024,1024\n" + raw_header +
+            "#Format: JPTC/2\n#Camera: SIGMA fp\n#ShutterType: 电子快门\n"
+            "#Compression: lossless\n#CfaPattern: RGBG\n#AdcStep: 1\n#LinearisationCurve: identity\n"
+            "#BlackLevel: 1024,1024,1024,1024\n" + raw_header +
             "G1_Mean,G1_Std\n" + "\n".join(rows))
         return directory
 
@@ -382,8 +384,11 @@ class CaptureReadoutTests(unittest.TestCase):
         self.assertAlmostEqual(result.noise_model.coefficients("G1")[1], (1./3.) / 15359.**2)
 
     def test_collect_mosaic_conflict_rejected_and_partial_sizes_not_inferred(self):
-        with self.assertRaisesRegex(ValueError, "RawSize disagrees"):
+        # A content manifest now separates different RAW grids before fitting.
+        # The legacy single-profile entry point rejects without installing any.
+        with self.assertRaisesRegex(ValueError, "explicit group selection"):
             calibration.import_calibration(self.csv_directory(ptc_size="256x128"))
+        self.assertEqual(calibration.list_calibrations(), [])
         for missing in ("dark_size", "ptc_size"):
             with self.subTest(missing=missing):
                 directory = self.csv_directory(**{missing: None})
@@ -404,11 +409,20 @@ class CaptureReadoutTests(unittest.TestCase):
         rebuilt = pc._bundle_from_cache(bundle.path, json.loads(json.dumps(metadata)),
                                         bundle.scene_rec2020_render, None, None)
         self.assertEqual(rebuilt.capture_readout, bundle.capture_readout)
+        domain = rebuilt.capture_readout["sample_domain"]
+        self.assertEqual(domain["signal_unit"], "libraw-unpacked-dn")
+        self.assertEqual(domain["variance_unit"], "libraw-unpacked-dn2")
+        self.assertEqual(domain["stage"], "unpack-before-project-corrections")
+        changed_domain = replace(bundle, capture_readout={
+            **bundle.capture_readout,
+            "sample_domain": {**domain, "linearisation": "companded"},
+        })
+        self.assertNotEqual(pc._bundle_metadata(changed_domain), metadata)
         changed = replace(bundle, capture_readout={**bundle.capture_readout, "sample_bits": 12})
         self.assertNotEqual(pc._bundle_metadata(changed), metadata)
         rebuilt.capture_readout["raw_geometry"][0] = 42
         self.assertEqual(bundle.capture_readout["raw_geometry"], [128, 128])
-        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 31)
+        self.assertEqual(pc.PREVIEW_CACHE_VERSION, 35)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,26 @@ from threading import RLock
 from typing import Any, Callable
 
 
+class SourceReadTransactionError(RuntimeError):
+    """A load cannot publish pixels and evidence from this source attempt."""
+
+
+class SourceChangedError(SourceReadTransactionError):
+    code = "source-changed"
+
+    def __init__(self, path, *, phase="read", reason="source identity changed"):
+        self.path, self.phase, self.reason = Path(path), phase, reason
+        super().__init__(f"Source changed during {phase}: {self.path} ({reason}); reopen the file")
+
+
+class SourceVerificationError(SourceReadTransactionError):
+    code = "source-unverifiable"
+
+    def __init__(self, path, *, phase="read", reason="source identity cannot be verified"):
+        self.path, self.phase, self.reason = Path(path), phase, reason
+        super().__init__(f"Cannot verify source during {phase}: {self.path} ({reason})")
+
+
 def _path_key(path: Path) -> str:
     # Keep the lexical path: stat must observe replacement of a symlink too.
     return os.path.abspath(os.fspath(path))
@@ -31,15 +51,20 @@ class SourceIdentity:
 
 
 def _source_identity(path: Path) -> SourceIdentity | None:
+    before = None
     try:
         with path.open("rb") as source:
             before = _stat_key(os.fstat(source.fileno()))
             header = source.read(4096)
             after = _stat_key(os.fstat(source.fileno()))
         if before != after or after != _stat_key(path.stat()):
-            return None
+            raise SourceChangedError(path, phase="identity-acquisition")
         return SourceIdentity(_path_key(path), before, hashlib.sha256(header).hexdigest())
-    except (OSError, ValueError, AttributeError):
+    except (OSError, ValueError, AttributeError) as exc:
+        if before is not None:
+            raise SourceVerificationError(
+                path, phase="identity-acquisition", reason=f"{type(exc).__name__}: {exc}"
+            ) from exc
         # A missing/unsupported identity disables reuse, never the original reader.
         return None
 
@@ -55,6 +80,8 @@ class SourceMetadataSession:
         self.path = Path(path)
         self.identity = _source_identity(self.path)
         self._invalid = self.identity is None
+        self.status = "unavailable" if self.identity is None else "verified"
+        self.verification_error = None
         self._memo: dict[Callable, Any] = {}
         self._lock = RLock()
 
@@ -67,12 +94,35 @@ class SourceMetadataSession:
                 return False
             try:
                 matches = _stat_key(candidate.stat()) == self.identity.stat
-            except OSError:
-                matches = False
+            except OSError as exc:
+                self._invalid = True
+                self.status = "unverifiable"
+                self.verification_error = exc
+                self._memo.clear()
+                return False
             if not matches:
                 self._invalid = True
+                self.status = "changed"
                 self._memo.clear()
             return matches
+
+    def assert_consistent(self, *, phase="load-commit") -> bool:
+        """Reject known changes or failed final verification, not initial unknowns.
+
+        An initially unavailable fingerprint only disables metadata/evidence reuse.
+        Once an identity exists, an I/O failure cannot certify the transaction and
+        is reported separately from an observed identity mismatch.
+        """
+        with self._lock:
+            self.is_current()
+            if self.status == "changed":
+                raise SourceChangedError(self.path, phase=phase)
+            if self.status == "unverifiable":
+                error = self.verification_error
+                raise SourceVerificationError(
+                    self.path, phase=phase, reason=f"{type(error).__name__}: {error}"
+                ) from error
+            return self.status == "verified"
 
     def read(self, reader: Callable, path: Path, *, cacheable: Callable | None = None):
         with self._lock:

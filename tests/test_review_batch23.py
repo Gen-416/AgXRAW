@@ -152,8 +152,9 @@ class PageControl(unittest.TestCase):
         payload = payload[: payload.index("return p;")]
         # v2 (2026-09-17): HDR containers accept the repair, the payload carries it as-is.
         self.assertIn('chromaNr:+$("#chromaNr").value,', payload)
+        self.assertIn('chromaCleanup:$("#chromaCleanup").value,', payload)
         self.assertNotIn('includes($("#format").value)?0:+$("#chromaNr")', payload)
-        self.assertIn('"clipMargin","chromaNr"]', PAGE)  # restoreSettings list
+        self.assertIn('"clipMargin","chromaNr","chromaCleanup"]', PAGE)  # restoreSettings list
         settings = PAGE[PAGE.index("const SETTINGS_IDS="):PAGE.index("function saveSettings()")]
         self.assertIn('"chromaNr"', settings)
         save = PAGE[PAGE.index("function saveSettings()"):PAGE.index("function restoreSettings()")]

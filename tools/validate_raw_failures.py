@@ -24,6 +24,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from dngscan import metadata as md
+from dngscan.protected_output import ProtectedSources
+from dngscan.delivery_transaction import DeliveryTransaction
 
 
 def digest(path):
@@ -74,6 +76,7 @@ def main_cfa_ifd(path):
 
 def make_variant(source, target, mutation):
     """Create one copy and return its exact structural mutation description."""
+    ProtectedSources(source).check(target)
     if mutation in ("prefix-4096", "truncated-half"):
         limit = min(4096, source.stat().st_size//2) if mutation == "prefix-4096" else source.stat().st_size//2
         with source.open("rb") as original, target.open("wb") as broken:
@@ -164,14 +167,16 @@ def run_cases(path, temporary):
     return row
 
 
-def main():
-    if len(sys.argv)==3 and sys.argv[1]=="--probe":
-        print(json.dumps(probe(Path(sys.argv[2])),allow_nan=False))
+def main(argv=None):
+    arguments = sys.argv[1:] if argv is None else argv
+    if len(arguments)==2 and arguments[0]=="--probe":
+        print(json.dumps(probe(Path(arguments[1])),allow_nan=False))
         return 0
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files",type=Path,nargs="+")
     parser.add_argument("--out",type=Path,required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(arguments)
+    protection = ProtectedSources(args.files).check(args.out)
     import rawpy
     report = {"schema":"agxraw-raw-failure-acceptance-1","created_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
             "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
@@ -184,7 +189,9 @@ def main():
         for path in args.files:
             print(f"Checking damaged copies of {path.name}",flush=True)
             report["samples"].append(run_cases(path,Path(temporary)))
-            args.out.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+"\n")
+            with DeliveryTransaction(args.out, protected_sources=protection) as transaction:
+                transaction.path.write_text(json.dumps(report,indent=2,ensure_ascii=False,allow_nan=False)+"\n")
+                transaction.commit()
     return int(any(not row["control"]["passed"] or not row["original_unchanged"]
                    or any(case["passed"] is False for case in row["cases"])
                    for row in report["samples"]))

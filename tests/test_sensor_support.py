@@ -187,15 +187,17 @@ class UnsupportedFormatGuidanceTests(unittest.TestCase):
 
         return SimpleNamespace(make=make, model=model)
 
-    def test_nef_guidance_names_the_cause_and_the_outs(self) -> None:
+    def test_nef_suffix_does_not_identify_codec_or_licensing_cause(self) -> None:
         from dngscan.raw_io import _unsupported_format_guidance
 
         msg = _unsupported_format_guidance(
             Path("/x/DSC_0001.NEF"), self._shot(), RuntimeError("Unsupported file format")
         )
-        self.assertIn("TicoRAW", msg)
-        self.assertIn("DNG Converter", msg)
-        self.assertIn("无损压缩", msg)
+        self.assertNotIn("TicoRAW", msg)
+        self.assertNotIn("授权", msg)
+        self.assertIn("后缀不能证明具体压缩模式", msg)
+        self.assertIn("build_libraw_master", msg)
+        self.assertIn("coreimage", msg)
         self.assertIn("Z50_2", msg)
 
     def test_other_formats_point_to_the_master_upgrade(self) -> None:
@@ -225,7 +227,8 @@ class UnsupportedFormatGuidanceTests(unittest.TestCase):
             ):
                 with self.assertRaises(RuntimeError) as ctx:
                     raw_io.load_raw(Path(tmp.name))
-        self.assertIn("TicoRAW", str(ctx.exception))
+        self.assertIn("后缀不能证明具体压缩模式", str(ctx.exception))
+        self.assertNotIn("TicoRAW", str(ctx.exception))
 
 
 class DataSupportMarkerTests(unittest.TestCase):

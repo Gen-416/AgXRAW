@@ -18,14 +18,76 @@ from .source_metadata import cached_source_metadata
 
 
 READOUT_VERSION = 1
+CAPTURE_DECLARATION_VERSION = 1
 # Exact-model capability, not a proprietary file-tag or a complete readout ID.
 # SIGMA's fp specifications name only an electronic shutter. This says nothing
 # about ADC precision, still/video timing, cropping or binning.
 _FP_SHUTTER_SOURCE = "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
 _PAIR_FIELDS = {"raw_geometry", "active_geometry", "default_crop", "libraw_raw_geometry", "sensor_binning"}
 _BIT_FIELDS = {"sample_bits", "sensor_bits"}
-_TEXT_FIELDS = {"readout_id", "capture_kind"}
+_TEXT_FIELDS = {"readout_id", "capture_kind", "body_serial", "firmware"}
 _FIELDS = _PAIR_FIELDS | _BIT_FIELDS | _TEXT_FIELDS | {"storage_lossless"}
+
+
+def normalize_capture_declaration(value: dict | None) -> dict:
+    """A current batch declaration fills unknown mode fields, never file facts.
+
+    Compression, raster geometry and ADC precision are deliberately excluded:
+    a user selecting a shutter mode cannot turn a lossy file into a lossless
+    measurement or assert a different storage scale.
+    """
+    if value is None or value == {}:
+        return {}
+    allowed = {"version", "shutter", "readout_id", "capture_kind"}
+    if (not isinstance(value, dict) or set(value) - allowed
+            or type(value.get("version")) is not int
+            or value["version"] != CAPTURE_DECLARATION_VERSION):
+        raise ValueError("capture declaration requires version 1 and supported mode fields")
+    result = {"version": CAPTURE_DECLARATION_VERSION}
+    for key in ("shutter", "readout_id", "capture_kind"):
+        text = value.get(key)
+        if text is None or text == "":
+            continue
+        if not isinstance(text, str) or not text.strip() or len(text) > 160:
+            raise ValueError(f"capture declaration {key} must be nonempty bounded text")
+        text = text.strip()
+        if key == "shutter" and text not in ("electronic", "mechanical", "efcs"):
+            raise ValueError("capture shutter must be electronic, mechanical or efcs")
+        result[key] = text
+    return result if len(result) > 1 else {}
+
+
+def with_capture_declaration(capture: dict | None, declaration: dict | None) -> dict:
+    """Return new evidence; contradictions with known file metadata are errors."""
+    import copy
+    result = copy.deepcopy(capture or {})
+    supplied = normalize_capture_declaration(declaration)
+    if not supplied:
+        return result
+    applied = {}
+    for key, value in supplied.items():
+        if key == "version":
+            continue
+        actual = result.get(key)
+        equivalent = (" ".join(str(actual).split()).casefold() == " ".join(value.split()).casefold()
+                      if key in _TEXT_FIELDS else actual == value)
+        if actual is not None and not equivalent:
+            raise ValueError(f"当前批次声明的 {key} 与文件元数据冲突")
+        if actual is None:
+            result[key] = value
+            result[key + "_source"] = "user-current-batch-declaration"
+        applied[key] = {"value": value, "filled_unknown": actual is None}
+    result["user_declaration"] = {"version": CAPTURE_DECLARATION_VERSION,
+                                  "scope": "current-batch", "fields": applied}
+    return result
+
+
+def capture_declaration_identity(declaration: dict | None) -> str:
+    import hashlib
+    import json
+    value = normalize_capture_declaration(declaration)
+    return (hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            if value else "")
 
 
 def _pair(value, label):
@@ -128,14 +190,19 @@ def match(entry: dict, capture: dict | None) -> tuple[str, str]:
         return "unverified", issues[0]
     constraints = entry.get("readout_contract") or {}
     fields = [(key, value) for key, value in constraints.items() if key != "version"]
-    if not fields:
-        return "not-declared", "sub-readout-not-declared"
     for key, expected in fields:
         actual = capture.get(key)
         if actual is None:
             return "unverified", f"file-{key.replace('_', '-')}-unavailable"
-        if actual != expected:
+        if (" ".join(str(actual).split()).casefold() != " ".join(str(expected).split()).casefold()
+                if key in _TEXT_FIELDS else actual != expected):
             return "mismatch", f"file-{key.replace('_', '-')}-mismatch"
+    from .measurement_domain import match as match_domain
+    domain = match_domain(entry, capture)
+    if domain["status"] in ("unverified", "mismatch"):
+        return domain["status"], domain["reason"]
+    if not fields:
+        return "not-declared", "sub-readout-not-declared"
     return "matched", "declared-readout-constraints-matched"
 
 
@@ -147,16 +214,27 @@ def collect_fields(header: dict) -> dict:
     darkCsv.mjs and binding.cc raw_width/raw_height. The JPEG dimensions
     are operator declarations and remain informational.
     """
-    raw_size = header.get("RawSize")
     contract = {"geometry_domain": "camera-jpeg-output"}
-    if not raw_size:
-        return {"acquisition_contract_fields": contract}
-    found = re.fullmatch(r"\s*(\d+)\s*[x×]\s*(\d+)\s*", str(raw_size))
-    if found is None:
-        raise ValueError("JPTC RawSize must contain full mosaic width x height")
-    size = _pair([int(found[1]), int(found[2])], "RawSize")
+    constraints = {}
+    for field, aliases in {
+        "readout_id": ("ReadoutMode", "Readout"), "capture_kind": ("DriveMode",),
+        "body_serial": ("BodySerialNumber", "CameraSerialNumber", "SerialNumber"),
+        "firmware": ("Firmware",),
+    }.items():
+        values = {" ".join(str(header[key]).split()).casefold(): " ".join(str(header[key]).split())
+                  for key in aliases if header.get(key)}
+        if len(values) > 1:
+            raise ValueError(f"conflicting acquisition declarations: {field}")
+        if values:
+            constraints[field] = next(iter(values.values()))
+    raw_size = header.get("RawSize")
+    if raw_size:
+        found = re.fullmatch(r"\s*(\d+)\s*[xX×]\s*(\d+)\s*", str(raw_size))
+        if found is None:
+            raise ValueError("JPTC RawSize must contain full mosaic width x height")
+        constraints["libraw_raw_geometry"] = _pair([int(found[1]), int(found[2])], "RawSize")
     return {"acquisition_contract_fields": contract,
-            "readout_contract": {"version": READOUT_VERSION, "libraw_raw_geometry": size}}
+            **({"readout_contract": {"version": READOUT_VERSION, **constraints}} if constraints else {})}
 
 
 def _jpeg_process(source, offset, byte_count):
@@ -363,6 +441,9 @@ def _native_compression(path, tags, make):
         codec = "nikon-nef-compression-34713"
         # This container code alone does not distinguish legacy lossless,
         # lossy, packed or HE variants. Keep the model unqualified.
+        from .capture_identity import read as read_identity
+        if read_identity(path).get("nikon_nef_compression") == 3:
+            codec, lossless, process = "nikon-nef-lossless", True, "nikon-maker-declared-lossless"
     return code, lossless, process, codec
 
 
@@ -442,4 +523,6 @@ def read(path: Path) -> dict:
                            shutter_source_url=_FP_SHUTTER_SOURCE)
     except (OSError, ValueError, TypeError, KeyError, IndexError, OverflowError, struct.error):
         capture["shutter_status"] = "shutter-metadata-unreadable"
+    from .capture_identity import read as read_identity
+    capture.update(read_identity(path))
     return capture

@@ -1,0 +1,1411 @@
+{
+  "schema": "agxraw-coreimage-raw9-validation-1",
+  "created_utc": "2026-10-10T21:13:27.125219+00:00",
+  "source_commit": "ad57ea2419484b2a2f61d9e2cbbc31b89a1df7ff",
+  "working_changes": true,
+  "committed": false,
+  "pushed": false,
+  "implementation": {
+    "native_abi": 22,
+    "source_sha256": {
+      "dngscan/__init__.py": "9c694ad6c650f738d63409cc2c7ea3474cff5cc72d7021970d4fc1f4e91ac21f",
+      "dngscan/__main__.py": "3cb58a0fc518102320f64b696a4cf246d0f2f5e94888c0ed9313972d1957631f",
+      "dngscan/_deps.py": "977a76d8856da0f01b163672012c346d862baaa5cf960e66af7ba77f3cfcaf69",
+      "dngscan/_fast.py": "f0f9721896c9af69acf030e52b26cac1767ef7eaef4e787da8a0e5e218be9a4e",
+      "dngscan/agx.py": "7dab58b58e9f683c8023a136a06814c1ed51a540ae6abe37faf456236f9d9334",
+      "dngscan/analysis.py": "b2231748098d028b12edd2efc9afe640decdd638b66f3e6f499604ec70db197d",
+      "dngscan/auto_encode.py": "2ebfae1c2d554a89429f630cc7321af976f82058cd9e0edcfc1efa5b8231853a",
+      "dngscan/auto_ev.py": "007f95ff43e4944ad3c6bf3f30ba4913cec527951d82b9079fb1f06287882218",
+      "dngscan/calibration.py": "f8895ba0995fec5836053ac1a26372df412a22faeb463e654bb862165a224cdb",
+      "dngscan/calibration_ptc.py": "11053fd80a5de9d7b8fdd20e65a74a86bba56a9124ca89ce2afcc99292e54fca",
+      "dngscan/calibration_registry.py": "b2cef7c109ef5411f784d56d6627dd47362d94cd91b53b9907e4861a0619f311",
+      "dngscan/camera_matrices.py": "9b1e86970fa8a81c62a19831dbab2b0d8ad9822f84389f341cbffec9931dc6cd",
+      "dngscan/cbld.py": "41aec59f776683f472c191d87f4b1db6335f407a969c4ce49ce8050eb101ae3b",
+      "dngscan/chroma_nr.py": "90461b2c18b09efc3c49440aa6ad37fbd21ccf91dec5b147ec3912fb7afd0d06",
+      "dngscan/chroma_policy.py": "8bb84f6d3549d05d483d73c6b2f4db3463b76450fa8e0d79f0beb4cad6f71e38",
+      "dngscan/chroma_research.py": "44b05f42bbed95c552416fe6113419e689434a3e4c724eea8afdbb10ec5383b5",
+      "dngscan/cli.py": "9c08c478a48ab5a73684b767bfb07d5931ded8c4e02a14cb0aa4547cb3db2594",
+      "dngscan/collect_manifest.py": "3f438cabdbadb82dbf84b74fd7cbbd269593cf34b6261c46e0f2dfe91e1d6f7d",
+      "dngscan/color.py": "1580cacaa45e69b1f8ade8bd1fda22c39598730077f56359c4cc67616dad3571",
+      "dngscan/constants.py": "8ff5995938845237fb4e96bc8112b697a52bdf3576d27823806c758956a8edce",
+      "dngscan/core.py": "4f37ebab2e2b99870e66161272f40469e65114b7ecd5fa1683d3a6f0390eb05b",
+      "dngscan/coreimage_decode.py": "6327b2afcc6609755901384100da643c1b6b25b7d64ee4b9e998e91fe9ff8d38",
+      "dngscan/cpu_budget.py": "912cf51db30a46b1453961ba59fd1d6f094313fee0c5c77daf29a4f0c62ce772",
+      "dngscan/data/priors/collect_registry.json": "805796cbdacd72c9c3a2527424ca00418f316a1b9f00925947b0f27eb31dd6d4",
+      "dngscan/debug_util.py": "1cb8f5e512625c785c95f224851085212babccfff77df84750d31f9c18e2b0e7",
+      "dngscan/decode_support.py": "b0ddc94f19029f7d56a83977a6d64d7ae722ce0bbae1aa63174c8ba4031e1cf5",
+      "dngscan/decoder_identity.py": "8c14adc92eadef3c0dd4e57660eda6483985d3bd11389e3753ea03662839b043",
+      "dngscan/decoder_loss.py": "d4aad7d29dff320235d241116ba31cde1c430c80e3fe88c3ea392799b6fdd951",
+      "dngscan/decoder_residual_research.py": "67d93b790e73a76a7bdcc507c24ded684058424bbe428e5c08a63d2237eed89b",
+      "dngscan/delivery.py": "8d88a44ed28d76a79a12de83553ad159c591351dbd3d0963ae6dae95a72ca08a",
+      "dngscan/delivery_integrity.py": "dfa5492addd473e53bba5de7c38dc592794a219c686cddc314e6b2b0cdaf9648",
+      "dngscan/delivery_transaction.py": "a247eb1c32ea51064bef064aac592d852974d86ad566ea28d97b0050776aa7e9",
+      "dngscan/display_filter.py": "b081e0e6ba3e62474330bc1ab332b71a840cc16d50e4994df552a771e3d4f47c",
+      "dngscan/dng_opcodes.py": "9393dee37fbcdd3f56736b0ef05ebd2e9aa9fed1915ac695219f72abad76872f",
+      "dngscan/dng_point_ops.py": "0e3d9cd559457e0f270b5138e9a1845d48bdd482d8fa1149024c888dc7382314",
+      "dngscan/drt.py": "fd9eeb68c926347cfcc965bb69142da15badd3461f9cd7ed653ab315c7c72fa5",
+      "dngscan/embedded_lens.py": "41a27a955e8e2b8bf18017c312eb43e649cb3c0199c1b2a19f0bdd9e93eb4190",
+      "dngscan/evidence.py": "7c132589b465fd1973c33cf61787f20af60198c0d69880326bd7b6a76ca3e37a",
+      "dngscan/export.py": "b4b46aaedeb10c9b1f15e161eaa1c46e323d87a6a714e952ddf21c647e346eb5",
+      "dngscan/fast_plan.py": "092ead6d437af2d19ad027e81f31e058d848784d2252404c15e7ddbd0d666c20",
+      "dngscan/gainmap.py": "f242d203c65690b2636b402a288e8521aff691a25aabdd2e77c53231c236531d",
+      "dngscan/gainmap_session.py": "950bbd7361a22c5dda5b66322e8c2df94beb1cefe80cafb44a9f98c9547938b1",
+      "dngscan/gated_drt.py": "734eedebf820f6055da6ff1d615ba107d8b78a9a3c531532c0f8f930c1016980",
+      "dngscan/grade.py": "4c519f7ea50b07dfe614e39c54e6939173d65dddf9480c7705636e80fffdc504",
+      "dngscan/gui/__init__.py": "28a4186a5cf405eeac3af1e56054db04ba78745f9c0f4395ad3628424d85843d",
+      "dngscan/gui/__main__.py": "9ec175feaf5ba3177bd69c25d7e88a4cf04bb490d96e5111e314b7817d711147",
+      "dngscan/gui/calibration_service.py": "289dc5715fe607119043fa110dcb9eac845de3842d2d10ed3eb7b915ac7289d3",
+      "dngscan/gui/constants.py": "d45feb432b128b97e55b106d7148884d925729f49edd4ce11f13905ea7ce3091",
+      "dngscan/gui/fastapi_app.py": "b0f2198cdd7d0028632ea8455b9c7d00e4a47b0ae371e6d5d1d5aa6008f22b04",
+      "dngscan/gui/histogram.py": "36c509efeafd52a682b13df5329a3cf82b003b7a8c4af87537bb15822fa62d19",
+      "dngscan/gui/page.py": "91edd5809d1c3577cc3033bc2e34e026e1ac12c0d5a33520940a4ba213915038",
+      "dngscan/gui/preview_cache.py": "b5b87780eee4735b075e46204e150965af692cbb55f99ec47f2a0dfe43f4acc1",
+      "dngscan/gui/preview_scheduler.py": "1bddf7b727b14a836ba8da0d7a8bd4f29b566f5865d0e559ab3ac2d6c9e56a11",
+      "dngscan/gui/scheduler.py": "c6453ad11cf6ab1c6f3312e3f6ba2dd066af258a8a39f6d986597ffc55bb3997",
+      "dngscan/gui/server.py": "c367e57135603be0ce3077323af9e7fadc4f0e26c2e847358055012314d1dfa6",
+      "dngscan/gui/service.py": "60671c7f4430a3ab25d14d482ad9698cce476aaff068cdef35b45ad6bbbb8cac",
+      "dngscan/gui/uploads.py": "9f668b701f93cf99d2f9de09ad18d60487bad957a79be3b978555b27b8424c41",
+      "dngscan/guidance.py": "681da88026c4c63b6a2a8109db17e840d0e67759b5335abffaf0f50ead077e9a",
+      "dngscan/hdr_agx.py": "cc9cc87813ab79c79baf739127be73b6c66c97691516cfa5fcfc627755df1427",
+      "dngscan/hdr_agx_math.py": "a3a316eb11d6ee97fa8dbeedce06403e9f417f068d88ecdca2030e8f6a65f5bf",
+      "dngscan/hdr_agx_plan.py": "2a6ffdcd2bd44b5e1fc91ad6f07f95f8e26a249a319b732fe815b26847f3d62b",
+      "dngscan/hdr_color.py": "dc0adcf7ed10a64c710cc29b762f87622bb4d18d189f056c3439e70145c0e11a",
+      "dngscan/hdr_curve.py": "e0b087189bc4d674f2e7d155b0840cf9d1f3b4518cdaf9875099575a872795e8",
+      "dngscan/heif_delivery.py": "9695c2e061facb0e2ff0fdbe434dc39603bdb170cc14588fdf984b5da21c8f46",
+      "dngscan/heif_encoder.py": "375afb31ab1a2f4b53b2ebb5dee28a5dcd811f67753f2893a9c3a8f10c310c66",
+      "dngscan/heif_gainmap.py": "940a57fc5383c60c1a09b61839f75377a9a93920e542a42ba57ddcd0dae1f60a",
+      "dngscan/jpeg_gainmap.py": "6cf19676ff01054ca465f4159763577730a94823a98260e210be2bdcf1d29d60",
+      "dngscan/lens_filter.py": "ca1e1afed9ed0ba992677dceceaac0ff1dcddd19842e11af3998d009b99c807f",
+      "dngscan/lens_transmittance.py": "22a5225ad7c1347d616eb1600dda5054a7bd7b129ec7b302450fd635c5a9749f",
+      "dngscan/libraw_policy.py": "609cafb92829a18f886690dfd5b911421ddb06d51116bb0b5c83b45d2d476435",
+      "dngscan/local_detail.py": "2c11fb7451e18728426bef9bc1c3c899493aa9b43d0a13d8cc8563230952ae0c",
+      "dngscan/log_encode.py": "694577c97c285458a01d3e30b3f8cc4fb54b11d23e900016d3e353965d877fda",
+      "dngscan/look.py": "f5a3e3d412baf029deed7d0db91102b2a25d54e62b476f00502ede177a9c8c43",
+      "dngscan/lum.py": "0c731267eff3368b0641457314b556d8ed386693e7aa20698fa10cabf67765c9",
+      "dngscan/lut_io.py": "3a91300239f6419ce474b5316141b331e7d7d632cd9704d072eb88a4868da886",
+      "dngscan/metadata.py": "b0e107fa720f68d5faab491b3d0093a6548e1d38899103883cefdcec36408ecf",
+      "dngscan/models.py": "0ec01710323dd777ff148872369a6ba26f33f236bbe91b4c3c5b01a5f51b1a9a",
+      "dngscan/neutral.py": "f797c1add03d4be005b10f69a2abe12b2a48cdda558a711b8bac1a26f2e4111e",
+      "dngscan/noise_model.py": "404f41f3b1924a24abcf7683021b2aff8fc95a983c9c4a07762f0e7bec119e26",
+      "dngscan/noise_propagation.py": "5c92386adaf2b9a1770f0111a704d37cb72fa4d8e765a94a2779f18df7cf5251",
+      "dngscan/noise_spectrum.py": "f1e7462e7c6f21af9611bb3ce3ed520a974bc81d2ad7ed19208e806cab1cd0a8",
+      "dngscan/phase_statistics.py": "0479a9daf200caf899a6c7d4429aebbb99da5d6cbbb6e7bf5bb42c809ed3d4cb",
+      "dngscan/pixel_calibration.py": "333aea8fc482a04ee32796db832666606309cc0e4f857f88c83514f491efbb80",
+      "dngscan/plot.py": "39aaf6933b8d196fdbd48acfd7030e9db1bfc2b5fa6734e97d72eb5ab72c5a18",
+      "dngscan/policy.py": "b026e21c015e64d89219d46a7645551e80e2db4f24188035fa856dfced292ef1",
+      "dngscan/prepared_sample.py": "23fbcdb8f16815d4f9eb61879c830a2f2a39d651bdf87ee8e162fb549f098e9e",
+      "dngscan/priors.py": "0ac61ac869dbc731abbff6b1055b1a9653688e7c0fb2ebe74a767fd586fd3f5a",
+      "dngscan/punch.py": "40aa8ace4062148814b1544a64451d5a66211d600e48f7994f7dd2a445a2e3c4",
+      "dngscan/raw_io.py": "bdc5a7297b00b6ba8adfe5c7d73d53b11609f0590e2a0bb27851302e1a2efbcc",
+      "dngscan/raw_units.py": "2bb50dc4f34641d7048047cf9cdbe6c4c5af384ec48d43eccfd868c61ba0e80b",
+      "dngscan/readout.py": "55446f7c2c799267378d01b3c3b6a02a06997549d1b86b57fccd119e3390f4db",
+      "dngscan/reliability.py": "53b3ee4cd76dc8ef780b11c931085315482bbb14464b724dcabe5d5e20d1b70b",
+      "dngscan/render.py": "2d7de655affae4a9763ebfe725ded15a71ba4921fe06dc891ba271fb5fb3cdf2",
+      "dngscan/report.py": "812fe160c3203af12af3ef1abaa71d468cdfb778452245418c657f186e6ec8ab",
+      "dngscan/retreat.py": "d1fb8ce6d94df7de6e00dd31e47b4dbbd248f43ed5dc04c1fa8fe681c2564a5c",
+      "dngscan/sampling.py": "156752dd54463d506a87462c1a657c5ab3212179a61bdb32552e1c14d223688f",
+      "dngscan/sampling_geometry.py": "1dd9abc315a25d10e6a588e9b8d144e1c3ff3da82b06498d84877cc6aafd1d6a",
+      "dngscan/scene_reference.py": "68ae5bf7a196811515182bc0bcad3f8a7df139d932b093c411829ce21da4b31a",
+      "dngscan/scene_scale.py": "139badf1d5414088d111134c127c71740b1309fc760f31e90343f9ee06857c1a",
+      "dngscan/scene_transform.py": "68a45aeb95dddf5b28cc056d84bd40525bb23cfc0d9bb0d98862415f4a0a0e95",
+      "dngscan/sensor_research.py": "b8b6babff89f2ec42c5ec4f292268499aed84f894ecc22673a92d3f96e78b8ee",
+      "dngscan/sensor_summary.py": "7d6d995011ca9a4ed61ac973711206a368d4214d65f75022c9c51b5c5c601ba6",
+      "dngscan/source_metadata.py": "b1abd487cac568fb7c634ecdb40358a937a9557c42c15c1a8b5a7166ab273cfa",
+      "dngscan/spatial.py": "2fe55f506b8b4732555ea27370939dc858e1db03f9fa27f774e06cbf98f97961",
+      "dngscan/spatial_black.py": "1a7c54610d0fecc3b2b914ed5de2c2e250cb755f011254a082cf0fdbf47f8d58",
+      "dngscan/spectral_color_research.py": "ca64415a846cb56f4ba44d8efbbec3bf6e248e7773a10983b530ae325ef079f0",
+      "dngscan/spectral_variance.py": "366003f3a98edf2d30290654f40492f3e764d3061e868253dfeba6fe06ee3287",
+      "dngscan/tone.py": "65cfcfebb75900ef3bc88489b83563b252a1a608bcffcf622e65faf4ae3774be",
+      "dngscan/wb.py": "09291f5d1121ca3806ce2f8ff145728dc5c714148f9a8403b9c5043b7be31a3a",
+      "rust/Cargo.lock": "5cf6e50e88e7be69602f130b1b75cb37f12796e69626b70a0cdffef098caa42c",
+      "rust/src/agx.rs": "a0a533de8a80af04002a6c10a9c4b245ddd9a6579b38fb52376f012037c97f0c",
+      "rust/src/budget.rs": "96441fe48798b085b07796b3a351697611708b6229067e5763548604bc4dd0f9",
+      "rust/src/coding.rs": "7ebba8d8ee570a8304b26690765a4dc3b9f29f0940cb25f1fb92ddc5090b9f50",
+      "rust/src/detail.rs": "ac766680194c42bc2144366308b117d6ef77e0cf720fa235a86897e18fb4b52a",
+      "rust/src/evidence.rs": "2465a6ba7cb015b80292eb1e2a935b5551c67fd1339c30f3831c7362355964d5",
+      "rust/src/hdr.rs": "74e5aa751a8b2e4b238c9fec628c3924bb40cb324728522eb970bb80312e62ef",
+      "rust/src/lens.rs": "6597d82d2146986cd4cea6b84b46beeb67e715f7f2684ce15c3edda311471d9e",
+      "rust/src/lib.rs": "4e7d02ed2ae3e8dba76a94850b963353fff45d08cb3dbc88aa884b3e91cdf62c",
+      "rust/src/loss.rs": "b2bfbb99f1fce8a5feedf9f5dfcb11d19af5833f2a71d829ae4f7d9c56bf9a94",
+      "rust/src/metrics.rs": "88524f6c46c94b6440c955cea3566f1fa8a9967870248156df9d5def9bfbb6ff",
+      "rust/src/nr.rs": "01f890363f08384de014ad6b8b7d3f0e3adc25368907ffa32cb5582b83a5757d",
+      "rust/src/output.rs": "0c2587832f9d2131abfc358788d455c787f88a49c9c87ded63ed34e3a7523d52",
+      "rust/src/pixel.rs": "d0b5e9ed8faeac5cb9809747fc425596366e8f33e8bedf49b0e5a484f9cc24b8",
+      "rust/src/sensor.rs": "3de97a97132903d435564bf53e0e87f653175a56720c5df4f41ae039d1f316fd",
+      "rust/src/spatial.rs": "7986daef7475321a170348ec17124335fe2cb4eeed47eeeaf10df1fbe49ef64f",
+      "rust/src/stats.rs": "17c35b9f809eafc91f705eb25a3210097855f99052ecc12a1ae2149926a2fd53"
+    }
+  },
+  "working_implementation_sha256": "b2bb01289b43a29055e5c067c1b8b931b54e32d942a10662234c0ed909d58817",
+  "decoder_anchor_asset_sha256": "d59154e793748dba38dd0c092c96156add41b646521f372836f31c31cdc994c8",
+  "calibration_fingerprint": "b82cbd4fb12b7b6eb0df3b5394d97434524ab47baa017a603285cce942483bc6",
+  "recipe_schema": "coreimage-decode-recipe-1",
+  "preview_cache_version": 33,
+  "runtime": {
+    "python": "3.14.4",
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "libraw_version": [
+      0,
+      22,
+      0
+    ],
+    "coreimage_runtime": "版本27.2（版号26B5101f）",
+    "libraw_commit": "e419de08001de28ae6988ecb22df47e52b9c5eaa"
+  },
+  "full_regressions": {
+    "native": {
+      "total": 2050,
+      "passed": 2047,
+      "skipped": 3,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 301.168,
+      "command": "DNGSCAN_FAST=1 python -m unittest discover -s tests -q",
+      "log_sha256": "3386d081972662976b36f351d30f44676ebe0b93bea7fcdaadae73efd351b768"
+    },
+    "numpy": {
+      "total": 2050,
+      "passed": 2015,
+      "skipped": 35,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 748.29,
+      "command": "DNGSCAN_FAST=0 python -m unittest discover -s tests -q",
+      "log_sha256": "65a0639cb670792e563aee1f18e3899c5f1e135569a9e0783f5b88203a9061aa"
+    }
+  },
+  "regression_count_note": "Same 2050 test cases in two configurations; do not add them as unique coverage.",
+  "regression_repair_note": "Initial native run failed in two pre-existing MagicMock cache fixtures missing explicit valid recipe dictionaries; fixtures corrected without relaxing production provenance checks; final full runs above are after that fix.",
+  "real_coreimage_matrix": {
+    "report": "coreimage-raw-20261010.json",
+    "sha256": "2f3f692487b4b1538da673797ace3d62966343e5205bcdf2ca1363e956e72fba",
+    "summary": {
+      "passed": 36,
+      "unavailable": 6,
+      "failed": 0
+    },
+    "files": [
+      {
+        "file": "DSC00225.ARW",
+        "source_sha256": "752749232a3d9baa84fec24b4663557ec743a495fbe5d65b8600ed72d7bfa6d2",
+        "size_bytes": 27824128,
+        "results": {
+          "unavailable": 6,
+          "passed": 15
+        },
+        "auto_actual_tokens": [
+          "8"
+        ]
+      },
+      {
+        "file": "agxraw-coreimage-nikon-d750.NEF",
+        "source_sha256": "baae8dfc05a81a4a4034831a49ed99d129e797858ad876d31173a46d33b7d3ea",
+        "size_bytes": 20095707,
+        "results": {
+          "passed": 21
+        },
+        "auto_actual_tokens": [
+          "9"
+        ]
+      }
+    ],
+    "source_hash_unchanged_in_all_successes": true,
+    "all_success_outputs_finite": true,
+    "observed_signed_negative_cases": 18,
+    "observed_above_one_cases": 36,
+    "window_statuses": {
+      "unmeasured": 30,
+      "identity": 6
+    },
+    "unregistered_distribution_comparisons": 33,
+    "scope": "Execution and numerical/provenance baseline; automatic EV is recorded per case. No independent noise/texture quality claim, controlled speed ranking, or new HDR gain-map container validation."
+  },
+  "sigma_fp_native_recipe_smoke": {
+    "scope": "Actual Apple RAW9 preview recipe/extent smoke; not a new full image-quality matrix or sensor noise calibration.",
+    "source_sha256": "1a501662a4ef4634b3e084e2b3f3a0d3ebe6a12bcd7ab73ba3867b7ff707a9ac",
+    "private_log_sha256": "14523e3ce60b5e709f56bb619381abf4553f13734347ef6bce574bfd0428fc74",
+    "actual_info": {
+      "decoder": "coreimage",
+      "version_requested": "auto",
+      "version": "9",
+      "versions_offered": [
+        "6.dng",
+        "7",
+        "7.dng",
+        "8",
+        "8.dng",
+        "9",
+        "9.dng"
+      ],
+      "fallback_errors": [],
+      "extent": [
+        854,
+        1280
+      ],
+      "shape": [
+        854,
+        1280
+      ],
+      "half_size": true,
+      "scale_factor": 0.2133333384990692,
+      "scale_compensation": 1.0,
+      "scale_compensation_note": "no fixed decode-time correction (native or per-file aligned handoff)",
+      "color_noise_reduction_amount": 0.0,
+      "color_noise_cleared": true,
+      "color_noise_cleared_semantics": "legacy-parameter-zero-only-not-internal-NR-off",
+      "sharpness_amount": 0.0,
+      "highlight_recovery": true,
+      "lens_correction": true,
+      "shadow_bias": 0.0,
+      "baseline_exposure_authored": 1.0,
+      "baseline_exposure_applied": 0.0,
+      "baseline_exposure_cleared": true,
+      "extended_dynamic_range_amount": 0.0,
+      "exposure": 0.0,
+      "neutral_temperature": 2948.239990234375,
+      "neutral_tint": 6.294262409210205,
+      "decoder_runtime_id": "版本27.2（版号26B5101f）",
+      "recipe": {
+        "schema": "coreimage-decode-recipe-1",
+        "configuration_id": "9f121422944b4f4dd537851a007cb5c8f385f72a869de548a2fabff964a1b565",
+        "configuration": {
+          "schema": "coreimage-decode-recipe-1",
+          "actual_decoder_token": "9",
+          "runtime": "版本27.2（版号26B5101f）",
+          "hardware": {
+            "architecture": "arm64",
+            "processor": "arm",
+            "execution_device": "not-observable-via-CIRAWFilter",
+            "model": "Mac16,1",
+            "cpu_brand": "Apple M4"
+          },
+          "controls": {
+            "decoderVersion": {
+              "requested": "9",
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": "9",
+              "semantics": "exact-offered-token-selection"
+            },
+            "baselineExposure": {
+              "requested": 0.0,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "file-baseline-externalized-after-successful-clear"
+            },
+            "boostAmount": {
+              "requested": 0.0,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "disable-default-look-boost"
+            },
+            "boostShadowAmount": {
+              "requested": 0.0,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "inactive-when-boost-is-zero"
+            },
+            "shadowBias": {
+              "requested": 0.0,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "disable-shadow-bias"
+            },
+            "exposure": {
+              "requested": 0.0,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "decoder-exposure-EV"
+            },
+            "neutralTemperature": {
+              "requested": null,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "preserved-default",
+              "getter_status": "read",
+              "effective_status": "preserved-default",
+              "effective_value": null,
+              "semantics": "as-shot-preserved"
+            },
+            "neutralTint": {
+              "requested": null,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "preserved-default",
+              "getter_status": "read",
+              "effective_status": "preserved-default",
+              "effective_value": null,
+              "semantics": "as-shot-preserved"
+            },
+            "extendedDynamicRangeAmount": {
+              "requested": 0.0,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "disable-Apple-display-EDR-transform"
+            },
+            "luminanceNoiseReductionAmount": {
+              "requested": 0.0,
+              "support_status": "read",
+              "supported": true,
+              "applicability": "supported-by-instance",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "minimum-exposed-luma-NR-parameter-not-internal-NR-off"
+            },
+            "colorNoiseReductionAmount": {
+              "requested": 0.0,
+              "support_status": "read",
+              "supported": false,
+              "applicability": "documented-inert-raw9",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "not-applicable",
+              "effective_value": null,
+              "semantics": "legacy-parameter-zero-not-joint-demosaic-denoise-off"
+            },
+            "detailAmount": {
+              "requested": 0.0,
+              "support_status": "read",
+              "supported": false,
+              "applicability": "documented-inert-raw9",
+              "setter_status": "skipped-unsupported",
+              "getter_status": "read",
+              "effective_status": "not-applicable",
+              "effective_value": null,
+              "semantics": "unsupported-in-RAW9"
+            },
+            "contrastAmount": {
+              "requested": 0.0,
+              "support_status": "read",
+              "supported": true,
+              "applicability": "supported-by-instance",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "disable-additional-contrast-parameter"
+            },
+            "sharpnessAmount": {
+              "requested": 0.0,
+              "support_status": "read",
+              "supported": true,
+              "applicability": "supported-by-instance",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.0,
+              "semantics": "additional-sharpening-parameter-zero"
+            },
+            "moireReductionAmount": {
+              "requested": null,
+              "support_status": "read",
+              "supported": false,
+              "applicability": "documented-inert-raw9",
+              "setter_status": "preserved-default",
+              "getter_status": "read",
+              "effective_status": "not-applicable",
+              "effective_value": null,
+              "semantics": "unsupported-in-RAW9-default-preserved"
+            },
+            "localToneMapAmount": {
+              "requested": 0.0,
+              "support_status": "read",
+              "supported": false,
+              "applicability": "unsupported-by-instance",
+              "setter_status": "skipped-unsupported",
+              "getter_status": "read",
+              "effective_status": "not-applicable",
+              "effective_value": 0.0,
+              "semantics": "disable-local-display-tone-map"
+            },
+            "gamutMappingEnabled": {
+              "requested": false,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": false,
+              "semantics": "disable-output-gamut-map"
+            },
+            "highlightRecoveryEnabled": {
+              "requested": true,
+              "support_status": "read",
+              "supported": true,
+              "applicability": "supported-by-instance",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": true,
+              "semantics": "request-Apple-highlight-reconstruction"
+            },
+            "lensCorrectionEnabled": {
+              "requested": true,
+              "support_status": "read",
+              "supported": true,
+              "applicability": "supported-by-instance",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": true,
+              "semantics": "request-Apple-lens-interpretation-not-opcode-proof"
+            },
+            "scaleFactor": {
+              "requested": 0.21333333333333335,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "applied",
+              "getter_status": "read",
+              "effective_status": "parameter-confirmed",
+              "effective_value": 0.2133333384990692,
+              "semantics": "native-decode-scale"
+            },
+            "draftModeEnabled": {
+              "requested": null,
+              "support_status": "no-predicate",
+              "supported": null,
+              "applicability": "not-declared",
+              "setter_status": "preserved-default",
+              "getter_status": "read",
+              "effective_status": "preserved-default",
+              "effective_value": false,
+              "semantics": "decoder-draft-default-preserved"
+            }
+          },
+          "white_balance_implementation": "native-as-shot-preserved",
+          "project_hot_wb_implementation": "rec2020-conjugate-camera-matrix-approx-v1",
+          "scale_factor": 0.2133333384990692,
+          "scale_compensation": 1.0,
+          "context": {
+            "cache_intermediates": true,
+            "memory_limit_mb": null,
+            "scope": "CIContext-options-not-proof-of-execution-device"
+          },
+          "output_dtype": "float16",
+          "render_format": "RGBAh",
+          "color_space": "extendedLinearITUR_2020",
+          "post_resize": {
+            "kernel": "none",
+            "target_shape": null
+          }
+        },
+        "requested_decoder_token": "auto",
+        "actual_decoder_token": "9",
+        "offered_tokens": [
+          "6.dng",
+          "7",
+          "7.dng",
+          "8",
+          "8.dng",
+          "9",
+          "9.dng"
+        ],
+        "fallback": {
+          "used": false,
+          "failed_attempts": []
+        },
+        "runtime": "版本27.2（版号26B5101f）",
+        "hardware": {
+          "architecture": "arm64",
+          "processor": "arm",
+          "execution_device": "not-observable-via-CIRAWFilter",
+          "model": "Mac16,1",
+          "cpu_brand": "Apple M4"
+        },
+        "source": {
+          "status": "verified-through-decode",
+          "sha256": "1a501662a4ef4634b3e084e2b3f3a0d3ebe6a12bcd7ab73ba3867b7ff707a9ac",
+          "size_bytes": 37618937
+        },
+        "controls": {
+          "decoderVersion": {
+            "requested": "9",
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setDecoderVersion_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "decoderVersion",
+              "before": {
+                "selector": "decoderVersion",
+                "status": "read",
+                "value": "8"
+              },
+              "after": {
+                "selector": "decoderVersion",
+                "status": "read",
+                "value": "9"
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": "9",
+              "semantics": "exact-offered-token-selection",
+              "processing_effect_verified": false
+            }
+          },
+          "baselineExposure": {
+            "requested": 0.0,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setBaselineExposure_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "baselineExposure",
+              "before": {
+                "selector": "baselineExposure",
+                "status": "read",
+                "value": 1.0
+              },
+              "after": {
+                "selector": "baselineExposure",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "file-baseline-externalized-after-successful-clear",
+              "processing_effect_verified": false
+            }
+          },
+          "boostAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setBoostAmount_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "boostAmount",
+              "before": {
+                "selector": "boostAmount",
+                "status": "read",
+                "value": 1.0
+              },
+              "after": {
+                "selector": "boostAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "disable-default-look-boost",
+              "processing_effect_verified": false
+            }
+          },
+          "boostShadowAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setBoostShadowAmount_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "boostShadowAmount",
+              "before": {
+                "selector": "boostShadowAmount",
+                "status": "read",
+                "value": 0.8999999761581421
+              },
+              "after": {
+                "selector": "boostShadowAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "inactive-when-boost-is-zero",
+              "processing_effect_verified": false
+            }
+          },
+          "shadowBias": {
+            "requested": 0.0,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setShadowBias_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "shadowBias",
+              "before": {
+                "selector": "shadowBias",
+                "status": "read",
+                "value": 5.0
+              },
+              "after": {
+                "selector": "shadowBias",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "disable-shadow-bias",
+              "processing_effect_verified": false
+            }
+          },
+          "exposure": {
+            "requested": 0.0,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setExposure_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "exposure",
+              "before": {
+                "selector": "exposure",
+                "status": "read",
+                "value": 0.0
+              },
+              "after": {
+                "selector": "exposure",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "decoder-exposure-EV",
+              "processing_effect_verified": false
+            }
+          },
+          "neutralTemperature": {
+            "requested": null,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setNeutralTemperature_",
+              "available": true,
+              "attempted": false,
+              "status": "preserved-default"
+            },
+            "getter": {
+              "selector": "neutralTemperature",
+              "before": {
+                "selector": "neutralTemperature",
+                "status": "read",
+                "value": 2948.239990234375
+              },
+              "after": {
+                "selector": "neutralTemperature",
+                "status": "read",
+                "value": 2948.239990234375
+              }
+            },
+            "effective": {
+              "status": "preserved-default",
+              "value": 2948.239990234375,
+              "semantics": "as-shot-preserved",
+              "processing_effect_verified": false
+            }
+          },
+          "neutralTint": {
+            "requested": null,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setNeutralTint_",
+              "available": true,
+              "attempted": false,
+              "status": "preserved-default"
+            },
+            "getter": {
+              "selector": "neutralTint",
+              "before": {
+                "selector": "neutralTint",
+                "status": "read",
+                "value": 6.294262409210205
+              },
+              "after": {
+                "selector": "neutralTint",
+                "status": "read",
+                "value": 6.294262409210205
+              }
+            },
+            "effective": {
+              "status": "preserved-default",
+              "value": 6.294262409210205,
+              "semantics": "as-shot-preserved",
+              "processing_effect_verified": false
+            }
+          },
+          "extendedDynamicRangeAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setExtendedDynamicRangeAmount_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "extendedDynamicRangeAmount",
+              "before": {
+                "selector": "extendedDynamicRangeAmount",
+                "status": "read",
+                "value": 0.0
+              },
+              "after": {
+                "selector": "extendedDynamicRangeAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "disable-Apple-display-EDR-transform",
+              "processing_effect_verified": false
+            }
+          },
+          "luminanceNoiseReductionAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": "isLuminanceNoiseReductionSupported",
+              "status": "read",
+              "value": true
+            },
+            "applicability": "supported-by-instance",
+            "setter": {
+              "selector": "setLuminanceNoiseReductionAmount_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "luminanceNoiseReductionAmount",
+              "before": {
+                "selector": "luminanceNoiseReductionAmount",
+                "status": "read",
+                "value": 0.1914278119802475
+              },
+              "after": {
+                "selector": "luminanceNoiseReductionAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "minimum-exposed-luma-NR-parameter-not-internal-NR-off",
+              "processing_effect_verified": false
+            }
+          },
+          "colorNoiseReductionAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": "isColorNoiseReductionSupported",
+              "status": "read",
+              "value": false
+            },
+            "applicability": "documented-inert-raw9",
+            "setter": {
+              "selector": "setColorNoiseReductionAmount_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "colorNoiseReductionAmount",
+              "before": {
+                "selector": "colorNoiseReductionAmount",
+                "status": "read",
+                "value": 0.0
+              },
+              "after": {
+                "selector": "colorNoiseReductionAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "not-applicable",
+              "value": 0.0,
+              "semantics": "legacy-parameter-zero-not-joint-demosaic-denoise-off",
+              "processing_effect_verified": false
+            }
+          },
+          "detailAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": "isDetailSupported",
+              "status": "read",
+              "value": false
+            },
+            "applicability": "documented-inert-raw9",
+            "setter": {
+              "selector": "setDetailAmount_",
+              "available": true,
+              "attempted": false,
+              "status": "skipped-unsupported"
+            },
+            "getter": {
+              "selector": "detailAmount",
+              "before": {
+                "selector": "detailAmount",
+                "status": "read",
+                "value": 0.0
+              },
+              "after": {
+                "selector": "detailAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "not-applicable",
+              "value": 0.0,
+              "semantics": "unsupported-in-RAW9",
+              "processing_effect_verified": false
+            }
+          },
+          "contrastAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": "isContrastSupported",
+              "status": "read",
+              "value": true
+            },
+            "applicability": "supported-by-instance",
+            "setter": {
+              "selector": "setContrastAmount_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "contrastAmount",
+              "before": {
+                "selector": "contrastAmount",
+                "status": "read",
+                "value": 0.0
+              },
+              "after": {
+                "selector": "contrastAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "disable-additional-contrast-parameter",
+              "processing_effect_verified": false
+            }
+          },
+          "sharpnessAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": "isSharpnessSupported",
+              "status": "read",
+              "value": true
+            },
+            "applicability": "supported-by-instance",
+            "setter": {
+              "selector": "setSharpnessAmount_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "sharpnessAmount",
+              "before": {
+                "selector": "sharpnessAmount",
+                "status": "read",
+                "value": 0.8895699381828308
+              },
+              "after": {
+                "selector": "sharpnessAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.0,
+              "semantics": "additional-sharpening-parameter-zero",
+              "processing_effect_verified": false
+            }
+          },
+          "moireReductionAmount": {
+            "requested": null,
+            "support": {
+              "selector": "isMoireReductionSupported",
+              "status": "read",
+              "value": false
+            },
+            "applicability": "documented-inert-raw9",
+            "setter": {
+              "selector": null,
+              "available": false,
+              "attempted": false,
+              "status": "preserved-default"
+            },
+            "getter": {
+              "selector": "moireReductionAmount",
+              "before": {
+                "selector": "moireReductionAmount",
+                "status": "read",
+                "value": 0.0
+              },
+              "after": {
+                "selector": "moireReductionAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "not-applicable",
+              "value": 0.0,
+              "semantics": "unsupported-in-RAW9-default-preserved",
+              "processing_effect_verified": false
+            }
+          },
+          "localToneMapAmount": {
+            "requested": 0.0,
+            "support": {
+              "selector": "isLocalToneMapSupported",
+              "status": "read",
+              "value": false
+            },
+            "applicability": "unsupported-by-instance",
+            "setter": {
+              "selector": "setLocalToneMapAmount_",
+              "available": true,
+              "attempted": false,
+              "status": "skipped-unsupported"
+            },
+            "getter": {
+              "selector": "localToneMapAmount",
+              "before": {
+                "selector": "localToneMapAmount",
+                "status": "read",
+                "value": 0.0
+              },
+              "after": {
+                "selector": "localToneMapAmount",
+                "status": "read",
+                "value": 0.0
+              }
+            },
+            "effective": {
+              "status": "not-applicable",
+              "value": 0.0,
+              "semantics": "disable-local-display-tone-map",
+              "processing_effect_verified": false
+            }
+          },
+          "gamutMappingEnabled": {
+            "requested": false,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setGamutMappingEnabled_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "isGamutMappingEnabled",
+              "before": {
+                "selector": "isGamutMappingEnabled",
+                "status": "read",
+                "value": true
+              },
+              "after": {
+                "selector": "isGamutMappingEnabled",
+                "status": "read",
+                "value": false
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": false,
+              "semantics": "disable-output-gamut-map",
+              "processing_effect_verified": false
+            }
+          },
+          "highlightRecoveryEnabled": {
+            "requested": true,
+            "support": {
+              "selector": "isHighlightRecoverySupported",
+              "status": "read",
+              "value": true
+            },
+            "applicability": "supported-by-instance",
+            "setter": {
+              "selector": "setHighlightRecoveryEnabled_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "isHighlightRecoveryEnabled",
+              "before": {
+                "selector": "isHighlightRecoveryEnabled",
+                "status": "read",
+                "value": true
+              },
+              "after": {
+                "selector": "isHighlightRecoveryEnabled",
+                "status": "read",
+                "value": true
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": true,
+              "semantics": "request-Apple-highlight-reconstruction",
+              "processing_effect_verified": false
+            }
+          },
+          "lensCorrectionEnabled": {
+            "requested": true,
+            "support": {
+              "selector": "isLensCorrectionSupported",
+              "status": "read",
+              "value": true
+            },
+            "applicability": "supported-by-instance",
+            "setter": {
+              "selector": "setLensCorrectionEnabled_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "isLensCorrectionEnabled",
+              "before": {
+                "selector": "isLensCorrectionEnabled",
+                "status": "read",
+                "value": true
+              },
+              "after": {
+                "selector": "isLensCorrectionEnabled",
+                "status": "read",
+                "value": true
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": true,
+              "semantics": "request-Apple-lens-interpretation-not-opcode-proof",
+              "processing_effect_verified": false
+            }
+          },
+          "scaleFactor": {
+            "requested": 0.21333333333333335,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": "setScaleFactor_",
+              "available": true,
+              "attempted": true,
+              "status": "applied"
+            },
+            "getter": {
+              "selector": "scaleFactor",
+              "before": {
+                "selector": "scaleFactor",
+                "status": "read",
+                "value": 1.0
+              },
+              "after": {
+                "selector": "scaleFactor",
+                "status": "read",
+                "value": 0.2133333384990692
+              }
+            },
+            "effective": {
+              "status": "parameter-confirmed",
+              "value": 0.2133333384990692,
+              "semantics": "native-decode-scale",
+              "processing_effect_verified": false
+            }
+          },
+          "draftModeEnabled": {
+            "requested": null,
+            "support": {
+              "selector": null,
+              "status": "no-predicate",
+              "value": null
+            },
+            "applicability": "not-declared",
+            "setter": {
+              "selector": null,
+              "available": false,
+              "attempted": false,
+              "status": "preserved-default"
+            },
+            "getter": {
+              "selector": "isDraftModeEnabled",
+              "before": {
+                "selector": "isDraftModeEnabled",
+                "status": "read",
+                "value": false
+              },
+              "after": {
+                "selector": "isDraftModeEnabled",
+                "status": "read",
+                "value": false
+              }
+            },
+            "effective": {
+              "status": "preserved-default",
+              "value": false,
+              "semantics": "decoder-draft-default-preserved",
+              "processing_effect_verified": false
+            }
+          }
+        },
+        "linear_access": {
+          "status": "parameter-state-verified",
+          "required_controls": [
+            "decoderVersion",
+            "baselineExposure",
+            "boostAmount",
+            "shadowBias",
+            "exposure",
+            "localToneMapAmount",
+            "gamutMappingEnabled",
+            "extendedDynamicRangeAmount",
+            "scaleFactor"
+          ],
+          "unverified_controls": [],
+          "scope": "API-parameter-state-only-not-empirical-linearity-or-noise-qualification"
+        },
+        "white_balance_implementation": "native-as-shot-preserved",
+        "project_hot_wb_implementation": "rec2020-conjugate-camera-matrix-approx-v1",
+        "integrated_demosaic_denoise": "RAW9-joint-model-not-disabled",
+        "geometry": {
+          "native_extent": {
+            "status": "read",
+            "xywh": [
+              0.0,
+              0.0,
+              1280.0,
+              854.0
+            ]
+          },
+          "rendered_shape": [
+            854,
+            1280
+          ],
+          "output_shape": [
+            854,
+            1280
+          ],
+          "interactive": true,
+          "scale_factor": 0.2133333384990692
+        },
+        "output": {
+          "dtype": "float16",
+          "render_format": "RGBAh",
+          "color_space": "extendedLinearITUR_2020",
+          "signed_extended_range": true,
+          "fixed_multiplier": 1.0,
+          "post_resize": {
+            "kernel": "none",
+            "target_shape": null
+          }
+        },
+        "context": {
+          "cache_intermediates": true,
+          "memory_limit_mb": null,
+          "memory_hint_rejected_then_retried": false,
+          "scope": "CIContext-options-not-proof-of-execution-device"
+        },
+        "camera_interpretation": {
+          "highlight_recovery": true,
+          "lens_correction": true,
+          "scope": "API-state-not-per-opcode-execution-or-sensor-mask-correspondence-proof"
+        },
+        "baseline_exposure": {
+          "authored": 1.0,
+          "applied": 0.0,
+          "cleared": true
+        }
+      }
+    }
+  },
+  "package": {
+    "status": "passed",
+    "recipe_schema": "coreimage-decode-recipe-1",
+    "cache_version": 33,
+    "window_asset_sha256": "d59154e793748dba38dd0c092c96156add41b646521f372836f31c31cdc994c8",
+    "qualified_window_profiles": 0,
+    "installed_package": true,
+    "filename": "dngscan-0.2.0-py3-none-any.whl",
+    "sha256": "19fe2bb5c2232c3e2a28b9ba8921db92dfadb84e57eb49ada062a60a31d2a0eb",
+    "kind": "pure-NumPy-wheel; native wheel not rebuilt in this check"
+  },
+  "actual_preview_export_analysis_reuse": {
+    "scope": "Actual full-resolution Apple auto preview analysis, proxy snapshot, pinned actual-token export reload, envelope/disk Analysis reuse. No output encoding or image-quality claim.",
+    "results": [
+      {
+        "file": "DSC00225.ARW",
+        "source_sha256": "752749232a3d9baa84fec24b4663557ec743a495fbe5d65b8600ed72d7bfa6d2",
+        "actual_token": "8",
+        "configuration_id": "a08248011d094d9f7c61d73f79c562988bc230471b836b18d1083c0653a0e140",
+        "window_status": "unmeasured",
+        "auto_preview_to_fixed_export": "passed",
+        "full_analysis_envelope_reuse": "passed",
+        "full_analysis_disk_reuse": "passed",
+        "private_temporary_cache_removed": true,
+        "seconds": 12.25246316601988
+      },
+      {
+        "file": "agxraw-coreimage-nikon-d750.NEF",
+        "source_sha256": "baae8dfc05a81a4a4034831a49ed99d129e797858ad876d31173a46d33b7d3ea",
+        "actual_token": "9",
+        "configuration_id": "decdbdb45a0613e8737dec8943fa2c186a4128936e0489e1154e02e6f3019ba9",
+        "window_status": "unmeasured",
+        "auto_preview_to_fixed_export": "passed",
+        "full_analysis_envelope_reuse": "passed",
+        "full_analysis_disk_reuse": "passed",
+        "private_temporary_cache_removed": true,
+        "seconds": 9.876653417013586
+      }
+    ],
+    "private_log_sha256": "5337c186dcb01fc2af155cdec16b0fd06177a0dfb9da2b35cec00a5c3b4fbdbb"
+  },
+  "acceptance_tool_sha256": {
+    "tools/validate_coreimage_raw.py": "4b2b1085ae3ccbef93322165f70b87cb10e772fa57b9e075e8328a1cdeccf7df",
+    "tools/calibrate_raw9_anchors.py": "ba5253da6e1543af65e5593673686ebfd534874cac166493f22ef20b80d309f5",
+    "tools/validate_native_raw.py": "91e04043b3de02912815635d9dcac60879338890512650c7b35b72f76bf2e367"
+  },
+  "new_regression_source_sha256": {
+    "tests/test_coreimage_recipe.py": "733aa951d6b86de8a2a566a117b352c4b7d470711b65968b80502f660628d423",
+    "tests/test_coreimage_recipe_cache.py": "5cc4fb4f4128496c1f9599e86d480aeceebec4bd0dbb569233a56a32a5338186",
+    "tests/test_raw9_anchor_scope.py": "45949702aab2603d7c8c1265d4bd432a02496320e6b3cae69621f5a907b7c111",
+    "tests/test_validate_coreimage_raw.py": "008f9008e030cc4967e636e067fc7438894ce101223d306a29dfca50e0feeb67",
+    "tests/test_decoder_residual_research.py": "2d8edb22e761cb6a1b48effc3fd0090bf18c15b76572552733d7936723b9898c"
+  },
+  "not_qualified": [
+    "Nikon HE/HE* and additional Sony codecs/readout modes",
+    "Independent actual body dark/flat/PTC and low-SNR chroma texture heldout data",
+    "Qualified new RAW9 material-window profile; active profile list remains empty",
+    "Production fine chroma or adaptive RAW9 PSD propagation; post-Apple chroma NR remains skipped",
+    "Production predecoder signed black/DSNU injection or an equivalent Apple CFA correction",
+    "New full Apple HDR gain-map container matrix",
+    "Apple component migration sentinel across OS/build/hardware updates"
+  ],
+  "temporary_public_nikon_raw_removed_after_acceptance": true
+}
