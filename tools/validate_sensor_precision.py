@@ -71,7 +71,7 @@ def precision_error(reference, actual):
 
 
 def half_rounding_audit(reference, actual=None):
-    """IEEE conversion bound only; classify overflow separately from rounding."""
+    """Nearest-even conversion budget; other modes do not relax this budget."""
     value = np.asarray(reference)
     with np.errstate(over='ignore', invalid='ignore'):
         converted = value.astype(np.float16)
@@ -90,11 +90,103 @@ def half_rounding_audit(reference, actual=None):
         violations += int(np.count_nonzero(valid & (~np.isfinite(observed) | (np.abs(observed-ref)>bound))))
         overflow += int(np.count_nonzero(np.isfinite(ref)&~valid))
         differing += int(np.count_nonzero(valid & (observed != expected)))
-    return {'rounding_budget': PRECISION_BUDGET, 'checked_values': checked,
+    return {'rounding_budget': PRECISION_BUDGET, 'assumed_rounding_mode': 'nearest-even', 'checked_values': checked,
             'out_of_finite_half_range': overflow, 'bound_violations': violations,
             'differs_from_float_reference_cast_to_half': differing,
             'within_rounding_bound': violations == 0,
             'interpretation': 'bitmap format comparison can include renderer effects; pure cast is a numerical reference, not sensor truth'}
+
+
+def half_conversion_diagnostics(reference, actual, *, chunk_values=262144):
+    """Classify every stored half against conversion hypotheses, without fitting.
+
+    This supplements, and never changes, the nearest-even budget. Matching a
+    mode does not prove a renderer's internal algorithm or camera accuracy.
+    """
+    reference, actual = np.asarray(reference), np.asarray(actual)
+    if reference.dtype.kind != 'f' or actual.dtype != np.dtype(np.float16):
+        raise TypeError('half conversion diagnostics require a floating reference and stored float16')
+    if reference.shape != actual.shape:
+        raise ValueError('half conversion comparison shape differs')
+    if type(chunk_values) is not int or chunk_values <= 0:
+        raise ValueError('chunk_values must be a positive integer')
+    modes = ('nearest_even', 'toward_zero', 'toward_negative', 'toward_positive')
+    groups = {name: {'values': 0, 'exact_reference_half_values': 0,
+                    'exact_bit_match_counts': dict.fromkeys(modes, 0),
+                    'inexact_reference_match_counts': dict.fromkeys(modes, 0),
+                    'unmatched_any_rounding_mode': 0, 'nonfinite_actual': 0,
+                    'actual_subnormal_values': 0, 'actual_positive_zero': 0, 'actual_negative_zero': 0,
+                    'negative_error_count': 0, 'positive_error_count': 0,
+                    'ulp_error_over_half': 0, 'ulp_error_over_one': 0,
+                    'maximum_absolute_ulp_error': None, 'minimum_signed_ulp_error': None,
+                    'maximum_signed_ulp_error': None}
+              for name in ('finite_in_half_range', 'normal_reference', 'subnormal_reference',
+                           'zero_reference', 'positive_reference', 'negative_reference')}
+    special = dict.fromkeys(('reference_nan', 'reference_infinite', 'actual_nan', 'actual_infinite',
+                             'finite_reference_outside_half_range', 'in_range_reference_with_nonfinite_actual'), 0)
+    for start in range(0, reference.size, chunk_values):
+        ref = np.asarray(reference.flat[start:start+chunk_values], dtype=np.float64)
+        stored = np.asarray(actual.flat[start:start+chunk_values], dtype=np.float16)
+        observed = stored.astype(np.float64)
+        with np.errstate(over='ignore', invalid='ignore', under='ignore'):
+            nearest = ref.astype(np.float16)
+            n = nearest.astype(np.float64)
+            previous = np.nextafter(nearest, np.float16(-np.inf))
+            following = np.nextafter(nearest, np.float16(np.inf))
+            lower = np.where(n > ref, previous, nearest).astype(np.float16)
+            upper = np.where(n < ref, following, nearest).astype(np.float16)
+            candidates = (nearest, np.where(np.signbit(ref), upper, lower).astype(np.float16), lower, upper)
+            exact = np.isfinite(ref) & (ref == n)
+            spacing = np.where(exact, np.minimum(n-previous.astype(np.float64), following.astype(np.float64)-n),
+                               upper.astype(np.float64)-lower.astype(np.float64))
+            spacing = np.where(ref == 0, 2.**-24, spacing)
+        finite = np.isfinite(ref)
+        valid = finite & (np.abs(ref) <= 65504.)
+        masks = {'finite_in_half_range': valid,
+                 'normal_reference': valid & (np.abs(ref) >= 2.**-14),
+                 'subnormal_reference': valid & (np.abs(ref) > 0) & (np.abs(ref) < 2.**-14),
+                 'zero_reference': valid & (ref == 0),
+                 'positive_reference': valid & (ref > 0), 'negative_reference': valid & (ref < 0)}
+        for name, mask in (('reference_nan', np.isnan(ref)), ('reference_infinite', np.isinf(ref)),
+                           ('actual_nan', np.isnan(observed)), ('actual_infinite', np.isinf(observed)),
+                           ('finite_reference_outside_half_range', finite & ~valid),
+                           ('in_range_reference_with_nonfinite_actual', valid & ~np.isfinite(observed))):
+            special[name] += int(mask.sum())
+        matches = [stored.view(np.uint16) == value.view(np.uint16) for value in candidates]
+        any_match = np.logical_or.reduce(matches)
+        finite_pair = valid & np.isfinite(observed)
+        error = np.zeros(ref.shape, np.float64)
+        error[finite_pair] = observed[finite_pair]-ref[finite_pair]
+        ulp_error = np.zeros(ref.shape, np.float64)
+        ulp_error[finite_pair] = error[finite_pair]/spacing[finite_pair]
+        for name, mask in masks.items():
+            group = groups[name]; group['values'] += int(mask.sum())
+            group['exact_reference_half_values'] += int((mask & exact).sum())
+            for mode, matched in zip(modes, matches):
+                group['exact_bit_match_counts'][mode] += int((mask & matched).sum())
+                group['inexact_reference_match_counts'][mode] += int((mask & ~exact & matched).sum())
+            group['unmatched_any_rounding_mode'] += int((mask & ~any_match).sum())
+            group['nonfinite_actual'] += int((mask & ~np.isfinite(observed)).sum())
+            group['actual_subnormal_values'] += int((mask & (np.abs(observed) > 0) & (np.abs(observed) < 2.**-14)).sum())
+            group['actual_positive_zero'] += int((mask & (observed == 0) & ~np.signbit(stored)).sum())
+            group['actual_negative_zero'] += int((mask & (observed == 0) & np.signbit(stored)).sum())
+            usable = mask & finite_pair
+            group['negative_error_count'] += int((usable & (error < 0)).sum())
+            group['positive_error_count'] += int((usable & (error > 0)).sum())
+            group['ulp_error_over_half'] += int((usable & (np.abs(ulp_error) > .5)).sum())
+            group['ulp_error_over_one'] += int((usable & (np.abs(ulp_error) > 1.)).sum())
+            if usable.any():
+                for key, value, fn in (('maximum_absolute_ulp_error', float(np.abs(ulp_error[usable]).max()), max),
+                                       ('minimum_signed_ulp_error', float(ulp_error[usable].min()), min),
+                                       ('maximum_signed_ulp_error', float(ulp_error[usable].max()), max)):
+                    group[key] = value if group[key] is None else fn(group[key], value)
+    return {'schema': 'agxraw-half-conversion-diagnostics-1', 'shape': list(reference.shape),
+            'checked_values': int(reference.size), 'scope': 'all values; numerical hypotheses, not a relaxed acceptance gate',
+            'reference_dtype': str(reference.dtype), 'actual_dtype': str(actual.dtype),
+            'bit_matching': 'IEEE half bits including signed zero; only finite in-range references enter mode counts',
+            'ulp_convention': 'inexact: bracketing-half spacing; exact: smaller adjacent spacing; zero: 2^-24',
+            'subnormal_reference_semantics': '0 < abs(reference) < 2^-14, including values below minimum half subnormal',
+            'error_sign': 'actual minus reference', 'special': special, 'groups': groups}
 
 
 def production_boundary_experiments(size):
@@ -186,15 +278,32 @@ def coreimage_precision_experiment(path, version, *, full=False):
         data = bytearray(height*stride)
         start = time.perf_counter()
         ctx.render_toBitmap_rowBytes_bounds_format_colorSpace_(image,data,stride,bounds,fmt,color)
-        array = np.frombuffer(data,dtype=dtype).reshape(height,width,4)[...,:3].copy()
+        array = np.frombuffer(data,dtype=dtype).reshape(height,width,4).copy()
         return array,time.perf_counter()-start
-    floating,t_f = bitmap(np.float32,q.kCIFormatRGBAf)
-    half,t_h = bitmap(np.float16,q.kCIFormatRGBAh)
-    repeated,t_repeat = bitmap(np.float32,q.kCIFormatRGBAf)
-    repeatability = precision_error(floating,repeated)
-    del repeated
-    if not np.isfinite(floating).all() or not np.isfinite(half).all():
+    floating_rgba,t_f = bitmap(np.float32,q.kCIFormatRGBAf)
+    half_rgba,t_h = bitmap(np.float16,q.kCIFormatRGBAh)
+    repeated_rgba,t_repeat = bitmap(np.float32,q.kCIFormatRGBAf)
+    if not np.isfinite(floating_rgba).all() or not np.isfinite(half_rgba).all() or not np.isfinite(repeated_rgba).all():
         raise RuntimeError('precision render produced nonfinite values')
+    alpha_f, alpha_h = floating_rgba[...,3], half_rgba[...,3]
+    rgba_evidence = {'shape': list(floating_rgba.shape),
+        'float_repeat_bitwise_equal': bool(np.array_equal(floating_rgba.view(np.uint32),repeated_rgba.view(np.uint32))),
+        'alpha': {'float_minmax': [float(alpha_f.min()),float(alpha_f.max())],
+                  'half_minmax': [float(alpha_h.min()),float(alpha_h.max())],
+                  'float_not_one_count': int(np.count_nonzero(alpha_f != 1.)),
+                  'half_not_one_count': int(np.count_nonzero(alpha_h != 1.)),
+                  'float_repeat_bitwise_equal': bool(np.array_equal(alpha_f.view(np.uint32),repeated_rgba[...,3].view(np.uint32))),
+                  'precision': precision_error(alpha_f,alpha_h),
+                  'conversion_modes': half_conversion_diagnostics(alpha_f,alpha_h)},
+        'interpretation': 'complete RGBA readback evidence; alpha values alone do not establish premultiplication semantics'}
+    repeatability = precision_error(floating_rgba[...,:3],repeated_rgba[...,:3])
+    bitmap_precision = precision_error(floating_rgba[...,:3],half_rgba[...,:3])
+    del repeated_rgba
+    del alpha_f, alpha_h
+    floating = np.ascontiguousarray(floating_rgba[...,:3])
+    del floating_rgba
+    half = np.ascontiguousarray(half_rgba[...,:3])
+    del half_rgba
     boundaries = []
     # Legacy fixed compensation is conditional, unlike current per-file
     # aligned sceneScale (which changes the scalar, not the stored half pixels).
@@ -217,8 +326,10 @@ def coreimage_precision_experiment(path, version, *, full=False):
         native_extent_xywh=xywh,shape=list(floating.shape),controls=cfg['controls'],
         runtime=ci.decoder_runtime_id(),hardware=ci.decoder_hardware_id(),
         context=ci._CONTEXT_RECIPES.get(not full,{}),
-        same_image_float_repeatability=repeatability,bitmap_precision=precision_error(floating,half),
-        bitmap_rounding=half_rounding_audit(floating,half),later_half_boundaries=boundaries,
+        same_image_float_repeatability=repeatability,bitmap_precision=bitmap_precision,
+        bitmap_rounding=half_rounding_audit(floating,half),
+        bitmap_conversion_modes=half_conversion_diagnostics(floating,half),
+        rgba_readback=rgba_evidence,later_half_boundaries=boundaries,
         negative_fraction_float=float((floating<0).mean()),above_one_fraction_float=float((floating>1).mean()),
         seconds={'RGBAf':t_f,'RGBAh':t_h,'RGBAf_repeat':t_repeat},source_unchanged=True,
         interpretation='format difference is not independent sensor truth, decoder accuracy or a measured noise/texture loss; no automatic precision policy change')

@@ -58,6 +58,8 @@ GUI/报告分别展示 found、qualified、matched、valid、applicable 和像�
 
 真实 Sony RAW8 / Nikon RAW9 全尺寸实验中，float 重复读回逐位一致，但 RGBAh 对 RGBAf 超出纯最近舍入预算。结果保留为“格式路径并非仅最近 cast”，不放宽预算宣称通过，不据此直接推断可见画质问题，也不修改默认 half。后续同 kernel half cast 实验符合对应舍入预算。详细数值及源码身份见本轮机器记录。
 
+后续定位与交付另见 [half/float 读回研究](COREIMAGE_HALF_READBACK_2026-10-11.zh-CN.md) 和 [fp HDR 主图参考修复](FP_HDR_PRIMARY_REFERENCE_2026-10-11.zh-CN.md)：本机直接 half 读回符合向零舍入；fp HDR 负例来自最终 SDR 主图与增益图参考不一致。两项结论分别记录，默认 half 保持。
+
 生产边界仍未完全闭环：特定私有 codec 解包的独立 mosaic 参考、所有 stage-2 opcode 组合、LibRaw 内部整数边界、冻结形成计划的完整同算法参考、独立输出噪声标尺与真实留出纹理仍需补测。不能把此研究称为 v3 全面精度验收。
 
 ## V3-V02：实文件与交付范围
