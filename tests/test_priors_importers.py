@@ -16,6 +16,7 @@ import unittest
 from pathlib import Path
 
 from dngscan import priors
+from tests.test_measurement_domain import sample_domain_fixture
 
 REPO = Path(__file__).parents[1]
 
@@ -329,7 +330,8 @@ class TestReviewR9Contracts(unittest.TestCase):
         R6 II fails on quality; S1M2 without a known shutter fails on
         readout-mode ambiguity (mech rn unresolved vs elec 12.6 e- — a
         blind pick is worse than no prior); the same model with the
-        shutter known becomes usable; curated entries pass."""
+        shutter plus independent unpack domain known becomes usable;
+        curated entries retain their existing policy."""
         r6 = priors.find_priors("Canon", "Canon EOS R6 Mark II")
         usable, reason = priors.prior_usability(r6)
         self.assertFalse(usable)
@@ -337,8 +339,15 @@ class TestReviewR9Contracts(unittest.TestCase):
         s1_blind = priors.find_priors("Panasonic", "DC-S1M2")
         self.assertEqual(s1_blind["mode_match"], "model-only-ambiguous-shutter")
         self.assertFalse(priors.prior_usability(s1_blind)[0])
-        s1_known = priors.find_priors("Panasonic", "DC-S1M2", shutter="electronic")
+        s1_shutter_only = priors.find_priors("Panasonic", "DC-S1M2", shutter="electronic")
+        self.assertEqual(priors.prior_usability(s1_shutter_only),
+                         (False, "file-sample-domain-unavailable"))
+        domain = sample_domain_fixture()
+        domain["coding_spans_dn"] = [15871.]
+        s1_known = priors.find_priors("Panasonic", "DC-S1M2", shutter="electronic",
+            readout={"shutter": "electronic", "sample_domain": domain})
         self.assertEqual(s1_known["mode_match"], "exact-shutter")
+        self.assertEqual(s1_known["measurement_domain_match"]["status"], "matched")
         self.assertTrue(priors.prior_usability(s1_known)[0])
         fp = priors.find_priors("SIGMA", "SIGMA FP")
         self.assertTrue(priors.prior_usability(fp)[0])

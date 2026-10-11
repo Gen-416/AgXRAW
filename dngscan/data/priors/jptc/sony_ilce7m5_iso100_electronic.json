@@ -17,7 +17,10 @@
   "geometry": [
    "7008",
    "4672"
-  ]
+  ],
+  "numeric_contract_recovery": "hash-matched original CSV headers; historical fit retained without refitting",
+  "upstream_url": "https://raw.githubusercontent.com/y-g-jiang/y-g-jiang.github.io/504e119bcfb9ff2b58fc9e47c204ddb77eee5879/data/sony-a7m5-iso100-electronic.csv",
+  "upstream_commit": "504e119bcfb9ff2b58fc9e47c204ddb77eee5879"
  },
  "gain_e_per_dn": 4.641476693403479,
  "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
@@ -48,5 +51,16 @@
  "fit_points": 32,
  "fit_points_excluded": 4,
  "sat_plateau_dn": 15870.682510375977,
- "quality": "ok"
+ "quality": "ok",
+ "single_point_measurement": {
+  "schema": "dngscan-jptc-single-measurement-1",
+  "format": null,
+  "input_sha256": "6aa7df5101cf5d466959a01e9b2d7892a8c50b871453fec55f94eea2645ca5c2",
+  "declared": {}
+ },
+ "acquisition_contract": {
+  "dn_domain": "libraw-unpacked-dn",
+  "variance_domain": "libraw-unpacked-dn2",
+  "decoder_identity": "LibRaw"
+ }
 }

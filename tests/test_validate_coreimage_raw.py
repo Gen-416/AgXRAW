@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -15,6 +16,32 @@ spec.loader.exec_module(tool)
 
 
 class CoreImageMatrixToolTests(unittest.TestCase):
+    def test_delivery_names_use_source_hash_and_each_actual_case(self):
+        case = {"id": "raw9/full/native"}
+        first = tool.delivery_paths(Path("same.dng"), case, Path("out"), source_hash="a"*64)
+        other = tool.delivery_paths(Path("same.dng"), case, Path("out"), source_hash="b"*64)
+        self.assertNotEqual(first["sdr"], other["sdr"])
+        self.assertNotEqual(first["sdr"], first["hdr"])
+        self.assertEqual(first["sdr"].name, "aaaaaaaaaaaa-raw9-full-native-sdr.heic")
+
+    def test_delivery_alias_of_any_input_is_rejected_before_worker(self):
+        from dngscan.protected_output import SourceOutputConflictError
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            raw = root/"source.dng"
+            raw.write_bytes(b"temporary synthetic source")
+            case = tool.build_cases(["raw9"], ["full"], ["native"])[0]
+            output = tool.delivery_paths(raw, case, root)["hdr"]
+            os.link(raw, output)
+            with patch.object(tool.sys, "platform", "darwin"), \
+                 patch.object(tool.subprocess, "run") as worker:
+                with self.assertRaises(SourceOutputConflictError):
+                    tool.main(["--files",str(raw),"--out",str(root/"report.json"),
+                        "--matrix","raw9","--sizes","full","--scales","native",
+                        "--deliver-to",str(root)])
+                worker.assert_not_called()
+            self.assertEqual(raw.read_bytes(), b"temporary synthetic source")
+
     def test_decoder_anchor_asset_is_part_of_processing_identity(self):
         with patch.object(tool, "implementation_identity", return_value={"code": "unchanged"}), \
              patch.object(tool, "digest", return_value="unchanged-tool"), \

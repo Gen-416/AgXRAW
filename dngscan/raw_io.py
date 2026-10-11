@@ -2123,6 +2123,12 @@ def load_raw(
         capture_readout = read_capture_readout(path)
     from .readout import with_capture_declaration
     capture_readout = with_capture_declaration(capture_readout, capture_declaration)
+    capture_facts = getattr(evidence, "capture_facts", None)
+    if capture_facts is None:
+        # Apple-only files still have file-authored capture facts; no physical
+        # measurement or calibration may fill in their missing conditions.
+        from .metadata import read_capture_facts
+        capture_facts = read_capture_facts(path)
 
     # Fixed-Kelvin WB is a scene recipe derived from evidence calibration. It is not
     # evidence itself, and therefore remains free to degrade per scene decoder.
@@ -2557,6 +2563,7 @@ def load_raw(
         shot_iso=shot.iso,
         shot_shutter=capture_readout.get("shutter"),
         capture_readout=capture_readout,
+        capture_facts=capture_facts,
         baseline_exposure=effective_baseline_exposure,
         baseline_exposure_baked_in=baseline_exposure_baked_in,
         applied_wb=[float(x) for x in camera_wb],

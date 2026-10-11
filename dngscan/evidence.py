@@ -59,6 +59,20 @@ def _immutable_sensor_copy(values: Any) -> Any:
 
 
 def acquire_raw_evidence(path: Path) -> RawEvidence:
+    """Acquire sensor pixels and capture facts in one source transaction."""
+    from .source_metadata import source_metadata_session
+    with source_metadata_session(path) as session:
+        session.assert_consistent(phase="evidence-start")
+        try:
+            result = _acquire_raw_evidence(path)
+        except Exception:
+            session.assert_consistent(phase="evidence-error")
+            raise
+        session.assert_consistent(phase="evidence-commit")
+        return result
+
+
+def _acquire_raw_evidence(path: Path) -> RawEvidence:
     """Acquire the one evidence source shared by every scene decoder.
 
     Deliberately no scene-decoder argument: selecting Apple RAW, LibRaw, or a future
@@ -71,6 +85,8 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
     model for working pixels and analysis, while these acquired codes stay immutable.
     """
     path = Path(path)
+    from .metadata import read_capture_facts
+    capture_facts = read_capture_facts(path)
     try:
         with rawpy.imread(str(path)) as raw:
             raw_image = np.asarray(raw.raw_image_visible)
@@ -163,6 +179,7 @@ def acquire_raw_evidence(path: Path) -> RawEvidence:
                 xyz_to_cam=xyz_to_cam,
                 shot_shutter=capture_readout.get("shutter"),
                 capture_readout=capture_readout,
+                capture_facts=capture_facts,
                 spatial_black=spatial_black,
                 sample_kind="linear-camera-rgb" if raw_image.ndim == 3 else "cfa",
                 provider_version=libraw_runtime_id(),

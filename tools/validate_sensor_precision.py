@@ -28,6 +28,312 @@ from dngscan.sensor_research import (
     quantized_gain_chain,
 )
 from dngscan.spatial_black import SpatialBlack, apply_to_working
+from dngscan.protected_output import ProtectedSources
+from dngscan.delivery_transaction import DeliveryTransaction
+
+
+PRECISION_BUDGET_VERSION = 'agxraw-production-boundaries-1'
+PRECISION_BUDGET = {
+    'integer_nearest_unclipped_max_codes': .5,
+    'integer_truncate_unclipped_max_codes': 1.,
+    'half_normal_relative_rounding_bound': 2.**-11,
+    'half_subnormal_absolute_rounding_bound': 2.**-25,
+    'warp_single_storage_bound_codes': 1. + 2.**-9,
+    'scope': 'same algorithm and domain; clipping, decoder changes and resampling policy are separate',
+}
+
+
+def precision_error(reference, actual):
+    """Whole-array bias/RMS/max, bounded deterministic quantile sample; no fitting."""
+    reference, actual = np.asarray(reference), np.asarray(actual)
+    if reference.shape != actual.shape or not reference.size:
+        raise ValueError('precision comparison requires equal nonempty shapes')
+    count, total, squared, maximum, changed, invalid = 0, 0., 0., 0., 0, 0
+    a, b = reference.reshape(-1), actual.reshape(-1)
+    for start in range(0, a.size, 262144):
+        x, y = a[start:start+262144].astype(np.float64), b[start:start+262144].astype(np.float64)
+        finite = np.isfinite(x) & np.isfinite(y)
+        invalid += int((~finite).sum())
+        error = y[finite]-x[finite]
+        count += error.size
+        total += float(error.sum()); squared += float(error @ error)
+        maximum = max(maximum, float(np.abs(error).max(initial=0.)))
+        changed += int(np.count_nonzero(error))
+    step = max(1, (a.size+65535)//65536)
+    sample = np.abs(b[::step].astype(np.float64)-a[::step].astype(np.float64))
+    sample = sample[np.isfinite(sample)]
+    return {'shape': list(reference.shape), 'reference_dtype': str(reference.dtype),
+            'actual_dtype': str(actual.dtype), 'finite_pairs': count, 'nonfinite_pairs': invalid,
+            'bias': total/count if count else None, 'rms': (squared/count)**.5 if count else None,
+            'maximum_absolute_error': maximum if count else None, 'changed_fraction': changed/count if count else None,
+            'sample_absolute_quantiles_p50_p95_p99_p999': np.quantile(sample,[.5,.95,.99,.999]).tolist() if sample.size else [],
+            'quantile_scope': 'deterministic at-most-65536 sample; other metrics use every pair'}
+
+
+def half_rounding_audit(reference, actual=None):
+    """Nearest-even conversion budget; other modes do not relax this budget."""
+    value = np.asarray(reference)
+    with np.errstate(over='ignore', invalid='ignore'):
+        converted = value.astype(np.float16)
+    actual = converted if actual is None else np.asarray(actual)
+    if value.shape != actual.shape:
+        raise ValueError('half rounding comparison shape differs')
+    checked, violations, overflow, differing = 0, 0, 0, 0
+    x, y, rounded = value.reshape(-1), actual.reshape(-1), converted.reshape(-1)
+    for start in range(0, x.size, 262144):
+        ref = x[start:start+262144].astype(np.float64)
+        observed = y[start:start+262144].astype(np.float64)
+        expected = rounded[start:start+262144].astype(np.float64)
+        valid = np.isfinite(ref) & (np.abs(ref)<=65504.)
+        bound = np.abs(ref)*2.**-11 + 2.**-25
+        checked += int(valid.sum())
+        violations += int(np.count_nonzero(valid & (~np.isfinite(observed) | (np.abs(observed-ref)>bound))))
+        overflow += int(np.count_nonzero(np.isfinite(ref)&~valid))
+        differing += int(np.count_nonzero(valid & (observed != expected)))
+    return {'rounding_budget': PRECISION_BUDGET, 'assumed_rounding_mode': 'nearest-even', 'checked_values': checked,
+            'out_of_finite_half_range': overflow, 'bound_violations': violations,
+            'differs_from_float_reference_cast_to_half': differing,
+            'within_rounding_bound': violations == 0,
+            'interpretation': 'bitmap format comparison can include renderer effects; pure cast is a numerical reference, not sensor truth'}
+
+
+def half_conversion_diagnostics(reference, actual, *, chunk_values=262144):
+    """Classify every stored half against conversion hypotheses, without fitting.
+
+    This supplements, and never changes, the nearest-even budget. Matching a
+    mode does not prove a renderer's internal algorithm or camera accuracy.
+    """
+    reference, actual = np.asarray(reference), np.asarray(actual)
+    if reference.dtype.kind != 'f' or actual.dtype != np.dtype(np.float16):
+        raise TypeError('half conversion diagnostics require a floating reference and stored float16')
+    if reference.shape != actual.shape:
+        raise ValueError('half conversion comparison shape differs')
+    if type(chunk_values) is not int or chunk_values <= 0:
+        raise ValueError('chunk_values must be a positive integer')
+    modes = ('nearest_even', 'toward_zero', 'toward_negative', 'toward_positive')
+    groups = {name: {'values': 0, 'exact_reference_half_values': 0,
+                    'exact_bit_match_counts': dict.fromkeys(modes, 0),
+                    'inexact_reference_match_counts': dict.fromkeys(modes, 0),
+                    'unmatched_any_rounding_mode': 0, 'nonfinite_actual': 0,
+                    'actual_subnormal_values': 0, 'actual_positive_zero': 0, 'actual_negative_zero': 0,
+                    'negative_error_count': 0, 'positive_error_count': 0,
+                    'ulp_error_over_half': 0, 'ulp_error_over_one': 0,
+                    'maximum_absolute_ulp_error': None, 'minimum_signed_ulp_error': None,
+                    'maximum_signed_ulp_error': None}
+              for name in ('finite_in_half_range', 'normal_reference', 'subnormal_reference',
+                           'zero_reference', 'positive_reference', 'negative_reference')}
+    special = dict.fromkeys(('reference_nan', 'reference_infinite', 'actual_nan', 'actual_infinite',
+                             'finite_reference_outside_half_range', 'in_range_reference_with_nonfinite_actual'), 0)
+    for start in range(0, reference.size, chunk_values):
+        ref = np.asarray(reference.flat[start:start+chunk_values], dtype=np.float64)
+        stored = np.asarray(actual.flat[start:start+chunk_values], dtype=np.float16)
+        observed = stored.astype(np.float64)
+        with np.errstate(over='ignore', invalid='ignore', under='ignore'):
+            nearest = ref.astype(np.float16)
+            n = nearest.astype(np.float64)
+            previous = np.nextafter(nearest, np.float16(-np.inf))
+            following = np.nextafter(nearest, np.float16(np.inf))
+            lower = np.where(n > ref, previous, nearest).astype(np.float16)
+            upper = np.where(n < ref, following, nearest).astype(np.float16)
+            candidates = (nearest, np.where(np.signbit(ref), upper, lower).astype(np.float16), lower, upper)
+            exact = np.isfinite(ref) & (ref == n)
+            spacing = np.where(exact, np.minimum(n-previous.astype(np.float64), following.astype(np.float64)-n),
+                               upper.astype(np.float64)-lower.astype(np.float64))
+            spacing = np.where(ref == 0, 2.**-24, spacing)
+        finite = np.isfinite(ref)
+        valid = finite & (np.abs(ref) <= 65504.)
+        masks = {'finite_in_half_range': valid,
+                 'normal_reference': valid & (np.abs(ref) >= 2.**-14),
+                 'subnormal_reference': valid & (np.abs(ref) > 0) & (np.abs(ref) < 2.**-14),
+                 'zero_reference': valid & (ref == 0),
+                 'positive_reference': valid & (ref > 0), 'negative_reference': valid & (ref < 0)}
+        for name, mask in (('reference_nan', np.isnan(ref)), ('reference_infinite', np.isinf(ref)),
+                           ('actual_nan', np.isnan(observed)), ('actual_infinite', np.isinf(observed)),
+                           ('finite_reference_outside_half_range', finite & ~valid),
+                           ('in_range_reference_with_nonfinite_actual', valid & ~np.isfinite(observed))):
+            special[name] += int(mask.sum())
+        matches = [stored.view(np.uint16) == value.view(np.uint16) for value in candidates]
+        any_match = np.logical_or.reduce(matches)
+        finite_pair = valid & np.isfinite(observed)
+        error = np.zeros(ref.shape, np.float64)
+        error[finite_pair] = observed[finite_pair]-ref[finite_pair]
+        ulp_error = np.zeros(ref.shape, np.float64)
+        ulp_error[finite_pair] = error[finite_pair]/spacing[finite_pair]
+        for name, mask in masks.items():
+            group = groups[name]; group['values'] += int(mask.sum())
+            group['exact_reference_half_values'] += int((mask & exact).sum())
+            for mode, matched in zip(modes, matches):
+                group['exact_bit_match_counts'][mode] += int((mask & matched).sum())
+                group['inexact_reference_match_counts'][mode] += int((mask & ~exact & matched).sum())
+            group['unmatched_any_rounding_mode'] += int((mask & ~any_match).sum())
+            group['nonfinite_actual'] += int((mask & ~np.isfinite(observed)).sum())
+            group['actual_subnormal_values'] += int((mask & (np.abs(observed) > 0) & (np.abs(observed) < 2.**-14)).sum())
+            group['actual_positive_zero'] += int((mask & (observed == 0) & ~np.signbit(stored)).sum())
+            group['actual_negative_zero'] += int((mask & (observed == 0) & np.signbit(stored)).sum())
+            usable = mask & finite_pair
+            group['negative_error_count'] += int((usable & (error < 0)).sum())
+            group['positive_error_count'] += int((usable & (error > 0)).sum())
+            group['ulp_error_over_half'] += int((usable & (np.abs(ulp_error) > .5)).sum())
+            group['ulp_error_over_one'] += int((usable & (np.abs(ulp_error) > 1.)).sum())
+            if usable.any():
+                for key, value, fn in (('maximum_absolute_ulp_error', float(np.abs(ulp_error[usable]).max()), max),
+                                       ('minimum_signed_ulp_error', float(ulp_error[usable].min()), min),
+                                       ('maximum_signed_ulp_error', float(ulp_error[usable].max()), max)):
+                    group[key] = value if group[key] is None else fn(group[key], value)
+    return {'schema': 'agxraw-half-conversion-diagnostics-1', 'shape': list(reference.shape),
+            'checked_values': int(reference.size), 'scope': 'all values; numerical hypotheses, not a relaxed acceptance gate',
+            'reference_dtype': str(reference.dtype), 'actual_dtype': str(actual.dtype),
+            'bit_matching': 'IEEE half bits including signed zero; only finite in-range references enter mode counts',
+            'ulp_convention': 'inexact: bracketing-half spacing; exact: smaller adjacent spacing; zero: 2^-24',
+            'subnormal_reference_semantics': '0 < abs(reference) < 2^-14, including values below minimum half subnormal',
+            'error_sign': 'actual minus reference', 'special': special, 'groups': groups}
+
+
+def production_boundary_experiments(size):
+    """Same spatial-black formula and same warp; never switch demosaicer."""
+    from dngscan.dng_opcodes import Warp, warp_image
+    n = min(size, 256)
+    rng = np.random.default_rng(20261011)
+    pattern = np.array([[512.25, 513.5], [514.75, 515.125]], dtype=np.float64)[..., None]
+    horizontal, vertical = np.linspace(-.2,.2,n), np.linspace(-.1,.1,n)
+    model = SpatialBlack(horizontal, vertical, pattern, (0,0), (float(pattern.max()+.3),))
+    field = model.band(0,n,n)
+    raw = np.rint(field+rng.normal(0,4,(n,n))+np.linspace(0,4095,n)[None,:]).astype(np.uint16)
+    signed = (raw.astype(np.float64)-field)*65535./(4095.-model.max_black[0])
+    clipped = np.clip(signed,0,65535.)
+    working = SimpleNamespace(raw_image_visible=raw.copy())
+    apply_to_working(working,model,[512.]*4,4095.)
+    actual = working.raw_image_visible
+    numerical = precision_error(clipped,actual)
+    numerical['budget_passed'] = numerical['maximum_absolute_error'] <= .5
+    y,x = np.indices((n,n))
+    rgb = np.stack((x/(n-1),y/(n-1),(x+y)/(2*n-2)),axis=-1)*65535.
+    rgb[:n//3] *= .0001
+    rgb[n//2:n//2+2] = 65535
+    rgb = np.rint(rgb).astype(np.uint16)
+    warp = Warp(((1.,.017,-.003,0.,.0004,-.0003),)*3,.5,.5)
+    floating = warp_image(rgb.astype(np.float32),warp)
+    integer = warp_image(rgb,warp)
+    warp_numerical = precision_error(np.clip(floating,0,65535.),integer)
+    warp_numerical['budget_passed'] = warp_numerical['maximum_absolute_error'] <= PRECISION_BUDGET['warp_single_storage_bound_codes']
+    twice_float, twice_int = warp_image(floating,warp), warp_image(integer,warp)
+    return {'schema': PRECISION_BUDGET_VERSION, 'predeclared_budgets': PRECISION_BUDGET,
+            'spatial_black': {'formula': '(raw - exact spatial black) * 65535 / (white - max black)',
+                'same_formula_float64_to_uint16': numerical,
+                'clipping_policy_error_separate': precision_error(signed,clipped),
+                'lower_clipped_fraction': float((signed<0).mean()), 'upper_clipped_fraction': float((signed>65535).mean()),
+                'signed_negative_fraction': float((signed<0).mean()), 'stored_negative_fraction': 0.,
+                'domain': 'normalized uint16 working codes; not original sensor DN'},
+            'late_warp': {'same_kernel_single_storage': warp_numerical,
+                'two_pass_cumulative': precision_error(np.clip(twice_float,0,65535.),twice_int),
+                'domain': 'camera RGB working codes', 'algorithm': 'same Warp coefficients and bicubic footprint',
+                'clipping_policy': 'float warp retains extended values; uint16 clamps/truncates; range policy separate',
+                'float_negative_fraction': float((floating<0).mean()), 'float_above_white_fraction': float((floating>65535).mean()),
+                'cumulative_interpretation': 'includes first clipping and storage propagated through second resampling; neither pure quantization nor a single-rounding bound'},
+            'half_cast': half_rounding_audit(np.r_[np.linspace(-2.,8.,131072),np.linspace(-2.**-14,2.**-14,8192)]),
+            'missing_boundaries': ['actual stage-2 opcode combinations and private codec unpack references',
+                'LibRaw internal integer stages cannot be isolated by changing demosaicer',
+                'real held-out weak-texture and calibrated output noise comparisons'],
+            'production_change': False}
+
+
+def coreimage_precision_experiment(path, version, *, full=False):
+    """Render the SAME CIImage/context/extent/colorspace twice; no auto fallback."""
+    from dngscan import coreimage_decode as ci
+    from PIL import Image
+    path = Path(path)
+    source = ci._recipe_source_identity(path)
+    if source.get('status') != 'hashed':
+        raise ValueError('precision experiment requires a readable, hashed RAW source')
+    report = {'source_sha256': source.get('sha256'), 'requested_version': version,
+              'scope': 'same configured CIImage, context, bounds and extended-linear Rec.2020; bitmap format only',
+              'size': 'full' if full else 'native-preview', 'production_change': False}
+    if not ci.available():
+        return {**report,'status':'unavailable','reason':'coreimage-runtime-unavailable'}
+    offered = ci.supported_versions(path)
+    report['offered_tokens'] = list(offered)
+    try:
+        token = ci.resolve_decoder_version(version,offered)
+    except Exception as exc:
+        return {**report,'status':'unavailable','reason':str(exc)}
+    filt = ci._open_filter(path)
+    scale = 1. if full else ci.preview_scale_factor(filt)
+    cfg = ci.configure_linear_filter(filt,version=token,scale_factor=scale)
+    if ci._scene_input_qualification(cfg)['status'] != 'qualified':
+        raise ci.SceneInputContractError(cfg)
+    image = filt.outputImage()
+    if image is None:
+        raise RuntimeError('CIRAWFilter has no output CIImage')
+    extent = image.extent()
+    xywh = [float(extent.origin.x),float(extent.origin.y),float(extent.size.width),float(extent.size.height)]
+    width,height = int(round(xywh[2])),int(round(xywh[3]))
+    if min(width,height)<1: raise RuntimeError('empty precision experiment extent')
+    q = ci._require_quartz()
+    ctx = ci._render_context(q,interactive=not full)
+    color = q.CGColorSpaceCreateWithName(q.kCGColorSpaceExtendedLinearITUR_2020)
+    if color is None: raise RuntimeError('extended-linear Rec.2020 unavailable')
+    bounds = q.CGRectMake(xywh[0],xywh[1],width,height)
+    def bitmap(dtype,fmt):
+        stride = width*4*np.dtype(dtype).itemsize
+        data = bytearray(height*stride)
+        start = time.perf_counter()
+        ctx.render_toBitmap_rowBytes_bounds_format_colorSpace_(image,data,stride,bounds,fmt,color)
+        array = np.frombuffer(data,dtype=dtype).reshape(height,width,4).copy()
+        return array,time.perf_counter()-start
+    floating_rgba,t_f = bitmap(np.float32,q.kCIFormatRGBAf)
+    half_rgba,t_h = bitmap(np.float16,q.kCIFormatRGBAh)
+    repeated_rgba,t_repeat = bitmap(np.float32,q.kCIFormatRGBAf)
+    if not np.isfinite(floating_rgba).all() or not np.isfinite(half_rgba).all() or not np.isfinite(repeated_rgba).all():
+        raise RuntimeError('precision render produced nonfinite values')
+    alpha_f, alpha_h = floating_rgba[...,3], half_rgba[...,3]
+    rgba_evidence = {'shape': list(floating_rgba.shape),
+        'float_repeat_bitwise_equal': bool(np.array_equal(floating_rgba.view(np.uint32),repeated_rgba.view(np.uint32))),
+        'alpha': {'float_minmax': [float(alpha_f.min()),float(alpha_f.max())],
+                  'half_minmax': [float(alpha_h.min()),float(alpha_h.max())],
+                  'float_not_one_count': int(np.count_nonzero(alpha_f != 1.)),
+                  'half_not_one_count': int(np.count_nonzero(alpha_h != 1.)),
+                  'float_repeat_bitwise_equal': bool(np.array_equal(alpha_f.view(np.uint32),repeated_rgba[...,3].view(np.uint32))),
+                  'precision': precision_error(alpha_f,alpha_h),
+                  'conversion_modes': half_conversion_diagnostics(alpha_f,alpha_h)},
+        'interpretation': 'complete RGBA readback evidence; alpha values alone do not establish premultiplication semantics'}
+    repeatability = precision_error(floating_rgba[...,:3],repeated_rgba[...,:3])
+    bitmap_precision = precision_error(floating_rgba[...,:3],half_rgba[...,:3])
+    del repeated_rgba
+    del alpha_f, alpha_h
+    floating = np.ascontiguousarray(floating_rgba[...,:3])
+    del floating_rgba
+    half = np.ascontiguousarray(half_rgba[...,:3])
+    del half_rgba
+    boundaries = []
+    # Legacy fixed compensation is conditional, unlike current per-file
+    # aligned sceneScale (which changes the scalar, not the stored half pixels).
+    legacy = float(ci.COREIMAGE_SCALE_COMPENSATION)
+    for label,gain in (('unity',1.),('conditional-legacy-fixed-compensation',legacy)):
+        pre_cast = half.astype(np.float32)*np.float32(gain)
+        after = pre_cast.astype(np.float16)
+        target = (max(1,height//2),max(1,width//2))
+        reference = np.empty((*target,3),np.float32)
+        for channel in range(3):
+            plane = Image.fromarray(after[...,channel].astype(np.float32))
+            reference[...,channel] = np.asarray(plane.resize((target[1],target[0]),Image.Resampling.BILINEAR))
+        production = ci._resize_rgb(after,target)
+        boundaries.append({'case':label,'gain':gain,'gain_rounding':half_rounding_audit(pre_cast,after),
+            'resize_storage_rounding':half_rounding_audit(reference,production),
+            'resize_numerical':precision_error(reference,production),'same_resize_kernel':'PIL bilinear, identical source and target',
+            'target_shape':list(target),'not_a_claim_this_resize_or_legacy_gain_ran_in_default_full_export':True})
+    ci._assert_recipe_source_current(path,source,phase='precision-experiment-commit')
+    report.update(status='measured',actual_token=cfg['actual_decoder_token'],scale_factor=cfg['scale_factor'],
+        native_extent_xywh=xywh,shape=list(floating.shape),controls=cfg['controls'],
+        runtime=ci.decoder_runtime_id(),hardware=ci.decoder_hardware_id(),
+        context=ci._CONTEXT_RECIPES.get(not full,{}),
+        same_image_float_repeatability=repeatability,bitmap_precision=bitmap_precision,
+        bitmap_rounding=half_rounding_audit(floating,half),
+        bitmap_conversion_modes=half_conversion_diagnostics(floating,half),
+        rgba_readback=rgba_evidence,later_half_boundaries=boundaries,
+        negative_fraction_float=float((floating<0).mean()),above_one_fraction_float=float((floating>1).mean()),
+        seconds={'RGBAf':t_f,'RGBAh':t_h,'RGBAf_repeat':t_repeat},source_unchanged=True,
+        interpretation='format difference is not independent sensor truth, decoder accuracy or a measured noise/texture loss; no automatic precision policy change')
+    return report
 
 
 def statistics(values):
@@ -251,27 +557,48 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--size',type=int,default=512)
     parser.add_argument('--include-pipeline',action='store_true')
+    parser.add_argument('--production-boundaries',action='store_true',
+                        help='isolate same-formula spatial black, late warp and half storage')
+    parser.add_argument('--apple-raw',type=Path,action='append',default=[],
+                        help='repeat for private RAW inputs; fixed Apple token, no fallback')
+    parser.add_argument('--apple-version',choices=('9','8','7','6'),default='9')
+    parser.add_argument('--apple-full',action='store_true',help='full CIImage; default is native preview')
     args=parser.parse_args()
     if args.size < 32 or args.size % 2:
         parser.error('size must be even and at least 32')
-    result={'schema':'agxraw-sensor-precision-research-1',
+    protection = ProtectedSources(args.apple_raw).check(args.output)
+    result={'schema':'agxraw-sensor-precision-research-2',
             'commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
             'working_changes':subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).splitlines(),
             'research_source_sha256':{name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest()
                 for name in ('dngscan/sensor_research.py', 'tools/validate_sensor_precision.py',
-                             'dngscan/spatial_black.py', 'dngscan/raw_io.py')},
+                             'dngscan/spatial_black.py', 'dngscan/raw_io.py',
+                             'dngscan/coreimage_decode.py')},
             'platform':platform.platform(),'python':sys.version.split()[0],'numpy':np.__version__,
             'command':' '.join(sys.argv), 'evidence_class':'synthetic and real-decoder synthetic DNG; no real personal calibration',
             'C01_C02':black_experiments(args.size),'C07':fixed_pattern_experiment(args.size),
             'C08':chroma_experiments(args.size),'C09':quantization_experiments()}
     if args.include_pipeline:
         result['C02_decoder_outputs']=pipeline_experiments()
-    args.output.parent.mkdir(parents=True,exist_ok=True)
-    args.output.write_text(json.dumps(result,indent=2,allow_nan=False)+'\n',encoding='utf-8')
+    if args.production_boundaries:
+        result['production_boundaries']=production_boundary_experiments(args.size)
+    if args.apple_raw:
+        result['apple_bitmap_precision']=[]
+        for path in args.apple_raw:
+            try:
+                case=coreimage_precision_experiment(path,args.apple_version,full=args.apple_full)
+            except Exception as exc:
+                case={'status':'failed','reason':type(exc).__name__,'error':str(exc)}
+            result['apple_bitmap_precision'].append(case)
+    with DeliveryTransaction(args.output,protected_sources=protection) as transaction:
+        transaction.path.write_text(json.dumps(result,indent=2,allow_nan=False)+'\n',encoding='utf-8')
+        transaction.commit()
     print(json.dumps({'output':str(args.output),'near_black_cases':len(result['C01_C02']['matrix']),
                       'chroma_cases':len(result['C08']['matrix']),
-                      'pipeline_cases':len(result.get('C02_decoder_outputs',{}).get('matrix',[]))}))
+                      'pipeline_cases':len(result.get('C02_decoder_outputs',{}).get('matrix',[])),
+                      'apple_cases':[row['status'] for row in result.get('apple_bitmap_precision',[])]}))
+    return int(any(row['status']=='failed' for row in result.get('apple_bitmap_precision',[])))
 
 
 if __name__=='__main__':
-    main()
+    raise SystemExit(main())

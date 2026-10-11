@@ -239,6 +239,12 @@ def _contract(header):
                 from .measurement_domain import canonical_unit
                 value = (canonical_unit(value, variance=key == "variance_domain") or value).upper()
         result[key] = value
+    # PTC can use its own explicitly supplied four-slot pedestal. Otherwise
+    # read_anchors() consumes the paired dark's phase reference.
+    if header.get("Format") == "JPTC/2" and header.get("BlackLevel"):
+        levels = [float(v) for v in header["BlackLevel"].split(",")]
+        if len(levels) >= 4 and all(math.isfinite(v) for v in levels):
+            result["black_reference"] = "ptc-header"
     return result
 
 
@@ -258,7 +264,7 @@ def acquisition_qualification(measurements):
     valid_kinds = {"dark", "gain", "ptc", "spectrum_h", "spectrum_v"}
     allowed = {"camera", "body", "firmware", "shutter", "readout", "capture_kind", "compression",
                "raw_geometry", "cfa", "linearisation", "adc_step", "dn_maximum", "dn_domain",
-               "variance_domain", "decoder_identity"}
+               "variance_domain", "decoder_identity", "black_reference"}
     fields = set()
     for identity, record in measurements.items():
         if (not isinstance(identity, str) or re.fullmatch(r"[a-f0-9]{64}", identity) is None
@@ -309,28 +315,54 @@ def acquisition_qualification(measurements):
     from .measurement_domain import format_domains
     numeric_domains, domain_issues = format_domains(measurements)
     issues.extend(domain_issues)
+    by_kind = {kind: {i for i, r in measurements.items() if r["kind"] == kind}
+               for kind in valid_kinds}
+    dark, gain, ptc = by_kind["dark"], by_kind["gain"], by_kind["ptc"]
+    ptc_needs_dark = any(measurements[i]["declared"].get("black_reference") != "ptc-header" for i in ptc)
+    ptc_sources = ptc | (dark if ptc_needs_dark else set())
+    # These mirror read_anchors(), read_isogain(), read_dark(), and
+    # read_whiteness(): a product sees only the CSVs its arithmetic consumes.
     capability_files = {
-        "absolute_gain": {i for i, r in measurements.items() if r["kind"] in ("dark", "gain", "ptc")},
-        "read_noise": {i for i, r in measurements.items() if r["kind"] == "dark"},
-        "stored_dark_variance": {i for i, r in measurements.items() if r["kind"] == "dark"},
-        "spectrum_h": {i for i, r in measurements.items() if r["kind"] in ("dark", "spectrum_h")},
-        "spectrum_v": {i for i, r in measurements.items() if r["kind"] in ("dark", "spectrum_v")},
+        "ptc_gain": (ptc_sources, bool(ptc), {"dark"} if ptc_needs_dark else set()),
+        "relative_gain": (dark | gain, bool(gain), {"dark"}),
+        "absolute_gain": (ptc_sources | (dark | gain if gain else set()), bool(ptc),
+                          {"dark"} if ptc_needs_dark or gain else set()),
+        "read_noise_dn": (dark, bool(dark), set()),
+        # Electron RN can use an independently qualified PTC anchor at that
+        # ISO. A relative-gain ladder is an optional range extension.
+        "read_noise_e": (ptc_sources | dark, bool(ptc and dark), set()),
+        "stored_dark_variance": (dark, bool(dark), set()),
+        "spectrum_h": (dark | by_kind["spectrum_h"], bool(by_kind["spectrum_h"]), {"dark"}),
+        "spectrum_v": (dark | by_kind["spectrum_v"], bool(by_kind["spectrum_v"]), {"dark"}),
     }
     products = {}
-    for name, sources in capability_files.items():
-        needed_kind = {"absolute_gain": "ptc", "read_noise": "dark",
-                       "stored_dark_variance": "dark", "spectrum_h": "spectrum_h",
-                       "spectrum_v": "spectrum_v"}[name]
-        present = any(measurements[i]["kind"] == needed_kind for i in sources)
+    for name, (sources, present, needed) in capability_files.items():
+        local_fields = set().union(*(measurements[i]["declared"] for i in sources)) if sources else set()
+        local_required = physical | ({"body", "firmware", "readout", "capture_kind", "dn_domain",
+                                     "variance_domain", "decoder_identity"} & local_fields)
         missing = {field: sorted(i for i in sources if field not in measurements[i]["declared"])
-                   for field in sorted(required)} if present else {}
+                   for field in sorted(local_required)} if present else {}
         missing = {field: ids for field, ids in missing.items() if ids}
-        # Runtime currently consumes a profile-wide domain. Conservatively
-        # refuse the profile if any contributing table's domain is unproven;
-        # do not advertise independently qualified products as active there.
-        products[name] = {"status": "unmeasured" if not present else "unverified" if issues else "qualified",
+        reasons = ["measurement-" + field.replace("_", "-") + "-incomplete" for field in missing]
+        reasons += ["measurement-" + kind + "-dependency-unavailable" for kind in sorted(needed) if not by_kind[kind]]
+        if present:
+            selected = {i: measurements[i] for i in sources}
+            _, domain_errors = format_domains(selected)
+            reasons.extend(domain_errors)
+            for record in selected.values():
+                declared = record["declared"]
+                if declared.get("linearisation") not in (None, "IDENTITY"):
+                    reasons.append("measurement-linearisation-unsupported")
+                if declared.get("adc_step") == 0:
+                    reasons.append("measurement-adc-step-unresolved")
+                if declared.get("compression") not in (None, "LOSSLESS", "LOSSLESS COMPRESSION", "UNCOMPRESSED", "NONE", "无损压缩", "无压缩"):
+                    reasons.append("measurement-compression-unverified")
+        products[name] = {"status": "unmeasured" if not present else "unverified" if reasons else "qualified",
                           "source_ids": sorted(sources), "missing_fields": missing,
-                          "reasons": list(issues) if present else ["measurement-not-supplied"]}
+                          "reasons": sorted(set(reasons)) if present else ["measurement-not-supplied"],
+                          "dependency_policy": "actual fitting inputs; no cross-CSV condition inheritance"}
+    # Existing API uses read_noise for the independently measured DN product.
+    products["read_noise"] = dict(products["read_noise_dn"])
     return {"schema": ACQUISITION_SCHEMA, "measurements": measurements,
             "association_contract": associated, "common_contract": common,
             "field_coverage": coverage, "capability_qualification": products,
@@ -413,8 +445,8 @@ def _classify(entry):
 
 
 def _empty_capabilities():
-    return {"absolute_gain": False, "read_noise": False, "stored_dark_variance": False,
-            "spectrum_h": False, "spectrum_v": False, "spectrum_2d": False}
+    from .calibration_capabilities import PRODUCTS
+    return {**dict.fromkeys(PRODUCTS, False), "read_noise": False, "spectrum_2d": False}
 
 
 def _build_group(group, records, contents):
@@ -533,12 +565,18 @@ def _prepare(entries):
             cap = group["capabilities"]
             cap.update(absolute_gain=bool(prior.get("gain_log2iso_log2epd")),
                 read_noise=bool(prior.get("read_noise_dn_log2iso") or prior.get("read_noise_log2iso_log2e")),
+                ptc_gain=bool(prior.get("ptc_gain_log2iso_log2epd")),
+                relative_gain=bool((prior.get("gain_ladder_diagnostics") or {}).get("components")),
+                read_noise_dn=bool(prior.get("read_noise_dn_log2iso")),
+                read_noise_e=bool(prior.get("read_noise_log2iso_log2e")),
                 stored_dark_variance=bool(prior.get("stored_dark_variance_dn2_log2iso")))
             for axis in ("h", "v"):
                 cap["spectrum_"+axis] = bool(prior.get("noise_spectrum", {}).get("axes", {}).get(axis))
             for capability, item in qualification.items():
                 if item["status"] != "qualified":
                     cap[capability] = False
+            from .calibration_capabilities import stages
+            group["capability_states"] = stages(prior)
             group["diagnostics"].extend(acquisition.get("issues", []))
             group["status"] = "ready" if cap["absolute_gain"] and cap["read_noise"] else "partial"
             if not cap["absolute_gain"]:

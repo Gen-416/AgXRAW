@@ -242,12 +242,16 @@ def compose_capabilities(base, candidates, iso):
     reason to infer compatibility from same camera model or nominal bits.
     """
     from .calibration import curve_value, read_noise_issue, stored_dark_variance
+    from .calibration_capabilities import usable, capability_prior, qualification
+    from .priors import gain_e_per_dn, read_noise_e
     result = base
     sources = {"gain": base.get("source"), "read_noise": base.get("source")}
     required = {"libraw_raw_geometry", "storage_lossless"}
-    contract = base.get("readout_contract") or {}
+    gain_product = "absolute_gain" if usable(base, "absolute_gain") else "ptc_gain"
+    gain_view = capability_prior(base, gain_product)
+    contract = gain_view.get("readout_contract") or {}
     reference = base.get("reference_dn_range")
-    domain = base.get("acquisition_contract") or {}
+    domain = gain_view.get("acquisition_contract") or {}
     # File lists, coverage and fitting metadata are provenance, not the
     # physical DN domain. Actual CSV packages necessarily have different
     # source files; comparing their whole acquisition dictionaries prevented
@@ -265,36 +269,48 @@ def compose_capabilities(base, candidates, iso):
         return result
     def qualified(entry, capability):
         from .measurement_domain import declaration_issues
-        if declaration_issues(entry.get("acquisition_contract") or {}):
+        view = capability_prior(entry, capability)
+        if declaration_issues(view.get("acquisition_contract") or {}) or view.get("readout_declaration_issues"):
             return False
-        acquisition = entry.get("measurement_acquisition")
-        return (acquisition is None or not acquisition.get("issues") and
-                acquisition.get("capability_qualification", {}).get(capability, {}).get("status") == "qualified")
+        return usable(entry, capability)
     if (base.get("readout_match_status") != "matched" or not required <= contract.keys()
             or domain.get("linearisation_curve") != "identity"
-            or not qualified(base, "absolute_gain") or not reference or not iso): return result
-    gain = curve_value(base, "gain_log2iso_log2epd", iso)
-    if gain is None: return result
+            or not qualified(base, gain_product) or not reference or not iso): return result
+    gain_value = gain_e_per_dn(base, iso)
+    if gain_value is None: return result
+    gain = math.log2(gain_value)
+    def compatible_product(candidate, product):
+        view = capability_prior(candidate, product)
+        return (qualified(candidate, product)
+            and view.get("readout_contract") == contract
+            and view.get("shutter") == gain_view.get("shutter")
+            and candidate.get("reference_dn_range") == reference
+            and candidate.get("make_equals") == base.get("make_equals")
+            and set(candidate.get("model_equals", ())) == set(base.get("model_equals", ()))
+            and physical_domain(view) == physical_domain(gain_view))
     compatible = []
     for candidate in candidates:
-        if (candidate.get("readout_match_status") != "matched"
-                or candidate.get("readout_contract") != contract
-                or candidate.get("shutter") != base.get("shutter")
-                or candidate.get("reference_dn_range") != reference
-                or candidate.get("make_equals") != base.get("make_equals")
-                or set(candidate.get("model_equals", ())) != set(base.get("model_equals", ()))
-                or physical_domain(candidate) != physical_domain(base)
-                or not qualified(candidate, "read_noise") and not qualified(candidate, "spectrum_h") and not qualified(candidate, "spectrum_v")
-                or (candidate.get("measurement_acquisition") or {}).get("issues")):
+        if base.get("calibration_id") and candidate.get("calibration_id") == base["calibration_id"]:
+            continue  # The same measurement is not an independent supplier.
+        if candidate.get("readout_match_status") != "matched":
             continue
-        compatible.append(candidate)
+        permissions = {name: compatible_product(candidate, name)
+                       for name in ("read_noise_dn", "stored_dark_variance", "spectrum_h", "spectrum_v")}
+        if any(permissions.values()):
+            candidate = copy.deepcopy(candidate)
+            if candidate.get("measurement_acquisition") is not None:
+                matches = candidate.setdefault("capability_matches", {})
+                for name, permitted in permissions.items():
+                    if not permitted:
+                        matches[name] = {"status": "mismatch", "reason": "cross-source-physical-domain-mismatch"}
+            compatible.append(candidate)
     if compatible:
         result = copy.deepcopy(base)
         result["independent_constraint_priors"] = compatible
     if read_noise_issue(base, iso): return result  # Keep independent constraints even when RN is unresolved.
     for candidate in compatible:
-        if curve_value(result, "read_noise_log2iso_log2e", iso) is not None: break
-        if not qualified(candidate, "read_noise"): continue
+        if read_noise_e(result, iso) is not None: break
+        if not compatible_product(candidate, "read_noise_dn"): continue
         if read_noise_issue(candidate, iso, "read_noise_dn_log2iso"): continue
         read = curve_value(candidate, "read_noise_dn_log2iso", iso)
         if read is None: continue
@@ -340,6 +356,25 @@ def compose_capabilities(base, candidates, iso):
                 "iso": iso, "status": stored_status, "variance_dn2": stored}
         sources["read_noise"] = candidate.get("source")
         result["source"] = "Compatible capability composition"
+        if result.get("measurement_acquisition") is not None:
+            composed = result.setdefault("composed_capabilities", {})
+            dark_view = capability_prior(candidate, "read_noise_dn")
+            dark_q = qualification(candidate, "read_noise_dn")
+            gain_q = qualification(base, gain_product)
+            for name in ("read_noise_dn", "read_noise_e"):
+                q = copy.deepcopy(dark_q)
+                if name == "read_noise_e":
+                    q["source_ids"] = sorted(set(q["source_ids"]) | set((gain_q or {}).get("source_ids", [])))
+                composed[name] = {"qualification": q, "supplier": copy.deepcopy(dark_view),
+                    "additional_dependencies": [copy.deepcopy(gain_view)] if name == "read_noise_e" else [],
+                    "iso": iso, "source": candidate.get("source")}
+                result.setdefault("capability_matches", {})[name] = {"status": "matched", "reason": "compatible-capability-suppliers-matched"}
+            if stored_supplier is not None:
+                composed["stored_dark_variance"] = {
+                    "qualification": copy.deepcopy(qualification(stored_supplier, "stored_dark_variance")),
+                    "supplier": copy.deepcopy(capability_prior(stored_supplier, "stored_dark_variance")),
+                    "iso": iso, "source": stored_supplier.get("source")}
+                result["capability_matches"]["stored_dark_variance"] = {"status": "matched", "reason": "compatible-capability-suppliers-matched"}
         result["capability_sources"] = sources
         result["capability_measurements"] = {
             "gain": copy.deepcopy(base.get("measurement_acquisition")),

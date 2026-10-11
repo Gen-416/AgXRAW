@@ -17,7 +17,10 @@
   "geometry": [
    null,
    "4344"
-  ]
+  ],
+  "numeric_contract_recovery": "hash-matched original CSV headers; historical fit retained without refitting",
+  "upstream_url": "https://raw.githubusercontent.com/y-g-jiang/y-g-jiang.github.io/504e119bcfb9ff2b58fc9e47c204ddb77eee5879/data/panasonic-g9m2-iso100-mech.csv",
+  "upstream_commit": "504e119bcfb9ff2b58fc9e47c204ddb77eee5879"
  },
  "gain_e_per_dn": 0.47159350308375647,
  "fit_model": "linear-prnu-corrected over S<0.10*S_sat (primary)",
@@ -48,5 +51,16 @@
  "fit_points": 32,
  "fit_points_excluded": 7,
  "sat_plateau_dn": 63380.807375561526,
- "quality": "high-residual"
+ "quality": "high-residual",
+ "single_point_measurement": {
+  "schema": "dngscan-jptc-single-measurement-1",
+  "format": null,
+  "input_sha256": "484c04cdb435b02fe55dd99e2c9b5684e0f96056d0d2526a9eefca3addedb8af",
+  "declared": {}
+ },
+ "acquisition_contract": {
+  "dn_domain": "libraw-unpacked-dn",
+  "variance_domain": "libraw-unpacked-dn2",
+  "decoder_identity": "LibRaw"
+ }
 }

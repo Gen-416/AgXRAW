@@ -17,6 +17,12 @@ from pathlib import Path
 
 from .source_metadata import cached_source_metadata
 
+
+def read_capture_facts(path: Path):
+    """The immutable capture facts reader shares the active source session."""
+    from .capture_facts import read
+    return read(path)
+
 TAG_MAKE = 271
 TAG_MODEL = 272
 TAG_EXIF_IFD = 34665
