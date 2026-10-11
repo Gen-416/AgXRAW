@@ -866,6 +866,9 @@ def build(set_dir: Path, meta: dict | None, *, files: dict | None = None) -> dic
                 entry["acquisition_contract"][field] = default
     entry["acquisition_contract"].update(coverage)
     entry.update(readout_fields)
+    if acquisition is not None:
+        from .calibration_capabilities import new_readout_scope
+        entry["readout_scope"] = new_readout_scope(acquisition)
     # The formed RAW contains quantisation as well as physical read noise.
     # Preserve the measured temporal variance before the optional Sheppard
     # subtraction; never reconstruct this measurement from an assumed ADC step
@@ -1281,6 +1284,8 @@ def _validated_prior(item: dict) -> dict:
         # Recompute qualification on every JSON read: editing a cached summary
         # to "qualified" cannot erase a missing condition from its CSV record.
         entry["measurement_acquisition"] = checked
+        from .calibration_capabilities import readout_scope_fields
+        entry["readout_scope"] = readout_scope_fields(item, checked)
         # The union's issues remain diagnostic. A product's own dependencies
         # must qualify before its numeric values may be consumed.
         from .calibration_capabilities import contract_conflicts
@@ -1694,8 +1699,9 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         "stored_dark_variance": bool(prior.get("stored_dark_variance_dn2_log2iso")),
         "spectrum_h": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("h")),
         "spectrum_v": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("v")), "spectrum_2d": False}
-    qualification = (prior.get("measurement_acquisition") or {}).get("capability_qualification", {})
-    from .calibration_capabilities import stages
+    from .calibration_capabilities import stages, public_readout_scope, qualification as product_qualification
+    qualification = {name: product_qualification(prior, name)
+                     for name in (prior.get("measurement_acquisition") or {}).get("capability_qualification", {})}
     capability_states = stages(prior)
     from .measurement_domain import declaration_issues
     domain_issues = declaration_issues(contract)
@@ -1715,6 +1721,7 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
             "make": prior["make_contains"], "models": prior["model_labels"],
             "shutter": prior.get("shutter"), "source_shutter": prior.get("source_shutter"),
             "user_applicability": prior.get("user_applicability", {}), "iso_min": 2**domain[0][0] if domain else None,
+            "readout_scope": public_readout_scope(prior.get("readout_scope")),
             "iso_max": 2**domain[-1][0] if domain else None,
             "has_gain": bool(gains), "has_read_noise": bool(prior.get("read_noise_log2iso_log2e")),
             "has_stored_dark_variance": bool(prior.get("stored_dark_variance_dn2_log2iso")),
@@ -1885,6 +1892,8 @@ def set_calibration_active(identity: str, active: bool) -> dict:
 def calibration_fingerprint() -> str:
     """Content identity for analysis/preview caches; invalid records also count."""
     digest = hashlib.sha256(str(data_path().resolve()).encode())
+    from .calibration_capabilities import PERMISSION_SEMANTICS_VERSION
+    digest.update(f"capability-permission-semantics:{PERMISSION_SEMANTICS_VERSION}".encode())
     from .calibration_registry import library_fingerprint
     digest.update(library_fingerprint().encode())
     try:
@@ -2023,7 +2032,7 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                             iso: float | None = None, readout: dict | None = None, *,
                             analysis=None, chroma_nr=None) -> list[dict]:
     from .capture_identity import public_capture
-    from .calibration_capabilities import stages
+    from .calibration_capabilities import stages, public_readout_scope
     out = []
     for path, record, prior, error in _records():
         if error is not None:
@@ -2073,6 +2082,7 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                     "readout_match_status": readout_status, "readout_match_reason": readout_reason,
                     "measurement_domain_match": match_domain(prior, readout),
                     "readout_contract": public_capture(prior.get("readout_contract")),
+                    "readout_scope": public_readout_scope(prior.get("readout_scope")),
                     "capture_readout": public_capture(readout),
                     "has_read_noise_at_iso": iso is not None and curve_value(prior, "read_noise_log2iso_log2e", iso) is not None,
                     "mode_scope": prior["mode_scope"],
