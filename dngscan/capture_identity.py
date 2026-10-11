@@ -163,10 +163,14 @@ def read(path: Path) -> dict:
 
 
 def public_capture(capture: dict | None) -> dict:
-    """Publish matching evidence without publishing a user's body serial."""
+    """Publish matching evidence without publishing body or lens serials."""
     result = deepcopy(capture or {})
-    serial = result.pop("body_serial", None)
-    if serial is not None:
-        result["body_serial_sha256"] = hashlib.sha256(str(serial).encode()).hexdigest()
-        result["body_serial_redacted"] = True
+    for key in ("body_serial", "lens_serial"):
+        serial = result.pop(key, None)
+        if serial is not None:
+            result[key + "_sha256"] = hashlib.sha256(str(serial).encode()).hexdigest()
+            result[key + "_redacted"] = True
+    if result.get("capture_facts") is not None:
+        from .capture_facts import public_facts
+        result["capture_facts"] = public_facts(result["capture_facts"])
     return result

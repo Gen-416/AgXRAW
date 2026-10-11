@@ -14,6 +14,9 @@ RawSize is retained as a LibRaw full-mosaic readout constraint. Compression
 declarations are retained for runtime verification; unfamiliar text stays
 unverified. ImageWidth/ImageHeight describe the camera's JPEG output only.
 This single-frame PTC does not establish Collect's paired-dark total variance.
+Numeric-domain declarations are retained and checked at installation/matching.
+Legacy converted records can be rebuilt with --rebuild-prior only when the
+supplied original CSV matches their recorded SHA-256; no lost header is guessed.
 
 Method (standard photon-transfer analysis, G1 channel):
   - black level: from the CSV header (collector-measured, per channel);
@@ -49,7 +52,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dngscan.calibration import (  # noqa: E402
-    fit_ptc, import_csv, infer_white, parse_jptc_csv, sanitize_json,
+    fit_ptc, import_csv, infer_white, parse_jptc_csv, sanitize_json, rebuild_single_prior, restore_single_contract,
 )
 
 
@@ -138,13 +141,26 @@ def main() -> int:
     ap.add_argument("--white", type=float, default=None,
                     help="clip level in DN; default: inferred from zero-std saturated frames")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--rebuild-prior", type=Path, default=None,
+                    help="rebuild this legacy single-point JSON from the hash-matched original csv")
+    ap.add_argument("--restore-contract-only", action="store_true",
+                    help="with --rebuild-prior, restore original headers while retaining the historical fit and scope")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
     if args.csv is None:
         ap.error("csv path required (or --self-test)")
-    entry = import_csv(args.csv, args.brand, args.model, args.iso, args.white, args.shutter)
+    if args.restore_contract_only and not args.rebuild_prior:
+        ap.error("--restore-contract-only requires --rebuild-prior")
+    if args.rebuild_prior:
+        original = json.loads(args.rebuild_prior.read_text(encoding="utf-8"))
+        if args.restore_contract_only:
+            entry = restore_single_contract(original, args.csv)
+        else:
+            entry = rebuild_single_prior(original, args.csv)
+    else:
+        entry = import_csv(args.csv, args.brand, args.model, args.iso, args.white, args.shutter)
     entry = sanitize_json(entry)
     text = json.dumps(entry, indent=1, ensure_ascii=False, allow_nan=False)
     if args.out:

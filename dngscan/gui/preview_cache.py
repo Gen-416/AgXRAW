@@ -21,6 +21,7 @@ import dngscan as dg
 from dngscan.guidance import qualify_decoder_support, raw_color_permission, raw_guidance_for_shape
 from dngscan.models import Analysis, AutoEvResult, RawBundle, RawGuidanceMaps
 from dngscan.retreat import resize_clip_masks
+from dngscan.capture_facts import from_dict as capture_facts_from_dict
 
 from .constants import PROXY_LONG_EDGE
 from .preview_scheduler import PreviewSuperseded
@@ -61,7 +62,7 @@ from .scheduler import shared_flight_wait
 # are retried after a bounded memory lifetime and never reused from disk.
 # v35: Collect unit/unpack-domain qualification is bound to immutable RAW
 # evidence. Older Analysis entries may license unsupported measurement units.
-PREVIEW_CACHE_VERSION = 35
+PREVIEW_CACHE_VERSION = 36
 AUTO_FALLBACK_RETRY_SECONDS = 60.0
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24
@@ -539,6 +540,8 @@ def _bundle_metadata(bundle: RawBundle) -> dict[str, Any]:
         "shot_iso": bundle.shot_iso,
         "shot_shutter": bundle.shot_shutter,
         "capture_readout": copy.deepcopy(getattr(bundle, "capture_readout", None)),
+        "capture_facts": (bundle.capture_facts.to_dict()
+                          if getattr(bundle, "capture_facts", None) is not None else None),
         "baseline_exposure": bundle.baseline_exposure,
         "baseline_exposure_baked_in": bool(bundle.baseline_exposure_baked_in),
         "evidence_provider": str(
@@ -649,6 +652,7 @@ def _bundle_from_cache(
         shot_iso=metadata["shot_iso"],
         shot_shutter=metadata.get("shot_shutter"),
         capture_readout=copy.deepcopy(metadata.get("capture_readout")),
+        capture_facts=capture_facts_from_dict(metadata.get("capture_facts")),
         baseline_exposure=metadata.get("baseline_exposure"),
         baseline_exposure_baked_in=bool(
             metadata.get("baseline_exposure_baked_in", False)

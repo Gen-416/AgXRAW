@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from dngscan import priors
 from dngscan.analysis import sensor_prior_evidence
+from tests.test_measurement_domain import sample_domain_fixture
 
 
 class ExactPackagedCameraMatchingTests(unittest.TestCase):
@@ -82,8 +83,17 @@ class ExactPackagedCameraMatchingTests(unittest.TestCase):
         blind = priors.find_priors("Panasonic", "DC-S1M2")
         self.assertFalse(priors.prior_usability(blind)[0])
         self.assertEqual(blind["mode_match"], "model-only-ambiguous-shutter")
-        exact = priors.find_priors("Panasonic", "DC-S1M2", shutter="electronic")
+        shutter_only = priors.find_priors("Panasonic", "DC-S1M2", shutter="electronic")
+        self.assertEqual(priors.prior_usability(shutter_only),
+                         (False, "file-sample-domain-unavailable"))
+        # Explicit synthetic unpack evidence isolates source priority from
+        # the domain gate; knowing the shutter alone cannot grant permission.
+        domain = sample_domain_fixture()
+        domain["coding_spans_dn"] = [15871.]
+        exact = priors.find_priors("Panasonic", "DC-S1M2", shutter="electronic",
+            readout={"shutter": "electronic", "sample_domain": domain})
         self.assertTrue(priors.prior_usability(exact)[0])
+        self.assertEqual(exact["measurement_domain_match"]["status"], "matched")
         self.assertEqual(exact["mode_match"], "exact-shutter")
         mismatch = priors.find_priors("Panasonic", "DC-S1M2", shutter="other")
         self.assertFalse(priors.prior_usability(mismatch)[0])

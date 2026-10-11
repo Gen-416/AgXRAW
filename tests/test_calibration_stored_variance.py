@@ -105,7 +105,8 @@ class StoredDarkVarianceTests(unittest.TestCase):
         self.assertAlmostEqual(b, total / 15359.**2, places=17)
         self.assertAlmostEqual(result.noise_floor, math.sqrt(total) / 15359., places=15)
         self.assertIn("measured-stored-dark-variance", result.noise_model.approximation)
-        diagnostic = calibration.calibration_diagnostics("SIGMA", "fp", "electronic", 100)[0]
+        diagnostic = calibration.calibration_diagnostics("SIGMA", "fp", "electronic", 100,
+                                                         self.bundle().capture_readout)[0]
         self.assertEqual(diagnostic["stored_dark_variance_status"], "measured-stored-dark-variance")
         self.assertAlmostEqual(diagnostic["stored_dark_variance_dn2"], total)
 
@@ -279,6 +280,7 @@ class StoredDarkVarianceTests(unittest.TestCase):
             packaged = next(e for e in priors._jptc_entries() if "collect" in e.get("source", ""))
         self.assertFalse(packaged.get("user_calibration", False))
         self.assertEqual(packaged["source_format"], "dngscan-jptc-collect-1")
+        self.assertAlmostEqual(packaged["reference_dn_range"], 15359.)
         self.assertAlmostEqual(calibration.stored_dark_variance(packaged, 100)[0], total)
         model = model_from_prior(self.bundle(), {i: 16383. for i in range(4)}, packaged)
         self.assertAlmostEqual(model.coefficients("G1")[1], total / 15359.**2, places=17)

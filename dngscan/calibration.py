@@ -33,7 +33,11 @@ def parse_jptc_csv(path: Path) -> dict:
             continue
         if line.startswith("#"):
             key, _, value = line[1:].partition(":")
-            header[key.strip()] = value.strip()
+            key, value = key.strip(), value.strip()
+            if (key in ("Format", "DNDomain", "VarianceDomain", "Decoder", "LinearisationCurve", "AdcStep", "CfaPattern")
+                    and key in header and header[key].casefold() != value.casefold()):
+                raise ValueError(f"conflicting JPTC declaration: {key}")
+            header[key] = value
             continue
         if not cols:
             cols = [c.strip() for c in line.split(",")]
@@ -312,6 +316,12 @@ def import_csv(
     # through the single-point converter, without inheriting the paired-dark
     # variance or quantisation semantics that only Collect can establish.
     acquisition_contract = readout_fields.pop("acquisition_contract_fields")
+    from .measurement_domain import single_measurement, single_measurement_fields
+    source_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    measurement = single_measurement(header, source_hash)
+    _, domain_fields, _ = single_measurement_fields({"format": "dngscan-jptc-prior-1",
+        "single_point_measurement": measurement, "source": {"input_sha256": source_hash}})
+    acquisition_contract.update(domain_fields)
     geometry = [header.get("ImageWidth"), header.get("ImageHeight")]
     return {
         "format": "dngscan-jptc-prior-1",
@@ -326,6 +336,7 @@ def import_csv(
         "compression": header.get("Compression"),
         "geometry": geometry,
         "acquisition_contract": acquisition_contract,
+        "single_point_measurement": measurement,
         **readout_fields,
         "noise_aperture": ("paired-frame stored temporal variance (difference variance / 2; "
                            "declared sigma clipping undone; quantisation retained)"
@@ -334,7 +345,7 @@ def import_csv(
         "source": {
             "kind": "JPTC/2 first-party measurement",
             "file": path.name,
-            "input_sha256": __import__("hashlib").sha256(path.read_bytes()).hexdigest(),
+            "input_sha256": source_hash,
             "mode": header.get("Mode"),
             "geometry": geometry,
             "raw_size": header.get("RawSize"),
@@ -342,6 +353,57 @@ def import_csv(
         },
         **fit,
     }
+
+
+def rebuild_single_prior(item: dict, csv_path: Path) -> dict:
+    """Reconvert a legacy single-point prior only from its hash-matched CSV."""
+    if isinstance(item, dict) and item.get("format") == _USER_FORMAT:
+        item = item.get("payload")
+    if not isinstance(item, dict) or item.get("format") != "dngscan-jptc-prior-1":
+        raise ValueError("rebuild requires a single-point JPTC prior or installed record")
+    expected = (item.get("source") or {}).get("input_sha256")
+    if re.fullmatch(r"[a-f0-9]{64}", str(expected)) is None:
+        raise ValueError("legacy single-point prior has no verifiable original CSV hash")
+    if hashlib.sha256(csv_path.read_bytes()).hexdigest() != expected:
+        raise ValueError("original CSV SHA-256 does not match the legacy single-point prior")
+    rebuilt = import_csv(csv_path, item["brand"], item["model"], item["iso"],
+                         item.get("white_level_used"), item.get("shutter") or "")
+    if item.get("user_applicability"):
+        rebuilt["user_applicability"] = dict(item["user_applicability"])
+    return rebuilt
+
+
+def restore_single_contract(item: dict, csv_path: Path) -> dict:
+    """Recover a legacy published fit's headers without silently refitting it.
+
+    Original coefficients and their quality remain historical fit evidence.
+    This only recovers declarations from byte-identical input; it adds no
+    unrecorded RAW size, source LUT identity, ADC step or paired-dark status.
+    """
+    if isinstance(item, dict) and item.get("format") == _USER_FORMAT:
+        item = item.get("payload")
+    if not isinstance(item, dict) or item.get("format") != "dngscan-jptc-prior-1":
+        raise ValueError("contract restoration requires a single-point JPTC prior")
+    expected = (item.get("source") or {}).get("input_sha256")
+    if (re.fullmatch(r"[a-f0-9]{64}", str(expected)) is None
+            or hashlib.sha256(csv_path.read_bytes()).hexdigest() != expected):
+        raise ValueError("original CSV SHA-256 does not match the legacy single-point prior")
+    parsed = parse_jptc_csv(csv_path)
+    if not parsed["rows"] or not {"G1_Mean", "G1_Std"} <= parsed["rows"][0].keys():
+        raise ValueError("original CSV lacks the single-frame PTC column contract")
+    from .measurement_domain import single_measurement, single_measurement_fields
+    restored = json.loads(json.dumps(item, allow_nan=False))
+    restored["single_point_measurement"] = single_measurement(parsed["header"], expected)
+    # Source declarations, rather than old converter defaults, win for these
+    # recovered fields. Other explicitly retained scope remains unchanged.
+    contract = restored.setdefault("acquisition_contract", {})
+    for field in ("dn_domain", "variance_domain", "decoder_identity", "linearisation_curve", "adc_step", "cfa_pattern"):
+        contract.pop(field, None)
+    _, fields, _ = single_measurement_fields(restored)
+    contract.update(fields)
+    restored["source"]["numeric_contract_recovery"] = "hash-matched original CSV headers; historical fit retained without refitting"
+    return restored
+
 
 def _parse_rows(path: Path) -> tuple[dict, list[dict]]:
     header: dict = {}
@@ -959,6 +1021,15 @@ def build(set_dir: Path, meta: dict | None, *, files: dict | None = None) -> dic
                     [math.log2(i), round(v, 4)] for i, v in w.items()]
     if spectrum["axes"]:
         entry["noise_spectrum"] = spectrum
+    # Absolute anchors remain available at their measured ISOs when an
+    # unrelated or unqualified ladder cannot extend the gain curve.
+    anchor_values = {}
+    for record in records:
+        if record.get("status") == "usable":
+            anchor_values.setdefault(record["iso"], []).append(record["fit"]["gain_e_per_dn"])
+    entry["ptc_gain_log2iso_log2epd"] = [[math.log2(iso), float(np.mean(np.log2(values)))]
+        for iso, values in sorted(anchor_values.items())
+        if max(values)/min(values) <= 1.05]
     return entry
 
 
@@ -1210,7 +1281,10 @@ def _validated_prior(item: dict) -> dict:
         # Recompute qualification on every JSON read: editing a cached summary
         # to "qualified" cannot erase a missing condition from its CSV record.
         entry["measurement_acquisition"] = checked
-        entry["readout_declaration_issues"].extend(checked["issues"])
+        # The union's issues remain diagnostic. A product's own dependencies
+        # must qualify before its numeric values may be consumed.
+        from .calibration_capabilities import contract_conflicts
+        entry["capability_contract_issues"] = contract_conflicts(contract, checked)
         # Known #Format semantics supply units, never missing acquisition
         # conditions. Preserve each table's explicit/default authority above.
         from .measurement_domain import DN, DN2
@@ -1227,6 +1301,14 @@ def _validated_prior(item: dict) -> dict:
     from .measurement_domain import declaration_issues
     entry["readout_declaration_issues"].extend(declaration_issues(contract))
     if single:
+        from .measurement_domain import single_measurement_fields
+        metadata, fields, issues = single_measurement_fields(item)
+        entry.update(metadata)
+        contract.update(fields)
+        if "single-point-domain-reimport-required" in issues:
+            entry["readout_declaration_issues"] = issues + entry["readout_declaration_issues"]
+        else:
+            entry["readout_declaration_issues"].extend(issues)
         iso = _number(item.get("iso"), "iso")
         gain = _number(item.get("gain_e_per_dn"), "gain_e_per_dn")
         rn = _number(item.get("read_noise_e", 0), "read_noise_e", positive=False)
@@ -1324,6 +1406,14 @@ def _validated_prior(item: dict) -> dict:
         raise ValueError("calibration contains no usable gain or dark-noise measurements")
     if item.get("fwc_model_spread_e") is not None:
         entry["fwc_model_spread_e"] = _number(item["fwc_model_spread_e"], "fwc model spread", positive=False)
+    if not single:
+        entry["ptc_gain_log2iso_log2epd"] = _curve(item.get("ptc_gain_log2iso_log2epd"), "absolute PTC anchors")
+        if not entry["ptc_gain_log2iso_log2epd"]:
+            anchor = item.get("ptc_anchor") or {}
+            if anchor.get("iso") and anchor.get("gain_e_per_dn"):
+                entry["ptc_gain_log2iso_log2epd"] = [[math.log2(anchor["iso"]), math.log2(anchor["gain_e_per_dn"])]]
+        from .calibration_capabilities import bind_primary
+        bind_primary(entry)
     return entry
 
 
@@ -1459,6 +1549,10 @@ def stored_dark_variance(entry: dict, iso: float | None) -> tuple[float | None, 
     """
     if entry.get("source_format") != "dngscan-jptc-collect-1":
         return None, "read-variance-semantics-unspecified"
+    from .calibration_capabilities import usable, capability_prior
+    if not usable(entry, "stored_dark_variance"):
+        return None, "stored-dark-variance-measurement-unqualified"
+    entry = capability_prior(entry, "stored_dark_variance")
     contract = entry.get("acquisition_contract") or {}
     from .measurement_domain import declaration_issues
     if declaration_issues(contract):
@@ -1601,18 +1695,22 @@ def _summary(record: dict, path: Path, prior: dict) -> dict:
         "spectrum_h": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("h")),
         "spectrum_v": bool(prior.get("noise_spectrum", {}).get("axes", {}).get("v")), "spectrum_2d": False}
     qualification = (prior.get("measurement_acquisition") or {}).get("capability_qualification", {})
+    from .calibration_capabilities import stages
+    capability_states = stages(prior)
     from .measurement_domain import declaration_issues
     domain_issues = declaration_issues(contract)
     if domain_issues:
         qualification = {key: {"status": "unverified", "source_ids": [], "reasons": domain_issues}
                          for key in capabilities if key != "spectrum_2d"}
-    if "measurement-acquisition-reimport-required" in prior.get("readout_declaration_issues", []):
+    migration = [reason for reason in prior.get("readout_declaration_issues", []) if reason.endswith("reimport-required")]
+    if migration:
         qualification = {key: {"status": "unverified", "source_ids": [],
-            "reasons": ["measurement-acquisition-reimport-required"]} for key in capabilities if key != "spectrum_2d"}
+            "reasons": migration} for key in capabilities if key != "spectrum_2d"}
     capabilities = {key: value and qualification.get(key, {}).get("status", "qualified") == "qualified"
                     for key, value in capabilities.items()}
     return {"id": record["id"], "label": prior["id"], "active": bool(record.get("active", True)),
-            "capabilities": capabilities, "capability_qualification": qualification,
+            "capabilities": capabilities, "capability_qualification": qualification, "capability_states": capability_states,
+            "single_point_measurement": prior.get("single_point_measurement"),
             "import_status": "imported", "match_status": "not-evaluated", "apply_status": "not-applied",
             "make": prior["make_contains"], "models": prior["model_labels"],
             "shutter": prior.get("shutter"), "source_shutter": prior.get("source_shutter"),
@@ -1925,6 +2023,7 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                             iso: float | None = None, readout: dict | None = None, *,
                             analysis=None, chroma_nr=None) -> list[dict]:
     from .capture_identity import public_capture
+    from .calibration_capabilities import stages
     out = []
     for path, record, prior, error in _records():
         if error is not None:
@@ -1932,6 +2031,8 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
                         "import_status": "invalid", "match_status": "not-evaluated",
                         "analysis_status": "not-evaluated", "apply_status": "not-applied"})
             continue
+        from .priors import with_readout
+        prior = with_readout(prior, readout, shutter=shutter)
         reason = _match_reason(prior, make or "", model or "", shutter, iso, readout)
         if reason == "camera-mismatch":
             continue
@@ -1946,7 +2047,22 @@ def calibration_diagnostics(make: str | None, model: str | None, shutter: str | 
         if readout_status == "matched":
             warnings = [warning for warning in warnings if warning != "sub-readout-mode-not-verified"]
         application = _calibration_application(record, reason, analysis=analysis, chroma_nr=chroma_nr)
+        consumers = {}
+        used = application["analysis_capabilities"]
+        if used["gain_evidence"] == "used":
+            for name in ("absolute_gain", "ptc_gain"):
+                consumers[name] = ["sensor-gain-evidence"]
+        if used["variance_coefficients"] == "used":
+            for name in ("read_noise_dn", "read_noise_e"):
+                consumers[name] = ["noise-variance-model"]
+            if stored_variance is not None:
+                consumers["stored_dark_variance"] = ["noise-variance-model"]
+        if used["spectral_constraints"] == "used":
+            for name in ("spectrum_h", "spectrum_v"):
+                consumers[name] = ["noise-applicability-constraint"]
         row = {"id": record["id"], "label": prior["id"],
+                    "capability_states": stages(prior, iso=iso, consumers=consumers),
+                    "single_point_measurement": prior.get("single_point_measurement"),
                     "status": ("gain-only" if reason == "usable" and noise_status.startswith("read-noise-unresolved")
                                else "usable" if reason == "usable" else "not-applied"),
                     "reason": noise_status if reason == "usable" and noise_status.startswith("read-noise-unresolved") else reason,

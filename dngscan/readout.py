@@ -25,8 +25,9 @@ CAPTURE_DECLARATION_VERSION = 1
 _FP_SHUTTER_SOURCE = "https://www.sigma-global.com/en/cameras/fp/?local=table&tab=support&table_id=11934"
 _PAIR_FIELDS = {"raw_geometry", "active_geometry", "default_crop", "libraw_raw_geometry", "sensor_binning"}
 _BIT_FIELDS = {"sample_bits", "sensor_bits"}
-_TEXT_FIELDS = {"readout_id", "capture_kind", "body_serial", "firmware"}
-_FIELDS = _PAIR_FIELDS | _BIT_FIELDS | _TEXT_FIELDS | {"storage_lossless"}
+_TEXT_FIELDS = {"readout_id", "capture_kind", "body_serial", "lens_serial", "firmware", "lens_make", "lens_model"}
+_CAPTURE_NUMERIC_FIELDS = {"exposure_seconds", "aperture_fnumber", "focal_length_mm"}
+_FIELDS = _PAIR_FIELDS | _BIT_FIELDS | _TEXT_FIELDS | _CAPTURE_NUMERIC_FIELDS | {"storage_lossless", "lens_identity"}
 
 
 def normalize_capture_declaration(value: dict | None) -> dict:
@@ -111,6 +112,42 @@ def _crop_pair(value, label):
     return result
 
 
+def _capture_number(value, label):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{label} must be a positive finite number")
+    return float(value)
+
+
+def _capture_range(value, label):
+    if isinstance(value, (list, tuple)):
+        if len(value) != 2:
+            raise ValueError(f"{label} must contain inclusive minimum and maximum")
+        bounds = [_capture_number(item, label) for item in value]
+        if bounds[0] > bounds[1]:
+            raise ValueError(f"{label} bounds must be ordered")
+        return bounds
+    return _capture_number(value, label)
+
+
+def _lens_identity(value):
+    if (not isinstance(value, dict) or set(value) - {"namespace", "kind", "make", "model", "id"}
+            or value.get("kind") not in ("metadata-name", "hardware-id")):
+        raise ValueError("lens_identity requires an explicit namespace and identity kind")
+    for key in ("namespace", "model" if value["kind"] == "metadata-name" else "id"):
+        if not isinstance(value.get(key), str) or not value[key].strip() or len(value[key]) > 160:
+            raise ValueError("lens_identity requires bounded " + key)
+    if value.get("make") is not None and (not isinstance(value["make"], str) or not value["make"].strip()):
+        raise ValueError("lens_identity make must be nonempty text when present")
+    if value["kind"] == "metadata-name":
+        if "id" in value:
+            raise ValueError("lens name identity cannot declare a hardware ID")
+        return {"namespace": value["namespace"], "kind": value["kind"],
+                "model": value["model"], "make": value.get("make")}
+    if "model" in value:
+        raise ValueError("hardware lens identity cannot substitute a model name")
+    return dict(value)
+
+
 def measurement_fields(item: dict) -> dict:
     """Validate explicit constraints; never interpret overloaded mode names."""
     supplied = item.get("readout_contract")
@@ -136,6 +173,10 @@ def measurement_fields(item: dict) -> dict:
             if not isinstance(value, bool):
                 raise ValueError("storage_lossless must be true or false")
             constraints[key] = value
+        elif key in _CAPTURE_NUMERIC_FIELDS:
+            constraints[key] = _capture_range(value, key)
+        elif key == "lens_identity":
+            constraints[key] = _lens_identity(value)
         elif not isinstance(value, str) or not value.strip():
             raise ValueError(f"{key} must be nonempty text")
         else:
@@ -193,7 +234,18 @@ def match(entry: dict, capture: dict | None) -> tuple[str, str]:
     for key, expected in fields:
         actual = capture.get(key)
         if actual is None:
+            fact = ((capture.get("capture_facts") or {}).get("fields") or {}).get(key) or {}
+            if fact.get("status") in ("invalid", "conflict"):
+                return "unverified", f"file-{key.replace('_', '-')}-{fact['status']}"
             return "unverified", f"file-{key.replace('_', '-')}-unavailable"
+        if key in _CAPTURE_NUMERIC_FIELDS:
+            try:
+                number, bounds = _capture_number(actual, key), _capture_range(expected, key)
+            except ValueError:
+                return "unverified", f"file-{key.replace('_', '-')}-invalid"
+            if (not bounds[0] <= number <= bounds[1] if isinstance(bounds, list) else number != bounds):
+                return "mismatch", f"file-{key.replace('_', '-')}-mismatch"
+            continue
         if (" ".join(str(actual).split()).casefold() != " ".join(str(expected).split()).casefold()
                 if key in _TEXT_FIELDS else actual != expected):
             return "mismatch", f"file-{key.replace('_', '-')}-mismatch"
@@ -525,4 +577,5 @@ def read(path: Path) -> dict:
         capture["shutter_status"] = "shutter-metadata-unreadable"
     from .capture_identity import read as read_identity
     capture.update(read_identity(path))
+    capture.update(md.read_capture_facts(path).matcher_values())
     return capture

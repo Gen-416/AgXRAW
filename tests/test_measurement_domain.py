@@ -273,13 +273,14 @@ class MeasurementDomainPipelineTests(unittest.TestCase):
         base["stored_dark_variance_dn2_log2iso"] = []
         base["phase_calibration"] = {}; base["source"] = "gain source"
         dark["source"] = "dark source"
+        dark["calibration_id"] = "independent-test-dark"
         dark["acquisition_contract"]["decoder_identity"] = "LibRaw 0.23.0-Release"
         joined = compose_capabilities(base, [dark], 100)
         self.assertEqual(joined["capability_sources"]["read_noise"], "dark source")
         self.assertAlmostEqual(calibration.stored_dark_variance(joined, 100)[0], 4.)
         bad = copy.deepcopy(dark); bad["acquisition_contract"]["variance_domain"] = "electron-squared"
         # Even a caller's stale pre-bound status cannot authorize bad units.
-        self.assertNotIn("capability_sources", compose_capabilities(base, [bad], 100))
+        self.assertFalse("capability_sources" in compose_capabilities(base, [bad], 100))
 
 
 if __name__ == "__main__":

@@ -19,6 +19,10 @@ SCHEMA = "dngscan-sample-domain-1"
 DN = "libraw-unpacked-dn"
 DN2 = "libraw-unpacked-dn2"
 FORMAT_AUTHORITY = "JiangtherapeeTesterView@57567edfa0ec16ee0b00c6b4a1a325c8da40bf1c"
+SINGLE_SCHEMA = "dngscan-jptc-single-measurement-1"
+_SINGLE_HEADERS = {"dn_domain": "DNDomain", "variance_domain": "VarianceDomain",
+                   "decoder_identity": "Decoder", "linearisation_curve": "LinearisationCurve",
+                   "adc_step": "AdcStep", "cfa_pattern": "CfaPattern"}
 
 
 def canonical_unit(value, *, variance=False):
@@ -34,6 +38,75 @@ def decoder_family(value):
     # equality alone neither proves nor disproves identical unpack semantics.
     text = str(value).strip()
     return "libraw" if re.fullmatch(r"libraw(?:\s+\d+\.\d+(?:\.\d+)?(?:[- .+][\w.+-]+)?)?", text, re.I) else None
+
+
+def single_measurement(header, input_sha256):
+    """Retain explicit JPTC/2 declarations, including unsupported values.
+
+    The format supplies unpacked-code units, not a measured ADC step, a
+    paired-dark variance, or proof that an unrecorded source LUT was identity.
+    """
+    return {"schema": SINGLE_SCHEMA, "format": header.get("Format"), "input_sha256": input_sha256,
+            "declared": {field: header[key] for field, key in _SINGLE_HEADERS.items() if key in header}}
+
+
+def single_measurement_fields(item):
+    """Validate the persisted single-point declaration, or name its legacy gap."""
+    if item.get("format") != "dngscan-jptc-prior-1":
+        return {}, {}, []
+    record = item.get("single_point_measurement")
+    source = item.get("source") or {}
+    if record is None:
+        if (isinstance(source, dict) and source.get("kind") == "JPTC/2 first-party measurement"
+                and re.fullmatch(r"[a-f0-9]{64}", str(source.get("input_sha256", "")))):
+            return ({"single_point_measurement": {"status": "reimport-required",
+                "reason": "single-point-domain-reimport-required", "input_sha256": source["input_sha256"],
+                "recovery": "reconvert the original CSV after verifying its SHA-256; lost headers cannot be inferred"}},
+                {}, ["single-point-domain-reimport-required"])
+        # Hand-authored/curated legacy JSON keeps its existing declared scope.
+        return {}, {}, []
+    if (not isinstance(record, dict) or record.get("schema") != SINGLE_SCHEMA
+            or not isinstance(record.get("declared"), dict)
+            or set(record["declared"]) - set(_SINGLE_HEADERS)
+            or any(not isinstance(value, str) for value in record["declared"].values())
+            or re.fullmatch(r"[a-f0-9]{64}", str(record.get("input_sha256", ""))) is None):
+        raise ValueError("invalid single-point measurement declaration")
+    if not isinstance(source, dict) or record["input_sha256"] != source.get("input_sha256"):
+        raise ValueError("single-point measurement source hash mismatch")
+    declared = record["declared"]
+    contract = dict(declared)
+    for field, variance in (("dn_domain", False), ("variance_domain", True)):
+        if field in contract:
+            contract[field] = canonical_unit(contract[field], variance=variance) or contract[field]
+    # JPTC/2's mean/std columns are unsubtracted unpacked codes and code std.
+    # Absence of these optional headers is a format default, never an extra
+    # claim about the collector's LUT or ADC measurement.
+    for field, default in (("dn_domain", DN), ("variance_domain", DN2), ("decoder_identity", "LibRaw")):
+        contract.setdefault(field, default)
+    issues = declaration_issues(contract)
+    if record.get("format") not in (None, "JPTC/2"):
+        issues.append("single-point-format-domain-unverified")
+    if ("linearisation_curve" in contract
+            and str(contract["linearisation_curve"]).strip().casefold() != "identity"):
+        issues.append("measurement-linearisation-domain-unverified")
+    old_contract = item.get("acquisition_contract") or {}
+    for field, value in contract.items():
+        if field in old_contract:
+            old = old_contract[field]
+            if field in ("dn_domain", "variance_domain"):
+                old = canonical_unit(old, variance=field == "variance_domain") or old
+            if str(old).strip().casefold() != str(value).strip().casefold():
+                issues.append("single-point-declaration-contract-conflict")
+    status = "unverified" if issues else "limited-single-frame-model"
+    metadata = {**record, "declared": dict(declared), "status": status,
+                "unit_sources": {field: "explicit" if field in declared else
+                                 "JPTC/2-format-default" if record.get("format") == "JPTC/2" else "legacy-single-frame-column-contract"
+                                 for field in ("dn_domain", "variance_domain", "decoder_identity")},
+                "format_source": "explicit" if record.get("format") else "legacy-single-frame-column-contract",
+                "source_lut": "declared" if "linearisation_curve" in declared else "unrecorded",
+                "adc": "declared" if "adc_step" in declared else "unmeasured",
+                "paired_dark": "not-established-by-single-frame-PTC"}
+    return {"single_point_measurement": metadata}, contract, sorted(set(issues))
 
 
 def declaration_issues(contract, *, check_adc=None):
@@ -131,7 +204,8 @@ def capture_domain(raw, image, pattern, color_desc, whites, blacks, provider_ver
 def match(entry, capture):
     """Bind measured units to actual evidence; scene-decoder choice is irrelevant."""
     contract = entry.get("acquisition_contract") or {}
-    active = (entry.get("measurement_acquisition") is not None or
+    single = (entry.get("single_point_measurement") or {}).get("schema") == SINGLE_SCHEMA
+    active = (single or entry.get("measurement_acquisition") is not None or
               any(name in contract for name in ("dn_domain", "variance_domain", "decoder_identity")))
     result = {"status": "not-declared", "reason": "measurement-domain-not-declared"}
     if not active:
@@ -155,7 +229,8 @@ def match(entry, capture):
         return fail("unverified", "file-independent-integer-cfa-domain-unavailable")
     if actual.get("linearisation") != "identity":
         return fail("unverified", "file-linearisation-domain-" + str(actual.get("linearisation") or "unavailable"))
-    if str(contract.get("linearisation_curve") or "").casefold() != "identity":
+    if (str(contract.get("linearisation_curve") or "").strip().casefold() != "identity"
+            and not (single and "linearisation_curve" not in contract)):
         return fail("unverified", "measurement-linearisation-domain-unverified")
     description = contract.get("cfa_pattern")
     if description is not None and str(description).casefold() != str(actual.get("channel_description")).casefold():
@@ -192,6 +267,11 @@ def match(entry, capture):
             if abs(math.log2(ratio) - power) > math.log2(1.05):
                 return fail("mismatch", "file-measurement-dn-scale-mismatch")
             transports.append(power)
+        if single and "adc_step" not in contract:
+            return {**result, "status": "matched", "reason": "single-frame-unpack-units-and-scale",
+                "coding_scale_log2": transports, "adc_evidence": "unmeasured; no code-lattice claim",
+                "source_lut": "declared-identity" if "linearisation_curve" in contract else "unrecorded",
+                "qualification": "limited-single-frame-model; paired-dark variance not established"}
         step = float(contract["adc_step"])
         if not math.isfinite(step) or step <= 0:
             return fail("unverified", "measurement-adc-step-unresolved")

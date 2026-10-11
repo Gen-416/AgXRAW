@@ -21,6 +21,7 @@ from .scene_transform import scene_transform_label
 from .models import Analysis, AutoEvResult, RawBundle, ToneCompressionPlan
 from .raw_io import highlight_mode_cn
 from .tone import plan_for_mode
+from .capture_facts import public_facts
 
 
 def processing_evidence_summary(
@@ -87,6 +88,7 @@ def processing_evidence_summary(
         "chroma_nr_reason": getattr(bundle, "chroma_nr_reason", None),
         "decoder_recipe": copy.deepcopy(getattr(bundle, "scene_decoder_recipe", {}) or {}),
         "decoder_window_calibration": copy.deepcopy(getattr(bundle, "scene_window_calibration", {}) or {}),
+        "capture_facts": public_facts(getattr(bundle, "capture_facts", None)),
     }
 
 
@@ -785,6 +787,7 @@ def csv_row(
         "prior_quality_status": analysis.prior_quality_status or "",
         "noise_evidence_status": analysis.noise_evidence_status,
         "capture_shutter": bundle.shot_shutter or "",
+        "capture_facts": json.dumps(processing["capture_facts"], sort_keys=True, ensure_ascii=False),
         "gain_e_per_dn": analysis.gain_e_per_dn if analysis.gain_e_per_dn is not None else "",
         "noise_floor_e": analysis.noise_floor_e if analysis.noise_floor_e is not None else "",
         "prior_read_noise_e": analysis.prior_read_noise_e if analysis.prior_read_noise_e is not None else "",

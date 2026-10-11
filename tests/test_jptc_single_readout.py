@@ -94,7 +94,8 @@ class SingleJptcReadoutTests(unittest.TestCase):
         self.assertEqual(payload["source"]["raw_size"], "128x128")
         self.assertEqual(payload["source"]["compression"], "lossless")
         self.assertEqual(payload["compression"], "lossless")
-        self.assertEqual(payload["acquisition_contract"], {"geometry_domain": "camera-jpeg-output"})
+        self.assertEqual(payload["acquisition_contract"], {"geometry_domain": "camera-jpeg-output",
+            "dn_domain": "libraw-unpacked-dn", "variance_domain": "libraw-unpacked-dn2", "decoder_identity": "LibRaw"})
         self.assertEqual(bundle.capture_readout["libraw_raw_geometry"], [128, 128])
         self.assertEqual(bundle.scene_rec2020_render.shape[:2], (64, 64))
         self.assertEqual(diagnostic["readout_match_status"], "matched")
