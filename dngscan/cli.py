@@ -566,7 +566,7 @@ def calibration_main(argv: list[str]) -> int:
     install.add_argument("--group", action="append", default=None, help="仅导入 inspect 列出的分组 ID，可重复")
     install.add_argument("--inactive", action="store_true", help="导入后先停用")
     install.add_argument("--shutter-mode", choices=("any", "electronic", "mechanical", "efcs"),
-                         default=None, help="明确覆盖测量适用的读出模式；any 声明适用全部模式，默认遵循文件")
+                         default=None, help="声明标定快门范围；Collect 与逐表范围取交集，any 不额外收窄，不能补造测量条件")
     commands.add_parser("list", help="列出已安装标定及有效 ISO 范围")
     commands.add_parser("library", help="查看离线公共库版本、来源、能力及退役项")
     pixel = commands.add_parser("pixel-inspect", help="检查本机实验暗场／平场产品，不自动应用")

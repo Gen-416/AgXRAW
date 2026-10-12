@@ -50,7 +50,7 @@ class ExplicitCalibrationScopeTests(unittest.TestCase):
         self.addCleanup(environment.stop)
         self.counter = 0
 
-    def payload(self, *, psd_body=None):
+    def payload(self, *, psd_body=None, csv_shutter="fixture"):
         self.counter += 1
         folder = self.root / f"measurements-{self.counter}"
         folder.mkdir()
@@ -58,6 +58,10 @@ class ExplicitCalibrationScopeTests(unittest.TestCase):
             for index, name in enumerate(archive.namelist()):
                 content = _without(archive.read(name), "Firmware")
                 content = content.replace(b"6000x4000", b"128x128")
+                if csv_shutter != "fixture":
+                    content = _without(content, "ShutterType")
+                    if csv_shutter is not None:
+                        content += ("\n#ShutterType: " + csv_shutter + "\n").encode()
                 if psd_body and b"#Axis: horizontal" in content:
                     content += ("\n#BodySerialNumber: " + psd_body + "\n").encode()
                 (folder / f"measurement-{index}.csv").write_bytes(content)
@@ -83,7 +87,7 @@ class ExplicitCalibrationScopeTests(unittest.TestCase):
                             for row in rows), rows)
         return installed
 
-    def bundle(self, *, body="BODY-A", file_profile=False):
+    def bundle(self, *, body="BODY-A", file_profile=False, shutter="mechanical"):
         self.counter += 1
         path = self.root / f"capture-{self.counter}.dng"
         write_noise_dng(path, file_profile=file_profile)
@@ -99,7 +103,7 @@ class ExplicitCalibrationScopeTests(unittest.TestCase):
         edit_ifd(path, fields)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         bundle = load_raw(path, scene_half_size=True,
-            capture_declaration={"version": 1, "shutter": "mechanical"})
+            capture_declaration={"version": 1, "shutter": shutter} if shutter else None)
         self.assertEqual(bundle.scene_decoder, "libraw")
         self.assertEqual(bundle.capture_readout.get("body_serial"), body)
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), digest)
@@ -107,8 +111,88 @@ class ExplicitCalibrationScopeTests(unittest.TestCase):
 
     @staticmethod
     def select(capture):
-        return priors.find_priors("NIKON", "TestCamera", shutter="mechanical",
+        return priors.find_priors("NIKON", "TestCamera", shutter=capture.get("shutter"),
                                  iso=100, readout=capture)
+
+    def test_public_override_narrows_any_csv_for_actual_dng_analysis(self):
+        bundles = {mode: self.bundle(shutter=mode) for mode in ("mechanical", "electronic", "efcs", None)}
+        for restriction in (None, "mechanical", "electronic", "efcs"):
+            self.payload(csv_shutter="any")
+            installed = calibration.import_calibration(self.last_measurements, shutter_override=restriction)
+            for mode, (bundle, digest) in bundles.items():
+                with self.subTest(restriction=restriction, actual=mode):
+                    selected = self.select(bundle.capture_readout)
+                    allowed = restriction is None or mode == restriction
+                    result, _, _ = analyze(bundle, 4, diagnostics=False)
+                    self.assertEqual(result.noise_model.status == "valid", allowed)
+                    if allowed:
+                        self.assertAlmostEqual(result.gain_e_per_dn, 2.)
+                        self.assertEqual(selected["shutter"], restriction or "any")
+                    else:
+                        self.assertIsNone(result.gain_e_per_dn)
+                        self.assertIsNone(result.prior_read_noise_e)
+                    self.assertEqual(hashlib.sha256(bundle.path.read_bytes()).hexdigest(), digest)
+            calibration.remove_calibration(installed["id"])
+
+    def test_json_explicit_shutter_survives_reload_and_rebinding(self):
+        payload = self.payload(csv_shutter="any")
+        payload["readout_scope"]["explicit_shutter"] = "mechanical"
+        installed = self.install(payload)
+        calibration.import_calibration(installed["path"])
+        bundle, _ = self.bundle()
+        first = self.select(bundle.capture_readout)
+        original = copy.deepcopy(first)
+        for mode in ("electronic", "efcs", None):
+            with self.subTest(actual=mode):
+                changed = priors.with_readout(first, {**bundle.capture_readout, "shutter": mode}, shutter=mode)
+                self.assertEqual(changed["shutter"], "mechanical")
+                self.assertIsNone(priors.gain_e_per_dn(changed, 100))
+                self.assertEqual(changed["shutter_match_status"], "unverified" if mode is None else "mismatch")
+                for name in PRODUCTS:
+                    self.assertFalse(stages(changed, iso=100)[name]["applicable"])
+                    self.assertEqual(capability_prior(changed, name)["shutter"], "mechanical")
+                restored = priors.with_readout(changed, bundle.capture_readout, shutter="mechanical")
+                self.assertAlmostEqual(priors.gain_e_per_dn(restored, 100), 2.)
+                self.assertEqual(restored["shutter_match_status"], "matched")
+        self.assertEqual(first, original)
+
+    def test_any_override_does_not_widen_specific_csv_and_conflict_is_rejected(self):
+        for restriction in ("mechanical", "any", "electronic"):
+            self.payload(csv_shutter="mechanical")
+            installed = calibration.import_calibration(self.last_measurements, shutter_override=restriction)
+            for mode in ("mechanical", "electronic", None):
+                with self.subTest(restriction=restriction, actual=mode):
+                    bundle, _ = self.bundle(shutter=mode)
+                    result, _, _ = analyze(bundle, 4, diagnostics=False)
+                    allowed = restriction != "electronic" and mode == "mechanical"
+                    self.assertEqual(result.noise_model.status == "valid", allowed)
+                    if allowed:
+                        self.assertAlmostEqual(result.gain_e_per_dn, 2.)
+                        self.assertEqual(self.select(bundle.capture_readout)["shutter"], "mechanical")
+            calibration.remove_calibration(installed["id"])
+
+    def test_override_cannot_qualify_csv_without_shutter_measurement(self):
+        self.payload(csv_shutter=None)
+        calibration.import_calibration(self.last_measurements, shutter_override="mechanical")
+        bundle, _ = self.bundle()
+        result, _, _ = analyze(bundle, 4, diagnostics=False)
+        self.assertNotEqual(result.noise_model.status, "valid")
+        self.assertIsNone(result.gain_e_per_dn)
+
+    def test_shutter_rejection_uses_file_noiseprofile_and_preserves_scene(self):
+        self.payload(csv_shutter="any")
+        calibration.import_calibration(self.last_measurements, shutter_override="mechanical")
+        bundle, digest = self.bundle(shutter="electronic", file_profile=True)
+        before = bundle.scene_rec2020_render.copy()
+        result, _, _ = analyze(bundle, 4, diagnostics=False)
+        self.assertEqual(result.noise_model.source, "DNG NoiseProfile")
+        self.assertEqual(result.noise_model.status, "valid")
+        diagnostics = calibration.calibration_diagnostics("NIKON", "TestCamera", "electronic", 100,
+                                                        bundle.capture_readout, analysis=result)
+        self.assertEqual(diagnostics[0]["reason"], "readout-mode-mismatch")
+        self.assertIsNone(result.gain_e_per_dn)
+        np.testing.assert_array_equal(bundle.scene_rec2020_render, before)
+        self.assertEqual(hashlib.sha256(bundle.path.read_bytes()).hexdigest(), digest)
 
     def assert_blocked(self, selected, field):
         self.assertIsNotNone(selected)
