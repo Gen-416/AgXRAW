@@ -61,6 +61,8 @@ half/float 预算超限的定位见 [Core Image 读回研究](reviews/COREIMAGE_
 
 后续 PR178 复审的两项标定问题见 [显式限制与新旧格式组合](reviews/CALIBRATION_SCOPE_LEGACY_2026-10-11.zh-CN.md)：分开 CSV 自动条件与用户全局限制，保留 legacy 资格，说明旧记录迁移及缓存失效。
 
+PR179 收尾继续补齐[有效快门范围与 RAW9 工具合同](reviews/CALIBRATION_SCOPE_LEGACY_2026-10-11.zh-CN.md#pr179-后续收尾2026-10-11)：用户收窄真正参与匹配，recipe v2 和跨解码源身份得到核对，并同步界面及历史任务状态。
+
 同轮 `fb91815` 后续修复见研究记录第 10 节：[镜头与重建范围](ARCHITECTURE.zh-CN.md)、标定失败点、实际传感器采样与奇数裁剪，以及[局部亮度纹理和 HDR 声明回读](HDR_DELIVERY_VALIDATION.zh-CN.md#局部亮度纹理门禁2026-10-09)。原始数字保存在[管线验收记录](assets/delivery-quality/pipeline-repair-20261009.json)。
 
 当前 RAW/HDR 文档图片与机器可读测量保留在 [assets/](assets)。胶片教程、设计、基线、光谱和示例已迁入 AgXFilm，详见[胶片拆分记录](FILM_SPLIT.zh-CN.md)。原始 RAW 和个人导出不属于公共文档资产。

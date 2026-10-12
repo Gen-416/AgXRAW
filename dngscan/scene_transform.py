@@ -195,12 +195,15 @@ def decoder_anchor_scope(bundle: Any) -> dict | None:
     """Exact camera and actual RAW9 processing identity; missing proof is unmeasured."""
     if getattr(bundle, "scene_decoder", None) != "coreimage" or getattr(bundle, "scene_decoder_fallback", None):
         return None
+    from .coreimage_decode import COREIMAGE_RECIPE_VERSION
     recipe = getattr(bundle, "scene_decoder_recipe", None)
-    if not isinstance(recipe, dict) or recipe.get("schema") != "coreimage-decode-recipe-1":
+    if not isinstance(recipe, dict) or recipe.get("schema") != COREIMAGE_RECIPE_VERSION:
         return None
     access = recipe.get("linear_access")
     fallback = recipe.get("fallback")
+    qualification = recipe.get("scene_input_qualification")
     if (not isinstance(access, dict) or access.get("status") != "parameter-state-verified"
+            or not isinstance(qualification, dict) or qualification.get("status") != "qualified"
             or not isinstance(fallback, dict) or fallback.get("used") is not False
             or getattr(bundle, "scene_decoder_version", None) != recipe.get("actual_decoder_token")
             or getattr(bundle, "scene_decoder_runtime", None) != recipe.get("runtime")):

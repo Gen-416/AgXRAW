@@ -9,7 +9,7 @@ from __future__ import annotations
 import copy
 import math
 
-PERMISSION_SEMANTICS_VERSION = 2
+PERMISSION_SEMANTICS_VERSION = 3
 READOUT_SCOPE_VERSION = 1
 PRODUCTS = ("ptc_gain", "relative_gain", "absolute_gain", "read_noise_dn",
             "read_noise_e", "stored_dark_variance", "spectrum_h", "spectrum_v")
@@ -226,8 +226,13 @@ def capability_prior(entry, capability):
     contract.setdefault("variance_domain", DN2)
     contract.setdefault("decoder_identity", "LibRaw")
     readout, scope, scope_issues = _scoped_readout(entry, common)
+    # User scope may narrow a measured wildcard, never supply a missing CSV
+    # condition or widen a specific measurement. Conflicts remain unqualified.
+    shutter = common.get("shutter")
+    if shutter == "any" and scope.get("explicit_shutter") not in (None, "any"):
+        shutter = scope["explicit_shutter"]
     result.update(acquisition_contract=contract, readout_contract=readout,
-                  shutter=common.get("shutter"), measurement_acquisition=subset,
+                  shutter=shutter, measurement_acquisition=subset,
                   readout_scope=scope, readout_declaration_issues=list(item.get("reasons", [])) + scope_issues)
     # Retain failures not derived from the profile-wide measurement union.
     result["readout_declaration_issues"].extend(entry.get("capability_contract_issues", []))

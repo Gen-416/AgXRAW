@@ -14,14 +14,16 @@ from unittest.mock import patch
 import numpy as np
 
 from dngscan import scene_transform as scene
+from dngscan.coreimage_decode import COREIMAGE_RECIPE_VERSION
 from tools import calibrate_raw9_anchors as calibrator
 
 
 def raw9_bundle(**changes):
     fields = {"scene_decoder": "coreimage", "scene_decoder_fallback": None,
         "shot_make": "SIGMA", "shot_model": "fp", "scene_decoder_version": "9", "scene_decoder_runtime": "test OS build",
-        "scene_decoder_recipe": {"schema": "coreimage-decode-recipe-1", "actual_decoder_token": "9",
+        "scene_decoder_recipe": {"schema": COREIMAGE_RECIPE_VERSION, "actual_decoder_token": "9",
                                  "runtime": "test OS build", "configuration_id": "a" * 64,
+                                 "scene_input_qualification": {"status": "qualified"},
                                  "linear_access": {"status": "parameter-state-verified"}, "fallback": {"used": False}}}
     fields.update(changes)
     return SimpleNamespace(**fields)
@@ -66,6 +68,23 @@ class Raw9AnchorScopeTests(unittest.TestCase):
         self.assertEqual(report["profile_id"], "test-profile")
         self.assertEqual(report["asset_sha256"], hashlib.sha256(self.path.read_bytes()).hexdigest())
         self.assertEqual(len(report["profile_sha256"]), 64)
+
+    def test_actual_recipe_builder_contract_is_accepted(self):
+        from tests.test_coreimage_recipe import configure, recipe
+        produced = recipe(configure(scale_factor=1.))
+        bundle = raw9_bundle(scene_decoder_recipe=produced,
+                             scene_decoder_runtime=produced["runtime"])
+        scope = scene.decoder_anchor_scope(bundle)
+        self.assertIsNotNone(scope)
+        self.assertEqual(scope["configuration_id"], produced["configuration_id"])
+        for schema in ("coreimage-decode-recipe-1", "unknown-recipe", None):
+            self.assertIsNone(scene.decoder_anchor_scope(raw9_bundle(
+                scene_decoder_recipe={**self.bundle.scene_decoder_recipe, "schema": schema})))
+
+    def test_current_recipe_requires_scene_input_qualification(self):
+        for qualification in (None, {}, {"status": "unverified"}, {"status": "rejected"}):
+            recipe = {**self.bundle.scene_decoder_recipe, "scene_input_qualification": qualification}
+            self.assertIsNone(scene.decoder_anchor_scope(raw9_bundle(scene_decoder_recipe=recipe)))
 
     def test_camera_make_model_token_runtime_and_configuration_are_exact(self):
         variants = [raw9_bundle(shot_make="Another maker"), raw9_bundle(shot_model="fp L")]
@@ -170,6 +189,8 @@ class Raw9AnchorCalibratorTests(unittest.TestCase):
             scene_rec2020_render=np.broadcast_to(color, (32, 32, 3)).copy(), scene_scale=1., exposure_gain=1.,
             scene_processing_loss_pct=0., scene_loss_support_untrusted=False, wb_degradation=None,
             scene_reliability_exclusion=None)
+        bundle.scene_decoder_recipe["source"] = {"status": "verified-through-decode",
+                                                  "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
         if self.mutate:
             self.mutate(bundle, path, options)
         return bundle
@@ -267,6 +288,67 @@ class Raw9AnchorCalibratorTests(unittest.TestCase):
             calibrator.install_candidate(result, self.root / "anchors.json")
         (self.root / "target1.dng").write_bytes(b"modified")
         self.assertIn("duplicate-file-content-not-independent-support", self.measure()["failures"])
+
+    def test_source_change_during_either_decoder_cannot_qualify_candidate(self):
+        for decoder in ("libraw", "coreimage"):
+            with self.subTest(decoder=decoder):
+                path = self.root / "target0.dng"
+                original = path.read_bytes()
+                def change(bundle, current, options):
+                    if current.name == path.name and options["decoder"] == decoder:
+                        current.write_bytes(original + b"changed-during-decode")
+                self.mutate = change
+                result = self.measure()
+                self.assertEqual(result["status"], "unmeasured", result)
+                self.assertIsNone(result["profile"])
+                self.assertTrue(result["failures"])
+                path.write_bytes(original)
+
+    def test_restored_bytes_do_not_erase_source_generation_change(self):
+        def change_and_restore(bundle, path, options):
+            if options["decoder"] == "libraw":
+                original = path.read_bytes()
+                path.write_bytes(b"different input generation")
+                path.write_bytes(original)
+        self.mutate = change_and_restore
+        self.assertEqual(self.measure()["status"], "unmeasured")
+
+    def test_earlier_frame_changed_while_measuring_later_frame_is_rejected(self):
+        def change_earlier(bundle, path, options):
+            if path.name == "target1.dng":
+                (self.root / "target0.dng").write_bytes(b"changed-earlier-input")
+        self.mutate = change_earlier
+        self.assertEqual(self.measure()["status"], "unmeasured")
+
+    def test_decoder_source_hash_must_match_measured_input(self):
+        def wrong_identity(bundle, path, options):
+            if options["decoder"] == "coreimage":
+                bundle.scene_decoder_recipe["source"]["sha256"] = "0" * 64
+        self.mutate = wrong_identity
+        self.assertEqual(self.measure()["status"], "unmeasured")
+
+    def test_missing_source_identity_cannot_qualify_measurement(self):
+        with patch("dngscan.source_metadata._source_identity", return_value=None):
+            result = self.measure()
+        self.assertEqual(result["status"], "unmeasured")
+        self.assertIsNone(result["profile"])
+        self.assertEqual(self.calls, [])
+
+    def test_source_change_during_analysis_is_rejected(self):
+        def analyzer(bundle, **options):
+            (self.root / "target0.dng").write_bytes(b"changed-during-analysis")
+            return self.analyzer(bundle, **options)
+        result = calibrator.measure_candidate(self.manifest, self.root, loader=self.loader, analyzer=analyzer)
+        self.assertEqual(result["status"], "unmeasured")
+        self.assertIsNone(result["profile"])
+
+    def test_old_candidate_cannot_skip_new_source_verification(self):
+        result = self.measure()
+        self.assertEqual(result["status"], "qualified-candidate")
+        result["schema"] = "raw9-anchor-candidate-1"
+        with self.assertRaisesRegex(ValueError, "only-qualified-candidate"):
+            calibrator.install_candidate(result, self.root / "anchors.json")
+        self.assertFalse((self.root / "anchors.json").exists())
 
 
 if __name__ == "__main__":
