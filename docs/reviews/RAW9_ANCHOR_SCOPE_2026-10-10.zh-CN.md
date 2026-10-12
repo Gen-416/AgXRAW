@@ -2,11 +2,13 @@
 
 本轮只修复 scene transform 的解码器窗口传递与其离线标定合同。窗口传递移动的是颜色区域的中心与协方差，不修改原始 RAW，也不产生新的相机颜色矩阵、噪声模型或绝对曝光标尺。
 
+后续状态（2026-10-11）：窗口资格已跟随共享的 recipe v2，并要求渲染前 scene 输入资格。测量候选升级为 `raw9-anchor-candidate-2`，两路解码共享源事务并在候选生成前复核全部输入；旧候选需重新测量，不自动升级。见[收尾记录](CALIBRATION_SCOPE_LEGACY_2026-10-11.zh-CN.md#pr179-后续收尾2026-10-11)。
+
 ## 运行时范围
 
 新资产使用 `decoder-anchor-transport-3`。每份 profile 精确绑定 make、model、实际 Apple decoder token、OS/build runtime、配置 SHA256。配置身份由 Core Image 实际参数状态和项目 handoff 策略共同形成，必须包含实际 scale 策略与 hot-WB 实现；同一实现下的后级 WB 矩阵仍由既有窗口矩阵传递处理，不把逐文件连续 WB 数值或 BaselineExposure 混成机型配置。
 
-`decoder_anchor_scope(bundle)` 还核对 bundle 中的实际 token/runtime 与 recipe 一致，拒绝缺失身份、fallback、RAW8、未知配置及未确认的 API 参数状态。`parameter-state-verified` 只表示规定参数已写入且回读符合预期，不证明 Apple 输出具有严格线性或独立原生噪声，也不表示 RAW9 联合解拜耳／降噪关闭。
+`decoder_anchor_scope(bundle)` 还核对当前共享 recipe 版本、`scene_input_qualification` 以及 bundle 中的实际 token/runtime，拒绝缺失身份、fallback、RAW8、未知配置及未确认的 API 参数状态。`parameter-state-verified` 只表示必要参数状态已确认，不要求 setter 必然成功，也不证明 Apple 输出具有严格线性或独立原生噪声，更不表示 RAW9 联合解拜耳／降噪关闭。
 
 `decoder_window_calibration(bundle)` 返回 `status`、`reason`、`profile_id`、`profile_sha256`、`asset_sha256` 和 scope。LibRaw 为 `identity`；Apple 缺少唯一合格匹配为 `unmeasured`，窗口额外解码器传递使用恒等。两者都不阻断基本显影，不影响显式选择 scene transform 本身。`decoder_anchor_fingerprint()` 和窗口 tag 都绑定资产内容 SHA256；同进程修改资产后，旧 tag 不能继续命中新数据，根缓存也使用该指纹。
 
