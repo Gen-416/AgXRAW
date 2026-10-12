@@ -252,6 +252,17 @@ noise and scene distribution inform automatic exposure and tone planning. White 
 to the capture record, and optional looks are off by default. Manual controls can override the
 analysis-driven suggestion.
 
+Default AgX auto exposure uses bounded joint planning: a conservative starting
+exposure followed by a small EV adjustment with a transported white endpoint
+and, when needed, a softer shoulder. Black and toe stay fixed; shadow lift,
+deep-shadow darkening and bright/shadow separation constrain the candidates.
+Look brightness defaults to 1. If no candidate qualifies, the starting plan
+is retained. Preview and export share the selected plan. This is an editable
+starting point, not semantic scene recognition or guaranteed correct exposure.
+[Promotion evidence](docs/assets/delivery-quality/joint-exposure-promotion-20261012.json)
+records plan parity on 16 real RAW files and full-size SDR JPEG parity on two
+of them; it is not new Apple RAW or HDR file quality acceptance.
+
 **HDR is not a brighter normal photo.** Both versions start from the same data and are rendered
 independently, and the written file is reopened and checked.
 

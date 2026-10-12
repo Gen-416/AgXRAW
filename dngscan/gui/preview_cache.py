@@ -62,7 +62,7 @@ from .scheduler import shared_flight_wait
 # are retried after a bounded memory lifetime and never reused from disk.
 # v35: Collect unit/unpack-domain qualification is bound to immutable RAW
 # evidence. Older Analysis entries may license unsupported measurement units.
-PREVIEW_CACHE_VERSION = 38
+PREVIEW_CACHE_VERSION = 39
 AUTO_FALLBACK_RETRY_SECONDS = 60.0
 PROXY_RESAMPLER = "lanczos"
 MAX_DISK_CACHE_FILES = 24

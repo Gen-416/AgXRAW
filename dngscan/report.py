@@ -578,7 +578,10 @@ def print_report(
                 + ("（暗调场景，符合拍摄意图即可）" if anchored < -1.0 else "")
             )
         if auto_ev is not None:
+            planning = getattr(auto_ev, "planning", None)
             limit_note = (
+                f"；受约束联合={planning['status']}；基础 {planning['anchor_ev']:+.2f} EV"
+                if planning is not None else
                 f"；高光限制，参考目标 {auto_ev.ev_median_target:+.2f} EV"
                 if auto_ev.highlight_limited
                 else ""
@@ -826,6 +829,7 @@ def csv_row(
         "jpeg_ev_auto_boost": auto_ev.ev_boost if jpeg_path is not None and auto_ev is not None else "",
         "jpeg_ev_auto_limited": auto_ev.highlight_limited if jpeg_path is not None and auto_ev is not None else "",
         "jpeg_ev_auto_median_target": auto_ev.ev_median_target if jpeg_path is not None and auto_ev is not None else "",
+        "jpeg_ev_auto_planning": json.dumps(auto_ev.planning, ensure_ascii=False) if jpeg_path is not None and auto_ev is not None and auto_ev.planning is not None else "",
         "jpeg_exposure_gain": bundle.exposure_gain if jpeg_path is not None else "",
         "jpeg_icc_embedded": jpeg_icc_embedded if jpeg_path is not None else "",
         "jpeg_srgb_icc_embedded": jpeg_icc_embedded if jpeg_path is not None and output_gamut == "srgb" else "",
