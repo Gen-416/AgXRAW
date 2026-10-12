@@ -599,8 +599,8 @@ GRADE_OPTIONS
       <div><label for="calibrationDirectoryPicker">Collect 测量目录</label><input type="file" id="calibrationDirectoryPicker" webkitdirectory directory multiple></div>
     </div>
     <div style="margin-top:12px"><label for="calibrationShutterMode">本次导入的读出模式声明</label>
-      <select id="calibrationShutterMode"><option value="">遵循测量文件声明 · 默认</option><option value="electronic">明确声明电子快门</option><option value="mechanical">明确声明机械快门</option><option value="efcs">明确声明电子前帘</option><option value="any">明确声明适用全部读出模式</option></select>
-      <p class="muted">仅在确认测量适用范围时覆盖文件声明。RAW 未记录读出模式时，特定模式的标定不会自动套用；“全部模式”是你的明确声明。</p>
+      <select id="calibrationShutterMode"><option value="">遵循测量文件声明 · 默认</option><option value="electronic">限定电子快门</option><option value="mechanical">限定机械快门</option><option value="efcs">限定电子前帘</option><option value="any">不额外收窄快门范围 · any</option></select>
+      <p class="muted">Collect 测量按文件范围与本次声明的共同部分匹配；any 不会扩大文件已限定的范围，冲突会拒用，缺少测量条件也不能靠声明补足。RAW 未记录快门模式时，限定模式的标定不会自动套用。</p>
     </div>
     <div class="ctlFact" id="calibrationStatus" role="status" aria-live="polite"></div>
     <div id="calibrationManifest"></div>
@@ -1089,8 +1089,12 @@ function calibrationReason(reason){
   if(noiseStates[reason])return noiseStates[reason];
   const known={usable:"匹配可用",inactive:"已停用","readout-mode-unavailable":"测量未声明快门模式","file-readout-mode-unavailable":"RAW 未记录快门模式","readout-mode-mismatch":"快门模式不匹配","iso-out-of-domain-or-gain-jump":"ISO 超出测量范围或跨越增益跳变","no-absolute-gain":"缺少绝对增益标定","no-electron-read-noise":"缺少可用电子读噪标定","quality-high-residual":"测量拟合残差过高","quality-unconverged":"测量拟合未收敛","estimator-spread":"增益估计分歧过大","invalid-record":"标定记录损坏","sub-readout-mode-not-verified":"子读出条件尚未验证","declared-readout-constraints-matched":"已声明的逐文件读出条件匹配","sub-readout-not-declared":"未声明子读出条件，保留未验证状态","lossy-raw-storage-not-supported-by-external-prior":"有损 RAW 存储不适用外部噪声标定","file-storage-lossless-unverified":"无法确认 RAW 存储是否无损","measurement-raw-geometry-incomplete":"测量未记录完整 RAW 尺寸","measurement-raw-geometry-unavailable":"测量缺少 RAW 尺寸","measurement-geometry-domain-unavailable":"测量尺寸所属的数据域不明确","measurement-compression-declaration-unverified":"测量的压缩声明无法验证"};
   if(known[reason])return known[reason];
-  const fields={"raw-geometry":"RAW 尺寸","active-geometry":"有效感光区尺寸","default-crop":"默认裁切","libraw-raw-geometry":"完整 RAW 马赛克尺寸","sensor-binning":"像素合并","sample-bits":"存储位深","sensor-bits":"传感器位深","readout-id":"读出标识","capture-kind":"拍摄类型","body-serial":"机身序列号","firmware":"固件版本","storage-lossless":"无损存储属性","exposure-seconds":"曝光时间","aperture-fnumber":"光圈","focal-length-mm":"焦距","lens-identity":"镜头身份"};
+  const fields={"raw-geometry":"RAW 尺寸","active-geometry":"有效感光区尺寸","default-crop":"默认裁切","libraw-raw-geometry":"完整 RAW 马赛克尺寸","sensor-binning":"像素合并","sample-bits":"存储位深","sensor-bits":"传感器位深","readout-id":"读出标识","capture-kind":"拍摄类型","body-serial":"机身序列号","firmware":"固件版本","shutter":"快门模式","storage-lossless":"无损存储属性","exposure-seconds":"曝光时间","aperture-fnumber":"光圈","focal-length-mm":"焦距","lens-identity":"镜头身份"};
   if(reason==="single-point-domain-reimport-required")return "旧单点标定缺少输入单位记录，请从原 CSV 重新导入";
+  const legacy=/^readout-scope-reimport-or-explicit-scope-required:(.+)$/.exec(reason||"");
+  if(legacy&&fields[legacy[1]])return fields[legacy[1]]+"的历史适用范围不明确，请重新导入原测量包，或在标定 JSON 中明确声明额外限制";
+  const conflict=/^measurement-readout-(.+)-conflict$/.exec(reason||"");
+  if(conflict&&fields[conflict[1]])return "测量文件的"+fields[conflict[1]]+"与额外适用范围声明冲突，请核对声明；不能覆盖测量条件";
   const match=/^file-(.+)-(unavailable|mismatch)$/.exec(reason||"");
   if(match&&fields[match[1]])return fields[match[1]]+(match[2]==="mismatch"?"与标定不匹配":"未记录，无法核对标定");
   return reason||"";

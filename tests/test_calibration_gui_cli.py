@@ -246,6 +246,28 @@ NODE = shutil.which("node")
 
 @unittest.skipUnless(NODE, "Node.js is required for GUI callback execution")
 class CalibrationPageRuntimeTests(unittest.TestCase):
+    def test_scope_rejection_explains_conflict_and_reimport_without_raw_codes(self) -> None:
+        start = PAGE.index("function calibrationReason(reason)")
+        source = PAGE[start:PAGE.index("function renderCalibrations", start)]
+        harness = r"""
+const assert=require('node:assert/strict');const vm=require('node:vm');
+const source=require('node:fs').readFileSync(0,'utf8');const context=vm.createContext({});
+vm.runInContext(source,context);
+for(const [reason,field,action] of [
+  ['readout-scope-reimport-or-explicit-scope-required:body-serial','机身序列号','重新导入'],
+  ['measurement-readout-shutter-conflict','快门模式','冲突'],
+  ['measurement-readout-firmware-conflict','固件版本','冲突'],
+  ['measurement-readout-libraw-raw-geometry-conflict','完整 RAW 马赛克尺寸','冲突'],
+]){
+  const message=context.calibrationReason(reason);
+  assert.notEqual(message,reason);assert.ok(message.includes(field));assert.ok(message.includes(action));
+}
+assert.equal(context.calibrationReason('future-unknown-reason'),'future-unknown-reason');
+assert.equal(context.calibrationReason('file-body-serial-mismatch'),'机身序列号与标定不匹配');
+"""
+        result = subprocess.run([NODE, "-e", harness], input=source, text=True, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_picker_reads_selected_text_and_carries_explicit_mode(self) -> None:
         start = PAGE.index("async function importCalibrationSelection(picker)")
         source = PAGE[start:PAGE.index('function renderCalibrationLibrary', start)]

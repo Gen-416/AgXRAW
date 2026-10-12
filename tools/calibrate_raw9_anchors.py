@@ -28,9 +28,10 @@ from dngscan.scene_transform import (  # noqa: E402
 from dngscan.tone import scene_intent_rec2020  # noqa: E402
 from dngscan.protected_output import ProtectedSources  # noqa: E402
 from dngscan.delivery_transaction import DeliveryTransaction  # noqa: E402
+from dngscan.source_metadata import source_metadata_session  # noqa: E402
 
 MANIFEST_SCHEMA = "raw9-anchor-manifest-1"
-CANDIDATE_SCHEMA = "raw9-anchor-candidate-1"
+CANDIDATE_SCHEMA = "raw9-anchor-candidate-2"
 RATIO_BOUNDS = ANCHOR_RATIO_BOUNDS  # Measurement guard; never clamp into qualification.
 MIN_ROI_PIXELS = 64
 MIN_INDEPENDENT_FRAMES = 2  # In each of train and holdout.
@@ -51,6 +52,11 @@ def _sha256(path):
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _require_current_source(session, phase):
+    if not session.assert_consistent(phase=phase):
+        raise ValueError("anchor-source-identity-unavailable")
 
 
 def _frame_paths(document, directory):
@@ -156,62 +162,79 @@ def measure_candidate(manifest, directory, *, loader=load_raw, analyzer=analyze)
         if not isinstance(frames, list) or len(frames) < 4:
             raise ValueError("two-training-and-two-independent-holdout-files-required")
         samples, inputs, scopes, reference_versions, seen_hashes = [], [], [], [], set()
+        source_checks = []
         for frame in frames:
             if not isinstance(frame, dict) or frame.get("split") not in ("train", "holdout"):
                 raise ValueError("invalid-frame-or-independent-split")
             if not isinstance(frame.get("path"), str) or not frame["path"]:
                 raise ValueError("frame-path-required")
             path = (Path(directory) / frame["path"]).resolve()
-            digest = _sha256(path)
-            if digest in seen_hashes:
-                raise ValueError("duplicate-file-content-not-independent-support")
-            seen_hashes.add(digest)
-            if frame.get("sha256") is not None and frame["sha256"] != digest:
-                raise ValueError("input-file-hash-mismatch")
-            bundles = {}
-            for decoder in ("libraw", "coreimage"):
-                bundle = loader(path, scene_half_size=manifest.get("half_size", False), wb_mode="5500k",
-                    decoder=decoder, scene_highlight_mode="clip", coreimage_version=token, coreimage_scale="unity")
-                if bundle.scene_decoder != decoder or getattr(bundle, "scene_decoder_fallback", None):
-                    raise ValueError("actual-decoder-fallback-not-calibration-evidence")
-                if getattr(bundle, "wb_degradation", None):
-                    raise ValueError("declared-white-balance-not-realized")
-                analysis = analyzer(bundle, margin=4, diagnostics=False)[0]
-                # Apple has no registered RAW loss mask. Require no aggregate
-                # loss rather than pretending that a copied RAW mask localizes it.
-                if (not np.isfinite(analysis.cell_union_pct) or analysis.cell_union_pct != 0
-                        or getattr(bundle, "scene_processing_loss_pct", None) != 0
-                        or getattr(bundle, "scene_loss_support_untrusted", False)):
-                    raise ValueError("raw-or-decoder-loss-not-spatially-excluded")
-                bundles[decoder] = bundle
-            reference_versions.append(str(getattr(bundles["libraw"], "scene_decoder_version", None)
-                                          or getattr(bundles["libraw"], "evidence_provider_version", "")))
-            scope = decoder_anchor_scope(bundles["coreimage"])
-            if scope is None or scope["actual_decoder_token"] != token:
-                raise ValueError("actual-raw9-recipe-identity-not-qualified")
-            if (bundles["libraw"].shot_make, bundles["libraw"].shot_model) != (scope["make"], scope["model"]):
-                raise ValueError("paired-camera-identity-mismatch")
-            if scopes and scope != scopes[0]:
-                raise ValueError("mixed-camera-runtime-or-configuration")
-            scopes.append(scope)
-            rois = frame.get("rois")
-            if not isinstance(rois, list) or not rois:
-                raise ValueError("corresponding-flat-target-rois-required")
-            frame_report = {"path": str(path), "sha256": digest, "split": frame["split"], "scope": scope, "rois": []}
-            names = set()
-            for roi in rois:
-                if (not isinstance(roi, dict) or not isinstance(roi.get("id"), str)
-                        or not roi["id"] or roi["id"] in names):
-                    raise ValueError("unique-physical-target-roi-id-required")
-                names.add(roi["id"])
-                a, left = _roi_pixels(bundles["libraw"], roi.get("libraw"))
-                b, right = _roi_pixels(bundles["coreimage"], roi.get("coreimage"))
-                ca, cb = a[[0, 2]] / a[1], b[[0, 2]] / b[1]
-                samples.append({"split": frame["split"], "input_sha256": digest,
-                    "roi": roi["id"], "chroma_libraw": ca.tolist(), "ratio_rg_bg": (cb / ca).tolist()})
-                frame_report["rois"].append({"id": roi["id"], "libraw": left, "coreimage": right})
-            report["frames"].append(frame_report)
-            inputs.append({"name": path.name, "sha256": digest, "split": frame["split"]})
+            # Both decoders, metadata and analysis share one immutable input
+            # generation. A final hash alone would miss changed-then-restored
+            # bytes and cannot bind already-produced pixels to their evidence.
+            with source_metadata_session(path) as source_session:
+                _require_current_source(source_session, "anchor-before-hash")
+                digest = _sha256(path)
+                _require_current_source(source_session, "anchor-after-hash")
+                if digest in seen_hashes:
+                    raise ValueError("duplicate-file-content-not-independent-support")
+                seen_hashes.add(digest)
+                if frame.get("sha256") is not None and frame["sha256"] != digest:
+                    raise ValueError("input-file-hash-mismatch")
+                bundles = {}
+                for decoder in ("libraw", "coreimage"):
+                    _require_current_source(source_session, "anchor-before-" + decoder)
+                    bundle = loader(path, scene_half_size=manifest.get("half_size", False), wb_mode="5500k",
+                        decoder=decoder, scene_highlight_mode="clip", coreimage_version=token, coreimage_scale="unity")
+                    _require_current_source(source_session, "anchor-after-" + decoder)
+                    if bundle.scene_decoder != decoder or getattr(bundle, "scene_decoder_fallback", None):
+                        raise ValueError("actual-decoder-fallback-not-calibration-evidence")
+                    if getattr(bundle, "wb_degradation", None):
+                        raise ValueError("declared-white-balance-not-realized")
+                    if decoder == "coreimage":
+                        recorded_source = (getattr(bundle, "scene_decoder_recipe", None) or {}).get("source") or {}
+                        if (recorded_source.get("status") != "verified-through-decode"
+                                or recorded_source.get("sha256") != digest):
+                            raise ValueError("decoder-source-does-not-match-measured-input")
+                    analysis = analyzer(bundle, margin=4, diagnostics=False)[0]
+                    _require_current_source(source_session, "anchor-after-analysis")
+                    # Apple has no registered RAW loss mask. Require no aggregate
+                    # loss rather than pretending that a copied RAW mask localizes it.
+                    if (not np.isfinite(analysis.cell_union_pct) or analysis.cell_union_pct != 0
+                            or getattr(bundle, "scene_processing_loss_pct", None) != 0
+                            or getattr(bundle, "scene_loss_support_untrusted", False)):
+                        raise ValueError("raw-or-decoder-loss-not-spatially-excluded")
+                    bundles[decoder] = bundle
+                reference_versions.append(str(getattr(bundles["libraw"], "scene_decoder_version", None)
+                                              or getattr(bundles["libraw"], "evidence_provider_version", "")))
+                scope = decoder_anchor_scope(bundles["coreimage"])
+                if scope is None or scope["actual_decoder_token"] != token:
+                    raise ValueError("actual-raw9-recipe-identity-not-qualified")
+                if (bundles["libraw"].shot_make, bundles["libraw"].shot_model) != (scope["make"], scope["model"]):
+                    raise ValueError("paired-camera-identity-mismatch")
+                if scopes and scope != scopes[0]:
+                    raise ValueError("mixed-camera-runtime-or-configuration")
+                scopes.append(scope)
+                rois = frame.get("rois")
+                if not isinstance(rois, list) or not rois:
+                    raise ValueError("corresponding-flat-target-rois-required")
+                frame_report = {"path": str(path), "sha256": digest, "split": frame["split"], "scope": scope, "rois": []}
+                names = set()
+                for roi in rois:
+                    if (not isinstance(roi, dict) or not isinstance(roi.get("id"), str)
+                            or not roi["id"] or roi["id"] in names):
+                        raise ValueError("unique-physical-target-roi-id-required")
+                    names.add(roi["id"])
+                    a, left = _roi_pixels(bundles["libraw"], roi.get("libraw"))
+                    b, right = _roi_pixels(bundles["coreimage"], roi.get("coreimage"))
+                    ca, cb = a[[0, 2]] / a[1], b[[0, 2]] / b[1]
+                    samples.append({"split": frame["split"], "input_sha256": digest,
+                        "roi": roi["id"], "chroma_libraw": ca.tolist(), "ratio_rg_bg": (cb / ca).tolist()})
+                    frame_report["rois"].append({"id": roi["id"], "libraw": left, "coreimage": right})
+                _require_current_source(source_session, "anchor-after-rois")
+                report["frames"].append(frame_report)
+                inputs.append({"name": path.name, "sha256": digest, "split": frame["split"]})
+                source_checks.append((source_session, digest))
         if len(set(reference_versions)) != 1 or reference_versions[0] in ("", "None"):
             raise ValueError("mixed-or-unidentified-libraw-reference-version")
         global_fit = _fit_transport(samples)
@@ -238,7 +261,13 @@ def measure_candidate(manifest, directory, *, loader=load_raw, analyzer=analyze)
             "source": {"method": "corresponding dedicated flat targets; independent-file holdout; no resampling",
                 "inputs": inputs, "manifest_sha256": report["manifest_sha256"],
                 "libraw_reference_version": reference_versions[0],
+                "verification": "paired-decode-session-and-final-sha256-v1",
                 "measured_utc": datetime.now(timezone.utc).isoformat()}}
+        for session, digest in source_checks:
+            _require_current_source(session, "anchor-measurement-commit")
+            if _sha256(session.path) != digest:
+                raise ValueError("anchor-input-changed-since-measurement")
+            _require_current_source(session, "anchor-after-final-hash")
         report.update(status="qualified-candidate" if qualified else "unmeasured", profile=profile, samples=samples,
                       profile_sha256=hashlib.sha256(_canonical(profile)).hexdigest())
         if not qualified:

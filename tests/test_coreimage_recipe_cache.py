@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import patch
 
 from dngscan.decoder_identity import decoder_output_identity, mapping_identity, bind_project_handoff
+from dngscan.coreimage_decode import COREIMAGE_RECIPE_VERSION
 from dngscan.gui import preview_cache as pc
 from dngscan.gui.service import (_cached_full_analysis, _load_export_scene,
                                  _preview_analysis_envelope)
@@ -21,7 +22,7 @@ from tests.test_preview_cache import _analysis, _bundle
 
 def apple_bundle():
     return replace(_bundle(), scene_decoder="coreimage", scene_decoder_version="9",
-                   scene_decoder_recipe={"schema": "coreimage-decode-recipe-1",
+                   scene_decoder_recipe={"schema": COREIMAGE_RECIPE_VERSION,
                        "actual_decoder_token": "9", "configuration_id": "a" * 64,
                        "requested_version": "auto", "controls": {
                            "color_noise": {"applicable": False, "actual": 0.0}},

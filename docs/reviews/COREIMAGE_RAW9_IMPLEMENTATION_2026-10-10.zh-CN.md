@@ -2,6 +2,8 @@
 
 在 `ad57ea2419484b2a2f61d9e2cbbc31b89a1df7ff` 工作区继续实施本轮任务书。远端 main 经获取仍为该提交；此前 Collect／标定／色度清理的未提交工作保留。本轮没有提交或推送。
 
+后续状态：上述未提交状态是历史执行快照，基础改动已随 PR #177 合入 `c4e0c8e`。当前 recipe v2、窗口工具源事务及后续状态见[解码配方](COREIMAGE_DECODE_RECIPE_2026-10-10.zh-CN.md)和[PR179 收尾](CALIBRATION_SCOPE_LEGACY_2026-10-11.zh-CN.md#pr179-后续收尾2026-10-11)；原实机计数与当时配置身份不改写。
+
 独立 RAW evidence 与 Apple 成像继续分离。没有移植 CFA 方差公式到 Apple 输出，没有取消 `opaque-decoder-noise-transfer` 保护，也没有默认开启第二层色度处理。普通 AgX 显影继续可用；缺标定只降级相应能力。
 
 ## 修复与当前能力

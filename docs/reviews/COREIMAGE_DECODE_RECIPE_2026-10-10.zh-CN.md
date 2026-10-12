@@ -2,6 +2,8 @@
 
 日期：2026-10-10。本轮实现 R9-04／R9-08 的解码审计；没有将 Core Image 参数读回解释为实测画质或完整传感器噪声传播资格。
 
+后续状态（2026-10-11）：当前配方已升级为 v2，加入渲染前必要参数资格；RAW9 窗口与测量工具已同步该合同。历史实机记录保留当时的 v1 身份，不改写旧 hash 或自动迁移旧标定。收尾修复见[PR179 后续记录](CALIBRATION_SCOPE_LEGACY_2026-10-11.zh-CN.md#pr179-后续收尾2026-10-11)。
+
 ## 官方语义与现有策略
 
 Apple WWDC26 明确说明 RAW 9 使用联合去马赛克／降噪模型，`colorNoiseReductionAmount` 在 RAW 9 无效，`detailAmount`、`moireReductionAmount` 不再支持；实例的 `isSupported` 属性用于检查适用性。因此，legacy 参数读回为零，只能说明参数状态，不能声称内建降噪关闭。[Apple WWDC26 session 305](https://developer.apple.com/videos/play/wwdc2026/305/)
@@ -12,7 +14,7 @@ Apple WWDC26 明确说明 RAW 9 使用联合去马赛克／降噪模型，`color
 
 ## API 与配置身份
 
-`decode_scene_rec2020()` 保持 `(float16_rgb, info)` 返回；增加 `info['recipe']`，其 `schema` 与 `COREIMAGE_RECIPE_VERSION` 均为 `coreimage-decode-recipe-1`。
+`decode_scene_rec2020()` 保持 `(float16_rgb, info)` 返回；`info['recipe']` 的 `schema` 与共享常量 `COREIMAGE_RECIPE_VERSION` 当前均为 `coreimage-decode-recipe-2`。依赖者使用共享版本并验证必要字段，不按旧 v1 字符串授权。
 
 配方分别记录：
 
@@ -28,7 +30,9 @@ Apple WWDC26 明确说明 RAW 9 使用联合去马赛克／降噪模型，`color
 
 上层 `load_raw()` 保留原 ID 为 `coreimage_configuration_id`，再把项目尺度策略、参考解码版本／高光策略与热 WB 实现组合成最终 `configuration_id`。完整 handoff 另记录逐图 alignment、BaselineExposure 和实际热 WB 倍率／矩阵；这些连续值不进入可复用机型配置，却必须进入输出残差测量身份。`info['recipe']` 的原生配置与 bundle 的最终配置各有明确范围。
 
-`linear_access.status` 只分 `parameter-state-verified` 和 `parameter-state-unverified`，并列出 `unverified_controls`。前者表示必需访问参数可确认或 API 明确表示不适用，仍不证明经验线性、无内建处理或输出域噪声模型成立。兼容字段 `color_noise_cleared` 保留，但 `color_noise_cleared_semantics` 明确为 `legacy-parameter-zero-only-not-internal-NR-off`。
+`linear_access.status` 只分 `parameter-state-verified` 和 `parameter-state-unverified`，并列出 `unverified_controls`。前者表示必需访问参数状态可确认或 API 明确表示不适用，仍不证明经验线性、无内建处理或输出域噪声模型成立。setter 缺失或写入失败时，独立 getter 已确认目标值也可证明参数状态，不必宣称写入成功。
+
+v2 另记录 `scene_input_qualification` 和配置中的 `scene_input_policy`。解码器在 bitmap render 前要求必要参数读回合格；未知必要状态不能先渲染再当作有效 scene。窗口锚点要求当前 recipe、`scene_input_qualification.status=qualified`、已验证的线性访问状态及一致的 token/runtime/configuration；它不解除噪声传播门控。兼容字段 `color_noise_cleared` 保留，但 `color_noise_cleared_semantics` 明确为 `legacy-parameter-zero-only-not-internal-NR-off`。
 
 ## 重试与验收
 
