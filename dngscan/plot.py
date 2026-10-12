@@ -481,7 +481,10 @@ def plot_dashboard(
 
     fig.suptitle(f"RAW 物理诊断: {bundle.path.name}", fontsize=14)
     if auto_ev is not None:
+        planning = getattr(auto_ev, "planning", None)
         limit_note = (
+            f" · 联合规划 {planning['status']}（基础 {planning['anchor_ev']:+.2f} EV）"
+            if planning is not None else
             f" · 高光限制（目标 {auto_ev.ev_median_target:+.2f} EV）"
             if auto_ev.highlight_limited
             else ""

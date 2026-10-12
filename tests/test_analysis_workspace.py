@@ -140,7 +140,7 @@ class AutoEvWorkTests(unittest.TestCase):
         self.assertIsNone(b._clip_masks_resized)
         self.assertEqual(b.clip_masks.dtype, np.float16)
 
-    def test_job_local_plan_matches_final_compile_with_all_relevant_declarations(self):
+    def test_job_local_plan_preserves_compile_declarations_and_selected_curve(self):
         b,a=_bundle(),_analysis()
         for kwargs in ({}, {'tone_core':'neutral','endpoint_mode':'fixed'},
                        {'adjustments':RenderAdjustments(midtone_contrast=.1),'chroma_nr':.2,'agx_primaries':'base'}):
@@ -149,8 +149,18 @@ class AutoEvWorkTests(unittest.TestCase):
             exposed=with_intent_exposure(b,user_ev=result.ev,tone_core=kwargs.get('tone_core','agx'))
             final=build_render_plan(exposed,a,'agx','p3',**kwargs)
             self.assertEqual(len(sink),1)
+            self.assertIs(sink[0],result.render_plan)
+            if result.planning is not None and result.planning['status']=='selected':
+                selected=result.planning['selected']
+                self.assertEqual(sink[0].tone.white_ev, final.tone.white_ev+result.ev)
+                self.assertEqual(sink[0].tone.shoulder_power, selected['shoulder'])
+                # White/shoulder are intentional joint decisions. Every other
+                # declared operation and tone control must survive unchanged.
+                tone=replace(final.tone,white_ev=selected['white_ev'],
+                             dynamic_range_ev=selected['white_ev']-final.tone.black_ev,
+                             shoulder_power=selected['shoulder'])
+                final=replace(final,tone=tone)
             self.assertEqual(json_value(sink[0]),json_value(final))
-            self.assertFalse(hasattr(result,'plan'))
 
 
 if __name__ == '__main__':

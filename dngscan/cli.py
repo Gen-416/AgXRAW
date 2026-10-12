@@ -191,7 +191,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--ev",
         default="auto",
-        help="默认 auto：按可靠场景统计计算曝光并保护高光；指定数字可改为手动曝光补偿",
+        help="默认 auto：AgX 小幅联动曝光、白点与肩部，约束高光和明暗关系；指定数字为固定端点手动曝光",
     )
     parser.add_argument(
         "--highlight-mode",

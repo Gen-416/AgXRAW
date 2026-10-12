@@ -148,6 +148,10 @@ def auto_ev_payload(result: dg.AutoEvResult | None) -> dict | None:
         "highlight_limited": result.highlight_limited,
         "highlight_cap_ev": result.highlight_cap_ev,
         "anchored_median_ev": result.anchored_median_ev,
+        "planning_policy": result.planning.get("policy") if result.planning else None,
+        "planning_status": result.planning.get("status") if result.planning else None,
+        "anchor_ev": result.planning.get("anchor_ev") if result.planning else None,
+        "soft_target_ev": result.planning.get("soft_target_ev") if result.planning else None,
     }
 
 
@@ -258,6 +262,7 @@ def estimate_ev_headroom(
     endpoint_mode: str = "adaptive",
     chroma_nr: float = 0.0,
     lens_filter: str | None = None,
+    tone_plan: dg.RenderPlan | None = None,
 ) -> dict[str, float | str]:
     if analysis is None:
         return {}
@@ -281,6 +286,7 @@ def estimate_ev_headroom(
         endpoint_mode=endpoint_mode,
         chroma_nr=chroma_nr,
         lens_filter=lens_filter,
+        tone_plan=tone_plan,
     )
     return {
         "safe_ev_remaining": max(0.0, float(safe_ev - current_ev)),
@@ -918,6 +924,10 @@ def export_preview_jpeg(
         endpoint_mode,
         chroma_nr=chroma_nr,
     )
+    # Identical EV can accompany different automatic vs manual curves.
+    auto_plan = getattr(auto_ev, "render_plan", None)
+    if auto_plan is not None:
+        pixel_key = (pixel_key, "auto-plan", json.dumps(dataclasses.asdict(auto_plan), sort_keys=True))
     frame_key = _preview_frame_key(pixel_key, include_metrics)
     frame_key = (frame_key, tuple(auto_ev_payload(auto_ev).values()) if auto_ev is not None else None)
     frame = cached.get_frame(frame_key)
@@ -939,7 +949,7 @@ def export_preview_jpeg(
         # annotations (curve endpoints, reliable tail, earned HDR headroom) must
         # quote the exact plan those pixels consumed. The base compile is
         # LRU-cached, so on interactive frames this is a dictionary hit.
-        render_plan = _cached_render_plan(
+        render_plan = auto_plan if auto_plan is not None else _cached_render_plan(
             cached,
             proxy_bundle,
             gamut,
@@ -1141,7 +1151,7 @@ def run_preview(params: dict) -> dict:
             )
             # Cache actual normalized inputs, not request spelling/UI metadata.
             auto_key = json.dumps(
-                {"gamut": gamut, "output_format": output_format, **auto_options},
+                {"policy_version": POLICY_VERSION, "gamut": gamut, "output_format": output_format, **auto_options},
                 sort_keys=True, default=lambda value: dataclasses.asdict(value),
             )
             auto_ev_result = cached.get_or_build_auto_ev(
@@ -1978,6 +1988,7 @@ def run_export(params: dict) -> dict:
                     lum_norm=lum_norm,
                     agx_primaries=agx_primaries,
                     adjustments=adjustments,
+                    tone_plan=render_plan,
                     endpoint_mode=endpoint_mode,
                     lens_filter=lens_filter,
                     chroma_nr=chroma_nr,

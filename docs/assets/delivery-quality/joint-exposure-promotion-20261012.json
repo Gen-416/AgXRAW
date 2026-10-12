@@ -1,0 +1,1215 @@
+{
+  "schema": "agxraw-joint-exposure-promotion/1",
+  "date": "2026-10-12",
+  "base_commit": "3d62a9c300b19b8c07666c4381a4bf0af51cb273",
+  "policy_id": "bounded-agx-2026-10-12-v1",
+  "policy_version": 7,
+  "preview_cache_version": 39,
+  "frozen_experiment": {
+    "schema": "agxraw-holdout-freeze/1",
+    "created_utc": "2026-10-12T21:12:19.029332+00:00",
+    "product_commit": "3d62a9c300b19b8c07666c4381a4bf0af51cb273",
+    "original_solver_sha256": "cb9d4eda8e67ee143803d864b916267717f363908622ff699ae98e775161da56",
+    "policy_sha256": "c657b6cd9959efd7974ef66ff6e8423971ea51e1183240d6920bcff97819f90e",
+    "solver_block_sha256": "2e47dbb53a87f2bcad29a4e3dda1dd6d953bd6a7cc56ce29c5cd6e387202d04c",
+    "wrapper_sha256": "c6679a9d5e5bb43814047e618f543a8ad97b29831c2792fd8c57a61e834f8b46",
+    "original_source": "../joint-refined/reproduce/render_case.py",
+    "solver_body_byte_identical": true,
+    "changes": "new files compute the same neutral AutoEV anchor anew; no change to frozen candidate generation, gates or selection",
+    "selection": "all 16 previously unused genuine RAW files in the top-level sample folder; ideal-image synthetic inputs excluded; no output-dependent exclusions"
+  },
+  "runtime": {
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.4",
+    "numpy": "2.5.0",
+    "rawpy": "0.27.0+libraw.e419de08",
+    "RAW_calculation": "NumPy DNGSCAN_FAST=0"
+  },
+  "cases": [
+    {
+      "id": "holdout-01",
+      "source_sha256": "947c0b0af2d607c898d2d81de0eecb92b368354f1280d672e73a9aa3557d75de",
+      "shape": [
+        3024,
+        4032,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 2.997379207999984,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.0,
+        "canonical_samples": 800000,
+        "status": "identity",
+        "selected": null,
+        "reason": "zero-target identity; no gate-pass claim"
+      }
+    },
+    {
+      "id": "holdout-02",
+      "source_sha256": "fff4228aa4b8f9da290e2a540a9203973eb730e208094de78f3140011413e3f8",
+      "shape": [
+        3024,
+        4032,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 2.727551041999959,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.0,
+        "canonical_samples": 800000,
+        "status": "identity",
+        "selected": null,
+        "reason": "zero-target identity; no gate-pass claim"
+      }
+    },
+    {
+      "id": "holdout-03",
+      "source_sha256": "eecf0c293cc394613ade4ce9864340ee72551c8244883e4dc0e4b01acaec740e",
+      "shape": [
+        3024,
+        4032,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 3.6566931669999576,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.0,
+        "canonical_samples": 800000,
+        "status": "identity",
+        "selected": null,
+        "reason": "zero-target identity; no gate-pass claim"
+      }
+    },
+    {
+      "id": "holdout-04",
+      "source_sha256": "9d53f9a850f7935d1751a2f6f75e21fc93e27a8acf3a610819da852962b05dde",
+      "shape": [
+        3024,
+        4032,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 3.8223624590000327,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.0,
+        "canonical_samples": 800000,
+        "status": "identity",
+        "selected": null,
+        "reason": "zero-target identity; no gate-pass claim"
+      }
+    },
+    {
+      "id": "holdout-05",
+      "source_sha256": "1a501662a4ef4634b3e084e2b3f3a0d3ebe6a12bcd7ab73ba3867b7ff707a9ac",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.12409168481826782,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 31.32509812499984,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0078125,
+        "soft_target_ev": 0.12409168481826782,
+        "canonical_samples": 800000,
+        "status": "selected",
+        "selected": {
+          "ev": 0.12409168481826782,
+          "white_ev": 3.8302773118019102,
+          "black_ev": -6.386224031448364,
+          "shoulder": 2.3375,
+          "toe": 1.5,
+          "legal": true,
+          "pass": true,
+          "proposal_margin": 0.24727272727272798,
+          "proposal_relations": {
+            "shadow_count": 70043,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.17931130704250245,
+              0.1996773108338134,
+              0.3470540657647008
+            ],
+            "dark_count": 34053,
+            "dark_delta_EV_p05_p50_p95": [
+              0.20401613757564074,
+              0.2405912205256162,
+              0.3971507127421384
+            ],
+            "bright_count": 16165,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.0015035084906370455,
+              0.02091210556304771,
+              0.05936685649817196
+            ],
+            "separation_change_EV": -0.1787652052707657,
+            "pass": true
+          },
+          "canonical_margin": 0.24224999999999985,
+          "canonical_stats": [
+            91.58504168331727,
+            95.21750807762146,
+            2.788,
+            3.6248750000000003
+          ],
+          "canonical_relations": {
+            "shadow_count": 254361,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.17928823206408928,
+              0.19987605640059397,
+              0.345470377145694
+            ],
+            "dark_count": 124174,
+            "dark_delta_EV_p05_p50_p95": [
+              0.20403492396756104,
+              0.24068605646913227,
+              0.39676171664312854
+            ],
+            "bright_count": 59140,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.0015726435537857914,
+              0.020265121388368043,
+              0.059196961937716626
+            ],
+            "separation_change_EV": -0.17961093501222591,
+            "pass": true
+          },
+          "canonical_samples": 800000
+        },
+        "reason": "least shoulder softening at chosen EV"
+      }
+    },
+    {
+      "id": "holdout-06",
+      "source_sha256": "ebbf66776d4865b853ef91454a067de2a72d64bf95e4d097fd46f0cb4b7bbe69",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 27.743440415999885,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.0,
+        "canonical_samples": 800000,
+        "status": "identity",
+        "selected": null,
+        "reason": "zero-target identity; no gate-pass claim"
+      }
+    },
+    {
+      "id": "holdout-07",
+      "source_sha256": "0c95a7c681ad95e9a7532250fbc7aabe9929ada23bcd9059bf2b280437277aff",
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 38.257972124999924,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.048072791099548345,
+        "canonical_samples": 800000,
+        "status": "fallback",
+        "selected": null,
+        "reason": "no constrained candidate passes; neutral anchor retained"
+      }
+    },
+    {
+      "id": "holdout-08",
+      "source_sha256": "87276b073a536cd28bce24235b5e38d672ab907f3ce884cb9a5d7478f3f0af1e",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.1308586597442627,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 33.106010250000054,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.1308586597442627,
+        "canonical_samples": 800000,
+        "status": "selected",
+        "selected": {
+          "ev": 0.1308586597442627,
+          "white_ev": 4.192827987670898,
+          "black_ev": -5.140269584655762,
+          "shoulder": 2.15,
+          "toe": 1.5,
+          "legal": true,
+          "pass": true,
+          "proposal_margin": 0.04545691377768435,
+          "proposal_relations": {
+            "shadow_count": 86138,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.22092837811246202,
+              0.2397143405538087,
+              0.4385027519710628
+            ],
+            "dark_count": 23415,
+            "dark_delta_EV_p05_p50_p95": [
+              0.28166815448910143,
+              0.3386334580477456,
+              0.5976365414824475
+            ],
+            "bright_count": 30975,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.010796264764409308,
+              0.02646212521353797,
+              0.05813577764687805
+            ],
+            "separation_change_EV": -0.21325221534027072,
+            "pass": true
+          },
+          "canonical_margin": 0.01821260671299285,
+          "canonical_stats": [
+            91.98178739328701,
+            93.63454394340518,
+            0.004875,
+            0.177125
+          ],
+          "canonical_relations": {
+            "shadow_count": 313930,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.22094139854214026,
+              0.23963761839057568,
+              0.43770450971250024
+            ],
+            "dark_count": 84703,
+            "dark_delta_EV_p05_p50_p95": [
+              0.28157963106630574,
+              0.33821073538707125,
+              0.5960805625651758
+            ],
+            "bright_count": 113204,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.010788794169953654,
+              0.026414185530190884,
+              0.058164736064215856
+            ],
+            "separation_change_EV": -0.2132234328603848,
+            "pass": true
+          },
+          "canonical_samples": 800000
+        },
+        "reason": "least shoulder softening at chosen EV"
+      }
+    },
+    {
+      "id": "holdout-09",
+      "source_sha256": "a333062fc7dfba189916ce7d67fd7bb003a852743e0ad7a61f388030d2cfe82c",
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.16816933155059816,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "full_SDR_JPEG_byte_equal": true,
+      "JPEG_sha256": "35cef0af651b94a39332a49426568a41e289d871fd8e7b3f8daec89ca796b9f7",
+      "source_unchanged": true,
+      "seconds": 42.139144042000225,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0703125,
+        "soft_target_ev": 0.16816933155059816,
+        "canonical_samples": 800000,
+        "status": "selected",
+        "selected": {
+          "ev": 0.16816933155059816,
+          "white_ev": 3.8852943181991577,
+          "black_ev": -5.826888628005982,
+          "shoulder": 2.9,
+          "toe": 1.5,
+          "legal": true,
+          "pass": true,
+          "proposal_margin": 0.20818181818181825,
+          "proposal_relations": {
+            "shadow_count": 53681,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.15754975280723232,
+              0.16366662579163085,
+              0.2950792566131556
+            ],
+            "dark_count": 10548,
+            "dark_delta_EV_p05_p50_p95": [
+              0.18626024828425852,
+              0.22192569481132,
+              0.43006279514504603
+            ],
+            "bright_count": 8026,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.0007700381909979968,
+              0.012650397503973794,
+              0.06572472445820218
+            ],
+            "separation_change_EV": -0.15101622828765707,
+            "pass": true
+          },
+          "canonical_margin": 0.16750000000000043,
+          "canonical_stats": [
+            90.11813125201799,
+            94.04768011570059,
+            1.560625,
+            1.705625
+          ],
+          "canonical_relations": {
+            "shadow_count": 195121,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.1575430932328819,
+              0.16375530154460494,
+              0.2938147380350886
+            ],
+            "dark_count": 38433,
+            "dark_delta_EV_p05_p50_p95": [
+              0.18636835015078052,
+              0.22269866097682692,
+              0.42878919198390153
+            ],
+            "bright_count": 29228,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.0003943049174401149,
+              0.014851837679510205,
+              0.06575314407379261
+            ],
+            "separation_change_EV": -0.14890346386509473,
+            "pass": true
+          },
+          "canonical_samples": 800000
+        },
+        "reason": "least shoulder softening at chosen EV"
+      }
+    },
+    {
+      "id": "holdout-10",
+      "source_sha256": "581d798c45107c7a7c63b7ffbf7fd437f864c8498e2c17374e46a3cc8f9061db",
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 28.538842541999657,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.0,
+        "canonical_samples": 800000,
+        "status": "identity",
+        "selected": null,
+        "reason": "zero-target identity; no gate-pass claim"
+      }
+    },
+    {
+      "id": "holdout-11",
+      "source_sha256": "7e14972b330873f39ae3f272190ba91edb22cf9a69c2f085d3d3dcd55be265be",
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.010231208801269532,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 31.37289741700033,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.010231208801269532,
+        "canonical_samples": 800000,
+        "status": "selected",
+        "selected": {
+          "ev": 0.010231208801269532,
+          "white_ev": 3.8426668643951416,
+          "black_ev": -5.556759471893311,
+          "shoulder": 1.9625,
+          "toe": 1.5,
+          "legal": true,
+          "pass": true,
+          "proposal_margin": 0.30454545454545456,
+          "proposal_relations": {
+            "shadow_count": 62890,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.017051518313058473,
+              0.02071151962753079,
+              0.040228051803742754
+            ],
+            "dark_count": 31611,
+            "dark_delta_EV_p05_p50_p95": [
+              0.02100404427441071,
+              0.024849460176987005,
+              0.047077178185057994
+            ],
+            "bright_count": 33932,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.04163368970649244,
+              -0.03566874702100932,
+              -0.019364784092750005
+            ],
+            "separation_change_EV": -0.05638026664854011,
+            "pass": true
+          },
+          "canonical_margin": 0.2913224399677148,
+          "canonical_stats": [
+            91.70867756003229,
+            93.52403035163887,
+            0.002,
+            0.32675
+          ],
+          "canonical_relations": {
+            "shadow_count": 228857,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.017054425915597988,
+              0.020699052592358096,
+              0.04027145339347733
+            ],
+            "dark_count": 114773,
+            "dark_delta_EV_p05_p50_p95": [
+              0.02099932238818915,
+              0.02481159437806191,
+              0.04707186166359957
+            ],
+            "bright_count": 122853,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.04163126289983463,
+              -0.03559608475361593,
+              -0.01933207186902936
+            ],
+            "separation_change_EV": -0.05629513734597402,
+            "pass": true
+          },
+          "canonical_samples": 800000
+        },
+        "reason": "least shoulder softening at chosen EV"
+      }
+    },
+    {
+      "id": "holdout-12",
+      "source_sha256": "cccddf772b572e6d283f67f78ccc1d5064a77a94f2771686b587eb7c0dfe59b4",
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.1875,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "full_SDR_JPEG_byte_equal": true,
+      "JPEG_sha256": "3039b091922098ce20a51f31f48a11bc939464ce500e5cad6d812cf787121c37",
+      "source_unchanged": true,
+      "seconds": 44.04365125000004,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.25,
+        "canonical_samples": 800000,
+        "status": "selected",
+        "selected": {
+          "ev": 0.1875,
+          "white_ev": 3.645469236373901,
+          "black_ev": -7.342937822152631,
+          "shoulder": 1.9625,
+          "toe": 1.2447454929351807,
+          "legal": true,
+          "pass": true,
+          "proposal_margin": 0.12363636363636354,
+          "proposal_relations": {
+            "shadow_count": 151846,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.24966051108712273,
+              0.27715897974458104,
+              0.4099885879396395
+            ],
+            "dark_count": 95723,
+            "dark_delta_EV_p05_p50_p95": [
+              0.26549331807818116,
+              0.29927253465857295,
+              0.44731917292766693
+            ],
+            "bright_count": 8651,
+            "bright_delta_EV_p05_p50_p95": [
+              0.0,
+              0.048846479314946185,
+              0.09412441283565573
+            ],
+            "separation_change_EV": -0.22831250042963486,
+            "pass": true
+          },
+          "canonical_margin": 0.12499999999999956,
+          "canonical_stats": [
+            85.86092260259494,
+            95.83987849950795,
+            1.882125,
+            2.718625
+          ],
+          "canonical_relations": {
+            "shadow_count": 551371,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.24965339697409988,
+              0.2771155247587949,
+              0.40962031232927354
+            ],
+            "dark_count": 347369,
+            "dark_delta_EV_p05_p50_p95": [
+              0.26541705802151105,
+              0.29918709469426413,
+              0.4469241425456515
+            ],
+            "bright_count": 31596,
+            "bright_delta_EV_p05_p50_p95": [
+              0.0,
+              0.048917269471565786,
+              0.09422193617019688
+            ],
+            "separation_change_EV": -0.22819825528722915,
+            "pass": true
+          },
+          "canonical_samples": 800000
+        },
+        "reason": "least shoulder softening at chosen EV"
+      }
+    },
+    {
+      "id": "holdout-13",
+      "source_sha256": "5356f96f07096d4a8a2293945297adefa7a43ce7cdc352fd745bc830704536fc",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.1875,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 35.78051937500004,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.25,
+        "canonical_samples": 800000,
+        "status": "selected",
+        "selected": {
+          "ev": 0.1875,
+          "white_ev": 3.7765267372131346,
+          "black_ev": -6.4029364945700475,
+          "shoulder": 1.5875,
+          "toe": 1.2937894781430561,
+          "legal": true,
+          "pass": true,
+          "proposal_margin": 0.5172727272727267,
+          "proposal_relations": {
+            "shadow_count": 130854,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.27036330085747556,
+              0.31415197838773773,
+              0.5105862119600307
+            ],
+            "dark_count": 82219,
+            "dark_delta_EV_p05_p50_p95": [
+              0.2918481979748763,
+              0.3480756035786335,
+              0.5667170826030262
+            ],
+            "bright_count": 16457,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.008699002012522905,
+              0.01696118946765257,
+              0.06863388994974985
+            ],
+            "separation_change_EV": -0.29719078892008516,
+            "pass": true
+          },
+          "canonical_margin": 0.51525,
+          "canonical_stats": [
+            89.3199061913268,
+            95.11995953321474,
+            3.7548749999999997,
+            5.23425
+          ],
+          "canonical_relations": {
+            "shadow_count": 476597,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.2703255380640566,
+              0.31405535437820464,
+              0.50962557925459
+            ],
+            "dark_count": 298926,
+            "dark_delta_EV_p05_p50_p95": [
+              0.291848322528888,
+              0.3479872332556865,
+              0.5665571831536295
+            ],
+            "bright_count": 60215,
+            "bright_delta_EV_p05_p50_p95": [
+              -0.008713064311248237,
+              0.016720691750322442,
+              0.0687027138679428
+            ],
+            "separation_change_EV": -0.2973346626278822,
+            "pass": true
+          },
+          "canonical_samples": 800000
+        },
+        "reason": "least shoulder softening at chosen EV"
+      }
+    },
+    {
+      "id": "holdout-14",
+      "source_sha256": "947ee2874750a8ae9435ef1900023b9f9fa6cc434a95c87537c69eec0b3732ce",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.1855423927307129,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 39.43097683299993,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0078125,
+        "soft_target_ev": 0.1855423927307129,
+        "canonical_samples": 800000,
+        "status": "selected",
+        "selected": {
+          "ev": 0.1855423927307129,
+          "white_ev": 3.8678472995758053,
+          "black_ev": -6.4029364945700475,
+          "shoulder": 2.525,
+          "toe": 1.4667370001475015,
+          "legal": true,
+          "pass": true,
+          "proposal_margin": 0.13181818181818294,
+          "proposal_relations": {
+            "shadow_count": 100929,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.2735856516931684,
+              0.28987996246508885,
+              0.4027444665176928
+            ],
+            "dark_count": 37566,
+            "dark_delta_EV_p05_p50_p95": [
+              0.29638053232116934,
+              0.33031526521674304,
+              0.4759697232858259
+            ],
+            "bright_count": 7570,
+            "bright_delta_EV_p05_p50_p95": [
+              0.0,
+              0.06280566878641475,
+              0.10489372625266537
+            ],
+            "separation_change_EV": -0.2270742936786741,
+            "pass": true
+          },
+          "canonical_margin": 0.13000000000000012,
+          "canonical_stats": [
+            89.99744287692582,
+            95.50406761169437,
+            0.8992500000000001,
+            1.421
+          ],
+          "canonical_relations": {
+            "shadow_count": 368151,
+            "shadow_delta_EV_p05_p50_p95": [
+              0.2735804491533943,
+              0.2899266365189484,
+              0.40336088842755236
+            ],
+            "dark_count": 137848,
+            "dark_delta_EV_p05_p50_p95": [
+              0.2966246302735442,
+              0.3303555011038978,
+              0.4769220676803053
+            ],
+            "bright_count": 27806,
+            "bright_delta_EV_p05_p50_p95": [
+              0.0,
+              0.062278832504686965,
+              0.10492231871506652
+            ],
+            "separation_change_EV": -0.22764780401426143,
+            "pass": true
+          },
+          "canonical_samples": 800000
+        },
+        "reason": "least shoulder softening at chosen EV"
+      }
+    },
+    {
+      "id": "holdout-15",
+      "source_sha256": "329d735247dbe374806458ef6224ae48e2c9b3e5a2868ad611033ca99d82e218",
+      "shape": [
+        6000,
+        4000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 45.78854520899995,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.017500591278076173,
+        "canonical_samples": 800000,
+        "status": "fallback",
+        "selected": null,
+        "reason": "no constrained candidate passes; neutral anchor retained"
+      }
+    },
+    {
+      "id": "holdout-16",
+      "source_sha256": "c0a1879b3fc94e15adb65ed6f70e46424975bb12d86d18160d5d61aa0e04aae3",
+      "shape": [
+        4000,
+        6000,
+        3
+      ],
+      "actual_decoder": "libraw",
+      "ev": 0.0,
+      "frozen_EV_and_tone_equal": true,
+      "full_proxy_plan_equal": true,
+      "source_unchanged": true,
+      "seconds": 54.32592174999991,
+      "planning": {
+        "policy": "bounded-agx-2026-10-12-v1",
+        "anchor_ev": 0.0,
+        "soft_target_ev": 0.07477090358734131,
+        "canonical_samples": 800000,
+        "status": "fallback",
+        "selected": null,
+        "reason": "no constrained candidate passes; neutral anchor retained"
+      }
+    }
+  ],
+  "golden_migration": [
+    {
+      "fixture": "daylight_wide_dr__compiled__agx__smooth.npz",
+      "old_brightness": 1.114465069770813,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 15
+    },
+    {
+      "fixture": "daylight_wide_dr__compiled__agx__base.npz",
+      "old_brightness": 1.114465069770813,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 18
+    },
+    {
+      "fixture": "daylight_wide_dr__compiled__agx__punchy.npz",
+      "old_brightness": 1.114465069770813,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 26
+    },
+    {
+      "fixture": "daylight_wide_dr__compiled__agx__muted.npz",
+      "old_brightness": 1.114465069770813,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 15
+    },
+    {
+      "fixture": "night_sparse_lamps__compiled__agx__smooth.npz",
+      "old_brightness": 1.2764149188995362,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 21
+    },
+    {
+      "fixture": "night_sparse_lamps__compiled__agx__base.npz",
+      "old_brightness": 1.2764149188995362,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 22
+    },
+    {
+      "fixture": "night_sparse_lamps__compiled__agx__punchy.npz",
+      "old_brightness": 1.2764149188995362,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 24
+    },
+    {
+      "fixture": "night_sparse_lamps__compiled__agx__muted.npz",
+      "old_brightness": 1.2764149188995362,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 21
+    },
+    {
+      "fixture": "crop__SDI0150__compiled__agx__smooth.npz",
+      "old_brightness": 1.1150956869125366,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 12
+    },
+    {
+      "fixture": "crop__SDI0150__compiled__agx__base.npz",
+      "old_brightness": 1.1150956869125366,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 12
+    },
+    {
+      "fixture": "crop__SDI0150__compiled__agx__punchy.npz",
+      "old_brightness": 1.1150956869125366,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 13
+    },
+    {
+      "fixture": "crop__SDI0150__compiled__agx__muted.npz",
+      "old_brightness": 1.1150956869125366,
+      "new_brightness": 1.0,
+      "old_behavior_exactly_reproduced": true,
+      "max_byte_delta": 12
+    }
+  ],
+  "limits": [
+    "16 files: 12 Sigma fp and 4 iPhone, not 16 independent scenes or camera models.",
+    "All RAW promotion cases use LibRaw full-size SDR. No new Apple RAW or HDR file/visual acceptance.",
+    "Full JPEG byte equality checks cover two cases only; the other fourteen compare EV, tone and proxy planning.",
+    "Fixed luminance populations do not perform scene semantics; unavailable population evidence is explicit.",
+    "No independent noise/detail/colour ground truth. Private RAWs and comparison images remain outside Git."
+  ],
+  "SDR_freeze_review": {
+    "authorization": "User accepted the frozen effect as default on 2026-10-12. Intentional SDR default promotion, not an HDR algorithm change.",
+    "isolation": "Restoring only the previous adaptive view_brightness reproduces all eight previous P3 u8 arrays and float16 linear arrays exactly. Six baselines updated; two unchanged. Test tolerances unchanged.",
+    "cases": [
+      {
+        "fixture": "daylight_wide_dr__libraw__agx__smooth__p3__evp0p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": true,
+        "old_sha256": "7b6000a1d31f008eb1eb88ec90776d62eec3d0b909d71a8a4006e9acadcaa86d",
+        "max_byte_delta": 23,
+        "new_sha256": "08723558e2d9e67e0374d5b16666c2af733739a99cf476b8daf07e7fbfaf9f23"
+      },
+      {
+        "fixture": "daylight_wide_dr__libraw__agx__smooth__p3__evp1p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": true,
+        "old_sha256": "16e9810668ab019ea23d324a412c8a2af7881871a6ce74b6463861981dba8cc4",
+        "max_byte_delta": 25,
+        "new_sha256": "69584d939d21dab057b556f34a77c1cd76c9455879b2c82619d3a25712f2a243"
+      },
+      {
+        "fixture": "night_sparse_lamps__libraw__agx__smooth__p3__evp0p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": true,
+        "old_sha256": "1469750780636420f810eb728c9249f46592b622373c44a999f322f8ed699fd8",
+        "max_byte_delta": 25,
+        "new_sha256": "5a4c0d46ea546225e0659007e5f6df99fd67974b9aae19d030dcceed5859221f"
+      },
+      {
+        "fixture": "night_sparse_lamps__libraw__agx__smooth__p3__evp1p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": true,
+        "old_sha256": "2d7e17e9cfffdfbe5407dbb3f591b269bdf023e049d488428638cd508035d114",
+        "max_byte_delta": 30,
+        "new_sha256": "02c65e2718f5f845ef90679d739a3dea5e5e5448ad677b9afe22d9d7bff618f5"
+      },
+      {
+        "fixture": "crop__SDI0150__libraw__agx__smooth__p3__evp0p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": true,
+        "old_sha256": "8052d9dc5d85606b5bfcd0ca4faf4665047231adbfa62696a3d9e385f1f5f645",
+        "max_byte_delta": 12,
+        "new_sha256": "727e72f0cf7089be54af930f1694852462890e6e7217b6b6e9166099dbfe074f"
+      },
+      {
+        "fixture": "crop__SDI0150__libraw__agx__smooth__p3__evp1p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": true,
+        "old_sha256": "f41f553ba0e6dec4e6ef045cdabd270d6a8d6be05f5ce4f194406484aafc88c6",
+        "max_byte_delta": 12,
+        "new_sha256": "b729aaab4c3748e2b85cfa3cb0bd868ef19d873113eedc2eb384d0b31ef1fffe"
+      },
+      {
+        "fixture": "crop__SDI0238__libraw__agx__smooth__p3__evp0p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": false,
+        "old_sha256": "b86d5b0ae06a8ac16a153ec8053424e8bf1d188e1cf9579e3ce992fc46ca9a12",
+        "max_byte_delta": 0,
+        "new_sha256": "b86d5b0ae06a8ac16a153ec8053424e8bf1d188e1cf9579e3ce992fc46ca9a12"
+      },
+      {
+        "fixture": "crop__SDI0238__libraw__agx__smooth__p3__evp1p00.npz",
+        "old_behavior_exactly_reproduced": true,
+        "changed": false,
+        "old_sha256": "243834a6a68f30b63bbb5585bb96acbfffcca0b36abf87e70acf308cde61972f",
+        "max_byte_delta": 0,
+        "new_sha256": "243834a6a68f30b63bbb5585bb96acbfffcca0b36abf87e70acf308cde61972f"
+      }
+    ]
+  },
+  "test_runs": [
+    {
+      "backend": "NumPy",
+      "command": "DNGSCAN_FAST=0 MPLBACKEND=Agg OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m unittest discover -s tests -q",
+      "run": 2236,
+      "skipped": 71,
+      "reported_failures": 8,
+      "errors": 0,
+      "seconds": 531.308,
+      "result": "Initial full run identified only the old fixed-plan assertion and the old SDR baselines (three test methods, eight reported failures/subtests). These contracts were migrated explicitly and all affected modules rerun below; no production arithmetic changed after this full run."
+    },
+    {
+      "backend": "NumPy",
+      "command": "DNGSCAN_FAST=0 python -m unittest tests.test_analysis_workspace tests.test_sdr_freeze tests.test_golden_render tests.test_joint_exposure tests.test_policy_register -q",
+      "run": 32,
+      "passed": 31,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 2.945,
+      "result": "Final affected-module rerun after baseline/contract migration."
+    },
+    {
+      "backend": "strict native",
+      "command": "DNGSCAN_FAST=1 DNGSCAN_FAST_STRICT=1 python -m unittest tests.test_analysis_workspace tests.test_joint_exposure tests.test_golden_render -q",
+      "run": 21,
+      "passed": 21,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 2.079,
+      "result": "Final affected-module rerun; native production kernels enabled."
+    },
+    {
+      "backend": "NumPy",
+      "command": "DNGSCAN_FAST=0 python -m unittest tests.test_joint_exposure tests.test_gui_page tests.test_gui_page_runtime tests.test_gui_export tests.test_hdr_agx_pair tests.test_hdr_agx_formation tests.test_hdr_agx_math tests.test_scene_scale_contract -q",
+      "run": 126,
+      "passed": 122,
+      "skipped": 4,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 337.302
+    }
+  ],
+  "cache_migration": {
+    "preview_cache_version": 39,
+    "policy_version": 7,
+    "behavior": "Invalidate old disk preview/analysis envelopes; auto-plan parameters distinguish automatic from manual pixels at the same EV. Runtime auto-result cache also carries policy version."
+  },
+  "final_source_identity": {
+    "timing": "Captured after final targeted verification, separately from the earlier real-RAW promotion run. Later edits only affect diagnostics, documentation, validation provenance and baseline tests.",
+    "sha256": {
+      "dngscan/__init__.py": "9c694ad6c650f738d63409cc2c7ea3474cff5cc72d7021970d4fc1f4e91ac21f",
+      "dngscan/__main__.py": "3cb58a0fc518102320f64b696a4cf246d0f2f5e94888c0ed9313972d1957631f",
+      "dngscan/_deps.py": "977a76d8856da0f01b163672012c346d862baaa5cf960e66af7ba77f3cfcaf69",
+      "dngscan/_fast.py": "f0f9721896c9af69acf030e52b26cac1767ef7eaef4e787da8a0e5e218be9a4e",
+      "dngscan/agx.py": "7dab58b58e9f683c8023a136a06814c1ed51a540ae6abe37faf456236f9d9334",
+      "dngscan/analysis.py": "b2231748098d028b12edd2efc9afe640decdd638b66f3e6f499604ec70db197d",
+      "dngscan/auto_encode.py": "057011dba1558f788afc2f4c2a6027e30908e39afd37d8aea97532c1525f82f0",
+      "dngscan/auto_ev.py": "77cfb520f2092c1fbfb0d998821e2f580157b3a2a286cc016dfad4fdc67a68af",
+      "dngscan/calibration.py": "f37c52eb990f6fbfc2c912e1824b3cb4e3ba36eb46f97a043e251c3ab6b5c2de",
+      "dngscan/calibration_capabilities.py": "a44e8e4b9d79d7ee0e89f5f5b2ae60da2b23e7880a43377521a5879c4a76f7bf",
+      "dngscan/calibration_ptc.py": "11053fd80a5de9d7b8fdd20e65a74a86bba56a9124ca89ce2afcc99292e54fca",
+      "dngscan/calibration_registry.py": "c9c89b9c46fd81817dc77de460ef586ddf42eb1e66425c590d69892b05204ae0",
+      "dngscan/camera_matrices.py": "9b1e86970fa8a81c62a19831dbab2b0d8ad9822f84389f341cbffec9931dc6cd",
+      "dngscan/capture_facts.py": "0ac52293b9670859d65b43a7100813d0d8681c537aa623cbe46b4d975d0775d8",
+      "dngscan/capture_identity.py": "6b7a06bb9f6f3d7f95ee893a4dde12bb9b6f14371be4e44f68c240f1cfdfb29c",
+      "dngscan/cbld.py": "41aec59f776683f472c191d87f4b1db6335f407a969c4ce49ce8050eb101ae3b",
+      "dngscan/chroma_nr.py": "90461b2c18b09efc3c49440aa6ad37fbd21ccf91dec5b147ec3912fb7afd0d06",
+      "dngscan/chroma_policy.py": "8bb84f6d3549d05d483d73c6b2f4db3463b76450fa8e0d79f0beb4cad6f71e38",
+      "dngscan/chroma_research.py": "44b05f42bbed95c552416fe6113419e689434a3e4c724eea8afdbb10ec5383b5",
+      "dngscan/cli.py": "a24080d2517e8746aa8a1a89cf9a0e4ffaa0e2fcab1fa3092ebea7b624e14674",
+      "dngscan/collect_manifest.py": "2546224644f680132b9192a2b23c3f464a4bd42b1c930357270d7c97de1e41ce",
+      "dngscan/color.py": "1580cacaa45e69b1f8ade8bd1fda22c39598730077f56359c4cc67616dad3571",
+      "dngscan/constants.py": "8ff5995938845237fb4e96bc8112b697a52bdf3576d27823806c758956a8edce",
+      "dngscan/core.py": "4f37ebab2e2b99870e66161272f40469e65114b7ecd5fa1683d3a6f0390eb05b",
+      "dngscan/coreimage_decode.py": "f7c345a4c1e3b3a4e739482ae4102cdb382f5b573da4c9ad5e03df723ed2ac2d",
+      "dngscan/cpu_budget.py": "912cf51db30a46b1453961ba59fd1d6f094313fee0c5c77daf29a4f0c62ce772",
+      "dngscan/data/lens_transmittance.json": "1bb6b87791eb6bb9fdb77adf930c92fe72a0c68dce1ed52365a1c34e9ba21cac",
+      "dngscan/data/priors/collect_registry.json": "805796cbdacd72c9c3a2527424ca00418f316a1b9f00925947b0f27eb31dd6d4",
+      "dngscan/data/priors/jptc/nikon_z7_iso64_mechanical.json": "819c89d1d76b981167af78c900cdc6421b1af5e751f88e4ac74abddd0d8df355",
+      "dngscan/data/priors/jptc/panasonic_g9m2_iso100_mechanical.json": "83f09092a2c1298320a2baf410ab4b4b21520bc3c62afaaba5a6b8ce4ec46e51",
+      "dngscan/data/priors/jptc/panasonic_s1m2_iso100_electronic.json": "db511b1f7c03d2771728825a02c507c5e02715864c9422e4dae204acedb07eb5",
+      "dngscan/data/priors/jptc/panasonic_s1m2_iso100_mechanical.json": "f778fa544b78b4a9ed68d6f36ea18136507da2aab54cd38f564cc73775ee8c1a",
+      "dngscan/data/priors/jptc/sony_ilce7m5_iso100_electronic.json": "31c9b7067b9823a9b5d9b91f64124bc798b060e021567fa98ba646af6c518ebc",
+      "dngscan/data/priors/jptc/sony_ilce7m5_iso100_mechanical.json": "3c8dde9307f4c34a90d5411a14ec15892553ae90c5b08b5bfb83a8bdcefebcf7",
+      "dngscan/data/priors/jptc/sony_ilce7rm6_iso100_electronic.json": "bc81612437fe9ef93f132c14c303e54c821aba4bf76bb8b3a15c7669c1a9e26b",
+      "dngscan/data/priors/jptc/sony_ilce7rm6_iso100_mechanical.json": "72eec4482938dc440715d457e0ef93b373df4e772d7f8a461142473786b76a8b",
+      "dngscan/data/priors/jptc/sony_ilce7rm6_iso640_mechanical.json": "c8802caf41d445e2107078d0c59565b514eb06b0f92fa159386570372e147f27",
+      "dngscan/data/priors/jptc_collect/a7rm4a-mech-20260820.json": "48ff2e7b23fdf0562b459668505f8410f021c176400bdbf69f4bf284d5180614",
+      "dngscan/data/priors/jptc_collect/a7rm6-elec-20260818.json": "f45d73466e22a022d9a35c1d3270f3636c3c147279832cf6bb16c30357743761",
+      "dngscan/data/priors/jptc_collect/a7rm6-elec-srhq-20260820.json": "5ab495259fcfc77f2f42836122cd4657060d50be463e942d72d78e37afe2d941",
+      "dngscan/data/priors/jptc_collect/a7rm6-mech-20260818.json": "12de8aa30543409778a69ff0f6d1655fe019e9ce03ea023ea3724445de1cd63b",
+      "dngscan/data/priors/jptc_collect/gfx100-mech-20260816.json": "b7a7b7dd85ecb7b8841f420066677528a4b743fb758ac607477d61e235bf5c40",
+      "dngscan/data/priors/jptc_collect/m11m-mech-20260820.json": "9796f036b0c23e163a333db101d4f9be9639ec11487e845009782ed8d9f4eddb",
+      "dngscan/data/priors/jptc_collect/r5m2-mech-20260818.json": "3103350aa42922302dce8f58551d3f3e7509697453e2eadb2bbd9110c73c2e7d",
+      "dngscan/data/priors/jptc_collect/r62-mech-20260813.json": "1ea5f48454b047d6755063826847e5ab318c2af26fad627fcaa0bc2ef580c1f1",
+      "dngscan/data/priors/jptc_collect/s1r2-elec-12bit-20260820.json": "1444c2e797700bc99da16b705fc3ae6850da2417acc905b2009e1fc05a99d42f",
+      "dngscan/data/priors/jptc_collect/s1r2-elec-14bit-20260820.json": "8e3d68c5f19853771681031710989bd61802e8465209dc59d07047851d007930",
+      "dngscan/data/priors/jptc_collect/s1r2-mech-20260812.json": "be835346a854f00ebd43edf5bd3fa30ac661936ac6a566fa60bb049e33728a0c",
+      "dngscan/data/priors/jptc_collect/s5m2-mech-12bit-20260820.json": "a70d7ec562bf82f3cc53a6bcbb3dae8535208d6775e1f48813d8a6d76e6026e2",
+      "dngscan/data/priors/jptc_collect/s5m2-mech-20260812.json": "983d5550484f0b6c29a6ae14b18aea42682b650e293223ffdd8688893f51ab42",
+      "dngscan/data/priors/p2p_bulk.json": "62767f54957df7b01158bfc7ebcf0648b1cb67526fa058f9962fe3a01a1ede51",
+      "dngscan/debug_util.py": "1cb8f5e512625c785c95f224851085212babccfff77df84750d31f9c18e2b0e7",
+      "dngscan/decode_errors.py": "bc4b50e680b32fa92d801368e13a920a0adbca4f1a744d17bd8c3e91148ec134",
+      "dngscan/decode_support.py": "9d574e4a29b753374ef9d20ea34f9891f0c5fad6c416460447128881be0aa978",
+      "dngscan/decoder_anchor_transport.json": "d59154e793748dba38dd0c092c96156add41b646521f372836f31c31cdc994c8",
+      "dngscan/decoder_identity.py": "8c14adc92eadef3c0dd4e57660eda6483985d3bd11389e3753ea03662839b043",
+      "dngscan/decoder_loss.py": "d4aad7d29dff320235d241116ba31cde1c430c80e3fe88c3ea392799b6fdd951",
+      "dngscan/decoder_residual_research.py": "67d93b790e73a76a7bdcc507c24ded684058424bbe428e5c08a63d2237eed89b",
+      "dngscan/delivery.py": "8d88a44ed28d76a79a12de83553ad159c591351dbd3d0963ae6dae95a72ca08a",
+      "dngscan/delivery_integrity.py": "dfa5492addd473e53bba5de7c38dc592794a219c686cddc314e6b2b0cdaf9648",
+      "dngscan/delivery_transaction.py": "9102ea3529340837dce55f5e346f8fc9c7f20124db25e21d1bcf484f3c77574b",
+      "dngscan/display_filter.py": "b081e0e6ba3e62474330bc1ab332b71a840cc16d50e4994df552a771e3d4f47c",
+      "dngscan/dng_opcodes.py": "9393dee37fbcdd3f56736b0ef05ebd2e9aa9fed1915ac695219f72abad76872f",
+      "dngscan/dng_point_ops.py": "0e3d9cd559457e0f270b5138e9a1845d48bdd482d8fa1149024c888dc7382314",
+      "dngscan/drt.py": "fd9eeb68c926347cfcc965bb69142da15badd3461f9cd7ed653ab315c7c72fa5",
+      "dngscan/embedded_lens.py": "41a27a955e8e2b8bf18017c312eb43e649cb3c0199c1b2a19f0bdd9e93eb4190",
+      "dngscan/evidence.py": "f828b55b431fbe599493d95cb0b4c9f70baa773e77d4397516d40d0e450e66e1",
+      "dngscan/export.py": "6d77e7748a121219de15d47074282ab3d978ffabf5f5d2a59e54ca2147b880bc",
+      "dngscan/fast_plan.py": "092ead6d437af2d19ad027e81f31e058d848784d2252404c15e7ddbd0d666c20",
+      "dngscan/gainmap.py": "c3144b10d536dd382d54d50fba7f8801a45a616ee69d2aa775e96451ffc1c68f",
+      "dngscan/gainmap_session.py": "950bbd7361a22c5dda5b66322e8c2df94beb1cefe80cafb44a9f98c9547938b1",
+      "dngscan/gated_drt.py": "734eedebf820f6055da6ff1d615ba107d8b78a9a3c531532c0f8f930c1016980",
+      "dngscan/grade.py": "4c519f7ea50b07dfe614e39c54e6939173d65dddf9480c7705636e80fffdc504",
+      "dngscan/gui/__init__.py": "28a4186a5cf405eeac3af1e56054db04ba78745f9c0f4395ad3628424d85843d",
+      "dngscan/gui/__main__.py": "9ec175feaf5ba3177bd69c25d7e88a4cf04bb490d96e5111e314b7817d711147",
+      "dngscan/gui/calibration_service.py": "289dc5715fe607119043fa110dcb9eac845de3842d2d10ed3eb7b915ac7289d3",
+      "dngscan/gui/constants.py": "d45feb432b128b97e55b106d7148884d925729f49edd4ce11f13905ea7ce3091",
+      "dngscan/gui/fastapi_app.py": "b0f2198cdd7d0028632ea8455b9c7d00e4a47b0ae371e6d5d1d5aa6008f22b04",
+      "dngscan/gui/histogram.py": "36c509efeafd52a682b13df5329a3cf82b003b7a8c4af87537bb15822fa62d19",
+      "dngscan/gui/page.py": "c5faec2a494d2cd2b9334a4512587dbda7fd4604dabff2ee936b3c989dfa8627",
+      "dngscan/gui/preview_cache.py": "3002c2e3460944f63f2dfe0fcbe96992715d81885ebf6078b2c07fcb6b3890b4",
+      "dngscan/gui/preview_scheduler.py": "1bddf7b727b14a836ba8da0d7a8bd4f29b566f5865d0e559ab3ac2d6c9e56a11",
+      "dngscan/gui/scheduler.py": "c6453ad11cf6ab1c6f3312e3f6ba2dd066af258a8a39f6d986597ffc55bb3997",
+      "dngscan/gui/server.py": "c367e57135603be0ce3077323af9e7fadc4f0e26c2e847358055012314d1dfa6",
+      "dngscan/gui/service.py": "769e696e4701ac721db605dbe1911f6a045e55d4201984212d5491eaf716496c",
+      "dngscan/gui/uploads.py": "9f668b701f93cf99d2f9de09ad18d60487bad957a79be3b978555b27b8424c41",
+      "dngscan/guidance.py": "681da88026c4c63b6a2a8109db17e840d0e67759b5335abffaf0f50ead077e9a",
+      "dngscan/hdr_agx.py": "cc9cc87813ab79c79baf739127be73b6c66c97691516cfa5fcfc627755df1427",
+      "dngscan/hdr_agx_math.py": "a3a316eb11d6ee97fa8dbeedce06403e9f417f068d88ecdca2030e8f6a65f5bf",
+      "dngscan/hdr_agx_plan.py": "2a6ffdcd2bd44b5e1fc91ad6f07f95f8e26a249a319b732fe815b26847f3d62b",
+      "dngscan/hdr_color.py": "dc0adcf7ed10a64c710cc29b762f87622bb4d18d189f056c3439e70145c0e11a",
+      "dngscan/hdr_curve.py": "e0b087189bc4d674f2e7d155b0840cf9d1f3b4518cdaf9875099575a872795e8",
+      "dngscan/heif_delivery.py": "f4a79dd88eae87c006ee5c7d873103b9e90e88c992e9e8386bd41ce752fb7eb8",
+      "dngscan/heif_encoder.py": "0ed01695a99c9ad9f6b842b4cfcc255487723893752cff740c38010d5d12f852",
+      "dngscan/heif_gainmap.py": "940a57fc5383c60c1a09b61839f75377a9a93920e542a42ba57ddcd0dae1f60a",
+      "dngscan/joint_exposure.py": "b933a1f3a23714068d87ff3ac3690f694d5fdb570be1e818a2f441eaf1fa6363",
+      "dngscan/jpeg_gainmap.py": "6cf19676ff01054ca465f4159763577730a94823a98260e210be2bdcf1d29d60",
+      "dngscan/lens_filter.py": "ca1e1afed9ed0ba992677dceceaac0ff1dcddd19842e11af3998d009b99c807f",
+      "dngscan/lens_transmittance.py": "22a5225ad7c1347d616eb1600dda5054a7bd7b129ec7b302450fd635c5a9749f",
+      "dngscan/libraw_policy.py": "609cafb92829a18f886690dfd5b911421ddb06d51116bb0b5c83b45d2d476435",
+      "dngscan/local_detail.py": "2c11fb7451e18728426bef9bc1c3c899493aa9b43d0a13d8cc8563230952ae0c",
+      "dngscan/log_encode.py": "694577c97c285458a01d3e30b3f8cc4fb54b11d23e900016d3e353965d877fda",
+      "dngscan/look.py": "f5a3e3d412baf029deed7d0db91102b2a25d54e62b476f00502ede177a9c8c43",
+      "dngscan/lum.py": "0c731267eff3368b0641457314b556d8ed386693e7aa20698fa10cabf67765c9",
+      "dngscan/lut_io.py": "3a91300239f6419ce474b5316141b331e7d7d632cd9704d072eb88a4868da886",
+      "dngscan/measurement_domain.py": "79d8680da895b9d1ff6b2c34b3c3d59cbe496667081bf9a4b3c159e59f6e35f7",
+      "dngscan/metadata.py": "618de2a3dec95460fed13c55d4d15cab65055282b4d32a20070dc10fda367ffd",
+      "dngscan/models.py": "1a7f44bc57eb659aaf3cb0fe3b6671c9d871e66d1704735377fe06b43a75641e",
+      "dngscan/neutral.py": "f797c1add03d4be005b10f69a2abe12b2a48cdda558a711b8bac1a26f2e4111e",
+      "dngscan/noise_model.py": "92c542b3fb9243b8b57da2936e067a60332fe6d8a46b3b766a6832db00bc8cf1",
+      "dngscan/noise_propagation.py": "5c92386adaf2b9a1770f0111a704d37cb72fa4d8e765a94a2779f18df7cf5251",
+      "dngscan/noise_spectrum.py": "f1e7462e7c6f21af9611bb3ce3ed520a974bc81d2ad7ed19208e806cab1cd0a8",
+      "dngscan/phase_statistics.py": "0479a9daf200caf899a6c7d4429aebbb99da5d6cbbb6e7bf5bb42c809ed3d4cb",
+      "dngscan/pixel_calibration.py": "333aea8fc482a04ee32796db832666606309cc0e4f857f88c83514f491efbb80",
+      "dngscan/plot.py": "0da50e1322d0840906edd1095c4cca3a0954cbf3eba0e4bbbd7ba018a827bf20",
+      "dngscan/policy.py": "86eb0650561bda6eae3180726bb11fb4e555d13a0330fe970e8584197e90a338",
+      "dngscan/prepared_sample.py": "23fbcdb8f16815d4f9eb61879c830a2f2a39d651bdf87ee8e162fb549f098e9e",
+      "dngscan/priors.py": "adca11ec2407a109edc20d49bfdb9203a731cebec8a0422c683c197b38f9a1cf",
+      "dngscan/protected_output.py": "33b46b8005838a85a7e463fb72a507f2f3aa79b385c835229fa0cbcced31193c",
+      "dngscan/punch.py": "40aa8ace4062148814b1544a64451d5a66211d600e48f7994f7dd2a445a2e3c4",
+      "dngscan/raw_io.py": "c87cad6043308bdede565683a0052dd0d8a030635a00c322e0fa44fab61dbf43",
+      "dngscan/raw_units.py": "2bb50dc4f34641d7048047cf9cdbe6c4c5af384ec48d43eccfd868c61ba0e80b",
+      "dngscan/readout.py": "ae2e92b297f1acc811e70bea27172483c5df63637740ef8280ed3355836fb5ff",
+      "dngscan/reliability.py": "53b3ee4cd76dc8ef780b11c931085315482bbb14464b724dcabe5d5e20d1b70b",
+      "dngscan/render.py": "2d7de655affae4a9763ebfe725ded15a71ba4921fe06dc891ba271fb5fb3cdf2",
+      "dngscan/report.py": "b6d5aa402f9bda2ceecd00abbf2ca44fde1ca83177041e80dc424b5fcacf77a6",
+      "dngscan/retreat.py": "d1fb8ce6d94df7de6e00dd31e47b4dbbd248f43ed5dc04c1fa8fe681c2564a5c",
+      "dngscan/sampling.py": "156752dd54463d506a87462c1a657c5ab3212179a61bdb32552e1c14d223688f",
+      "dngscan/sampling_geometry.py": "1dd9abc315a25d10e6a588e9b8d144e1c3ff3da82b06498d84877cc6aafd1d6a",
+      "dngscan/scene_reference.py": "68ae5bf7a196811515182bc0bcad3f8a7df139d932b093c411829ce21da4b31a",
+      "dngscan/scene_scale.py": "139badf1d5414088d111134c127c71740b1309fc760f31e90343f9ee06857c1a",
+      "dngscan/scene_transform.py": "385427410b2a37b612914322ef5f4b6b41820cbd28b019b63f16d708694b1acc",
+      "dngscan/scene_transform_presets.json": "c57bad8abc2e7c822c092f4eaa75f0e9fb68662e0df546b6f75d3cc0ad0a188b",
+      "dngscan/sensor_priors.json": "581f28c4bb58f15db20dde12897fda3077f6c371bcff89c1d33fad8db205ad4c",
+      "dngscan/sensor_research.py": "b8b6babff89f2ec42c5ec4f292268499aed84f894ecc22673a92d3f96e78b8ee",
+      "dngscan/sensor_summary.py": "7d6d995011ca9a4ed61ac973711206a368d4214d65f75022c9c51b5c5c601ba6",
+      "dngscan/source_metadata.py": "6c762d59de72354b97ecaeb190e1207d7201a9164c7a36e389cc41f21ce191b6",
+      "dngscan/spatial.py": "2fe55f506b8b4732555ea27370939dc858e1db03f9fa27f774e06cbf98f97961",
+      "dngscan/spatial_black.py": "1a7c54610d0fecc3b2b914ed5de2c2e250cb755f011254a082cf0fdbf47f8d58",
+      "dngscan/spectral_color_research.py": "ca64415a846cb56f4ba44d8efbbec3bf6e248e7773a10983b530ae325ef079f0",
+      "dngscan/spectral_variance.py": "366003f3a98edf2d30290654f40492f3e764d3061e868253dfeba6fe06ee3287",
+      "dngscan/tone.py": "ba9503fc4d3292bbc28870f91fe59246ad0f969e463259ba13d5fddc75c2f58a",
+      "dngscan/wb.py": "09291f5d1121ca3806ce2f8ff145728dc5c714148f9a8403b9c5043b7be31a3a",
+      "tools/validate_joint_exposure.py": "bc2ab7f0c90b1a2d25e5b8ec855df6d23546c47dd2c4a249307bc484cf4342b9"
+    }
+  },
+  "final_test_identity_sha256": {
+    "tests/test_analysis_workspace.py": "3ea651d4658629895b91a2916300aed774a9d702b1bde5d5b634f1e84c9e69ce",
+    "tests/test_joint_exposure.py": "e52a70523bd1eb32a948c7c7c0e6892d646d26b07d4316d56922a874cd0012b0",
+    "tests/test_sdr_freeze.py": "64ae0b4c7770fd921d69ef7f5952831f9103aa0828a687db3762a1943acefda1",
+    "tests/test_golden_render.py": "e591856abeded84dadf0c42470594391310757ec2807ebb2ad6af9b9b8f117b4",
+    "tests/test_policy_register.py": "1394a1298b565b3853adef46b9a3d23e0e6783d344e3019b48a0ae4b8604db75",
+    "tests/test_readout_contract.py": "1015c3dab24e519d262169646a10f0f897a6bb60fcd98e6e3096326d87cd2b17",
+    "tests/sdr_freeze/MANIFEST.json": "37656128444c56a0708b46e32c70c5a72da4f054f8e0661c173b8c4e7ba130ac"
+  }
+}
