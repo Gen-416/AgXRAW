@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 
 from . import constants as _c
 
-POLICY_VERSION = 6
+POLICY_VERSION = 7
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,67 @@ class PolicyEntry:
 
 
 ENTRIES: tuple[PolicyEntry, ...] = (
+    PolicyEntry(name='AGX_DEFAULT_VIEW_BRIGHTNESS', value=1.0, unit='power control',
+        rationale='AgX uses neutral look brightness; automatic starting exposure and white/shoulder are jointly planned.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_MAX_EXTRA_EV', value=0.25, unit='stops',
+        rationale='Maximum additional EV beyond the neutral body/highlight anchor.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_REMAINING_FRACTION', value=0.1, unit='fraction',
+        rationale='Move only ten percent of the remaining body target distance.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_EV_CANDIDATES', value=5.0, unit='candidates',
+        rationale='Descending bounded EV candidates, target first.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_SHOULDER_REDUCTION', value=1.5, unit='power units',
+        rationale='Maximum tested shoulder softening.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_SHOULDER_MIN', value=0.7, unit='power',
+        rationale='Minimum candidate shoulder exponent.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_SHOULDER_CANDIDATES', value=9.0, unit='candidates',
+        rationale='Least shoulder change first across the frozen nine powers.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_MIN_POPULATION', value=64.0, unit='samples',
+        rationale='Smaller fixed luminance populations are explicitly unmeasured.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_SHADOW_MAX_LIFT_EV', value=0.35, unit='stops',
+        rationale='Limit median shadow lift relative to the neutral anchor.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_DARK_MAX_DROP_EV', value=0.15, unit='stops',
+        rationale='Limit median deep-shadow darkening relative to the neutral anchor.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_SEPARATION_MAX_DROP_EV', value=0.35, unit='stops',
+        rationale='Limit loss of bright-to-shadow median separation.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_POPULATION_FLOOR', value=0.0001, unit='display-linear Y',
+        rationale='Exclude effectively zero values from shadow ratio comparisons.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_SHADOW_CEILING', value=0.03, unit='display-linear Y',
+        rationale='Fixed shadow population upper edge at the neutral anchor.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_DARK_CEILING', value=0.005, unit='display-linear Y',
+        rationale='Fixed deep-shadow population upper edge at the neutral anchor.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+    PolicyEntry(name='JOINT_BRIGHT_FLOOR', value=0.5, unit='display-linear Y',
+        rationale='Fixed bright population lower edge at the neutral anchor.',
+        constrained_by="Frozen 2026-10-12 comparison; seven design sources and sixteen additional fp/iPhone files, no semantic or universal exposure claim.",
+        history=("v7: user accepted bounded AgX exposure/white/shoulder defaults; retain manual controls and explicit fallback.",)),
+
     PolicyEntry(
         name="DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV",
         value=1.0, unit="stops",
@@ -444,6 +505,7 @@ def _fingerprint(entries: tuple[PolicyEntry, ...]) -> str:
 # entry set) without bumping the version breaks the match; bumping demands
 # a new pinned line here — a conscious, reviewable act.
 POLICY_FINGERPRINTS = {
+    7: "0c0b80d1c9182a890b703ab9248afdad584b68a309b60a0447de9f595b3a16e2",
     6: "f8d0336616c2691bd3943430ada18db6da616ab03ba22c585b610b74f1f0ce5e",
     2: "de4a3ff468320ff60e213ca4895fcc7c2e3f0e657c56d34b857f4f01ea85c418",
     # v3 (R2 item 1): TAIL_SNR_WINDOW_EV / TAIL_SNR_ZERO_DB / TAIL_SNR_FULL_DB

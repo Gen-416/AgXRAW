@@ -259,9 +259,16 @@ Fixed Kelvin works on both decoders. A visible color cast after choosing one is
 - **Exposure EV** (the slider): brightens/darkens everything, +1 = one stop up. 0 keeps
   the brightness relationships from capture. The RAW 过曝标记 marks on the preview do
   not move with it — they show decode evidence (section 3).
-- **Brightness reference** (button): the tool measures the subject and aligns it to a
-  standard exposure while limiting highlight overflow. "Expose this for me, once" — the
-  result is written back to the slider and can be adjusted further.
+- **Automatic exposure** (on by default): AgX establishes a conservative body/highlight
+  anchor, then tests a small joint EV/white-endpoint/shoulder adjustment. The target
+  covers 10% of the remaining body-reference distance, at most another 0.25 EV.
+  Black and toe stay fixed; shadow lift, deep-shadow darkening and bright/shadow
+  separation constrain the candidates. No qualifying candidate means the starting
+  plan is retained, with a fallback status. Default look brightness is 1; explicit
+  brightness controls remain available. Preview and export share the chosen plan.
+  This is an editable starting point, not night-scene recognition. Moving the EV
+  slider or supplying a numeric CLI EV selects manual, fixed-endpoint exposure;
+  enabling auto again restores joint planning. CLI defaults to `--ev auto`.
 - **HDR headroom ceiling** (output card): how many stops above paper white your screen
   or use case allows at most. It is a **ceiling, not a target** — actual usage is
   decided by the earned headroom, whichever is smaller. The default +3.0 (roughly an

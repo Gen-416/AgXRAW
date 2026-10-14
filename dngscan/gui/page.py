@@ -320,7 +320,7 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
         <button type="button" data-ev="0"><span class="m">0.00</span></button>
         <button type="button" data-ev="0.50"><span class="m">+0.50</span></button>
         <button type="button" data-ev="1.00"><span class="m">+1.00</span></button>
-        <button type="button" id="evReferenceBtn" title="将可靠主体中位对齐 18% 灰，并限制高光溢出。"><span class="m">自动曝光</span></button>
+        <button type="button" id="evReferenceBtn" title="根据场景统计建立基础曝光，AgX 小幅联动白点与肩部，并约束高光和明暗关系。结果是可手动调整的起点。"><span class="m">自动曝光</span></button>
       </div>
       <div class="ctlFact" id="evFact"></div>
       <canvas id="sceneHist" class="histCanvas" title="可靠场景亮度直方图：EV 相对 18% 灰，与 tone 规划同一采样口径（剔除 RAW 过曝与地板钳制样本）。注记线为编译曲线端点、0 EV 与可靠尾部 p99.99。"></canvas>
@@ -865,6 +865,12 @@ function metricText(j){
 function fullFrameReferenceText(j){
   if(!j.ev_auto)return "";
   const a=j.ev_auto;
+  if(a.planning_policy){
+    let t=" · 受约束自动曝光 "+fmtEv(a.ev_boost)+" EV";
+    if(a.planning_status==="fallback")return t+"（保留基础方案）";
+    if(a.planning_status==="identity")return t+"（保持原样）";
+    return t+"（基础 "+fmtEv(a.anchor_ev)+"，白点与肩部联动）";
+  }
   let t=" · 全图自动曝光 "+fmtEv(a.ev_boost)+" EV";
   if(a.highlight_limited)t+="（高光限制，参考目标 "+fmtEv(a.ev_median_target)+"）";
   return t;

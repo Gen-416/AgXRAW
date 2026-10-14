@@ -14,8 +14,25 @@ class RegisterConsistencyTests(unittest.TestCase):
     def test_every_entry_matches_its_live_constant(self) -> None:
         from dngscan import hdr_agx_plan as h
         from dngscan import tone as t
+        from dngscan import joint_exposure as j
 
         live = {
+            "AGX_DEFAULT_VIEW_BRIGHTNESS": t.AGX_DEFAULT_VIEW_BRIGHTNESS,
+            "JOINT_MAX_EXTRA_EV": j.JOINT_MAX_EXTRA_EV,
+            "JOINT_REMAINING_FRACTION": j.JOINT_REMAINING_FRACTION,
+            "JOINT_EV_CANDIDATES": j.JOINT_EV_CANDIDATES,
+            "JOINT_SHOULDER_REDUCTION": j.JOINT_SHOULDER_REDUCTION,
+            "JOINT_SHOULDER_MIN": j.JOINT_SHOULDER_MIN,
+            "JOINT_SHOULDER_CANDIDATES": j.JOINT_SHOULDER_CANDIDATES,
+            "JOINT_MIN_POPULATION": j.JOINT_MIN_POPULATION,
+            "JOINT_SHADOW_MAX_LIFT_EV": j.JOINT_SHADOW_MAX_LIFT_EV,
+            "JOINT_DARK_MAX_DROP_EV": j.JOINT_DARK_MAX_DROP_EV,
+            "JOINT_SEPARATION_MAX_DROP_EV": j.JOINT_SEPARATION_MAX_DROP_EV,
+            "JOINT_POPULATION_FLOOR": j.JOINT_POPULATION_FLOOR,
+            "JOINT_SHADOW_CEILING": j.JOINT_SHADOW_CEILING,
+            "JOINT_DARK_CEILING": j.JOINT_DARK_CEILING,
+            "JOINT_BRIGHT_FLOOR": j.JOINT_BRIGHT_FLOOR,
+
             "DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV": h.DECODED_IMAGE_ESTIMATE_MAX_HEADROOM_EV,
             "RHO_BASE": h.RHO_BASE,
             "MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT": h.MULTICHANNEL_CLIP_ZERO_CONFIDENCE_PCT,

@@ -33,6 +33,7 @@ ENDPOINT_MODE_CHOICES = ("adaptive", "evidence")
 VIEW_BRIGHTNESS_MAX_GAIN = 0.30
 VIEW_BRIGHTNESS_DR_LO_EV = 5.5
 VIEW_BRIGHTNESS_DR_HI_EV = 8.5
+AGX_DEFAULT_VIEW_BRIGHTNESS = 1.0
 # Scene-adaptive punch gates: bright-body window (scene median EV), shadow
 # quality window (plan DR), and the DR bonus window with its base strength.
 PUNCH_BODY_LO_EV = -3.0
@@ -655,6 +656,11 @@ def build_tone_compression_plan(
         else 0.5
     )
     view_brightness = 1.0 + VIEW_BRIGHTNESS_MAX_GAIN * dark_body * shadow_quality
+    if tone_core == "agx":
+        # Accepted bounded exposure/endpoint planning supplies the automatic
+        # starting point. Do not add a second, scene-dependent look lift.
+        # Explicit midtone-brightness controls still apply below compilation.
+        view_brightness = AGX_DEFAULT_VIEW_BRIGHTNESS
     # Punch is a post-core chroma operator, not a tone decision: it is calculated after
     # endpoint selection and cannot feed back into pivot, toe, shoulder or exposure.
     # The luminance core deliberately stays at zero because it already retains the
