@@ -527,8 +527,14 @@ class AutoEvResult:
     ev_median_target: float
     ev_boost: float
     highlight_limited: bool
+    # Fixed-endpoint reference cap used to establish the anchor. A joint
+    # curve can accept a higher EV; this is not its final upper bound.
     highlight_cap_ev: float
     anchored_median_ev: float
+    # Joint planning must travel with EV: rebuilding a fixed-endpoint plan
+    # would silently discard the selected white/shoulder on preview renders.
+    render_plan: RenderPlan | None = field(default=None, repr=False, compare=False)
+    planning: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

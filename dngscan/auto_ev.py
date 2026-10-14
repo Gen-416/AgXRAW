@@ -441,13 +441,16 @@ def compute_auto_ev(
     lens_filter: str | None = None,
     *, _plan_sink: list | None = None,
 ) -> AutoEvResult:
-    """Reference the reliable decoded scene body to 18% gray without changing EV 0.
+    """Select a bounded AgX starting exposure and its accompanying curve.
 
     The body statistic is measured after the selected decoder and scene transform.
     Aligned LibRaw masks exclude unreliable RAW-clipped highlights; Apple body
     statistics remain decoded-image measurements without a fabricated spatial mask.
-    This introduces no hidden fixed correction. Highlight safety
-    limits upward boost only; high-key scenes are never darkened toward gray.
+    The neutral body/highlight reference supplies the anchor. AgX then jointly
+    selects a small additional EV, transported white endpoint and shoulder,
+    with fixed black/toe and measured shadow/separation constraints. Other
+    cores retain the fixed-endpoint exposure reference. High-key scenes are
+    never automatically darkened toward gray.
 
     The internal reference plan compiles with the caller's endpoint mode, the full
     render adjustments and declared lens filter, so the brightness reference and the
@@ -511,9 +514,38 @@ def compute_auto_ev(
     boost_target = max(target, baseline_ev)
     ev = min(boost_target, cap)
     limited = boost_target > cap + 1e-6
+    planning = None
+    if tone_core == "agx" and isinstance(reference_plan, RenderPlan):
+        from .joint_exposure import select_joint_plan
+        from .prepared_sample import PreparedSceneSample
+
+        prepared = PreparedSceneSample.from_bundle(bundle)
+
+        def probe(plan, exposure, indices):
+            rgb = prepared.rgb if indices is None else prepared.rgb[indices]
+            masks = prepared.masks
+            exclusion = prepared.exclusion
+            if indices is not None:
+                masks = None if masks is None else masks[indices]
+                exclusion = None if exclusion is None else exclusion[indices]
+            return render_sample_linear_output(
+                bundle, analysis, gamut, exposure, rgb, tone_plan=plan,
+                look=look, look_strength=look_strength,
+                display_filter=display_filter, filter_strength=filter_strength,
+                scene_transform=scene_transform,
+                scene_transform_strength=scene_transform_strength,
+                punch_scale=punch_scale, tone_core=tone_core, lum_norm=lum_norm,
+                agx_primaries=agx_primaries, adjustments=adjustments,
+                sample_masks=masks, sample_exclusion=exclusion,
+            )
+
+        reference_plan, ev, planning = select_joint_plan(
+            reference_plan, float(ev), float(boost_target), gamut,
+            len(prepared.rgb), probe,
+        )
     if _plan_sink is not None:
         # Job-local handoff only: callers reusing this plan must preserve the
-        # entire compile declaration. The public result remains scalar-only.
+        # entire compile declaration, including the selected joint curve.
         _plan_sink.append(reference_plan)
     return AutoEvResult(
         ev=float(ev),
@@ -522,6 +554,8 @@ def compute_auto_ev(
         highlight_limited=limited,
         highlight_cap_ev=float(cap),
         anchored_median_ev=anchored_scene_body_ev(reference_plan, ev),
+        render_plan=reference_plan,
+        planning=planning,
     )
 
 
@@ -573,6 +607,16 @@ def resolve_export_ev(
 
 
 def auto_ev_overlay_lines(result: AutoEvResult) -> list[str]:
+    if result.planning is not None:
+        d = result.planning
+        lines = [f"受约束自动曝光 {result.ev_boost:+.2f} EV"]
+        if d["status"] == "fallback":
+            lines.append("无合格联合候选 · 保留基础曝光与曲线")
+        elif d["status"] == "identity":
+            lines.append("保持基础曝光与曲线")
+        else:
+            lines.append(f"基础 {d['anchor_ev']:+.2f} EV · 白点与肩部联动")
+        return lines
     lines = [f"全图自动曝光 {result.ev_boost:+.2f} EV"]
     if result.ev_median_target < -1e-6 and result.ev_boost < 1e-6:
         lines.append("可靠主体已高于锚定 · 保持 EV 0")
