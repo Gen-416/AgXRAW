@@ -179,11 +179,10 @@ if(saved.toneCore!=="agx")throw Error("visible tone core was not persisted");
         self.assertNotIn('window.confirm', body)
 
     def test_preview_metrics_run_before_annotation(self) -> None:
-        from pathlib import Path as _P
+        import inspect
+        from dngscan.application import service
 
-        service_src = (
-            _P(__file__).resolve().parents[1] / "dngscan" / "gui" / "service.py"
-        ).read_text(encoding="utf-8")
+        service_src = inspect.getsource(service)
         metrics_at = service_src.index(
             "metrics = preview_metrics_from_u8(rgb_u8, gamut) if include_metrics"
         )

@@ -33,7 +33,8 @@ from unittest import mock
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SRC = (ROOT / "dngscan" / "gui" / "service.py").read_text(encoding="utf-8")
+from dngscan.application import service as _application_service
+SERVICE_SRC = inspect.getsource(_application_service)
 PAGE = (ROOT / "dngscan" / "gui" / "page.py").read_text(encoding="utf-8")
 
 

@@ -405,7 +405,7 @@ class DiskAndMemoryTests(unittest.TestCase):
         writer = pc.DiskWriter()
         entry = pc.PreviewEntry(_bundle(), _analysis())
         with mock.patch.object(pc, "_write_disk_entry", side_effect=[ValueError("injected"), None]) as write, \
-             self.assertLogs("dngscan.gui.preview_cache", level="WARNING"):
+             self.assertLogs(pc.__name__, level="WARNING"):
             writer.submit(Path("bad.npz"), entry)
             self.assertTrue(writer.flush(2))
             writer.submit(Path("good.npz"), entry)
