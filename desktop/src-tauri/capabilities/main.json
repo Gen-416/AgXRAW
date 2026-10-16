@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Main workspace: native selection and app-owned engine commands.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}

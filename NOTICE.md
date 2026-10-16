@@ -1,5 +1,15 @@
 # Third-party notices
 
+## Independent desktop frontend and host
+
+The `desktop/` development entry uses React and React DOM (MIT), Tauri and its
+dialog/opener plugins (MIT OR Apache-2.0), Vite (MIT), and TypeScript
+(Apache-2.0). Dependency versions are locked in `desktop/package-lock.json`
+and `desktop/src-tauri/Cargo.lock`; upstream packages retain their own license
+and copyright notices. The desktop application code remains part of AgXRAW
+under GPL-3.0-or-later. No image-processing algorithm is taken from these UI
+frameworks.
+
 ## darktable AgX (GPL-3.0-or-later)
 
 The `agx` tone-mapping mode in `dngscan.core` ports portions of the AgX view-transform

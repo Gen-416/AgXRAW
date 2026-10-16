@@ -11,6 +11,10 @@
 
 [English](README.md) · [许可证](LICENSE) · [第三方声明](NOTICE.md)
 
+独立 TypeScript 前端与 Tauri **开发入口**已位于 [desktop/](desktop/README.md)，
+复用共享应用服务与现有默认成像规则。原有浏览器工作台继续保留；桌面入口暂需配置
+Python 引擎环境，运行与边界见[桌面开发说明](docs/DESKTOP_DEVELOPMENT.zh-CN.md)。
+
 **教程与文档**：
 [修图教程](docs/EDITING_TUTORIAL.zh-CN.md)（每个滑条做什么，配实拍对比）·
 [HDR 教程](docs/HDR_TUTORIAL.zh-CN.md)（HDR 照片是什么，能亮多少，怎么导出）·

@@ -17,6 +17,11 @@ lens correction, and physical noise-model support are separate capabilities.
 
 [简体中文](README.zh-CN.md) · [License](LICENSE) · [Third-party notices](NOTICE.md)
 
+An independent TypeScript frontend and Tauri development entry are available in
+[desktop/](desktop/README.md). They reuse the shared application services and
+existing rendering defaults. The original browser workbench remains available;
+the desktop entry currently requires a configured Python engine environment.
+
 **Tutorials and documentation**:
 [Editing tutorial](docs/EDITING_TUTORIAL.zh-CN.md) (what every slider does, with real comparisons; Chinese) ·
 [HDR tutorial](docs/HDR_TUTORIAL.zh-CN.md) (what an HDR photo is, how bright it can go, how to export; Chinese) ·

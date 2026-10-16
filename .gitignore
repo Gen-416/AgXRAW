@@ -51,3 +51,12 @@ build/
 *.so
 *.pyd
 dist/
+
+# Independent frontend and desktop build output
+node_modules/
+desktop/.env.local
+desktop/.env.*.local
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/playwright-report/
+desktop/test-results/

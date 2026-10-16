@@ -1,0 +1,345 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""FastAPI transport adapter for the existing browser GUI."""
+from __future__ import annotations
+
+import asyncio
+import hmac
+import json
+import subprocess
+import threading
+from contextlib import asynccontextmanager
+from functools import partial
+from pathlib import Path
+from typing import Any, Callable
+from urllib.parse import urlparse
+
+import dngscan as dg
+from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+
+from dngscan.debug_util import maybe_print_exc
+
+from dngscan.gui.page import render_page
+from .uploads import UploadStore
+from dngscan.application import calibration_service
+
+
+# TODO(stage-2): Remove the localhost auth exception, dependency, and handler
+# once Tauri commands fully replace the browser HTTP transport.
+class _UnauthorizedRequest(Exception):
+    pass
+
+
+def _complete_future(
+    future: asyncio.Future[Any],
+    result: Any,
+    error: BaseException | None,
+) -> None:
+    if future.done():
+        return
+    if error is not None:
+        future.set_exception(error)
+    else:
+        future.set_result(result)
+
+
+async def _run_service_call(function: Callable[..., Any], *args: Any) -> Any:
+    """Run legacy synchronous work with the old server's exit semantics.
+
+    ``ThreadingHTTPServer`` made request workers daemon threads. AnyIO's shared
+    worker threads are non-daemon, which can keep this local app alive after a
+    forced Uvicorn shutdown if a decoder wedges. A per-request daemon worker
+    preserves the previous lifecycle and also avoids putting the latest
+    preview behind an unrelated shared thread-pool queue.
+    """
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[Any] = loop.create_future()
+
+    def invoke() -> None:
+        try:
+            result = function(*args)
+        except BaseException as exc:
+            if isinstance(exc, Exception):
+                error = exc
+            else:
+                error = RuntimeError(
+                    f"service worker aborted with {type(exc).__name__}"
+                )
+                error.__cause__ = exc
+            callback = partial(_complete_future, future, None, error)
+        else:
+            callback = partial(_complete_future, future, result, None)
+        try:
+            loop.call_soon_threadsafe(callback)
+        except RuntimeError:
+            # The process is already closing; this daemon worker must not
+            # resurrect or delay the transport event loop.
+            pass
+
+    threading.Thread(
+        target=invoke,
+        name="dngscan-http-worker",
+        daemon=True,
+    ).start()
+    return await future
+
+
+def _default_dir() -> Path:
+    pictures = Path.home() / "Pictures"
+    return pictures if pictures.is_dir() else Path.home()
+
+
+def _origin_is_allowed(origin: str, expected_port: int | None) -> bool:
+    try:
+        parsed = urlparse(origin)
+        if parsed.hostname not in {"127.0.0.1", "localhost"}:
+            return False
+        return expected_port is None or parsed.port == expected_port
+    except ValueError:
+        return False
+
+
+def _reveal_path(params: dict[str, Any]) -> dict[str, bool]:
+    path = Path(str(params.get("path", ""))).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError(f"文件不存在：{path}")
+    result = subprocess.run(
+        ["open", "-R", str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(detail or "open -R failed")
+    return {"ok": True}
+
+
+def create_app(
+    *,
+    service_module: Any,
+    session_token: str,
+    upload_root: Path | None = None,
+    expected_port: int | None = None,
+    frontend_dir: Path | None = None,
+) -> FastAPI:
+    """Build one localhost HTTP adapter around the existing service module."""
+    upload_store = UploadStore(upload_root)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            yield
+        finally:
+            upload_store.close()
+
+    app = FastAPI(
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
+    app.state.service_module = service_module
+    app.state.upload_store = upload_store
+    from dngscan.application.api import Application
+    application = Application(service_module, calibration_service)
+
+    @app.exception_handler(_UnauthorizedRequest)
+    async def unauthorized_handler(
+        _request: Request, _exc: _UnauthorizedRequest
+    ) -> JSONResponse:
+        return JSONResponse(
+            {"ok": False, "error": "unauthorized"}, status_code=403
+        )
+
+    @app.middleware("http")
+    async def require_loopback_host(request: Request, call_next):
+        # R7 hardening: the Origin/Referer check cannot stop a DNS-rebinding
+        # page (Referrer-Policy: no-referrer suppresses both headers), and a
+        # rebound origin makes the tokenless "/" SAME-origin — readable,
+        # token included. The Host header cannot be suppressed and a rebound
+        # request carries the attacker's hostname, so a loopback allowlist
+        # (port-exact when known) closes the read. Local processes were
+        # never in this threat model (same user, same machine).
+        host = (request.headers.get("host") or "").strip().lower()
+        hostname, _, port_text = host.partition(":")
+        port_ok = (
+            expected_port is None
+            or port_text == str(expected_port)
+        )
+        if hostname not in {"127.0.0.1", "localhost"} or not port_ok:
+            return JSONResponse(
+                {"ok": False, "error": "unauthorized"}, status_code=403
+            )
+        return await call_next(request)
+
+    async def require_session(request: Request) -> None:
+        origin = request.headers.get("Origin") or request.headers.get("Referer")
+        if origin and not _origin_is_allowed(origin, expected_port):
+            raise _UnauthorizedRequest()
+
+        token = request.headers.get("X-DngScan-Token", "")
+        if not token:
+            token = request.query_params.get("token", "")
+        if not hmac.compare_digest(token, session_token):
+            raise _UnauthorizedRequest()
+
+    async def legacy_call(
+        request: Request,
+        function: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> JSONResponse:
+        try:
+            params = json.loads(await request.body() or b"{}")
+            if not isinstance(params, dict):
+                raise ValueError("JSON 请求必须是对象")
+            result = await _run_service_call(function, params)
+            return JSONResponse(result)
+        except Exception as exc:
+            maybe_print_exc()
+            return JSONResponse({"ok": False, "error": str(exc)})
+
+    @app.get("/")
+    @app.get('/legacy')
+    async def page() -> Response:
+        body = await _run_service_call(
+            render_page,
+            str(_default_dir()),
+            session_token,
+        )
+        return Response(content=body, media_type="text/html")
+
+    @app.get("/hdr-status")
+    async def hdr_status() -> JSONResponse:
+        available, reason = await _run_service_call(
+            dg.apple_gainmap_backend_status
+        )
+        return JSONResponse(
+            {"ok": True, "available": available, "reason": reason}
+        )
+
+    protected = APIRouter(dependencies=[Depends(require_session)])
+
+    @app.get('/api/v1/bootstrap')
+    async def bootstrap() -> JSONResponse:
+        # Like the legacy root's injected token, readable only from this
+        # loopback origin. No CORS exception is granted to external pages.
+        result = await _run_service_call(application.bootstrap)
+        return JSONResponse({**result, 'session_token': session_token})
+
+    @protected.post('/api/v1/commands')
+    async def command(request: Request) -> JSONResponse:
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > calibration_service.MAX_CALIBRATION_REQUEST_BYTES:
+                return JSONResponse(application._error(None, 'invalid-request', '请求过大'), status_code=413)
+        try:
+            payload = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            return JSONResponse(application._error(None, 'invalid-request', '请求不是有效 JSON'), status_code=400)
+        return JSONResponse(await _run_service_call(application.execute, payload))
+
+    @protected.get("/list")
+    async def list_directory(request: Request) -> JSONResponse:
+        try:
+            result = await _run_service_call(
+                service_module.list_dir, request.query_params.get("dir", "")
+            )
+            return JSONResponse(result)
+        except Exception as exc:
+            maybe_print_exc()
+            return JSONResponse({"ok": False, "error": str(exc)})
+
+    @protected.post("/upload")
+    async def upload(request: Request) -> JSONResponse:
+        try:
+            content_length = int(request.headers.get("Content-Length", "0"))
+            saved = await upload_store.store_stream(
+                request.query_params.get("name", ""),
+                request.stream(),
+                content_length,
+            )
+            return JSONResponse(
+                {"ok": True, "path": str(saved), "name": saved.name}
+            )
+        except Exception as exc:
+            maybe_print_exc()
+            return JSONResponse({"ok": False, "error": str(exc)})
+
+    @protected.post("/raw9-support")
+    async def raw9_support(request: Request) -> JSONResponse:
+        return await legacy_call(request, service_module.raw9_support)
+
+    @protected.post("/prepare")
+    async def prepare(request: Request) -> JSONResponse:
+        return await legacy_call(request, service_module.prepare_preview)
+
+    @protected.post("/preview")
+    async def preview(request: Request) -> JSONResponse:
+        return await legacy_call(request, service_module.run_preview)
+
+    @protected.post("/clip-overlay")
+    async def clip_overlay(request: Request) -> JSONResponse:
+        return await legacy_call(request, service_module.clip_overlay)
+
+    @protected.post("/export")
+    async def export(request: Request) -> JSONResponse:
+        return await legacy_call(request, service_module.run_export_isolated)
+
+    @protected.post("/reveal")
+    async def reveal(request: Request) -> JSONResponse:
+        return await legacy_call(request, _reveal_path)
+
+    @protected.post("/calibration/list")
+    async def calibration_list(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.list_calibrations)
+
+    @protected.post("/calibration/import")
+    @protected.post("/calibration/inspect")
+    @protected.post("/calibration/library-install")
+    async def calibration_import(request: Request) -> JSONResponse:
+        # Selected text/archive packages are bounded before JSON decoding.
+        # Bound the body while reading it, including when Content-Length is
+        # absent, so parsing JSON cannot allocate an unbounded import payload.
+        try:
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > calibration_service.MAX_CALIBRATION_REQUEST_BYTES:
+                    raise ValueError("标定请求超过 96 MiB，请分批选择测量包")
+            params = json.loads(body or b"{}")
+            if not isinstance(params, dict):
+                raise ValueError("JSON 请求必须是对象")
+            handler = {"inspect": calibration_service.inspect_calibration,
+                       "import": calibration_service.import_calibration,
+                       "library-install": calibration_service.install_public_library}[request.url.path.rsplit("/", 1)[-1]]
+            result = await _run_service_call(handler, params)
+            return JSONResponse(result)
+        except Exception as exc:
+            maybe_print_exc()
+            return JSONResponse({"ok": False, "error": str(exc)})
+
+    @protected.post("/calibration/remove")
+    async def calibration_remove(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.remove_calibration)
+
+    @protected.post("/calibration/active")
+    async def calibration_active(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.set_calibration_active)
+
+    @protected.post("/calibration/library")
+    async def calibration_library(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.public_library_status)
+
+    @protected.post("/calibration/library-select")
+    async def calibration_library_select(request: Request) -> JSONResponse:
+        return await legacy_call(request, calibration_service.select_public_library)
+
+    app.include_router(protected)
+    if frontend_dir is not None:
+        folder = frontend_dir.resolve(strict=True)
+        if not (folder / 'index.html').is_file():
+            raise ValueError('独立前端未构建，请先在 desktop 运行 npm run build')
+        app.mount('/workspace', StaticFiles(directory=folder, html=True), name='workspace')
+    return app
