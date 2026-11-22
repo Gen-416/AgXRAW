@@ -21,7 +21,10 @@ class FilmSplitEntrypointsTests(unittest.TestCase):
         defaults = parse_args(["photo.dng"])
         self.assertEqual((defaults.tone_core, defaults.wb, defaults.scene_transform),
                          ("agx", "camera", "none"))
-        for flags in (("--film", "portra400"), ("--film-mode", "full"),
+        # The merged observe engine owns --film/--film-grain (tests/test_film_observe.py);
+        # every pre-split film control stays refused.
+        self.assertEqual(parse_args(["photo.dng", "--film", "portra400"]).film, "portra400")
+        for flags in (("--film-mode", "full"), ("--film-curve", "portra400"),
                       ("--color-head-y", "5")):
             with self.subTest(flags=flags), contextlib.redirect_stderr(io.StringIO()), \
                  self.assertRaises(SystemExit) as error:
@@ -31,6 +34,10 @@ class FilmSplitEntrypointsTests(unittest.TestCase):
     def test_stale_gui_film_requests_fail_with_migration_guidance(self):
         for key in ("filmCurve", "film_mode", "colorHeadY", "color_head_m"):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, "AgXFilm"):
+                service.parse_job_params({"input": "photo.dng", key: "none"})
+        for key in ("film", "filmGrain"):
+            # passes the guard and reaches the input check
+            with self.subTest(key=key), self.assertRaises(FileNotFoundError):
                 service.parse_job_params({"input": "photo.dng", key: "none"})
 
     def test_removed_controls_have_no_remaining_dom_references(self):

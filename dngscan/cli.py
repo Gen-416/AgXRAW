@@ -287,6 +287,23 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--film",
+        default="none",
+        metavar="STOCK",
+        help=(
+            "胶片模拟（observe）：none=关闭（默认）；其余为固定的数据驱动胶片渲染，"
+            "曲线、按色相的颜色还原、灰阶层间漂移、反转片测光中灰与颗粒都来自该胶片的数据。"
+            "需要 --tone-core agx、--scene-transform none，仅 SDR。可选值见 --film list"
+        ),
+    )
+    parser.add_argument(
+        "--film-grain",
+        type=float,
+        default=None,
+        metavar="AMOUNT",
+        help="胶片颗粒强度，0-3；1.0（默认）=各胶片数据手册颗粒度（48 µm 光孔 RMS），0=关闭",
+    )
+    parser.add_argument(
         "--tone-core",
         choices=TONE_CORE_CHOICES,
         default="agx",
@@ -476,6 +493,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         )
     if is_hdr_output_format(args.output_format) and args.tone_core != "agx":
         parser.error("HDR 输出当前只实现 AgX tone core；请使用 --tone-core agx")
+    from .film import DEFAULT_FILM_GRAIN, FILM_NONE, film_choices, film_label, validate_film, validate_film_grain
+
+    if str(args.film) == "list":
+        print("\n".join(f"{k}\t{film_label(k)}" for k in film_choices() if k != FILM_NONE))
+        raise SystemExit(0)
+    try:
+        args.film = validate_film(args.film)
+        args.film_grain = validate_film_grain(
+            DEFAULT_FILM_GRAIN if args.film_grain is None else args.film_grain)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.film != FILM_NONE:
+        if is_hdr_output_format(args.output_format):
+            parser.error("胶片模拟当前只定义了 SDR 输出；请去掉 --film 或改用 SDR 格式")
+        if args.tone_core != "agx":
+            parser.error("胶片模拟需要 --tone-core agx")
+        if args.scene_transform not in (None, "none"):
+            parser.error("胶片模拟不叠加 scene transform（胶片的色彩还原已包含在胶片数据里）")
+        if args.agx_primaries not in (None, "base"):
+            parser.error("胶片模拟固定使用 base 原色（色相还原由胶片数据决定）")
     try:
         container = container_for_output_format(args.output_format)
         if args.delivery_profile is None and (
@@ -699,6 +736,12 @@ def main(argv: list[str]) -> int:
             args.grade, args.grade_strength
         )
 
+        from .film import FilmSelection, film_seed_for_file
+
+        film = (
+            FilmSelection(args.film, args.film_grain, film_seed_for_file(args.path))
+            if args.film != "none" else None
+        )
         ev_input = parse_ev_value(args.ev)
         cli_adjustments = RenderAdjustments(
             midtone_brightness=args.midtone_brightness,
@@ -735,6 +778,7 @@ def main(argv: list[str]) -> int:
                 adjustments=cli_adjustments,
                 endpoint_mode=args.endpoint_mode,
                 chroma_nr=args.chroma_nr,
+                film=film,
                 _plan_sink=auto_ev_plan,
             )
         else:
@@ -768,6 +812,7 @@ def main(argv: list[str]) -> int:
                 agx_primaries=args.agx_primaries,
                 chroma_nr=args.chroma_nr,
                 endpoint_mode=args.endpoint_mode,
+                film=film,
             )
             if jpeg_path is not None
             else None

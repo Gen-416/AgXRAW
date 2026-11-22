@@ -12,7 +12,8 @@
 | [修图教程](EDITING_TUTORIAL.zh-CN.md) | 从导入到导出，曝光、曲线和 RAW 过曝标记的实拍示例 |
 | [HDR 教程](HDR_TUTORIAL.zh-CN.md) | 参考白、可信高光、HDR 导出与可直接观看的样张 |
 | [机型支持](SENSOR_SUPPORT.zh-CN.md) | 传感器数据来源、能力降级和 LibRaw 支持边界 |
-| [胶片拆分记录](FILM_SPLIT.zh-CN.md) | AgXFilm 暂停研发档案、迁移边界与旧集成恢复 |
+| [胶片模拟](FILM.zh-CN.md) | 20 种胶片的固定数据驱动渲染：用法、成像过程、资产与验证 |
+| [胶片拆分记录](FILM_SPLIT.zh-CN.md) | AgXFilm 研发档案、迁移边界、旧集成恢复与合并回主仓 |
 | [实测噪声标定](NOISE_CALIBRATION.zh-CN.md) | GUI / CLI 导入 JPTC 测量、启停、匹配范围及成像模型来源 |
 | [JPEG / HEIF 质量与体积实测](DELIVERY_QUALITY_STUDY.zh-CN.md) | 编码参数的选择依据；表中数字属于指定样张和版本 |
 

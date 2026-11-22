@@ -492,7 +492,12 @@ def clip_overlay(params: dict) -> dict:
 
 
 def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, int, bool, Path | None, bool]:
-    obsolete = [key for key in params if key.startswith(("film", "colorHead", "color_head"))]
+    # The pre-split film controls (filmCurve, filmMode, colorHead*, ...) must not
+    # be silently dropped; only the merged observe engine's two fields
+    # (dngscan/film: "film", "filmGrain") are live.
+    obsolete = [key for key in params
+                if key.startswith(("film", "colorHead", "color_head"))
+                and key not in ("film", "filmGrain", "film_grain")]
     if obsolete:
         raise ValueError("胶片功能已拆分到 AgXFilm；请刷新页面后重试。")
     inp = Path(str(params["input"])).expanduser()
@@ -664,6 +669,7 @@ def _cached_render_plan(
     endpoint_mode: str = "adaptive",
     *,
     chroma_nr: float = 0.0,
+    film: Any = None,
 ) -> dg.RenderPlan:
     """Compile expensive scene statistics once, then apply cheap UI biases."""
     from dngscan.decoder_identity import decoder_output_identity
@@ -678,6 +684,7 @@ def _cached_render_plan(
         str(getattr(bundle, "lens_filter", "none")),
         endpoint_mode,
         _cache_float(chroma_nr),
+        _film_key(film),
         POLICY_VERSION,
         decoder_output_identity(bundle),
     )
@@ -697,6 +704,7 @@ def _cached_render_plan(
             chroma_nr=chroma_nr,
             adjustments=None,
             endpoint_mode=endpoint_mode,
+            film=film,
         ),
     )
     return dg.apply_render_adjustments(base, adjustments)
@@ -721,6 +729,7 @@ def _preview_pixel_key(
     endpoint_mode: str = "adaptive",
     *,
     chroma_nr: float = 0.0,
+    film: Any = None,
 ) -> tuple[Any, ...]:
     from dngscan.decoder_identity import decoder_output_identity
     return (
@@ -739,6 +748,7 @@ def _preview_pixel_key(
         lens_filter,
         # review batch 23: the chroma-NR dial changes rendered bytes
         _cache_float(chroma_nr),
+        _film_key(film),
         POLICY_VERSION,
         endpoint_mode,
         _adjustment_key(adjustments),
@@ -798,6 +808,36 @@ def parse_chroma_nr(params: dict, output_format: str) -> float:
     from dngscan.chroma_policy import resolve_chroma_policy
     raw = params.get("chromaNr", params.get("chroma_nr", 0.0))
     return resolve_chroma_policy(params.get("chromaCleanup"), custom_amount=raw if raw not in (None, "") else 0.).amount
+
+
+def parse_film(params: dict, output_format: str, inp: Any, tone_core: str,
+               scene_transform: str, agx_primaries: str) -> Any:
+    """Film stock + grain from the job; None when off. Same fail-closed
+    couplings as the CLI (SDR only, AgX core, no scene transform, base
+    primaries). The grain seed comes from the RAW bytes, so preview and export
+    of one capture share one grain arrangement."""
+    from dngscan.film import (DEFAULT_FILM_GRAIN, FILM_NONE, FilmSelection,
+                              film_seed_for_file, validate_film, validate_film_grain)
+
+    stock = validate_film(str(params.get("film", FILM_NONE) or FILM_NONE))
+    if stock == FILM_NONE:
+        return None
+    grain = validate_film_grain(params.get("filmGrain", params.get("film_grain", DEFAULT_FILM_GRAIN)))
+    if dg.is_hdr_output_format(output_format):
+        raise ValueError("胶片模拟当前只定义了 SDR 输出")
+    if tone_core != "agx":
+        raise ValueError("胶片模拟需要 toneCore=agx")
+    if scene_transform != "none":
+        raise ValueError("胶片模拟不叠加 scene transform")
+    if agx_primaries != "base":
+        raise ValueError("胶片模拟固定使用 base 原色")
+    return FilmSelection(stock, grain, film_seed_for_file(inp))
+
+
+def _film_key(film: Any) -> tuple:
+    if film is None:
+        return ("film", "none")
+    return ("film", film.stock, _cache_float(film.grain), int(film.seed))
 
 
 def parse_capture_declaration(params: dict) -> dict:
@@ -873,6 +913,7 @@ def export_preview_jpeg(
     coreimage_scale: str = "aligned",
     clip_margin: int = 4,
     chroma_nr: float = 0.0,
+    film: Any = None,
 ) -> dict:
     dg.require_dependencies()
     if decoder == "coreimage":
@@ -923,6 +964,7 @@ def export_preview_jpeg(
         adjustments,
         endpoint_mode,
         chroma_nr=chroma_nr,
+        film=film,
     )
     # Identical EV can accompany different automatic vs manual curves.
     auto_plan = getattr(auto_ev, "render_plan", None)
@@ -962,6 +1004,7 @@ def export_preview_jpeg(
             adjustments,
             endpoint_mode,
             chroma_nr=chroma_nr,
+            film=film,
         )
         # A shared plan may have returned this slot while another owner built
         # it; reacquiring admission is another latest-selection boundary.
@@ -1115,6 +1158,7 @@ def run_preview(params: dict) -> dict:
     lens_filter = parse_lens_filter(params)
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
+    film = parse_film(params, output_format, inp, tone_core, scene_transform, agx_primaries)
     try:
         cached = PREVIEW_STORE.get(
             inp,
@@ -1148,6 +1192,7 @@ def run_preview(params: dict) -> dict:
                 endpoint_mode=endpoint_mode,
                 lens_filter=lens_filter,
                 chroma_nr=chroma_nr,
+                film=film,
             )
             # Cache actual normalized inputs, not request spelling/UI metadata.
             auto_key = json.dumps(
@@ -1192,6 +1237,7 @@ def run_preview(params: dict) -> dict:
             coreimage_scale=coreimage_scale,
             clip_margin=clip_margin,
             chroma_nr=chroma_nr,
+            film=film,
         )
         result["generation"] = generation
         return result
@@ -1378,6 +1424,7 @@ def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> di
     lens_filter = parse_lens_filter(params)
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
+    film = parse_film(params, output_format, inp, tone_core, scene_transform, agx_primaries)
     if not is_current():
         raise PreviewSuperseded()
     entry = PREVIEW_STORE.get(
@@ -1415,6 +1462,7 @@ def _prepare_preview_current(params: dict, is_current: Callable[[], bool]) -> di
         adjustments,
         endpoint_mode,
         chroma_nr=chroma_nr,
+        film=film,
     )
     if not is_current():
         raise PreviewSuperseded()
@@ -1458,9 +1506,16 @@ def export_suffix_parts(
     clip_margin: int = 4,
     decoder: str = "libraw",
     chroma_nr: float = 0.0,
+    film: str = "none",
+    film_grain: float = 1.0,
 ) -> str:
     """Build the filename stem suffix for GUI JPEG/PNG exports."""
     parts = [tone_core]
+    if str(film) != "none":
+        # a film render must not overwrite the plain AgX export
+        parts.append(f"film-{film}")
+        if abs(float(film_grain) - 1.0) > 1e-9:
+            parts.append(f"fg{float(film_grain):g}".replace(".", "_"))
     if tone_core == "lum" and lum_norm != "y":
         parts.append(lum_norm)
     if tone_core == "agx" and agx_primaries != "base":
@@ -1725,6 +1780,7 @@ def run_export(params: dict) -> dict:
     lens_filter = parse_lens_filter(params)
     endpoint_mode = parse_endpoint_mode(params)
     chroma_nr = parse_chroma_nr(params, output_format)
+    film = parse_film(params, output_format, inp, tone_core, scene_transform, agx_primaries)
     preview_entry = PREVIEW_STORE.peek(
         inp, highlight, wb, tone_core == "gated", decoder, coreimage_version, demosaic,
         coreimage_scale=coreimage_scale, margin=clip_margin,
@@ -1793,6 +1849,7 @@ def run_export(params: dict) -> dict:
             endpoint_mode=endpoint_mode,
             lens_filter=lens_filter,
             chroma_nr=chroma_nr,
+            film=film,
             _plan_sink=auto_plans,
         )
         ev = auto_ev_result.ev
@@ -1814,6 +1871,7 @@ def run_export(params: dict) -> dict:
             adjustments=adjustments,
             endpoint_mode=endpoint_mode,
             chroma_nr=chroma_nr,
+            film=film,
         )
 
     # review batch 24: the id the render resolves, not the raw payload key
@@ -1834,12 +1892,20 @@ def run_export(params: dict) -> dict:
         clip_margin=int(clip_margin),
         decoder=decoder,
         chroma_nr=chroma_nr,
+        film=film.stock if film is not None else "none",
+        film_grain=film.grain if film is not None else 1.0,
     )
     # Analysis and the compiled plan now own the calibration coefficients.
     # If another process updated them during analysis, retry before writing
     # an output rather than attaching one generation's name to another model.
     if calibration_fingerprint() != calibration_generation:
         raise RuntimeError("实测标定在导出分析期间发生变化，请重新导出。")
+    film_fingerprint: dict = {}
+    if film is not None:
+        from dngscan.film import film_asset_sha256
+
+        film_fingerprint = {"film": film.stock, "film_grain": float(film.grain),
+                            "film_asset": film_asset_sha256()}
     fingerprint = export_plan_fingerprint(
         input_path=str(inp.resolve()),
         input_size=int(inp.stat().st_size),
@@ -1872,6 +1938,9 @@ def run_export(params: dict) -> dict:
         capture_declaration=parse_capture_declaration(params),
         spatial_budget_mib=(_spatial_budget_mib_for_fingerprint() if float(chroma_nr) > 0.0 else 0),
         adjustments=dataclasses.astuple(adjustments),
+        # Film participates only when active, so every non-film recipe keeps
+        # its historical fingerprint (and file name).
+        **film_fingerprint,
         # Encode-affecting parameters (review batch 11): the HDR headroom and
         # the delivery/encode knobs change the written bytes, so they must
         # change the name. Headroom only participates when the container is

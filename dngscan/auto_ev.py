@@ -158,6 +158,7 @@ def render_sample_linear_output(
     sample_raw_guidance: Any | None = None,
     adjustments: RenderAdjustments | None = None,
     sample_exclusion: Any | None = None,
+    film: Any = None,
 ) -> Any:
     from .grade import RENDER_MODE
 
@@ -177,6 +178,7 @@ def render_sample_linear_output(
             lum_norm,
             agx_primaries=agx_primaries,
             adjustments=adjustments,
+            film=film,
         ) if analysis is not None else None
     )
     wb_adapt = scene_transform_engine.window_transport(ev_bundle)
@@ -259,6 +261,7 @@ def max_safe_ev(
     tone_plan: RenderPlan | None = None,
     endpoint_mode: str = "adaptive",
     chroma_nr: float = 0.0,
+    film: Any = None,
     lens_filter: str | None = None,
 ) -> float:
     """Largest EV (>= from_ev) whose preview-scale output stays below highlight thresholds.
@@ -297,6 +300,7 @@ def max_safe_ev(
             agx_primaries=agx_primaries,
             adjustments=adjustments,
             chroma_nr=chroma_nr,
+            film=film,
             endpoint_mode=endpoint_mode,
         )
 
@@ -438,6 +442,7 @@ def compute_auto_ev(
     adjustments: RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
     chroma_nr: float = 0.0,
+    film: Any = None,
     lens_filter: str | None = None,
     *, _plan_sink: list | None = None,
 ) -> AutoEvResult:
@@ -488,6 +493,7 @@ def compute_auto_ev(
         agx_primaries=agx_primaries,
         adjustments=adjustments,
         chroma_nr=chroma_nr,
+        film=film,
         endpoint_mode=endpoint_mode,
     )
     target = scene_body_align_ev(reference_plan)
@@ -510,12 +516,16 @@ def compute_auto_ev(
         tone_plan=reference_plan,
         endpoint_mode=endpoint_mode,
         chroma_nr=chroma_nr,
+        film=film,
     )
     boost_target = max(target, baseline_ev)
     ev = min(boost_target, cap)
     limited = boost_target > cap + 1e-6
     planning = None
-    if tone_core == "agx" and isinstance(reference_plan, RenderPlan):
+    film_active = film is not None and getattr(film, "active", False)
+    # A film stock is a FIXED curve: the bounded joint planner would re-select
+    # the curve per photo, so under film only the exposure solve above applies.
+    if tone_core == "agx" and isinstance(reference_plan, RenderPlan) and not film_active:
         from .joint_exposure import select_joint_plan
         from .prepared_sample import PreparedSceneSample
 
@@ -577,6 +587,7 @@ def resolve_export_ev(
     adjustments: RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
     chroma_nr: float = 0.0,
+    film: Any = None,
     lens_filter: str | None = None,
     *, _plan_sink: list | None = None,
 ) -> tuple[float, AutoEvResult | None]:
@@ -600,6 +611,7 @@ def resolve_export_ev(
         adjustments,
         endpoint_mode=endpoint_mode,
         chroma_nr=chroma_nr,
+        film=film,
         lens_filter=lens_filter,
         _plan_sink=_plan_sink,
     )
