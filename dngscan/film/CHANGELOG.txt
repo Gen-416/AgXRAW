@@ -1,0 +1,39 @@
+Derived from spektrafilm by Andrea Volpato
+https://github.com/andreavolpato/spektrafilm
+Licensed CC BY-SA 4.0 (see SPEKTRAFILM_LICENSE.txt in this directory)
+Modified by the AgXRAW / AgXFilm project (https://github.com/Gen-416).
+
+What ships here
+---------------
+dngscan/data/film/observe_v1.json (schema agxraw-film-observe/1) does not
+contain the spektrafilm profiles themselves. Its per-stock entries are
+quantities computed from them, and are therefore distributed under the same
+CC BY-SA 4.0 terms:
+
+  - curve:       AgX C1 curve parameters least-squares fitted to the neutral
+                 scale of a spectral simulation built on the spektrafilm film
+                 and print profiles (negative -> paper, or reversal viewed
+                 directly), under native viewing with luminance black-point
+                 compensation and EV0 -> 0.18.
+  - exposure_offset_ev (reversal stocks): ISO 2240 metered mid grey
+                 measured on that simulated neutral scale.
+  - hue:         Fourier coefficients of a per-hue Oklab rendition fitted to
+                 the spectral simulation's output on 526 synthetic scene
+                 colours.
+  - crossover:   the simulation's per-channel grey-scale cast table.
+  - stage_a:     a 3x3 layer-exposure observer fitted to the profile's
+                 spectral sensitivities, and the characteristic (exposure ->
+                 dye amount) tables resampled from the profile's density
+                 curves.
+
+Not derived from spektrafilm (listed in NOTICE.md): the grain sigma(D)
+tables (digitized Kodak 5207 granularity chart), the per-stock grain scales
+(Kodak / Fujifilm datasheet granularity figures), the grain field model.
+
+History
+-------
+2026-11-22  observe_v1: first release in AgXRAW. Exported by AgXFilm
+            tools/export_agxraw_film_asset.py from AgXFilm research branch
+            research/bpc-print-view (commit recorded in the asset's
+            "source" block); spektrafilm profiles pinned at upstream commit
+            3bb2c2d2801ff68b92019cf1dbcbb133d60832bc (profile version 0.3.2).

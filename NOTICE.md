@@ -160,8 +160,63 @@ author's set registry, dependency relationships and revision notes from
 permission. Registry metadata does not by itself qualify a measurement for
 pixel correction; partial and research-only relationships remain explicit.
 
-## Film research split
+## Film simulation data (dngscan/data/film) — spektrafilm, CC BY-SA 4.0
 
-Film-profile data, derived film presets, densitometer tables and their licence
-notices are preserved in the separate AgXFilm repository. AgXRAW no longer
-packages or uses those film assets.
+The observe film simulation (`dngscan/film/`, see docs/FILM.zh-CN.md) ships one
+data asset, `dngscan/data/film/observe_v1.json`. Its per-stock curve, reversal
+metered-exposure offset, hue rendition, grey-scale crossover and Stage A
+observer/characteristic tables are computed from Andrea Volpato's spektrafilm
+film and print profiles:
+
+    Derived from spektrafilm by Andrea Volpato
+    https://github.com/andreavolpato/spektrafilm
+    Licensed CC BY-SA 4.0
+    Modified by the AgXRAW / AgXFilm project (https://github.com/Gen-416).
+
+spektrafilm's profile data is licensed under **CC BY-SA 4.0**, separately from
+its GPL code; the derived quantities are distributed under the same CC BY-SA 4.0
+terms. The unmodified license text ships inside the package next to the engine
+(`dngscan/film/SPEKTRAFILM_LICENSE.txt`), with the list of modifications in
+`dngscan/film/CHANGELOG.txt`, and the attribution is also embedded in the asset's
+`license` block. The profiles used were pinned at upstream commit
+`3bb2c2d2801ff68b92019cf1dbcbb133d60832bc` (profile version 0.3.2). spektrafilm
+processed its profiles from Kodak and Fujifilm datasheets and scientific
+publications; original measurements remain the property of their holders.
+"spektrafilm" is named here for attribution only.
+
+Not derived from spektrafilm:
+
+- Grain sigma(D): Kodak VISION3 250D (5207) diffuse rms granularity curves,
+  digitized from Eastman Kodak publication H-1-5207 (48 um aperture). Data
+  remain the property of Eastman Kodak.
+- Per-stock grain scales: granularity figures published in Kodak (Print
+  Grain Index; diffuse rms) and Fujifilm (rms granularity) technical data
+  sheets, combined as documented in AgXFilm `docs/grain_scale.json`.
+- Reversal metered mid grey follows the ISO 2240 speed-point definition
+  (method only; no standard text is reproduced).
+
+The research archive, the frozen pre-split integration and the derivation
+tools live in the AgXFilm repository (https://github.com/Gen-416/AgXFilm).
+The pre-split film features (full print chain, colour head, development,
+halation, media scatter, appearance recipes) are not part of AgXRAW.
+
+## Spectral calibration bootstrap data and lens-filter constants
+
+`dngscan_assets/spectral/` (used by `tools/calibrate_skin_matrix.py` and the
+retained `alev_material_d55` scene-transform preset; provenance per file in
+`dngscan_assets/spectral/README.md`):
+
+- `arri_alexa_alev3_ssf_digitized.csv`: ALEV3/ALEXA spectral sensitivities
+  visually transcribed at 10 nm anchors from Figure 1 of Leonhardt & Brendel,
+  "Critical spectra in the color reproduction process of digital motion picture
+  cameras", IS&T CIC23 (2015). Approximate digitized values, not a copy of the
+  figure; the measurements belong to their authors.
+- `sony_imx410_qe_zwo_asi2400mc_digitized.csv`: rough IMX410 QE proxy after the
+  published ZWO ASI2400MC QE graph (https://www.zwoastro.com/product/asi2400mc-pro/).
+- `sigma_fp_hot_mirror_model_420_660.csv`, `demo_*_reflectance.csv`,
+  `unit_transmission.csv`: analytic models authored for this project.
+
+Lens conversion filters (`dngscan/lens_filter.py`) are derived from Kodak's
+published Wratten mired shifts and filter factors (two numbers per filter); no
+spectral curve is bundled. Measured lens/filter transmittance and embedded lens
+corrections are listed in their own sections above.

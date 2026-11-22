@@ -50,6 +50,16 @@ class FilmAssetTests(unittest.TestCase):
                 self.assertLess(s["exposure_offset_ev"], 0.0)
             self.assertGreater(s["grain_scale"], 0.0)
 
+    def test_cc_by_sa_attribution_travels_with_the_data(self):
+        lic = film._asset()["license"]
+        self.assertIn("Andrea Volpato", lic["attribution"])
+        self.assertIn("https://github.com/andreavolpato/spektrafilm", lic["attribution"])
+        self.assertIn("CC BY-SA 4.0", lic["license"])
+        here = Path(film.__file__).resolve().parent
+        text = (here / "SPEKTRAFILM_LICENSE.txt").read_text(encoding="utf-8")
+        self.assertIn("Attribution-ShareAlike 4.0", text)
+        self.assertIn("Modified by", (here / "CHANGELOG.txt").read_text(encoding="utf-8"))
+
     def test_master_field_rebuilds_the_frozen_realization(self):
         a = film._asset()["grain"]
         ii, rms48 = master(GrainProfile.from_asset(a))

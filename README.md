@@ -104,6 +104,17 @@ rendering, so they can be compared on the same photograph.
 Supported cameras, and what happens with bodies too new for the built-in data, are covered in
 section 1 of the [user guide](docs/USER_GUIDE.md) and in [sensor support](docs/SENSOR_SUPPORT.zh-CN.md).
 
+### Film simulation
+
+Twenty film stocks (Kodak Portra, Ektar, Gold, UltraMax, VISION3, Verita, Ektachrome, Kodachrome;
+Fujifilm Velvia, Provia, Superia, Pro 400H, C200) as fixed, data-driven AgX renderings: each stock's
+print/slide tone curve with black-point compensation, its per-hue colour rendition and grey-scale
+crossover from a spectral film simulation, reversal stocks' metered mid grey, and negative-density
+grain at the stock's datasheet granularity. `--film portra400`; details in
+[film simulation](docs/FILM.zh-CN.md) (Chinese). The film data derive from the open-source
+[spektrafilm](https://github.com/andreavolpato/spektrafilm) profiles by Andrea Volpato
+(CC BY-SA 4.0); see [third-party notices](NOTICE.md).
+
 ### One set of settings for the GUI and the command line
 
 The local web interface and the CLI share one set of parameters: anything you set in the interface
@@ -299,4 +310,6 @@ measurements; they do not replace the current user guide or architecture.
 
 ## License
 
-AgXRAW is released under [GPL-3.0-or-later](LICENSE).
+AgXRAW is free and open-source software, released under [GPL-3.0-or-later](LICENSE).
+Bundled third-party data keep their own terms — notably the film simulation data derived from
+spektrafilm (CC BY-SA 4.0) — as listed in [NOTICE.md](NOTICE.md).
