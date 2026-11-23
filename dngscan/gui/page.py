@@ -414,6 +414,23 @@ dialog.outputDialog::backdrop{background:rgba(7,9,13,.72);backdrop-filter:blur(3
   <div id="controlHint"></div>
 </div>
 
+<div class="card" id="filmCard" data-mobile-card="imaging">
+  <div class="secTitle">胶片</div>
+  <div class="row">
+    <div style="flex:2;min-width:210px">
+      <label>胶片</label>
+      <select id="film" title="固定的数据驱动胶片渲染：影调曲线、按色相的颜色还原、灰阶层间漂移、反转片测光中灰与负片颗粒都来自该胶片的数据。">
+FILM_OPTIONS
+      </select>
+    </div>
+    <div id="filmGrainBlock" class="sliderField" style="display:none">
+      <div class="labelRow"><label title="1 = 该胶片数据手册颗粒度（48 µm 光孔 RMS）；0 关闭。">颗粒</label><span class="val" id="filmGrainVal">1.00</span></div>
+      <input type="range" id="filmGrain" min="0" max="3" step="0.05" value="1" title="向右更粗；颗粒排布由 RAW 文件决定，预览与导出一致。">
+    </div>
+  </div>
+  <div class="ctlFact" id="filmFact" aria-live="polite"></div>
+</div>
+
 </section>
 
 <section class="dashboardPanel" id="colorPanel" role="tabpanel" aria-labelledby="colorTab" hidden>
@@ -712,6 +729,42 @@ function setAdjustmentLabels(){
 }
 function setSceneTransformStrengthLabel(){const v=+$("#sceneTransformStrength").value;$("#sceneTransformStrengthVal").textContent=v.toFixed(2);}
 function updateSceneTransformUi(){$("#sceneTransformStrengthBlock").style.display=$("#sceneTransform").value!=="none"?"block":"none";}
+const FILM_META=FILM_META_JSON;
+// Controls a film stock fixes: the film owns its curve and colour, so these are
+// pinned while it is active and the user's choice is stashed for when it is off.
+const FILM_PINNED=[["toneCore","agx"],["agxPrimaries","base"],["sceneTransform","none"]];
+function filmActive(){return $("#film").value!=="none";}
+function setFilmGrainLabel(){$("#filmGrainVal").textContent=(+$("#filmGrain").value).toFixed(2);}
+function updateFilmUi(){
+  const on=filmActive();
+  for(const [id,value] of FILM_PINNED){
+    const el=$("#"+id);
+    if(on){
+      if(el.value!==value)el.dataset.filmStash=el.value;
+      el.value=value;el.disabled=true;
+    }else if(el.disabled&&el.dataset.filmStash!==undefined){
+      el.value=el.dataset.filmStash;delete el.dataset.filmStash;el.disabled=false;
+    }else{delete el.dataset.filmStash;el.disabled=false;}
+  }
+  $("#punch").disabled=on;
+  $("#punchBlock").title=on?"胶片的色彩由胶片数据决定，色彩浓度不参与。":"";
+  $("#filmGrainBlock").style.display=on?"block":"none";
+  if(on&&["ultrahdr","ultrahdr-heic"].includes($("#format").value)){
+    $("#format").value="sdr";
+    setStatus("胶片模拟目前只定义了 SDR 输出，已切换到 SDR。","warn");
+  }
+  const m=FILM_META[$("#film").value];
+  let fact="";
+  if(m){
+    const kind=m.process==="reversal"?"反转片":(m.cine?"电影负片 · 相纸印放":"彩色负片 · 相纸印放");
+    const parts=[kind,"颗粒 "+(m.grain_scale).toFixed(2)+"× 基准"];
+    if(m.process==="reversal")parts.push("测光中灰 "+m.exposure_offset_ev.toFixed(2)+" EV");
+    fact=parts.join(" · ")+"。影调映射、AgX 色彩浓淡、感色校正与色彩浓度由胶片固定；仅 SDR。";
+  }
+  $("#filmFact").textContent=fact;
+  $("#filmFact").style.display=fact?"":"none";
+  updateSceneTransformUi();updateToneCoreUi();updateHdrOptionGate();
+}
 const CORE_FACTS={
   gated:["亮度 <b>darktable C1</b>","色彩 <b>RAW 门控</b>"],
   agx:["亮度 <b>darktable C1</b>","色彩 <b>全图 AgX</b>"],
@@ -785,7 +838,7 @@ let HDR_BACKEND_OK=true;
 function updateHdrOptionGate(){
   for(const v of ["ultrahdr","ultrahdr-heic"]){
     const option=[...$("#format").options].find(o=>o.value===v);
-    if(option)option.disabled=!HDR_BACKEND_OK;
+    if(option)option.disabled=!HDR_BACKEND_OK||filmActive();
   }
   $("#formatModeHint").style.display="none";
 }
@@ -948,6 +1001,7 @@ function updateDecoderUi(){
       updateToneCoreUi();updateToneCoreExportUi();
     }
   }
+  if(filmActive())updateFilmUi();
   // R2 item 3: RAW 9 accepts the daylight anchor through the hot-WB matrix
   // path now (A9), so the old silent reset to "camera" is gone — GUI, CLI
   // and API expose the same capability.
@@ -958,10 +1012,10 @@ const SETTINGS_IDS=["autoExposure","ev","quality","highlight","gamut","wb","demo
   "grade","gradeStrength","sceneTransform","sceneTransformStrength","punch",
   "midtoneBrightness","midtoneContrast","shadowTransition","highlightTransition","highlightFade",
   "endpointMode","toeEndOffset","shoulderWhiteOffset","hdrHeadroom","outdir","png",
-  "hdrRho","hdrWhiteMargin","hdrShoulderStart","clipOverlayToggle","coreimageScale","clipMargin","chromaNr","chromaCleanup"];
+  "hdrRho","hdrWhiteMargin","hdrShoulderStart","clipOverlayToggle","coreimageScale","clipMargin","chromaNr","chromaCleanup","film","filmGrain"];
 function saveSettings(){
   const state={};
-  for(const id of SETTINGS_IDS){const el=$("#"+id);if(el)state[id]=el.type==="checkbox"?el.checked:(el.dataset.librawValue||el.value);}
+  for(const id of SETTINGS_IDS){const el=$("#"+id);if(el)state[id]=el.type==="checkbox"?el.checked:(el.dataset.filmStash||el.dataset.librawValue||el.value);}
   try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(e){}
 }
 function restoreSettings(){
@@ -986,8 +1040,8 @@ function restoreSettings(){
   }
   if(!MATPLOTLIB_AVAILABLE)$("#png").checked=false;
   setEvLabel();setHdrLabel();setGradeStrengthLabel();setSceneTransformStrengthLabel();setPunchLabel();
-  setAdjustmentLabels();setChromaNrLabel();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();
-  updateFormatUi();updateDecoderUi();updateHdrOptionGate();
+  setAdjustmentLabels();setChromaNrLabel();setFilmGrainLabel();updateGradeUi();updateSceneTransformUi();updateToneCoreUi();
+  updateFormatUi();updateDecoderUi();updateFilmUi();updateHdrOptionGate();
   if(!current)saveSettings();
 }
 ["quality","outdir","png"].forEach(id=>$("#"+id).addEventListener("change",saveSettings));
@@ -1022,6 +1076,8 @@ $("#toneCore").addEventListener("change",()=>{
   updateToneCoreUi();updateToneCoreExportUi();saveSettings();preparePreview();});
 $("#lumNorm").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#agxPrimaries").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
+$("#film").addEventListener("change",()=>{updateFilmUi();updateToneCoreExportUi();saveSettings();preparePreview();});
+$("#filmGrain").oninput=()=>{setFilmGrainLabel();saveSettings();scheduleLivePreview();};
 $("#sceneTransform").addEventListener("change",()=>{updateSceneTransformUi();saveSettings();scheduleLivePreview();});
 $("#format").addEventListener("change",()=>{updateFormatUi();saveSettings();scheduleLivePreview();});
 $("#autoExposure").onchange=()=>{saveSettings();scheduleLivePreview();};
@@ -1279,6 +1335,7 @@ function payload(){
     deliveryProfile:$("#deliveryProfile").value,
     heifEncoder:$("#heifEncoder").value,heifBitDepth:+$("#heifBitDepth").value,heifPreset:$("#heifPreset").value,heifTune:$("#heifTune").value,
     toneCore:$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
+    film:$("#film").value,filmGrain:+$("#filmGrain").value,
     grade:$("#grade").value,gradeStrength:+$("#gradeStrength").value,
     sceneTransform:$("#sceneTransform").value,sceneTransformStrength:+$("#sceneTransformStrength").value,
     punch:+$("#punch").value,
@@ -1941,6 +1998,37 @@ def _scene_transform_options_html() -> str:
 
 
 
+def _film_options_html() -> str:
+    """Film stocks from the bundled asset, grouped the way they are printed."""
+    from ..film import FILM_NONE, _asset
+
+    stocks = _asset()["stocks"]
+    groups = (
+        ("彩色负片", lambda k, s: s["process"] == "negative" and not k.startswith(("vision3", "verita"))),
+        ("电影负片", lambda k, s: k.startswith(("vision3", "verita"))),
+        ("反转片", lambda k, s: s["process"] == "reversal"),
+    )
+    lines = [f'        <option value="{FILM_NONE}" selected>关闭</option>']
+    for title, member in groups:
+        lines.append(f'        <optgroup label="{title}">')
+        for key, s in stocks.items():
+            if member(key, s):
+                lines.append(f'          <option value="{key}">{s["label"]}</option>')
+        lines.append("        </optgroup>")
+    return "\n".join(lines)
+
+
+def _film_meta_json() -> str:
+    from ..film import _asset
+
+    return json.dumps({
+        key: {"process": s["process"], "grain_scale": s["grain_scale"],
+              "exposure_offset_ev": s["exposure_offset_ev"],
+              "cine": key.startswith(("vision3", "verita"))}
+        for key, s in _asset()["stocks"].items()
+    }, ensure_ascii=False)
+
+
 def _core_import_errors() -> list[str]:
     from dngscan._deps import IMPORT_ERRORS
 
@@ -1968,6 +2056,8 @@ def render_page(init_dir: str, session_token: str = "") -> bytes:
         .replace("PREVIEW_LONG_EDGE", str(REALTIME_PREVIEW_LONG_EDGE))
         .replace("GRADE_OPTIONS", _grade_options_html())
         .replace("SCENE_TRANSFORM_OPTIONS", _scene_transform_options_html())
+        .replace("FILM_OPTIONS", _film_options_html())
+        .replace("FILM_META_JSON", _film_meta_json())
         # A12 item 1: the page flag gates only on the API surface — probing
         # the EXPORT context here disabled Apple RAW previews on machines
         # where only the interactive context works. Real runtime capability

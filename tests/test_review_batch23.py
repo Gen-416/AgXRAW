@@ -154,7 +154,7 @@ class PageControl(unittest.TestCase):
         self.assertIn('chromaNr:+$("#chromaNr").value,', payload)
         self.assertIn('chromaCleanup:$("#chromaCleanup").value,', payload)
         self.assertNotIn('includes($("#format").value)?0:+$("#chromaNr")', payload)
-        self.assertIn('"clipMargin","chromaNr","chromaCleanup"]', PAGE)  # restoreSettings list
+        self.assertIn('"clipMargin","chromaNr","chromaCleanup",', PAGE)  # restoreSettings list
         settings = PAGE[PAGE.index("const SETTINGS_IDS="):PAGE.index("function saveSettings()")]
         self.assertIn('"chromaNr"', settings)
         save = PAGE[PAGE.index("function saveSettings()"):PAGE.index("function restoreSettings()")]

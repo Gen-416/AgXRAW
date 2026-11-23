@@ -903,8 +903,15 @@ def build_render_plan(
     adjustments: RenderAdjustments | None = None,
     endpoint_mode: str = "adaptive",
     chroma_nr: float = 0.0,
+    film: Any = None,
 ) -> RenderPlan:
-    """Compile independent scene, tone and colour plans from an immutable capture."""
+    """Compile independent scene, tone and colour plans from an immutable capture.
+
+    ``film`` (dngscan.film.FilmSelection) replaces the compiled curve by the
+    stock's fixed coordinate after compilation; scene metrics are unchanged."""
+    film_active = film is not None and getattr(film, "active", False)
+    if film_active and (scene_transform != "none" or tone_core != "agx" or mode != "agx"):
+        raise ValueError("胶片模拟需要 AgX tone 核且不叠加 scene transform（胶片的色彩还原已包含在胶片数据里）")
     tone_core = tone_core if tone_core in TONE_CORE_CHOICES else "agx"
     lum_norm = lum_norm if lum_norm in LUM_NORM_CHOICES else "y"
     endpoint_mode = endpoint_mode if endpoint_mode in ENDPOINT_MODE_CHOICES else "adaptive"
@@ -959,6 +966,10 @@ def build_render_plan(
         raise ValueError(f"chroma_nr={chroma_nr!r} 域为 [0, 1]")
     if chroma_nr_value > 0.0:
         tone = replace(tone, chroma_nr=chroma_nr_value)
+    if film_active:
+        from .film import apply_film_plan
+
+        tone = apply_film_plan(tone, film)
     return apply_render_adjustments(
         RenderPlan(
             tone=tone,

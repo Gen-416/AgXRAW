@@ -21,7 +21,10 @@ class FilmSplitEntrypointsTests(unittest.TestCase):
         defaults = parse_args(["photo.dng"])
         self.assertEqual((defaults.tone_core, defaults.wb, defaults.scene_transform),
                          ("agx", "camera", "none"))
-        for flags in (("--film", "portra400"), ("--film-mode", "full"),
+        # The merged observe engine owns --film/--film-grain (tests/test_film_observe.py);
+        # every pre-split film control stays refused.
+        self.assertEqual(parse_args(["photo.dng", "--film", "portra400"]).film, "portra400")
+        for flags in (("--film-mode", "full"), ("--film-curve", "portra400"),
                       ("--color-head-y", "5")):
             with self.subTest(flags=flags), contextlib.redirect_stderr(io.StringIO()), \
                  self.assertRaises(SystemExit) as error:
@@ -32,18 +35,26 @@ class FilmSplitEntrypointsTests(unittest.TestCase):
         for key in ("filmCurve", "film_mode", "colorHeadY", "color_head_m"):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, "AgXFilm"):
                 service.parse_job_params({"input": "photo.dng", key: "none"})
+        for key in ("film", "filmGrain"):
+            # passes the guard and reaches the input check
+            with self.subTest(key=key), self.assertRaises(FileNotFoundError):
+                service.parse_job_params({"input": "photo.dng", key: "none"})
 
     def test_removed_controls_have_no_remaining_dom_references(self):
         html = render_page("/tmp", "test-token").decode()
         ids = set(re.findall(r'\bid="([^"]+)"', html))
         references = set(re.findall(r'\$\("#([\w-]+)"\)', html))
         self.assertFalse(references - ids, f"missing controls: {references - ids}")
-        self.assertFalse(any(name.startswith(("film", "colorHead")) for name in ids))
+        # pre-split film controls stay gone; the merged engine has exactly two
+        film_ids = {name for name in ids if name.startswith(("film", "colorHead"))}
+        self.assertEqual(film_ids, {"film", "filmGrain", "filmCard", "filmGrainBlock",
+                                    "filmGrainVal", "filmFact"})
         for required in ("toneCore", "lensFilter", "chromaNr", "calibrationDialog",
                          "decoder", "heifBitDepth", "hdrHeadroom"):
             self.assertIn(required, ids)
         payload = PAGE.split("function payload(", 1)[1].split("return p;", 1)[0]
-        self.assertNotRegex(payload, r"\b(?:film\w*|colorHead\w*):")
+        self.assertEqual(set(re.findall(r"\b(film\w*|colorHead\w*):", payload)),
+                         {"film", "filmGrain"})
 
     def test_served_javascript_parses_after_panel_removal(self):
         node = shutil.which("node")
@@ -78,6 +89,7 @@ const localStorage={getItem:key=>key==="v10"?JSON.stringify({agxPrimaries:"smoot
 const saveSettings=()=>{};
 const setEvLabel=()=>{},setHdrLabel=()=>{},setGradeStrengthLabel=()=>{},setSceneTransformStrengthLabel=()=>{},setPunchLabel=()=>{};
 const setAdjustmentLabels=()=>{},setChromaNrLabel=()=>{},updateGradeUi=()=>{},updateSceneTransformUi=()=>{},updateToneCoreUi=()=>{};
+const setFilmGrainLabel=()=>{},updateFilmUi=()=>{};
 const updateFormatUi=()=>{},updateDecoderUi=()=>{},updateHdrOptionGate=()=>{};
 ''' + restore + r'''
 restoreSettings();

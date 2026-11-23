@@ -58,10 +58,12 @@ class AutoEvChainCarriesChromaNr(unittest.TestCase):
         # both reference plans, the compute->max_safe hop and the resolve->compute hop
         for callee in ("build_render_plan", "max_safe_ev", "compute_auto_ev"):
             for kwargs in _call_kwargs(src, callee):
-                if callee == "build_render_plan" and kwargs == {"agx_primaries", "adjustments"}:
+                if callee == "build_render_plan" and kwargs <= {"agx_primaries", "adjustments", "film"}:
                     # The standalone sample fallback predates prepared scene context.
                     continue
                 self.assertIn("chroma_nr", kwargs, f"{callee} call drops chroma_nr")
+                # the film selection rides the same chain (dngscan/film)
+                self.assertIn("film", kwargs, f"{callee} call drops film")
 
     def test_resolve_export_ev_hands_the_dial_to_the_reference_plan(self) -> None:
         from dngscan import auto_ev

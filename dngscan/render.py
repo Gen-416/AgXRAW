@@ -297,8 +297,15 @@ def apply_tone_core(
     color_plan: ColorGeometryPlan | None = None,
     clip_masks_rgb: Any | None = None,
     raw_guidance: Any | None = None,
+    film_spatial: Any | None = None,
 ) -> Any:
+    """``film_spatial`` (dngscan.film.FilmSpatial) locates the pixel run in its
+    frame for film grain; probe callers omit it and render grain-free."""
     core = str(getattr(plan, "tone_core", "agx"))
+    if core == "agx" and str(getattr(plan, "film_stock", "none")) != "none":
+        from .film import film_tone_core
+
+        return film_tone_core(rgb_rec2020, plan, apply_agx_core, film_spatial)
     if core == "neutral":
         return neutral_engine.apply_neutral_core(rgb_rec2020, plan)
     if core == "lum":
@@ -308,6 +315,16 @@ def apply_tone_core(
             rgb_rec2020, plan, color_plan, clip_masks_rgb, raw_guidance
         )
     return apply_agx_core(rgb_rec2020, plan)
+
+
+def _film_spatial_kw(plan: Any, start: int, h: int, w: int) -> dict:
+    """Film grain needs each chunk's place in the frame. Off film the call
+    keeps its historical shape (no extra keyword)."""
+    if str(getattr(plan, "film_stock", "none")) == "none":
+        return {}
+    from .film import FilmSpatial
+
+    return {"film_spatial": FilmSpatial(int(start), int(h), int(w))}
 
 
 def sensor_px_per_render_px(bundle: RawBundle, h: int, w: int) -> float:
@@ -482,6 +499,7 @@ def scene_render_to_display_linear(
             color_plan,
             clip_masks[start:end] if clip_masks is not None else None,
             guidance_engine.flatten_raw_guidance(raw_guidance, start, end) if raw_guidance is not None else None,
+            **_film_spatial_kw(tone_plan, start, h, w),
         )
         if display_filter != "none" and filter_strength > 0.0:
             output_linear = filter_engine.apply_display_filter_rec2020(
@@ -766,6 +784,7 @@ def render_output_u8(
             guidance_engine.flatten_raw_guidance(raw_guidance, start, end)
             if raw_guidance is not None
             else None,
+            **_film_spatial_kw(effective_tone, start, h, w),
         )
         if capture_mapped is not None:
             capture_mapped[start:end] = mapped_rec

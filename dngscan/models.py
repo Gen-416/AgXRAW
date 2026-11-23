@@ -405,6 +405,14 @@ class ToneCompressionPlan:
     # Truthful note about how the evidence endpoints were sourced or degraded
     # (e.g. "黑端点=单帧噪声底估计（无传感器先验）"). None under adaptive compilation.
     endpoint_note: str | None = None
+    # Observe film simulation (dngscan/film): "none" keeps the plain AgX path
+    # byte-identical. When set, the curve fields above hold the stock's fixed
+    # coordinate (film.apply_film_plan) and the tone core runs the film
+    # wrapper; film_grain is the user amount (x the stock's datasheet scale),
+    # film_seed the grain phase derived from the capture identity.
+    film_stock: str = "none"
+    film_grain: float = 0.0
+    film_seed: int = 1
 
 
 @dataclass(frozen=True)
