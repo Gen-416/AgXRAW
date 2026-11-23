@@ -390,7 +390,7 @@ context.localStorage={getItem:key=>saved.get(key)||null,setItem:(key,value)=>sav
 for (const name of ['setEvLabel','setHdrLabel','setGradeStrengthLabel',
   'setSceneTransformStrengthLabel','setPunchLabel','setAdjustmentLabels',
   'updateGradeUi','updateSceneTransformUi','updateToneCoreUi','updateFormatUi',
-  'updateDecoderUi','updateHdrOptionGate']) context[name]=()=>{};
+  'updateDecoderUi','updateHdrOptionGate','setFilmGrainLabel','updateFilmUi']) context[name]=()=>{};
 context.restoreSettings();
 assert.equal($('#chromaNr').value,'0.70');
 assert.equal($('#chromaNrVal').textContent,'0.70');

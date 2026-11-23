@@ -389,6 +389,16 @@ especially how highlights behave in color.
 
 The last two are comparison/diagnostic tools, not finishing tools.
 
+**Film** (the film card on the imaging page): choosing a stock makes its tone curve, per-hue colour
+rendition, grey-scale crossover, reversal metered mid grey and negative grain come from that stock's
+data, applied the same way on every photo. Stocks are grouped as colour negative, cine negative and
+reversal; the **grain** slider's 1.0 is the stock's datasheet granularity, 0 turns it off, and the
+grain arrangement is fixed by the RAW file, so preview and export match. While a film is active the
+compression core is pinned to AgX, AgX primaries to standard, the camera colour correction off and
+colour intensity out of play (these grey out); turning the film off restores your previous choices.
+HDR formats are unavailable with film for now. Exported names carry `film-<stock>` so they never
+overwrite a plain export. See [film simulation](FILM.zh-CN.md) (Chinese) for the model and data.
+
 ---
 
 ## 9. Output: formats and delivery profiles
@@ -446,7 +456,10 @@ letting you choose it and failing at export. Currently handled this way:
   Apple RAW — it gates the colour path on per-pixel CFA evidence, which Core
   Image does not provide;
 - **附带分析图** — needs matplotlib (section 9);
-- **RAW 过曝标记** — Apple RAW decoding has no per-pixel CFA evidence (section 3).
+- **RAW 过曝标记** — Apple RAW decoding has no per-pixel CFA evidence (section 3);
+- **With a film active** — the compression core, AgX primaries, camera colour correction and colour
+  intensity are fixed by the film; HDR formats are greyed and a selected HDR format snaps back to SDR
+  (section 8).
 
 Two more cases **warn without greying**: Apple RAW's RAW 9/8/7 version is probed
 per file, and an unsupported file is intercepted before submission so you can

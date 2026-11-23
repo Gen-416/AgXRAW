@@ -45,12 +45,16 @@ class FilmSplitEntrypointsTests(unittest.TestCase):
         ids = set(re.findall(r'\bid="([^"]+)"', html))
         references = set(re.findall(r'\$\("#([\w-]+)"\)', html))
         self.assertFalse(references - ids, f"missing controls: {references - ids}")
-        self.assertFalse(any(name.startswith(("film", "colorHead")) for name in ids))
+        # pre-split film controls stay gone; the merged engine has exactly two
+        film_ids = {name for name in ids if name.startswith(("film", "colorHead"))}
+        self.assertEqual(film_ids, {"film", "filmGrain", "filmCard", "filmGrainBlock",
+                                    "filmGrainVal", "filmFact"})
         for required in ("toneCore", "lensFilter", "chromaNr", "calibrationDialog",
                          "decoder", "heifBitDepth", "hdrHeadroom"):
             self.assertIn(required, ids)
         payload = PAGE.split("function payload(", 1)[1].split("return p;", 1)[0]
-        self.assertNotRegex(payload, r"\b(?:film\w*|colorHead\w*):")
+        self.assertEqual(set(re.findall(r"\b(film\w*|colorHead\w*):", payload)),
+                         {"film", "filmGrain"})
 
     def test_served_javascript_parses_after_panel_removal(self):
         node = shutil.which("node")
@@ -85,6 +89,7 @@ const localStorage={getItem:key=>key==="v10"?JSON.stringify({agxPrimaries:"smoot
 const saveSettings=()=>{};
 const setEvLabel=()=>{},setHdrLabel=()=>{},setGradeStrengthLabel=()=>{},setSceneTransformStrengthLabel=()=>{},setPunchLabel=()=>{};
 const setAdjustmentLabels=()=>{},setChromaNrLabel=()=>{},updateGradeUi=()=>{},updateSceneTransformUi=()=>{},updateToneCoreUi=()=>{};
+const setFilmGrainLabel=()=>{},updateFilmUi=()=>{};
 const updateFormatUi=()=>{},updateDecoderUi=()=>{},updateHdrOptionGate=()=>{};
 ''' + restore + r'''
 restoreSettings();

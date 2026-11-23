@@ -63,7 +63,9 @@ class ExportSuffixTests(unittest.TestCase):
         # Optional display looks remain available; film-stock selectors are archived.
         for vendor_lut in ("ARRI Classic", "ARRI Reveal", "RED IPP2", "LC-709", ".cube"):
             self.assertNotIn(vendor_lut, html)
-        self.assertNotIn('id="film"', html)
+        # the merged observe film engine has one stock selector; pre-split
+        # film-curve controls stay archived
+        self.assertIn('id="film"', html)
         self.assertNotIn('id="filmCurve"', html)
 
     def test_default_agx_only(self) -> None:
