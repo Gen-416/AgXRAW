@@ -10,6 +10,7 @@
 | --- | --- |
 | [使用说明](USER_GUIDE.zh-CN.md) / [User guide](USER_GUIDE.md) | 支持的相机、界面读数、选项置灰、SDR/HDR 和导出档位 |
 | [修图教程](EDITING_TUTORIAL.zh-CN.md) | 从导入到导出，曝光、曲线和 RAW 过曝标记的实拍示例 |
+| [胶片教程](FILM_TUTORIAL.zh-CN.md) | 选一卷胶片时画面里发生了什么：三类胶片、暗部与黑、颜色还原、颗粒的实拍对照 |
 | [HDR 教程](HDR_TUTORIAL.zh-CN.md) | 参考白、可信高光、HDR 导出与可直接观看的样张 |
 | [机型支持](SENSOR_SUPPORT.zh-CN.md) | 传感器数据来源、能力降级和 LibRaw 支持边界 |
 | [胶片模拟](FILM.zh-CN.md) | 20 种胶片的固定数据驱动渲染：用法、成像过程、资产与验证 |
@@ -66,4 +67,4 @@ PR179 收尾继续补齐[有效快门范围与 RAW9 工具合同](reviews/CALIBR
 
 同轮 `fb91815` 后续修复见研究记录第 10 节：[镜头与重建范围](ARCHITECTURE.zh-CN.md)、标定失败点、实际传感器采样与奇数裁剪，以及[局部亮度纹理和 HDR 声明回读](HDR_DELIVERY_VALIDATION.zh-CN.md#局部亮度纹理门禁2026-10-09)。原始数字保存在[管线验收记录](assets/delivery-quality/pipeline-repair-20261009.json)。
 
-当前 RAW/HDR 文档图片与机器可读测量保留在 [assets/](assets)。胶片教程、设计、基线、光谱和示例已迁入 AgXFilm，详见[胶片拆分记录](FILM_SPLIT.zh-CN.md)。原始 RAW 和个人导出不属于公共文档资产。
+当前 RAW/HDR/胶片文档图片与机器可读测量保留在 [assets/](assets)。胶片的研究记录、拆分前的设计、基线与光谱数据保存在 AgXFilm，详见[胶片拆分记录](FILM_SPLIT.zh-CN.md)。原始 RAW 和个人导出不属于公共文档资产。

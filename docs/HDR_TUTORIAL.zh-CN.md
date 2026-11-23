@@ -1,6 +1,6 @@
 # HDR 出片说明书 —— HDR 照片是什么，能亮多少，怎么导出
 
-[修图教程](EDITING_TUTORIAL.zh-CN.md) · [HDR 教程](HDR_TUTORIAL.zh-CN.md) · [使用说明](USER_GUIDE.zh-CN.md) · [架构与技术细节](ARCHITECTURE.zh-CN.md)
+[修图教程](EDITING_TUTORIAL.zh-CN.md) · [胶片教程](FILM_TUTORIAL.zh-CN.md) · [HDR 教程](HDR_TUTORIAL.zh-CN.md) · [使用说明](USER_GUIDE.zh-CN.md) · [架构与技术细节](ARCHITECTURE.zh-CN.md)
 
 这份说明书讲四件事：HDR 照片到底是什么，一张照片能比普通照片亮多少，dngscan 的 HDR 和"把照片拉亮"有什么不同，以及怎么导出、怎么确认导出的文件没问题。
 

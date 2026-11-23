@@ -71,7 +71,15 @@ HDR 版不是把普通照片拉亮，而是从同一份数据单独成像；它�
 
 ### 胶片模拟
 
-内置 20 种胶片（Kodak Portra、Ektar、Gold、UltraMax、VISION3、Verita、Ektachrome、Kodachrome；Fujifilm Velvia、Provia、Superia、Pro 400H、C200），每种都是固定的、由数据决定的 AgX 渲染：做了黑点适应的相纸/幻灯片影调曲线、来自光谱胶片模拟的按色相颜色还原与灰阶层间漂移、反转片的测光中灰，以及按数据手册颗粒度施加在负片密度上的颗粒。用 `--film portra400` 开启，详见[胶片模拟](docs/FILM.zh-CN.md)。胶片数据派生自 Andrea Volpato 的开源项目 [spektrafilm](https://github.com/andreavolpato/spektrafilm) 胶片档案（CC BY-SA 4.0），见[第三方声明](NOTICE.md)。
+内置 20 种胶片（Kodak Portra、Ektar、Gold、UltraMax、VISION3、Verita、Ektachrome、Kodachrome；Fujifilm Velvia、Provia、Superia、Pro 400H、C200），每种都是固定的、由数据决定的 AgX 渲染：做了黑点适应的相纸/幻灯片影调曲线、来自光谱胶片模拟的按色相颜色还原与灰阶层间漂移、反转片的测光中灰，以及按数据手册颗粒度施加在负片密度上的颗粒。同一卷胶片在每张照片上按同一规则成像；在界面的胶片卡片里选择，或用 `--film portra400`。
+
+| AgX（不选胶片） | Kodak Portra 400 |
+|---|---|
+| ![AgX](docs/assets/film/temple_none.jpg) | ![Portra 400](docs/assets/film/temple_portra400.jpg) |
+| **Fujifilm Velvia 100** | **Kodak Vision3 250D** |
+| ![Velvia 100](docs/assets/film/temple_velvia100.jpg) | ![Vision3 250D](docs/assets/film/temple_vision3250d.jpg) |
+
+每卷胶片改变了什么、颜色/黑/颗粒的局部对比见[胶片教程](docs/FILM_TUTORIAL.zh-CN.md)，模型与数据见[胶片模拟](docs/FILM.zh-CN.md)。胶片数据派生自 Andrea Volpato 的开源项目 [spektrafilm](https://github.com/andreavolpato/spektrafilm) 胶片档案（CC BY-SA 4.0），见[第三方声明](NOTICE.md)。
 
 ### 图形界面和命令行是同一套设置
 

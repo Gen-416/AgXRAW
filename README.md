@@ -110,8 +110,17 @@ Twenty film stocks (Kodak Portra, Ektar, Gold, UltraMax, VISION3, Verita, Ektach
 Fujifilm Velvia, Provia, Superia, Pro 400H, C200) as fixed, data-driven AgX renderings: each stock's
 print/slide tone curve with black-point compensation, its per-hue colour rendition and grey-scale
 crossover from a spectral film simulation, reversal stocks' metered mid grey, and negative-density
-grain at the stock's datasheet granularity. `--film portra400`; details in
-[film simulation](docs/FILM.zh-CN.md) (Chinese). The film data derive from the open-source
+grain at the stock's datasheet granularity. The same stock renders every photo by the same rules;
+choose it in the GUI's film card or with `--film portra400`.
+
+| AgX (no film) | Kodak Portra 400 |
+|---|---|
+| ![AgX](docs/assets/film/temple_none.jpg) | ![Portra 400](docs/assets/film/temple_portra400.jpg) |
+| **Fujifilm Velvia 100** | **Kodak Vision3 250D** |
+| ![Velvia 100](docs/assets/film/temple_velvia100.jpg) | ![Vision3 250D](docs/assets/film/temple_vision3250d.jpg) |
+
+What each stock changes, with crops of colour, blacks and grain: [film tutorial](docs/FILM_TUTORIAL.zh-CN.md)
+(Chinese); model and data: [film simulation](docs/FILM.zh-CN.md) (Chinese). The film data derive from the open-source
 [spektrafilm](https://github.com/andreavolpato/spektrafilm) profiles by Andrea Volpato
 (CC BY-SA 4.0); see [third-party notices](NOTICE.md).
 
