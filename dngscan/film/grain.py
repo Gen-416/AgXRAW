@@ -301,18 +301,117 @@ def sample_field(ii: np.ndarray, geometry: FilmGeometry, phase: tuple[int, int] 
 
 
 _MASTER: dict = {}
+# A band whose Gaussian sigma is below this many master cells cannot be
+# represented on the film-plane grid: the frozen field rendered it as one
+# independent value per 12 um cell, i.e. 2x2-pixel blocks at 6 um/px -- the
+# "digital noise" look. Such bands are synthesised per output pixel instead.
+SUBGRID_CELLS = 0.55
+# Cross-layer correlation of the grain field by colour style. "film" keeps the
+# asset's modelled value; "scan" is a declared convention (mostly luminance
+# grain, as film looks after scanning/post), not a measurement.
+GRAIN_CHROMA_STYLES = ("film", "scan")
+SCAN_LAYER_CORR = 0.8
 
 
-def master(g: GrainProfile) -> tuple[np.ndarray, float]:
-    """(integral image, 48 um aperture RMS) of the process-wide master field."""
-    key = (g.pitch_um, g.size_um, g.layer_corr, g.bands, g.aperture_um)
+def split_bands(g: GrainProfile) -> tuple[tuple, tuple]:
+    """(film-plane bands, per-pixel bands) of the asset's spectrum."""
+    bands = g.bands or ((g.size_um, 1.0),)
+    coarse = tuple(b for b in bands if b[0] / g.pitch_um > SUBGRID_CELLS)
+    fine = tuple(b for b in bands if b[0] / g.pitch_um <= SUBGRID_CELLS)
+    return coarse, fine
+
+
+def master(g: GrainProfile, bands: tuple | None = None,
+           layer_corr: float | None = None) -> tuple[np.ndarray, float]:
+    """(integral image, 48 um aperture RMS) of a process-wide master field.
+    ``bands`` defaults to all asset bands (the frozen realization)."""
+    from dataclasses import replace
+
+    gg = replace(g, bands=tuple(bands) if bands is not None else g.bands,
+                 layer_corr=g.layer_corr if layer_corr is None else float(layer_corr))
+    key = (gg.pitch_um, gg.size_um, gg.layer_corr, gg.bands, gg.aperture_um)
     got = _MASTER.get(key)
     if got is None:
-        _MASTER.clear()
-        ii = integral_image(band_limited_field(g, 0))
-        got = (ii, aperture_rms(ii, g))
+        if len(_MASTER) >= 2:
+            _MASTER.clear()
+        ii = integral_image(band_limited_field(gg, 0))
+        got = (ii, aperture_rms(ii, gg))
         _MASTER[key] = got
     return got
+
+
+def _gauss_taps(sigma_px: float) -> np.ndarray:
+    radius = max(int(np.ceil(3.0 * sigma_px)), 1)
+    x = np.arange(-radius, radius + 1, dtype=np.float64)
+    k = np.exp(-0.5 * (x / sigma_px) ** 2)
+    return k / k.sum()
+
+
+def _box_taps(n: float) -> np.ndarray:
+    """Normalized 1-D box of (possibly fractional) width n pixels."""
+    whole = int(np.floor(n))
+    frac = n - whole
+    taps = np.ones(whole + (1 if frac > 1e-9 else 0), dtype=np.float64)
+    if frac > 1e-9:
+        taps[-1] = frac
+    return taps / max(n, 1e-9)
+
+
+def pixel_band_rms48(sigma_px: float, aperture_px: float) -> float:
+    """48 um aperture RMS of a unit-variance per-pixel band (white noise per
+    pixel, Gaussian-smoothed by sigma_px). Separable, so exact in closed form:
+    var = (sum (k*b)^2)^2 / (sum k^2)^2."""
+    k = _gauss_taps(sigma_px) if sigma_px >= 0.3 else np.ones(1)
+    b = _box_taps(max(aperture_px, 1.0))
+    kb = np.convolve(k, b)
+    return float(np.sum(kb ** 2) / np.sum(k ** 2))
+
+
+def _row_noise(seed: int, row: int, width: int, corr: float) -> np.ndarray:
+    """Unit-variance [width, 3] white noise of one output row, layers sharing
+    a component with weight sqrt(corr). Keyed by (seed, row) only, so any
+    chunking of the frame draws identical values."""
+    # The row index goes in the counter's second word: each row owns a 2^64-block
+    # stream. (Counter=row in the low word would make row r+1 a shifted copy of
+    # row r, since one row consumes thousands of counter blocks.)
+    rng = np.random.Generator(np.random.Philox(
+        key=(int(seed) & 0xFFFFFFFF) | (0x5EED << 32),
+        counter=np.array([0, int(row) & 0xFFFFFFFFFFFFFFFF, 0, 0], dtype=np.uint64)))
+    white = rng.standard_normal((width, 3), dtype=np.float32)
+    shared = rng.standard_normal((width, 1), dtype=np.float32)
+    white *= np.float32(np.sqrt(1.0 - corr))
+    white += np.float32(np.sqrt(corr)) * shared
+    return white
+
+
+def pixel_band(seed: int, y0: int, y1: int, height: int, width: int,
+               sigma_px: float, corr: float) -> np.ndarray:
+    """[y1-y0, width, 3] unit-variance per-pixel grain band: per-row white noise
+    (rows mirrored at the frame edges) smoothed by a separable Gaussian."""
+    if sigma_px < 0.3:
+        return np.stack([_row_noise(seed, y, width, corr) for y in range(y0, y1)])
+    k = _gauss_taps(sigma_px).astype(np.float32)
+    r = (k.size - 1) // 2
+
+    def mirror(y: int) -> int:
+        if height == 1:
+            return 0
+        period = 2 * (height - 1)
+        y = y % period
+        return y if y < height else period - y
+
+    rows = np.stack([_row_noise(seed, mirror(y), width, corr) for y in range(y0 - r, y1 + r)])
+    # vertical pass (halo rows are real neighbours, so chunks agree exactly)
+    acc = np.zeros((y1 - y0, width, 3), dtype=np.float32)
+    for i in range(k.size):
+        acc += k[i] * rows[i:i + (y1 - y0)]
+    # horizontal pass, mirrored at the frame's left/right edges
+    pad = np.pad(acc, ((0, 0), (r, r), (0, 0)), mode="reflect" if width > r else "edge")
+    out = np.zeros_like(acc)
+    for i in range(k.size):
+        out += k[i] * pad[:, i:i + width]
+    out /= np.float32(np.sum(k.astype(np.float64) ** 2))
+    return out
 
 
 def apply_density_grain(d: np.ndarray, field: np.ndarray, g: GrainProfile, amount: float,
@@ -367,20 +466,54 @@ class StockGrain:
         return np.stack([np.interp(log_e[:, c], self.le, self.tab[:, c]) for c in range(3)], axis=1)
 
 
+def grain_field(start: int, n: int, height: int, width: int, g: GrainProfile,
+                seed: int, chroma: str = "film") -> tuple[np.ndarray, float]:
+    """(field[n, 3], 48 um RMS) for flat pixels [start, start+n) of a frame.
+
+    Bands the film-plane grid can carry are area-sampled from the periodic
+    master (phase by seed); finer bands are synthesised per output pixel at
+    this rendering's own pitch. Each band is unit-variance and the mix keeps
+    the asset's weights, so the total and its 48 um calibration follow the
+    frozen definition at any resolution."""
+    if chroma not in GRAIN_CHROMA_STYLES:
+        raise ValueError(f"胶片颗粒颜色：未知 {chroma!r}（可选 {'/'.join(GRAIN_CHROMA_STYLES)}）")
+    corr = g.layer_corr if chroma == "film" else SCAN_LAYER_CORR
+    geometry = FilmGeometry.fit(height, width)
+    y0, y1 = start // width, (start + n - 1) // width + 1
+    off = start - y0 * width
+    pitch_um = geometry.region()[2] * 1000.0 / max(width, 1)
+    coarse, fine = split_bands(g)
+    field = np.zeros(((y1 - y0) * width, 3), dtype=np.float32)
+    weights_sq = 0.0
+    rms_sq = 0.0
+    if coarse:
+        wc = float(np.sqrt(sum(w * w for _, w in coarse)))
+        ii, r48 = master(g, coarse, corr)
+        gh, gw = ii.shape[0] - 1, ii.shape[1] - 1
+        field += wc * sample_field(ii, geometry.rows(y0, y1),
+                                   realization_phases(seed, gh, gw)).reshape(-1, 3)
+        weights_sq += wc * wc
+        rms_sq += wc * wc * r48 * r48
+    for i, (size_um, w) in enumerate(fine):
+        sigma_px = size_um / pitch_um
+        band = pixel_band(seed * 2654435761 + i + 1, y0, y1, height, width, sigma_px, corr)
+        field += w * band.reshape(-1, 3)
+        weights_sq += w * w
+        rms_sq += w * w * pixel_band_rms48(sigma_px, g.aperture_um / pitch_um) ** 2
+    norm = float(np.sqrt(weights_sq))
+    field /= np.float32(norm)
+    return field[off:off + n], float(np.sqrt(rms_sq) / norm)
+
+
 def apply_observe_grain(rgb: np.ndarray, start: int, height: int, width: int,
-                        stock: StockGrain, g: GrainProfile, amount: float, seed: int) -> np.ndarray:
+                        stock: StockGrain, g: GrainProfile, amount: float, seed: int,
+                        chroma: str = "film") -> np.ndarray:
     """Grain for flat scene pixels rgb[(N,3)] that start at flat index ``start``
     of a (height, width) frame."""
     if amount <= 0.0 or rgb.shape[0] == 0:
         return rgb
-    ii, rms48 = master(g)
-    geometry = FilmGeometry.fit(height, width)
     n = rgb.shape[0]
-    y0, y1 = start // width, (start + n - 1) // width + 1
-    off = start - y0 * width
-    gh, gw = ii.shape[0] - 1, ii.shape[1] - 1
-    field = sample_field(ii, geometry.rows(y0, y1), realization_phases(seed, gh, gw)).reshape(-1, 3)
-    field = field[off:off + n]
+    field, rms48 = grain_field(start, n, height, width, g, seed, chroma)
     log_e = stock.log_exposure(rgb)
     d0 = stock.density(log_e)
     d1 = apply_density_grain(d0, field, g, amount, rms48)

@@ -304,6 +304,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="胶片颗粒强度，0-3；1.0（默认）=各胶片数据手册颗粒度（48 µm 光孔 RMS），0=关闭",
     )
     parser.add_argument(
+        "--film-grain-chroma",
+        choices=("film", "scan"),
+        default="film",
+        help=(
+            "颗粒颜色：film=胶片分层（默认；三层颗粒按建模相关性 0.35 各自起伏，带颜色）；"
+            "scan=扫描风格（层间相关 0.8，以亮度颗粒为主）。两者都是声明的惯例，不是实测"
+        ),
+    )
+    parser.add_argument(
         "--tone-core",
         choices=TONE_CORE_CHOICES,
         default="agx",
@@ -739,7 +748,8 @@ def main(argv: list[str]) -> int:
         from .film import FilmSelection, film_seed_for_file
 
         film = (
-            FilmSelection(args.film, args.film_grain, film_seed_for_file(args.path))
+            FilmSelection(args.film, args.film_grain, film_seed_for_file(args.path),
+                          args.film_grain_chroma)
             if args.film != "none" else None
         )
         ev_input = parse_ev_value(args.ev)

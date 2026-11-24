@@ -169,6 +169,40 @@ class FilmGrainTests(unittest.TestCase):
         self.assertLess(abs(np.corrcoef(a[:, 1], b[:, 1])[0, 1]), 0.2)
         self.assertAlmostEqual(float(np.log2(a / rgb).std()), float(np.log2(b / rgb).std()), delta=0.006)
 
+    def test_fine_band_is_smooth_not_cell_blocks(self):
+        from dngscan.film.grain import grain_field
+
+        f, _ = grain_field(0, 200 * 600, 4000, 6000, self.g, 9, "film")
+        y = f.reshape(200, 600, 3) @ np.array([0.2627, 0.678, 0.0593])
+        lag = [np.corrcoef(y[:, :-k].ravel(), y[:, k:].ravel())[0, 1] for k in (1, 2, 3)]
+        # a 12 um cell grid at 6 um/px gave lag1 ~0.47 then ~0 (2x2 blocks)
+        self.assertGreater(lag[1], 0.35)
+        self.assertGreater(lag[0], lag[1])
+        self.assertGreater(lag[1], lag[2])
+
+    def test_48um_calibration_holds_at_any_resolution(self):
+        from dngscan.film.grain import grain_field
+
+        for h, w in ((4000, 6000), (2000, 3000)):
+            pitch = 36000.0 / w
+            n = int(round(48.0 / pitch))
+            rows = 40 * n
+            f, r48 = grain_field(100 * w, rows * w, h, w, self.g, 3, "film")
+            box = f.reshape(rows, w, 3)[:, :w // n * n].reshape(rows // n, n, w // n, n, 3).mean((1, 3))
+            self.assertAlmostEqual(float(box.std()) / r48, 1.0, delta=0.03, msg=f"{w}px")
+
+    def test_grain_chroma_style_sets_layer_correlation(self):
+        from dngscan.film.grain import grain_field
+
+        corr = {}
+        for style in ("film", "scan"):
+            f, _ = grain_field(0, 300 * 400, 300, 400, self.g, 4, style)
+            corr[style] = float(np.corrcoef(f[:, 0], f[:, 1])[0, 1])
+        self.assertAlmostEqual(corr["film"], self.g.layer_corr, delta=0.05)
+        self.assertAlmostEqual(corr["scan"], 0.8, delta=0.05)
+        with self.assertRaises(ValueError):
+            grain_field(0, 100, 10, 10, self.g, 4, "mono")
+
     def test_portrait_geometry_turns_the_gate(self):
         geo = FilmGeometry.fit(300, 200)
         self.assertTrue(geo.rotated)
@@ -206,6 +240,9 @@ class FilmContractTests(unittest.TestCase):
 
         args = parse_args(["x.dng", "--film", "velvia100"])
         self.assertEqual((args.film, args.film_grain), ("velvia100", film.DEFAULT_FILM_GRAIN))
+        self.assertEqual(args.film_grain_chroma, "film")
+        self.assertEqual(parse_args(["x.dng", "--film", "velvia100", "--film-grain-chroma", "scan"])
+                         .film_grain_chroma, "scan")
         self.assertEqual(parse_args(["x.dng"]).film, "none")
 
     def test_gui_parse_film(self):

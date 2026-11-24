@@ -95,11 +95,26 @@ def film_seed_for_file(path: Any) -> int:
     return film_seed_for(f"{size}:" + hashlib.sha256(head + tail).hexdigest())
 
 
+GRAIN_CHROMA_CHOICES = ("film", "scan")
+DEFAULT_GRAIN_CHROMA = "film"
+
+
+def validate_grain_chroma(value: Any) -> str:
+    v = str(value or DEFAULT_GRAIN_CHROMA)
+    if v not in GRAIN_CHROMA_CHOICES:
+        raise ValueError(f"胶片颗粒颜色：未知 {v!r}（可选 {'/'.join(GRAIN_CHROMA_CHOICES)}）")
+    return v
+
+
 @dataclass(frozen=True)
 class FilmSelection:
     stock: str = FILM_NONE
     grain: float = DEFAULT_FILM_GRAIN
     seed: int = 1
+    # "film": the asset's modelled cross-layer correlation (colour grain as the
+    # three emulsion layers form it); "scan": a declared mostly-luminance
+    # convention, like film after scanning/post. Neither is a measurement.
+    grain_chroma: str = DEFAULT_GRAIN_CHROMA
 
     @property
     def active(self) -> bool:
@@ -140,6 +155,7 @@ def apply_film_plan(tone_plan: Any, film: FilmSelection | None) -> Any:
         film_stock=str(film.stock),
         film_grain=validate_film_grain(film.grain),
         film_seed=int(film.seed),
+        film_grain_chroma=validate_grain_chroma(film.grain_chroma),
     )
 
 
@@ -196,7 +212,8 @@ def film_tone_core(
         from .grain import apply_observe_grain
 
         rgb = apply_observe_grain(rgb, spatial.start, spatial.height, spatial.width,
-                                  eng.grain, _grain_profile(), amount, int(plan.film_seed))
+                                  eng.grain, _grain_profile(), amount, int(plan.film_seed),
+                                  str(getattr(plan, "film_grain_chroma", DEFAULT_GRAIN_CHROMA)))
     out = agx_core(rgb, plan)
     out = eng.hue.apply(out)
     return eng.crossover.apply(out, scene)

@@ -35,7 +35,7 @@ class FilmSplitEntrypointsTests(unittest.TestCase):
         for key in ("filmCurve", "film_mode", "colorHeadY", "color_head_m"):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, "AgXFilm"):
                 service.parse_job_params({"input": "photo.dng", key: "none"})
-        for key in ("film", "filmGrain"):
+        for key in ("film", "filmGrain", "filmGrainChroma"):
             # passes the guard and reaches the input check
             with self.subTest(key=key), self.assertRaises(FileNotFoundError):
                 service.parse_job_params({"input": "photo.dng", key: "none"})
@@ -48,13 +48,14 @@ class FilmSplitEntrypointsTests(unittest.TestCase):
         # pre-split film controls stay gone; the merged engine has exactly two
         film_ids = {name for name in ids if name.startswith(("film", "colorHead"))}
         self.assertEqual(film_ids, {"film", "filmGrain", "filmCard", "filmGrainBlock",
-                                    "filmGrainVal", "filmFact"})
+                                    "filmGrainVal", "filmFact", "filmGrainChroma",
+                                    "filmGrainChromaBlock"})
         for required in ("toneCore", "lensFilter", "chromaNr", "calibrationDialog",
                          "decoder", "heifBitDepth", "hdrHeadroom"):
             self.assertIn(required, ids)
         payload = PAGE.split("function payload(", 1)[1].split("return p;", 1)[0]
         self.assertEqual(set(re.findall(r"\b(film\w*|colorHead\w*):", payload)),
-                         {"film", "filmGrain"})
+                         {"film", "filmGrain", "filmGrainChroma"})
 
     def test_served_javascript_parses_after_panel_removal(self):
         node = shutil.which("node")

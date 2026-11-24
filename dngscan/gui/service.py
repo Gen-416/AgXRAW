@@ -497,7 +497,8 @@ def parse_job_params(params: dict) -> tuple[Path, str, str, str, float, float, i
     # (dngscan/film: "film", "filmGrain") are live.
     obsolete = [key for key in params
                 if key.startswith(("film", "colorHead", "color_head"))
-                and key not in ("film", "filmGrain", "film_grain")]
+                and key not in ("film", "filmGrain", "film_grain", "filmGrainChroma",
+                                "film_grain_chroma")]
     if obsolete:
         raise ValueError("胶片功能已拆分到 AgXFilm；请刷新页面后重试。")
     inp = Path(str(params["input"])).expanduser()
@@ -817,7 +818,8 @@ def parse_film(params: dict, output_format: str, inp: Any, tone_core: str,
     primaries). The grain seed comes from the RAW bytes, so preview and export
     of one capture share one grain arrangement."""
     from dngscan.film import (DEFAULT_FILM_GRAIN, FILM_NONE, FilmSelection,
-                              film_seed_for_file, validate_film, validate_film_grain)
+                              film_seed_for_file, validate_film, validate_film_grain,
+                              validate_grain_chroma)
 
     stock = validate_film(str(params.get("film", FILM_NONE) or FILM_NONE))
     if stock == FILM_NONE:
@@ -831,13 +833,14 @@ def parse_film(params: dict, output_format: str, inp: Any, tone_core: str,
         raise ValueError("胶片模拟不叠加 scene transform")
     if agx_primaries != "base":
         raise ValueError("胶片模拟固定使用 base 原色")
-    return FilmSelection(stock, grain, film_seed_for_file(inp))
+    chroma = validate_grain_chroma(params.get("filmGrainChroma", params.get("film_grain_chroma", "film")))
+    return FilmSelection(stock, grain, film_seed_for_file(inp), chroma)
 
 
 def _film_key(film: Any) -> tuple:
     if film is None:
         return ("film", "none")
-    return ("film", film.stock, _cache_float(film.grain), int(film.seed))
+    return ("film", film.stock, _cache_float(film.grain), int(film.seed), film.grain_chroma)
 
 
 def parse_capture_declaration(params: dict) -> dict:
@@ -1508,6 +1511,7 @@ def export_suffix_parts(
     chroma_nr: float = 0.0,
     film: str = "none",
     film_grain: float = 1.0,
+    film_grain_chroma: str = "film",
 ) -> str:
     """Build the filename stem suffix for GUI JPEG/PNG exports."""
     parts = [tone_core]
@@ -1516,6 +1520,8 @@ def export_suffix_parts(
         parts.append(f"film-{film}")
         if abs(float(film_grain) - 1.0) > 1e-9:
             parts.append(f"fg{float(film_grain):g}".replace(".", "_"))
+        if film_grain_chroma != "film":
+            parts.append(f"fgc-{film_grain_chroma}")
     if tone_core == "lum" and lum_norm != "y":
         parts.append(lum_norm)
     if tone_core == "agx" and agx_primaries != "base":
@@ -1894,6 +1900,7 @@ def run_export(params: dict) -> dict:
         chroma_nr=chroma_nr,
         film=film.stock if film is not None else "none",
         film_grain=film.grain if film is not None else 1.0,
+        film_grain_chroma=film.grain_chroma if film is not None else "film",
     )
     # Analysis and the compiled plan now own the calibration coefficients.
     # If another process updated them during analysis, retry before writing
@@ -1905,7 +1912,11 @@ def run_export(params: dict) -> dict:
         from dngscan.film import film_asset_sha256
 
         film_fingerprint = {"film": film.stock, "film_grain": float(film.grain),
-                            "film_asset": film_asset_sha256()}
+                            "film_asset": film_asset_sha256(),
+                            # grain synthesis revision: per-pixel fine band (2026-11-24)
+                            "film_grain_model": "pixel-fine-v2"}
+        if film.grain_chroma != "film":
+            film_fingerprint["film_grain_chroma"] = film.grain_chroma
     fingerprint = export_plan_fingerprint(
         input_path=str(inp.resolve()),
         input_size=int(inp.stat().st_size),

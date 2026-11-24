@@ -413,6 +413,9 @@ class ToneCompressionPlan:
     film_stock: str = "none"
     film_grain: float = 0.0
     film_seed: int = 1
+    # Colour of the grain field: "film" (modelled layer correlation) or "scan"
+    # (declared mostly-luminance convention). See dngscan/film/grain.py.
+    film_grain_chroma: str = "film"
 
 
 @dataclass(frozen=True)

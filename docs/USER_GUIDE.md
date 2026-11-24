@@ -392,8 +392,9 @@ The last two are comparison/diagnostic tools, not finishing tools.
 **Film** (the film card on the imaging page): choosing a stock makes its tone curve, per-hue colour
 rendition, grey-scale crossover, reversal metered mid grey and negative grain come from that stock's
 data, applied the same way on every photo. Stocks are grouped as colour negative, cine negative and
-reversal; the **grain** slider's 1.0 is the stock's datasheet granularity, 0 turns it off, and the
-grain arrangement is fixed by the RAW file, so preview and export match. While a film is active the
+reversal; the **grain** slider's 1.0 is the stock's datasheet granularity, 0 turns it off; **grain
+colour** picks layered colour grain (default) or a mostly-luminance scan style; the grain arrangement
+is fixed by the RAW file, so re-exports match. While a film is active the
 compression core is pinned to AgX, AgX primaries to standard, the camera colour correction off and
 colour intensity out of play (these grey out); turning the film off restores your previous choices.
 HDR formats are unavailable with film for now. Exported names carry `film-<stock>` so they never

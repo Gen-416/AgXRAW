@@ -425,7 +425,14 @@ FILM_OPTIONS
     </div>
     <div id="filmGrainBlock" class="sliderField" style="display:none">
       <div class="labelRow"><label title="1 = 该胶片数据手册颗粒度（48 µm 光孔 RMS）；0 关闭。">颗粒</label><span class="val" id="filmGrainVal">1.00</span></div>
-      <input type="range" id="filmGrain" min="0" max="3" step="0.05" value="1" title="向右更粗；颗粒排布由 RAW 文件决定，预览与导出一致。">
+      <input type="range" id="filmGrain" min="0" max="3" step="0.05" value="1" title="向右更粗；颗粒排布由 RAW 文件决定，重新导出完全一致。">
+    </div>
+    <div id="filmGrainChromaBlock" style="flex:1;min-width:150px;display:none">
+      <label title="两者都是声明的惯例，不是实测：厂方数据只给每层的颗粒度，不给层间相关。">颗粒颜色</label>
+      <select id="filmGrainChroma">
+        <option value="film" selected>胶片分层 · 带颜色</option>
+        <option value="scan">扫描风格 · 以亮度为主</option>
+      </select>
     </div>
   </div>
   <div class="ctlFact" id="filmFact" aria-live="polite"></div>
@@ -749,6 +756,7 @@ function updateFilmUi(){
   $("#punch").disabled=on;
   $("#punchBlock").title=on?"胶片的色彩由胶片数据决定，色彩浓度不参与。":"";
   $("#filmGrainBlock").style.display=on?"block":"none";
+  $("#filmGrainChromaBlock").style.display=on?"block":"none";
   if(on&&["ultrahdr","ultrahdr-heic"].includes($("#format").value)){
     $("#format").value="sdr";
     setStatus("胶片模拟目前只定义了 SDR 输出，已切换到 SDR。","warn");
@@ -1012,7 +1020,7 @@ const SETTINGS_IDS=["autoExposure","ev","quality","highlight","gamut","wb","demo
   "grade","gradeStrength","sceneTransform","sceneTransformStrength","punch",
   "midtoneBrightness","midtoneContrast","shadowTransition","highlightTransition","highlightFade",
   "endpointMode","toeEndOffset","shoulderWhiteOffset","hdrHeadroom","outdir","png",
-  "hdrRho","hdrWhiteMargin","hdrShoulderStart","clipOverlayToggle","coreimageScale","clipMargin","chromaNr","chromaCleanup","film","filmGrain"];
+  "hdrRho","hdrWhiteMargin","hdrShoulderStart","clipOverlayToggle","coreimageScale","clipMargin","chromaNr","chromaCleanup","film","filmGrain","filmGrainChroma"];
 function saveSettings(){
   const state={};
   for(const id of SETTINGS_IDS){const el=$("#"+id);if(el)state[id]=el.type==="checkbox"?el.checked:(el.dataset.filmStash||el.dataset.librawValue||el.value);}
@@ -1078,6 +1086,7 @@ $("#lumNorm").addEventListener("change",()=>{saveSettings();scheduleLivePreview(
 $("#agxPrimaries").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#film").addEventListener("change",()=>{updateFilmUi();updateToneCoreExportUi();saveSettings();preparePreview();});
 $("#filmGrain").oninput=()=>{setFilmGrainLabel();saveSettings();scheduleLivePreview();};
+$("#filmGrainChroma").addEventListener("change",()=>{saveSettings();scheduleLivePreview();});
 $("#sceneTransform").addEventListener("change",()=>{updateSceneTransformUi();saveSettings();scheduleLivePreview();});
 $("#format").addEventListener("change",()=>{updateFormatUi();saveSettings();scheduleLivePreview();});
 $("#autoExposure").onchange=()=>{saveSettings();scheduleLivePreview();};
@@ -1335,7 +1344,7 @@ function payload(){
     deliveryProfile:$("#deliveryProfile").value,
     heifEncoder:$("#heifEncoder").value,heifBitDepth:+$("#heifBitDepth").value,heifPreset:$("#heifPreset").value,heifTune:$("#heifTune").value,
     toneCore:$("#toneCore").value,lumNorm:$("#lumNorm").value,agxPrimaries:$("#agxPrimaries").value,
-    film:$("#film").value,filmGrain:+$("#filmGrain").value,
+    film:$("#film").value,filmGrain:+$("#filmGrain").value,filmGrainChroma:$("#filmGrainChroma").value,
     grade:$("#grade").value,gradeStrength:+$("#gradeStrength").value,
     sceneTransform:$("#sceneTransform").value,sceneTransformStrength:+$("#sceneTransformStrength").value,
     punch:+$("#punch").value,
