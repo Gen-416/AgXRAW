@@ -1,145 +1,101 @@
 # AgXRAW
 
-Develop RAW photographs into faithful JPEGs and real HDR photos, and see the evidence behind every
-step. Open source, runs locally, and your RAW files never leave your computer.
+Develop RAW photographs into faithful JPEGs, HEIFs, and real HDR photos — with measurable evidence behind every step. Open source, runs locally, and your RAW files never leave your computer.
 
-AgXRAW began with one practical question: how can I develop a RAW with AgX without opening a full
-editor? Once that worked, the more interesting questions surfaced. How much highlight signal did
-the sensor actually keep? How far can reconstructed highlights be trusted? How should one capture
-become both a normal photo and an HDR photo? AgXRAW puts these questions into one measurable,
-reproducible pipeline.
+[简体中文](README.zh-CN.md) · [User Guide](docs/USER_GUIDE.md) · [Editing Tutorial (ZH)](docs/EDITING_TUTORIAL.zh-CN.md) · [Film Tutorial (ZH)](docs/FILM_TUTORIAL.zh-CN.md) · [HDR Tutorial (ZH)](docs/HDR_TUTORIAL.zh-CN.md) · [Sensor Support (ZH)](docs/SENSOR_SUPPORT.zh-CN.md) · [Documentation Index](docs/README.md)
 
-AgXRAW targets RAW files from multiple camera makers, including Bayer, X-Trans,
-and decoder-supported linear DNG. Personal PTC or dark-frame calibration is not
-required: without an applicable noise model, image statistics still drive exposure,
-AgX, and export. Reports identify this general rendering fallback. RAW decoding,
-lens correction, and physical noise-model support are separate capabilities.
+---
 
-[简体中文](README.zh-CN.md) · [License](LICENSE) · [Third-party notices](NOTICE.md)
+AgXRAW started with a simple goal: develop a RAW photograph with AgX without opening a full photo editor. Pushing further surfaced deeper questions — how much highlight signal did the sensor genuinely capture? How far can reconstructed highlights be trusted? How should one capture produce both a normal SDR photo and a true HDR photo? AgXRAW brings these questions into a single **measurable, reproducible** local pipeline.
 
-**Tutorials and documentation**:
-[Editing tutorial](docs/EDITING_TUTORIAL.zh-CN.md) (what every slider does, with real comparisons; Chinese) ·
-[HDR tutorial](docs/HDR_TUTORIAL.zh-CN.md) (what an HDR photo is, how bright it can go, how to export; Chinese) ·
-[User guide](docs/USER_GUIDE.md) (supported cameras, every number in the interface, export choices) ·
-[Sensor support](docs/SENSOR_SUPPORT.zh-CN.md) (Chinese) ·
-[Full documentation index](docs/README.md)
+It targets RAW files across camera makers (Bayer, X-Trans, and decoder-supported linear DNG). **No personal camera calibration is required to get started**: when no physical noise model applies, image statistics still drive automatic exposure, AgX rendering, and export, with the fallback clearly labeled in the UI and reports.
 
-The default workflow now uses AgX with analysis-driven exposure and tone planning.
-Automatic JPEG delivery searches q95–q99 using actual codec readback, with
-4:2:2 as the reference sampling. HDR JPEG now has independent quality and
-sampling controls while retaining its ISO gain map. HEIF can use libheif/x265
-with 8/10-bit output, adjustable sampling, preset and tune; its automatic mode
-searches its own quality range against a q95/4:4:4/10-bit reference. Every HDR
-candidate must pass SDR and HDR reconstruction checks. Use `--ev 0` for the fixed
-exposure anchor, `--delivery-profile share` for manual controls (initially
-q95/4:2:0), or `--delivery-profile archive` for explicit q100/4:4:4.
-[Full-resolution quality/size measurements](docs/DELIVERY_QUALITY_STUDY.zh-CN.md).
-
-10-bit SDR HEIF preserves a floating master through the output transfer function,
-quantizes at the encoder boundary, and validates float readback.
-HDR HEIF also retains a floating SDR base until 10-bit encoding and generates its
-gain map from the paired floating HDR master. JPEG and explicit 8-bit HEIF keep
-their byte masters; every delivery is verified by actual readback.
-
-Film simulation has moved to the separate private [**AgXFilm** research repository](https://github.com/Gen-416/AgXFilm) and is paused.
-This application now focuses on RAW analysis, AgX, SDR/HDR and delivery.
-[Split and recovery record](docs/FILM_SPLIT.zh-CN.md).
+---
 
 ## What it does
 
-### Develops a RAW into a photograph
+### 1. Ready-to-use AgX RAW development
 
-AgX is the default rendering: bright areas roll off to white naturally and colours never turn
-bright-and-fake. The tool first analyses the photograph — how bright the subject is, where the
-darkest and brightest content sits, what clipped — and compiles a tone curve, so a straight export
-is usually a usable picture. When you do want to adjust, the order is range → brightness → colour
-compensation, and each slider does one thing.
+AgX is the default rendering: bright areas roll off smoothly to white without turning garish or oversaturated. On load, AgXRAW measures subject brightness, dynamic range, and sensor clipping, then builds a bounded automatic exposure and adaptive tone curve so a straight export is usually a solid picture.
 
-| Default, nothing touched | Deeper shadows let in, then one stop brighter |
-|---|---|
+When you want to refine the result, work in **range → brightness → colour compensation** order — each slider governs one thing. Manual exposure switches to a fixed-endpoint anchor, and `--ev 0` keeps the capture exposure anchor untouched.
+
+| Default render (untouched) | Deeper shadows opened, +1 EV brighter |
+| --- | --- |
 | ![Default render](docs/assets/editing-tutorial/00_default.jpg) | ![Adjusted](docs/assets/editing-tutorial/03_range_ev1.jpg) |
 
-What each slider changes in the picture, and when it does nothing, is in the
-[editing tutorial](docs/EDITING_TUTORIAL.zh-CN.md).
+> Read more: [Editing tutorial (ZH)](docs/EDITING_TUTORIAL.zh-CN.md) · [Auto-exposure promotion record](docs/assets/delivery-quality/joint-exposure-promotion-20261012.json)
 
-### Tells you what is actually in the RAW
+---
 
-Open a RAW and the tool reports what it measured: how many pixels clipped and in which colour
-channel, how bright the brightest genuinely measured highlight is, and how many stops an HDR export
-could add. A preview overlay marks where the sensor reached its ceiling. It records what happened
-at capture and does not move when you adjust, so it separates "the RAW has no information here"
-from "this is merely rendered too bright".
+### 2. Shows what is actually in the RAW
 
-Every number is explained in section 3 of the [user guide](docs/USER_GUIDE.md).
+Open a RAW and AgXRAW reports what the sensor recorded: clipped pixel ratios per channel, the brightest genuinely measured highlight (`p99.99`), and how many stops an HDR export can add. Toggle the **RAW clipping overlay** on the preview to see where the sensor hit its ceiling — it reflects capture facts and never shifts when you drag sliders, cleanly separating "no data left in the RAW" from "simply rendered too bright."
 
-### Exports real HDR photos
+> Read more: [User guide · Detected parameters & clipping overlay](docs/USER_GUIDE.md)
 
-The three images below are **real HDR files** exported by AgXRAW, not illustrations. On an HDR
-screen with a supporting browser (Safari or Chrome on a Mac or iPhone, Chrome on Android 15+), the
-lamps and highlights are visibly brighter than this page's white background. If you see no
-difference, your screen or browser is showing the normal photo stored in the same file — which is
-exactly the fallback this format promises.
+---
 
-| Figure and lamp · 2.35 stops above page white | Stage lights · 1.35 stops |
-|---|---|
+### 3. Real HDR photo export
+
+The three images below are **real HDR files** exported by AgXRAW, not illustrations. On an HDR display with a supporting browser (Safari or Chrome on Mac / iPhone, Chrome on Android 15+), lamps and highlights shine visibly brighter than the page background. On non-HDR displays, browsers seamlessly show the embedded SDR rendition.
+
+| Figure and lamp · +2.35 stops above white | Stage lights · +1.35 stops |
+| --- | --- |
 | ![Figure and lamp, HDR](docs/assets/hdr-samples/lamp_hdr.jpg) | ![Stage lights, HDR](docs/assets/hdr-samples/stage_hdr.jpg) |
 
-| Restaurant light tubes · 1.45 stops |
-|---|
+| Restaurant light tubes · +1.45 stops |
+| --- |
 | ![Restaurant light tubes, HDR](docs/assets/hdr-samples/restaurant_hdr.jpg) |
 
-The HDR version is not a brightened copy of the normal photo; it is rendered separately from the
-same data. How bright it may go depends only on how bright a highlight the sensor genuinely
-measured — if there is none, the export fails clearly instead of inventing headroom. Every file is
-reopened and checked after writing. Details are in the [HDR tutorial](docs/HDR_TUTORIAL.zh-CN.md).
+The HDR rendition is never a stretched SDR image — it is rendered **independently** from the same linear scene data. Available headroom is bounded strictly by measured, non-clipped highlights; if none exist, export fails explicitly instead of fabricating headroom. Every written file is reopened and verified.
 
-### Two RAW decoders
+> Read more: [HDR tutorial (ZH)](docs/HDR_TUTORIAL.zh-CN.md) · [HDR delivery validation (ZH)](docs/HDR_DELIVERY_VALIDATION.zh-CN.md)
 
-The default LibRaw decoder covers nearly every camera on the market; on a Mac you can switch to the
-system's Apple RAW decoder, including its newest decoding model. Both feed the same analysis and
-rendering, so they can be compared on the same photograph.
+---
 
-![LibRaw and Apple RAW through the same pipeline](docs/assets/decoder-libraw-vs-raw9.jpg)
+### 4. Twenty data-driven film stocks
 
-Supported cameras, and what happens with bodies too new for the built-in data, are covered in
-section 1 of the [user guide](docs/USER_GUIDE.md) and in [sensor support](docs/SENSOR_SUPPORT.zh-CN.md).
+Includes 20 stocks across colour negative, cinema negative, and slide film (Kodak Portra, Ektar, Gold, UltraMax, VISION3, Verita, Ektachrome, Kodachrome; Fujifilm Velvia, Provia, Superia, Pro 400H, C200). Each stock is a **fixed, data-driven AgX rendering**: black-point-compensated print/slide tone curve, per-hue colour rendition and grey-scale crossover from spectral film simulations, ISO 2240 metered mid-grey for reversal stocks, and continuous negative-density grain matched to datasheet granularity.
 
-### Film simulation
-
-Twenty film stocks (Kodak Portra, Ektar, Gold, UltraMax, VISION3, Verita, Ektachrome, Kodachrome;
-Fujifilm Velvia, Provia, Superia, Pro 400H, C200) as fixed, data-driven AgX renderings: each stock's
-print/slide tone curve with black-point compensation, its per-hue colour rendition and grey-scale
-crossover from a spectral film simulation, reversal stocks' metered mid grey, and negative-density
-grain at the stock's datasheet granularity. The same stock renders every photo by the same rules;
-choose it in the GUI's film card or with `--film portra400`.
+Select a stock from the **Film** card in the GUI or pass `--film portra400` on the CLI (currently SDR-only).
 
 | AgX (no film) | Kodak Portra 400 |
-|---|---|
+| --- | --- |
 | ![AgX](docs/assets/film/temple_none.jpg) | ![Portra 400](docs/assets/film/temple_portra400.jpg) |
 | **Fujifilm Velvia 100** | **Kodak Vision3 250D** |
 | ![Velvia 100](docs/assets/film/temple_velvia100.jpg) | ![Vision3 250D](docs/assets/film/temple_vision3250d.jpg) |
 
-What each stock changes, with crops of colour, blacks and grain: [film tutorial](docs/FILM_TUTORIAL.zh-CN.md)
-(Chinese); model and data: [film simulation](docs/FILM.zh-CN.md) (Chinese). The film data derive from the open-source
-[spektrafilm](https://github.com/andreavolpato/spektrafilm) profiles by Andrea Volpato
-(CC BY-SA 4.0); see [third-party notices](NOTICE.md).
+> Read more: [Film tutorial (ZH)](docs/FILM_TUTORIAL.zh-CN.md) · [Film model & data (ZH)](docs/FILM.zh-CN.md) (film profiles derive from [spektrafilm](https://github.com/andreavolpato/spektrafilm) by Andrea Volpato, CC BY-SA 4.0; see [NOTICE.md](NOTICE.md))
 
-### One set of settings for the GUI and the command line
+---
 
-The local web interface and the CLI share one set of parameters: anything you set in the interface
-can be reproduced as one command. `--report` prints the full analysis report; `--scan` / `--csv`
-write a diagnostic dashboard and a data table.
+### 5. Dual RAW decoders & readback-verified delivery
+
+- **Two decoders, one pipeline**: **LibRaw** covers nearly every camera by default; on macOS you can switch to **Apple RAW** (Core Image, including RAW 9). Both deliver linear wide-gamut pixels into the exact same analysis and rendering stages.
+- **Verified encoding profiles**: Default `auto` mode searches JPEG `q95–q99` via actual readback checks (preferring `4:2:2`, stepping to `4:2:0` when colour error stays bounded); `share-hq` fixes `q97 / 4:2:0` at full resolution; `archive` locks `q100 / 4:4:4`; HEIF supports `libheif/x265` 10-bit floating masters with float readback verification.
+
+![LibRaw and Apple RAW through the same pipeline](docs/assets/decoder-libraw-vs-raw9.jpg)
+
+> Read more: [Sensor support (ZH)](docs/SENSOR_SUPPORT.zh-CN.md) · [Delivery quality & size study (ZH)](docs/DELIVERY_QUALITY_STUDY.zh-CN.md)
+
+---
+
+### 6. Shared parameters across GUI and CLI
+
+The local web workbench and the CLI share the same rendering and delivery parameters — anything dialed in the browser reproduces as a single CLI command. Add `--report` for a full text analysis report, or `--scan` / `--csv` for a six-panel diagnostic dashboard and metrics table.
+
+---
 
 ## Quick start
 
-An **Apple Silicon Mac** and Python 3.11 or newer are required. Apple RAW decoding and HDR export
-use macOS system components, so macOS is the supported platform; earlier systems and Intel Macs are
-untested. The validated rawpy/LibRaw revision is pinned as a dependency and builds locally on first
-install, so Git and the Xcode Command Line Tools are also required.
+### Requirements
 
-The Python package and CLI keep the engine's historical name `dngscan`.
+- **Platform**: **Apple Silicon Mac** (macOS) with Python 3.11+ (Apple RAW decoding and HDR gain-map export rely on macOS frameworks; Intel Macs and older OSes are untested).
+- **Build tools**: Git and Xcode Command Line Tools (the pinned `rawpy` / LibRaw revision compiles locally on first install).
+- **Package name**: The Python package and CLI retain the engine's original name `dngscan`.
 
-### GUI
+### Install & launch the local web GUI
 
 ```bash
 git clone https://github.com/Gen-416/AgXRAW.git
@@ -150,81 +106,71 @@ pip install -r requirements.txt
 python -m dngscan.gui
 ```
 
-Open the localhost address printed in the terminal. The selected RAW is sent only to the local
-service on the same computer, kept in a temporary directory, removed on exit, and never sent to any
-external service.
+Open the `http://127.0.0.1:...` URL printed in your terminal. Selected RAWs stay strictly on localhost in a temporary directory that is cleaned up on exit.
 
-### CLI
+### Common CLI commands
 
 ```bash
-# Default AgX render
+# Default AgX render (auto exposure + auto JPEG quality)
 python -m dngscan photo.dng --jpeg photo.jpg
 
-# High-quality sharing: JPEG q97 / 4:2:0, original dimensions
+# High-quality sharing (fixed JPEG q97 / 4:2:0, full resolution; warns above 20 MB)
 python -m dngscan photo.dng --jpeg photo_share.jpg --delivery-profile share-hq
 
-# Also print the full analysis report
-python -m dngscan photo.dng --jpeg photo.jpg --report
+# Film simulation (list all 20 stocks: --film list)
+python -m dngscan photo.dng --film portra400 --jpeg photo_portra.jpg
 
-# Highlight reconstruction + Display P3
+# Apple RAW 9 decoder (macOS)
+python -m dngscan photo.dng --decoder coreimage --coreimage-version 9 --jpeg photo_raw9.jpg
+
+# Highlight reconstruction + Display P3 + full analysis report
 python -m dngscan photo.dng --jpeg photo_p3.jpg \
-  --highlight-mode reconstruct --output-gamut p3
+  --highlight-mode reconstruct --output-gamut p3 --report
 
-# HDR photo (macOS only)
+# True HDR JPEG (macOS)
 python -m dngscan photo.dng --jpeg photo_hdr.jpg \
   --output-format ultrahdr --hdr-headroom 3
 
-# Diagnostic dashboard and data table
+# Diagnostic dashboard and CSV metrics
 python -m dngscan photo.dng --jpeg photo.jpg --scan --csv photo.csv
-
 ```
 
-For fixed q97 / 4:2:0 at the original dimensions, use `--delivery-profile share-hq`
-or choose **High-quality sharing** in the GUI output profile. SDR and HDR JPEG are
-supported; files over 20 MB are kept with a size warning. See the [user guide](docs/USER_GUIDE.md)
-for the size check and format boundaries.
+Run `python -m dngscan --help` to see every option.
 
-See `python -m dngscan --help` for every option.
+### Optional: build native Rust acceleration
 
-### Optional native acceleration (Rust)
-
-Everything works without a native extension; the NumPy implementation is the reference. The
-optional Rust kernels (`rust/`) accelerate the heavy parts of rendering, HDR and verification,
-and each kernel is checked against its NumPy reference under its declared exactness or
-tolerance contract. A 24 MP photo exports
-in about 7 s as a normal JPEG and about 10 s as HDR in the historical 24 MP benchmark. Actual time
-depends on the decoder, encoding settings and hardware.
+Everything runs in pure Python/NumPy out of the box. Building the optional Rust kernels (`rust/`) accelerates rendering, HDR formation, and readback checks while remaining verified against the NumPy reference under declared exactness or tolerance contracts (historically ~7 s for 24 MP SDR JPEG and ~10 s for HDR; actual time varies by decoder, encoder profile, and hardware):
 
 ```bash
-# Rust toolchain: https://rustup.rs
+# Install Rust toolchain first: https://rustup.rs
 pip install setuptools-rust
 tools/build_native.sh
 ```
 
-`pip install .` builds the kernels too; without a Rust toolchain (or with
-`DNGSCAN_BUILD_NATIVE=OFF`) it installs the pure-Python package.
+`pip install .` builds the kernels automatically when Cargo is available; pass `DNGSCAN_BUILD_NATIVE=OFF` for a pure-Python install.
+
+---
 
 ## How it works
 
-AgXRAW keeps "what the sensor measured" apart from "what picture you want" and joins them only when
-the image is rendered.
+AgXRAW separates **"what the sensor measured"** from **"what picture you want"**, joining them only when compiling an immutable render plan:
 
 ```mermaid
 flowchart TB
     RAW["RAW / DNG"]
-    E["1. Read the sensor data<br/>measured before the image is reconstructed:<br/>clipping, noise, usable range"]
-    D["2. Reconstruct the image<br/>LibRaw or Apple RAW"]
-    I["Your choices<br/>exposure · white balance · look<br/>output format"]
-    P["3. Combine, and decide how to render<br/>subject · trusted highlights · clipped areas<br/>tone curve · colour handling · HDR headroom"]
-    S["4. Render the normal photo<br/>AgX by default<br/>sRGB or Display P3"]
-    H["5. Render the HDR version separately<br/>from the same data<br/>brightness limited to measured highlights"]
-    V["6. Write and verify<br/>JPEG, or HDR JPEG / HEIC<br/>reopened and checked after writing"]
-    OUT["A photo you can use"]
+    E["1. Read sensor evidence<br/>Pre-demosaic clipping, noise & usable range"]
+    D["2. Decode linear scene<br/>LibRaw or Apple RAW"]
+    I["Your develop choices<br/>exposure · white balance · film/look · format"]
+    P["3. Compile render plan<br/>Separate subject, trusted highlights & clipped areas<br/>Solve tone curve, colour path & HDR headroom"]
+    S["4. Render SDR photo<br/>AgX by default (sRGB / Display P3)"]
+    H["5. Render HDR separately<br/>From the same linear scene<br/>Headroom bounded by measured highlights"]
+    V["6. Encode & verify readback<br/>JPEG / HEIF / Gain-Map HDR"]
+    OUT["Verified output photo"]
 
     RAW --> E
     RAW --> D
     E -- "measurements" --> P
-    D -- "image" --> P
+    D -- "linear image" --> P
     I -- "your choices" --> P
     P --> S
     P --> H
@@ -244,81 +190,36 @@ flowchart TB
     class V,OUT delivery
 ```
 
-1. **Read the sensor data.** Before the RAW is reconstructed into an image, AgXRAW records where
-   each colour channel clipped and where the sensor's ceiling is, and estimates the noise level.
-   Later highlight handling can still tell measured pixels from reconstructed ones.
-2. **Reconstruct the image.** LibRaw or Apple RAW turns the RAW into a linear wide-gamut image. The
-   decoder only decides how the RAW becomes pixels; how brightness is compressed and how colour is
-   handled is decided later.
-3. **Combine measurements and choices.** The analysis separates the subject, trusted highlights and
-   clipped areas, then joins them with your exposure, white balance, look and output format
-   to decide how this photograph is rendered.
-4. **Render the normal photo.** AgX by default; other tone-mapping options exist for comparison.
-5. **Render the HDR version separately.** It is rendered again from the same data, not stretched
-   from the finished normal photo; how bright it may go depends only on the highlights the RAW
-   genuinely measured.
-6. **Write and verify.** The normal photo is written as a JPEG; HDR packs both versions into one
-   file, which is reopened to confirm that its images and brightness are what was intended.
+### Four ways AgXRAW differs from typical RAW editors
 
-## How AgXRAW differs from the usual RAW workflow
+1. **Sensor evidence stays in the loop to the end**: Most editors discard raw CFA state after demosaicing. AgXRAW keeps pre-demosaic clipping and noise records so tone curves know which highlights are real and colour paths stay conservative where data was clipped or reconstructed.
+2. **Analysis builds an editable starting point — not hidden taste**: Black/white levels, clipping, noise, and scene distribution drive bounded joint exposure and tone planning (no unsolicited look boost, camera white balance by default, shared plan between preview and export), while manual controls always take precedence.
+3. **HDR is formed independently and verified on readback**: SDR and HDR start from the same linear data, render separately, and written files are reopened to validate headroom, colour profile, and reconstruction error.
+4. **Every stage is modular and replaceable**: Swapping decoders does not rewrite analysis or tone mapping; switching tone cores reuses the same analysis; encoders only consume finished renditions — making apples-to-apples comparisons straightforward.
 
-**Sensor data stays in the loop to the end.** Most developers hand their tone module an already
-reconstructed image that no longer knows which pixels clipped. AgXRAW keeps the pre-reconstruction
-sensor data, so the tone curve knows which highlights are trustworthy and colour handling is more
-conservative in clipped and reconstructed areas.
+> AgXRAW intentionally skips library management and local masks. It serves both as a focused tool for making pictures and as an open imaging workbench where every step explains itself.
 
-**Analysis supplies defaults; manual choices remain available.** Black and white levels, clipping,
-noise and scene distribution inform automatic exposure and tone planning. White balance defaults
-to the capture record, and optional looks are off by default. Manual controls can override the
-analysis-driven suggestion.
+---
 
-Default AgX auto exposure uses bounded joint planning: a conservative starting
-exposure followed by a small EV adjustment with a transported white endpoint
-and, when needed, a softer shoulder. Black and toe stay fixed; shadow lift,
-deep-shadow darkening and bright/shadow separation constrain the candidates.
-Look brightness defaults to 1. If no candidate qualifies, the starting plan
-is retained. Preview and export share the selected plan. This is an editable
-starting point, not semantic scene recognition or guaranteed correct exposure.
-[Promotion evidence](docs/assets/delivery-quality/joint-exposure-promotion-20261012.json)
-records plan parity on 16 real RAW files and full-size SDR JPEG parity on two
-of them; it is not new Apple RAW or HDR file quality acceptance.
+## Documentation & repository map
 
-**HDR is not a brighter normal photo.** Both versions start from the same data and are rendered
-independently, and the written file is reopened and checked.
+### Where to start
 
-**Each stage can be replaced on its own.** A new decoder does not require rewriting analysis or
-rendering; a new tone-mapping method reuses the same analysis; a new output format
-only receives finished images. New methods can therefore be compared with old ones on the same
-photograph.
+- **Using AgXRAW**: [User Guide](docs/USER_GUIDE.md) · [Editing Tutorial (ZH)](docs/EDITING_TUTORIAL.zh-CN.md) · [Film Tutorial (ZH)](docs/FILM_TUTORIAL.zh-CN.md) · [HDR Tutorial (ZH)](docs/HDR_TUTORIAL.zh-CN.md) · [Sensor Support (ZH)](docs/SENSOR_SUPPORT.zh-CN.md)
+- **Architecture & development**: [Developer Guide (ZH)](docs/DEVELOPMENT.zh-CN.md) · [Product Architecture](docs/PRODUCT_ARCHITECTURE.md) · [Pipeline Architecture](docs/ARCHITECTURE.md) · [Film Model (ZH)](docs/FILM.zh-CN.md) · [Reports & Baselines](docs/reports/README.md)
 
-AgXRAW does not manage a library and does not do local adjustments. It works as a tool for making
-pictures, and as an open imaging workbench where every step can state its evidence.
-
-## Repository map
+### Repository layout
 
 | Path | Purpose |
 | --- | --- |
-| [dngscan/](dngscan) | Python pipeline, CLI and local GUI |
-| [rust/](rust) | Optional native computation kernels |
-| [dngscan/data/](dngscan/data) / [dngscan_assets/](dngscan_assets) | Packaged calibration assets / source data and references |
-| [tests/](tests) / [tools/](tools/README.md) | Regression checks / explicit calibration and benchmark tools |
-| [docs/](docs/README.md) | User guides, architecture and design contracts |
-| [docs/reports/](docs/reports/README.md) | Versioned measurements, frozen baselines and historical records |
+| [dngscan/](dngscan) | Python imaging pipeline, film engine, CLI, and local web GUI |
+| [rust/](rust) | Optional native Rust computation kernels |
+| [dngscan/data/](dngscan/data) · [dngscan_assets/](dngscan_assets) | Bundled calibration & film assets / raw references & provenance |
+| [tests/](tests) · [tools/](tools/README.md) | Regression test suite / calibration, showcase, and benchmark scripts |
+| [docs/](docs/README.md) · [docs/reports/](docs/reports/README.md) | Guides, tutorials, architecture contracts, and historical baselines |
 
-For a code-reading route, development setup and validation commands, see the
-[developer guide](docs/DEVELOPMENT.zh-CN.md). Historical reports preserve their original
-measurements; they do not replace the current user guide or architecture.
-
-## Technical documentation for developers
-
-[Product architecture and domain model](docs/PRODUCT_ARCHITECTURE.md) ·
-[Architecture and technical details](docs/ARCHITECTURE.md) (the whole pipeline and the reasoning behind each stage) ·
-[Developer guide and repository map](docs/DEVELOPMENT.zh-CN.md) (Chinese) ·
-[Measurement and decision records](docs/reports/README.md) ·
-[HDR implementation plan](docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md) (Chinese)
+---
 
 ## License
 
-AgXRAW is free and open-source software, released under [GPL-3.0-or-later](LICENSE).
-Bundled third-party data keep their own terms — notably the film simulation data derived from
-spektrafilm (CC BY-SA 4.0) — as listed in [NOTICE.md](NOTICE.md).
+AgXRAW is free and open-source software released under [GPL-3.0-or-later](LICENSE). Bundled third-party data retains its original terms — notably film simulation profiles derived from spektrafilm (CC BY-SA 4.0) — as detailed in [NOTICE.md](NOTICE.md).

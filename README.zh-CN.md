@@ -1,97 +1,101 @@
 # AgXRAW
 
-把 RAW 照片显影成忠实的 JPEG 和真正的 HDR 照片，并且告诉你每一步的依据。开源，本地运行，RAW 文件不会上传。
+把 RAW 照片显影成忠实的 JPEG、HEIF 和真 HDR 照片，并让每一步都有实测依据。开源、本地运行，RAW 文件不会上传。
 
-它最早只想解决一个很具体的问题：不打开一整套修图软件，也能用 AgX 把一张 RAW 显影好。做下去之后问题变大了：传感器到底保留了多少高光？靠算法补出来的高光还能信多少？同一份数据怎样分别做出普通照片和 HDR 照片？AgXRAW 把这些问题放进了同一套可以测量、可以复现的流程里。
+[English](README.md) · [使用说明](docs/USER_GUIDE.zh-CN.md) · [修图教程](docs/EDITING_TUTORIAL.zh-CN.md) · [胶片教程](docs/FILM_TUTORIAL.zh-CN.md) · [HDR 教程](docs/HDR_TUTORIAL.zh-CN.md) · [机型支持](docs/SENSOR_SUPPORT.zh-CN.md) · [完整文档索引](docs/README.md)
 
-项目面向不同品牌和机型的 RAW，包括 Bayer、X-Trans 和解码器支持的线性 DNG。
-拥有自己的 PTC 或黑场标定不是使用条件：没有适用噪声模型时，仍使用图像统计完成
-自动曝光、AgX 和导出，并明确显示“通用成像（噪声未标定）”。噪声模型支持、镜头
-校正支持和 RAW 格式解码支持分别判断，详见[机型支持](docs/SENSOR_SUPPORT.zh-CN.md)。
+---
 
-[English](README.md) · [许可证](LICENSE) · [第三方声明](NOTICE.md)
+AgXRAW 最初只想解决一个具体问题：不用打开一整套修图软件，也能用 AgX 把一张 RAW 显影好。往深处做时，更核心的问题浮现出来——传感器到底保留了多少高光？算法补出来的高光还能信多少？同一份 RAW 数据怎样分别做成普通照片和真 HDR 照片？AgXRAW 把这些问题收进了一套**可测量、可复现**的本地流程里。
 
-**教程与文档**：
-[修图教程](docs/EDITING_TUTORIAL.zh-CN.md)（每个滑条做什么，配实拍对比）·
-[HDR 教程](docs/HDR_TUTORIAL.zh-CN.md)（HDR 照片是什么，能亮多少，怎么导出）·
-[使用说明](docs/USER_GUIDE.zh-CN.md)（支持的相机、界面上每个数字、导出选择）·
-[机型支持](docs/SENSOR_SUPPORT.zh-CN.md) ·
-[完整文档索引](docs/README.md)
+项目面向多品牌相机的 RAW（含 Bayer、X-Trans 与解码器支持的线性 DNG），**不需要提前做个人标定就能直接使用**：缺少适用噪声模型时，仍按图像统计完成自动曝光、AgX 成像与导出，并在界面和报告中明确标出「通用成像（噪声未标定）」。
 
-胶片模拟已移到独立的私有 [**AgXFilm** 研发仓库](https://github.com/Gen-416/AgXFilm)，暂缓开发。AgXRAW 现在集中维护 RAW 分析、AgX、SDR/HDR 和导出。[拆分与恢复说明](docs/FILM_SPLIT.zh-CN.md)。
+---
 
-## 它能做什么
+## 核心能力
 
-### 把 RAW 显影成照片
+### 1. 默认即可出片的 AgX 显影
 
-默认使用 AgX、基于 RAW 分析的自动曝光和自适应影调。JPEG 自动编码在 **95–99** 范围内选择，SDR 优先 **4:2:2**，只有误差受限时才使用更小的 4:2:0；HDR JPEG 也可独立指定采样；HEIF 可用 x265 的 10-bit / 4:4:4 和独立质量刻度，逐文件验证增益图回读。手动调整曝光会切换到手动模式，`--ev 0` 可保留固定曝光锚点。[六张样张、180 个全尺寸编码的实测对照](docs/DELIVERY_QUALITY_STUDY.zh-CN.md)。
+AgX 是默认成像方式：高光自然过渡到白，亮部颜色不会又艳又假。打开照片后，AgXRAW 会先分析主体亮度、动态范围与过曝区域，通过受约束的自动曝光与自适应影调定好起点，通常直接导出就能得到可用成片。
 
-默认用 AgX 成像：亮的地方自然地过渡到白，颜色不会又亮又假。工具先分析这张照片——主体多亮、最暗最亮到哪里、哪里过曝了——自动定好一条明暗曲线，通常直接导出就是一张可用的照片。需要动手时，按"范围 → 亮度 → 色彩补偿"的顺序，每个滑条只管一件事。
+需要微调时，按 **范围 → 亮度 → 色彩补偿** 的顺序操作，每个滑条只管一件事；手动调整曝光会切换为固定端点模式，`--ev 0` 可保留拍摄曝光锚点。
 
-默认自动规划采用「小幅 EV · 受约束联合」：先建立基础曝光，再小幅联动白端点与肩部，保持黑端点和趾部，并限制阴影抬升、深暗部压低与明暗分离的损失。AgX 的默认 look brightness 为 1，不再额外自动提亮。没有合格候选就保留基础方案；这是可编辑的起点，不是场景语义识别或完美自动曝光。预览与导出复用同一份规划。
-[规则冻结与生产接入验收记录](docs/assets/delivery-quality/joint-exposure-promotion-20261012.json)包含 16 张真实 RAW 的规划对照，以及其中两张的全尺寸 SDR JPEG 一致性检查；不代表新增的 Apple RAW 或 HDR 文件画质验收。
-
-10-bit SDR HEIF 保留完成输出传递函数的浮点母版，到编码出口才量化，并以浮点回读验收。
-HDR HEIF 的 SDR 底图也保留浮点到 10-bit 编码出口，与独立浮点 HDR 母版一起生成增益图。
-JPEG 和显式 8-bit HEIF 保持 8-bit；所有出口都做实际回读检查。
-
-| 默认，什么都不调 | 放出更深的暗部，再整体提亮一档 |
-|---|---|
+| 默认渲染（未作调整） | 放出更深暗部，再整体提亮 1 档 |
+| --- | --- |
 | ![默认渲染](docs/assets/editing-tutorial/00_default.jpg) | ![调整后](docs/assets/editing-tutorial/03_range_ev1.jpg) |
 
-每个滑条到底改了画面的哪一部分、什么时候不起作用，见[修图教程](docs/EDITING_TUTORIAL.zh-CN.md)。
+> 深入阅读：[修图教程](docs/EDITING_TUTORIAL.zh-CN.md)（每个滑条的作用与实拍对照） · [自动曝光规划验收记录](docs/assets/delivery-quality/joint-exposure-promotion-20261012.json)
 
-### 告诉你这张 RAW 里到底有什么
+---
 
-打开一张 RAW，工具先给出测量结果：有多少像素过曝了、过曝的是哪个颜色通道、照片里确实测到的最亮高光在第几档、做成 HDR 能多亮几档。预览上可以打开"RAW 过曝标记"，直接看到传感器上哪些位置已经顶到了上限。它记录的是拍摄时的事实，不随你怎么调而变，所以能帮你分清"RAW 里已经没有信息了"和"只是渲染得太亮"。
+### 2. 看清 RAW 里的真实信息
 
-每个数字的含义见[使用说明](docs/USER_GUIDE.zh-CN.md)第三节。
+打开一张 RAW，AgXRAW 会先给出传感器测量结果：过曝占比与通道分布、确实测到的最亮高光（p99.99）、以及做成 HDR 最多能多亮几档。预览上可随时叠加 **RAW 过曝标记**——它记录的是拍摄时的传感器事实，不随曝光或曲线移动，能帮你分清“RAW 里已经没有信息了”还是“只是当前渲染得太亮”。
 
-### 导出真正的 HDR 照片
+> 深入阅读：[使用说明 · 检测参数与过曝标记](docs/USER_GUIDE.zh-CN.md)
 
-下面三张是 AgXRAW 导出的**真 HDR 文件**，不是示意图。如果你的屏幕和浏览器支持 HDR（Mac 或 iPhone 上的 Safari、Chrome，Android 15 以上的 Chrome），灯和高光会明显比这个页面的白色背景更亮。看不出区别也没关系：不支持 HDR 的地方会自动显示文件里的普通版，这正是这种格式的好处。
+---
 
-| 手办与灯 · 比页面的白亮 2.35 档 | 舞台灯 · 亮 1.35 档 |
-|---|---|
+### 3. 导出真正的 HDR 照片
+
+下面三张是 AgXRAW 导出的**真 HDR 文件**（非示意图）。在支持 HDR 的屏幕与浏览器上（Mac / iPhone 的 Safari 或 Chrome、Android 15+ 的 Chrome），灯光和高光会明显亮于页面白色背景；在不支持的设备上则自动显示内嵌的普通版，不会发灰或出错。
+
+| 手办与灯 · 比参考白亮 2.35 档 | 舞台灯 · 亮 1.35 档 |
+| --- | --- |
 | ![手办与灯 HDR](docs/assets/hdr-samples/lamp_hdr.jpg) | ![舞台灯 HDR](docs/assets/hdr-samples/stage_hdr.jpg) |
 
 | 餐厅灯管 · 亮 1.45 档 |
-|---|
+| --- |
 | ![餐厅灯管 HDR](docs/assets/hdr-samples/restaurant_hdr.jpg) |
 
-HDR 版不是把普通照片拉亮，而是从同一份数据单独成像；它能亮多少，只看传感器确实测到了多亮的高光，测不到就明确报错，不会硬造。每个文件写完都会重新打开核对一遍。细节见 [HDR 教程](docs/HDR_TUTORIAL.zh-CN.md)。
+HDR 版并非把普通照片拉亮，而是从同一份线性数据**独立成像**；能亮多少只取决于传感器确实测到的高光，测不到就明确报错，绝不硬造余量。每个文件写出后都会重新读回核对。
 
-### 两种 RAW 解码器
+> 深入阅读：[HDR 教程](docs/HDR_TUTORIAL.zh-CN.md) · [HDR 编码回读验证](docs/HDR_DELIVERY_VALIDATION.zh-CN.md)
 
-默认的 LibRaw 覆盖市面上绝大多数相机；在 Mac 上还可以换成系统自带的 Apple RAW，包括它最新一代的解码模型。两者之后走的是同一套分析和成像，可以在同一张照片上直接比较。
+---
 
-![LibRaw 与 Apple RAW 走同一套流程](docs/assets/decoder-libraw-vs-raw9.jpg)
+### 4. 内置 20 卷数据驱动的胶片模拟
 
-支持哪些相机、太新的机型怎么处理，见[使用说明](docs/USER_GUIDE.zh-CN.md)第一节和[机型支持](docs/SENSOR_SUPPORT.zh-CN.md)。
+内置 20 种经典胶片（Kodak Portra、Ektar、Gold、UltraMax、VISION3、Verita、Ektachrome、Kodachrome；Fujifilm Velvia、Provia、Superia、Pro 400H、C200），涵盖彩色负片、电影负片与反转片。每卷胶片是一套**固定规则的 AgX 渲染**：包含黑点适应后的相纸/幻灯片曲线、来自光谱模拟的按色相颜色还原与灰阶层间漂移、反转片的 ISO 2240 测光中灰，以及按数据手册颗粒度施加在负片密度上的连续颗粒。
 
-### 胶片模拟
-
-内置 20 种胶片（Kodak Portra、Ektar、Gold、UltraMax、VISION3、Verita、Ektachrome、Kodachrome；Fujifilm Velvia、Provia、Superia、Pro 400H、C200），每种都是固定的、由数据决定的 AgX 渲染：做了黑点适应的相纸/幻灯片影调曲线、来自光谱胶片模拟的按色相颜色还原与灰阶层间漂移、反转片的测光中灰，以及按数据手册颗粒度施加在负片密度上的颗粒。同一卷胶片在每张照片上按同一规则成像；在界面的胶片卡片里选择，或用 `--film portra400`。
+在网页界面的「胶片」卡片中选择，或通过命令行 `--film portra400` 启用（目前仅支持 SDR）。
 
 | AgX（不选胶片） | Kodak Portra 400 |
-|---|---|
+| --- | --- |
 | ![AgX](docs/assets/film/temple_none.jpg) | ![Portra 400](docs/assets/film/temple_portra400.jpg) |
 | **Fujifilm Velvia 100** | **Kodak Vision3 250D** |
 | ![Velvia 100](docs/assets/film/temple_velvia100.jpg) | ![Vision3 250D](docs/assets/film/temple_vision3250d.jpg) |
 
-每卷胶片改变了什么、颜色/黑/颗粒的局部对比见[胶片教程](docs/FILM_TUTORIAL.zh-CN.md)，模型与数据见[胶片模拟](docs/FILM.zh-CN.md)。胶片数据派生自 Andrea Volpato 的开源项目 [spektrafilm](https://github.com/andreavolpato/spektrafilm) 胶片档案（CC BY-SA 4.0），见[第三方声明](NOTICE.md)。
+> 深入阅读：[胶片教程](docs/FILM_TUTORIAL.zh-CN.md) · [胶片模型与数据说明](docs/FILM.zh-CN.md)（数据派生自 Andrea Volpato 的 [spektrafilm](https://github.com/andreavolpato/spektrafilm)，CC BY-SA 4.0，详见 [NOTICE.md](NOTICE.md)）
 
-### 图形界面和命令行是同一套设置
+---
 
-本地网页界面和命令行共用一套参数，界面上能调的，命令行都能写成一行复现。命令行加 `--report` 打印完整的分析报告，加 `--scan` / `--csv` 输出诊断图和数据表。
+### 5. 双 RAW 解码器与可验证交付
+
+- **双解码器同管线对比**：默认使用 **LibRaw** 覆盖主流相机；在 macOS 上可切换为系统自带的 **Apple RAW**（含最新 RAW 9）。两者输出统一的线性广色域数据，接入同一套分析与成像流程。
+- **质量可控、写后必检的导出**：默认自动编码在 JPEG `q95–99` 间按回读误差择优（优先 `4:2:2`，误差受限时启用更小的 `4:2:0`）；提供 `share-hq`（固定 `q97 / 4:2:0` 原尺寸高质量分享）与 `archive`（`q100 / 4:4:4`）；HEIF 支持 `libheif/x265` 的 10-bit 浮点母版编码与浮点回读验证。
+
+![LibRaw 与 Apple RAW 走同一套流程](docs/assets/decoder-libraw-vs-raw9.jpg)
+
+> 深入阅读：[机型支持](docs/SENSOR_SUPPORT.zh-CN.md) · [JPEG / HEIF 质量与体积实测](docs/DELIVERY_QUALITY_STUDY.zh-CN.md)
+
+---
+
+### 6. 网页界面与命令行共用同一套参数
+
+本地网页界面和命令行共享同一套显影与编码逻辑：界面里调出的效果，都能用一行命令精确复现。命令行附带 `--report` 可打印完整分析报告，附带 `--scan` / `--csv` 可生成六格诊断图与数据表。
+
+---
 
 ## 快速开始
 
-需要 **Apple Silicon 的 Mac** 和 Python 3.11 或更新版本。Apple RAW 解码和 HDR 导出用的是 macOS 系统组件，所以支持的平台限定为 macOS；更早的系统和 Intel Mac 没有测试过。项目把验证过的 rawpy / LibRaw 版本锁为依赖，首次安装会在本机编译，因此还需要 Git 和 Xcode Command Line Tools。
+### 运行环境
 
-Python 包和命令行沿用引擎原来的名字 `dngscan`。
+- **平台**：Apple Silicon Mac（macOS），Python 3.11 或更新版本（Apple RAW 与 HDR 导出依赖 macOS 系统框架，Intel Mac 及旧系统未测试）。
+- **编译工具**：Git 与 Xcode Command Line Tools（首次安装会本地编译锁定版本的 `rawpy` / LibRaw）。
+- **命名说明**：Python 包名与命令行入口沿用引擎原名 `dngscan`。
 
-### 图形界面
+### 安装并启动网页界面
 
 ```bash
 git clone https://github.com/Gen-416/AgXRAW.git
@@ -102,70 +106,72 @@ pip install -r requirements.txt
 python -m dngscan.gui
 ```
 
-在浏览器里打开终端显示的本机地址（localhost）即可。选中的 RAW 只会传给同一台电脑上的本地服务，保存在临时目录里，退出后自动清理，不会发送到任何外部服务。
+在浏览器中打开终端输出的 `http://127.0.0.1:...` 地址即可使用。选中的 RAW 仅传给本机服务，暂存于临时目录并在退出后自动清理，不会发往任何外部服务器。
 
-### 命令行
+### 常用命令行示例
 
 ```bash
-# 默认 AgX 出片
+# 默认 AgX 出片（自动曝光 + 自动编码质量）
 python -m dngscan photo.dng --jpeg photo.jpg
 
-# 高质量分享：JPEG 97 / 4:2:0，保留原尺寸
+# 高质量分享档（固定 JPEG 97 / 4:2:0，保留原尺寸；超 20 MB 仅提示）
 python -m dngscan photo.dng --jpeg photo_share.jpg --delivery-profile share-hq
 
-# 同时打印完整的分析报告
-python -m dngscan photo.dng --jpeg photo.jpg --report
+# 启用胶片模拟（查看全部 20 卷：--film list）
+python -m dngscan photo.dng --film portra400 --jpeg photo_portra.jpg
 
-# 高光重建 + Display P3 广色域
+# 切换 Apple RAW 9 解码器
+python -m dngscan photo.dng --decoder coreimage --coreimage-version 9 --jpeg photo_raw9.jpg
+
+# 高光重建 + Display P3 广色域 + 打印分析报告
 python -m dngscan photo.dng --jpeg photo_p3.jpg \
-  --highlight-mode reconstruct --output-gamut p3
+  --highlight-mode reconstruct --output-gamut p3 --report
 
-# HDR 照片（需要 macOS）
+# 导出真 HDR JPEG（需要 macOS）
 python -m dngscan photo.dng --jpeg photo_hdr.jpg \
   --output-format ultrahdr --hdr-headroom 3
 
-# 诊断图和数据表
+# 生成六格诊断图与数据表
 python -m dngscan photo.dng --jpeg photo.jpg --scan --csv photo.csv
-
 ```
 
-GUI 的“导出档位”选 **高质量分享**，等同于 `--delivery-profile share-hq`：SDR / HDR JPEG 固定 97 / 4:2:0、保留原尺寸，超过 20 MB 时提示并保留成片。体积检查与格式边界见 [使用说明](docs/USER_GUIDE.zh-CN.md)。
+查看全部选项：`python -m dngscan --help`。
 
-完整参数见 `python -m dngscan --help`。
+### 可选：编译 Rust 原生加速核
 
-### 可选的原生加速（Rust）
-
-不编译原生扩展也能正常使用，NumPy 实现是基准。可选的 Rust 内核（`rust/` 目录）会加速成像、HDR 和校验等计算量大的环节；回归测试按算子的数值契约验证逐位一致或限定误差，不能把固定样本的逐位一致推广到所有 BLAS 平台和输入尺寸。历史 24 MP 基准中，普通 JPEG 约 7 秒、HDR 约 10 秒；实际时间取决于解码器、编码设置和硬件。
+不编译原生扩展也可正常使用（纯 NumPy 实现为基准）。编译 [rust/](rust) 目录下的原生计算核后，可显著加速成像、HDR 与回读校验（每个核均按声明的精确度或容差合同与 NumPy 基准对照验证；在 24 MP 历史基准下，普通 JPEG 约 7 秒、HDR 约 10 秒，实际耗时取决于解码器、编码设置与硬件）：
 
 ```bash
-# Rust 工具链：https://rustup.rs
+# 需先安装 Rust 工具链：https://rustup.rs
 pip install setuptools-rust
 tools/build_native.sh
 ```
 
-`pip install .` 也会编译内核；没有 Rust 工具链（或设置 `DNGSCAN_BUILD_NATIVE=OFF`）时安装纯 Python 包。
+`pip install .` 也会自动尝试编译；无 Rust 工具链或设置 `DNGSCAN_BUILD_NATIVE=OFF` 时自动退回纯 Python 安装。
+
+---
 
 ## 工作原理
 
-AgXRAW 把"传感器测到了什么"和"你想要什么样的照片"分开处理，到出图时再合到一起。
+AgXRAW 把 **“传感器测到了什么”** 和 **“你想要什么样的照片”** 分开处理，只在成像阶段汇总编译为只读渲染计划：
 
 ```mermaid
 flowchart TB
     RAW["RAW / DNG"]
-    E["1. 读取传感器数据<br/>还原成画面之前先测量<br/>过曝、噪声、可用的明暗范围"]
-    D["2. 还原成画面<br/>LibRaw 或 Apple RAW"]
-    I["你的选择<br/>曝光 · 白平衡 · 风格<br/>输出格式"]
-    P["3. 汇总，定下这张照片怎么渲染<br/>主体 · 可信的高光 · 过曝区域<br/>明暗曲线 · 颜色处理 · HDR 余量"]
-    S["4. 生成普通版<br/>默认 AgX 成像<br/>sRGB 或 Display P3"]
-    H["5. 单独生成 HDR 版<br/>从同一份数据重新成像<br/>亮度只看确实测到的高光"]
-    V["6. 写文件并核对<br/>普通 JPEG<br/>或 HDR JPEG / HEIC，写完再读回检查"]
-    OUT["可以直接用的照片"]
+    E["1. 提取传感器证据<br/>解拜耳前记录过曝、噪声与可用范围"]
+    D["2. 解码线性画面<br/>LibRaw 或 Apple RAW"]
+    I["你的显影选择<br/>曝光 · 白平衡 · 胶片/风格 · 输出格式"]
+    P["3. 编译渲染计划<br/>分离主体、可信高光与过曝区<br/>确定曲线、色彩路径与 HDR 余量"]
+    S["4. 生成 SDR 普通版<br/>默认 AgX（sRGB / Display P3）"]
+    H["5. 独立生成 HDR 版<br/>从同一线性数据重新成像<br/>亮度严格受实测高光约束"]
+    V["6. 编码写入并回读核对<br/>JPEG / HEIF / Gain-Map HDR"]
+    OUT["可交付成片"]
 
     RAW --> E
     RAW --> D
-    E -- "测量结果" --> P
-    D -- "画面" --> P
-    I -- "你的选择" --> P
+    E -- "传感器证据" --> P
+    D -- "线性画面" --> P
+    I -- "显影意图" --> P
     P --> S
     P --> H
     S --> V
@@ -184,46 +190,36 @@ flowchart TB
     class V,OUT delivery
 ```
 
-1. **读取传感器数据。**在把 RAW 还原成画面之前，先记录每个颜色通道在哪里过曝、传感器的上限在哪里，并估算噪声水平。这样到后面处理高光时，仍然分得清哪些像素是传感器真实测到的，哪些是算法补出来的。
-2. **还原成画面。**LibRaw 或 Apple RAW 把 RAW 解成一张线性的广色域画面。解码器只决定 RAW 怎样变成像素；之后亮度怎样压、颜色怎样处理，由后面的步骤决定。
-3. **把测量和选择合到一起。**分析把主体、可信的高光和过曝区域分开，再和你选的曝光、白平衡、风格、输出格式一起，定下这张照片怎么渲染。
-4. **生成普通版。**默认由 AgX 成像，也可以换别的影调映射方式做对照。
-5. **单独生成 HDR 版。**从同一份数据重新成像，不是把做好的普通版拉亮；能多亮，只看 RAW 里确实测到了多亮的高光。
-6. **写文件并核对。**普通版直接写成 JPEG；HDR 把两版画面装进一个文件，写完之后重新打开，确认里面的画面和亮度都符合预期。
+### 与常见 RAW 软件的四个区别
 
-## 和常见的 RAW 处理流程有什么不同
+1. **传感器证据贯穿到底**：多数软件在解拜耳后就丢弃了原始传感器状态；AgXRAW 始终保留解码前的过曝与噪声证据，让曲线知道哪些高光可信，色彩处理也会对过曝和重建区域保持克制。
+2. **自动给出可编辑起点，而非替你做审美决定**：黑白电平、过曝、噪声与场景分布决定默认的受约束自动曝光与影调曲线（默认不额外提亮，白平衡尊重相机记录，预览与导出共用同一计划），手动调整随时可覆盖建议。
+3. **HDR 从源数据独立成像并回读验收**：不是把普通版拉亮，而是各自从线性场景出发，写出后重新打开核对余量、色域与像素误差。
+4. **各环节解耦可替换**：更换解码器无需重写分析或成像；切换影调核心复用同一份分析；输出编码只接收已完成成片，便于在同一张照片上做公平对照。
 
-**传感器数据一直参与到最后。**多数显影软件的影调模块拿到的是已经还原好的画面，不再知道哪些像素过曝过。AgXRAW 一直保留还原之前的传感器数据，所以明暗曲线知道哪些高光可信，颜色处理也会对过曝的和补出来的区域保守一些。
+> AgXRAW 定位清晰：不做图库管理，也不做局部蒙版精修。它既能直接用于日常出片，也是一座每一步都说得清依据的开源成像实验台。
 
-**分析给出默认值，手动选择保留。**程序根据黑白电平、过曝、噪声和场景分布设置默认曝光与影调；白平衡默认使用拍摄记录，可选风格默认关闭。自动曝光受高光保护约束，手动调整可以覆盖建议。
+---
 
-**HDR 不是更亮的普通照片。**两版画面都从同一份数据出发，各自成像；文件写完之后还会重新打开核对。
+## 文档导航与仓库结构
 
-**各个环节可以单独替换。**换一种解码器，后面的分析和成像不用重写；新的影调映射方式可以复用同一份分析；新的输出格式只接收已经成像的画面。所以新方法可以和旧方法放在同一张照片上比较。
+### 按角色阅读
 
-AgXRAW 目前不管理图库，也不做局部调整。它既可以直接用来出片，也可以当作一个开放的、每一步都说得清依据的成像实验台。
+- **日常使用与出片**：[使用说明](docs/USER_GUIDE.zh-CN.md) · [修图教程](docs/EDITING_TUTORIAL.zh-CN.md) · [胶片教程](docs/FILM_TUTORIAL.zh-CN.md) · [HDR 教程](docs/HDR_TUTORIAL.zh-CN.md) · [机型支持](docs/SENSOR_SUPPORT.zh-CN.md)
+- **架构理解与开发**：[开发指南与仓库地图](docs/DEVELOPMENT.zh-CN.md) · [产品架构与领域模型](docs/PRODUCT_ARCHITECTURE.zh-CN.md) · [成像管线与技术细节](docs/ARCHITECTURE.zh-CN.md) · [胶片模型说明](docs/FILM.zh-CN.md) · [测量与历史报告](docs/reports/README.md)
 
-## 仓库导航
+### 仓库目录
 
-| 路径 | 内容 |
+| 路径 | 职责 |
 | --- | --- |
-| [dngscan/](dngscan) | Python 管线、CLI 与本地 GUI |
-| [rust/](rust) | 可选原生计算核 |
-| [dngscan/data/](dngscan/data) / [dngscan_assets/](dngscan_assets) | 随包校准资产 / 数据来源与参考 |
-| [tests/](tests) / [tools/](tools/README.md) | 回归验证 / 显式校准和测量工具 |
-| [docs/](docs/README.md) | 使用说明、当前架构与设计合同 |
-| [docs/reports/](docs/reports/README.md) | 按版本保存的测量、冻结基线与历史记录 |
+| [dngscan/](dngscan) | Python 成像管线、胶片引擎、CLI 与本地网页 GUI |
+| [rust/](rust) | 可选 Rust 原生计算核 |
+| [dngscan/data/](dngscan/data) · [dngscan_assets/](dngscan_assets) | 随包标定与胶片资产 / 原始参考数据与出处 |
+| [tests/](tests) · [tools/](tools/README.md) | 回归测试 / 显式标定、样张生成与性能测量工具 |
+| [docs/](docs/README.md) · [docs/reports/](docs/reports/README.md) | 教程、使用说明、架构合同与历史测量基线 |
 
-按管线阅读代码、准备开发环境和运行验证，见 [开发指南](docs/DEVELOPMENT.zh-CN.md)。历史报告保留原始测量，不替代当前使用说明和架构。
-
-## 面向开发者的技术文档
-
-[产品架构与领域模型](docs/PRODUCT_ARCHITECTURE.zh-CN.md) ·
-[架构与技术细节](docs/ARCHITECTURE.zh-CN.md)（完整流程和每个环节的设计理由）·
-[开发指南与仓库地图](docs/DEVELOPMENT.zh-CN.md) ·
-[测量与决策记录](docs/reports/README.md) ·
-[HDR 实施计划](docs/HDR_AGX_V2_IMPLEMENTATION_PLAN.zh-CN.md)
+---
 
 ## 许可证
 
-AgXRAW 是自由开源软件，以 [GPL-3.0-or-later](LICENSE) 发布。随附的第三方数据保留各自的条款，其中胶片模拟数据派生自 spektrafilm（CC BY-SA 4.0），完整清单见 [NOTICE.md](NOTICE.md)。
+AgXRAW 以 [GPL-3.0-or-later](LICENSE) 开源发布。随附第三方数据保留各自条款——其中胶片模拟数据派生自 spektrafilm（CC BY-SA 4.0）——完整清单见 [NOTICE.md](NOTICE.md)。
